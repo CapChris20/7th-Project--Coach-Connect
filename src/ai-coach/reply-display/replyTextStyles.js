@@ -1,9 +1,11 @@
-// Markdown colors for a coach reply, plus the check for whether a message should use that layout.
-// Flow: pick light or dark ink → build the markdown style map → turn [Source] notes into pill links.
-// Used by CoachReplyText and InternetAnswerReply.
+// Markdown colors for a coach reply (neobrutalist theme), plus the check for whether a message should use that layout.
+// Flow: pick light or dark nb tokens → build the markdown style map → turn [Source] notes into pill links.
+// Used by: CoachReplyText and InternetAnswerReply.
+//
+// vocab: nbInk/nbMuted = neobrutalist text color tokens
 
 import { Platform } from 'react-native';
-import { AI_COACH_UI } from '../coachColors';
+import { lightColors, darkColors } from '../../look-and-feel/colorPalette';
 import { preprocessWebSearchLayout } from './splitInternetAnswer';
 
 // ===== NAMED CONSTANTS =====
@@ -28,32 +30,23 @@ const USER_ROLE = 'user';
 // ===== HELPER FUNCTIONS =====
 
 /**
+ * Neobrutalist color palette for coach replies.
+ * Uses design system tokens for consistent theming.
  * @param {boolean} isDark
  * @returns {object}
  */
 function coachReplyColorPalette(isDark) {
-  if (isDark) {
-    return {
-      text: 'rgba(255,255,255,0.92)',
-      muted: 'rgba(255,255,255,0.72)',
-      heading: '#FFFFFF',
-      bullet: AI_COACH_UI.pink,
-      link: AI_COACH_UI.purple,
-      rule: 'rgba(255,255,255,0.08)',
-      // Tables (Oct 2026 reply format): hairline borders + a tinted header row.
-      tableBorder: 'rgba(255,255,255,0.18)',
-      tableHeaderBg: 'rgba(255,255,255,0.07)',
-    };
-  }
+  const colors = isDark ? darkColors : lightColors;
   return {
-    text: '#0A0A0F',
-    muted: 'rgba(10,10,15,0.72)',
-    heading: '#0A0A0F',
-    bullet: '#BE185D',
-    link: '#9333EA',
-    rule: 'rgba(0,0,0,0.08)',
-    tableBorder: 'rgba(0,0,0,0.16)',
-    tableHeaderBg: 'rgba(0,0,0,0.05)',
+    text: colors.nbInk,
+    muted: colors.nbMuted,
+    heading: colors.nbInk,
+    bullet: '#FF6B9D', // brand gradient start
+    link: '#6B3AD9', // ink gradient start
+    rule: colors.nbBorder,
+    // Tables: use nb border tokens
+    tableBorder: colors.nbBorder,
+    tableHeaderBg: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
   };
 }
 

@@ -1,11 +1,14 @@
-// Hero card that opens Notes & Files. Shows how many files exist and how many are new.
-// Flow: pick dark/light colors → show the count + four feature chips → badge the CTA when newCount > 0.
+// Neobrutalist hero card that opens Notes & Files. Shows how many files exist and how many are new.
+// Flow: show the count + four feature chips → badge the CTA when newCount > 0.
 // Used by client and trainer home/files tabs. Copy falls back to client-facing defaults when omitted.
 
 import React from 'react';
 import { View, Text, Pressable, StyleSheet, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '../../look-and-feel/lightDarkMode';
+import { NbCard } from '../../look-and-feel/NbCard';
+import { NbButton } from '../../look-and-feel/NbButton';
 
 // ===== NAMED CONSTANTS =====
 
@@ -221,10 +224,13 @@ export default function FilesHeaderCard({
 
               <FeaturePills palette={palette} />
 
-              <OpenFilesButton ctaLabel={copy.ctaLabel} newCount={newCount} palette={palette} />
-            </LinearGradient>
-          </View>
-        </View>
+              <View style={styles.ctaWrap}>
+                <NbButton variant="brand" onPress={onPress}>
+                  {copy.ctaLabel}
+                  {newCount > 0 && <Text style={styles.ctaBadge}> {newCount > NEW_FILE_BADGE_CAP ? '99+' : newCount}</Text>}
+                </NbButton>
+              </View>
+        </NbCard>
       </Pressable>
     </View>
   );
@@ -236,38 +242,19 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     paddingHorizontal: 16,
   },
-  pressable: {
-    borderRadius: 24,
-  },
   pressablePressed: {
     opacity: 0.94,
-    transform: [{ scale: 0.985 }],
-  },
-  pressableHovered: {
-    ...Platform.select({
-      web: { transform: [{ translateY: -2 }] },
-      default: {},
-    }),
-  },
-  cardShadow: {
-    borderRadius: 24,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#C2410C',
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.38,
-        shadowRadius: 18,
-      },
-      android: { elevation: 10 },
-    }),
-  },
-  cardClip: {
-    borderRadius: 24,
-    overflow: 'hidden',
   },
   inner: {
     padding: 24,
     minHeight: 220,
+  },
+  ctaWrap: {
+    marginTop: 18,
+  },
+  ctaBadge: {
+    marginLeft: 8,
+    fontWeight: '900',
   },
   headerRow: {
     flexDirection: 'row',

@@ -9,6 +9,7 @@ import {
   Text,
   TouchableOpacity,
   View,
+  useColorScheme,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SHELL_SAFE_AREA_EDGES, ShellBottomNavAnchor } from '../../navigation/bottomMenuSpacing';
@@ -26,14 +27,13 @@ import {
   mapStructuredDaysToPlanViewerRows,
   PLAN_BUILDER_COLORS,
 } from '../create-plan/readPlanText';
+import { lightColors, darkColors, gradients } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
 const DEFAULT_PLAN_WEEKS = 4;
 const DEFAULT_FOCUS = 'Complete muscle building program';
 const DEFAULT_HERO_TITLE = 'Your Workout Plan';
-const SAVE_GRADIENT = ['#BE185D', '#C2410C'];
-const SAVED_GRADIENT = ['#10B981', '#059669'];
 
 // ===== HELPER FUNCTIONS =====
 
@@ -94,20 +94,12 @@ function workoutPlanRowsFromSources({ routeWorkoutPlan, structuredRaw, structure
   return mapStructuredDaysToPlanViewerRows(structured);
 }
 
-function planViewerPalette(isDark) {
-  if (isDark) {
-    return {
-      background: '#0A0A0F',
-      surface: '#13131A',
-      text: '#FFFFFF',
-      muted: 'rgba(255,255,255,0.55)',
-    };
-  }
+function planViewerPalette(colors) {
   return {
-    background: '#F5F5F5',
-    surface: '#FFFFFF',
-    text: '#0A0A0F',
-    muted: 'rgba(10,10,15,0.6)',
+    background: colors.nbBackground,
+    surface: colors.nbSurface,
+    text: colors.nbInk,
+    muted: colors.nbMuted,
   };
 }
 
@@ -219,7 +211,7 @@ function SaveToLibraryButton({
   handleAddToCollection,
 }) {
   if (readOnly || !generatedPlan) return null;
-  const gradientColors = addedToCollection ? SAVED_GRADIENT : SAVE_GRADIENT;
+  const gradientColors = addedToCollection ? gradients.energy.colors : gradients.ink.colors;
   const label = addedToCollection ? 'Saved to Library' : 'Save to Library';
   const iconName = addedToCollection ? 'checkmark-circle' : 'bookmark-outline';
   return (
@@ -241,7 +233,7 @@ function SaveToLibraryButton({
           ) : (
             <Ionicons name={iconName} size={18} color="#FFFFFF" />
           )}
-          <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '800' }}>{label}</Text>
+          <Text style={{ color: '#FFFFFF', fontSize: 15, fontFamily: 'SpaceGrotesk_700Bold' }}>{label}</Text>
         </LinearGradient>
       </TouchableOpacity>
     </View>
@@ -277,7 +269,7 @@ export default function WorkoutPlanView({
   route,
   isGenerating,
   viewerErrorDelayElapsed,
-  isDark,
+  isDark: deprecatedIsDark,
   onBack,
   onNavigate,
   onProfilePress,
@@ -298,6 +290,9 @@ export default function WorkoutPlanView({
   renderWorkoutChromeHeader,
   styles,
 }) {
+  const colorScheme = useColorScheme();
+  const colors = colorScheme === 'dark' ? darkColors : lightColors;
+  const isDark = colorScheme === 'dark';
   const pdfUrl = generatedPlan?.url || pdfDownloadUrl || collectionViewingPlan?.url || null;
   const structuredRaw = generatedPlan?.structuredPlan || tryParseJsonObject(generatedPlan?.planText);
   const structured = normalizeStructuredPlanForViewer(structuredRaw);
@@ -318,7 +313,7 @@ export default function WorkoutPlanView({
     structured,
   });
 
-  const palette = planViewerPalette(isDark);
+  const palette = planViewerPalette(colors);
 
   if (isGenerating && readOnly) {
     return (

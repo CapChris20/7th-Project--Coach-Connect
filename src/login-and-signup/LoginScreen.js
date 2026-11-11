@@ -44,6 +44,9 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import AppLogo from '../for-both/icons/AppLogo';
 import { cachePendingSignupProfile } from './decideTraineeOrTrainer';
+import NbButton from '../look-and-feel/NbButton';
+import NbCard from '../look-and-feel/NbCard';
+import { nb, gradients } from '../look-and-feel/colorPalette';
 
 // Digs the Google tokens out of an OAuth response, whichever shape it arrived in.
 // Why this is messy: expo-auth-session returns tokens camelCase on `authentication`, snake_case on
@@ -142,32 +145,32 @@ const THEME_KEY = 'coachconnect-theme';
 
 const DARK = {
   bg: '#0A0A0F',
-  wordmark: 'rgba(255,255,255,0.92)',
-  heading: '#FFFFFF',
-  subtitle: 'rgba(255,255,255,0.72)',
-  toggleBg: 'rgba(255,255,255,0.10)',
-  toggleBorder: 'rgba(255,107,157,0.55)',
-  toggleIcon: '#FF8FA8',
-  lottieGlow: 'rgba(193, 38, 90, 0.28)',
-  signinMuted: 'rgba(255,255,255,0.68)',
-  signinLink: '#FF8FA8',
-  cardBorder: 'rgba(255,255,255,0.14)',
-  quoteBorder: 'rgba(255,107,157,0.35)',
+  wordmark: '#F3EEFF',
+  heading: '#F3EEFF',
+  subtitle: '#A7A1BE',
+  toggleBg: '#17171F',
+  toggleBorder: '#F3EEFF',
+  toggleIcon: '#FF6B9D',
+  lottieGlow: 'rgba(255,107,157,0.28)',
+  signinMuted: '#A7A1BE',
+  signinLink: '#FF6B9D',
+  cardBorder: '#F3EEFF',
+  quoteBorder: '#FF6B9D',
 };
 
 const LIGHT = {
-  bg: '#F5F5F7',
-  wordmark: 'rgba(10,10,15,0.88)',
+  bg: '#F3EEFF',
+  wordmark: '#0A0A0F',
   heading: '#0A0A0F',
-  subtitle: 'rgba(10,10,15,0.62)',
-  toggleBg: 'rgba(193, 38, 90, 0.10)',
-  toggleBorder: 'rgba(193, 38, 90, 0.28)',
-  toggleIcon: 'rgba(193, 38, 90, 0.95)',
-  lottieGlow: 'rgba(193, 38, 90, 0.12)',
-  signinMuted: 'rgba(10,10,15,0.55)',
-  signinLink: '#C1265A',
-  cardBorder: 'rgba(10,10,15,0.10)',
-  quoteBorder: 'rgba(193, 38, 90, 0.22)',
+  subtitle: '#55506B',
+  toggleBg: '#FFFFFF',
+  toggleBorder: '#0A0A0F',
+  toggleIcon: '#FF6B9D',
+  lottieGlow: 'rgba(255,107,157,0.12)',
+  signinMuted: '#55506B',
+  signinLink: '#FF6B9D',
+  cardBorder: '#0A0A0F',
+  quoteBorder: '#FF6B9D',
 };
 
 

@@ -1,4 +1,4 @@
-// App-styled error / alert modal: gradient rim, icon, title, message, Dismiss, optional Retry.
+// App-styled error / alert modal: neobrutalist card, icon, title, message, Dismiss, optional Retry.
 // Flow: parent sets visible → user taps Dismiss (onDismiss) or Retry (onRetry).
 // Used by login and other screens that need a branded alert instead of a system Alert.
 
@@ -14,6 +14,9 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '../../look-and-feel/lightDarkMode';
+import { NbCard } from '../../look-and-feel/NbCard';
+import { NbButton } from '../../look-and-feel/NbButton';
 
 // ===== NAMED CONSTANTS =====
 
@@ -58,6 +61,7 @@ export function ErrorPopup({
   onRetry,
   retryText = DEFAULT_RETRY_TEXT,
 }) {
+  const { colors } = useTheme();
   const { width } = useWindowDimensions();
   const maxCard = Math.min(MAX_CARD_WIDTH, width * CARD_WIDTH_RATIO);
   const hasRetry = Boolean(onRetry);
@@ -67,33 +71,31 @@ export function ErrorPopup({
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onDismiss || noop}>
       <View style={styles.overlay}>
         <View style={[styles.cardWrap, { width: maxCard }]}>
-          <LinearGradient colors={CTA_GRADIENT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.borderRing}>
-            <View style={styles.card}>
+          <NbCard>
+            <View style={styles.cardContent}>
               <Ionicons name={icon} size={ICON_SIZE} color={COLORS.pink} style={styles.icon} />
 
-              <Text style={styles.title}>{title}</Text>
+              <Text style={[styles.title, { color: colors.nbInk }]}>{title}</Text>
 
-              <Text style={styles.message}>{message}</Text>
+              <Text style={[styles.message, { color: colors.nbMuted }]}>{message}</Text>
 
               <View style={[styles.buttonRow, !hasRetry && styles.buttonRowSingle]}>
-                <TouchableOpacity
-                  style={[styles.dismissButton, !hasRetry && styles.dismissButtonFull]}
-                  onPress={onDismiss}
-                  activeOpacity={0.85}
-                >
-                  <Text style={styles.dismissButtonText}>Dismiss</Text>
-                </TouchableOpacity>
+                <View style={{ flex: 1 }}>
+                  <NbButton variant="plain" onPress={onDismiss}>
+                    Dismiss
+                  </NbButton>
+                </View>
 
                 {hasRetry ? (
-                  <LinearGradient colors={CTA_GRADIENT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.retryGradient}>
-                    <TouchableOpacity style={styles.retryTouchable} onPress={onRetry} activeOpacity={0.88}>
-                      <Text style={styles.retryButtonText}>{retryText}</Text>
-                    </TouchableOpacity>
-                  </LinearGradient>
+                  <View style={{ flex: 1 }}>
+                    <NbButton variant="brand" onPress={onRetry}>
+                      {retryText}
+                    </NbButton>
+                  </View>
                 ) : null}
               </View>
             </View>
-          </LinearGradient>
+          </NbCard>
         </View>
       </View>
     </Modal>
@@ -112,24 +114,8 @@ const styles = StyleSheet.create({
   },
   cardWrap: {
     maxWidth: 500,
-    ...Platform.select({
-      ios: {
-        shadowColor: COLORS.pink,
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.15,
-        shadowRadius: 20,
-      },
-      android: { elevation: 14 },
-    }),
   },
-  borderRing: {
-    borderRadius: 16,
-    padding: 2.5,
-  },
-  card: {
-    backgroundColor: COLORS.cardBg,
-    borderRadius: 14,
-    padding: 24,
+  cardContent: {
     alignItems: 'center',
   },
   icon: {
@@ -138,13 +124,11 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 18,
     fontWeight: '700',
-    color: COLORS.textPrimary,
     textAlign: 'center',
     marginBottom: 8,
   },
   message: {
     fontSize: 13,
-    color: COLORS.textSecondary,
     textAlign: 'center',
     lineHeight: 20,
     marginBottom: 20,
@@ -157,38 +141,5 @@ const styles = StyleSheet.create({
   },
   buttonRowSingle: {
     flexDirection: 'column',
-  },
-  dismissButton: {
-    flex: 1,
-    borderWidth: 2,
-    borderColor: COLORS.pink,
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  dismissButtonFull: {
-    flex: 0,
-    width: '100%',
-  },
-  dismissButtonText: {
-    color: COLORS.pink,
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  retryGradient: {
-    flex: 1,
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  retryTouchable: {
-    paddingVertical: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  retryButtonText: {
-    color: COLORS.textPrimary,
-    fontSize: 14,
-    fontWeight: '700',
   },
 });

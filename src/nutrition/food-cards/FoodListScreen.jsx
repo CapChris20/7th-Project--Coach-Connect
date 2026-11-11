@@ -17,6 +17,8 @@ import { Search } from 'lucide-react-native';
 import FoodCard from './FoodCard';
 import { colors, fonts } from './foodCardColors';
 import { DEMO_YOGURT_BOWL } from './foodCardText';
+import { lightColors, darkColors, nb, borderRadius } from '../../look-and-feel/colorPalette';
+import { useTheme } from '../../look-and-feel/lightDarkMode';
 
 // ===== NAMED CONSTANTS =====
 
@@ -84,6 +86,8 @@ function roundedCalorieTotal(foodItems, totalCalories) {
  * @param {{ foods?: Array, totalCalories?: number }} props
  */
 export default function FoodListScreen({ foods, totalCalories }) {
+  const { isDark } = useTheme();
+  const nbColors = isDark ? darkColors : lightColors;
   const [expandedId, setExpandedId] = useState(null);
   const [searchText, setSearchText] = useState('');
 
@@ -110,7 +114,7 @@ export default function FoodListScreen({ foods, totalCalories }) {
   );
 
   return (
-    <SafeAreaView style={styles.safe} edges={SHELL_SAFE_AREA_EDGES}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: nbColors.nbBackground }]} edges={SHELL_SAFE_AREA_EDGES}>
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <Text style={styles.eyebrow}>{formatTodayHeader()}</Text>
@@ -122,14 +126,14 @@ export default function FoodListScreen({ foods, totalCalories }) {
         </View>
       </View>
 
-      <View style={styles.searchRow}>
-        <Search size={SEARCH_ICON_SIZE} color={colors.subtle} strokeWidth={SEARCH_ICON_STROKE_WIDTH} />
+      <View style={[styles.searchRow, { borderColor: nbColors.nbBorder, backgroundColor: nbColors.nbSurfaceChip }]}>
+        <Search size={SEARCH_ICON_SIZE} color={nbColors.nbMuted} strokeWidth={SEARCH_ICON_STROKE_WIDTH} />
         <TextInput
           value={searchText}
           onChangeText={setSearchText}
           placeholder="Search logged foods…"
-          placeholderTextColor={colors.subtle}
-          style={styles.searchInput}
+          placeholderTextColor={nbColors.nbMuted}
+          style={[styles.searchInput, { color: nbColors.nbInk }]}
           returnKeyType="search"
         />
       </View>
@@ -150,7 +154,6 @@ export default function FoodListScreen({ foods, totalCalories }) {
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: colors.background,
   },
   header: {
     flexDirection: 'row',
@@ -198,10 +201,8 @@ const styles = StyleSheet.create({
     gap: 10,
     marginHorizontal: 20,
     marginBottom: 12,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
+    borderRadius: borderRadius.nbChip,
+    borderWidth: nb.borderWidth,
     paddingVertical: 10,
     paddingHorizontal: 14,
   },

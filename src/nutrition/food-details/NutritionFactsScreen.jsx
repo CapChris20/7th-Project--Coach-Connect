@@ -10,6 +10,7 @@ import { useTheme } from '../../look-and-feel/lightDarkMode';
 import { useShellBottomNavInset } from '../../navigation/bottomMenuSpacing';
 import TwoColumnGrid from '../../look-and-feel/TwoColumnGrid';
 import { StatColorText } from '../../look-and-feel/homeStatColors';
+import { lightColors, darkColors, nb, borderRadius } from '../../look-and-feel/colorPalette';
 import {
   NUT_ACTION_GRADIENT,
   NUT_CALORIES_GRADIENT,
@@ -112,27 +113,16 @@ function isZeroOrUnavailable(display, raw) {
  * @returns {object}
  */
 function getColors(isDark) {
-  if (isDark) {
-    return {
-      screenBg: '#0A0A0F',
-      cardBg: 'rgba(255,255,255,0.05)',
-      cardBorder: 'rgba(255,255,255,0.1)',
-      text: '#FFFFFF',
-      textMuted: 'rgba(255,255,255,0.55)',
-      textDim: 'rgba(255,255,255,0.38)',
-      divider: 'rgba(255,255,255,0.08)',
-      track: 'rgba(255,255,255,0.1)',
-    };
-  }
+  const nbColors = isDark ? darkColors : lightColors;
   return {
-    screenBg: '#F2F2F7',
-    cardBg: '#FFFFFF',
-    cardBorder: 'rgba(0,0,0,0.08)',
-    text: '#1C1C1E',
-    textMuted: 'rgba(28,28,30,0.55)',
-    textDim: 'rgba(28,28,30,0.4)',
-    divider: 'rgba(0,0,0,0.08)',
-    track: 'rgba(0,0,0,0.08)',
+    screenBg: nbColors.nbBackground,
+    cardBg: nbColors.nbSurface,
+    cardBorder: nbColors.nbBorder,
+    text: nbColors.nbInk,
+    textMuted: nbColors.nbMuted,
+    textDim: nbColors.nbMuted,
+    divider: nbColors.nbBorder,
+    track: nbColors.nbBorder,
   };
 }
 
@@ -603,8 +593,8 @@ const styles = StyleSheet.create({
   },
   cardTopAccent: { flex: 1, height: 1 },
   summaryCard: {
-    borderRadius: 20,
-    borderWidth: 1,
+    borderRadius: borderRadius.nbCard,
+    borderWidth: nb.borderWidth,
     overflow: 'hidden',
     padding: 16,
     paddingTop: 18,
@@ -627,8 +617,8 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   calCard: {
-    borderRadius: 20,
-    borderWidth: 1,
+    borderRadius: borderRadius.nbCard,
+    borderWidth: nb.borderWidth,
     padding: 16,
     paddingTop: 18,
     overflow: 'hidden',
@@ -660,8 +650,8 @@ const styles = StyleSheet.create({
   },
   macroMini: {
     flex: 1,
-    borderRadius: 16,
-    borderWidth: 1,
+    borderRadius: borderRadius.nbChip,
+    borderWidth: nb.borderWidth,
     padding: 16,
     alignItems: 'center',
     overflow: 'hidden',
@@ -683,8 +673,8 @@ const styles = StyleSheet.create({
   macroMiniFill: { height: '100%', borderRadius: 3 },
   macroMiniGoal: { fontSize: 10, fontWeight: '600', marginTop: 6 },
   detailCard: {
-    borderRadius: 20,
-    borderWidth: 1,
+    borderRadius: borderRadius.nbCard,
+    borderWidth: nb.borderWidth,
     padding: 16,
     paddingTop: 18,
     overflow: 'hidden',

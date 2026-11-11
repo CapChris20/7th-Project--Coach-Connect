@@ -22,6 +22,10 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { setDoc, serverTimestamp } from 'firebase/firestore';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
+import { lightColors, darkColors, gradients, nb, borderRadius } from '../../look-and-feel/colorPalette';
+import NbCard from '../../look-and-feel/NbCard';
+import NbButton from '../../look-and-feel/NbButton';
+import NbAvatar from '../../look-and-feel/NbAvatar';
 import TopHeader from '../../for-both/loading-and-header/TopHeader';
 import BottomMenuBar from '../../navigation/BottomMenuBar';
 import { SHELL_SAFE_AREA_EDGES, ShellBottomNavAnchor, FORM_SCROLL_PROPS, useShellBottomNavInset } from '../../navigation/bottomMenuSpacing';
@@ -41,8 +45,6 @@ import { auth } from '../../app-start/cloudConnection';
 
 // ===== NAMED CONSTANTS =====
 
-const ACCENT_PINK = '#BE185D';
-const ACCENT_ORANGE = '#C2410C';
 const PLATFORM_FEE_RATE = 0.1;
 const CENTS_PER_DOLLAR = 100;
 const MIN_CENTS_AS_STORED_RATE = 100;
@@ -99,6 +101,7 @@ function clientPaymentStatusLabel(status, rateCents) {
   }
 }
 
+// vocab: NbChip styled as neobrutalist status chip with thick border
 function StatusChip({ label, tone, colors, isDark }) {
   const toneColor =
     tone === 'success'
@@ -107,26 +110,10 @@ function StatusChip({ label, tone, colors, isDark }) {
         ? colors.warning
         : tone === 'error'
           ? colors.error
-          : colors.textSecondary;
-  const chipBackground =
-    tone === 'success'
-      ? isDark
-        ? 'rgba(48,209,88,0.15)'
-        : 'rgba(48,209,88,0.12)'
-      : tone === 'warning'
-        ? isDark
-          ? 'rgba(255,159,10,0.15)'
-          : 'rgba(255,159,10,0.12)'
-        : tone === 'error'
-          ? isDark
-            ? 'rgba(255,59,48,0.15)'
-            : 'rgba(255,59,48,0.12)'
-          : isDark
-            ? 'rgba(255,255,255,0.08)'
-            : 'rgba(0,0,0,0.06)';
+          : colors.nbMuted;
 
   return (
-    <View style={[chipStyles.wrap, { backgroundColor: chipBackground, borderColor: `${toneColor}44` }]}>
+    <View style={[chipStyles.wrap, { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface }]}>
       <Text style={[chipStyles.text, { color: toneColor }]}>{label}</Text>
     </View>
   );
@@ -135,36 +122,16 @@ function StatusChip({ label, tone, colors, isDark }) {
 const chipStyles = StyleSheet.create({
   wrap: {
     paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-    borderWidth: 1,
+    paddingVertical: 6,
+    borderRadius: borderRadius.nbChip,
+    borderWidth: nb.borderWidth,
   },
-  text: { fontSize: 11, fontWeight: '800', letterSpacing: 0.3 },
-});
-
-function GlassCard({ isDark, colors, children, style }) {
-  return (
-    <View
-      style={[
-        cardStyles.shell,
-        {
-          backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : colors.surface,
-          borderColor: isDark ? 'rgba(255,255,255,0.08)' : colors.border,
-        },
-        style,
-      ]}
-    >
-      {children}
-    </View>
-  );
-}
-
-const cardStyles = StyleSheet.create({
-  shell: {
-    borderRadius: 20,
-    borderWidth: StyleSheet.hairlineWidth,
-    padding: 16,
-    marginBottom: 16,
+  text: { 
+    fontSize: 11, 
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontWeight: '700', 
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
   },
 });
 
@@ -175,7 +142,8 @@ const cardStyles = StyleSheet.create({
  */
 export default function EarningsScreen() {
   const shell = useTrainerAppStartShell();
-  const { colors, isDark } = useTheme();
+  const { isDark } = useTheme();
+  const colors = isDark ? darkColors : lightColors;
   const shellNavInset = useShellBottomNavInset(SHELL_BOTTOM_INSET_EXTRA);
   const clients = shell.clients || [];
   const profile = shell.trainerProfileDoc || {};
@@ -232,14 +200,15 @@ export default function EarningsScreen() {
       ? `$${Number(stripeBalance.available).toFixed(2)} available`
       : profile.nextPayoutLabel || profile.nextPayoutDate || '—';
 
-  const textColor = colors.text;
-  const mutedColor = colors.textSecondary;
+  const textColor = colors.nbInk;
+  const mutedColor = colors.nbMuted;
 
   const sectionLabelStyle = useMemo(
     () => ({
-      fontSize: 11,
+      fontSize: 12,
+      fontFamily: 'SpaceGrotesk_700Bold',
       fontWeight: '700',
-      letterSpacing: 2,
+      letterSpacing: 0.1,
       color: mutedColor,
       textTransform: 'uppercase',
       marginBottom: 12,
@@ -448,7 +417,7 @@ export default function EarningsScreen() {
   const bankMask = stripeAccountId ? `****${String(stripeAccountId).slice(-4)}` : null;
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={SHELL_SAFE_AREA_EDGES}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.nbBackground }]} edges={SHELL_SAFE_AREA_EDGES}>
       <TopHeader
         title="PAYMENTS"
         skipTopSafeInset
@@ -462,7 +431,7 @@ export default function EarningsScreen() {
         {...FORM_SCROLL_PROPS}
       >
         {/* Section 1 — Payout Account */}
-        <GlassCard isDark={isDark} colors={colors}>
+        <NbCard style={styles.card}>
           <View style={styles.sectionHeaderRow}>
             <Text style={sectionLabelStyle}>PAYOUT ACCOUNT</Text>
             {payoutStatusChip()}
@@ -486,16 +455,9 @@ export default function EarningsScreen() {
                   borderColor={isDark ? 'rgba(255,255,255,0.1)' : colors.border}
                 />
               </View>
-              <TouchableOpacity activeOpacity={0.92} onPress={handleConnectBank} style={styles.primaryBtnOuter}>
-                <LinearGradient
-                  colors={[ACCENT_PINK, ACCENT_ORANGE]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={styles.primaryBtnGradient}
-                >
-                  <Text style={styles.primaryBtnText}>Connect Bank Account</Text>
-                </LinearGradient>
-              </TouchableOpacity>
+              <NbButton variant="brand" onPress={handleConnectBank} style={styles.ctaButton}>
+                Connect Bank Account
+              </NbButton>
             </>
           ) : null}
 
@@ -506,40 +468,22 @@ export default function EarningsScreen() {
                 Stripe still needs your payout details, or is finishing verification. If you already
                 submitted everything, tap Refresh — otherwise Finish setup.
               </Text>
-              <TouchableOpacity
-                activeOpacity={0.92}
+              <NbButton 
+                variant="brand" 
                 onPress={handleConnectBank}
-                style={styles.primaryBtnOuter}
                 disabled={refreshingStripe}
+                style={styles.ctaButton}
               >
-                <LinearGradient
-                  colors={[ACCENT_PINK, ACCENT_ORANGE]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={styles.primaryBtnGradient}
-                >
-                  <Text style={styles.primaryBtnText}>Finish setup</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-              <TouchableOpacity
-                activeOpacity={0.88}
+                Finish setup
+              </NbButton>
+              <NbButton
+                variant="plain"
                 onPress={refreshStripeStatus}
                 disabled={refreshingStripe}
-                style={[
-                  styles.secondaryBtn,
-                  {
-                    borderColor: isDark ? 'rgba(255,255,255,0.12)' : colors.border,
-                    backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : colors.surfaceSecondary,
-                    opacity: refreshingStripe ? 0.7 : 1,
-                  },
-                ]}
+                style={styles.secondaryButton}
               >
-                {refreshingStripe ? (
-                  <ActivityIndicator color={textColor} />
-                ) : (
-                  <Text style={[styles.secondaryBtnText, { color: textColor }]}>Refresh status</Text>
-                )}
-              </TouchableOpacity>
+                {refreshingStripe ? 'Loading…' : 'Refresh status'}
+              </NbButton>
             </>
           ) : null}
 
@@ -549,25 +493,19 @@ export default function EarningsScreen() {
                 {bankMask ? `Bank account: ${bankMask}. ` : ''}
                 Payouts are sent automatically every 2 business days by Stripe
               </Text>
-              <TouchableOpacity
-                activeOpacity={0.88}
+              <NbButton
+                variant="plain"
                 onPress={handleManageBank}
-                style={[
-                  styles.secondaryBtn,
-                  {
-                    borderColor: isDark ? 'rgba(255,255,255,0.12)' : colors.border,
-                    backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : colors.surfaceSecondary,
-                  },
-                ]}
+                style={styles.secondaryButton}
               >
-                <Text style={[styles.secondaryBtnText, { color: textColor }]}>Manage Payout Account</Text>
-              </TouchableOpacity>
+                Manage Payout Account
+              </NbButton>
             </>
           ) : null}
-        </GlassCard>
+        </NbCard>
 
         {/* Section 2 — Earnings This Month */}
-        <GlassCard isDark={isDark} colors={colors}>
+        <NbCard style={styles.card}>
           <Text style={sectionLabelStyle}>EARNINGS THIS MONTH</Text>
           <View style={styles.earningsRow}>
             <Text style={[styles.earningsLabel, { color: mutedColor }]}>Gross earnings</Text>
@@ -577,17 +515,17 @@ export default function EarningsScreen() {
             <Text style={[styles.earningsLabel, { color: mutedColor }]}>Platform fees (10%)</Text>
             <Text style={[styles.earningsValue, { color: textColor }]}>{formatUsdFromCents(feesCents)}</Text>
           </View>
-          <View style={[styles.divider, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : colors.border }]} />
+          <View style={[styles.divider, { backgroundColor: colors.nbBorder }]} />
           <View style={styles.earningsRow}>
             <Text style={[styles.earningsLabelNet, { color: textColor }]}>Your net</Text>
             <Text style={[styles.earningsValueNet, { color: textColor }]}>{formatUsdFromCents(netCents)}</Text>
           </View>
-          <View style={[styles.divider, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : colors.border, marginTop: 12 }]} />
+          <View style={[styles.divider, { backgroundColor: colors.nbBorder, marginTop: 12 }]} />
           <View style={[styles.earningsRow, { marginTop: 12, marginBottom: 0 }]}>
             <Text style={[styles.earningsLabel, { color: mutedColor }]}>Next payout</Text>
             <Text style={[styles.earningsValue, { color: textColor }]}>{String(nextPayout)}</Text>
           </View>
-        </GlassCard>
+        </NbCard>
 
         {/* Section 3 — Client Billing Overview */}
         <View style={styles.billingHeaderBlock}>
@@ -597,9 +535,9 @@ export default function EarningsScreen() {
           </Text>
         </View>
         {clients.length === 0 ? (
-          <GlassCard isDark={isDark} colors={colors}>
+          <NbCard style={styles.card}>
             <Text style={[styles.bodyText, { color: mutedColor }]}>No connected clients yet.</Text>
-          </GlassCard>
+          </NbCard>
         ) : (
           clients.map((client) => {
             const override = rateOverrides[client.id] || {};
@@ -625,16 +563,9 @@ export default function EarningsScreen() {
                       : 'neutral';
 
             return (
-              <GlassCard key={client.id} isDark={isDark} colors={colors} style={{ marginBottom: 10, paddingVertical: 14 }}>
+              <NbCard key={client.id} style={styles.clientCard}>
                 <View style={styles.clientRow}>
-                  <LinearGradient
-                    colors={[ACCENT_PINK, ACCENT_ORANGE]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.clientAvatar}
-                  >
-                    <Text style={styles.clientAvatarText}>{initials}</Text>
-                  </LinearGradient>
+                  <NbAvatar size={44} text={initials} />
                   <View style={styles.clientBody}>
                     <Text style={[styles.clientName, { color: textColor }]} numberOfLines={1}>
                       {name}
@@ -663,11 +594,11 @@ export default function EarningsScreen() {
                       value={billingOn}
                       onValueChange={(on) => handleToggleBilling(client, on)}
                       trackColor={{
-                        false: isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.18)',
-                        true: ACCENT_PINK,
+                        false: colors.nbBorder,
+                        true: gradients.brand.colors[0],
                       }}
                       thumbColor="#FFFFFF"
-                      ios_backgroundColor={isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.18)'}
+                      ios_backgroundColor={colors.nbBorder}
                     />
                   </View>
                 </View>
@@ -676,7 +607,7 @@ export default function EarningsScreen() {
                   style={[
                     styles.clientActionsRow,
                     {
-                      borderTopColor: isDark ? 'rgba(255,255,255,0.08)' : colors.border,
+                      borderTopColor: colors.nbBorder,
                     },
                   ]}
                 >
@@ -692,8 +623,8 @@ export default function EarningsScreen() {
                     style={[
                       styles.setRateBtn,
                       {
-                        borderColor: isDark ? 'rgba(255,255,255,0.14)' : colors.border,
-                        backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : colors.surfaceSecondary,
+                        borderColor: colors.nbBorder,
+                        backgroundColor: colors.nbSurface,
                       },
                     ]}
                   >
@@ -703,13 +634,13 @@ export default function EarningsScreen() {
                     <Ionicons name="chevron-forward" size={16} color={mutedColor} />
                   </TouchableOpacity>
                 </View>
-              </GlassCard>
+              </NbCard>
             );
           })
         )}
 
         {/* Section 4 — Payment / Payout History */}
-        <GlassCard isDark={isDark} colors={colors}>
+        <NbCard style={styles.card}>
           <Text style={sectionLabelStyle}>PAYMENT HISTORY</Text>
           {paymentHistoryLoading ? (
             <ActivityIndicator color={textColor} style={{ marginVertical: 16 }} />
@@ -730,8 +661,8 @@ export default function EarningsScreen() {
                   alignItems: 'center',
                   justifyContent: 'space-between',
                   paddingVertical: 10,
-                  borderBottomWidth: StyleSheet.hairlineWidth,
-                  borderBottomColor: isDark ? 'rgba(255,255,255,0.08)' : colors.border,
+                  borderBottomWidth: nb.borderWidth,
+                  borderBottomColor: colors.nbBorder,
                 }}
               >
                 <View style={{ flex: 1, paddingRight: 12 }}>
@@ -756,7 +687,7 @@ export default function EarningsScreen() {
                 : ''}
             </Text>
           ) : null}
-        </GlassCard>
+        </NbCard>
       </ScrollView>
 
       <ShellBottomNavAnchor>
@@ -782,8 +713,8 @@ export default function EarningsScreen() {
             style={[
               styles.bottomSheet,
               {
-                backgroundColor: colors.surface,
-                borderColor: colors.border,
+                backgroundColor: colors.nbSurface,
+                borderColor: colors.nbBorder,
               },
             ]}
           >
@@ -798,8 +729,8 @@ export default function EarningsScreen() {
               style={[
                 styles.netPreview,
                 {
-                  backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : colors.surfaceSecondary,
-                  borderColor: isDark ? 'rgba(255,255,255,0.1)' : colors.border,
+                  backgroundColor: colors.nbSurfaceChip,
+                  borderColor: colors.nbBorder,
                 },
               ]}
             >
@@ -815,8 +746,8 @@ export default function EarningsScreen() {
               style={[
                 styles.inputWrap,
                 {
-                  backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)',
-                  borderColor: isDark ? 'rgba(255,255,255,0.12)' : colors.border,
+                  backgroundColor: colors.nbSurfaceChip,
+                  borderColor: colors.nbBorder,
                 },
               ]}
             >
@@ -831,25 +762,14 @@ export default function EarningsScreen() {
               />
             </View>
 
-            <TouchableOpacity
-              activeOpacity={0.92}
+            <NbButton 
+              variant="brand" 
               onPress={saveRate}
-              style={[styles.primaryBtnOuter, savingRate && { opacity: 0.7 }]}
               disabled={savingRate}
+              style={styles.ctaButton}
             >
-              <LinearGradient
-                colors={[ACCENT_PINK, ACCENT_ORANGE]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.primaryBtnGradient}
-              >
-                {savingRate ? (
-                  <ActivityIndicator color="#FFFFFF" />
-                ) : (
-                  <Text style={styles.primaryBtnText}>Save & turn billing on</Text>
-                )}
-              </LinearGradient>
-            </TouchableOpacity>
+              {savingRate ? 'Saving…' : 'Save & turn billing on'}
+            </NbButton>
             <TouchableOpacity style={styles.cancelBtn} onPress={() => setRateModalClient(null)}>
               <Text style={[styles.cancelBtnText, { color: colors.textSecondary }]}>Cancel</Text>
             </TouchableOpacity>
@@ -872,6 +792,8 @@ export default function EarningsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   scroll: { paddingHorizontal: 16, paddingTop: 12 },
+  card: { padding: 16, marginBottom: 16 },
+  clientCard: { padding: 14, marginBottom: 10 },
   sectionHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -880,17 +802,8 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   bodyText: { fontSize: 14, lineHeight: 20, marginTop: 4, marginBottom: 16 },
-  primaryBtnOuter: { borderRadius: 12, overflow: 'hidden', marginTop: 4 },
-  primaryBtnGradient: { paddingVertical: 16, alignItems: 'center' },
-  primaryBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
-  secondaryBtn: {
-    marginTop: 4,
-    paddingVertical: 14,
-    borderRadius: 12,
-    borderWidth: 1,
-    alignItems: 'center',
-  },
-  secondaryBtnText: { fontSize: 15, fontWeight: '700' },
+  ctaButton: { marginTop: 8 },
+  secondaryButton: { marginTop: 8 },
   earningsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -901,30 +814,32 @@ const styles = StyleSheet.create({
   earningsValue: { fontSize: 15, fontWeight: '700' },
   earningsLabelNet: { fontSize: 15, fontWeight: '800' },
   earningsValueNet: { fontSize: 22, fontWeight: '900', letterSpacing: -0.5 },
-  divider: { height: StyleSheet.hairlineWidth, marginVertical: 4 },
-  clientRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  clientAvatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  clientAvatarText: { color: '#FFFFFF', fontSize: 16, fontWeight: '900' },
+  divider: { height: nb.borderWidth, marginVertical: 4 },
+  clientRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 },
   clientBody: { flex: 1, minWidth: 0 },
-  clientName: { fontSize: 16, fontWeight: '800', letterSpacing: -0.2 },
-  clientRate: { fontSize: 13, fontWeight: '700', marginTop: 3 },
-  billingHeaderBlock: { marginLeft: 4, marginBottom: 12 },
+  clientName: { 
+    fontSize: 16, 
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontWeight: '700', 
+    letterSpacing: -0.2 
+  },
+  clientRate: { fontSize: 13, fontWeight: '600', marginTop: 3 },
+  billingHeaderBlock: { marginLeft: 0, marginBottom: 12 },
   billingHint: { fontSize: 13, lineHeight: 18, fontWeight: '500', paddingRight: 8 },
   billingToggleCol: { alignItems: 'center', gap: 4 },
-  billingToggleLabel: { fontSize: 10, fontWeight: '800', letterSpacing: 0.6, textTransform: 'uppercase' },
+  billingToggleLabel: { 
+    fontSize: 10, 
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontWeight: '700', 
+    letterSpacing: 0.6, 
+    textTransform: 'uppercase' 
+  },
   clientActionsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 12,
     paddingTop: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: nb.borderWidth,
     gap: 10,
   },
   setRateBtn: {
@@ -933,40 +848,72 @@ const styles = StyleSheet.create({
     gap: 4,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 999,
-    borderWidth: 1,
+    borderRadius: borderRadius.nbChip,
+    borderWidth: nb.borderWidth,
   },
-  setRateBtnText: { fontSize: 13, fontWeight: '700' },
+  setRateBtnText: { 
+    fontSize: 13, 
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontWeight: '700' 
+  },
   emptyState: { alignItems: 'center', paddingVertical: 20, gap: 8 },
-  emptyTitle: { fontSize: 16, fontWeight: '800' },
+  emptyTitle: { 
+    fontSize: 16, 
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontWeight: '700' 
+  },
   emptySub: { fontSize: 13, textAlign: 'center', lineHeight: 18, paddingHorizontal: 12 },
   modalRoot: { flex: 1, justifyContent: 'flex-end' },
   modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.55)' },
   bottomSheet: {
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopLeftRadius: borderRadius.nbSheet,
+    borderTopRightRadius: borderRadius.nbSheet,
     padding: 24,
     paddingBottom: 32,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: nb.borderWidth,
   },
-  sheetTitle: { fontSize: 18, fontWeight: '800', textAlign: 'center', marginBottom: 4 },
+  sheetTitle: { 
+    fontSize: 18, 
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontWeight: '700', 
+    textAlign: 'center', 
+    marginBottom: 4 
+  },
   sheetSubtitle: { fontSize: 14, textAlign: 'center', marginBottom: 16, fontWeight: '600' },
   netPreview: {
-    borderRadius: 14,
-    borderWidth: 1,
+    borderRadius: borderRadius.nbCard,
+    borderWidth: nb.borderWidth,
     padding: 14,
     alignItems: 'center',
     marginBottom: 16,
   },
-  netPreviewLabel: { fontSize: 12, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' },
-  netPreviewValue: { fontSize: 28, fontWeight: '900', marginTop: 4 },
+  netPreviewLabel: { 
+    fontSize: 12, 
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontWeight: '700', 
+    letterSpacing: 0.1, 
+    textTransform: 'uppercase' 
+  },
+  netPreviewValue: { 
+    fontSize: 28, 
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontWeight: '700', 
+    marginTop: 4 
+  },
   netPreviewHint: { fontSize: 12, marginTop: 4 },
-  inputLabel: { fontSize: 12, fontWeight: '700', marginBottom: 8, letterSpacing: 0.3 },
+  inputLabel: { 
+    fontSize: 12, 
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontWeight: '700', 
+    marginBottom: 8, 
+    letterSpacing: 0.1,
+    textTransform: 'uppercase'
+  },
   inputWrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 12,
-    borderWidth: 1,
+    borderRadius: borderRadius.nbChip,
+    borderWidth: nb.borderWidth,
     paddingHorizontal: 12,
     marginBottom: 16,
   },

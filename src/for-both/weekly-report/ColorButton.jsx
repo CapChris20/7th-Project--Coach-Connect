@@ -1,6 +1,6 @@
-// Gradient button used on the weekly report: filled primary, or outline with a gradient ring.
-// Flow: light haptic → if outline, draw the ring + inner fill; otherwise fill the whole button with the gradient.
-// Used by: weekly report actions. `colors` is the gradient pair the parent already chose.
+// Neobrutalist button used on the weekly report.
+// Flow: light haptic → use NbButton component.
+// Used by: weekly report actions.
 
 import React from 'react';
 import { Text, StyleSheet, Pressable, View } from 'react-native';
@@ -8,6 +8,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '../weekly-report/reportColorSettings';
+import { NbButton } from '../../look-and-feel/NbButton';
 
 // ===== NAMED CONSTANTS =====
 
@@ -73,39 +74,19 @@ export function ColorButton({
     pressWithLightHaptic(onPress);
   };
 
-  if (variant === VARIANT_OUTLINE) {
-    return (
-      <Pressable
-        testID={testID}
-        onPress={handlePress}
-        style={({ pressed }) => pressedOpacityStyle(pressed, PRESSED_OUTLINE_OPACITY, style)}
-      >
-        <LinearGradient colors={colors} start={GRADIENT_START} end={GRADIENT_END} style={styles.outlineBorder}>
-          <View
-            style={[
-              styles.outlineInner,
-              { backgroundColor: outlineInnerBackground(mode) },
-            ]}
-          >
-            {icon ? <Ionicons name={icon} size={16} color={themeColors.textPrimary} /> : null}
-            <Text style={[styles.outlineText, { color: themeColors.textPrimary }]}>{label}</Text>
-          </View>
-        </LinearGradient>
-      </Pressable>
-    );
-  }
-
+  const buttonVariant = variant === VARIANT_OUTLINE ? 'plain' : 'brand';
+  
   return (
-    <Pressable
-      testID={testID}
-      onPress={handlePress}
-      style={({ pressed }) => pressedOpacityStyle(pressed, PRESSED_PRIMARY_OPACITY, style)}
-    >
-      <LinearGradient colors={colors} start={GRADIENT_START} end={GRADIENT_END} style={styles.primary}>
-        {icon ? <Ionicons name={icon} size={18} color={PRIMARY_ICON_COLOR} /> : null}
-        <Text style={styles.primaryText}>{label}</Text>
-      </LinearGradient>
-    </Pressable>
+    <View style={style}>
+      <NbButton 
+        variant={buttonVariant}
+        onPress={handlePress}
+        testID={testID}
+      >
+        {icon ? <Ionicons name={icon} size={16} color={buttonVariant === 'brand' ? '#0A0A0F' : themeColors.textPrimary} style={{ marginRight: 6 }} /> : null}
+        {label}
+      </NbButton>
+    </View>
   );
 }
 

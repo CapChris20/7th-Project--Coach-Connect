@@ -1,6 +1,8 @@
 // App Store subscription disclosure: length, price, auto-renew, and the legal links.
 // Flow: build the price sentence → show the legal paragraph → link terms, privacy, and Apple manage.
 // Used by the trainer pro upgrade and expired screens under the offer buttons.
+//
+// vocab: nbMuted / nbInk = shared neobrutalist text tokens from colorPalette
 
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Linking, Platform } from 'react-native';
@@ -11,11 +13,12 @@ import {
   TRAINER_SUBSCRIPTION_LEGAL,
   APPLE_MANAGE_SUBSCRIPTIONS_URL,
 } from './proPlanSwitches';
+import { darkColors } from '../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
-const DEFAULT_TEXT_COLOR = 'rgba(255,255,255,0.65)';
-const DEFAULT_LINK_COLOR = '#FF6B9D';
+const DEFAULT_TEXT_COLOR = darkColors.nbMuted;
+const DEFAULT_LINK_COLOR = darkColors.nbInk;
 
 // ===== HELPER FUNCTIONS =====
 

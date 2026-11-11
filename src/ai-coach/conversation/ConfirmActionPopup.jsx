@@ -1,10 +1,11 @@
-// Overlay that asks the user to confirm an AI-coach tool before it runs.
-// Flow: normalize the tool call → pick the matching confirm popup → fade in over the chat.
-// Used by the AI conversation screen. Unknown tools fall back to a generic ConfirmCancelRow.
+// Overlay that asks the user to confirm an AI-coach tool before it runs (neobrutalist design).
+// Flow: normalize the tool call → pick the matching confirm popup → show in NbSheet over the chat.
+// Used by: AI conversation screen. Unknown tools fall back to a generic ConfirmCancelRow.
+//
+// vocab: NbSheet = neobrutalist bottom sheet with thick border and rounded top
 
 import React from 'react';
-import { Modal, View, StyleSheet, Pressable } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import NbSheet from '../../look-and-feel/NbSheet';
 import EditWorkoutPopup from '../confirm-popups/EditWorkoutPopup';
 import ChangeFoodTargetsPopup from '../confirm-popups/ChangeFoodTargetsPopup';
 import LogMealPopup from '../confirm-popups/LogMealPopup';
@@ -22,16 +23,10 @@ import MarkRestDayPopup from '../confirm-popups/MarkRestDayPopup';
 import ConfirmDeletePopup from '../confirm-popups/ConfirmDeletePopup';
 import { normalizeToolCall, TOOL_DISPLAY_NAMES } from '../../ai-coach/coach-actions/carryOutAction';
 import { ToolModalBody, ConfirmCancelRow } from '../confirm-popups/sharedPopupParts';
-import { AI_COACH_UI } from '../coachColors';
 
 // ===== NAMED CONSTANTS =====
 
 const DEFAULT_CONFIRM_TITLE = 'Confirm action?';
-const DISMISS_ACCESSIBILITY_LABEL = 'Dismiss';
-const GRADIENT_BORDER_START = { x: 0, y: 0 };
-const GRADIENT_BORDER_END = { x: 1, y: 0 };
-const GRADIENT_INNER_START = { x: 0, y: 0 };
-const GRADIENT_INNER_END = { x: 0, y: 1 };
 
 // Tool name strings must match carryOutAction — do not rename these keys.
 const TOOL_POPUP_BY_NAME = {
@@ -66,10 +61,6 @@ function accessibilityToolTitle(toolName) {
   return toolName;
 }
 
-function dismissHandlerWhenIdle(canDismiss, onCancel) {
-  if (canDismiss) return onCancel;
-  return undefined;
-}
 
 /**
  * Unknown tool names get a generic title + confirm/cancel row instead of a dedicated sheet.
@@ -107,38 +98,13 @@ function popupBodyForTool(toolName, sharedProps) {
   return genericConfirmBody(toolName, sharedProps);
 }
 
-/**
- * Gradient card shell shared by every confirm popup in this modal.
- * @param {{ children: * }} props
- */
-function ConfirmActionCard({ children }) {
-  return (
-    <View style={styles.cardWrap} pointerEvents="box-none">
-      <LinearGradient
-        colors={AI_COACH_UI.gradient.borderWarmSubtle}
-        start={GRADIENT_BORDER_START}
-        end={GRADIENT_BORDER_END}
-        style={styles.cardBorder}
-      >
-        <View style={styles.card} accessibilityRole="none">
-          <LinearGradient
-            colors={AI_COACH_UI.heroInner}
-            start={GRADIENT_INNER_START}
-            end={GRADIENT_INNER_END}
-            style={StyleSheet.absoluteFillObject}
-          />
-          <View style={styles.cardInner}>{children}</View>
-        </View>
-      </LinearGradient>
-    </View>
-  );
-}
 
 // ===== MAIN FUNCTION =====
 
 /**
- * Fade-in modal that wraps the matching confirm popup for an AI tool call.
+ * NbSheet that wraps the matching confirm popup for an AI tool call.
  * While loading, backdrop taps and Android back do nothing so a double-tap cannot cancel mid-run.
+ * Uses neobrutalist NbSheet component.
  * @param {{ visible: boolean, toolCall: object, onConfirm: Function, onCancel: Function, loading?: boolean }} props
  */
 export default function ConfirmActionPopup({
@@ -158,62 +124,16 @@ export default function ConfirmActionPopup({
 
   const toolTitle = accessibilityToolTitle(name);
   const canDismissWithBackdrop = !loading;
-  const dismissWhileIdle = dismissHandlerWhenIdle(canDismissWithBackdrop, onCancel);
-  const confirmAccessibilityLabel = `Confirm ${toolTitle}`;
+  // Only allow dismissal when not loading
+  const handleClose = canDismissWithBackdrop ? onCancel : () => {};
 
   return (
-    <Modal
+    <NbSheet
       visible={visible}
-      transparent
-      animationType="fade"
-      statusBarTranslucent
-      onRequestClose={dismissWhileIdle}
-      accessibilityViewIsModal
-      accessibilityLabel={confirmAccessibilityLabel}
+      onClose={handleClose}
+      title={`Confirm ${toolTitle}`}
     >
-      <View style={styles.overlay}>
-        <Pressable
-          style={styles.backdrop}
-          onPress={dismissWhileIdle}
-          accessibilityRole="button"
-          accessibilityLabel={DISMISS_ACCESSIBILITY_LABEL}
-        />
-        <ConfirmActionCard>{body}</ConfirmActionCard>
-      </View>
-    </Modal>
+      {body}
+    </NbSheet>
   );
 }
-
-const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 32,
-  },
-  backdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.78)',
-  },
-  cardWrap: {
-    width: '100%',
-    maxWidth: 360,
-    zIndex: 2,
-    elevation: 12,
-  },
-  cardBorder: {
-    borderRadius: 16,
-    padding: 1,
-  },
-  card: {
-    borderRadius: 15,
-    borderWidth: 1,
-    borderColor: AI_COACH_UI.borderHairline,
-    overflow: 'hidden',
-  },
-  cardInner: {
-    padding: 20,
-    zIndex: 1,
-  },
-});

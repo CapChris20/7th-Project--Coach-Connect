@@ -4,7 +4,7 @@
 
 import React, { useMemo } from 'react';
 import { Alert, Image, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import { useTheme } from '../../../look-and-feel/lightDarkMode';import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { formatDateShort, formatFileSize, getFileTypeFromItem } from '../../../helpers/fileSizeAndDateText';
 
@@ -483,7 +483,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     paddingVertical: 18,
     paddingHorizontal: 18,
-    borderWidth: 1,
+    borderWidth: 2.5,
   },
   heroTitle: { fontSize: 20, fontWeight: '800', letterSpacing: -0.3, marginTop: 2 },
   heroKicker: { fontSize: 12, fontWeight: '600' },
@@ -499,7 +499,7 @@ const styles = StyleSheet.create({
   grid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 16, gap: 12 },
 
   fileCard: {
-    width: '47%', flexGrow: 1, borderRadius: 18, borderWidth: 1, overflow: 'hidden',
+    width: '47%', flexGrow: 1, borderRadius: 18, borderWidth: 2.5, overflow: 'hidden',
     ...Platform.select({
       ios: { shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 12, shadowOffset: { width: 0, height: 4 } },
       android: { elevation: 4 },
@@ -515,7 +515,7 @@ const styles = StyleSheet.create({
   fileCardIconWrap: { alignItems: 'center', justifyContent: 'center' },
   dlBtn: {
     position: 'absolute', bottom: 10, right: 10,
-    width: 34, height: 34, borderRadius: 17, borderWidth: 1.5,
+    width: 34, height: 34, borderRadius: 17, borderWidth: 2.5,
     alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.3)',
   },
   fileCardInfo: { padding: 12, paddingTop: 10 },
@@ -524,7 +524,7 @@ const styles = StyleSheet.create({
 
   noteCard: {
     borderRadius: 14,
-    borderWidth: 1,
+    borderWidth: 2.5,
     overflow: 'hidden',
   },
   noteContent: { padding: 14 },
@@ -540,7 +540,7 @@ const styles = StyleSheet.create({
   noteText: { fontSize: 14, fontWeight: '500', lineHeight: 20 },
 
   emptyCard: {
-    marginHorizontal: 16, borderWidth: 1, borderStyle: 'dashed', borderRadius: 18,
+    marginHorizontal: 16, borderWidth: 2.5, borderStyle: 'dashed', borderRadius: 18,
     paddingVertical: 32, alignItems: 'center', gap: 10,
   },
   emptyText: { fontSize: 13, fontWeight: '600', textAlign: 'center', paddingHorizontal: 12 },

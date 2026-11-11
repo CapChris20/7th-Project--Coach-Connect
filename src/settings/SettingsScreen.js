@@ -10,7 +10,6 @@ import {
   TouchableOpacity,
   Pressable,
   ScrollView,
-  Switch,
   Platform,
   Alert,
   Modal,
@@ -45,13 +44,14 @@ import {
 import { traineePaymentHistory } from '../for-both/payments/traineePaymentHistory';
 import BlockedUsersScreen from '../block-and-report/BlockedUsersScreen';
 import { APPLE_MANAGE_SUBSCRIPTIONS_URL } from '../trainer-pro-plan/proPlanSwitches';
+import NbCard from '../look-and-feel/NbCard';
+import NbListRow from '../look-and-feel/NbListRow';
+import NbSwitch from '../look-and-feel/NbSwitch';
+import NbButton from '../look-and-feel/NbButton';
+import { nb, gradients, spacing } from '../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
-/** Settings UI — dark pink → dark orange gradient (no purple). */
-const ACCENT_PINK = '#BE185D';
-const ACCENT_ORANGE = '#C2410C';
-const SWITCH_ON = ACCENT_PINK;
 const SHELL_NAV_INSET = 24;
 const SEGMENT_TRACK_PAD = 4;
 const SPRING_FRICTION = 9;
@@ -362,6 +362,7 @@ async function callDeleteAccountEndpoint({ userId, idToken }) {
 
 /**
  * Sliding pill segment control: animated highlight moves when selection changes.
+ * Uses nb tokens for styling.
  * @param {{ options: Array<{value: string, label: string}>, selectedValue: string, onChange: Function, isDark: boolean, colors: object }} props
  */
 function SegmentedPills({ options, selectedValue, onChange, isDark, colors }) {
@@ -393,12 +394,15 @@ function SegmentedPills({ options, selectedValue, onChange, isDark, colors }) {
         })
       : slide.interpolate({ inputRange: [0, 1], outputRange: [0, 0] });
 
-  const trackBackground = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
-  const borderColor = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)';
-
   return (
     <View
-      style={[pillStyles.track, { backgroundColor: trackBackground, borderColor }]}
+      style={[
+        pillStyles.track,
+        {
+          backgroundColor: colors.nbSurface,
+          borderColor: colors.nbBorder,
+        },
+      ]}
       onLayout={(event) => setTrackWidth(event.nativeEvent.layout.width)}
     >
       {segmentWidth > 0 ? (
@@ -414,9 +418,9 @@ function SegmentedPills({ options, selectedValue, onChange, isDark, colors }) {
           ]}
         >
           <LinearGradient
-            colors={[ACCENT_PINK, ACCENT_ORANGE]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
+            colors={gradients.brand.colors}
+            start={gradients.brand.start}
+            end={gradients.brand.end}
             style={StyleSheet.absoluteFill}
           />
         </Animated.View>
@@ -433,7 +437,7 @@ function SegmentedPills({ options, selectedValue, onChange, isDark, colors }) {
               <Text
                 style={[
                   pillStyles.cellLabel,
-                  { color: selected ? '#FFFFFF' : colors.textSecondary },
+                  { color: selected ? colors.nbInk : colors.nbMuted },
                   selected && pillStyles.cellLabelSelected,
                 ]}
               >
@@ -448,46 +452,37 @@ function SegmentedPills({ options, selectedValue, onChange, isDark, colors }) {
 }
 
 /**
+ * Section header with nb styling.
  * @param {{ title: string, colors: object }} props
  */
 function SectionHeader({ title, colors }) {
-  return <Text style={[styles.sectionHeader, { color: colors.textSecondary }]}>{title}</Text>;
+  return <Text style={[styles.sectionHeader, { color: colors.nbMuted }]}>{title}</Text>;
 }
 
 /**
- * @param {{ label: string, value?: string, onPress?: Function, children?: *, colors: object, leftIcon?: * }} props
- */
-function SettingsRow({ label, value, onPress, children, colors, leftIcon }) {
-  return (
-    <TouchableOpacity onPress={onPress} style={styles.row} disabled={!onPress}>
-      <View style={styles.rowLabelWrap}>
-        {leftIcon ? <View style={styles.rowIcon}>{leftIcon}</View> : null}
-        <Text style={[styles.rowLabel, { color: colors.text }]}>{label}</Text>
-      </View>
-      <View style={styles.rowValueContainer}>
-        {value ? <Text style={[styles.rowValue, { color: colors.textSecondary }]}>{value}</Text> : null}
-        {children}
-      </View>
-    </TouchableOpacity>
-  );
-}
-
-/**
- * Small status pill next to a settings row label.
+ * Small status pill next to a settings row label. Uses nb tokens.
  * @param {{ label: string, tone: string, colors: object, isDark: boolean }} props
  */
 function PaymentStatusChip({ label, tone, colors, isDark }) {
   const toneColor = statusChipToneColor(tone, colors);
   const chipBackground = statusChipBackground(tone, isDark);
   return (
-    <View style={[styles.statusChip, { backgroundColor: chipBackground, borderColor: `${toneColor}44` }]}>
+    <View
+      style={[
+        styles.statusChip,
+        {
+          backgroundColor: colors.nbSurfaceChip,
+          borderColor: colors.nbBorder,
+        },
+      ]}
+    >
       <Text style={[styles.statusChipText, { color: toneColor }]}>{label}</Text>
     </View>
   );
 }
 
 /**
- * One payment history line under Coaching payment.
+ * One payment history line under Coaching payment. Uses nb tokens.
  * @param {{ row: object, colors: object }} props
  */
 function PaymentHistoryRow({ row, colors }) {
@@ -498,19 +493,52 @@ function PaymentHistoryRow({ row, colors }) {
       style={{
         flexDirection: 'row',
         alignItems: 'center',
-        paddingVertical: 8,
-        borderTopWidth: StyleSheet.hairlineWidth,
-        borderTopColor: colors.border,
+        paddingVertical: spacing.sm,
+        borderTopWidth: nb.borderWidth,
+        borderTopColor: colors.nbBorder,
       }}
     >
-      <Text style={{ width: 52, fontSize: 12, color: colors.textSecondary }}>{row.date}</Text>
-      <Text style={{ flex: 1, fontSize: 13, color: colors.text, fontWeight: '600' }} numberOfLines={1}>
+      <Text
+        style={{
+          width: 52,
+          fontSize: 12,
+          fontFamily: 'Inter_400Regular',
+          color: colors.nbMuted,
+        }}
+      >
+        {row.date}
+      </Text>
+      <Text
+        style={{
+          flex: 1,
+          fontSize: 13,
+          fontFamily: 'Inter_600SemiBold',
+          color: colors.nbInk,
+        }}
+        numberOfLines={1}
+      >
         {row.coach}
       </Text>
-      <Text style={{ width: 52, fontSize: 13, fontWeight: '700', color: colors.text, textAlign: 'right' }}>
+      <Text
+        style={{
+          width: 52,
+          fontSize: 13,
+          fontFamily: 'SpaceGrotesk_700Bold',
+          color: colors.nbInk,
+          textAlign: 'right',
+        }}
+      >
         ${amountText}
       </Text>
-      <Text style={{ width: 78, fontSize: 11, fontWeight: '800', textAlign: 'right', color: statusColor }}>
+      <Text
+        style={{
+          width: 78,
+          fontSize: 11,
+          fontFamily: 'SpaceGrotesk_700Bold',
+          textAlign: 'right',
+          color: statusColor,
+        }}
+      >
         {row.status}
       </Text>
     </View>
@@ -731,15 +759,16 @@ export default function SettingsScreen({
   const aiMeterPercent = Math.round((toggleMeter.monthlyUseFraction ?? 0) * PERCENT_SCALE);
   const paymentButtonLabel =
     (paymentStatus || userDataProp?.paymentStatus) === STATUS_ACTIVE
-      ? 'UPDATE PAYMENT METHOD'
-      : 'ADD PAYMENT METHOD';
+      ? 'Update payment method'
+      : 'Add payment method';
   const stripeButtonLabel =
-    resolvedStripeStatus === STATUS_ACTIVE ? 'UPDATE BANK ACCOUNT' : 'CONNECT WITH STRIPE';
-  const switchTrackOff = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)';
-  const meterTrackBg = isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)';
+    resolvedStripeStatus === STATUS_ACTIVE ? 'Update bank account' : 'Connect with Stripe';
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={SHELL_SAFE_AREA_EDGES}>
+    <SafeAreaView
+      style={[styles.container, { backgroundColor: colors.nbBackground }]}
+      edges={SHELL_SAFE_AREA_EDGES}
+    >
       <TopHeader
         title="SETTINGS"
         skipTopSafeInset
@@ -752,10 +781,10 @@ export default function SettingsScreen({
         {...FORM_SCROLL_PROPS}
       >
         <SectionHeader title="APPEARANCE" colors={colors} />
-        <View style={[styles.sectionContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <NbCard style={styles.sectionCard}>
           <View style={styles.appearanceBlock}>
-            <Text style={[styles.blockTitle, { color: colors.text }]}>Theme</Text>
-            <Text style={[styles.blockSubtitle, { color: colors.textSecondary }]}>
+            <Text style={[styles.blockTitle, { color: colors.nbInk }]}>Theme</Text>
+            <Text style={[styles.blockSubtitle, { color: colors.nbMuted }]}>
               {appearanceSubtitle(themeMode)}
             </Text>
             <SegmentedPills
@@ -769,35 +798,38 @@ export default function SettingsScreen({
               colors={colors}
             />
           </View>
-        </View>
+        </NbCard>
 
         <SectionHeader title="PREFERENCES" colors={colors} />
-        <View style={[styles.sectionContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <SettingsRow label="Workout Reminders" colors={colors}>
-            <Switch
-              value={workoutReminders}
-              onValueChange={handleReminderToggle}
-              trackColor={{ false: switchTrackOff, true: SWITCH_ON }}
-              thumbColor="#FFFFFF"
-            />
-          </SettingsRow>
-        </View>
+        <NbCard style={styles.sectionCard}>
+          <View style={styles.row}>
+            <Text style={[styles.rowLabel, { color: colors.nbInk }]}>Workout Reminders</Text>
+            <NbSwitch value={workoutReminders} onValueChange={handleReminderToggle} />
+          </View>
+        </NbCard>
 
         <SectionHeader title="AI FEATURES" colors={colors} />
-        <View style={[styles.sectionContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <NbCard style={styles.sectionCard}>
           <View style={styles.row}>
-            <View style={{ flex: 1, paddingRight: 12 }}>
-              <Text style={[styles.rowLabel, { color: colors.text }]}>AI-powered features</Text>
-              <Text style={[styles.aiDescription, { color: colors.textSecondary }]}>
+            <View style={{ flex: 1, paddingRight: spacing.sm }}>
+              <Text style={[styles.rowLabel, { color: colors.nbInk }]}>AI-powered features</Text>
+              <Text style={[styles.aiDescription, { color: colors.nbMuted }]}>
                 {aiEnabled
                   ? 'AI Fitness Coach and workout generator are on.'
                   : 'Off — your coach and manual tools still work.'}
               </Text>
               {!toggleMeter.isFrozenFromChurn ? (
                 <>
-                  <Text style={[styles.aiMeterLabel, { color: colors.text }]}>This month's switch use</Text>
+                  <Text style={[styles.aiMeterLabel, { color: colors.nbInk }]}>This month's switch use</Text>
                   <View
-                    style={[styles.aiMeterTrack, { backgroundColor: meterTrackBg }]}
+                    style={[
+                      styles.aiMeterTrack,
+                      {
+                        backgroundColor: colors.nbSurface,
+                        borderColor: colors.nbBorder,
+                        borderWidth: nb.borderWidth,
+                      },
+                    ]}
                     accessibilityRole="progressbar"
                     accessibilityValue={{
                       min: 0,
@@ -806,44 +838,44 @@ export default function SettingsScreen({
                     }}
                     accessibilityLabel="How much of this month's AI switch allowance has been used"
                   >
-                    <View
+                    <LinearGradient
+                      colors={gradients.brand.colors}
+                      start={gradients.brand.start}
+                      end={gradients.brand.end}
                       style={[
                         styles.aiMeterFill,
                         {
                           width: `${Math.min(PERCENT_SCALE, aiMeterPercent)}%`,
-                          backgroundColor: SWITCH_ON,
                         },
                       ]}
                     />
                   </View>
                 </>
               ) : null}
-              <Text style={[styles.aiMeterHint, { color: colors.textSecondary }]}>
+              <Text style={[styles.aiMeterHint, { color: colors.nbMuted }]}>
                 {getAiToggleMeterHint(toggleMeter)}
               </Text>
-              <Text style={[styles.aiFeaturesTitle, { color: colors.text }]}>What you can use when AI is on</Text>
-              <Text style={[styles.aiBullet, { color: colors.textSecondary }]}>
+              <Text style={[styles.aiFeaturesTitle, { color: colors.nbInk }]}>What you can use when AI is on</Text>
+              <Text style={[styles.aiBullet, { color: colors.nbMuted }]}>
                 • AI Fitness Coach — chat for coaching-style tips
               </Text>
-              <Text style={[styles.aiBullet, { color: colors.textSecondary }]}>
+              <Text style={[styles.aiBullet, { color: colors.nbMuted }]}>
                 • Workout generator — draft plans from your goals
               </Text>
-              <Text style={[styles.aiBullet, { color: colors.textSecondary }]}>
+              <Text style={[styles.aiBullet, { color: colors.nbMuted }]}>
                 • Progress-style insights in supported screens
               </Text>
-              <Text style={[styles.aiBullet, { color: colors.textSecondary }]}>
+              <Text style={[styles.aiBullet, { color: colors.nbMuted }]}>
                 • Form & recovery suggestions where available
               </Text>
             </View>
-            <Switch
+            <NbSwitch
               value={!!aiEnabled}
               onValueChange={(enabled) => toggleAI(enabled)}
-              trackColor={{ false: switchTrackOff, true: SWITCH_ON }}
-              thumbColor="#FFFFFF"
-              disabled={toggleMeter.isFrozenFromChurn && !aiEnabled}
+              style={{ opacity: toggleMeter.isFrozenFromChurn && !aiEnabled ? 0.45 : 1 }}
             />
           </View>
-        </View>
+        </NbCard>
 
         {showTimePicker ? (
           <DateTimePicker
@@ -858,309 +890,346 @@ export default function SettingsScreen({
         {showClientBilling ? (
           <>
             <SectionHeader title="BILLING" colors={colors} />
-            <View style={[styles.sectionContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <SettingsRow
-                label="Coaching payment"
-                colors={colors}
-                leftIcon={<Ionicons name="card-outline" size={20} color={colors.textSecondary} />}
-              >
-                <PaymentStatusChip
-                  label={clientBillingLabel}
-                  tone={clientBillingTone}
-                  colors={colors}
-                  isDark={isDark}
-                />
-              </SettingsRow>
+            <NbCard style={styles.sectionCard}>
+              <NbListRow
+                title="Coaching payment"
+                right={
+                  <PaymentStatusChip
+                    label={clientBillingLabel}
+                    tone={clientBillingTone}
+                    colors={colors}
+                    isDark={isDark}
+                  />
+                }
+                style={styles.listRow}
+              />
               {typeof onOpenCoachingPayment === 'function' ? (
                 <>
-                  <View style={[styles.divider, { backgroundColor: colors.border }]} />
-                  <View style={{ paddingHorizontal: 16, paddingVertical: 12 }}>
-                    <Text style={[styles.rowLabel, { color: colors.textSecondary, fontSize: 13 }]}>
-                      Add or update the card you use to pay your coach. This is not a bank payout account — clients pay by card.
+                  <View style={[styles.divider, { backgroundColor: colors.nbBorder }]} />
+                  <View style={{ paddingHorizontal: spacing.md, paddingVertical: spacing.sm }}>
+                    <Text
+                      style={{
+                        fontFamily: 'Inter_400Regular',
+                        fontSize: 13,
+                        color: colors.nbMuted,
+                      }}
+                    >
+                      Add or update the card you use to pay your coach. This is not a bank payout account — clients
+                      pay by card.
                     </Text>
-                    <TouchableOpacity activeOpacity={0.9} onPress={onOpenCoachingPayment} style={{ marginTop: 12 }}>
-                      <LinearGradient
-                        colors={['#FF6B9D', '#C084FC']}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 0 }}
-                        style={{ borderRadius: 12, paddingVertical: 12, alignItems: 'center' }}
-                      >
-                        <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 14 }}>
-                          {paymentButtonLabel}
-                        </Text>
-                      </LinearGradient>
-                    </TouchableOpacity>
+                    <View style={{ marginTop: spacing.sm }}>
+                      <NbButton variant="brand" onPress={onOpenCoachingPayment}>
+                        {paymentButtonLabel}
+                      </NbButton>
+                    </View>
                   </View>
-                  <View style={[styles.divider, { backgroundColor: colors.border }]} />
-                  <View style={{ paddingHorizontal: 16, paddingVertical: 12 }}>
-                    <Text style={[styles.rowLabel, { color: colors.text, fontWeight: '700', marginBottom: 8 }]}>
+                  <View style={[styles.divider, { backgroundColor: colors.nbBorder }]} />
+                  <View style={{ paddingHorizontal: spacing.md, paddingVertical: spacing.sm }}>
+                    <Text
+                      style={{
+                        fontFamily: 'SpaceGrotesk_700Bold',
+                        fontSize: 15,
+                        color: colors.nbInk,
+                        marginBottom: spacing.sm,
+                      }}
+                    >
                       Payment history
                     </Text>
                     {clientPaymentHistoryLoading ? (
-                      <Text style={[styles.rowLabel, { color: colors.textSecondary, fontSize: 13 }]}>Loading…</Text>
+                      <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 13, color: colors.nbMuted }}>
+                        Loading…
+                      </Text>
                     ) : null}
                     {!clientPaymentHistoryLoading && clientPaymentHistory.length === 0 ? (
-                      <Text style={[styles.rowLabel, { color: colors.textSecondary, fontSize: 13 }]}>
+                      <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 13, color: colors.nbMuted }}>
                         No payments yet. Completed payments appear here with date, amount, and status.
                       </Text>
                     ) : null}
                     {!clientPaymentHistoryLoading && clientPaymentHistory.length > 0
-                      ? clientPaymentHistory.map((row) => (
-                          <PaymentHistoryRow key={row.id} row={row} colors={colors} />
-                        ))
+                      ? clientPaymentHistory.map((row) => <PaymentHistoryRow key={row.id} row={row} colors={colors} />)
                       : null}
                   </View>
                 </>
               ) : null}
-            </View>
+            </NbCard>
           </>
         ) : null}
 
         {isTrainer ? (
           <>
             <SectionHeader title="PAYMENTS & PAYOUTS" colors={colors} />
-            <View style={[styles.sectionContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 8 }}>
-                <Text style={[styles.rowLabel, { color: colors.text, fontWeight: '700', marginBottom: 4 }]}>
+            <NbCard style={styles.sectionCard}>
+              <View style={{ paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.sm }}>
+                <Text
+                  style={{
+                    fontFamily: 'SpaceGrotesk_700Bold',
+                    fontSize: 15,
+                    color: colors.nbInk,
+                    marginBottom: 4,
+                  }}
+                >
                   Two different steps
                 </Text>
-                <Text style={[styles.rowLabel, { color: colors.textSecondary, fontSize: 12, lineHeight: 17 }]}>
-                  Identity Verification (Face ID) proves who you are for the Verified badge. Payment Method is Stripe Connect — bank transfer, debit card, or other payout options so you can get paid.
+                <Text
+                  style={{
+                    fontFamily: 'Inter_400Regular',
+                    fontSize: 12,
+                    lineHeight: 17,
+                    color: colors.nbMuted,
+                  }}
+                >
+                  Identity Verification (Face ID) proves who you are for the Verified badge. Payment Method is Stripe
+                  Connect — bank transfer, debit card, or other payout options so you can get paid.
                 </Text>
               </View>
-              <View style={[styles.divider, { backgroundColor: colors.border }]} />
-              <SettingsRow
-                label="Identity Verification (Face ID)"
+              <View style={[styles.divider, { backgroundColor: colors.nbBorder }]} />
+              <NbListRow
+                title="Identity Verification (Face ID)"
                 onPress={() => go('profile')}
-                colors={colors}
-                leftIcon={<Ionicons name="scan-outline" size={20} color={colors.textSecondary} />}
-              >
-                <Text style={[styles.chevron, { color: colors.textSecondary }]}>›</Text>
-              </SettingsRow>
-              <View style={[styles.divider, { backgroundColor: colors.border }]} />
-              <SettingsRow
-                label="Payment Method (Stripe)"
-                colors={colors}
-                leftIcon={<Ionicons name="card-outline" size={20} color={colors.textSecondary} />}
-              >
-                <PaymentStatusChip
-                  label={payoutChipLabel(resolvedStripeStatus)}
-                  tone={payoutChipTone(resolvedStripeStatus)}
-                  colors={colors}
-                  isDark={isDark}
-                />
-              </SettingsRow>
-              <View style={[styles.divider, { backgroundColor: colors.border }]} />
-              <View style={{ paddingHorizontal: 16, paddingVertical: 12 }}>
-                <Text style={[styles.rowLabel, { color: colors.textSecondary, fontSize: 13 }]}>
+                right={<Ionicons name="chevron-forward" size={20} color={colors.nbMuted} />}
+                style={styles.listRow}
+              />
+              <View style={[styles.divider, { backgroundColor: colors.nbBorder }]} />
+              <NbListRow
+                title="Payment Method (Stripe)"
+                right={
+                  <PaymentStatusChip
+                    label={payoutChipLabel(resolvedStripeStatus)}
+                    tone={payoutChipTone(resolvedStripeStatus)}
+                    colors={colors}
+                    isDark={isDark}
+                  />
+                }
+                style={styles.listRow}
+              />
+              <View style={[styles.divider, { backgroundColor: colors.nbBorder }]} />
+              <View style={{ paddingHorizontal: spacing.md, paddingVertical: spacing.sm }}>
+                <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 13, color: colors.nbMuted }}>
                   Bank account: {maskStripeAccountId(stripeAccountId)}
                 </Text>
-                <Text style={[styles.rowLabel, { color: colors.textSecondary, fontSize: 13, marginTop: 4 }]}>
+                <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 13, color: colors.nbMuted, marginTop: 4 }}>
                   Status: {payoutChipLabel(resolvedStripeStatus)}
                 </Text>
-                <TouchableOpacity
-                  activeOpacity={0.9}
-                  onPress={() => {
-                    if (stripeConnect.error) stripeConnect.retry();
-                    else stripeConnect.startConnect();
-                  }}
-                  style={{ marginTop: 12 }}
-                >
-                  <LinearGradient
-                    colors={['#FF6B9D', '#C084FC']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                    style={{ borderRadius: 12, paddingVertical: 12, alignItems: 'center' }}
+                <View style={{ marginTop: spacing.sm }}>
+                  <NbButton
+                    variant="brand"
+                    onPress={() => {
+                      if (stripeConnect.error) stripeConnect.retry();
+                      else stripeConnect.startConnect();
+                    }}
                   >
-                    <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 14 }}>
-                      {stripeButtonLabel}
-                    </Text>
-                  </LinearGradient>
-                </TouchableOpacity>
+                    {stripeButtonLabel}
+                  </NbButton>
+                </View>
               </View>
-              <View style={[styles.divider, { backgroundColor: colors.border }]} />
-              <SettingsRow
-                label="Payout account"
+              <View style={[styles.divider, { backgroundColor: colors.nbBorder }]} />
+              <NbListRow
+                title="Payout account"
                 onPress={() => go('payments')}
-                colors={colors}
-                leftIcon={<Ionicons name="wallet-outline" size={20} color={colors.textSecondary} />}
-              >
-                <PaymentStatusChip
-                  label={payoutChipLabel(resolvedStripeStatus)}
-                  tone={payoutChipTone(resolvedStripeStatus)}
-                  colors={colors}
-                  isDark={isDark}
-                />
-                <Text style={[styles.chevron, { color: colors.textSecondary }]}>›</Text>
-              </SettingsRow>
-              <View style={[styles.divider, { backgroundColor: colors.border }]} />
-              <SettingsRow
-                label="Earnings & payouts"
+                right={
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
+                    <PaymentStatusChip
+                      label={payoutChipLabel(resolvedStripeStatus)}
+                      tone={payoutChipTone(resolvedStripeStatus)}
+                      colors={colors}
+                      isDark={isDark}
+                    />
+                    <Ionicons name="chevron-forward" size={20} color={colors.nbMuted} />
+                  </View>
+                }
+                style={styles.listRow}
+              />
+              <View style={[styles.divider, { backgroundColor: colors.nbBorder }]} />
+              <NbListRow
+                title="Earnings & payouts"
                 onPress={() => go('payments')}
-                colors={colors}
-                leftIcon={<Ionicons name="trending-up-outline" size={20} color={colors.textSecondary} />}
-              >
-                <Text style={[styles.chevron, { color: colors.textSecondary }]}>›</Text>
-              </SettingsRow>
-              <View style={[styles.divider, { backgroundColor: colors.border }]} />
-              <View style={{ paddingHorizontal: 16, paddingVertical: 12 }}>
-                <Text style={[styles.rowLabel, { color: colors.text, fontWeight: '700', marginBottom: 6 }]}>
+                right={<Ionicons name="chevron-forward" size={20} color={colors.nbMuted} />}
+                style={styles.listRow}
+              />
+              <View style={[styles.divider, { backgroundColor: colors.nbBorder }]} />
+              <View style={{ paddingHorizontal: spacing.md, paddingVertical: spacing.sm }}>
+                <Text
+                  style={{
+                    fontFamily: 'SpaceGrotesk_700Bold',
+                    fontSize: 15,
+                    color: colors.nbInk,
+                    marginBottom: 6,
+                  }}
+                >
                   Tell clients how to pay you
                 </Text>
-                <Text style={[styles.rowLabel, { color: colors.textSecondary, fontSize: 12, marginBottom: 8 }]}>
+                <Text
+                  style={{
+                    fontFamily: 'Inter_400Regular',
+                    fontSize: 12,
+                    color: colors.nbMuted,
+                    marginBottom: spacing.sm,
+                  }}
+                >
                   Recommended message (copy and send in chat):
                 </Text>
                 <View
                   style={{
-                    padding: 12,
+                    padding: spacing.sm,
                     borderRadius: 12,
-                    backgroundColor: isDark ? 'rgba(48,209,88,0.1)' : 'rgba(48,209,88,0.08)',
-                    borderWidth: 1,
-                    borderColor: isDark ? 'rgba(48,209,88,0.25)' : 'rgba(48,209,88,0.2)',
-                    marginBottom: 10,
+                    backgroundColor: colors.nbSurfaceChip,
+                    borderWidth: nb.borderWidth,
+                    borderColor: colors.success,
+                    marginBottom: spacing.sm,
                   }}
                 >
-                  <Text style={{ fontSize: 13, color: colors.text, lineHeight: 18 }}>
+                  <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 13, color: colors.nbInk, lineHeight: 18 }}>
                     {TRAINER_CLIENT_MESSAGE_RECOMMENDED}
                   </Text>
                 </View>
-                <Text style={[styles.rowLabel, { color: colors.textSecondary, fontSize: 12, marginBottom: 6 }]}>
+                <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 12, color: colors.nbMuted, marginBottom: 6 }}>
                   If a client asks about Venmo:
                 </Text>
-                <Text style={{ fontSize: 12, color: colors.warning || '#F59E0B', lineHeight: 17 }}>
+                <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 12, color: colors.warning, lineHeight: 17 }}>
                   {TRAINER_CLIENT_MESSAGE_VENMO_WARNING}
                 </Text>
               </View>
-            </View>
+            </NbCard>
           </>
         ) : null}
 
         {showProSection ? (
           <>
             <SectionHeader title="COACH CONNECT PRO" colors={colors} />
-            <View style={[styles.sectionContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <SettingsRow
-                label="Platform subscription"
-                colors={colors}
-                leftIcon={<Ionicons name="card-outline" size={20} color={colors.textSecondary} />}
-              >
-                <PaymentStatusChip
-                  label={platformSubscriptionStatus}
-                  tone={platformSubTone(platformSubscriptionStatus)}
-                  colors={colors}
-                  isDark={isDark}
-                />
-              </SettingsRow>
+            <NbCard style={styles.sectionCard}>
+              <NbListRow
+                title="Platform subscription"
+                right={
+                  <PaymentStatusChip
+                    label={platformSubscriptionStatus}
+                    tone={platformSubTone(platformSubscriptionStatus)}
+                    colors={colors}
+                    isDark={isDark}
+                  />
+                }
+                style={styles.listRow}
+              />
               {typeof onRestorePurchases === 'function' ? (
                 <>
-                  <View style={[styles.divider, { backgroundColor: colors.border }]} />
-                  <SettingsRow
-                    label="Restore purchases"
+                  <View style={[styles.divider, { backgroundColor: colors.nbBorder }]} />
+                  <NbListRow
+                    title="Restore purchases"
                     onPress={() => {
                       if (!restorePurchasesLoading) onRestorePurchases();
                     }}
-                    colors={colors}
-                    leftIcon={<Ionicons name="refresh-outline" size={20} color={colors.textSecondary} />}
-                  >
-                    {restorePurchasesLoading ? (
-                      <Text style={[styles.rowValue, { color: colors.textSecondary }]}>Working…</Text>
-                    ) : (
-                      <Text style={[styles.chevron, { color: colors.textSecondary }]}>›</Text>
-                    )}
-                  </SettingsRow>
+                    right={
+                      restorePurchasesLoading ? (
+                        <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 14, color: colors.nbMuted }}>
+                          Working…
+                        </Text>
+                      ) : (
+                        <Ionicons name="chevron-forward" size={20} color={colors.nbMuted} />
+                      )
+                    }
+                    style={styles.listRow}
+                  />
                 </>
               ) : null}
-            </View>
+            </NbCard>
           </>
         ) : null}
 
         <SectionHeader title="ACCOUNT" colors={colors} />
-        <View style={[styles.sectionContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <SettingsRow label="Edit Profile" onPress={() => go('profile')} colors={colors}>
-            <Text style={[styles.chevron, { color: colors.textSecondary }]}>›</Text>
-          </SettingsRow>
-          <View style={[styles.divider, { backgroundColor: colors.border }]} />
-          <SettingsRow label="Change Password" onPress={() => setPasswordModalVisible(true)} colors={colors}>
-            <Text style={[styles.chevron, { color: colors.textSecondary }]}>›</Text>
-          </SettingsRow>
-          <View style={[styles.divider, { backgroundColor: colors.border }]} />
-          <SettingsRow
-            label="Blocked users"
+        <NbCard style={styles.sectionCard}>
+          <NbListRow
+            title="Edit Profile"
+            onPress={() => go('profile')}
+            right={<Ionicons name="chevron-forward" size={20} color={colors.nbMuted} />}
+            style={styles.listRow}
+          />
+          <View style={[styles.divider, { backgroundColor: colors.nbBorder }]} />
+          <NbListRow
+            title="Change Password"
+            onPress={() => setPasswordModalVisible(true)}
+            right={<Ionicons name="chevron-forward" size={20} color={colors.nbMuted} />}
+            style={styles.listRow}
+          />
+          <View style={[styles.divider, { backgroundColor: colors.nbBorder }]} />
+          <NbListRow
+            title="Blocked users"
             onPress={() => setShowBlockedUsers(true)}
-            colors={colors}
-            leftIcon={<Ionicons name="shield-outline" size={20} color={colors.textSecondary} />}
-          >
-            <Text style={[styles.chevron, { color: colors.textSecondary }]}>›</Text>
-          </SettingsRow>
+            right={<Ionicons name="chevron-forward" size={20} color={colors.nbMuted} />}
+            style={styles.listRow}
+          />
           {showRemoveTrainer ? (
             <>
-              <View style={[styles.divider, { backgroundColor: colors.border }]} />
+              <View style={[styles.divider, { backgroundColor: colors.nbBorder }]} />
               <TouchableOpacity
                 onPress={onOpenRemoveTrainer}
                 style={[styles.row, { justifyContent: 'space-between' }]}
                 accessibilityRole="button"
                 accessibilityLabel="Remove trainer"
               >
-                <Text style={[styles.rowLabel, { color: '#EF4444', fontWeight: '700' }]}>Remove Trainer</Text>
-                <Text style={[styles.chevron, { color: colors.textSecondary }]}>›</Text>
+                <Text
+                  style={{
+                    fontFamily: 'SpaceGrotesk_700Bold',
+                    fontSize: 15,
+                    color: colors.error,
+                  }}
+                >
+                  Remove Trainer
+                </Text>
+                <Ionicons name="chevron-forward" size={20} color={colors.nbMuted} />
               </TouchableOpacity>
             </>
           ) : null}
-          <View style={[styles.divider, { backgroundColor: colors.border }]} />
+          <View style={[styles.divider, { backgroundColor: colors.nbBorder }]} />
           <TouchableOpacity
             onPress={() => setShowDeleteHoldModal(true)}
             style={[styles.row, { justifyContent: 'space-between' }]}
             disabled={!user}
           >
-            <Text style={[styles.rowLabel, { color: '#EF4444', fontWeight: '700' }]}>Delete Account</Text>
-            <Text style={[styles.chevron, { color: colors.textSecondary }]}>›</Text>
+            <Text style={{ fontFamily: 'SpaceGrotesk_700Bold', fontSize: 15, color: colors.error }}>
+              Delete Account
+            </Text>
+            <Ionicons name="chevron-forward" size={20} color={colors.nbMuted} />
           </TouchableOpacity>
-        </View>
+        </NbCard>
 
         <SectionHeader title="SUPPORT" colors={colors} />
-        <View style={[styles.sectionContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <SettingsRow
-            label="Contact Support"
+        <NbCard style={styles.sectionCard}>
+          <NbListRow
+            title="Contact Support"
             onPress={() => openSettingsSubScreen('contactSupport', onNavigate)}
-            colors={colors}
-          >
-            <Text style={[styles.chevron, { color: colors.textSecondary }]}>›</Text>
-          </SettingsRow>
-          <View style={[styles.divider, { backgroundColor: colors.border }]} />
-          <SettingsRow
-            label="Report a Bug"
+            right={<Ionicons name="chevron-forward" size={20} color={colors.nbMuted} />}
+            style={styles.listRow}
+          />
+          <View style={[styles.divider, { backgroundColor: colors.nbBorder }]} />
+          <NbListRow
+            title="Report a Bug"
             onPress={() => openSettingsSubScreen('bugReport', onNavigate)}
-            colors={colors}
-          >
-            <Text style={[styles.chevron, { color: colors.textSecondary }]}>›</Text>
-          </SettingsRow>
-          <View style={[styles.divider, { backgroundColor: colors.border }]} />
-          <SettingsRow
-            label="FAQ"
+            right={<Ionicons name="chevron-forward" size={20} color={colors.nbMuted} />}
+            style={styles.listRow}
+          />
+          <View style={[styles.divider, { backgroundColor: colors.nbBorder }]} />
+          <NbListRow
+            title="FAQ"
             onPress={() => openSettingsSubScreen('helpFaq', onNavigate)}
-            colors={colors}
-          >
-            <Text style={[styles.chevron, { color: colors.textSecondary }]}>›</Text>
-          </SettingsRow>
-          <View style={[styles.divider, { backgroundColor: colors.border }]} />
-          <SettingsRow
-            label="Terms of Service"
+            right={<Ionicons name="chevron-forward" size={20} color={colors.nbMuted} />}
+            style={styles.listRow}
+          />
+          <View style={[styles.divider, { backgroundColor: colors.nbBorder }]} />
+          <NbListRow
+            title="Terms of Service"
             onPress={() => openSettingsSubScreen('terms', onNavigate)}
-            colors={colors}
-          >
-            <Text style={[styles.chevron, { color: colors.textSecondary }]}>›</Text>
-          </SettingsRow>
-          <View style={[styles.divider, { backgroundColor: colors.border }]} />
-          <SettingsRow
-            label="Privacy Policy"
+            right={<Ionicons name="chevron-forward" size={20} color={colors.nbMuted} />}
+            style={styles.listRow}
+          />
+          <View style={[styles.divider, { backgroundColor: colors.nbBorder }]} />
+          <NbListRow
+            title="Privacy Policy"
             onPress={() => openSettingsSubScreen('privacy', onNavigate)}
-            colors={colors}
-          >
-            <Text style={[styles.chevron, { color: colors.textSecondary }]}>›</Text>
-          </SettingsRow>
-          <View style={[styles.divider, { backgroundColor: colors.border }]} />
-          <SettingsRow
-            label="Privacy & data rights"
+            right={<Ionicons name="chevron-forward" size={20} color={colors.nbMuted} />}
+            style={styles.listRow}
+          />
+          <View style={[styles.divider, { backgroundColor: colors.nbBorder }]} />
+          <NbListRow
+            title="Privacy & data rights"
             onPress={() =>
               Alert.alert(
                 'Privacy & your data',
@@ -1172,15 +1241,20 @@ export default function SettingsScreen({
                 ],
               )
             }
-            colors={colors}
-          >
-            <Text style={[styles.chevron, { color: colors.textSecondary }]}>›</Text>
-          </SettingsRow>
-          <View style={[styles.divider, { backgroundColor: colors.border }]} />
-          <SettingsRow label="Version" colors={colors}>
-            <Text style={[styles.rowValue, { color: colors.textSecondary }]}>Coach Connect v1.0.0</Text>
-          </SettingsRow>
-        </View>
+            right={<Ionicons name="chevron-forward" size={20} color={colors.nbMuted} />}
+            style={styles.listRow}
+          />
+          <View style={[styles.divider, { backgroundColor: colors.nbBorder }]} />
+          <NbListRow
+            title="Version"
+            right={
+              <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 14, color: colors.nbMuted }}>
+                Coach Connect v1.0.0
+              </Text>
+            }
+            style={styles.listRow}
+          />
+        </NbCard>
       </ScrollView>
 
       <Modal visible={isPasswordModalVisible} transparent={true} animationType="slide">
@@ -1188,39 +1262,30 @@ export default function SettingsScreen({
           behavior={Platform.OS === PLATFORM_IOS ? 'padding' : 'height'}
           style={styles.modalContainer}
         >
-          <View style={[styles.bottomSheet, { backgroundColor: colors.surface }]}>
-            <Text style={[styles.bottomSheetTitle, { color: colors.text }]}>Change Password</Text>
+          <View style={[styles.bottomSheet, { backgroundColor: colors.nbSurface }]}>
+            <Text style={[styles.bottomSheetTitle, { color: colors.nbInk }]}>Change Password</Text>
             <TextInput
               style={[
                 styles.passwordInput,
                 {
-                  backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
-                  color: colors.text,
-                  borderColor: colors.border,
+                  backgroundColor: colors.nbSurfaceChip,
+                  color: colors.nbInk,
+                  borderColor: colors.nbBorder,
                 },
               ]}
               placeholder="New Password"
-              placeholderTextColor={colors.textSecondary}
+              placeholderTextColor={colors.nbMuted}
               secureTextEntry
               value={newPassword}
               onChangeText={setNewPassword}
             />
-            <TouchableOpacity
-              activeOpacity={0.92}
-              onPress={handleChangePassword}
-              style={styles.confirmButtonOuter}
-            >
-              <LinearGradient
-                colors={[ACCENT_PINK, ACCENT_ORANGE]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.confirmButtonGradient}
-              >
-                <Text style={styles.confirmButtonText}>Confirm</Text>
-              </LinearGradient>
-            </TouchableOpacity>
+            <View style={styles.confirmButtonOuter}>
+              <NbButton variant="brand" onPress={handleChangePassword}>
+                Confirm
+              </NbButton>
+            </View>
             <TouchableOpacity style={styles.cancelButton} onPress={() => setPasswordModalVisible(false)}>
-              <Text style={[styles.cancelButtonText, { color: colors.textSecondary }]}>Cancel</Text>
+              <Text style={[styles.cancelButtonText, { color: colors.nbMuted }]}>Cancel</Text>
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
@@ -1248,7 +1313,7 @@ export default function SettingsScreen({
         }
         holdDurationMs={HOLD_TO_DELETE_MS}
         pillLabel="Hold until bar fills to delete account"
-        barGradient={[ACCENT_PINK, ACCENT_ORANGE]}
+        barGradient={gradients.brand.colors}
         onHoldComplete={performDeleteAccount}
       />
 
@@ -1277,12 +1342,12 @@ export default function SettingsScreen({
 const pillStyles = StyleSheet.create({
   track: {
     borderRadius: 999,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: nb.borderWidth,
     paddingVertical: 4,
     paddingHorizontal: 4,
     position: 'relative',
     overflow: 'hidden',
-    minHeight: 44,
+    minHeight: nb.minTouchTarget,
     justifyContent: 'center',
   },
   thumb: {
@@ -1291,11 +1356,6 @@ const pillStyles = StyleSheet.create({
     bottom: 4,
     borderRadius: 999,
     overflow: 'hidden',
-    shadowColor: ACCENT_PINK,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.35,
-    shadowRadius: 6,
-    elevation: 4,
   },
   row: { flexDirection: 'row', alignItems: 'center' },
   cell: {
@@ -1305,44 +1365,66 @@ const pillStyles = StyleSheet.create({
     justifyContent: 'center',
     minHeight: 40,
   },
-  cellLabel: { fontSize: 14, fontWeight: '700' },
-  cellLabelSelected: { fontWeight: '800' },
+  cellLabel: { fontFamily: 'SpaceGrotesk_700Bold', fontSize: 14 },
+  cellLabelSelected: { fontFamily: 'SpaceGrotesk_700Bold' },
 });
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  scrollContent: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 32 },
+  scrollContent: { paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.xl },
   sectionHeader: {
+    fontFamily: 'SpaceGrotesk_700Bold',
     textTransform: 'uppercase',
     fontSize: 11,
-    fontWeight: '700',
     letterSpacing: 1.2,
-    marginBottom: 10,
-    marginTop: 4,
-    marginLeft: 4,
+    marginBottom: spacing.sm,
+    marginTop: spacing.xs,
+    marginLeft: spacing.xs,
   },
-  sectionContainer: {
-    borderRadius: 14,
-    borderWidth: StyleSheet.hairlineWidth,
-    marginBottom: 22,
-    overflow: 'hidden',
+  sectionCard: {
+    marginBottom: spacing.lg,
+    padding: spacing.md,
   },
-  appearanceBlock: { padding: 16 },
-  blockTitle: { fontSize: 16, fontWeight: '800', marginBottom: 4, letterSpacing: -0.2 },
-  blockSubtitle: { fontSize: 13, lineHeight: 18, marginBottom: 14 },
+  listRow: {
+    marginBottom: 0,
+  },
+  appearanceBlock: { padding: 0 },
+  blockTitle: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 16,
+    marginBottom: spacing.xs,
+    letterSpacing: -0.2,
+  },
+  blockSubtitle: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: spacing.sm,
+  },
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    minHeight: 52,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    minHeight: nb.minTouchTarget,
   },
-  rowLabelWrap: { flexDirection: 'row', alignItems: 'center', flex: 1, paddingRight: 8 },
-  rowIcon: { marginRight: 10 },
-  rowLabel: { fontSize: 15, fontWeight: '600' },
-  aiDescription: { fontSize: 13, marginTop: 6, lineHeight: 18 },
-  aiMeterLabel: { fontSize: 12, fontWeight: '700', marginTop: 12, letterSpacing: 0.2 },
+  rowLabel: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 15,
+  },
+  aiDescription: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 13,
+    marginTop: 6,
+    lineHeight: 18,
+  },
+  aiMeterLabel: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 12,
+    marginTop: spacing.sm,
+    letterSpacing: 0.2,
+  },
   aiMeterTrack: {
     height: 8,
     borderRadius: 4,
@@ -1354,28 +1436,63 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     minWidth: 2,
   },
-  aiMeterHint: { fontSize: 12, marginTop: 8, lineHeight: 17, fontWeight: '600' },
-  aiFeaturesTitle: { fontSize: 13, fontWeight: '800', marginTop: 12, marginBottom: 4 },
-  aiBullet: { fontSize: 12, lineHeight: 17, marginTop: 2 },
-  rowValueContainer: { flexDirection: 'row', alignItems: 'center' },
-  rowValue: { fontSize: 14 },
-  chevron: { fontSize: 22, marginLeft: 8, fontWeight: '300' },
+  aiMeterHint: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 12,
+    marginTop: spacing.sm,
+    lineHeight: 17,
+  },
+  aiFeaturesTitle: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 13,
+    marginTop: spacing.sm,
+    marginBottom: 4,
+  },
+  aiBullet: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 2,
+  },
   statusChip: {
-    paddingHorizontal: 8,
+    paddingHorizontal: spacing.sm,
     paddingVertical: 3,
     borderRadius: 999,
-    borderWidth: 1,
-    marginRight: 4,
+    borderWidth: nb.borderWidth,
+    marginRight: spacing.xs,
   },
-  statusChipText: { fontSize: 11, fontWeight: '800' },
-  divider: { height: StyleSheet.hairlineWidth, marginHorizontal: 16 },
+  statusChipText: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 11,
+  },
+  divider: {
+    height: nb.borderWidth,
+    marginHorizontal: spacing.md,
+  },
   modalContainer: { flex: 1, justifyContent: 'flex-end' },
-  bottomSheet: { padding: 24, borderTopLeftRadius: 16, borderTopRightRadius: 16 },
-  bottomSheetTitle: { fontSize: 18, fontWeight: 'bold', textAlign: 'center', marginBottom: 16 },
-  passwordInput: { borderRadius: 8, padding: 12, marginBottom: 16, borderWidth: 1 },
-  confirmButtonOuter: { borderRadius: 10, overflow: 'hidden', marginBottom: 8 },
-  confirmButtonGradient: { paddingVertical: 16, paddingHorizontal: 16, alignItems: 'center' },
-  confirmButtonText: { color: 'white', fontWeight: 'bold' },
-  cancelButton: { padding: 16, alignItems: 'center' },
-  cancelButtonText: {},
+  bottomSheet: {
+    padding: spacing.lg,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+  },
+  bottomSheetTitle: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 18,
+    textAlign: 'center',
+    marginBottom: spacing.md,
+  },
+  passwordInput: {
+    fontFamily: 'Inter_400Regular',
+    borderRadius: 8,
+    padding: spacing.sm,
+    marginBottom: spacing.md,
+    borderWidth: nb.borderWidth,
+  },
+  confirmButtonOuter: {
+    marginBottom: spacing.sm,
+  },
+  cancelButton: { padding: spacing.md, alignItems: 'center' },
+  cancelButtonText: {
+    fontFamily: 'Inter_600SemiBold',
+  },
 });

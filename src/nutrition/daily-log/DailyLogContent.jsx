@@ -292,21 +292,21 @@ export const DailyLogContent = ({
       label: 'Protein',
       val: Math.round(totals.protein || 0),
       goal: goals?.proteinTarget || DEFAULT_PROTEIN_GOAL,
-      color: '#FF6B9D',
+      color: isDark ? '#FF6B9D' : '#BE185D',
       pct: goals?.proteinTarget ? Math.round(((totals.protein || 0) / goals.proteinTarget) * 100) : 0,
     },
     {
       label: 'Carbs',
       val: Math.round(totals.carbs || 0),
       goal: goals?.carbsTarget || DEFAULT_CARBS_GOAL,
-      color: '#F97316',
+      color: isDark ? '#F97316' : '#C2410C',
       pct: goals?.carbsTarget ? Math.round(((totals.carbs || 0) / goals.carbsTarget) * 100) : 0,
     },
     {
       label: 'Fat',
       val: Math.round(totals.fat || 0),
       goal: goals?.fatTarget || DEFAULT_FAT_GOAL,
-      color: '#06B6D4',
+      color: isDark ? '#06B6D4' : '#0891B2',
       pct: goals?.fatTarget ? Math.round(((totals.fat || 0) / goals.fatTarget) * 100) : 0,
     },
   ];
@@ -470,7 +470,9 @@ export const DailyLogContent = ({
     }
   };
 
-  const screenBg = isDark ? '#0A0A0F' : '#F2F2F7';
+  const { lightColors, darkColors } = require('../../look-and-feel/colorPalette');
+  const colors = isDark ? darkColors : lightColors;
+  const screenBg = colors.nbBackground;
   const bottomNavEl = hideBottomNav ? null : (
     <ShellBottomNavAnchor>
       <BottomMenuBar
@@ -495,7 +497,7 @@ export const DailyLogContent = ({
             justifyContent: 'center',
           }}
         >
-          <ActivityIndicator color="#FF6B9D" size="small" />
+          <ActivityIndicator color={colors.nbInk} size="small" />
         </View>
 
         {bottomNavEl}
@@ -527,7 +529,7 @@ export const DailyLogContent = ({
   }
 
   if (showFoodSearch) {
-    const addFoodBg = isDark ? '#0A0A0F' : '#FFFFFF';
+    const addFoodBg = colors.nbBackground;
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: addFoodBg }} edges={SHELL_SAFE_AREA_EDGES}>
         <TopHeader

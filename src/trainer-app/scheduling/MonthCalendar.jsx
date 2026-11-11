@@ -1,10 +1,14 @@
 // Month grid for picking a session date. Days with sessions get a dot; the selected day fills with the accent.
 // Flow: build week rows for the cursor month → tap a day → onSelectDate(YYYY-MM-DD) → chevrons move the month.
 // Used by: the trainer scheduling screen.
+//
+// vocab: neobrutalist = thick outlines (2.5px), hard shadows, nb tokens for colors
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, useColorScheme } from 'react-native';
 import { ChevronLeft, ChevronRight } from 'lucide-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { lightColors, darkColors, gradients, nb, borderRadius } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
@@ -13,29 +17,6 @@ const DAYS_IN_WEEK = 7;
 const NOON_LOCAL_SUFFIX = 'T12:00:00';
 const DATE_KEY_LENGTH = 10;
 const WEEKDAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
-
-const COLORS = {
-  dark: {
-    text: '#FFFFFF',
-    textSecondary: 'rgba(255,255,255,0.6)',
-    border: 'rgba(255,255,255,0.10)',
-    glass: 'rgba(255,255,255,0.04)',
-    glassBorder: 'rgba(255,255,255,0.08)',
-    surface: '#141418',
-    primary: '#FF6B9D',
-    primaryLight: 'rgba(255,107,157,0.15)',
-  },
-  light: {
-    text: '#0A0A0F',
-    textSecondary: 'rgba(10,10,15,0.55)',
-    border: 'rgba(10,10,15,0.10)',
-    glass: '#FFFFFF',
-    glassBorder: 'rgba(10,10,15,0.10)',
-    surface: '#FFFFFF',
-    primary: '#FF6B9D',
-    primaryLight: 'rgba(255,107,157,0.12)',
-  },
-};
 
 // ===== HELPER FUNCTIONS =====
 
@@ -91,17 +72,12 @@ function buildMonthWeeks(year, monthIndex, startWeekday, daysInMonth) {
   return chunkIntoWeeks(padded);
 }
 
-function dayCellBackground({ isSelected, hasSession, accent }) {
-  if (isSelected) return { backgroundColor: accent };
-  if (hasSession) return { backgroundColor: `${accent}22` };
-  return null;
-}
-
 function DayCell({ cell, columnIndex, selectedDate, sessionDays, accent, textColor, onSelectDate }) {
   if (!cell) return <View key={`empty-${columnIndex}`} style={styles.cell} />;
   const key = dateKeyFromDate(cell);
   const isSelected = key === selectedDate;
   const hasSession = sessionDays.has(key);
+  
   return (
     <TouchableOpacity
       key={`d-${columnIndex}`}
@@ -109,15 +85,23 @@ function DayCell({ cell, columnIndex, selectedDate, sessionDays, accent, textCol
       style={[
         styles.cell,
         styles.dayBtn,
-        dayCellBackground({ isSelected, hasSession, accent }),
+        hasSession && styles.dayBtnWithSession,
       ]}
       activeOpacity={0.85}
     >
-      <Text style={[styles.dayText, { color: isSelected ? 'white' : textColor }]}>
+      {isSelected ? (
+        <LinearGradient
+          colors={gradients.brand.colors}
+          start={gradients.brand.start}
+          end={gradients.brand.end}
+          style={[StyleSheet.absoluteFill, { borderRadius: borderRadius.nbChip }]}
+        />
+      ) : null}
+      <Text style={[styles.dayText, { color: isSelected ? '#0A0A0F' : textColor }]}>
         {cell.getDate()}
       </Text>
       {hasSession ? (
-        <View style={[styles.dot, { backgroundColor: isSelected ? 'white' : accent }]} />
+        <View style={[styles.dot, { backgroundColor: isSelected ? '#0A0A0F' : accent }]} />
       ) : (
         <View style={styles.dotSpacer} />
       )}
@@ -130,7 +114,7 @@ function WeekdayHeader({ colors, borderless }) {
     <View style={[styles.weekdays, borderless && styles.weekdaysBorderless]}>
       {WEEKDAY_LABELS.map((label, index) => (
         <View key={`${label}-${index}`} style={styles.weekdayCell}>
-          <Text style={[styles.weekday, { color: colors.textSecondary }]}>{label}</Text>
+          <Text style={[styles.weekday, { color: colors.nbMuted }]}>{label}</Text>
         </View>
       ))}
     </View>
@@ -148,13 +132,13 @@ export const MonthCalendar = ({
   selectedDate,
   onSelectDate,
   onMonthChange,
-  theme = THEME_DARK,
+  theme,
   borderless = false,
-  accentColor,
-  cardBg,
 }) => {
-  const colors = COLORS[theme] || COLORS.dark;
-  const accent = accentColor || colors.primary;
+  const colorScheme = useColorScheme();
+  const isDark = theme === 'dark' || (theme == null && colorScheme === 'dark');
+  const colors = isDark ? darkColors : lightColors;
+  const accent = gradients.brand.colors[0];
   const selected = selectedDateAtNoon(selectedDate);
   const [cursor, setCursor] = useState(() => selected || new Date());
 
@@ -182,27 +166,27 @@ export const MonthCalendar = ({
         styles.card,
         borderless && styles.cardBorderless,
         {
-          backgroundColor: borderless ? (cardBg || 'transparent') : colors.surface,
-          borderColor: accent,
-          borderWidth: borderless ? 0 : 2,
+          backgroundColor: borderless ? 'transparent' : colors.nbSurface,
+          borderColor: borderless ? 'transparent' : colors.nbBorder,
+          borderWidth: borderless ? 0 : nb.borderWidth,
         },
       ]}
     >
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() => setCursor(new Date(year, monthIndex - 1, 1))}
-          style={[styles.navBtn, { borderColor: colors.glassBorder }]}
+          style={[styles.navBtn, { borderColor: colors.nbBorder }]}
           activeOpacity={0.75}
         >
-          <ChevronLeft size={16} color={colors.textSecondary} />
+          <ChevronLeft size={16} color={colors.nbMuted} />
         </TouchableOpacity>
-        <Text style={[styles.title, { color: colors.text }]}>{monthTitle}</Text>
+        <Text style={[styles.title, { color: colors.nbInk }]}>{monthTitle}</Text>
         <TouchableOpacity
           onPress={() => setCursor(new Date(year, monthIndex + 1, 1))}
-          style={[styles.navBtn, { borderColor: colors.glassBorder }]}
+          style={[styles.navBtn, { borderColor: colors.nbBorder }]}
           activeOpacity={0.75}
         >
-          <ChevronRight size={16} color={colors.textSecondary} />
+          <ChevronRight size={16} color={colors.nbMuted} />
         </TouchableOpacity>
       </View>
 
@@ -218,7 +202,7 @@ export const MonthCalendar = ({
               selectedDate={selectedDate}
               sessionDays={sessionDays}
               accent={accent}
-              textColor={colors.text}
+              textColor={colors.nbInk}
               onSelectDate={onSelectDate}
             />
           ))}
@@ -230,7 +214,7 @@ export const MonthCalendar = ({
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 16,
+    borderRadius: borderRadius.nbCard,
     padding: 12,
   },
   cardBorderless: {
@@ -246,14 +230,15 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 14,
-    fontWeight: '800',
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontWeight: '700',
     letterSpacing: -0.2,
   },
   navBtn: {
     width: 34,
     height: 34,
-    borderRadius: 12,
-    borderWidth: 1,
+    borderRadius: borderRadius.nbChip,
+    borderWidth: nb.borderWidth,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -269,7 +254,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  weekday: { fontSize: 11, fontWeight: '700', textAlign: 'center' },
+  weekday: { 
+    fontSize: 11, 
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontWeight: '700', 
+    textAlign: 'center' 
+  },
   row: { flexDirection: 'row', marginBottom: 4 },
   cell: {
     flex: 1,
@@ -278,8 +268,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 2,
   },
-  dayBtn: { borderRadius: 10 },
-  dayText: { fontSize: 13, fontWeight: '700', lineHeight: 16 },
-  dot: { width: 4, height: 4, borderRadius: 2, marginTop: 2 },
+  dayBtn: { 
+    borderRadius: borderRadius.nbChip,
+    overflow: 'hidden',
+  },
+  dayBtnWithSession: {
+    borderWidth: nb.borderWidth,
+  },
+  dayText: { 
+    fontSize: 13, 
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontWeight: '700', 
+    lineHeight: 16,
+    zIndex: 1,
+  },
+  dot: { width: 4, height: 4, borderRadius: 2, marginTop: 2, zIndex: 1 },
   dotSpacer: { width: 4, height: 4, marginTop: 2 },
 });

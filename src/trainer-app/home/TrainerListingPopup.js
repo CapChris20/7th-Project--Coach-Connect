@@ -1,6 +1,8 @@
 // Popup that reviews one pending trainee request — accept, acknowledge, or reject.
 // Flow: open with a request → show profile chips → Accept links them (or acks) → Reject marks the message.
 // Used by: NewTraineeRequestsScreen and the trainer home pending-request card.
+//
+// vocab: NbCard / NbButton = neobrutalist shells for the modal surface and actions
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -12,7 +14,6 @@ import {
   Alert,
   ActivityIndicator,
   Animated,
-  Pressable,
 } from 'react-native';
 import { doc, getDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../app-start/cloudConnection';
@@ -25,13 +26,15 @@ import {
   CLIENT_REQUEST_TYPES,
   clientRequestTypeLabel,
 } from '../../ai-coach/coach-actions/alertTrainer';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
 import { postRemotePushNotify } from '../../for-both/online-connection/sendPhoneAlert';
 import {
   randomClientRequestAcceptedTitle,
   randomClientRequestAcceptedBody,
 } from '../../notifications/writeAlertText';
+import { lightColors, darkColors, nb, borderRadius, spacing } from '../../look-and-feel/colorPalette';
+import NbCard from '../../look-and-feel/NbCard';
+import NbButton from '../../look-and-feel/NbButton';
 
 // ===== NAMED CONSTANTS =====
 
@@ -42,13 +45,7 @@ const MESSAGE_STATUS_ACCEPTED = 'accepted';
 const MESSAGE_STATUS_REJECTED = 'rejected';
 const PUSH_TYPE_REQUEST_ACCEPTED = 'client_request_accepted';
 const ENTER_ANIMATION_MS = 200;
-const PRESS_IN_MS = 70;
-const PRESS_SPRING_SPEED = 26;
-const PRESS_SPRING_BOUNCE = 10;
-const PRESS_SCALE_DOWN = 0.95;
 const ENTER_SCALE_START = 0.95;
-const GRADIENT_START = { x: 0, y: 0 };
-const GRADIENT_END = { x: 1, y: 1 };
 
 const WORKOUT_PLAN_ACK_TEXT =
   "Got your workout plan request — I'll build your workout plan and follow up soon.";
@@ -234,24 +231,22 @@ async function finishNewConnectionAccept({ request, trainerUid, onClientAdded, o
 }
 
 /**
- * Build the dark/light color bag used by the modal surface.
+ * Build the dark/light color bag used by the modal surface from nb tokens.
  * @param {boolean} isDark
  * @returns {object}
  */
 function buildListingThemeColors(isDark) {
-  const glassBorder = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)';
+  const palette = isDark ? darkColors : lightColors;
   return {
-    bg: isDark ? '#0A0A0F' : '#FFFFFF',
+    bg: palette.nbBackground,
     overlay: isDark ? 'rgba(0,0,0,0.62)' : 'rgba(0,0,0,0.28)',
-    text: isDark ? '#FFFFFF' : '#000000',
-    label: isDark ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.6)',
-    muted: isDark ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.55)',
-    glassBg: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)',
-    glassBorder,
-    acceptGrad: ['#FF6B9D', '#C084FC'],
-    clientName: '#C084FC',
-    shadow: isDark ? '#000' : 'rgba(0,0,0,0.3)',
-    cardBg: isDark ? 'rgba(10,10,15,0.92)' : 'rgba(255,255,255,0.92)',
+    text: palette.nbInk,
+    label: palette.nbMuted,
+    muted: palette.nbMuted,
+    glassBg: palette.nbSurfaceChip,
+    glassBorder: palette.nbBorder,
+    clientName: palette.nbInk,
+    cardBg: palette.nbSurface,
   };
 }
 
@@ -267,49 +262,6 @@ function InfoCell({ label, value, labelColor, textColor }) {
         {value || '—'}
       </Text>
     </View>
-  );
-}
-
-/**
- * Pressable that scales down slightly while the finger is down.
- * @param {{ onPress: Function, disabled: boolean, children: * }} props
- */
-function PressScale({ onPress, disabled, children }) {
-  // vocab: Animated.Value = a number the native driver can tween without re-rendering React.
-  const pressProgress = useRef(new Animated.Value(0)).current;
-
-  const handlePressIn = () => {
-    Animated.timing(pressProgress, {
-      toValue: 1,
-      duration: PRESS_IN_MS,
-      useNativeDriver: true,
-    }).start();
-  };
-
-  const handlePressOut = () => {
-    Animated.spring(pressProgress, {
-      toValue: 0,
-      speed: PRESS_SPRING_SPEED,
-      bounciness: PRESS_SPRING_BOUNCE,
-      useNativeDriver: true,
-    }).start();
-  };
-
-  const scale = pressProgress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [1, PRESS_SCALE_DOWN],
-  });
-
-  return (
-    <Pressable
-      disabled={disabled}
-      onPress={onPress}
-      onPressIn={handlePressIn}
-      onPressOut={handlePressOut}
-      style={{ flex: 1 }}
-    >
-      <Animated.View style={{ transform: [{ scale }] }}>{children}</Animated.View>
-    </Pressable>
   );
 }
 
@@ -474,14 +426,11 @@ const TrainerListingPopup = ({
   };
 
   const overlayBackground = isDark ? 'rgba(0,0,0,0.72)' : 'rgba(0,0,0,0.32)';
-  const cardBorderColor = isDark ? 'rgba(167,139,250,0.52)' : 'rgba(124,58,237,0.38)';
   const enterScale = enterProgress.interpolate({
     inputRange: [0, 1],
     outputRange: [ENTER_SCALE_START, 1],
   });
   const messageBody = request.message || 'No message provided.';
-  const rejectButtonBackground = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)';
-  const rejectSpinnerColor = isDark ? '#fff' : '#1e293b';
 
   return (
     <Modal visible={visible} transparent statusBarTranslucent animationType="none" onRequestClose={onClose}>
@@ -494,16 +443,7 @@ const TrainerListingPopup = ({
             transform: [{ scale: enterScale }],
           }}
         >
-          <View
-            style={[
-              styles.modalContainer,
-              {
-                backgroundColor: themeColors.cardBg,
-                borderWidth: 2,
-                borderColor: cardBorderColor,
-              },
-            ]}
-          >
+          <NbCard style={styles.modalContainer}>
             <Text style={[styles.modalTitle, { color: themeColors.text }]}>{modalTitle}</Text>
             <Text style={[styles.clientName, { color: themeColors.clientName }]}>{request.clientName}</Text>
 
@@ -527,44 +467,31 @@ const TrainerListingPopup = ({
             </View>
 
             <View style={styles.buttonGroup}>
-              <PressScale onPress={handleAddClient} disabled={anyBusy}>
-                <LinearGradient
-                  colors={themeColors.acceptGrad}
-                  start={GRADIENT_START}
-                  end={GRADIENT_END}
-                  style={styles.acceptButton}
-                >
-                  {acceptBusy ? (
-                    <ActivityIndicator color="#FFFFFF" size="small" />
-                  ) : (
-                    <Text style={styles.acceptText}>{acceptLabel}</Text>
-                  )}
-                </LinearGradient>
-              </PressScale>
-
-              <PressScale onPress={handleRejectClient} disabled={anyBusy}>
-                <View
-                  style={[
-                    styles.rejectButton,
-                    {
-                      backgroundColor: rejectButtonBackground,
-                      borderColor: themeColors.glassBorder,
-                    },
-                  ]}
-                >
-                  {rejectBusy ? (
-                    <ActivityIndicator color={rejectSpinnerColor} size="small" />
-                  ) : (
-                    <Text style={[styles.rejectText, { color: themeColors.text }]}>Reject</Text>
-                  )}
+              {acceptBusy ? (
+                <View style={styles.busySlot}>
+                  <ActivityIndicator color={themeColors.text} size="small" />
                 </View>
-              </PressScale>
+              ) : (
+                <NbButton variant="brand" onPress={handleAddClient} disabled={anyBusy} style={styles.flexBtn}>
+                  {acceptLabel}
+                </NbButton>
+              )}
+
+              {rejectBusy ? (
+                <View style={styles.busySlot}>
+                  <ActivityIndicator color={themeColors.text} size="small" />
+                </View>
+              ) : (
+                <NbButton variant="plain" onPress={handleRejectClient} disabled={anyBusy} style={styles.flexBtn}>
+                  Reject
+                </NbButton>
+              )}
             </View>
 
             <TouchableOpacity style={styles.closeButton} onPress={onClose} disabled={anyBusy} activeOpacity={0.8}>
               <Text style={[styles.closeButtonText, { color: themeColors.muted }]}>Close</Text>
             </TouchableOpacity>
-          </View>
+          </NbCard>
         </Animated.View>
       </View>
     </Modal>
@@ -578,21 +505,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalContainer: {
-    borderRadius: 24,
-    padding: 24,
+    padding: spacing.lg,
     width: '100%',
     maxWidth: 420,
     alignSelf: 'center',
   },
   modalTitle: {
+    fontFamily: 'SpaceGrotesk_700Bold',
     fontSize: 20,
-    fontWeight: '800',
     marginBottom: 10,
     textAlign: 'center',
   },
   clientName: {
+    fontFamily: 'SpaceGrotesk_700Bold',
     fontSize: 18,
-    fontWeight: '700',
     marginBottom: 18,
     textAlign: 'center',
   },
@@ -600,36 +526,38 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 10,
-    marginBottom: 16,
+    marginBottom: spacing.md,
   },
   infoCell: {
     width: '48%',
     minWidth: 140,
   },
   detailLabel: {
+    fontFamily: 'SpaceGrotesk_700Bold',
     fontSize: 12,
-    fontWeight: '600',
     marginBottom: 4,
     letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
   detailValue: {
+    fontFamily: 'Inter_400Regular',
     fontSize: 15,
   },
   messagePreview: {
-    borderWidth: 1,
+    borderWidth: nb.borderWidth,
     padding: 12,
-    borderRadius: 12,
+    borderRadius: borderRadius.nbChip,
     marginBottom: 20,
   },
   messageLabel: {
+    fontFamily: 'SpaceGrotesk_700Bold',
     fontSize: 12,
-    fontWeight: '600',
     marginBottom: 8,
     letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
   messageText: {
+    fontFamily: 'Inter_400Regular',
     fontSize: 15,
     lineHeight: 22,
     fontStyle: 'italic',
@@ -637,36 +565,28 @@ const styles = StyleSheet.create({
   buttonGroup: {
     flexDirection: 'row',
     gap: 10,
-    marginTop: 16,
-    marginBottom: 16,
+    marginTop: spacing.md,
+    marginBottom: spacing.md,
   },
-  acceptButton: {
-    height: 52,
-    borderRadius: 16,
+  flexBtn: {
+    flex: 1,
+  },
+  busySlot: {
+    flex: 1,
+    height: nb.minTouchTarget,
+    borderRadius: borderRadius.nbChip,
+    borderWidth: nb.borderWidth,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  acceptText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  rejectButton: {
-    height: 52,
-    borderRadius: 16,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  rejectText: {
-    fontSize: 15,
-    fontWeight: '700',
   },
   closeButton: {
     alignItems: 'center',
     paddingVertical: 8,
+    minHeight: nb.minTouchTarget,
+    justifyContent: 'center',
   },
   closeButtonText: {
+    fontFamily: 'Inter_500Medium',
     fontSize: 14,
   },
 });

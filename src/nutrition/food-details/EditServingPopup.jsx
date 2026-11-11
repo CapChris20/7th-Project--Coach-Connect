@@ -16,15 +16,12 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import ColorFieldFrame from '../food-cards/ColorFieldFrame';
+import { lightColors, darkColors, nb, gradients } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
-const ACCENT_PINK = '#FF6B9D';
-const ACCENT_PURPLE = '#8B5CF6';
-const SAVE_GRADIENT = [ACCENT_PINK, ACCENT_PURPLE];
-const RING_GRADIENT_DARK = ['#6D62CE', '#9468A8', '#4F87BA'];
-const RING_GRADIENT_LIGHT = ['#7D72D4', '#9E72A4', '#5F92C4'];
-const RING_GRADIENT_LOCATIONS = [0, 0.5, 1];
+// Use neobrutalist gradients from tokens
+const SAVE_GRADIENT = gradients.brand.colors;
 const DEFAULT_QUANTITY_LABEL = 'Quantity (servings)';
 const DEFAULT_AMOUNT_LABEL = 'Amount (oz)';
 const GRADIENT_TOP_LEFT = { x: 0, y: 0 };
@@ -40,24 +37,25 @@ const KEYBOARD_PAD_BEHAVIOR = Platform.OS === 'ios' ? 'padding' : undefined;
  * @param {boolean} isDark
  */
 function servingPopupColors(isDark) {
+  const nbColors = isDark ? darkColors : lightColors;
   return {
-    cardBackground: isDark ? '#1A1A24' : '#FFFFFF',
-    text: isDark ? '#FFFFFF' : '#0A0A0F',
-    muted: isDark ? '#A6A6A6' : '#666666',
-    dim: isDark ? 'rgba(255,255,255,0.45)' : 'rgba(10,10,15,0.45)',
-    inputFill: isDark ? '#12121A' : '#F5F5F5',
-    cancelBorder: isDark ? 'rgba(255,255,255,0.18)' : 'rgba(10,10,15,0.12)',
-    cancelBackground: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+    cardBackground: nbColors.nbSurface,
+    text: nbColors.nbInk,
+    muted: nbColors.nbMuted,
+    dim: nbColors.nbMuted,
+    inputFill: nbColors.nbSurfaceChip,
+    cancelBorder: nbColors.nbBorder,
+    cancelBackground: nbColors.nbSurfaceChip,
   };
 }
 
 /**
- * Outer rainbow ring. Dark and light use slightly different stops so the rim still reads on both.
+ * Outer ring uses neobrutalist ink gradient (purple→pink).
  * @param {boolean} isDark
  * @returns {string[]}
  */
 function cardRingColors(isDark) {
-  return isDark ? RING_GRADIENT_DARK : RING_GRADIENT_LIGHT;
+  return gradients.ink.colors;
 }
 
 /**
@@ -124,7 +122,6 @@ export default function EditServingPopup({
             colors={cardRingColors(isDark)}
             start={GRADIENT_TOP_LEFT}
             end={GRADIENT_BOTTOM_RIGHT}
-            locations={RING_GRADIENT_LOCATIONS}
             style={styles.cardRing}
           >
             <View style={[styles.cardInner, { backgroundColor: colors.cardBackground }]}>
@@ -200,7 +197,7 @@ const styles = StyleSheet.create({
   },
   cardRing: {
     borderRadius: 20,
-    padding: 1.5,
+    padding: nb.borderWidth,
     maxWidth: 400,
     width: '100%',
     alignSelf: 'center',
@@ -250,7 +247,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 14,
-    borderWidth: 1,
+    borderWidth: nb.borderWidth,
   },
   cancelText: {
     fontSize: 15,

@@ -3,17 +3,17 @@
 // Used by the trainer main screen around the rest of the trainer app.
 
 import React from 'react';
-import { ActivityIndicator, Platform, View, StyleSheet } from 'react-native';
+import { ActivityIndicator, Platform, View, StyleSheet, useColorScheme } from 'react-native';
 import { useSubscription } from './ProPlanSetup';
 import ProExpiredScreen from './ProExpiredScreen';
 import { TRAINER_PLATFORM_SUBSCRIPTION_ENABLED } from './proPlanSwitches';
+import { lightColors, darkColors } from '../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
 const ACCESS_EXPIRED = 'expired';
 const IOS_PLATFORM = 'ios';
 const LOADING_SPINNER_SIZE = 'large';
-const LOADING_SPINNER_COLOR = '#BE185D';
 
 // ===== HELPER FUNCTIONS =====
 
@@ -37,10 +37,12 @@ function isExpiredProAccess(accessState) {
 /**
  * @returns {JSX.Element}
  */
-function renderProGateLoading() {
+function ProGateLoading() {
+  const colorScheme = useColorScheme();
+  const palette = colorScheme === 'dark' ? darkColors : lightColors;
   return (
-    <View style={styles.loading}>
-      <ActivityIndicator size={LOADING_SPINNER_SIZE} color={LOADING_SPINNER_COLOR} />
+    <View style={[styles.loading, { backgroundColor: palette.nbBackground }]}>
+      <ActivityIndicator size={LOADING_SPINNER_SIZE} color={palette.nbInk} />
     </View>
   );
 }
@@ -64,7 +66,7 @@ export default function ProAccessCheck({ children, onOpenSettings, onOpenTerms, 
   }
 
   if (firestoreLoading) {
-    return renderProGateLoading();
+    return <ProGateLoading />;
   }
 
   // Trainers who never subscribed still get in. The lock runs only after a paid Pro period has ended.
@@ -86,6 +88,5 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#050508',
   },
 });

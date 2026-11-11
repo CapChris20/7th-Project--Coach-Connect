@@ -1,17 +1,18 @@
 // One meal section on the daily food log: title, items, Scan/Log buttons.
 // Flow: sum calories → list FoodItems (or empty copy) → Scan (optional) + Log.
 // Used by the daily nutrition log. mealKey is what the parent uses to know which meal was tapped.
+// Redesigned with neobrutalist components: NbCard, NbButton, thick borders, hard shadows.
 
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
-import { LinearGradient } from 'expo-linear-gradient';
 import FoodItem from '../food-details/FoodItem';
-import GlassPanel from '../../look-and-feel/GlassPanel';
+import NbCard from '../../look-and-feel/NbCard';
+import NbButton from '../../look-and-feel/NbButton';
+import { lightColors, darkColors } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
-const ACCENT = '#7C3AED';
 const EMPTY_CALORIES = 0;
 const DEFAULT_SERVING_SIZE = 1;
 
@@ -46,22 +47,19 @@ function foodCardFromLogItem(item) {
 // ===== MAIN FUNCTION =====
 
 /**
- * Glass meal card with a calorie total, logged foods, and Scan/Log actions.
+ * Neobrutalist meal card with thick border, hard shadow, and NbButton actions.
+ * vocab: NbCard = card with thick outline and offset shadow; NbButton = gradient or plain button.
  * @param {{ mealType: string, mealKey: string, items?: Array, onAddPress: Function, onDeleteItem: Function, onAddScanner?: Function }} props
  */
 export default function MealCard({ mealType, mealKey, items = [], onAddPress, onDeleteItem, onAddScanner }) {
-  const { colors, spacing, isDark } = useTheme();
-  const styles = createStyles(spacing, colors, isDark);
+  const { isDark } = useTheme();
+  const colors = isDark ? darkColors : lightColors;
+  const styles = createStyles(colors);
   const hasItems = items.length > 0;
   const mealTotal = totalMealCalories(items);
 
   return (
-    <GlassPanel
-      transmission={0.88}
-      roughness={0.2}
-      tint={isDark ? '#111111' : '#FFFFFF'}
-      style={styles.card}
-    >
+    <NbCard style={styles.card}>
       <View style={styles.cardHeader}>
         <Text style={styles.mealTitle} selectable={true}>{mealType}</Text>
         {hasItems && (
@@ -88,44 +86,34 @@ export default function MealCard({ mealType, mealKey, items = [], onAddPress, on
 
       <View style={styles.buttonRow}>
         {onAddScanner && (
-          <TouchableOpacity
-            style={[styles.actionButton, styles.scanButton]}
+          <NbButton
+            variant="plain"
+            sm
             onPress={() => onAddScanner(mealKey)}
-            activeOpacity={0.7}
+            style={styles.actionButton}
           >
-            {/* ICON GOES HERE — scan */}
-            <Text style={styles.scanButtonText} selectable={true}>Scan</Text>
-          </TouchableOpacity>
+            Scan
+          </NbButton>
         )}
-        <TouchableOpacity
-          style={styles.actionButton}
+        <NbButton
+          variant="brand"
+          sm
           onPress={() => onAddPress(mealKey)}
-          activeOpacity={0.7}
+          style={styles.actionButton}
         >
-          <LinearGradient
-            colors={[ACCENT, colors.primary]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.logButtonGradient}
-          >
-            {/* ICON GOES HERE — log */}
-            <Text style={styles.logButtonText} selectable={true}>Log</Text>
-          </LinearGradient>
-        </TouchableOpacity>
+          Log Food
+        </NbButton>
       </View>
-    </GlassPanel>
+    </NbCard>
   );
 }
 
-const createStyles = (spacing, colors, isDark) =>
+// vocab: createStyles = factory function that injects theme colors into StyleSheet.create
+const createStyles = (colors) =>
   StyleSheet.create({
     card: {
-      backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.6)',
-      borderRadius: 24,
-      padding: 20,
+      padding: 16,
       marginBottom: 16,
-      borderWidth: 1,
-      borderColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.8)',
     },
     cardHeader: {
       flexDirection: 'row',
@@ -134,14 +122,15 @@ const createStyles = (spacing, colors, isDark) =>
       marginBottom: 16,
     },
     mealTitle: {
+      fontFamily: 'SpaceGrotesk_700Bold',
       fontSize: 18,
-      fontWeight: '700',
-      color: isDark ? '#FFFFFF' : (colors?.text ?? '#111827'),
+      color: colors.nbInk,
     },
     mealTotal: {
+      fontFamily: 'Inter_600SemiBold',
       fontSize: 14,
-      fontWeight: '600',
-      color: isDark ? '#9CA3AF' : (colors?.textSecondary ?? '#3C3C43'),
+      color: colors.nbMuted,
+      fontVariant: ['tabular-nums'],
     },
     itemsList: {
       marginBottom: 12,
@@ -151,44 +140,16 @@ const createStyles = (spacing, colors, isDark) =>
       alignItems: 'center',
     },
     emptyText: {
+      fontFamily: 'Inter_500Medium',
       fontSize: 14,
-      color: isDark ? 'rgba(255,255,255,0.6)' : 'rgba(26,26,26,0.6)',
-      fontWeight: '600',
+      color: colors.nbMuted,
     },
     buttonRow: {
       flexDirection: 'row',
-      gap: 12,
+      gap: 10,
+      marginTop: 8,
     },
     actionButton: {
       flex: 1,
-      alignItems: 'center',
-      justifyContent: 'center',
-      borderRadius: 14,
-      height: 44,
-      overflow: 'hidden',
-    },
-    scanButton: {
-      backgroundColor: 'transparent',
-      borderWidth: 1,
-      borderColor: ACCENT,
-    },
-    scanButtonText: {
-      fontSize: 13,
-      fontWeight: '800',
-      color: ACCENT,
-      letterSpacing: 0.2,
-    },
-    logButtonText: {
-      fontSize: 13,
-      fontWeight: '800',
-      color: '#FFFFFF',
-      letterSpacing: 0.2,
-    },
-    logButtonGradient: {
-      width: '100%',
-      height: '100%',
-      alignItems: 'center',
-      justifyContent: 'center',
-      borderRadius: 14,
     },
   });

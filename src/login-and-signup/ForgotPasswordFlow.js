@@ -16,16 +16,16 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { auth } from '../app-start/cloudConnection';
 import { useTheme } from '../look-and-feel/lightDarkMode';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import NbButton from '../look-and-feel/NbButton';
+import NbCard from '../look-and-feel/NbCard';
+import { nb } from '../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
-const ACCENT = ['#FF6B9D', '#C084FC'];
-const CTA_RING = ['#C1265A', '#D84315'];
 const AUTH_ERROR_INVALID_EMAIL = 'auth/invalid-email';
 const AUTH_ERROR_MISSING_EMAIL = 'auth/missing-email';
 const KEYBOARD_OFFSET_IOS = 10;
@@ -65,17 +65,6 @@ function scrollBottomPadding(bottomInset) {
   return Math.max(bottomInset, SCROLL_BOTTOM_PAD_MIN) + SCROLL_BOTTOM_PAD_EXTRA;
 }
 
-function landingPalette(isDark) {
-  return {
-    backgroundColor: isDark ? '#0A0A0F' : '#F5F5F7',
-    textMain: isDark ? '#FFFFFF' : '#0A0A0F',
-    textSub: isDark ? 'rgba(255,255,255,0.62)' : 'rgba(15,23,42,0.58)',
-    glassInner: isDark ? 'rgba(10,10,15,0.78)' : 'rgba(255,255,255,0.92)',
-    inputBorder: isDark ? 'rgba(255,255,255,0.16)' : 'rgba(15,23,42,0.14)',
-    labelColor: isDark ? 'rgba(255,255,255,0.72)' : 'rgba(15,23,42,0.72)',
-  };
-}
-
 // ===== MAIN FUNCTION =====
 
 /**
@@ -83,7 +72,7 @@ function landingPalette(isDark) {
  * @param {{ navigation?: { goBack?: Function, navigate?: Function } }} props
  */
 export default function ResetPasswordScreen({ navigation }) {
-  const { isDark, spacing } = useTheme();
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
 
   const [email, setEmail] = useState('');
@@ -93,15 +82,6 @@ export default function ResetPasswordScreen({ navigation }) {
 
   const onBack = navigation?.goBack ?? navigation?.navigate;
   const emailRegex = useMemo(() => /^[^\s@]+@[^\s@]+\.[^\s@]+$/, []);
-
-  const {
-    backgroundColor,
-    textMain,
-    textSub,
-    glassInner,
-    inputBorder,
-    labelColor,
-  } = landingPalette(isDark);
 
   const handleReset = async () => {
     setErrorMessage('');
@@ -126,115 +106,101 @@ export default function ResetPasswordScreen({ navigation }) {
   };
 
   return (
-    <View style={[styles.root, { backgroundColor }]}>
-      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
+    <View style={[styles.root, { backgroundColor: colors.nbBackground }]}>
+      <StatusBar barStyle={colors.nbInk === '#F3EEFF' ? 'light-content' : 'dark-content'} />
 
       <SafeAreaView style={{ flex: 1 }} edges={['top', 'left', 'right']}>
-      <KeyboardAvoidingView
-        behavior={keyboardAvoidBehavior()}
-        style={{ flex: 1 }}
-        keyboardVerticalOffset={keyboardVerticalOffset()}
-      >
-        <ScrollView
+        <KeyboardAvoidingView
+          behavior={keyboardAvoidBehavior()}
           style={{ flex: 1 }}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={{
-            flexGrow: 1,
-            justifyContent: 'center',
-            paddingHorizontal: 22,
-            paddingTop: spacing.sm,
-            paddingBottom: scrollBottomPadding(insets.bottom),
-          }}
-          keyboardShouldPersistTaps="handled"
+          keyboardVerticalOffset={keyboardVerticalOffset()}
         >
-          <View style={styles.formColumn}>
-          <View style={styles.backCenterWrap}>
-            <TouchableOpacity
-              onPress={() => onBack?.()}
-              activeOpacity={0.8}
-              style={[
-                styles.backBtn,
-                {
-                  borderColor: inputBorder,
-                  backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.9)',
-                },
-              ]}
-              hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
-              accessibilityRole="button"
-              accessibilityLabel="Go back"
-            >
-              <Ionicons name="chevron-back" size={22} color={textMain} />
-            </TouchableOpacity>
-          </View>
+          <ScrollView
+            style={{ flex: 1 }}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{
+              flexGrow: 1,
+              justifyContent: 'center',
+              paddingHorizontal: 22,
+              paddingTop: 16,
+              paddingBottom: scrollBottomPadding(insets.bottom),
+            }}
+            keyboardShouldPersistTaps="handled"
+          >
+            <View style={styles.formColumn}>
+              <View style={styles.backCenterWrap}>
+                <TouchableOpacity
+                  onPress={() => onBack?.()}
+                  activeOpacity={0.8}
+                  style={[
+                    styles.backBtn,
+                    {
+                      borderColor: colors.nbBorder,
+                      backgroundColor: colors.nbSurface,
+                      borderWidth: nb.borderWidth,
+                    },
+                  ]}
+                  hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Go back"
+                >
+                  <Ionicons name="chevron-back" size={22} color={colors.nbInk} />
+                </TouchableOpacity>
+              </View>
 
-          <LinearGradient colors={ACCENT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.heroRing}>
-            <View style={[styles.heroInner, { backgroundColor: glassInner }]}>
-              <Text style={[styles.kicker, { color: textSub }]}>PASSWORD</Text>
-              <Text style={[styles.title, { color: textMain }]}>Reset your password</Text>
-              <Text style={[styles.subtitle, { color: textSub }]}>
-                Enter your email and we'll send you a secure link to choose a new password.
-              </Text>
+              <NbCard style={styles.heroCard}>
+                <Text style={[styles.kicker, { color: colors.nbMuted }]}>PASSWORD</Text>
+                <Text style={[styles.title, { color: colors.nbInk }]}>Reset your password</Text>
+                <Text style={[styles.subtitle, { color: colors.nbMuted }]}>
+                  Enter your email and we'll send you a secure link to choose a new password.
+                </Text>
+              </NbCard>
+
+              <Text style={[styles.fieldLabel, { color: colors.nbInk }]}>EMAIL</Text>
+              <View
+                style={[
+                  styles.inputShell,
+                  {
+                    borderColor: errorMessage ? '#F87171' : colors.nbBorder,
+                    backgroundColor: colors.nbSurface,
+                    borderWidth: nb.borderWidth,
+                  },
+                ]}
+              >
+                <TextInput
+                  style={[styles.input, { color: colors.nbInk }]}
+                  placeholder="you@example.com"
+                  placeholderTextColor={colors.nbMuted}
+                  value={email}
+                  onChangeText={(nextEmail) => {
+                    setEmail(nextEmail);
+                    if (errorMessage) setErrorMessage('');
+                  }}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  editable={!isSubmitting}
+                />
+              </View>
+
+              {!!errorMessage && <Text style={styles.errorText}>{errorMessage}</Text>}
+              {!!successMessage && <Text style={styles.successText}>{successMessage}</Text>}
+
+              <NbButton
+                variant="brand"
+                onPress={handleReset}
+                disabled={isSubmitting}
+                style={styles.submitButton}
+              >
+                {isSubmitting ? 'SENDING...' : 'SEND RESET LINK'}
+              </NbButton>
+
+              <TouchableOpacity activeOpacity={0.85} onPress={() => onBack?.()} style={styles.textLinkHit}>
+                <Text style={[styles.textLink, { color: '#FF6B9D' }]}>Back to sign in</Text>
+              </TouchableOpacity>
             </View>
-          </LinearGradient>
-
-          <Text style={[styles.fieldLabel, { color: labelColor }]}>EMAIL</Text>
-          <View
-            style={[
-              styles.inputShell,
-              {
-                borderColor: errorMessage ? '#F87171' : inputBorder,
-                backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.65)',
-              },
-            ]}
-          >
-            <TextInput
-              style={[styles.input, { color: textMain }]}
-              placeholder="you@example.com"
-              placeholderTextColor={isDark ? 'rgba(255,255,255,0.35)' : 'rgba(15,23,42,0.38)'}
-              value={email}
-              onChangeText={(nextEmail) => {
-                setEmail(nextEmail);
-                if (errorMessage) setErrorMessage('');
-              }}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-              editable={!isSubmitting}
-            />
-          </View>
-
-          {!!errorMessage && <Text style={styles.errorText}>{errorMessage}</Text>}
-          {!!successMessage && <Text style={styles.successText}>{successMessage}</Text>}
-
-          <LinearGradient
-            colors={CTA_RING}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={[styles.ctaRing, { opacity: isSubmitting ? 0.75 : 1 }]}
-          >
-            <TouchableOpacity
-              activeOpacity={0.88}
-              onPress={handleReset}
-              disabled={isSubmitting}
-              style={[
-                styles.ctaInner,
-                { backgroundColor: isDark ? 'rgba(10,10,15,0.94)' : 'rgba(255,255,255,0.98)' },
-              ]}
-            >
-              {isSubmitting ? (
-                <ActivityIndicator color={isDark ? '#FFFFFF' : '#0A0A0F'} />
-              ) : (
-                <Text style={[styles.ctaText, { color: isDark ? '#FFFFFF' : '#0A0A0F' }]}>Send reset link</Text>
-              )}
-            </TouchableOpacity>
-          </LinearGradient>
-
-          <TouchableOpacity activeOpacity={0.85} onPress={() => onBack?.()} style={styles.textLinkHit}>
-            <Text style={[styles.textLink, { color: isDark ? '#C084FC' : '#7C3AED' }]}>Back to sign in</Text>
-          </TouchableOpacity>
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+          </ScrollView>
+        </KeyboardAvoidingView>
       </SafeAreaView>
     </View>
   );
@@ -258,21 +224,12 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  heroRing: {
-    borderRadius: 22,
-    padding: 3,
+  heroCard: {
     marginBottom: 28,
-  },
-  heroInner: {
-    borderRadius: 19,
-    paddingVertical: 22,
-    paddingHorizontal: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
+    padding: 20,
   },
   kicker: {
     fontSize: 11,
@@ -299,7 +256,6 @@ const styles = StyleSheet.create({
   },
   inputShell: {
     borderRadius: 16,
-    borderWidth: 1.5,
     paddingHorizontal: 16,
     paddingVertical: 14,
   },
@@ -322,22 +278,8 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
-  ctaRing: {
+  submitButton: {
     marginTop: 22,
-    borderRadius: 16,
-    padding: 2,
-  },
-  ctaInner: {
-    borderRadius: 14,
-    paddingVertical: 15,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 52,
-  },
-  ctaText: {
-    fontSize: 16,
-    fontWeight: '900',
-    letterSpacing: 0.2,
   },
   textLinkHit: {
     marginTop: 22,

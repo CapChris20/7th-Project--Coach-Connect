@@ -16,6 +16,9 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
+import { NbButton } from '../../look-and-feel/NbButton';
+import { NbCard } from '../../look-and-feel/NbCard';
+import { NbSheet } from '../../look-and-feel/NbSheet';
 import { postCoachingCharge } from './chargeCard';
 import {
   getStripeNativeModule,
@@ -244,7 +247,7 @@ function PayTrainerPopup({ trainerId, trainerName, onClose, onSuccess }) {
 
   if (success) {
     return (
-      <View style={styles.sheet}>
+      <NbSheet>
         <View style={styles.successIconWrap}>
           <Ionicons name="checkmark-circle" size={52} color="#30D158" />
         </View>
@@ -252,14 +255,14 @@ function PayTrainerPopup({ trainerId, trainerName, onClose, onSuccess }) {
         <Text style={styles.successLine}>You paid {formatMoney(success.amount)}</Text>
         <Text style={styles.successLine}>Coach receives {formatMoney(success.trainerGets)}</Text>
         <Text style={styles.successSub}>Saved to your payment history.</Text>
-      </View>
+      </NbSheet>
     );
   }
 
   const payDisabled = loading || (CardField && !cardReady);
 
   return (
-    <View style={styles.sheet}>
+    <NbSheet>
       <ScrollView
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
@@ -356,60 +359,35 @@ function PayTrainerPopup({ trainerId, trainerName, onClose, onSuccess }) {
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
-        <TouchableOpacity
-          activeOpacity={0.9}
-          onPress={handlePayNow}
-          disabled={payDisabled}
-          style={styles.payWrap}
-        >
-          <LinearGradient
-            colors={['#BE185D', '#C2410C']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={[styles.payBtn, payDisabled && styles.payBtnDisabled]}
+        <View style={styles.payWrap}>
+          <NbButton
+            variant="brand"
+            onPress={handlePayNow}
+            disabled={payDisabled}
           >
             {loading ? (
-              <ActivityIndicator color="#FFFFFF" />
+              <ActivityIndicator color={colors.nbInk} />
             ) : (
-              <Text style={styles.payText}>
-                {error
-                  ? 'Try again'
-                  : amountOk
-                    ? `Pay ${formatMoney(numericAmount)}`
-                    : 'Pay now'}
-              </Text>
+              error
+                ? 'Try again'
+                : amountOk
+                  ? `Pay ${formatMoney(numericAmount)}`
+                  : 'Pay now'
             )}
-          </LinearGradient>
-        </TouchableOpacity>
+          </NbButton>
+        </View>
 
-        <TouchableOpacity style={styles.cancelBtn} onPress={handleCancel} disabled={loading}>
-          <Text style={styles.cancelText}>Cancel</Text>
-        </TouchableOpacity>
+        <NbButton variant="plain" onPress={handleCancel} disabled={loading}>
+          Cancel
+        </NbButton>
       </ScrollView>
-    </View>
+    </NbSheet>
   );
 }
 
 function makeStyles(colors, isDark) {
-  const textPrimary = colors.textPrimary || colors.text || '#FFFFFF';
+  const textPrimary = colors.nbInk;
   return StyleSheet.create({
-    sheet: {
-      borderTopLeftRadius: 24,
-      borderTopRightRadius: 24,
-      paddingTop: 22,
-      paddingHorizontal: 20,
-      paddingBottom: Platform.OS === 'ios' ? 28 : 20,
-      backgroundColor: isDark ? '#141416' : colors.surface,
-      ...Platform.select({
-        ios: {
-          shadowColor: '#000',
-          shadowOpacity: 0.35,
-          shadowRadius: 24,
-          shadowOffset: { width: 0, height: -4 },
-        },
-        android: { elevation: 10 },
-      }),
-    },
     scrollContent: {
       paddingBottom: 16,
     },
@@ -438,10 +416,10 @@ function makeStyles(colors, isDark) {
     amountRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      borderRadius: 16,
-      backgroundColor: isDark ? '#1C1C1E' : '#F2F2F7',
-      borderWidth: 1,
-      borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+      borderRadius: 14,
+      backgroundColor: colors.nbSurface,
+      borderWidth: 2.5,
+      borderColor: colors.nbBorder,
       paddingHorizontal: 16,
       marginBottom: 10,
     },
@@ -469,13 +447,13 @@ function makeStyles(colors, isDark) {
       paddingVertical: 12,
       borderRadius: 12,
       alignItems: 'center',
-      backgroundColor: isDark ? '#1C1C1E' : '#F2F2F7',
-      borderWidth: 1.5,
-      borderColor: 'transparent',
+      backgroundColor: colors.nbSurfaceChip,
+      borderWidth: 2.5,
+      borderColor: colors.nbBorder,
     },
     quickBtnActive: {
-      borderColor: '#BE185D',
-      backgroundColor: isDark ? 'rgba(190,24,93,0.18)' : 'rgba(190,24,93,0.1)',
+      borderColor: colors.nbBorder,
+      backgroundColor: colors.nbSurface,
     },
     quickBtnText: {
       fontSize: 15,
@@ -495,20 +473,11 @@ function makeStyles(colors, isDark) {
     },
     stripeLightPanel: {
       backgroundColor: '#FFFFFF',
-      borderRadius: 16,
+      borderRadius: 14,
       paddingHorizontal: 12,
       paddingVertical: Platform.OS === 'ios' ? 10 : 6,
-      borderWidth: 1,
-      borderColor: 'rgba(0,0,0,0.08)',
-      ...Platform.select({
-        ios: {
-          shadowColor: '#000',
-          shadowOpacity: 0.08,
-          shadowRadius: 8,
-          shadowOffset: { width: 0, height: 2 },
-        },
-        android: { elevation: 2 },
-      }),
+      borderWidth: 2.5,
+      borderColor: colors.nbBorder,
     },
     cardField: {
       width: '100%',
@@ -533,9 +502,11 @@ function makeStyles(colors, isDark) {
       textTransform: 'capitalize',
     },
     cardFallback: {
-      borderRadius: 16,
+      borderRadius: 14,
       padding: 16,
-      backgroundColor: isDark ? '#1C1C1E' : '#F2F2F7',
+      backgroundColor: colors.nbSurface,
+      borderWidth: 2.5,
+      borderColor: colors.nbBorder,
     },
     cardFallbackText: {
       color: colors.textSecondary,
@@ -550,29 +521,7 @@ function makeStyles(colors, isDark) {
     },
     payWrap: {
       marginTop: 18,
-    },
-    payBtn: {
-      height: 56,
-      borderRadius: 16,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    payBtnDisabled: {
-      opacity: 0.5,
-    },
-    payText: {
-      color: '#FFFFFF',
-      fontSize: 17,
-      fontWeight: '800',
-    },
-    cancelBtn: {
-      paddingVertical: 14,
-      alignItems: 'center',
-    },
-    cancelText: {
-      color: colors.textSecondary,
-      fontSize: 15,
-      fontWeight: '600',
+      marginBottom: 8,
     },
     successIconWrap: {
       alignItems: 'center',

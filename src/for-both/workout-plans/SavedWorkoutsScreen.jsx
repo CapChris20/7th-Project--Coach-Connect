@@ -2,7 +2,9 @@
 // Flow: load plans from Firestore → normalize → search/filter → show cards or empty state.
 // Used by trainer client tabs and the client workout library. Layout paints; the export wires data.
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
-import {
+import { useTheme } from "../../look-and-feel/lightDarkMode";
+import { NbCard } from "../../look-and-feel/NbCard";
+import { NbButton } from "../../look-and-feel/NbButton";import {
   View,
   Text,
   ScrollView,
@@ -433,7 +435,7 @@ const FeaturedPlanCard = ({ plan, isDark, onContinue, onViewDetails, onOptions }
               { icon: 'barbell-outline', val: `${plan.daysPerWeek} days/wk` },
               { icon: 'time-outline', val: `${plan.sessionMinutes}m/session` },
             ].map((m) => (
-              <View key={m.icon} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.card }}>
+              <View key={m.icon} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, borderWidth: 2.5, borderColor: theme.border, backgroundColor: theme.card }}>
                 <Ionicons name={m.icon} size={13} color={theme.textMuted} />
                 <Text style={{ fontSize: 12, fontWeight: '700', color: theme.textMuted }}>{m.val}</Text>
               </View>
@@ -528,7 +530,7 @@ const HistoryPlanCard = ({ plan, isDark, onPress, onOptions }) => {
         styles.historyCard,
         {
           backgroundColor: theme.surface,
-          borderWidth: 1,
+          borderWidth: 2.5,
           borderColor: theme.border,
         },
       ]}
@@ -599,7 +601,7 @@ const HistoryPlanCard = ({ plan, isDark, onPress, onOptions }) => {
               styles.historyFocusChipInner,
               {
                 backgroundColor: isDark ? 'rgba(190,24,93,0.14)' : 'rgba(255,107,157,0.1)',
-                borderWidth: 1,
+                borderWidth: 2.5,
                 borderColor: isDark ? 'rgba(190,24,93,0.35)' : 'rgba(190,24,93,0.22)',
               },
             ]}
@@ -722,7 +724,7 @@ function PlansLibraryEmptyHero({
           styles.emptyHeroInner,
           {
             backgroundColor: innerBg,
-            borderWidth: 1,
+            borderWidth: 2.5,
             borderColor: theme.border,
             borderBottomWidth: 4,
             borderBottomColor: '#f59e0b',
@@ -919,7 +921,7 @@ function SavedWorkoutsScreenLayout({
                 styles.loadErrorInner,
                 {
                   backgroundColor: theme.surface,
-                  borderWidth: 1,
+                  borderWidth: 2.5,
                   borderColor: theme.border,
                   borderLeftWidth: 4,
                   borderLeftColor: '#ef4444',
@@ -1243,7 +1245,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 12,
-    borderWidth: 1,
+    borderWidth: 2.5,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1257,7 +1259,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 10,
     borderRadius: 12.5,
-    borderWidth: 1,
+    borderWidth: 2.5,
     flexShrink: 1,
   },
   historyStatText: { fontSize: 13, fontWeight: '800', flexShrink: 1 },
@@ -1282,7 +1284,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 999,
-    borderWidth: 1,
+    borderWidth: 2.5,
     maxWidth: 160,
   },
   historyMuscleDot: {
@@ -1296,7 +1298,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 14,
     borderRadius: 999,
-    borderWidth: 1,
+    borderWidth: 2.5,
   },
   historyOpenBtnGrad: {
     borderRadius: 14,
@@ -1351,7 +1353,7 @@ const styles = StyleSheet.create({
 
   // Metrics
   metricsGrid: { flexDirection: 'row', gap: 10 },
-  metricCard:  { flex: 1, paddingVertical: 12, paddingHorizontal: 10, borderRadius: 12, borderWidth: 1, gap: 5 },
+  metricCard:  { flex: 1, paddingVertical: 12, paddingHorizontal: 10, borderRadius: 12, borderWidth: 2.5, gap: 5 },
   metricValue: { fontSize: 17, fontWeight: '700' },
   metricLabel: { fontSize: 10, fontWeight: '600', letterSpacing: 0.8 },
 
@@ -1359,14 +1361,14 @@ const styles = StyleSheet.create({
   weekSection:  { gap: 8 },
   weekLabel:    { fontSize: 10, fontWeight: '700', letterSpacing: 2 },
   weekDots:     { flexDirection: 'row', gap: 5 },
-  weekDot:      { flex: 1, height: 34, borderRadius: 8, borderWidth: 1, justifyContent: 'center', alignItems: 'center' },
+  weekDot:      { flex: 1, height: 34, borderRadius: 8, borderWidth: 2.5, justifyContent: 'center', alignItems: 'center' },
   weekDayLabel: { fontSize: 10, fontWeight: '700' },
 
   // Primary / secondary buttons
   primaryButtonGradient: { borderRadius: 20 },
   primaryButton:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12, paddingHorizontal: 16 },
   primaryButtonLabel: { fontSize: 14, fontWeight: '700', color: '#FFF' },
-  secondaryButton:    { paddingVertical: 12, paddingHorizontal: 16, borderRadius: 20, borderWidth: 1, alignItems: 'center' },
+  secondaryButton:    { paddingVertical: 12, paddingHorizontal: 16, borderRadius: 20, borderWidth: 2.5, alignItems: 'center' },
   secondaryButtonLabel: { fontSize: 14, fontWeight: '600' },
 
   // Progress ring
@@ -1376,7 +1378,7 @@ const styles = StyleSheet.create({
   progressRingInner:   { width: 110, height: 110, borderRadius: 55, borderWidth: 3, justifyContent: 'center', alignItems: 'center' },
   progressValue:       { fontSize: 28, fontWeight: '700' },
   progressLabel:       { fontSize: 11, fontWeight: '600', letterSpacing: 0.8, marginTop: 2 },
-  weeksLeftCard:       { paddingVertical: 10, paddingHorizontal: 16, borderRadius: 16, borderWidth: 1, alignItems: 'center' },
+  weeksLeftCard:       { paddingVertical: 10, paddingHorizontal: 16, borderRadius: 16, borderWidth: 2.5, alignItems: 'center' },
   weeksLeftValue:      { fontSize: 22, fontWeight: '700' },
   weeksLeftLabel:      { fontSize: 10, fontWeight: '600', letterSpacing: 0.8, marginTop: 2 },
 
@@ -1392,7 +1394,7 @@ const styles = StyleSheet.create({
   planCardMetricPill:   { paddingVertical: 5, paddingHorizontal: 10, borderRadius: 12, borderWidth: 1 },
   planCardMetricText:   { fontSize: 11, fontWeight: '600' },
   planCardActions:      { flexDirection: 'row', gap: 8, marginTop: 4 },
-  planCardButton:       { flex: 1, paddingVertical: 10, borderRadius: 12, borderWidth: 1, alignItems: 'center' },
+  planCardButton:       { flex: 1, paddingVertical: 10, borderRadius: 12, borderWidth: 2.5, alignItems: 'center' },
   planCardButtonLabel:  { fontSize: 12, fontWeight: '600' },
   planCardButtonGradient: { flex: 1, borderRadius: 12 },
   planCardButtonPrimary: { paddingVertical: 10, paddingHorizontal: 16, alignItems: 'center' },
@@ -1424,7 +1426,7 @@ const styles = StyleSheet.create({
   emptyHeroCtaText: { fontSize: 16, fontWeight: '900', color: '#FFFFFF', letterSpacing: -0.2 },
   emptyFilterCard: {
     borderRadius: 20,
-    borderWidth: 1,
+    borderWidth: 2.5,
     paddingVertical: 28,
     paddingHorizontal: 20,
     alignItems: 'center',

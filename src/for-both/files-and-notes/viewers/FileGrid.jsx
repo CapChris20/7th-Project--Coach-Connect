@@ -4,9 +4,9 @@
 
 import React from 'react';
 import { View, Text, TouchableOpacity, Pressable, StyleSheet, Image, Platform, Animated } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { useTheme } from '../../../look-and-feel/lightDarkMode';import { LinearGradient } from 'expo-linear-gradient';
 import { WebView } from 'react-native-webview';
-import { Video, ResizeMode } from 'expo-av';
+import { useTheme } from '../../../look-and-feel/lightDarkMode';import { Video, ResizeMode } from 'expo-av';
 import {
   FileText,
   FileSpreadsheet,

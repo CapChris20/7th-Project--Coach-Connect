@@ -1,39 +1,22 @@
 // Today's calorie ring on the client home screen: eaten vs goal, remaining, Log food.
 // Flow: read current/goal → clamp progress → animate the ring → Log food or Open Nutrition.
 // Used by the client home dashboard under the TODAY heading.
+//
+// vocab: neobrutalist = thick borders, hard shadows, gradient only for primary moment per screen
 
 import React, { useMemo, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Animated, Easing } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Animated, Easing, useColorScheme } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
+import NbCard from '../../look-and-feel/NbCard';
+import NbButton from '../../look-and-feel/NbButton';
+import { lightColors, darkColors, gradients } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
-const BORDER_GRADIENT = ['#06B6D4', '#C084FC', '#FF6B9D'];
 /** Dark pink → dark orange — trainer card shell and CTAs */
 export const TRAINER_BORDER_GRADIENT = ['#BE185D', '#C2410C'];
-
-const CC = {
-  bg: '#0A0A0F',
-  cardBg: '#141419',
-  textPrimary: '#FFFFFF',
-  textSecondary: 'rgba(255,255,255,0.65)',
-  textTertiary: 'rgba(255,255,255,0.4)',
-  pink: '#FF6B9D',
-  orange: '#F97316',
-  cyan: '#06B6D4',
-  purple: '#C084FC',
-  green: '#10B981',
-};
-
-const CC_LIGHT = {
-  cardBg: '#FAFAFC',
-  textPrimary: '#0F172A',
-  textSecondary: 'rgba(15,23,42,0.6)',
-  textTertiary: 'rgba(15,23,42,0.42)',
-  track: 'rgba(15,23,42,0.08)',
-};
 
 const RING_SIZE = 102;
 const STROKE = 8;
@@ -52,66 +35,25 @@ function clamp01(progress) {
   return Math.max(0, Math.min(1, progress));
 }
 
-function themeForMode(isDark) {
-  return isDark ? CC : { ...CC, ...CC_LIGHT };
-}
-
 function caloriesProgressRatio(currentCalories, goalCalories) {
   const eaten = Number(currentCalories ?? 0);
   const goal = Number(goalCalories ?? DEFAULT_CALORIE_GOAL);
   return goal > 0 ? eaten / goal : 0;
 }
 
-/**
- * Gradient rim around a home card. The inner pad is where the ring / copy sit.
- * @param {object} props
- * @param {boolean} props.isDark
- * @param {import('react').ReactNode} props.children
- * @param {object} [props.style]
- * @param {string[]} [props.borderColors]
- */
-export const ColorBorderShell = ({ isDark, children, style, borderColors = BORDER_GRADIENT }) => (
-  <LinearGradient
-    colors={borderColors}
-    start={{ x: 0, y: 0 }}
-    end={{ x: 1, y: 1 }}
-    style={[
-      {
-        borderRadius: 22,
-        padding: 1.5,
-        shadowColor: borderColors[0] || '#BE185D',
-        shadowOffset: { width: 0, height: 10 },
-        shadowOpacity: isDark ? 0.35 : 0.22,
-        shadowRadius: 18,
-        elevation: 8,
-      },
-      style,
-    ]}
-  >
-    <View
-      style={{
-        borderRadius: 20.5,
-        overflow: 'hidden',
-        backgroundColor: isDark ? '#0E0C16' : '#FFFFFF',
-        borderWidth: isDark ? 0 : 1,
-        borderColor: isDark ? 'transparent' : 'rgba(15,23,42,0.06)',
-      }}
-    >
-      <View style={{ padding: 14 }}>{children}</View>
-    </View>
-  </LinearGradient>
-);
-
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
-function CaloriesHeroCard({ isDark, current, goal, progress, onPress, onPressLogFood }) {
+function CaloriesHeroCard({ current, goal, progress, onPress, onPressLogFood }) {
+  const colorScheme = useColorScheme();
+  const colors = colorScheme === 'dark' ? darkColors : lightColors;
+  const isDark = colorScheme === 'dark';
+  
   const percentComplete = Math.round(clamp01(progress) * PERCENT_SCALE);
   const caloriesEaten = Math.round(Number(current || 0));
   const caloriesGoal = Math.round(Number(goal || DEFAULT_CALORIE_GOAL));
   const caloriesRemaining = Math.max(0, caloriesGoal - caloriesEaten);
   const clampedProgress = clamp01(progress);
 
-  const themeColors = themeForMode(isDark);
   const hairline = isDark ? 'rgba(255,255,255,0.10)' : 'rgba(15,23,42,0.10)';
   const trackStroke = isDark ? 'rgba(255,255,255,0.2)' : 'rgba(15,23,42,0.12)';
   // vocab: toString(36) = base-36 id so two rings on screen do not share one SVG gradient id.
@@ -140,111 +82,110 @@ function CaloriesHeroCard({ isDark, current, goal, progress, onPress, onPressLog
   const logHandler = typeof onPressLogFood === 'function' ? onPressLogFood : onPress;
 
   return (
-    <ColorBorderShell isDark={isDark} style={cardStyles.borderShell}>
+    <NbCard style={cardStyles.card}>
       <View style={cardStyles.cardRow}>
-          <View style={cardStyles.ringCol}>
-            <View style={cardStyles.ringWrap}>
-              <Svg width={RING_SIZE} height={RING_SIZE} style={cardStyles.ringSvg}>
-                <Defs>
-                  <SvgLinearGradient
-                    id={gradId}
-                    x1="0"
-                    y1="0"
-                    x2={RING_SIZE}
-                    y2={RING_SIZE}
-                    gradientUnits="userSpaceOnUse"
-                  >
-                    <Stop offset="0" stopColor={CC.pink} />
-                    <Stop offset="1" stopColor={CC.cyan} />
-                  </SvgLinearGradient>
-                </Defs>
-                <Circle cx={RING_CENTER_X} cy={RING_CENTER_Y} r={innerDiscR} fill={innerFill} stroke={innerStroke} strokeWidth={1} />
-                <Circle
-                  cx={RING_CENTER_X}
-                  cy={RING_CENTER_Y}
-                  r={RING_RADIUS}
-                  stroke={trackStroke}
-                  strokeWidth={STROKE}
-                  fill="none"
-                />
-                <AnimatedCircle
-                  cx={RING_CENTER_X}
-                  cy={RING_CENTER_Y}
-                  r={RING_RADIUS}
-                  stroke={clampedProgress > 0 ? `url(#${gradId})` : trackStroke}
-                  strokeWidth={STROKE}
-                  fill="none"
-                  strokeDasharray={RING_CIRCUMFERENCE}
-                  strokeDashoffset={strokeDashoffset}
-                  strokeLinecap="round"
-                  rotation="-90"
-                  origin={`${RING_CENTER_X}, ${RING_CENTER_Y}`}
-                />
-              </Svg>
-              <View style={cardStyles.ringCenter} pointerEvents="none">
-                <Text style={[cardStyles.ringBig, { color: themeColors.textPrimary }]}>{caloriesEaten.toLocaleString()}</Text>
-                <Text style={[cardStyles.ringGoal, { color: themeColors.textSecondary }]}>
-                  / {caloriesGoal.toLocaleString()}{' '}
-                  <Text style={{ color: themeColors.textTertiary, fontWeight: '600' }}>kcal</Text>
-                </Text>
-              </View>
+        <View style={cardStyles.ringCol}>
+          <View style={cardStyles.ringWrap}>
+            <Svg width={RING_SIZE} height={RING_SIZE} style={cardStyles.ringSvg}>
+              <Defs>
+                <SvgLinearGradient
+                  id={gradId}
+                  x1="0"
+                  y1="0"
+                  x2={RING_SIZE}
+                  y2={RING_SIZE}
+                  gradientUnits="userSpaceOnUse"
+                >
+                  <Stop offset="0" stopColor={gradients.brand.colors[0]} />
+                  <Stop offset="1" stopColor={gradients.brand.colors[1]} />
+                </SvgLinearGradient>
+              </Defs>
+              <Circle cx={RING_CENTER_X} cy={RING_CENTER_Y} r={innerDiscR} fill={innerFill} stroke={innerStroke} strokeWidth={1} />
+              <Circle
+                cx={RING_CENTER_X}
+                cy={RING_CENTER_Y}
+                r={RING_RADIUS}
+                stroke={trackStroke}
+                strokeWidth={STROKE}
+                fill="none"
+              />
+              <AnimatedCircle
+                cx={RING_CENTER_X}
+                cy={RING_CENTER_Y}
+                r={RING_RADIUS}
+                stroke={clampedProgress > 0 ? `url(#${gradId})` : trackStroke}
+                strokeWidth={STROKE}
+                fill="none"
+                strokeDasharray={RING_CIRCUMFERENCE}
+                strokeDashoffset={strokeDashoffset}
+                strokeLinecap="round"
+                rotation="-90"
+                origin={`${RING_CENTER_X}, ${RING_CENTER_Y}`}
+              />
+            </Svg>
+            <View style={cardStyles.ringCenter} pointerEvents="none">
+              <Text style={[cardStyles.ringBig, { color: colors.nbInk }]}>{caloriesEaten.toLocaleString()}</Text>
+              <Text style={[cardStyles.ringGoal, { color: colors.nbMuted }]}>
+                / {caloriesGoal.toLocaleString()}{' '}
+                <Text style={{ color: colors.nbMuted, fontWeight: '600' }}>kcal</Text>
+              </Text>
             </View>
-          </View>
-
-          <View style={[cardStyles.rightCol, { borderLeftColor: hairline }]}>
-            <View style={cardStyles.headerRow}>
-              <View style={cardStyles.headerTitleWrap}>
-                <Text style={[cardStyles.headerTitle, { color: themeColors.textPrimary }]}>Calories</Text>
-                <Text style={[cardStyles.headerSubtitle, { color: themeColors.textSecondary }]}>Today's budget</Text>
-              </View>
-              {typeof logHandler === 'function' ? (
-                <TouchableOpacity style={[cardStyles.logFoodBtn, cardStyles.logFoodBtnFx]} onPress={logHandler} activeOpacity={0.75}>
-                  <Ionicons name="add-circle-outline" size={18} color={CC.pink} />
-                  <Text style={cardStyles.logFoodText}>Log food</Text>
-                </TouchableOpacity>
-              ) : null}
-            </View>
-
-            <View
-              style={[
-                cardStyles.metricsCard,
-                { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(15,23,42,0.04)' },
-                isDark ? cardStyles.metricsCardEdgeDark : cardStyles.metricsCardEdgeLight,
-              ]}
-            >
-              <View style={cardStyles.metricCol}>
-                <Text style={[cardStyles.metricLabel, { color: themeColors.textTertiary }]}>REMAINING</Text>
-                <Text style={[cardStyles.metricValue, { color: themeColors.textPrimary }]}>{caloriesRemaining.toLocaleString()}</Text>
-                <Text style={[cardStyles.metricUnit, { color: themeColors.textSecondary }]}>kcal</Text>
-              </View>
-              <View style={[cardStyles.metricDivider, { backgroundColor: hairline }]} />
-              <View style={cardStyles.metricCol}>
-                <Text style={[cardStyles.metricLabel, { color: themeColors.textTertiary }]}>PROGRESS</Text>
-                <Text style={[cardStyles.metricValue, { color: percentComplete > 0 ? CC.pink : themeColors.textPrimary }]}>
-                  {percentComplete}%
-                </Text>
-                <Text style={[cardStyles.metricUnit, { color: themeColors.textSecondary }]}>of goal</Text>
-              </View>
-            </View>
-
-            {typeof onPress === 'function' ? (
-              <TouchableOpacity onPress={onPress} activeOpacity={0.75} style={cardStyles.nutritionTouch}>
-                <View style={[cardStyles.nutritionGrad, { borderColor: hairline, backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(15,23,42,0.03)' }]}>
-                  <View style={cardStyles.nutritionRowInner}>
-                    <View style={cardStyles.nutritionRowLeft}>
-                      <Ionicons name="nutrition-outline" size={20} color={CC.pink} />
-                      <Text style={[cardStyles.nutritionRowTitle, { color: themeColors.textPrimary }]}>Open Nutrition</Text>
-                    </View>
-                    <View style={[cardStyles.chevronPill, { borderColor: hairline, backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.04)' }]}>
-                      <Ionicons name="chevron-forward" size={18} color={CC.cyan} />
-                    </View>
-                  </View>
-                </View>
-              </TouchableOpacity>
-            ) : null}
           </View>
         </View>
-    </ColorBorderShell>
+
+        <View style={[cardStyles.rightCol, { borderLeftColor: colors.nbBorder }]}>
+          <View style={cardStyles.headerRow}>
+            <View style={cardStyles.headerTitleWrap}>
+              <Text style={[cardStyles.headerTitle, { color: colors.nbInk }]}>Calories</Text>
+              <Text style={[cardStyles.headerSubtitle, { color: colors.nbMuted }]}>Today's budget</Text>
+            </View>
+            {typeof logHandler === 'function' ? (
+              <NbButton variant="brand" sm onPress={logHandler}>
+                Log food
+              </NbButton>
+            ) : null}
+          </View>
+
+          <View
+            style={[
+              cardStyles.metricsCard,
+              { 
+                backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(15,23,42,0.04)',
+                borderColor: colors.nbBorder,
+              },
+            ]}
+          >
+            <View style={cardStyles.metricCol}>
+              <Text style={[cardStyles.metricLabel, { color: colors.nbMuted }]}>REMAINING</Text>
+              <Text style={[cardStyles.metricValue, { color: colors.nbInk }]}>{caloriesRemaining.toLocaleString()}</Text>
+              <Text style={[cardStyles.metricUnit, { color: colors.nbMuted }]}>kcal</Text>
+            </View>
+            <View style={[cardStyles.metricDivider, { backgroundColor: colors.nbBorder }]} />
+            <View style={cardStyles.metricCol}>
+              <Text style={[cardStyles.metricLabel, { color: colors.nbMuted }]}>PROGRESS</Text>
+              <Text style={[cardStyles.metricValue, { color: percentComplete > 0 ? gradients.brand.colors[0] : colors.nbInk }]}>
+                {percentComplete}%
+              </Text>
+              <Text style={[cardStyles.metricUnit, { color: colors.nbMuted }]}>of goal</Text>
+            </View>
+          </View>
+
+          {typeof onPress === 'function' ? (
+            <TouchableOpacity onPress={onPress} activeOpacity={0.75} style={cardStyles.nutritionTouch}>
+              <View style={[cardStyles.nutritionRow, { borderColor: colors.nbBorder, backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(15,23,42,0.03)' }]}>
+                <View style={cardStyles.nutritionRowInner}>
+                  <View style={cardStyles.nutritionRowLeft}>
+                    <Ionicons name="nutrition-outline" size={20} color={gradients.brand.colors[0]} />
+                    <Text style={[cardStyles.nutritionRowTitle, { color: colors.nbInk }]}>Open Nutrition</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color={colors.nbMuted} />
+                </View>
+              </View>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      </View>
+    </NbCard>
   );
 }
 
@@ -253,12 +194,13 @@ function CaloriesHeroCard({ isDark, current, goal, progress, onPress, onPressLog
 /**
  * TODAY heading plus the calorie hero card.
  * @param {object} props
- * @param {boolean} [props.isDark]
  * @param {object} [props.stats]
  * @param {Function} [props.onPressCalories]
  * @param {Function} [props.onPressLogFood]
  */
-export default function TodayStatsCards({ isDark = true, stats, onPressCalories, onPressLogFood }) {
+export default function TodayStatsCards({ stats, onPressCalories, onPressLogFood }) {
+  const colorScheme = useColorScheme();
+  const colors = colorScheme === 'dark' ? darkColors : lightColors;
   const calories = stats?.calories || {};
 
   const calProgress = useMemo(
@@ -268,12 +210,11 @@ export default function TodayStatsCards({ isDark = true, stats, onPressCalories,
 
   return (
     <View style={styles.wrap}>
-      <Text style={[styles.sectionTitle, { color: isDark ? 'rgba(255,255,255,0.72)' : 'rgba(15,23,42,0.65)' }]}>
+      <Text style={[styles.sectionTitle, { color: colors.nbMuted }]}>
         TODAY
       </Text>
 
       <CaloriesHeroCard
-        isDark={isDark}
         current={Number(calories.current ?? 0)}
         goal={Number(calories.goal ?? DEFAULT_CALORIE_GOAL)}
         progress={calProgress}
@@ -285,12 +226,13 @@ export default function TodayStatsCards({ isDark = true, stats, onPressCalories,
 }
 
 const cardStyles = StyleSheet.create({
-  borderShell: {
-    marginBottom: 0,
+  card: {
+    padding: 16,
   },
   cardRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
+    gap: 16,
   },
   ringCol: {
     width: RING_SIZE,
@@ -300,9 +242,8 @@ const cardStyles = StyleSheet.create({
   rightCol: {
     flex: 1,
     minWidth: 0,
-    paddingLeft: 12,
-    marginLeft: 10,
-    borderLeftWidth: StyleSheet.hairlineWidth * 2,
+    paddingLeft: 16,
+    borderLeftWidth: 2.5,
     justifyContent: 'flex-start',
   },
   headerRow: {
@@ -310,29 +251,7 @@ const cardStyles = StyleSheet.create({
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     gap: 8,
-  },
-  logFoodBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    borderWidth: 2,
-    borderColor: CC.pink,
-    borderRadius: 999,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    flexShrink: 0,
-  },
-  logFoodBtnFx: {
-    shadowColor: CC.pink,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.45,
-    shadowRadius: 10,
-    elevation: 6,
-  },
-  logFoodText: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: CC.pink,
+    marginBottom: 12,
   },
   ringSvg: {
     zIndex: 1,
@@ -352,45 +271,35 @@ const cardStyles = StyleSheet.create({
   },
   ringBig: {
     fontSize: 24,
-    fontWeight: '900',
+    fontFamily: 'SpaceGrotesk_700Bold',
     letterSpacing: -1,
   },
   ringGoal: {
     marginTop: 2,
-    fontSize: 11,
-    fontWeight: '700',
+    fontSize: 12,
+    fontFamily: 'Inter_600SemiBold',
   },
   headerTitleWrap: {
     flex: 1,
     minWidth: 0,
-    marginRight: 8,
   },
   headerTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    letterSpacing: -0.3,
+    fontSize: 18,
+    fontFamily: 'SpaceGrotesk_700Bold',
   },
   headerSubtitle: {
-    marginTop: 3,
+    marginTop: 4,
     fontSize: 13,
-    fontWeight: '600',
+    fontFamily: 'Inter_400Regular',
   },
   metricsCard: {
     flexDirection: 'row',
     alignItems: 'stretch',
-    borderRadius: 14,
+    borderRadius: 12,
+    borderWidth: 2.5,
     paddingVertical: 14,
     paddingHorizontal: 12,
     marginTop: 12,
-    overflow: 'hidden',
-  },
-  metricsCardEdgeDark: {
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.10)',
-  },
-  metricsCardEdgeLight: {
-    borderWidth: 1,
-    borderColor: 'rgba(255,107,157,0.22)',
   },
   metricCol: {
     flex: 1,
@@ -398,53 +307,43 @@ const cardStyles = StyleSheet.create({
     alignItems: 'center',
   },
   metricLabel: {
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 1.1,
+    fontSize: 12,
+    fontFamily: 'Inter_600SemiBold',
+    letterSpacing: 0.1,
+    textTransform: 'uppercase',
     marginBottom: 8,
     textAlign: 'center',
   },
   metricValue: {
     fontSize: 24,
-    fontWeight: '900',
-    letterSpacing: -0.6,
+    fontFamily: 'SpaceGrotesk_700Bold',
     textAlign: 'center',
   },
   metricUnit: {
-    marginTop: 6,
+    marginTop: 4,
     fontSize: 13,
-    fontWeight: '600',
+    fontFamily: 'Inter_400Regular',
     textAlign: 'center',
   },
   metricDivider: {
-    width: StyleSheet.hairlineWidth * 2,
+    width: 2.5,
     alignSelf: 'stretch',
     marginHorizontal: 8,
   },
   nutritionTouch: {
-    marginTop: 14,
-    borderRadius: 14,
-    overflow: 'hidden',
+    marginTop: 12,
   },
-  nutritionGrad: {
-    borderRadius: 14,
-    borderWidth: 1,
-    paddingHorizontal: 12,
+  nutritionRow: {
+    borderRadius: 12,
+    borderWidth: 2.5,
+    paddingHorizontal: 14,
     paddingVertical: 12,
   },
   nutritionRowInner: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 10,
-  },
-  chevronPill: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    gap: 12,
   },
   nutritionRowLeft: {
     flexDirection: 'row',
@@ -454,13 +353,20 @@ const cardStyles = StyleSheet.create({
     minWidth: 0,
   },
   nutritionRowTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    letterSpacing: -0.2,
+    fontSize: 15,
+    fontFamily: 'Inter_600SemiBold',
   },
 });
 
 const styles = StyleSheet.create({
-  wrap: { marginTop: 10 },
-  sectionTitle: { fontSize: 12, fontWeight: '900', letterSpacing: 2, marginBottom: 8 },
+  wrap: { 
+    marginTop: 10,
+  },
+  sectionTitle: { 
+    fontSize: 12, 
+    fontFamily: 'Inter_600SemiBold',
+    textTransform: 'uppercase',
+    letterSpacing: 0.1, 
+    marginBottom: 12,
+  },
 });

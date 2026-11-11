@@ -12,6 +12,7 @@ import Animated, {
   withRepeat,
   withTiming,
 } from 'react-native-reanimated';
+import { useTheme } from '../../look-and-feel/lightDarkMode';
 
 // ===== NAMED CONSTANTS =====
 

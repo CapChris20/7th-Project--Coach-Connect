@@ -11,9 +11,12 @@ import {
   Text,
   TouchableOpacity,
   View,
+  useColorScheme,
 } from 'react-native';
 import YoutubePlayer from 'react-native-youtube-iframe';
 import { Ionicons } from '@expo/vector-icons';
+import NbButton from '../../look-and-feel/NbButton';
+import { lightColors, darkColors, gradients } from '../../look-and-feel/colorPalette';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -72,7 +75,7 @@ export function YouTubeIframeExercisePlayer({ videoId, height, width, play = tru
     <View style={[styles.playerShell, { width: playerWidth, height: playerHeight }]}>
       {!playerReady ? (
         <View style={styles.loadingOverlay} pointerEvents="none">
-          <ActivityIndicator size="large" color="#FF6B9D" />
+          <ActivityIndicator size="large" color={gradients.brand.colors[0]} />
         </View>
       ) : null}
       <YoutubePlayer
@@ -109,6 +112,8 @@ export function YouTubeIframeExercisePlayer({ videoId, height, width, play = tru
  * @param {{ visible: boolean, videoId: string, title?: string, onClose: () => void }} props
  */
 export function VideoPlayer({ visible, videoId, title, onClose }) {
+  const colorScheme = useColorScheme();
+  const colors = colorScheme === 'dark' ? darkColors : lightColors;
   const modalPlayerHeight = Math.min(
     SCREEN_HEIGHT * MODAL_PLAYER_MAX_SCREEN_FRACTION,
     Math.max(
@@ -119,12 +124,12 @@ export function VideoPlayer({ visible, videoId, title, onClose }) {
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.modalRoot}>
-        <View style={styles.modalHeader}>
+      <View style={[styles.modalRoot, { backgroundColor: colors.nbBackground }]}>
+        <View style={[styles.modalHeader, { borderBottomColor: colors.nbBorder }]}>
           <TouchableOpacity onPress={onClose} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-            <Ionicons name="close" size={28} color="#FFF" />
+            <Ionicons name="close" size={28} color={colors.nbInk} />
           </TouchableOpacity>
-          <Text style={styles.modalTitle} numberOfLines={1}>
+          <Text style={[styles.modalTitle, { color: colors.nbInk }]} numberOfLines={1}>
             {title || 'Video'}
           </Text>
           <View style={{ width: 28 }} />
@@ -134,13 +139,13 @@ export function VideoPlayer({ visible, videoId, title, onClose }) {
           {visible && videoId ? (
             <YouTubeIframeExercisePlayer videoId={videoId} height={modalPlayerHeight} width={SCREEN_WIDTH - MODAL_SIDE_INSET} play />
           ) : (
-            <Text style={styles.emptyPlayerText}>Video not available</Text>
+            <Text style={[styles.emptyPlayerText, { color: gradients.brand.colors[0] }]}>Video not available</Text>
           )}
         </View>
 
-        <TouchableOpacity style={styles.modalCloseBtn} onPress={onClose} activeOpacity={0.9}>
-          <Text style={styles.modalCloseBtnText}>Close</Text>
-        </TouchableOpacity>
+        <NbButton variant="brand" onPress={onClose}>
+          Close
+        </NbButton>
       </View>
     </Modal>
   );
@@ -171,10 +176,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: 12,
   },
-  emptyPlayerText: { color: '#FF6B9D', fontSize: 14, fontWeight: '600' },
+  emptyPlayerText: { fontSize: 14, fontFamily: 'SpaceGrotesk_700Bold' },
   modalRoot: {
     flex: 1,
-    backgroundColor: '#0A0A0F',
     paddingTop: 48,
     paddingHorizontal: 16,
   },
@@ -183,27 +187,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingBottom: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(255,107,157,0.25)',
+    borderBottomWidth: 2.5,
   },
   modalTitle: {
     flex: 1,
     marginHorizontal: 12,
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#FFF',
+    fontSize: 18,
+    fontFamily: 'SpaceGrotesk_700Bold',
   },
   modalPlayer: {
     marginTop: 16,
     alignItems: 'center',
     justifyContent: 'center',
+    flex: 1,
   },
-  modalCloseBtn: {
-    marginTop: 24,
-    paddingVertical: 14,
-    backgroundColor: '#FF6B9D',
-    borderRadius: 10,
-    alignItems: 'center',
-  },
-  modalCloseBtnText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
 });

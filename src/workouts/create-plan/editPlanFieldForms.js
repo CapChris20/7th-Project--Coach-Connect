@@ -3,8 +3,9 @@
 // Used by CreateWorkoutPlanScreen and the manual plan builder.
 
 import React from 'react';
-import { View, Text, TextInput, TouchableOpacity } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, useColorScheme } from 'react-native';
 import DislikedExercisesPicker from '../exercise-videos/DislikedExercisesPicker';
+import { lightColors, darkColors } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
@@ -25,27 +26,20 @@ export default function WorkoutPlanBuilderFieldEditBody({
   setOnboardingData,
   validationErrors,
   setValidationErrors,
-  isDark,
+  isDark: deprecatedIsDark,
   styles,
 }) {
-  const ui = isDark
-    ? {
-        inputBg: '#1a1520',
-        optionBg: 'rgba(255,255,255,0.05)',
-        optionSelectedBg: '#FF4D8D',
-        border: 'rgba(255,255,255,0.12)',
-        text: '#FFFFFF',
-        muted: 'rgba(255,255,255,0.55)',
-      }
-    : {
-        inputBg: '#F1F5F9',
-        optionBg: '#FFFFFF',
-        optionSelectedBg: '#DB2777',
-        border: 'rgba(15,23,42,0.14)',
-        text: '#0F172A',
-        muted: 'rgba(15,23,42,0.45)',
-      };
-  const txtOnSelected = '#FFFFFF';
+  const colorScheme = useColorScheme();
+  const colors = colorScheme === 'dark' ? darkColors : lightColors;
+  const ui = {
+    inputBg: colors.nbSurfaceChip,
+    optionBg: colors.nbSurface,
+    optionSelectedBg: colors.nbInk,
+    border: colors.nbBorder,
+    text: colors.nbInk,
+    muted: colors.nbMuted,
+  };
+  const txtOnSelected = colors.nbSurface;
   const onSel = (selected) => (selected ? txtOnSelected : ui.text);
 
   switch (fieldKey) {

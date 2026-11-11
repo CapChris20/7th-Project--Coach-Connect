@@ -1,13 +1,14 @@
-// Trainer view of one linked trainee: profile card, Sessions calendar, Notes & Files workspace.
-// Flow: live Firestore listeners fill clientData → tabs switch Sessions vs Notes → editors/modals open from the workspace.
+// Trainer view of one linked trainee: profile card, Progress/Nutrition tabs, Sessions, Notes & Files.
+// Flow: live Firestore listeners fill clientData → tabs switch content → editors/modals open from the workspace.
 // Used by: TrainerAppStart when the trainer taps a client on the roster.
+//
+// vocab: NbCard / NbAvatar = neobrutalist profile shell; ProgressTab / NutritionTab reuse home tab bodies
 
 import React, { useState, useMemo, useEffect } from 'react';
 import {
   ActionSheetIOS,
   ActivityIndicator,
   Alert,
-  Image,
   Platform,
   SafeAreaView,
   ScrollView,
@@ -16,7 +17,6 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { doc, getDoc, getDocs, onSnapshot, collection, query, where } from 'firebase/firestore';
 import { db } from '../../app-start/cloudConnection';
@@ -34,10 +34,11 @@ import SpreadsheetEditor from '../documents/SpreadsheetEditor';
 import ShareDocumentPopup from '../documents/ShareDocumentPopup';
 import RemoveTrainerPopup from '../../for-both/popups/RemoveTrainerPopup';
 import CalendarTab from '../scheduling/CalendarTab';
+import ProgressTab from '../progress-tab/TrainerProgressTab';
+import NutritionTab from '../nutrition-tab/TrainerNutritionTab';
 import { isBenignTrainerClientFirestoreError } from '../trainee-records/calmDatabaseErrors';
 import { FORM_SCROLL_PROPS, useEmbeddedScrollBottomPad } from '../../navigation/bottomMenuSpacing';
 import {
-  GlassCard,
   TabPills,
   Icon,
   ICON_ACCENT,
@@ -45,16 +46,15 @@ import {
   getClientInitials,
   getClientSubtext,
   useTrainerTheme,
-  GRADIENT_AVATAR,
-  CARD_BORDER_PINK_ORANGE,
 } from '../home/trainerHomePieces';
+import { lightColors, darkColors } from '../../look-and-feel/colorPalette';
 import NbCard from '../../look-and-feel/NbCard';
 import NbAvatar from '../../look-and-feel/NbAvatar';
-import NbListRow from '../../look-and-feel/NbListRow';
 
 // ===== NAMED CONSTANTS =====
 
 const TAB_PROGRESS = 'Progress';
+const TAB_NUTRITION = 'Nutrition';
 const TAB_SESSIONS = 'Sessions';
 const TAB_NOTES_FILES = 'Notes & Files';
 
@@ -81,14 +81,7 @@ const PLATFORM_IOS = 'ios';
 const HIT_SLOP_HEADER = { top: 12, bottom: 12, left: 12, right: 12 };
 const HIT_SLOP_MENU = { top: 8, bottom: 8, left: 8, right: 8 };
 const HIT_SLOP_REMOVE_LINK = { top: 6, bottom: 6 };
-const DARK_SCREEN_BG = '#0c0c0e';
-const LIGHT_SCREEN_BG = '#f5f5f7';
-const DARK_TEXT = '#ffffff';
-const LIGHT_TEXT = '#1a0a2e';
-const DARK_MUTED = 'rgba(255,255,255,0.5)';
-const LIGHT_MUTED = 'rgba(26,10,46,0.5)';
 const DANGER_RED = '#ef4444';
-const WHITE = '#FFFFFF';
 
 // ===== HELPER FUNCTIONS =====
 
@@ -349,10 +342,13 @@ function likedExercisesDisplayText(likedExercises) {
  * @returns {{ textColor: string, mutedColor: string, screenBg: string }}
  */
 function screenColorsForTheme(isDark) {
-  if (isDark) {
-    return { textColor: DARK_TEXT, mutedColor: DARK_MUTED, screenBg: DARK_SCREEN_BG };
-  }
-  return { textColor: LIGHT_TEXT, mutedColor: LIGHT_MUTED, screenBg: LIGHT_SCREEN_BG };
+  const palette = isDark ? darkColors : lightColors;
+  return {
+    textColor: palette.nbInk,
+    mutedColor: palette.nbMuted,
+    screenBg: palette.nbBackground,
+    divider: palette.nbBorder,
+  };
 }
 
 /**
@@ -398,7 +394,7 @@ const ClientDetailScreen = ({
 }) => {
   const { isDark } = useTrainerTheme();
   const scrollBottomPad = useEmbeddedScrollBottomPad(SCROLL_BOTTOM_PAD);
-  const { textColor, mutedColor, screenBg } = screenColorsForTheme(isDark);
+  const { textColor, mutedColor, screenBg, divider } = screenColorsForTheme(isDark);
 
   const [activeTab, setActiveTab] = useState(TAB_PROGRESS);
   const [showRemoveSheet, setShowRemoveSheet] = useState(false);
@@ -624,7 +620,7 @@ const ClientDetailScreen = ({
     Array.isArray(clientData?.likedExercises) && clientData.likedExercises.length > 0;
   const statusBarStyle = isDark ? 'light-content' : 'dark-content';
   const headerBorderColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)';
-  const cardDividerColor = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)';
+  const cardDividerColor = divider;
   const androidHeaderPad = Platform.OS === 'android' ? 16 : 0;
 
   return (
@@ -759,6 +755,21 @@ const ClientDetailScreen = ({
             </View>
           ) : (
             <View>
+              {activeTab === TAB_PROGRESS ? (
+                <ProgressTab
+                  key={client?.id || 'progress'}
+                  isDark={isDark}
+                  clientData={clientData}
+                  todayDailyLog={todayDailyLog}
+                />
+              ) : null}
+              {activeTab === TAB_NUTRITION ? (
+                <NutritionTab
+                  key={client?.id || 'nutrition'}
+                  isDark={isDark}
+                  clientData={clientData}
+                />
+              ) : null}
               {activeTab === TAB_SESSIONS ? (
                 <CalendarTab
                   clientId={client?.id}

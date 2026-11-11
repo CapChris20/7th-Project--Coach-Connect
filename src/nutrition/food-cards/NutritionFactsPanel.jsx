@@ -1,12 +1,14 @@
 // Expanded nutrition breakdown under a food card: calorie split bar + micronutrient tiles.
 // Flow: build palette → show macro composition → list legend chips → paint micronutrient tiles (or empty state).
 // Used by: FoodCard when the row is expanded.
+// Redesigned with neobrutalist styling and nb tokens.
 
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Leaf, Droplets, Heart, Sparkles, Waves, Zap } from 'lucide-react-native';
 import ColorText from './ColorText';
+import { lightColors, darkColors, nb } from '../../look-and-feel/colorPalette';
 import {
   brandColors,
   gradients,
@@ -440,7 +442,7 @@ const styles = StyleSheet.create({
   legendChip: {
     flex: 1,
     borderRadius: radii.chip,
-    borderWidth: 1,
+    borderWidth: nb.borderWidth,
     overflow: 'hidden',
     paddingVertical: 11,
     paddingHorizontal: 8,
@@ -475,7 +477,7 @@ const styles = StyleSheet.create({
   },
   panelShell: {
     borderRadius: radii.chip + 6,
-    borderWidth: 1,
+    borderWidth: nb.borderWidth,
     overflow: 'hidden',
   },
   panelInner: {
@@ -531,7 +533,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     flexShrink: 0,
     borderRadius: radii.chip + 2,
-    borderWidth: 1,
+    borderWidth: nb.borderWidth,
     padding: 12,
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -595,7 +597,7 @@ const styles = StyleSheet.create({
   },
   emptyMicros: {
     borderRadius: radii.chip,
-    borderWidth: 1,
+    borderWidth: nb.borderWidth,
     borderStyle: 'dashed',
     paddingVertical: 18,
     paddingHorizontal: 12,

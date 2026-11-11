@@ -1,5 +1,5 @@
 // One tip card on the weekly report, numbered, with a colored edge.
-// Flow: pick the pro or con colors → paint the border → show the number and the sentence.
+import { NbCard } from '../../look-and-feel/NbCard';// Flow: pick the pro or con colors → paint the border → show the number and the sentence.
 // Used by: the tips list on the weekly report.
 
 import React from 'react';

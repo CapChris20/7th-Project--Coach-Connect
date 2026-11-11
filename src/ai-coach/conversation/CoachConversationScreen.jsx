@@ -1,9 +1,11 @@
-// CoachConversationScreen.jsx
+// CoachConversationScreen.jsx (neobrutalist design)
 //
 // Main AI coach chat UI: type/attach/speak → send → show reply → confirm tools (log food, water, etc.).
-// Flow: load session + week context → sendMessage pipeline → AI bubble / Confirm Action chip →
+// Flow: load session + week context → sendMessage pipeline → NbCard bubbles / Confirm Action sheet →
 //       carryOutAction → refresh coach context → persist chat.
 // Used by: client AI Coach tab (and session switch / new-chat wrappers). Export: CoachConversationScreen.
+//
+// vocab: NbCard = neobrutalist card with thick border and hard shadow
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 // vocab: useState / useEffect / useRef / useMemo = React hooks for state, side effects, mutable boxes, cached derived lists
@@ -32,6 +34,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import LottieView from 'lottie-react-native';
 // vocab: LottieView = plays a JSON animation (empty-state cloud robot)
+import { lightColors, darkColors, spacing, borderRadius, nb, gradients } from '../../look-and-feel/colorPalette';
 import { showCoachAttachMenu } from './openPhotoMenu';
 import {
   pickCoachDocuments,
@@ -566,46 +569,47 @@ function ToolActionChip({ message, onPress, palette, userMessage = '' }) {
 // ─── Theme tokens (aligned with design-system.md) ────────────────────────────
 // Two palettes swapped by useTheme().isDark. Bubble / composer / chip colors live here.
 // Manipulate here: any rgba / hex below to retune dark or light coach chrome.
+// Neobrutalist color palettes using design system tokens
 const DARK = {
-  bg: AI_COACH_UI.bg,
-  cardBg: AI_COACH_UI.glass,
-  cardBorder: AI_COACH_UI.borderHairline,
-  textPrimary: AI_COACH_UI.textPrimary,
-  textSecondary: AI_COACH_UI.textSecondary,
-  textMuted: AI_COACH_UI.textMuted,
-  inputBg: AI_COACH_UI.glass,
-  inputBorder: AI_COACH_UI.borderHairline,
-  divider: 'rgba(255,255,255,0.05)',
-  chipBg: AI_COACH_UI.glassStrong,
-  chipBorder: 'rgba(255,255,255,0.12)',
-  inputBarBg: '#0C0C14',
-  inputBarBorder: AI_COACH_UI.borderHairline,
-  aiBubbleBg: AI_COACH_UI.glassStrong,
-  aiBubbleBorder: 'rgba(255,255,255,0.15)',
-  msgReceivedBg: AI_COACH_UI.glass,
-  msgReceivedBorder: 'rgba(255,255,255,0.10)',
-  msgTimestamp: 'rgba(255,255,255,0.35)',
+  bg: darkColors.nbBackground,
+  cardBg: darkColors.nbSurface,
+  cardBorder: darkColors.nbBorder,
+  textPrimary: darkColors.nbInk,
+  textSecondary: darkColors.nbMuted,
+  textMuted: darkColors.nbMuted,
+  inputBg: darkColors.nbSurface,
+  inputBorder: darkColors.nbBorder,
+  divider: darkColors.nbBorder,
+  chipBg: darkColors.nbSurfaceChip,
+  chipBorder: darkColors.nbBorder,
+  inputBarBg: darkColors.nbBackground,
+  inputBarBorder: darkColors.nbBorder,
+  aiBubbleBg: darkColors.nbSurface,
+  aiBubbleBorder: darkColors.nbBorder,
+  msgReceivedBg: darkColors.nbSurface,
+  msgReceivedBorder: darkColors.nbBorder,
+  msgTimestamp: darkColors.nbMuted,
 };
 
 const LIGHT = {
-  bg: '#F5F5F7',
-  cardBg: '#FFFFFF',
-  cardBorder: '#E5E7EB',
-  textPrimary: '#0A0A0F',
-  textSecondary: 'rgba(0,0,0,0.5)',
-  textMuted: 'rgba(0,0,0,0.35)',
-  inputBg: '#FFFFFF',
-  inputBorder: '#E5E7EB',
-  divider: 'rgba(0,0,0,0.06)',
-  chipBg: 'rgba(0,0,0,0.04)',
-  chipBorder: 'rgba(0,0,0,0.1)',
-  inputBarBg: '#FFFFFF',
-  inputBarBorder: '#E5E7EB',
-  aiBubbleBg: '#FFFFFF',
-  aiBubbleBorder: '#E5E7EB',
-  msgReceivedBg: 'rgba(0,0,0,0.04)',
-  msgReceivedBorder: 'rgba(0,0,0,0.08)',
-  msgTimestamp: 'rgba(0,0,0,0.45)',
+  bg: lightColors.nbBackground,
+  cardBg: lightColors.nbSurface,
+  cardBorder: lightColors.nbBorder,
+  textPrimary: lightColors.nbInk,
+  textSecondary: lightColors.nbMuted,
+  textMuted: lightColors.nbMuted,
+  inputBg: lightColors.nbSurface,
+  inputBorder: lightColors.nbBorder,
+  divider: lightColors.nbBorder,
+  chipBg: lightColors.nbSurfaceChip,
+  chipBorder: lightColors.nbBorder,
+  inputBarBg: lightColors.nbBackground,
+  inputBarBorder: lightColors.nbBorder,
+  aiBubbleBg: lightColors.nbSurface,
+  aiBubbleBorder: lightColors.nbBorder,
+  msgReceivedBg: lightColors.nbSurface,
+  msgReceivedBorder: lightColors.nbBorder,
+  msgTimestamp: lightColors.nbMuted,
 };
 
 // Short clock string stamped on every bubble (e.g. "3:42 PM").
@@ -1170,7 +1174,12 @@ function MessageBubble({
 
   // Manipulate here: maxWidth of user bubbles (leave room so they don't look full-bleed).
   const userWrapStyle = { maxWidth: '82%' };
-  const bubbleBase = { borderRadius: 18, paddingHorizontal: 14, paddingVertical: 12 };
+  // Neobrutalist bubble: thick border, rounded corners
+  const bubbleBase = {
+    borderRadius: borderRadius.nbCard,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+  };
   // Media-only bubbles drop padding so the image goes edge-to-edge inside the rounded rect.
   const attachmentOnly = !hasText && (firstImage || firstFile);
   const mediaStyle = attachmentOnly ? { paddingHorizontal: 0, paddingVertical: 0, overflow: 'hidden' } : null;
@@ -1179,17 +1188,17 @@ function MessageBubble({
   // ── User bubble (right-aligned) ──
   if (sent) {
     return (
-      <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 16 }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: spacing.md + 4 }}>
         <View style={userWrapStyle}>
           <View
             style={[
               bubbleBase,
               {
-                // Squared bottom-right = outgoing chat shape.
+                // Squared bottom-right = outgoing chat shape (keep for visual distinction)
                 borderBottomRightRadius: 4,
                 overflow: 'hidden',
                 backgroundColor: palette.msgReceivedBg,
-                borderWidth: 1,
+                borderWidth: nb.borderWidth,
                 borderColor: palette.msgReceivedBorder,
               },
               mediaStyle,
@@ -1198,9 +1207,9 @@ function MessageBubble({
             {/* box-none: children still receive presses; empty space doesn't block scroll */}
             <View pointerEvents="box-none">{renderContent()}</View>
           </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: spacing.sm, marginTop: spacing.sm }}>
             {hasText ? <CoachMessageCopyButton text={copyText} palette={palette} align="flex-end" compact /> : null}
-            <Text style={{ fontSize: 11, color: palette.msgTimestamp }}>{message.time}</Text>
+            <Text style={{ fontSize: 11, fontFamily: 'Inter_400Regular', color: palette.msgTimestamp }}>{message.time}</Text>
           </View>
         </View>
       </View>

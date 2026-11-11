@@ -7,7 +7,6 @@ import { View, Text, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Circle, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
 import {
-  GlassCard,
   ColorText,
   PremiumTabEmptyState,
   SCREEN_WIDTH,
@@ -179,7 +178,7 @@ function hasAnyNutritionLogged(clientData) {
 
 function CaloriesCard({ nutrition, caloriesGoal, caloriePct, mutedColor, isDark }) {
   return (
-    <GlassCard isDark={isDark} style={{ padding: 18 }}>
+    <NbCard style={{ padding: 18 }}>
       <Text style={styles.sectionLabel}>Daily Calories</Text>
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 6, marginBottom: 10 }}>
         <ColorText colors={[PINK, ORANGE]} style={{ fontSize: 36, fontWeight: '900', lineHeight: 40 }}>
@@ -207,13 +206,13 @@ function CaloriesCard({ nutrition, caloriesGoal, caloriePct, mutedColor, isDark 
           style={{ height: '100%', width: `${caloriePct}%`, borderRadius: 2 }}
         />
       </View>
-    </GlassCard>
+    </NbCard>
   );
 }
 
 function NutrientRingsCard({ rings, mutedColor, isDark }) {
   return (
-    <GlassCard isDark={isDark} style={{ padding: 16 }}>
+    <NbCard style={{ padding: 16 }}>
       <Text style={[styles.sectionLabel, { color: mutedColor }]}>Macros & Nutrients</Text>
       <View style={styles.ringGrid}>
         {rings.map((nutrient) => (
@@ -228,13 +227,13 @@ function NutrientRingsCard({ rings, mutedColor, isDark }) {
           </View>
         ))}
       </View>
-    </GlassCard>
+    </NbCard>
   );
 }
 
 function MicrosCard({ micros, mutedColor, textColor, isDark }) {
   return (
-    <GlassCard isDark={isDark} style={{ padding: 16 }}>
+    <NbCard style={{ padding: 16 }}>
       <Text style={[styles.sectionLabel, { color: mutedColor }]}>Micronutrients</Text>
       <View style={{ gap: 8 }}>
         {(micros || []).map((micro, i) => (
@@ -244,13 +243,13 @@ function MicrosCard({ micros, mutedColor, textColor, isDark }) {
           </View>
         ))}
       </View>
-    </GlassCard>
+    </NbCard>
   );
 }
 
 function FoodsCard({ foods, chipBg, textColor, isDark, mutedColor }) {
   return (
-    <GlassCard isDark={isDark} style={{ padding: 16 }}>
+    <NbCard style={{ padding: 16 }}>
       <Text style={[styles.sectionLabel, { color: mutedColor }]}>Foods Logged Today</Text>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
         {(foods || []).map((food, i) => (
@@ -259,7 +258,7 @@ function FoodsCard({ foods, chipBg, textColor, isDark, mutedColor }) {
           </View>
         ))}
       </View>
-    </GlassCard>
+    </NbCard>
   );
 }
 

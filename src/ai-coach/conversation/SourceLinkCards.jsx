@@ -1,12 +1,17 @@
-// Collapsible source links under AI Coach web-search replies.
-// Flow: prefer message.webSources → else parse URLs out of the reply text → junk-filter → pill + expandable list.
-// Used by: the AI Coach conversation thread under internet answers.
+// Collapsible source links under AI Coach web-search replies (neobrutalist design).
+// Flow: prefer message.webSources → else parse URLs out of reply text → junk-filter → NbChip + expandable NbCard list.
+// Used by: AI Coach conversation thread under internet answers.
+//
+// vocab: NbChip = neobrutalist chip for the toggle pill
+// vocab: NbCard = neobrutalist card for the expanded source list
 
 import React, { useMemo, useState } from 'react';
 import { View, Text, Image, TouchableOpacity, Linking, StyleSheet } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { useColorScheme } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { AI_COACH_UI } from '../coachColors';
+import { lightColors, darkColors, spacing, borderRadius, nb } from '../../look-and-feel/colorPalette';
+import NbCard from '../../look-and-feel/NbCard';
+import NbChip from '../../look-and-feel/NbChip';
 import { hostLabel, faviconUrl } from './sourceLinkPreview';
 
 // ===== NAMED CONSTANTS =====
@@ -34,27 +39,6 @@ const SNIPPET_LINE_COUNT = 2;
 const HOST_ONLY_LINE_COUNT = 1;
 const ROW_DIVIDER_WIDTH = 1;
 
-const DARK_PANEL_BACKGROUND = 'rgba(20,20,25,0.92)';
-const LIGHT_PANEL_BACKGROUND = '#FFFFFF';
-const DARK_ROW_DIVIDER = 'rgba(255,255,255,0.06)';
-const LIGHT_ROW_DIVIDER = 'rgba(10,10,15,0.06)';
-const LIGHT_TEXT_PRIMARY = '#0A0A0F';
-const LIGHT_TEXT_MUTED = 'rgba(10,10,15,0.55)';
-const LIGHT_ACCENT = '#BE185D';
-const LIGHT_ACCENT_SECONDARY = '#C2410C';
-const DARK_PILL_ICON_FILL = 'rgba(190,24,93,0.18)';
-const LIGHT_PILL_ICON_FILL = 'rgba(219,39,119,0.10)';
-const DARK_COUNT_BADGE_FILL = 'rgba(194,65,12,0.22)';
-const LIGHT_COUNT_BADGE_FILL = 'rgba(194,65,12,0.12)';
-const DARK_LIST_BORDER = ['rgba(190,24,93,0.14)', 'rgba(194,65,12,0.10)'];
-const LIGHT_LIST_BORDER = ['rgba(219,39,119,0.08)', 'rgba(234,88,12,0.06)'];
-const DARK_FAVICON_FALLBACK = 'rgba(255,255,255,0.06)';
-const LIGHT_FAVICON_FALLBACK = 'rgba(0,0,0,0.04)';
-
-const PILL_GRADIENT_START = { x: 0, y: 0.5 };
-const PILL_GRADIENT_END = { x: 1, y: 0.5 };
-const LIST_GRADIENT_START = { x: 0, y: 0 };
-const LIST_GRADIENT_END = { x: 1, y: 1 };
 
 // ===== HELPER FUNCTIONS =====
 
@@ -206,42 +190,21 @@ function visibleSourcesForMessage(message) {
   return [];
 }
 
-function darkSourceCardColors() {
-  return {
-    panelBackground: DARK_PANEL_BACKGROUND,
-    rowDivider: DARK_ROW_DIVIDER,
-    textPrimary: AI_COACH_UI.textPrimary,
-    textMuted: AI_COACH_UI.textSecondary,
-    accent: AI_COACH_UI.pink,
-    accentSecondary: AI_COACH_UI.orange,
-    pillIconFill: DARK_PILL_ICON_FILL,
-    countBadgeFill: DARK_COUNT_BADGE_FILL,
-    listBorder: DARK_LIST_BORDER,
-    faviconFallback: DARK_FAVICON_FALLBACK,
-  };
-}
-
-function lightSourceCardColors() {
-  return {
-    panelBackground: LIGHT_PANEL_BACKGROUND,
-    rowDivider: LIGHT_ROW_DIVIDER,
-    textPrimary: LIGHT_TEXT_PRIMARY,
-    textMuted: LIGHT_TEXT_MUTED,
-    accent: LIGHT_ACCENT,
-    accentSecondary: LIGHT_ACCENT_SECONDARY,
-    pillIconFill: LIGHT_PILL_ICON_FILL,
-    countBadgeFill: LIGHT_COUNT_BADGE_FILL,
-    listBorder: LIGHT_LIST_BORDER,
-    faviconFallback: LIGHT_FAVICON_FALLBACK,
-  };
-}
-
 /**
- * @param {boolean} isDark
+ * Neobrutalist color palette for source cards.
+ * @param {object} colors - light or dark color tokens
+ * @returns {object}
  */
-function sourceCardColors(isDark) {
-  if (isDark) return darkSourceCardColors();
-  return lightSourceCardColors();
+function sourceCardColors(colors) {
+  return {
+    panelBackground: colors.nbSurface,
+    rowDivider: colors.nbBorder,
+    textPrimary: colors.nbInk,
+    textMuted: colors.nbMuted,
+    accent: '#FF6B9D', // brand gradient start
+    accentSecondary: '#FB923C', // brand gradient end
+    faviconFallback: colors.nbSurfaceChip,
+  };
 }
 
 /**
@@ -263,7 +226,7 @@ function sourcesToggleAccessibilityLabel(isExpanded, sourceCount) {
 }
 
 /**
- * Collapsed pill that toggles the source list.
+ * Collapsed NbChip that toggles the source list.
  * @param {{ expanded: boolean, sourceCount: number, colors: object, onToggle: Function }} props
  */
 function SourcesTogglePill({ expanded, sourceCount, colors, onToggle }) {
@@ -271,28 +234,29 @@ function SourcesTogglePill({ expanded, sourceCount, colors, onToggle }) {
   const accessibilityLabel = sourcesToggleAccessibilityLabel(expanded, sourceCount);
 
   return (
-    <TouchableOpacity
-      onPress={onToggle}
-      activeOpacity={0.88}
-      accessibilityRole="button"
-      accessibilityState={{ expanded }}
-      accessibilityLabel={accessibilityLabel}
-    >
-      {/* Flat chip, deliberately quiet: the old gradient border + filled icon
-          circle + orange count badge stacked three decorations on one small
-          button and read as visual noise under an answer. */}
-      <View
+    <View style={{ alignSelf: 'flex-start' }}>
+      <TouchableOpacity
+        onPress={onToggle}
+        activeOpacity={0.88}
+        accessibilityRole="button"
+        accessibilityState={{ expanded }}
+        accessibilityLabel={accessibilityLabel}
         style={[
           styles.pillInner,
-          { backgroundColor: colors.panelBackground, borderColor: colors.rowDivider, borderWidth: 1 },
+          {
+            backgroundColor: colors.panelBackground,
+            borderColor: colors.rowDivider,
+            borderWidth: nb.borderWidth,
+            borderRadius: borderRadius.nbChip,
+          },
         ]}
       >
         <Ionicons name={GLOBE_ICON_NAME} size={14} color={colors.accent} />
         <Text style={[styles.pillText, { color: colors.textPrimary }]}>{SOURCES_PILL_LABEL}</Text>
         <Text style={[styles.countText, { color: colors.textMuted }]}>{sourceCount}</Text>
         <Ionicons name={chevronName} size={16} color={colors.textMuted} />
-      </View>
-    </TouchableOpacity>
+      </TouchableOpacity>
+    </View>
   );
 }
 
@@ -385,13 +349,8 @@ function SourceLinkRow({ source, colors, isLastRow }) {
  */
 function ExpandedSourceList({ sources, colors }) {
   return (
-    <LinearGradient
-      colors={colors.listBorder}
-      start={LIST_GRADIENT_START}
-      end={LIST_GRADIENT_END}
-      style={styles.listBorder}
-    >
-      <View style={[styles.list, { backgroundColor: colors.panelBackground }]}>
+    <NbCard noShadow>
+      <View>
         {sources.map((source, index) => (
           <SourceLinkRow
             key={sourceRowKey(source, index)}
@@ -401,7 +360,7 @@ function ExpandedSourceList({ sources, colors }) {
           />
         ))}
       </View>
-    </LinearGradient>
+    </NbCard>
   );
 }
 
@@ -418,13 +377,15 @@ function SourceListIfOpen({ isExpanded, sources, colors }) {
  * @param {{ message: object, isDark?: boolean }} props
  */
 export default function SourceLinkCards({ message, isDark = true }) {
+  const colorScheme = useColorScheme();
+  const themeColors = colorScheme === 'dark' ? darkColors : lightColors;
   const [expanded, setExpanded] = useState(false);
 
   const sources = useMemo(() => visibleSourcesForMessage(message), [message]);
 
   if (!sources.length) return null;
 
-  const colors = sourceCardColors(isDark);
+  const colors = sourceCardColors(themeColors);
 
   function handleToggleExpanded() {
     setExpanded((isOpen) => !isOpen);
@@ -444,43 +405,49 @@ export default function SourceLinkCards({ message, isDark = true }) {
 }
 
 const styles = StyleSheet.create({
-  wrap: { marginTop: 12, maxWidth: '100%' },
+  wrap: { marginTop: spacing.md, maxWidth: '100%' },
   pillInner: {
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'flex-start',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
-  pillText: { fontSize: 13, fontWeight: '800', letterSpacing: 0.2 },
-  countText: { fontSize: 12, fontWeight: '800' },
-  listBorder: {
-    marginTop: 10,
-    borderRadius: 16,
-    padding: 1,
+  pillText: {
+    fontSize: 13,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    letterSpacing: 0.2,
   },
-  list: {
-    borderRadius: 15,
-    overflow: 'hidden',
+  countText: {
+    fontSize: 12,
+    fontFamily: 'SpaceGrotesk_700Bold',
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    gap: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
   },
-  favicon: { width: 30, height: 30, borderRadius: 8 },
+  favicon: { width: 30, height: 30, borderRadius: borderRadius.md },
   faviconFallback: {
     width: 30,
     height: 30,
-    borderRadius: 8,
+    borderRadius: borderRadius.md,
     alignItems: 'center',
     justifyContent: 'center',
   },
   textCol: { flex: 1, minWidth: 0 },
-  title: { fontSize: 14, fontWeight: '700', lineHeight: 19 },
-  host: { fontSize: 12, marginTop: 3, lineHeight: 16 },
+  title: {
+    fontSize: 14,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    lineHeight: 19,
+  },
+  host: {
+    fontSize: 12,
+    fontFamily: 'Inter_400Regular',
+    marginTop: 3,
+    lineHeight: 16,
+  },
 });

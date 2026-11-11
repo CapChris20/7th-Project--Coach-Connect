@@ -6,6 +6,7 @@ import React from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import ColorText from '../../look-and-feel/ColorText';
+import { useTheme } from '../../look-and-feel/lightDarkMode';
 
 // ===== NAMED CONSTANTS =====
 

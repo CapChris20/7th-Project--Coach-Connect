@@ -14,6 +14,7 @@ import {
   Platform,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
+import { useTheme } from '../../../look-and-feel/lightDarkMode';
 
 // ===== NAMED CONSTANTS =====
 
@@ -38,6 +39,7 @@ const LOADING_HINT = 'Loading preview…';
  * @returns {import('react').ReactElement|null}
  */
 export default function WebPageViewer({ visible, uri, title, isDark = true, onClose }) {
+  const { colors } = useTheme();
   const [isLoadingPreview, setIsLoadingPreview] = useState(true);
 
   useEffect(() => {
@@ -48,14 +50,9 @@ export default function WebPageViewer({ visible, uri, title, isDark = true, onCl
   if (!visible || !uri) return null;
 
   // 2. Show the page. Hide the spinner when it finishes or fails.
-  let pageColor = LIGHT_PAGE_COLOR;
-  let textColor = LIGHT_TEXT_COLOR;
-  let hintColor = LIGHT_HINT_COLOR;
-  if (isDark) {
-    pageColor = DARK_PAGE_COLOR;
-    textColor = DARK_TEXT_COLOR;
-    hintColor = DARK_HINT_COLOR;
-  }
+  const pageColor = colors.nbBackground;
+  const textColor = colors.nbInk;
+  const hintColor = colors.nbMuted;
   const pageTitle = title || DEFAULT_TITLE;
 
   return (

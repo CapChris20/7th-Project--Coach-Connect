@@ -1,15 +1,19 @@
 // Type calories and macros without searching a food card.
 // Flow: type a name → fill macros → log it onto today’s meal.
 // Used by the daily log “Quick add” path.
+//
+// vocab: neobrutalist tokens (nb*) replace the old soft glass palette.
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert, StyleSheet } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
 import { useShellBottomNavInset } from '../../navigation/bottomMenuSpacing';
 import { getRecentFoods } from '../daily-log/saveLoggedFood';
 import { readableFoodTitle } from '../food-search/readableFoodTitle';
+import NbCard from '../../look-and-feel/NbCard';
+import NbButton from '../../look-and-feel/NbButton';
+import { lightColors, darkColors, nb, borderRadius, spacing } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
@@ -33,32 +37,20 @@ const defaultSuggestions = [
 
 // ===== HELPER FUNCTIONS =====
 
+// Map theme → neobrutalist surface/ink tokens for inputs and chips.
 function quickAddPalette(isDark) {
-  if (isDark) {
-    return {
-      cardBg: '#14121A',
-      cardBorder: 'rgba(255,255,255,0.10)',
-      text: '#FFFFFF',
-      textMuted: 'rgba(255,255,255,0.62)',
-      faint: 'rgba(255,255,255,0.28)',
-      inputBg: 'rgba(255,255,255,0.06)',
-      inputText: '#FFFFFF',
-      inputPlaceholder: 'rgba(255,255,255,0.38)',
-      inputBorder: 'rgba(255,255,255,0.12)',
-      chipBg: 'rgba(255,255,255,0.08)',
-    };
-  }
+  const colors = isDark ? darkColors : lightColors;
   return {
-    cardBg: '#FFFFFF',
-    cardBorder: 'rgba(15,23,42,0.10)',
-    text: '#0F172A',
-    textMuted: 'rgba(15,23,42,0.55)',
-    faint: 'rgba(15,23,42,0.28)',
-    inputBg: 'rgba(15,23,42,0.04)',
-    inputText: '#0F172A',
-    inputPlaceholder: 'rgba(15,23,42,0.38)',
-    inputBorder: 'rgba(15,23,42,0.12)',
-    chipBg: 'rgba(15,23,42,0.06)',
+    cardBg: colors.nbSurface,
+    cardBorder: colors.nbBorder,
+    text: colors.nbInk,
+    textMuted: colors.nbMuted,
+    faint: colors.nbMuted,
+    inputBg: colors.nbSurfaceChip,
+    inputText: colors.nbInk,
+    inputPlaceholder: colors.nbMuted,
+    inputBorder: colors.nbBorder,
+    chipBg: colors.nbSurfaceChip,
   };
 }
 
@@ -69,9 +61,11 @@ function quickAddPalette(isDark) {
  * @param {{ onLogFood: Function, suggestions?: string[], userId?: string, reserveShellBottomNav?: boolean }} props
  */
 export function QuickAddNutrition({ onLogFood, suggestions = defaultSuggestions, userId, reserveShellBottomNav = false }) {
-  const { isDark, colors } = useTheme();
+  const { isDark } = useTheme();
+  const nbColors = isDark ? darkColors : lightColors;
   const shellBottomPad = useShellBottomNavInset(16);
-  const screenBg = reserveShellBottomNav ? 'transparent' : isDark ? colors?.background ?? '#0A0A0F' : colors?.background ?? '#F2F2F7';
+  // Manipulate here: transparent when nested under a shell that already paints the background
+  const screenBg = reserveShellBottomNav ? 'transparent' : nbColors.nbBackground;
   const palette = quickAddPalette(isDark);
 
   const [foodName, setFoodName] = useState('');
@@ -146,24 +140,13 @@ export function QuickAddNutrition({ onLogFood, suggestions = defaultSuggestions,
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
     >
-        <View style={[styles.card, { backgroundColor: palette.cardBg, borderColor: palette.cardBorder }]}>
-        <LinearGradient
-          colors={['#BE185D', '#C2410C']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={styles.topAccent}
-        />
+        <NbCard style={styles.card}>
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.headerLeft}>
-            <LinearGradient
-              colors={['#9F1239', '#EA580C']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.headerIcon}
-            >
-              <Ionicons name="flame" size={20} color="white" />
-            </LinearGradient>
+            <View style={[styles.headerIcon, { borderColor: nbColors.nbBorder, backgroundColor: nbColors.nbSurfaceChip }]}>
+              <Ionicons name="flame" size={20} color={nbColors.nbInk} />
+            </View>
             <View>
               <Text style={[styles.headerTitle, { color: palette.text }]}>Quick Add</Text>
               <Text style={[styles.headerSubtitle, { color: palette.textMuted }]}>Log your nutrition</Text>
@@ -302,23 +285,11 @@ export function QuickAddNutrition({ onLogFood, suggestions = defaultSuggestions,
           </View>
         )}
 
-        {/* Log Food Button */}
-        <LinearGradient
-          colors={['#9F1239', '#EA580C']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={[styles.logButton, !isValid && styles.logButtonDisabled]}
-        >
-          <TouchableOpacity
-            onPress={handleLog}
-            disabled={!isValid}
-            style={styles.logButtonTouchable}
-          >
-            <Ionicons name="flame" size={16} color="white" />
-            <Text style={styles.logButtonText}>Log Food</Text>
-          </TouchableOpacity>
-        </LinearGradient>
-        </View>
+        {/* Log Food Button — brand gradient via NbButton */}
+        <NbButton variant="brand" onPress={handleLog} disabled={!isValid}>
+          Log Food
+        </NbButton>
+        </NbCard>
     </ScrollView>
   );
 }
@@ -357,29 +328,19 @@ function MacroField({ label, value, onChange, palette }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingHorizontal: 16,
-    paddingVertical: 24,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.lg,
   },
+  // NbCard owns border/shadow — only pad content here
   card: {
-    borderRadius: 24,
-    padding: 20,
-    paddingTop: 24,
-    borderWidth: 1,
-    marginBottom: 8,
-    overflow: 'hidden',
-  },
-  topAccent: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 3,
+    padding: spacing.md + 4,
+    marginBottom: spacing.sm,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: spacing.lg,
   },
   headerLeft: {
     flexDirection: 'row',
@@ -389,49 +350,50 @@ const styles = StyleSheet.create({
   headerIcon: {
     width: 36,
     height: 36,
-    borderRadius: 12,
+    borderRadius: borderRadius.nbChip,
+    borderWidth: nb.borderWidth,
     justifyContent: 'center',
     alignItems: 'center',
   },
   headerTitle: {
+    fontFamily: 'SpaceGrotesk_700Bold',
     fontSize: 20,
-    fontWeight: 'bold',
   },
   headerSubtitle: {
-    fontSize: 11,
-    fontWeight: '500',
+    fontFamily: 'Inter_500Medium',
+    fontSize: 13,
     marginTop: 4,
   },
   inputGroup: {
-    marginBottom: 20,
+    marginBottom: spacing.md + 4,
   },
   label: {
+    fontFamily: 'SpaceGrotesk_700Bold',
     fontSize: 12,
-    fontWeight: '600',
-    marginBottom: 8,
+    marginBottom: spacing.sm,
     letterSpacing: 0.8,
   },
   fieldInput: {
-    borderRadius: 14,
-    paddingHorizontal: 16,
+    borderRadius: borderRadius.nbCard,
+    paddingHorizontal: nb.chipPadding,
     paddingVertical: 14,
     fontSize: 15,
-    fontWeight: '500',
-    borderWidth: 1,
+    fontFamily: 'Inter_500Medium',
+    borderWidth: nb.borderWidth,
   },
   quantityContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    borderRadius: 14,
-    borderWidth: 1,
-    paddingHorizontal: 8,
+    gap: spacing.sm,
+    borderRadius: borderRadius.nbCard,
+    borderWidth: nb.borderWidth,
+    paddingHorizontal: spacing.sm,
     paddingVertical: 6,
   },
   quantityButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
+    width: nb.minTouchTarget,
+    height: nb.minTouchTarget,
+    borderRadius: borderRadius.nbChip,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -439,77 +401,57 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: 'center',
     fontSize: 18,
-    fontWeight: 'bold',
+    fontFamily: 'SpaceGrotesk_700Bold',
   },
   toggleMacros: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginBottom: 16,
-    paddingVertical: 8,
+    marginBottom: spacing.md,
+    paddingVertical: spacing.sm,
+    minHeight: nb.minTouchTarget,
   },
   toggleText: {
     fontSize: 13,
-    fontWeight: '600',
+    fontFamily: 'Inter_600SemiBold',
   },
   macrosGrid: {
     gap: 10,
-    marginBottom: 20,
+    marginBottom: spacing.md + 4,
   },
   macroField: {
     gap: 4,
   },
   macroLabelText: {
-    fontSize: 11,
-    fontWeight: '600',
+    fontSize: 12,
+    fontFamily: 'SpaceGrotesk_700Bold',
     letterSpacing: 0.6,
     textTransform: 'uppercase',
     marginBottom: 4,
   },
-  logButton: {
-    borderRadius: 16,
-    marginTop: 20,
-    overflow: 'hidden',
-  },
-  logButtonDisabled: {
-    opacity: 0.4,
-  },
-  logButtonTouchable: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    height: 56,
-  },
-  logButtonText: {
-    fontSize: 15,
-    fontWeight: 'bold',
-    color: 'white',
-    letterSpacing: 0.5,
-  },
   recentSection: {
-    marginBottom: 20,
+    marginBottom: spacing.md + 4,
   },
   recentScroll: {
     gap: 10,
-    paddingRight: 8,
+    paddingRight: spacing.sm,
   },
   recentChip: {
     maxWidth: 140,
     minWidth: 100,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    borderRadius: 12,
-    borderWidth: 1,
+    borderRadius: borderRadius.nbChip,
+    borderWidth: nb.borderWidth,
   },
   recentChipName: {
     fontSize: 13,
-    fontWeight: '600',
+    fontFamily: 'Inter_600SemiBold',
     marginBottom: 4,
   },
   recentChipMeta: {
-    fontSize: 11,
-    fontWeight: '500',
+    fontSize: 12,
+    fontFamily: 'Inter_500Medium',
   },
 });
 

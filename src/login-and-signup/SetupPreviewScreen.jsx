@@ -8,6 +8,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TRAINER_PLATFORM_SUBSCRIPTION_ENABLED } from '../trainer-pro-plan/proPlanSwitches';
 import { ProPlanSetup } from '../trainer-pro-plan/ProPlanSetup';
 import NewUserSetupScreen from './NewUserSetupScreen';
+import { useTheme } from '../look-and-feel/lightDarkMode';
+import { nb, gradients } from '../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
@@ -17,7 +19,6 @@ const PREVIEW_ROLES = [ROLE_CLIENT, ROLE_TRAINER];
 const CLIENT_STEP_COUNT = 9;
 const TRAINER_STEP_COUNT = 8;
 const FIRST_STEP = 1;
-const PREVIEW_BACKGROUND = '#0A0A0F';
 
 // ===== HELPER FUNCTIONS =====
 
@@ -53,23 +54,32 @@ function roleChipLabel(role) {
 export default function SetupPreviewScreen({ onClose }) {
   // vocab: useSafeAreaInsets = how much of the screen the notch/status bar covers on this device.
   const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
 
   const [role, setRole] = useState(ROLE_CLIENT);
   const [step, setStep] = useState(FIRST_STEP);
 
   const totalSteps = stepCountForRole(role);
 
+  const toolbarStyle = {
+    ...styles.toolbar,
+    paddingTop: insets.top + 8,
+    backgroundColor: colors.nbSurface,
+    borderBottomColor: colors.nbBorder,
+    borderBottomWidth: nb.borderWidth,
+  };
+
   return (
-    <View style={{ flex: 1, backgroundColor: PREVIEW_BACKGROUND }}>
+    <View style={{ flex: 1, backgroundColor: colors.nbBackground }}>
       {/* Dev toolbar sits above the wizard and pads itself past the notch. */}
-      <View style={[styles.toolbar, { paddingTop: insets.top + 8 }]}>
+      <View style={toolbarStyle}>
         <View style={styles.toolbarRow}>
-          <Text style={styles.toolbarTitle}>Onboarding preview</Text>
+          <Text style={[styles.toolbarTitle, { color: colors.nbInk }]}>Onboarding preview</Text>
           <TouchableOpacity onPress={onClose} hitSlop={12}>
             <Text style={styles.closeBtn}>Close</Text>
           </TouchableOpacity>
         </View>
-        <Text style={styles.toolbarHint}>No signup — tap a step to jump</Text>
+        <Text style={[styles.toolbarHint, { color: colors.nbMuted }]}>No signup — tap a step to jump</Text>
 
         <View style={styles.roleRow}>
           {PREVIEW_ROLES.map((previewRole) => (
@@ -80,9 +90,17 @@ export default function SetupPreviewScreen({ onClose }) {
                 setRole(previewRole);
                 setStep(FIRST_STEP);
               }}
-              style={[styles.roleChip, role === previewRole && styles.roleChipOn]}
+              style={[
+                styles.roleChip,
+                { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder, borderWidth: nb.borderWidth },
+                role === previewRole && { backgroundColor: gradients.brand.colors[0] }
+              ]}
             >
-              <Text style={[styles.roleChipText, role === previewRole && styles.roleChipTextOn]}>
+              <Text style={[
+                styles.roleChipText,
+                { color: colors.nbMuted },
+                role === previewRole && { color: colors.nbInk }
+              ]}>
                 {roleChipLabel(previewRole)}
               </Text>
             </TouchableOpacity>
@@ -94,9 +112,17 @@ export default function SetupPreviewScreen({ onClose }) {
             <TouchableOpacity
               key={stepNumber}
               onPress={() => setStep(stepNumber)}
-              style={[styles.stepChip, step === stepNumber && styles.stepChipOn]}
+              style={[
+                styles.stepChip,
+                { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder, borderWidth: nb.borderWidth },
+                step === stepNumber && { backgroundColor: gradients.ink.colors[0] }
+              ]}
             >
-              <Text style={[styles.stepChipText, step === stepNumber && styles.stepChipTextOn]}>
+              <Text style={[
+                styles.stepChipText,
+                { color: colors.nbMuted },
+                step === stepNumber && { color: '#FFFFFF' }
+              ]}>
                 {stepNumber}
               </Text>
             </TouchableOpacity>
@@ -123,9 +149,6 @@ const styles = StyleSheet.create({
   toolbar: {
     paddingHorizontal: 16,
     paddingBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.1)',
-    backgroundColor: '#12121A',
     zIndex: 10,
   },
   toolbarRow: {
@@ -135,12 +158,10 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   toolbarTitle: {
-    color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '800',
   },
   toolbarHint: {
-    color: 'rgba(255,255,255,0.45)',
     fontSize: 12,
     marginBottom: 10,
   },
@@ -157,21 +178,11 @@ const styles = StyleSheet.create({
   roleChip: {
     paddingVertical: 6,
     paddingHorizontal: 14,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
-  },
-  roleChipOn: {
-    borderColor: '#FF6B9D',
-    backgroundColor: 'rgba(255,107,157,0.15)',
+    borderRadius: 12,
   },
   roleChipText: {
-    color: 'rgba(255,255,255,0.55)',
     fontSize: 13,
     fontWeight: '600',
-  },
-  roleChipTextOn: {
-    color: '#FFFFFF',
   },
   stepRow: {
     flexDirection: 'row',
@@ -184,19 +195,9 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-  },
-  stepChipOn: {
-    borderColor: '#9A3412',
-    backgroundColor: 'rgba(154,52,18,0.35)',
   },
   stepChipText: {
-    color: 'rgba(255,255,255,0.5)',
     fontSize: 14,
     fontWeight: '700',
-  },
-  stepChipTextOn: {
-    color: '#FFFFFF',
   },
 });

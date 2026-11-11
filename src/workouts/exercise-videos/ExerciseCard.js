@@ -13,26 +13,24 @@ import {
   Text,
   View,
 } from 'react-native';
+import { useColorScheme } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import NbCard from '../../look-and-feel/NbCard';
+import { lightColors, darkColors, gradients } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
 const PRESS_ANIMATION_MS = 220;
-const DEFAULT_RIM = ['#FF6B9D', '#C2410C'];
 const PRESS_SCALE = 1.02;
 const PRESS_LIFT_Y = -2;
 const MIN_GRADIENT_STOPS = 2;
-const DARK_BACKGROUND = '#0a0a0f';
 const YOUTUBE_THUMB_HOST = 'https://i.ytimg.com/vi';
 const FALLBACK_LABEL = '—';
 const FALLBACK_INITIALS = 'CC';
 const MAX_INITIAL_WORDS = 2;
 const BOOKMARK_HIT_SLOP = 10;
-const SAVED_BOOKMARK_COLOR = '#FF6B9D';
-const UNSAVED_BOOKMARK_COLOR = '#FFFFFF';
 
 // ===== HELPER FUNCTIONS =====
 
@@ -71,16 +69,12 @@ function initialsFromChannel(channel) {
 }
 
 /**
- * A one-stop array would crash LinearGradient, so fall back to the pink/orange rim.
+ * A one-stop array would crash LinearGradient, so fall back to the brand gradient.
  * @param {string[]|undefined} accentGradient
  * @returns {string[]}
  */
 function rimColors(accentGradient) {
-  return accentGradient?.length >= MIN_GRADIENT_STOPS ? accentGradient : DEFAULT_RIM;
-}
-
-function isDarkBackground(colors) {
-  return (colors?.background || '').toLowerCase() === DARK_BACKGROUND;
+  return accentGradient?.length >= MIN_GRADIENT_STOPS ? accentGradient : gradients.brand.colors;
 }
 
 // ===== MAIN FUNCTION =====
@@ -91,8 +85,8 @@ function isDarkBackground(colors) {
  */
 export default function ExerciseCard({
   exercise,
-  colors,
-  accentGradient = DEFAULT_RIM,
+  colors: deprecatedColors,
+  accentGradient,
   imageHeight = 132,
   onPress,
   saved = false,
@@ -100,6 +94,8 @@ export default function ExerciseCard({
   style,
 }) {
   // vocab: Animated.Value = a number the native driver can tween without bouncing through JS.
+  const colorScheme = useColorScheme();
+  const colors = colorScheme === 'dark' ? darkColors : lightColors;
   const scale = useRef(new Animated.Value(1)).current;
   const translateY = useRef(new Animated.Value(0)).current;
   const [isPressed, setIsPressed] = useState(false);
@@ -125,10 +121,6 @@ export default function ExerciseCard({
     ]).start();
   };
 
-  const isDark = isDarkBackground(colors);
-  const innerBg = isDark ? '#0A0A0F' : '#FFFFFF';
-  const channelColor = isDark ? 'rgba(255,255,255,0.62)' : 'rgba(10,10,15,0.62)';
-  const metaColor = isDark ? 'rgba(255,255,255,0.48)' : 'rgba(10,10,15,0.48)';
   const rim = rimColors(accentGradient);
 
   const instructorInitials = useMemo(
@@ -172,26 +164,26 @@ export default function ExerciseCard({
                 <Ionicons
                   name={saved ? 'bookmark' : 'bookmark-outline'}
                   size={16}
-                  color={saved ? SAVED_BOOKMARK_COLOR : UNSAVED_BOOKMARK_COLOR}
+                  color={saved ? gradients.brand.colors[0] : colors.nbSurface}
                 />
               </Pressable>
             ) : null}
           </View>
 
           <View style={styles.body}>
-            <Text style={[styles.title, { color: colors?.text || '#FFFFFF' }]} numberOfLines={2}>
+            <Text style={[styles.title, { color: colors.nbInk }]} numberOfLines={2}>
               {exercise?.name || FALLBACK_LABEL}
             </Text>
 
             <View style={styles.instructorRow}>
               <LinearGradient colors={rim} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.avatarGrad}>
-                <View style={[styles.avatarInner, { backgroundColor: isDark ? '#0A0A0F' : '#FFFFFF' }]}>
-                  <Text style={[styles.avatarText, { color: isDark ? '#FFFFFF' : '#0A0A0F' }]}>
+                <View style={[styles.avatarInner, { backgroundColor: colors.nbSurface }]}>
+                  <Text style={[styles.avatarText, { color: colors.nbInk }]}>
                     {instructorInitials}
                   </Text>
                 </View>
               </LinearGradient>
-              <Text style={[styles.instructor, { color: channelColor }]} numberOfLines={1}>
+              <Text style={[styles.instructor, { color: colors.nbMuted }]} numberOfLines={1}>
                 {exercise?.channel || FALLBACK_LABEL}
               </Text>
             </View>
@@ -206,7 +198,7 @@ export default function ExerciseCard({
                 <Text style={[styles.diffText, { color: rim[0] }]}>{difficulty}</Text>
               </LinearGradient>
             ) : metaText ? (
-              <Text style={[styles.meta, { color: metaColor }]} numberOfLines={1}>
+              <Text style={[styles.meta, { color: colors.nbMuted }]} numberOfLines={1}>
                 {metaText}
               </Text>
             ) : null}

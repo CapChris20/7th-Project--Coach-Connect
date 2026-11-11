@@ -24,7 +24,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { useTheme } from "../../look-and-feel/lightDarkMode";
+import { NbCard } from "../../look-and-feel/NbCard";
+import { NbButton } from "../../look-and-feel/NbButton";import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import AnimatedRe, {
   useSharedValue,
   useAnimatedStyle,
@@ -888,7 +890,7 @@ const styles = StyleSheet.create({
   controlsRow: { flexDirection: 'row', marginBottom: 8 },
   menuPanel: {
     borderRadius: 14,
-    borderWidth: 1,
+    borderWidth: 2.5,
     marginBottom: 8,
     overflow: 'hidden',
   },

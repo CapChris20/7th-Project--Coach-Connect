@@ -1,30 +1,25 @@
 // Shared trainer-home UI pieces: empty-state Lotties, color helpers, cards used by TrainerHomeContent.
 // Flow: pick a Lottie/caption → paint accent colors → render dashboard cards.
 // Used by TrainerHomeContent and related trainer home popups.
+//
+// vocab: NbCard / NbButton / NbAvatar = neobrutalist shells; GlassCard export kept as NbCard wrapper for callers.
 
 import React, { useState, useMemo, useCallback, createContext, useContext, useEffect, useRef } from 'react';
 import {
-  ActivityIndicator,
   Alert,
-  Image,
   Modal,
-  Platform,
   SafeAreaView,
   ScrollView,
   Share,
-  StyleSheet,
   Text,
   TouchableOpacity,
-  useWindowDimensions,
   View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Feather, Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import BaseColorText from '../../look-and-feel/ColorText';
 import Svg, { Path } from 'react-native-svg';
 import LottieView from 'lottie-react-native';
-import BlurredBackground from '../../look-and-feel/BlurredBackground';
-import { DailyQuotePill } from '../../for-both/home-cards/DailyQuoteCard';
 import HomeTopBannerBase from '../../for-both/home-cards/HomeTopBanner';
 import FilesHeaderCard from '../../for-both/home-cards/FilesHeaderCard';
 import FilesSection from '../../for-both/files-and-notes/viewers/FilesSection';
@@ -40,6 +35,9 @@ import {
 } from '../../helpers/whichViewerForFile';
 import { Dimensions } from 'react-native';
 import { useTheme as useGlobalTheme } from '../../look-and-feel/lightDarkMode';
+import { lightColors, darkColors, gradients, nb, borderRadius, spacing } from '../../look-and-feel/colorPalette';
+import NbCard from '../../look-and-feel/NbCard';
+import NbButton from '../../look-and-feel/NbButton';
 
 // ===== NAMED CONSTANTS =====
 
@@ -125,24 +123,24 @@ const PINK = '#FF6B9D';
 const ORANGE = '#F97316';
 const CYAN = '#06B6D4';
 
-const GRADIENT_BG_DARK = ['#0c0c0e', '#0f0f12', '#0c0c0e'];
-const GRADIENT_BG_LIGHT = ['#f5f5f7', '#f0f0f2', '#ebebed'];
+const GRADIENT_BG_DARK = [darkColors.nbBackground, darkColors.nbSurface, darkColors.nbBackground];
+const GRADIENT_BG_LIGHT = [lightColors.nbBackground, lightColors.nbSurface, lightColors.nbBackground];
 
-// Each section gets its own 2-color combo from your palette
-const GRADIENT_HERO = [PURPLE, PINK];
-const GRADIENT_AVATAR = [PURPLE, CYAN];
-const GRADIENT_USERNAME = [PURPLE, PINK];
-const GRADIENT_TABS = [S_P, S_K];
-const GRADIENT_BORDER_CARD = [PINK, ORANGE];   // hot pink + orange border
-const GRADIENT_WEIGHT = [PURPLE, PINK];
-const GRADIENT_SLEEP = [CYAN, PURPLE];
-const GRADIENT_WATER = [CYAN, ORANGE];
-const GRADIENT_WORKOUT = [ORANGE, PINK];
-const GRADIENT_CTA = [PURPLE, PINK];           // buttons, Client Requests badge
-const GRADIENT_CALENDAR = [PURPLE, CYAN];
-const GRADIENT_NOTES = [PINK, ORANGE];
+// Brand / status gradients from the shared nb palette (DESIGN.md)
+const GRADIENT_HERO = gradients.brand.colors;
+const GRADIENT_AVATAR = gradients.brand.colors;
+const GRADIENT_USERNAME = gradients.title.light.colors;
+const GRADIENT_TABS = gradients.ink.colors;
+const GRADIENT_BORDER_CARD = gradients.brand.colors;
+const GRADIENT_WEIGHT = gradients.brand.colors;
+const GRADIENT_SLEEP = gradients.sleep.colors;
+const GRADIENT_WATER = gradients.water.colors;
+const GRADIENT_WORKOUT = gradients.energy.colors;
+const GRADIENT_CTA = gradients.brand.colors;
+const GRADIENT_CALENDAR = gradients.ink.colors;
+const GRADIENT_NOTES = gradients.soft.colors;
 
-const ACCENT = GRADIENT_CTA;                    // default where no specific combo
+const ACCENT = GRADIENT_CTA;
 const BORDER_GRADIENT = GRADIENT_BORDER_CARD;
 
 // Single colors for arcs / icons / badge
@@ -261,41 +259,12 @@ const useTrainerTheme = () => {
 };
 
 // ─────────────────────────────────────────────
-// GLASS CARD — optional borderVariant: 'progress' | 'nutrition' | 'calendar' | 'notes' (different combo per section)
+// GLASS CARD — kept export name for Progress/Nutrition callers; now an NbCard shell.
+// borderVariant is ignored (nb uses one border token); isDark comes from NbCard's color scheme.
 // ─────────────────────────────────────────────
-const CARD_BORDER_BY_VARIANT = {
-  progress: CARD_BORDER_PROGRESS,
-  nutrition: CARD_BORDER_NUTRITION,
-  calendar: CARD_BORDER_CALENDAR,
-  notes: CARD_BORDER_NOTES,
-};
-const GlassCard = ({ children, style, isDark, borderVariant }) => {
-  const borderColor = borderVariant ? CARD_BORDER_BY_VARIANT[borderVariant] : CARD_BORDER_DEFAULT;
-  const cardStyle = [
-    {
-      borderRadius: 20,
-      borderWidth: 1,
-      overflow: 'hidden',
-      backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.7)',
-      borderColor: style?.borderColor ?? borderColor,
-      ...(Platform.OS === 'ios' && {
-        shadowColor: CARD_SHADOW_NEUTRAL,
-        shadowRadius: 12,
-        shadowOpacity: 0.18,
-        shadowOffset: { width: 0, height: 4 },
-      }),
-    },
-    style,
-  ];
-  if (Platform.OS === 'ios') {
-    return (
-      <BlurredBackground intensity={20} tint={isDark ? 'dark' : 'light'} style={cardStyle}>
-        {children}
-      </BlurredBackground>
-    );
-  }
-  return <View style={cardStyle}>{children}</View>;
-};
+const GlassCard = ({ children, style, isDark: _isDark, borderVariant: _borderVariant }) => (
+  <NbCard style={style}>{children}</NbCard>
+);
 
 // ─────────────────────────────────────────────
 // GRADIENT TEXT
@@ -327,12 +296,12 @@ const ArcProgress = ({ value, goal, label, color, isDark, unit = "g" }) => {
   const radius = 36;
   const circumference = Math.PI * radius;
   const offset = circumference - (pct / 100) * circumference;
-  const textColor = isDark ? '#ffffff' : '#1a0a2e';
-  const mutedColor = isDark ? 'rgba(255,255,255,0.5)' : 'rgba(26,10,46,0.5)';
+  const palette = isDark ? darkColors : lightColors;
+  const trackStroke = isDark ? 'rgba(243,238,255,0.16)' : 'rgba(10,10,15,0.12)';
   return (
-    <GlassCard isDark={isDark} style={{ alignItems: 'center', padding: 12 }}>
+    <NbCard style={{ alignItems: 'center', padding: 12 }}>
       <Svg width={90} height={55} viewBox="0 0 90 55">
-        <Path d="M 9 50 A 36 36 0 0 1 81 50" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth={6} strokeLinecap="round" />
+        <Path d="M 9 50 A 36 36 0 0 1 81 50" fill="none" stroke={trackStroke} strokeWidth={6} strokeLinecap="round" />
         <Path
           d="M 9 50 A 36 36 0 0 1 81 50"
           fill="none"
@@ -343,33 +312,21 @@ const ArcProgress = ({ value, goal, label, color, isDark, unit = "g" }) => {
           strokeDashoffset={offset}
         />
       </Svg>
-      <Text style={{ color: textColor, fontSize: 18, fontWeight: '700', marginTop: -6 }}>{value}{unit}</Text>
-      <Text style={{ color: mutedColor, fontSize: 11, marginTop: 2 }}>{label}</Text>
-    </GlassCard>
+      <Text style={{ color: palette.nbInk, fontSize: 18, fontFamily: 'SpaceGrotesk_700Bold', marginTop: -6 }}>{value}{unit}</Text>
+      <Text style={{ color: palette.nbMuted, fontSize: 12, marginTop: 2, textTransform: 'uppercase', letterSpacing: 0.1 }}>{label}</Text>
+    </NbCard>
   );
 };
 
 // ─────────────────────────────────────────────
 // BORDERED CARD (gradient border)
 // ─────────────────────────────────────────────
-const BorderedCard = ({ children, style, borderRadius = 20, bordered = false, isDark }) => {
-  const innerBg = isDark ? '#0d1117' : '#f1f5f9';
-  if (!bordered) {
-    return (
-      <GlassCard isDark={isDark} style={[style, { borderRadius }]}>
-        {children}
-      </GlassCard>
-    );
-  }
-  return (
-    <View style={[style, { borderRadius, padding: 2, overflow: 'hidden' }]}>
-      <LinearGradient colors={BORDER_GRADIENT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
-      <View style={{ flex: 1, borderRadius: borderRadius - 2, backgroundColor: innerBg, overflow: 'hidden' }}>
-        {children}
-      </View>
-    </View>
-  );
-};
+const BorderedCard = ({ children, style, borderRadius: radiusProp, bordered: _bordered, isDark: _isDark }) => (
+  // Design rule: no gradient card borders — NbCard is the single thick outline.
+  <NbCard style={[style, radiusProp != null ? { borderRadius: radiusProp } : null]}>
+    {children}
+  </NbCard>
+);
 
 // ─────────────────────────────────────────────
 // HELPERS
@@ -441,75 +398,91 @@ const PremiumTabEmptyState = ({
   subtitle,
   hints = [],
 }) => {
-  const headlineColor = isDark ? '#FFFFFF' : '#0A0A0F';
-  const subColor = isDark ? 'rgba(255,255,255,0.62)' : 'rgba(10,10,15,0.55)';
-  const hintColor = isDark ? 'rgba(255,255,255,0.52)' : 'rgba(10,10,15,0.5)';
-  const innerBg = isDark ? '#0A0812' : '#FFFFFF';
-  const iconInnerBg = isDark ? 'rgba(14,12,22,0.98)' : 'rgba(255,255,255,0.98)';
-  const iconColor = isDark ? '#E9D5FF' : '#7C3AED';
-  const border = ['#9333EA', '#DB2777'];
-  const emptyStateFill = isDark ? ['#12081f', '#08050f'] : ['#F3F0FA', '#FFFFFF'];
+  const palette = isDark ? darkColors : lightColors;
 
   return (
-    <LinearGradient
-      colors={border}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-      style={{
-        borderRadius: 20,
-        padding: 2,
-        ...(Platform.OS === 'ios'
-          ? { shadowColor: '#9333EA', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.24, shadowRadius: 14 }
-          : { elevation: 5 }),
-      }}
-    >
-      <View style={{ borderRadius: 18, overflow: 'hidden', backgroundColor: innerBg }}>
-        <LinearGradient colors={emptyStateFill} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }}>
-          <LinearGradient colors={border} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ height: 3, width: '100%' }} />
-          <View style={{ paddingVertical: 28, paddingHorizontal: 22, alignItems: 'center' }}>
-            {lottieSource ? (
+    <NbCard style={{ paddingVertical: 28, paddingHorizontal: 22, alignItems: 'center' }}>
+      {lottieSource ? (
+        <View
+          style={{
+            width: lottieSize,
+            height: lottieSize,
+            marginBottom: spacing.md,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <LottieView source={lottieSource} autoPlay loop style={{ width: '100%', height: '100%' }} />
+        </View>
+      ) : (
+        <View
+          style={{
+            width: 64,
+            height: 64,
+            borderRadius: borderRadius.nbHero,
+            borderWidth: nb.borderWidth,
+            borderColor: palette.nbBorder,
+            backgroundColor: palette.nbSurfaceChip,
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginBottom: spacing.md,
+          }}
+        >
+          <Ionicons name={icon} size={28} color={palette.nbInk} />
+        </View>
+      )}
+
+      <Text
+        style={{
+          color: palette.nbInk,
+          fontSize: 17,
+          fontFamily: 'SpaceGrotesk_700Bold',
+          letterSpacing: -0.3,
+          textAlign: 'center',
+        }}
+      >
+        {title}
+      </Text>
+      <Text
+        style={{
+          color: palette.nbMuted,
+          fontSize: 13,
+          fontFamily: 'Inter_500Medium',
+          lineHeight: 19,
+          textAlign: 'center',
+          marginTop: spacing.sm,
+          maxWidth: 280,
+        }}
+      >
+        {subtitle}
+      </Text>
+
+      {hints.length > 0 ? (
+        <View style={{ marginTop: 18, alignSelf: 'stretch', gap: spacing.sm }}>
+          {hints.map((line) => (
+            <View key={line} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
               <View
                 style={{
-                  width: lottieSize,
-                  height: lottieSize,
-                  marginBottom: 16,
+                  width: 20,
+                  height: 20,
+                  borderRadius: 10,
+                  borderWidth: nb.borderWidth,
+                  borderColor: palette.nbBorder,
+                  backgroundColor: palette.nbSurfaceChip,
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}
               >
-                <LottieView source={lottieSource} autoPlay loop style={{ width: '100%', height: '100%' }} />
+                <Ionicons name="checkmark" size={12} color={palette.nbInk} />
               </View>
-            ) : (
-              <LinearGradient colors={border} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: 64, height: 64, borderRadius: 20, padding: 2, marginBottom: 16 }}>
-                <View style={{ flex: 1, borderRadius: 18, backgroundColor: iconInnerBg, alignItems: 'center', justifyContent: 'center' }}>
-                  <Ionicons name={icon} size={28} color={iconColor} />
-                </View>
-              </LinearGradient>
-            )}
-
-            <Text style={{ color: headlineColor, fontSize: 17, fontWeight: '900', letterSpacing: -0.3, textAlign: 'center' }}>
-              {title}
-            </Text>
-            <Text style={{ color: subColor, fontSize: 13, fontWeight: '500', lineHeight: 19, textAlign: 'center', marginTop: 8, maxWidth: 280 }}>
-              {subtitle}
-            </Text>
-
-            {hints.length > 0 ? (
-              <View style={{ marginTop: 18, alignSelf: 'stretch', gap: 8 }}>
-                {hints.map((line) => (
-                  <View key={line} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: isDark ? 'rgba(147,51,234,0.2)' : 'rgba(124,58,237,0.1)', alignItems: 'center', justifyContent: 'center' }}>
-                      <Ionicons name="checkmark" size={12} color={isDark ? '#DDD6FE' : '#7C3AED'} />
-                    </View>
-                    <Text style={{ flex: 1, color: hintColor, fontSize: 12, fontWeight: '600', lineHeight: 16 }}>{line}</Text>
-                  </View>
-                ))}
-              </View>
-            ) : null}
-          </View>
-        </LinearGradient>
-      </View>
-    </LinearGradient>
+              <Text style={{ flex: 1, color: palette.nbMuted, fontSize: 12, fontFamily: 'Inter_600SemiBold', lineHeight: 16 }}>
+                {line}
+              </Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+    </NbCard>
   );
 };
 
@@ -517,7 +490,7 @@ const PremiumTabEmptyState = ({
 // EMPTY STATE
 // ─────────────────────────────────────────────
 const EmptyState = ({ icon, message, ctaLabel, onCta, isDark, lottieType, compact }) => {
-  const mutedColor = isDark ? 'rgba(255,255,255,0.5)' : 'rgba(26,10,46,0.5)';
+  const palette = isDark ? darkColors : lightColors;
   const lottieSource = lottieType ? getTrainerDashboardLottieSource(lottieType) : null;
   const lottieCaption = lottieType ? getTrainerDashboardLottieCaption(lottieType) : null;
   const pad = compact ? 20 : 32;
@@ -525,7 +498,7 @@ const EmptyState = ({ icon, message, ctaLabel, onCta, isDark, lottieType, compac
   const iconWrap = compact ? 44 : 52;
 
   return (
-    <GlassCard isDark={isDark} style={{ padding: pad, alignItems: 'center', gap }}>
+    <NbCard style={{ padding: pad, alignItems: 'center', gap }}>
       {lottieType && lottieSource ? (
         <>
           <LottieView
@@ -534,31 +507,33 @@ const EmptyState = ({ icon, message, ctaLabel, onCta, isDark, lottieType, compac
             loop
             style={{ width: 100, height: 100 }}
           />
-          <Text style={{ color: mutedColor, fontSize: 14, textAlign: 'center' }}>
+          <Text style={{ color: palette.nbMuted, fontSize: 14, textAlign: 'center', fontFamily: 'Inter_400Regular' }}>
             {lottieCaption ?? message}
           </Text>
         </>
       ) : (
         <View style={{
-          width: iconWrap, height: iconWrap, borderRadius: iconWrap / 2,
-          backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(124,58,237,0.08)',
-          alignItems: 'center', justifyContent: 'center',
+          width: iconWrap,
+          height: iconWrap,
+          borderRadius: iconWrap / 2,
+          borderWidth: nb.borderWidth,
+          borderColor: palette.nbBorder,
+          backgroundColor: palette.nbSurfaceChip,
+          alignItems: 'center',
+          justifyContent: 'center',
         }}>
-          <Icon name={icon} size={compact ? 20 : 24} color={mutedColor} />
+          <Icon name={icon} size={compact ? 20 : 24} color={palette.nbMuted} />
         </View>
       )}
       {(!lottieType || message) && (
-        <Text style={{ color: mutedColor, fontSize: compact ? 13 : 14, textAlign: 'center', lineHeight: compact ? 19 : 20 }}>{message}</Text>
+        <Text style={{ color: palette.nbMuted, fontSize: compact ? 13 : 14, textAlign: 'center', lineHeight: compact ? 19 : 20, fontFamily: 'Inter_400Regular' }}>{message}</Text>
       )}
-      {ctaLabel && onCta && (
-        <TouchableOpacity onPress={onCta} activeOpacity={0.8}>
-          <LinearGradient colors={GRADIENT_CTA} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 24, paddingVertical: 10, borderRadius: 20 }}>
-            <Icon name={icon} size={15} color="#fff" />
-            <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600' }}>{ctaLabel}</Text>
-          </LinearGradient>
-        </TouchableOpacity>
-      )}
-    </GlassCard>
+      {ctaLabel && onCta ? (
+        <NbButton variant="brand" sm onPress={onCta}>
+          {ctaLabel}
+        </NbButton>
+      ) : null}
+    </NbCard>
   );
 };
 
@@ -566,11 +541,11 @@ const EmptyState = ({ icon, message, ctaLabel, onCta, isDark, lottieType, compac
 // CATEGORY CARD — single metric, optional (only render if has value or show —)
 // ─────────────────────────────────────────────
 const CategoryCard = ({ title, value, unit, isDark, emptyLabel, gradient }) => {
-  const mutedColor = isDark ? 'rgba(255,255,255,0.5)' : 'rgba(26,10,46,0.5)';
+  const palette = isDark ? darkColors : lightColors;
   const hasVal = value != null && value !== '';
   
-  const getLottieForCategory = (title) => {
-    const titleLower = title.toLowerCase();
+  const getLottieForCategory = (categoryTitle) => {
+    const titleLower = categoryTitle.toLowerCase();
     if (titleLower.includes('soreness')) return 'soreness';
     if (titleLower.includes('energy')) return 'energy';
     if (titleLower.includes('stress')) return 'stress';
@@ -602,12 +577,12 @@ const CategoryCard = ({ title, value, unit, isDark, emptyLabel, gradient }) => {
   };
   
   return (
-    <GlassCard isDark={isDark} style={{ padding: 16, alignItems: 'center' }}>
+    <NbCard style={{ padding: spacing.md, alignItems: 'center' }}>
       {hasVal ? (
         <>
-          <ColorText colors={gradient} style={{ fontSize: 28, fontWeight: '800' }}>{value}</ColorText>
-          {unit ? <Text style={{ color: mutedColor, fontSize: 11, marginTop: 2 }}>{unit}</Text> : null}
-          <Text style={{ color: mutedColor, fontSize: 10, marginTop: 2, fontStyle: 'italic' }}>{getDisplayLabel()}</Text>
+          <ColorText colors={gradient || gradients.brand.colors} style={{ fontSize: 28, fontWeight: '800', fontFamily: 'SpaceGrotesk_700Bold' }}>{value}</ColorText>
+          {unit ? <Text style={{ color: palette.nbMuted, fontSize: 12, marginTop: 2 }}>{unit}</Text> : null}
+          <Text style={{ color: palette.nbMuted, fontSize: 12, marginTop: 2, fontStyle: 'italic' }}>{getDisplayLabel()}</Text>
         </>
       ) : (
         <View style={{ alignItems: 'center' }}>
@@ -619,16 +594,16 @@ const CategoryCard = ({ title, value, unit, isDark, emptyLabel, gradient }) => {
                 loop
                 style={{ width: 100, height: 100 }}
               />
-              <Text style={{ color: mutedColor, fontSize: 13, fontStyle: 'italic', marginTop: 8 }}>
+              <Text style={{ color: palette.nbMuted, fontSize: 13, fontStyle: 'italic', marginTop: 8 }}>
                 {getTrainerDashboardLottieCaption(lottieType) ?? emptyLabel ?? 'No data'}
               </Text>
             </>
           ) : (
-            <Text style={{ color: mutedColor, fontSize: 13, fontStyle: 'italic' }}>{emptyLabel || 'No data'}</Text>
+            <Text style={{ color: palette.nbMuted, fontSize: 13, fontStyle: 'italic' }}>{emptyLabel || 'No data'}</Text>
           )}
         </View>
       )}
-    </GlassCard>
+    </NbCard>
   );
 };
 
@@ -659,8 +634,9 @@ const TrainerNotesFilesHeroAndWorkspace = ({
   const items = clientData?.notesAndFiles || [];
   const fileCount = items.length + (Array.isArray(trainerDocuments) ? trainerDocuments.length : 0);
   const newCount = items.filter((x) => (x.addedBy || 'client') === 'client' && x.isRead !== true).length;
-  const sheetBg = isDark ? '#0A0A0F' : '#F7F7FA';
-  const headerColor = isDark ? '#ffffff' : '#1A1A2E';
+  const palette = isDark ? darkColors : lightColors;
+  const sheetBg = palette.nbBackground;
+  const headerColor = palette.nbInk;
 
   const openItem = useCallback((f) => {
     if (!f) return;
@@ -793,10 +769,7 @@ const TrainerNotesFilesHeroAndWorkspace = ({
 const TABS = ['Progress', 'Nutrition', 'Sessions', 'Notes & Files'];
 
 const TabPills = ({ activeTab, onTabChange, isDark }) => {
-  const mutedColor = isDark ? 'rgba(255,255,255,0.5)' : 'rgba(10,10,15,0.55)';
-  const activeTextColor = isDark ? '#FFFFFF' : '#0A0A0F';
-  const cardBg = isDark ? 'rgba(255,255,255,0.06)' : '#FFFFFF';
-  const cardBorder = isDark ? CARD_BORDER_PURPLE_CYAN : 'rgba(10,10,15,0.10)';
+  const palette = isDark ? darkColors : lightColors;
   return (
     <View style={{ flexDirection: 'row', gap: 6, marginBottom: 12 }}>
       {TABS.map((tab) => {
@@ -805,37 +778,55 @@ const TabPills = ({ activeTab, onTabChange, isDark }) => {
           return (
             <TouchableOpacity
               key={tab}
-              style={{
-                flex: 1,
-                paddingVertical: 8,
-                paddingHorizontal: 10,
-                borderRadius: 20,
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(10,10,15,0.06)',
-              }}
+              style={{ flex: 1 }}
               onPress={() => onTabChange(tab)}
               activeOpacity={0.9}
             >
-              <Text
-                style={{ color: activeTextColor, fontSize: 11, fontWeight: '800' }}
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                minimumFontScale={0.7}
+              <LinearGradient
+                colors={gradients.ink.colors}
+                start={gradients.ink.start}
+                end={gradients.ink.end}
+                style={{
+                  paddingVertical: 10,
+                  paddingHorizontal: 8,
+                  borderRadius: borderRadius.nbChip,
+                  borderWidth: nb.borderWidth,
+                  borderColor: palette.nbBorder,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  minHeight: nb.minTouchTarget,
+                }}
               >
-                {tab}
-              </Text>
+                <Text
+                  style={{ color: '#FFFFFF', fontSize: 12, fontFamily: 'SpaceGrotesk_700Bold' }}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.7}
+                >
+                  {tab}
+                </Text>
+              </LinearGradient>
             </TouchableOpacity>
           );
         }
         return (
           <TouchableOpacity
             key={tab}
-            style={{ flex: 1, paddingVertical: 8, borderRadius: 20, borderWidth: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: cardBg, borderColor: cardBorder }}
+            style={{
+              flex: 1,
+              paddingVertical: 10,
+              borderRadius: borderRadius.nbChip,
+              borderWidth: nb.borderWidth,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: palette.nbSurface,
+              borderColor: palette.nbBorder,
+              minHeight: nb.minTouchTarget,
+            }}
             onPress={() => onTabChange(tab)}
             activeOpacity={0.8}
           >
-            <Text style={{ color: mutedColor, fontSize: 11, fontWeight: '600' }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{tab}</Text>
+            <Text style={{ color: palette.nbMuted, fontSize: 12, fontFamily: 'Inter_600SemiBold' }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{tab}</Text>
           </TouchableOpacity>
         );
       })}

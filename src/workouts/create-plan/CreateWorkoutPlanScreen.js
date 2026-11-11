@@ -38,6 +38,9 @@ import { HERO_TITLE_TEXT_GRADIENT } from '../../look-and-feel/brandColors';
 import BottomMenuBar from '../../navigation/BottomMenuBar';
 import { BOTTOM_NAV_BAR_HEIGHT, SHELL_SAFE_AREA_EDGES, ShellBottomNavAnchor, useShellBottomNavInset } from '../../navigation/bottomMenuSpacing';
 import TopHeader from '../../for-both/loading-and-header/TopHeader';
+import NbCard from '../../look-and-feel/NbCard';
+import NbButton from '../../look-and-feel/NbButton';
+import { lightColors, darkColors, gradients, nb, borderRadius } from '../../look-and-feel/colorPalette';
 import WorkoutPlanBuilderFieldEditBody from '../create-plan/editPlanFieldForms';
 import ProfileIcon from '../../for-both/icons/ProfileIcon';
 import SectionTitle from '../../for-both/home-cards/SectionTitle';
@@ -259,16 +262,16 @@ function tryParseJsonObject(str) {
 }
 
 const PLAN_BUILDER_COLORS = {
-  bgDark: '#0A0A0F',
-  bgLight: '#F5F5F5',
-  cardDark: '#12131A',
-  cardLight: '#FFFFFF',
-  pink: '#FF6B9D',
+  bgDark: darkColors.nbBackground,
+  bgLight: lightColors.nbBackground,
+  cardDark: darkColors.nbSurface,
+  cardLight: lightColors.nbSurface,
+  pink: gradients.brand.colors[0],
   /** Secondary accent for row icons (replaces old purple). */
-  purple: '#64D2FF',
-  cyan: '#06B6D4',
-  orange: '#F97316',
-  green: '#10B981',
+  purple: gradients.brand.colors[1],
+  cyan: gradients.water.colors[0],
+  orange: gradients.brand.colors[1],
+  green: gradients.energy.colors[0],
 };
 
 const WORKOUT_PLAN_BUILDER_SECTIONS = [
@@ -656,7 +659,7 @@ const planBuilderRefStyles = StyleSheet.create({
   generateButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
-    fontWeight: '700',
+    fontFamily: 'SpaceGrotesk_700Bold',
   },
 });
 
@@ -666,7 +669,7 @@ function PlanBuilderAnimatedBorderCard({
   duration = 4,
   cardBg,
   padding = 0,
-  borderColors = ['#BE185D', '#C2410C', '#BE185D', '#C2410C', '#BE185D'],
+  borderColors = [...gradients.ink.colors, ...gradients.ink.colors, gradients.ink.colors[0]],
 }) {
   const rotateAnim = useMemo(() => new Animated.Value(0), []);
 
@@ -1257,22 +1260,22 @@ const planViewerRefStyles = StyleSheet.create({
   dayHeaderContent: { flexDirection: 'row', alignItems: 'center', flex: 1, gap: 12 },
   dayShort: {
     fontSize: 13,
-    fontWeight: '800',
+    fontFamily: 'SpaceGrotesk_700Bold',
     color: '#FFFFFF',
     opacity: 0.95,
     letterSpacing: 0.5,
   },
   dayInfo: { flex: 1 },
-  dayName: { fontSize: 16, fontWeight: '800', color: '#FFFFFF' },
+  dayName: { fontSize: 16, fontFamily: 'SpaceGrotesk_700Bold', color: '#FFFFFF' },
   dayFocus: { fontSize: 13, color: 'rgba(255,255,255,0.88)', marginTop: 2 },
   dayExpanded: { borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: 14, paddingBottom: 14, paddingTop: 12 },
   recoveryContainer: { alignItems: 'center', paddingVertical: 12 },
-  recoveryTitle: { fontSize: 16, fontWeight: '700', marginTop: 8 },
-  recoveryNote: { fontSize: 14, textAlign: 'center', marginTop: 6, lineHeight: 20 },
+  recoveryTitle: { fontSize: 16, fontFamily: 'SpaceGrotesk_700Bold', marginTop: 8 },
+  recoveryNote: { fontSize: 14, fontFamily: 'Inter_400Regular', textAlign: 'center', marginTop: 6, lineHeight: 20 },
   exerciseItem: { marginBottom: 14 },
   exerciseHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 },
-  exerciseName: { fontSize: 15, fontWeight: '700', flex: 1 },
-  exerciseSets: { fontSize: 14, fontWeight: '700' },
+  exerciseName: { fontSize: 15, fontFamily: 'SpaceGrotesk_700Bold', flex: 1 },
+  exerciseSets: { fontSize: 14, fontFamily: 'SpaceGrotesk_700Bold' },
   exerciseDetails: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
   detailBadge: {
     paddingHorizontal: 10,
@@ -1315,42 +1318,42 @@ const planViewerRefStyles = StyleSheet.create({
     paddingTop: 16,
     paddingBottom: 8,
   },
-  logTitle: { fontSize: 18, fontWeight: '800' },
+  logTitle: { fontSize: 18, fontFamily: 'SpaceGrotesk_700Bold' },
   logContent: { paddingHorizontal: 16, maxHeight: 420 },
   saveBtnGradient: { marginHorizontal: 16, marginTop: 8, borderRadius: 14, overflow: 'hidden' },
   saveButton: { paddingVertical: 16, alignItems: 'center' },
-  saveButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
+  saveButtonText: { color: '#FFFFFF', fontSize: 16, fontFamily: 'SpaceGrotesk_700Bold' },
   subSectionLabel: {
-    fontSize: 11,
-    fontWeight: '700',
+    fontSize: 12,
+    fontFamily: 'SpaceGrotesk_700Bold',
     letterSpacing: 1.2,
     marginBottom: 8,
     marginTop: 4,
   },
   warmRow: { flexDirection: 'row', paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth, gap: 10 },
-  warmName: { flex: 1, fontSize: 14, fontWeight: '600' },
-  warmMeta: { fontSize: 12 },
+  warmName: { flex: 1, fontSize: 14, fontFamily: 'Inter_500Medium' },
+  warmMeta: { fontSize: 12, fontFamily: 'Inter_400Regular' },
   overviewCard: {
     borderRadius: 14,
     padding: 14,
     marginBottom: 16,
     borderWidth: 1,
   },
-  overviewLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 1.4, marginBottom: 8 },
-  overviewBody: { fontSize: 14, lineHeight: 22 },
-  metaLine: { fontSize: 13, marginBottom: 14 },
+  overviewLabel: { fontSize: 12, fontFamily: 'SpaceGrotesk_700Bold', letterSpacing: 1.4, marginBottom: 8 },
+  overviewBody: { fontSize: 14, fontFamily: 'Inter_400Regular', lineHeight: 22 },
+  metaLine: { fontSize: 13, fontFamily: 'Inter_400Regular', marginBottom: 14 },
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 32,
   },
-  errorTitle: { fontSize: 24, fontWeight: '700', marginTop: 16 },
-  errorMessage: { fontSize: 14, marginTop: 8, textAlign: 'center', lineHeight: 20 },
+  errorTitle: { fontSize: 24, fontFamily: 'SpaceGrotesk_700Bold', marginTop: 16 },
+  errorMessage: { fontSize: 14, fontFamily: 'Inter_400Regular', marginTop: 8, textAlign: 'center', lineHeight: 20 },
   errorButton: { marginTop: 24, paddingVertical: 12, paddingHorizontal: 24, borderRadius: 12 },
-  errorButtonText: { color: '#FFFFFF', fontWeight: '700' },
+  errorButtonText: { color: '#FFFFFF', fontFamily: 'SpaceGrotesk_700Bold' },
   loaderContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  loaderText: { marginTop: 16, fontSize: 14 },
+  loaderText: { marginTop: 16, fontSize: 14, fontFamily: 'Inter_400Regular' },
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -1359,11 +1362,11 @@ const planViewerRefStyles = StyleSheet.create({
     borderRadius: 16,
     padding: 24,
   },
-  emptyTitle: { fontSize: 20, fontWeight: '700', marginTop: 16 },
-  emptyMessage: { fontSize: 14, marginTop: 8, textAlign: 'center' },
+  emptyTitle: { fontSize: 20, fontFamily: 'SpaceGrotesk_700Bold', marginTop: 16 },
+  emptyMessage: { fontSize: 14, fontFamily: 'Inter_400Regular', marginTop: 8, textAlign: 'center' },
   emptyButton: { marginTop: 24, paddingVertical: 12, paddingHorizontal: 24, borderRadius: 12 },
-  emptyButtonText: { color: '#FFFFFF', fontWeight: '700' },
-  noExerciseText: { fontSize: 14, textAlign: 'center', paddingVertical: 16 },
+  emptyButtonText: { color: '#FFFFFF', fontFamily: 'SpaceGrotesk_700Bold' },
+  noExerciseText: { fontSize: 14, fontFamily: 'Inter_400Regular', textAlign: 'center', paddingVertical: 16 },
 });
 
 function derivePlanViewerDayShort(label, index, weeklySchedule) {

@@ -1,6 +1,8 @@
 // Onboarding-style Pro paywall: hero, benefit cards, subscribe CTA, restore, legal links.
 // Flow: pick expired vs first-subscribe copy → list TRAINER_SUBSCRIPTION_BENEFITS → primary IAP action.
 // Used by trainer Pro upgrade / expired-subscription screens. Product ids live in the parent, not here.
+//
+// vocab: NbCard / NbButton / NbListRow = neobrutalist shells; brand gradient is the single CTA moment
 
 import React, { useMemo } from 'react';
 import {
@@ -10,21 +12,20 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
-import {
-  getOnboardingUiTokens,
-  OnboardingPrimaryButton,
-} from '../for-both/setup-steps/setupStepPieces';
 import {
   TRAINER_SUBSCRIPTION_BENEFITS,
   TRAINER_SUBSCRIPTION_PRICE_LABEL,
   TRAINER_SUBSCRIPTION_TRIAL_LABEL,
 } from './proPlanSwitches';
 import ProLegalFooter from './ProLegalFooter';
+import { lightColors, darkColors, nb, spacing } from '../look-and-feel/colorPalette';
+import NbCard from '../look-and-feel/NbCard';
+import NbButton from '../look-and-feel/NbButton';
+import NbListRow from '../look-and-feel/NbListRow';
 
 // ===== NAMED CONSTANTS =====
 
@@ -32,32 +33,27 @@ const SUBSCRIPTION_HERO = require('../assets/icons/digital-gift-card-abstract-co
 const VARIANT_EXPIRED = 'expired';
 const VARIANT_PAYWALL = 'paywall';
 const DEFAULT_FEATURE_ICON = 'checkmark-circle';
-const DEFAULT_FEATURE_COLOR = '#FF6B9D';
-const LEGAL_LINK_COLOR = '#FF6B9D';
-const LOADING_SPINNER_COLOR = '#C1265A';
-const CHECKMARK_COLOR = '#34D399';
 const ERROR_TYPE_NETWORK = 'network';
 const ERROR_TYPE_VERIFICATION = 'verification';
 
 const FEATURE_META = [
-  { icon: 'people', color: '#FF6B9D' },
-  { icon: 'flash', color: '#FCD34D' },
-  { icon: 'restaurant-outline', color: '#06B6D4' },
-  { icon: 'stats-chart', color: '#A78BFA' },
-  { icon: 'chatbubbles', color: '#10B981' },
+  { icon: 'people' },
+  { icon: 'flash' },
+  { icon: 'restaurant-outline' },
+  { icon: 'stats-chart' },
+  { icon: 'chatbubbles' },
 ];
 
 // ===== HELPER FUNCTIONS =====
 
 /**
- * Pair each benefit string with a color/icon. Extra benefits reuse the checkmark fallback.
- * @returns {Array<{ title: string, icon: string, color: string }>}
+ * Pair each benefit string with an icon. Extra benefits reuse the checkmark fallback.
+ * @returns {Array<{ title: string, icon: string }>}
  */
 function featureCardsFromBenefits() {
   return TRAINER_SUBSCRIPTION_BENEFITS.map((title, index) => ({
     title,
     icon: FEATURE_META[index]?.icon || DEFAULT_FEATURE_ICON,
-    color: FEATURE_META[index]?.color || DEFAULT_FEATURE_COLOR,
   }));
 }
 
@@ -91,52 +87,40 @@ function buildOfferCopy({ variant, priceLine, primaryLabel }) {
  * StoreKit / network failures. Only the matching type shows its extra link.
  * @param {object} props
  */
-function OfferErrorBox({ lastError, onPrimary, onContactSupport }) {
+function OfferErrorBox({ lastError, onPrimary, onContactSupport, palette }) {
   if (!lastError) return null;
   const showRetry = lastError.type === ERROR_TYPE_NETWORK && onPrimary;
   const showSupport = lastError.type === ERROR_TYPE_VERIFICATION && onContactSupport;
   return (
-    <View style={styles.errorBox}>
-      <Text style={styles.errorText}>{lastError.message}</Text>
+    <NbCard style={[styles.errorBox, { borderColor: palette.nbBorder }]}>
+      <Text style={[styles.errorText, { color: palette.nbInk }]}>{lastError.message}</Text>
       {showRetry ? (
         <TouchableOpacity onPress={onPrimary}>
-          <Text style={styles.errorLink}>Retry</Text>
+          <Text style={[styles.errorLink, { color: palette.nbInk }]}>Retry</Text>
         </TouchableOpacity>
       ) : null}
       {showSupport ? (
         <TouchableOpacity onPress={onContactSupport}>
-          <Text style={styles.errorLink}>Contact support</Text>
+          <Text style={[styles.errorLink, { color: palette.nbInk }]}>Contact support</Text>
         </TouchableOpacity>
       ) : null}
-    </View>
+    </NbCard>
   );
 }
 
 /**
  * @param {object} props
  */
-function FeatureCardList({ features, isDark, tokens }) {
+function FeatureCardList({ features, palette }) {
   return (
     <View style={styles.featuresContainer}>
       {features.map((feature) => (
-        <View
+        <NbListRow
           key={feature.title}
-          style={[
-            styles.featureCard,
-            {
-              backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
-              borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.10)',
-            },
-          ]}
-        >
-          <View style={[styles.featureIcon, { backgroundColor: `${feature.color}20` }]}>
-            <Ionicons name={feature.icon} size={20} color={feature.color} />
-          </View>
-          <View style={styles.featureContent}>
-            <Text style={[styles.featureTitle, { color: tokens.textPrimary }]}>{feature.title}</Text>
-          </View>
-          <Ionicons name="checkmark-circle" size={18} color={CHECKMARK_COLOR} />
-        </View>
+          title={feature.title}
+          right={<Ionicons name="checkmark-circle" size={18} color={palette.nbInk} />}
+          style={styles.featureRow}
+        />
       ))}
     </View>
   );
@@ -148,49 +132,34 @@ function FeatureCardList({ features, isDark, tokens }) {
  */
 function OfferActionButtons({
   actionLoading,
-  tokens,
+  palette,
   ctaLabel,
   ctaDisabled,
   onPrimary,
   onRestore,
   onOpenSettings,
-  isDark,
 }) {
   return (
     <View style={styles.buttonContainer}>
       {actionLoading ? (
         <View style={styles.loadingBtn}>
-          <ActivityIndicator color={LOADING_SPINNER_COLOR} />
+          <ActivityIndicator color={palette.nbInk} />
         </View>
       ) : (
-        <OnboardingPrimaryButton
-          t={tokens}
-          label={ctaLabel}
-          disabled={ctaDisabled}
-          onPress={onPrimary}
-        />
+        <NbButton variant="brand" onPress={onPrimary} disabled={ctaDisabled} style={styles.ctaWidth}>
+          {ctaLabel}
+        </NbButton>
       )}
 
       {typeof onRestore === 'function' ? (
-        <TouchableOpacity
-          activeOpacity={0.88}
-          style={[
-            styles.secondaryButton,
-            {
-              borderColor: isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.12)',
-              backgroundColor: isDark ? 'rgba(255,255,255,0.02)' : 'transparent',
-            },
-          ]}
-          onPress={onRestore}
-          disabled={actionLoading}
-        >
-          <Text style={[styles.secondaryButtonText, { color: tokens.textPrimary }]}>Restore purchases</Text>
-        </TouchableOpacity>
+        <NbButton variant="plain" onPress={onRestore} disabled={actionLoading} style={styles.ctaWidth}>
+          Restore purchases
+        </NbButton>
       ) : null}
 
       {typeof onOpenSettings === 'function' ? (
         <TouchableOpacity onPress={onOpenSettings} style={styles.settingsLink}>
-          <Text style={[styles.settingsLinkText, { color: tokens.textSecondary }]}>Settings</Text>
+          <Text style={[styles.settingsLinkText, { color: palette.nbMuted }]}>Settings</Text>
         </TouchableOpacity>
       ) : null}
     </View>
@@ -219,7 +188,8 @@ export default function ProUpgradeOffer({
   onOpenPrivacy,
   connected = true,
 }) {
-  const tokens = getOnboardingUiTokens(isDark);
+  const palette = isDark ? darkColors : lightColors;
+  void connected;
 
   const features = useMemo(() => featureCardsFromBenefits(), []);
   const copy = buildOfferCopy({ variant, priceLine, primaryLabel });
@@ -227,7 +197,7 @@ export default function ProUpgradeOffer({
   const ctaDisabled = actionLoading;
 
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: tokens.bg }]} edges={['top', 'bottom']}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: palette.nbBackground }]} edges={['top', 'bottom']}>
       <ScrollView
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
@@ -238,24 +208,25 @@ export default function ProUpgradeOffer({
         </View>
 
         <View style={styles.titleSection}>
-          <Text style={[styles.title, { color: tokens.textPrimary }]}>{copy.title}</Text>
-          <Text style={[styles.subtitle, { color: tokens.textSecondary }]}>{copy.subtitle}</Text>
+          <Text style={[styles.title, { color: palette.nbInk }]}>{copy.title}</Text>
+          <Text style={[styles.subtitle, { color: palette.nbMuted }]}>{copy.subtitle}</Text>
           {copy.showPaywallHint ? (
-            <Text style={[styles.stepHint, { color: tokens.textLabel }]}>Trainer platform subscription</Text>
+            <Text style={[styles.stepHint, { color: palette.nbMuted }]}>Trainer platform subscription</Text>
           ) : null}
         </View>
 
-        <FeatureCardList features={features} isDark={isDark} tokens={tokens} />
+        <FeatureCardList features={features} palette={palette} />
 
         <OfferErrorBox
           lastError={lastError}
           onPrimary={onPrimary}
           onContactSupport={onContactSupport}
+          palette={palette}
         />
 
         <ProLegalFooter
-          textColor={tokens.textSecondary}
-          linkColor={LEGAL_LINK_COLOR}
+          textColor={palette.nbMuted}
+          linkColor={palette.nbInk}
           priceLine={copy.subtitle}
           onOpenTerms={onOpenTerms}
           onOpenPrivacy={onOpenPrivacy}
@@ -263,13 +234,12 @@ export default function ProUpgradeOffer({
 
         <OfferActionButtons
           actionLoading={actionLoading}
-          tokens={tokens}
+          palette={palette}
           ctaLabel={copy.ctaLabel}
           ctaDisabled={ctaDisabled}
           onPrimary={onPrimary}
           onRestore={onRestore}
           onOpenSettings={onOpenSettings}
-          isDark={isDark}
         />
       </ScrollView>
     </SafeAreaView>
@@ -280,42 +250,41 @@ const styles = StyleSheet.create({
   safe: { flex: 1 },
   scroll: {
     flexGrow: 1,
-    paddingHorizontal: 24,
-    paddingTop: 8,
-    paddingBottom: 32,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xl,
   },
   heroWrap: {
     height: 240,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: spacing.sm,
   },
   heroImage: {
     width: '100%',
     height: '100%',
   },
   titleSection: {
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: 22,
-    paddingHorizontal: 8,
+    paddingHorizontal: spacing.sm,
   },
   title: {
-    fontSize: 26,
-    fontWeight: '800',
-    textAlign: 'center',
-    lineHeight: 32,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 24,
+    lineHeight: 30,
     marginBottom: 10,
     letterSpacing: -0.3,
   },
   subtitle: {
+    fontFamily: 'Inter_400Regular',
     fontSize: 15,
     lineHeight: 22,
-    textAlign: 'center',
     marginBottom: 10,
   },
   stepHint: {
+    fontFamily: 'SpaceGrotesk_700Bold',
     fontSize: 12,
-    fontWeight: '700',
     letterSpacing: 1.1,
     textTransform: 'uppercase',
   },
@@ -323,70 +292,29 @@ const styles = StyleSheet.create({
     gap: 12,
     marginBottom: 14,
   },
-  featureCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    padding: 16,
-    borderRadius: 18,
-    borderWidth: 1,
-  },
-  featureIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  featureContent: {
-    flex: 1,
-  },
-  featureTitle: {
-    fontSize: 15,
-    fontWeight: '700',
+  featureRow: {
+    // NbListRow already has thick border
   },
   errorBox: {
-    backgroundColor: 'rgba(239,68,68,0.12)',
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(239,68,68,0.35)',
     padding: 14,
     marginBottom: 12,
   },
-  errorText: { color: '#FCA5A5', fontSize: 14, lineHeight: 20 },
-  errorLink: { color: '#F9A8D4', fontWeight: '700', marginTop: 8, fontSize: 14 },
-  legal: {
-    fontSize: 13,
-    lineHeight: 20,
-    textAlign: 'center',
-    marginBottom: 6,
-    paddingHorizontal: 8,
-  },
+  errorText: { fontFamily: 'Inter_400Regular', fontSize: 14, lineHeight: 20 },
+  errorLink: { fontFamily: 'SpaceGrotesk_700Bold', marginTop: 8, fontSize: 14 },
   buttonContainer: {
     gap: 12,
     marginTop: 6,
-    alignItems: 'center',
+    alignItems: 'stretch',
   },
   loadingBtn: {
-    height: 56,
+    height: nb.minTouchTarget,
     alignItems: 'center',
     justifyContent: 'center',
-    width: '80%',
-    maxWidth: 400,
+    width: '100%',
   },
-  secondaryButton: {
-    width: '80%',
-    maxWidth: 400,
-    height: 56,
-    borderRadius: 16,
-    borderWidth: 1.5,
-    alignItems: 'center',
-    justifyContent: 'center',
+  ctaWidth: {
+    width: '100%',
   },
-  secondaryButtonText: {
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  settingsLink: { paddingVertical: 8 },
-  settingsLinkText: { fontSize: 14, fontWeight: '600' },
+  settingsLink: { paddingVertical: 8, minHeight: nb.minTouchTarget, justifyContent: 'center', alignItems: 'center' },
+  settingsLinkText: { fontFamily: 'Inter_600SemiBold', fontSize: 14 },
 });

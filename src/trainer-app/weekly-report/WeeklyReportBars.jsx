@@ -1,6 +1,9 @@
 // Premium weekly-report UI: theme, day-note parsers, hero, scroll body, and preview card.
 // Flow: parse report text → build metric tiles / day cards → render scroll body or modal.
 // Used by: WeeklyReportScreen, TrainerWeeklyReportSection, WeeklyReportBanner, StatIcon.
+//
+// vocab: NbCard / NbButton = neobrutalist shells (thick outline, hard shadow); parsers stay logic-only.
+
 import React, { createContext, useContext, useMemo, useState } from 'react';
 import {
   View,
@@ -30,6 +33,9 @@ import {
   HOME_STAT_WATER_GRADIENT,
   HOME_STAT_WORKOUT_GRADIENT,
 } from '../../look-and-feel/homeStatColors';
+import { lightColors, darkColors, gradients, nb, borderRadius } from '../../look-and-feel/colorPalette';
+import NbCard from '../../look-and-feel/NbCard';
+import NbButton from '../../look-and-feel/NbButton';
 
 // ===== NAMED CONSTANTS =====
 
@@ -51,8 +57,8 @@ export const WR_STAT_BAR = {
   energy: HOME_STAT_ENERGY_GRADIENT[0]
 };
 
-/** Dark purple → dark orange (matches Today card & Quick Actions). */
-export const WR_BRAND_GRADIENT = ['#6D28D9', '#C2410C'];
+/** Brand gradient stops — primary CTA / one gradient moment per screen. */
+export const WR_BRAND_GRADIENT = gradients.brand.colors;
 
 /** Per-metric visuals — custom PNG + home-stat gradient rings (no flat purple/pink fills). */
 export const WR_METRIC_VISUAL = {
@@ -178,22 +184,24 @@ export const WR_COLORS = {
  * @returns {object}
  */
 export function getWRTheme(isDark = true) {
+  // Map weekly-report surfaces onto shared nb tokens so light/dark stay in sync with DESIGN.md.
+  const palette = isDark ? darkColors : lightColors;
   if (isDark) {
     return {
       isDark: true,
-      bg: '#0A0A0F',
-      card: '#1A1A2E',
-      badge: '#1C1C2E',
-      border: 'rgba(255,255,255,0.08)',
-      textPrimary: '#FFFFFF',
-      textSecondary: 'rgba(255,255,255,0.60)',
-      textLabel: 'rgba(255,255,255,0.45)',
-      metricLabel: 'rgba(255,255,255,0.50)',
-      barTrack: 'rgba(255,255,255,0.08)',
-      coachNoteBg: 'rgba(6,182,212,0.08)',
-      coachNoteBorder: 'rgba(6,182,212,0.18)',
-      tagWorkoutBg: 'rgba(255,107,157,0.22)',
-      tagRecoveryBg: 'rgba(6,182,212,0.22)',
+      bg: palette.nbBackground,
+      card: palette.nbSurface,
+      badge: palette.nbSurfaceChip,
+      border: palette.nbBorder,
+      textPrimary: palette.nbInk,
+      textSecondary: palette.nbMuted,
+      textLabel: palette.nbMuted,
+      metricLabel: palette.nbMuted,
+      barTrack: 'rgba(243,238,255,0.12)',
+      coachNoteBg: palette.nbSurfaceChip,
+      coachNoteBorder: palette.nbBorder,
+      tagWorkoutBg: palette.nbSurfaceChip,
+      tagRecoveryBg: palette.nbSurfaceChip,
       pink: '#FF6B9D',
       cyan: '#06B6D4',
       purple: '#C084FC',
@@ -206,29 +214,29 @@ export function getWRTheme(isDark = true) {
         orangePink: WR_BRAND_GRADIENT
       },
       heroTop: WR_BRAND_GRADIENT,
-      heroBg: ['#1a0a2e', '#0f0a1a'],
+      heroBg: [palette.nbSurface, palette.nbBackground],
       cta: WR_BRAND_GRADIENT,
-      weekBarBg: 'rgba(255,255,255,0.02)',
-      weekPillBg: 'rgba(255,255,255,0.08)',
-      focusBadgeBg: 'rgba(109,40,217,0.28)',
+      weekBarBg: palette.nbSurfaceChip,
+      weekPillBg: palette.nbSurfaceChip,
+      focusBadgeBg: palette.nbSurfaceChip,
       exerciseDot: '#C2410C'
     };
   }
   return {
     isDark: false,
-    bg: '#F2F2F7',
-    card: '#FFFFFF',
-    badge: '#F1F5F9',
-    border: 'rgba(15,23,42,0.10)',
-    textPrimary: '#0F172A',
-    textSecondary: 'rgba(15,23,42,0.62)',
-    textLabel: 'rgba(15,23,42,0.45)',
-    metricLabel: 'rgba(15,23,42,0.50)',
-    barTrack: 'rgba(15,23,42,0.08)',
-    coachNoteBg: 'rgba(6,182,212,0.08)',
-    coachNoteBorder: 'rgba(6,182,212,0.22)',
-    tagWorkoutBg: 'rgba(255,107,157,0.14)',
-    tagRecoveryBg: 'rgba(6,182,212,0.14)',
+    bg: palette.nbBackground,
+    card: palette.nbSurface,
+    badge: palette.nbSurfaceChip,
+    border: palette.nbBorder,
+    textPrimary: palette.nbInk,
+    textSecondary: palette.nbMuted,
+    textLabel: palette.nbMuted,
+    metricLabel: palette.nbMuted,
+    barTrack: 'rgba(10,10,15,0.08)',
+    coachNoteBg: palette.nbSurfaceChip,
+    coachNoteBorder: palette.nbBorder,
+    tagWorkoutBg: palette.nbSurfaceChip,
+    tagRecoveryBg: palette.nbSurfaceChip,
     pink: '#DB2777',
     cyan: '#0891B2',
     purple: '#7C3AED',
@@ -241,11 +249,11 @@ export function getWRTheme(isDark = true) {
       orangePink: WR_BRAND_GRADIENT
     },
     heroTop: WR_BRAND_GRADIENT,
-    heroBg: ['#F8FAFF', '#FFFFFF'],
+    heroBg: [palette.nbSurface, palette.nbBackground],
     cta: WR_BRAND_GRADIENT,
-    weekBarBg: 'rgba(0,0,0,0.02)',
-    weekPillBg: 'rgba(15,23,42,0.06)',
-    focusBadgeBg: 'rgba(109,40,217,0.14)',
+    weekBarBg: palette.nbSurfaceChip,
+    weekPillBg: palette.nbSurfaceChip,
+    focusBadgeBg: palette.nbSurfaceChip,
     exerciseDot: '#C2410C'
   };
 }
@@ -1066,41 +1074,21 @@ function SectionBlock({ capsLabel, title, dividerColors, children, style }) {
 }
 
 function ReportCard({ children, style, padding }) {
-  const themeColors = useWRTheme();
+  // vocab: NbCard = thick outline + hard offset shadow (no soft glow)
   return (
-    <View
-      style={[
-      styles.reportCard,
-      { backgroundColor: themeColors.card, borderColor: themeColors.border },
-      padding != null ? { padding } : null,
-      style]
-      }>
-      
+    <NbCard style={[styles.reportCard, padding != null ? { padding } : null, style]}>
       {children}
-    </View>);
-
+    </NbCard>
+  );
 }
 
 function GradientReportCard({ children, style, padding }) {
-  const themeColors = useWRTheme();
+  // No gradient borders (design rule) — same NbCard shell; brand CTA is the gradient moment elsewhere.
   return (
-    <LinearGradient
-      colors={themeColors.brandGradient}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-      style={[styles.gradientReportBorder, style]}>
-      
-      <View
-        style={[
-        styles.gradientReportInner,
-        { backgroundColor: themeColors.card, borderColor: themeColors.border },
-        padding != null ? { padding } : null]
-        }>
-        
-        {children}
-      </View>
-    </LinearGradient>);
-
+    <NbCard style={[styles.reportCard, padding != null ? { padding } : null, style]}>
+      {children}
+    </NbCard>
+  );
 }
 
 function StatHeroCard({ label, value, accent, progress }) {
@@ -1512,11 +1500,11 @@ function WeeklyReportCard({ report, metricTiles, onOpen, isDark = true }) {
           <Text style={[styles.bodySecondary, { marginTop: 12, color: theme.textSecondary }]} numberOfLines={3}>
             {report.summary || 'Open for daily breakdown, trends, and coaching notes.'}
           </Text>
-          <TouchableOpacity activeOpacity={0.88} onPress={onOpen} style={{ marginTop: 14 }}>
-            <LinearGradient colors={theme.cta} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.openButton}>
-              <Text style={styles.openButtonText}>Open report</Text>
-            </LinearGradient>
-          </TouchableOpacity>
+          <View style={{ marginTop: 14 }}>
+            <NbButton variant="brand" onPress={onOpen}>
+              Open report
+            </NbButton>
+          </View>
         </ReportCard>
       </View>
     </WRlightDarkMode.Provider>);
@@ -1627,37 +1615,27 @@ const styles = StyleSheet.create({
     marginBottom: 16
   },
   reportCard: {
-    borderRadius: 24,
-    borderWidth: 1,
+    borderRadius: borderRadius.nbCard,
     padding: SPACE.cardPad,
     overflow: 'hidden'
   },
   gradientReportBorder: {
-    borderRadius: 24,
-    padding: 2,
+    borderRadius: borderRadius.nbCard,
     overflow: 'hidden',
-    ...(Platform.OS === 'ios' && {
-      shadowColor: '#9333EA',
-      shadowOffset: { width: 0, height: 6 },
-      shadowOpacity: 0.2,
-      shadowRadius: 12
-    }),
-    elevation: 4
   },
   gradientReportInner: {
-    borderRadius: 22,
-    borderWidth: 1,
+    borderRadius: borderRadius.nbCard,
     overflow: 'hidden'
   },
   heroOuter: {
-    borderRadius: 24,
-    borderWidth: 1,
+    borderRadius: borderRadius.nbHero,
+    borderWidth: nb.borderWidth,
     overflow: 'hidden'
   },
-  heroClip: { borderRadius: 24, overflow: 'hidden' },
+  heroClip: { borderRadius: borderRadius.nbHero, overflow: 'hidden' },
   heroInner: { padding: 22 },
   heroKicker: {
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '800',
     letterSpacing: 1.6,
     textTransform: 'uppercase',
@@ -1841,8 +1819,8 @@ const styles = StyleSheet.create({
     gap: SPACE.listGap
   },
   dayCardOuter: {
-    borderRadius: 18,
-    borderWidth: 1,
+    borderRadius: borderRadius.nbCard,
+    borderWidth: nb.borderWidth,
     overflow: 'hidden',
     marginBottom: 0
   },
@@ -2093,6 +2071,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: WR_COLORS.textSecondary
   },
-  openButton: { borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
-  openButtonText: { fontSize: 15, fontWeight: '700', color: '#FFFFFF' }
+  openButton: { borderRadius: borderRadius.nbChip, paddingVertical: 14, alignItems: 'center' },
+  openButtonText: { fontSize: 15, fontWeight: '700', color: '#0A0A0F' }
 });

@@ -1,11 +1,15 @@
 // One card in the client Notes & Files list: thumbnail, title, type, date, size, and optional actions.
 // Flow: pick type meta → theme colors → thumbnail or icon → title row → download / share / delete if allowed.
 // Used by: the client files list. Trainers' shared files hide share/delete so the client cannot remove them.
+//
+// vocab: neobrutalist = thick borders, hard shadows, no gradients except for NEW badge
 
 import React from 'react';
-import { Image, Platform, Text, TouchableOpacity, View } from 'react-native';
+import { Image, Text, TouchableOpacity, View, useColorScheme } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import NbCard from '../../look-and-feel/NbCard';
+import { lightColors, darkColors, gradients } from '../../look-and-feel/colorPalette';
 import { formatDateShort, formatFileSize, getFileTypeFromItem, getFriendlyFileTitle } from '../../helpers/fileSizeAndDateText';
 
 // ===== NAMED CONSTANTS =====
@@ -14,20 +18,14 @@ const ADDED_BY_CLIENT = 'client';
 const FILE_TYPE_IMAGE = 'image';
 const DEFAULT_FILE_NAME = 'File';
 
-const NEW_BADGE_COLORS = ['#FF6B9D', '#F97316'];
-const NEW_BADGE_TEXT = '#fff';
-const DOWNLOAD_ICON_COLOR = '#06B6D4';
-const SHARE_ICON_COLOR = '#FF6B9D';
-const DELETE_ICON_COLOR = '#EF4444';
-
 const TYPE_META = {
-  image: { icon: 'image', color: '#06B6D4', rgb: '6,182,212', label: 'Photo' },
-  pdf: { icon: 'file-text', color: '#EF4444', rgb: '239,68,68', label: 'PDF' },
-  document: { icon: 'file-text', color: '#3B82F6', rgb: '59,130,246', label: 'Document' },
-  spreadsheet: { icon: 'grid', color: '#10B981', rgb: '16,185,129', label: 'Spreadsheet' },
-  video: { icon: 'video', color: '#A855F7', rgb: '168,85,247', label: 'Video' },
-  file: { icon: 'file', color: '#9CA3AF', rgb: '156,163,175', label: 'File' },
-  note: { icon: 'edit-3', color: '#C084FC', rgb: '192,132,252', label: 'Note' },
+  image: { icon: 'image', label: 'Photo' },
+  pdf: { icon: 'file-text', label: 'PDF' },
+  document: { icon: 'file-text', label: 'Document' },
+  spreadsheet: { icon: 'grid', label: 'Spreadsheet' },
+  video: { icon: 'video', label: 'Video' },
+  file: { icon: 'file', label: 'File' },
+  note: { icon: 'edit-3', label: 'Note' },
 };
 
 // ===== HELPER FUNCTIONS =====
@@ -47,36 +45,6 @@ function isClientOwned(item) {
   return (item?.addedBy || ADDED_BY_CLIENT) === ADDED_BY_CLIENT;
 }
 
-function fileCardBorder(isNew, isDark) {
-  if (isNew) return 'rgba(255,107,157,0.6)';
-  if (isDark) return 'rgba(255,255,255,0.08)';
-  return 'rgba(0,0,0,0.06)';
-}
-
-function fileCardPalette(isDark, isNew, meta) {
-  return {
-    cardBg: isDark ? 'rgba(255,255,255,0.04)' : '#FFFFFF',
-    border: fileCardBorder(isNew, isDark),
-    textColor: isDark ? '#FFFFFF' : '#1A1A2E',
-    mutedColor: isDark ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.5)',
-    placeholderBg: isDark ? 'rgba(255,255,255,0.05)' : `rgba(${meta.rgb},0.06)`,
-    imageFallbackBg: isDark ? 'rgba(0,0,0,0.25)' : 'rgba(0,0,0,0.04)',
-    placeholderBorder: isDark ? 'rgba(255,255,255,0.06)' : `rgba(${meta.rgb},0.12)`,
-  };
-}
-
-function cardShadow(isDark, meta) {
-  return Platform.select({
-    ios: {
-      shadowColor: isDark ? '#000' : meta.color,
-      shadowRadius: isDark ? 6 : 10,
-      shadowOpacity: isDark ? 0.2 : 0.06,
-      shadowOffset: { width: 0, height: 4 },
-    },
-    android: { elevation: isDark ? 2 : 3 },
-  });
-}
-
 function stopAndRun(event, action) {
   event?.stopPropagation?.();
   action();
@@ -85,9 +53,9 @@ function stopAndRun(event, action) {
 function NewBadge() {
   return (
     <LinearGradient
-      colors={NEW_BADGE_COLORS}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 0 }}
+      colors={gradients.brand.colors}
+      start={gradients.brand.start}
+      end={gradients.brand.end}
       style={{
         position: 'absolute',
         top: 10,
@@ -98,12 +66,12 @@ function NewBadge() {
         zIndex: 5,
       }}
     >
-      <Text style={{ fontSize: 9, fontWeight: '800', color: NEW_BADGE_TEXT, letterSpacing: 0.6 }}>NEW</Text>
+      <Text style={{ fontSize: 10, fontFamily: 'Inter_600SemiBold', color: '#0A0A0F', letterSpacing: 0.1, textTransform: 'uppercase' }}>NEW</Text>
     </LinearGradient>
   );
 }
 
-function FileThumbnail({ fileType, thumb, palette, meta, isDark }) {
+function FileThumbnail({ fileType, thumb, colors, meta }) {
   if (fileType === FILE_TYPE_IMAGE && thumb) {
     return (
       <Image
@@ -112,8 +80,8 @@ function FileThumbnail({ fileType, thumb, palette, meta, isDark }) {
           width: '100%',
           height: 120,
           borderRadius: 12,
-          marginBottom: 10,
-          backgroundColor: palette.imageFallbackBg,
+          marginBottom: 12,
+          backgroundColor: colors.nbSurfaceChip,
         }}
         resizeMode="cover"
       />
@@ -125,78 +93,72 @@ function FileThumbnail({ fileType, thumb, palette, meta, isDark }) {
         width: '100%',
         height: 80,
         borderRadius: 12,
-        marginBottom: 10,
-        backgroundColor: palette.placeholderBg,
+        marginBottom: 12,
+        backgroundColor: colors.nbSurfaceChip,
         alignItems: 'center',
         justifyContent: 'center',
-        borderWidth: 1,
-        borderColor: palette.placeholderBorder,
+        borderWidth: 2.5,
+        borderColor: colors.nbBorder,
       }}
     >
       <View
         style={{
-          width: 42,
-          height: 42,
+          width: 48,
+          height: 48,
           borderRadius: 12,
-          backgroundColor: `rgba(${meta.rgb},0.12)`,
+          backgroundColor: colors.nbSurfaceChip,
           alignItems: 'center',
           justifyContent: 'center',
         }}
       >
-        <Feather name={meta.icon} size={22} color={meta.color} />
+        <Feather name={meta.icon} size={24} color={colors.nbMuted} />
       </View>
     </View>
   );
 }
 
-function ActionIconButton({ onPress, backgroundColor, borderColor, icon, iconColor }) {
+function ActionIconButton({ onPress, icon, colors }) {
   return (
     <TouchableOpacity
       onPress={(event) => stopAndRun(event, onPress)}
       style={{
-        width: 38,
-        height: 38,
-        borderRadius: 10,
+        width: 44,
+        height: 44,
+        borderRadius: 12,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor,
-        borderWidth: 1,
-        borderColor,
+        backgroundColor: colors.nbSurfaceChip,
+        borderWidth: 2.5,
+        borderColor: colors.nbBorder,
       }}
     >
-      <Feather name={icon} size={16} color={iconColor} />
+      <Feather name={icon} size={18} color={colors.nbInk} />
     </TouchableOpacity>
   );
 }
 
-function FileCardActions({ isDark, onDownload, onShare, onDelete, canShare, canDelete }) {
+function FileCardActions({ colors, onDownload, onShare, onDelete, canShare, canDelete }) {
   return (
-    <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 10 }}>
+    <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
       {onDownload && (
         <ActionIconButton
           onPress={onDownload}
-          backgroundColor={isDark ? 'rgba(6,182,212,0.10)' : 'rgba(6,182,212,0.08)'}
-          borderColor={isDark ? 'rgba(6,182,212,0.22)' : 'rgba(6,182,212,0.18)'}
           icon="download"
-          iconColor={DOWNLOAD_ICON_COLOR}
+          colors={colors}
         />
       )}
       {canShare && onShare && (
         <ActionIconButton
           onPress={onShare}
-          backgroundColor={isDark ? 'rgba(255,107,157,0.10)' : 'rgba(255,107,157,0.08)'}
-          borderColor={isDark ? 'rgba(255,107,157,0.22)' : 'rgba(255,107,157,0.18)'}
           icon="share-2"
-          iconColor={SHARE_ICON_COLOR}
+          colors={colors}
         />
       )}
       {canDelete && onDelete && (
         <ActionIconButton
           onPress={onDelete}
-          backgroundColor={isDark ? 'rgba(239,68,68,0.10)' : 'rgba(239,68,68,0.06)'}
-          borderColor={isDark ? 'rgba(239,68,68,0.20)' : 'rgba(239,68,68,0.14)'}
           icon="trash-2"
-          iconColor={DELETE_ICON_COLOR}
+          colors={colors}
         />
       )}
     </View>
@@ -212,11 +174,11 @@ function typeAndDateLabel(meta, createdAt) {
 
 /**
  * File / note card for the client library.
+ * Neobrutalist redesign: NbCard base, thick borders, no color gradients except NEW badge.
  * @param {object} props
  */
 export function FileCard({
   item,
-  isDark = true,
   showActions = true,
   isNew = false,
   isTrainerShared = false,
@@ -225,6 +187,9 @@ export function FileCard({
   onDelete,
   onShare,
 }) {
+  const colorScheme = useColorScheme();
+  const colors = colorScheme === 'dark' ? darkColors : lightColors;
+  
   const fileType = getFileTypeFromItem(item);
   const meta = TYPE_META[fileType] || TYPE_META.file;
   const name = getFriendlyFileTitle(item) || DEFAULT_FILE_NAME;
@@ -233,54 +198,46 @@ export function FileCard({
   const thumb = thumbnailFromItem(item, fileType);
   const canDelete = !isTrainerShared && isClientOwned(item);
   const canShare = !isTrainerShared && isClientOwned(item);
-  const palette = fileCardPalette(isDark, isNew, meta);
 
   return (
     <TouchableOpacity
-      activeOpacity={0.82}
+      activeOpacity={0.85}
       onPress={onOpen}
-      style={{
-        backgroundColor: palette.cardBg,
-        borderRadius: 16,
-        padding: 12,
-        borderWidth: 1,
-        borderColor: palette.border,
-        overflow: 'hidden',
-        ...cardShadow(isDark, meta),
-      }}
     >
-      {isNew && <NewBadge />}
+      <NbCard style={{ padding: 12, position: 'relative' }}>
+        {isNew && <NewBadge />}
 
-      <FileThumbnail fileType={fileType} thumb={thumb} palette={palette} meta={meta} isDark={isDark} />
+        <FileThumbnail fileType={fileType} thumb={thumb} colors={colors} meta={meta} />
 
-      <View style={{ gap: 4 }}>
-        <Text
-          style={{ fontSize: 14, fontWeight: '700', color: palette.textColor, letterSpacing: -0.2 }}
-          numberOfLines={2}
-        >
-          {name}
-        </Text>
-
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10 }}>
-          <Text style={{ fontSize: 11, color: palette.mutedColor, fontWeight: '500' }} numberOfLines={1}>
-            {typeAndDateLabel(meta, createdAt)}
+        <View style={{ gap: 6 }}>
+          <Text
+            style={{ fontSize: 15, fontFamily: 'Inter_600SemiBold', color: colors.nbInk }}
+            numberOfLines={2}
+          >
+            {name}
           </Text>
-          <Text style={{ fontSize: 11, color: palette.mutedColor, fontWeight: '500' }} numberOfLines={1}>
-            {formatFileSize(size)}
-          </Text>
+
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10 }}>
+            <Text style={{ fontSize: 13, color: colors.nbMuted, fontFamily: 'Inter_400Regular' }} numberOfLines={1}>
+              {typeAndDateLabel(meta, createdAt)}
+            </Text>
+            <Text style={{ fontSize: 13, color: colors.nbMuted, fontFamily: 'Inter_400Regular' }} numberOfLines={1}>
+              {formatFileSize(size)}
+            </Text>
+          </View>
         </View>
-      </View>
 
-      {showActions && (
-        <FileCardActions
-          isDark={isDark}
-          onDownload={onDownload}
-          onShare={onShare}
-          onDelete={onDelete}
-          canShare={canShare}
-          canDelete={canDelete}
-        />
-      )}
+        {showActions && (
+          <FileCardActions
+            colors={colors}
+            onDownload={onDownload}
+            onShare={onShare}
+            onDelete={onDelete}
+            canShare={canShare}
+            canDelete={canDelete}
+          />
+        )}
+      </NbCard>
     </TouchableOpacity>
   );
 }

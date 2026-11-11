@@ -1,10 +1,14 @@
 // "Trainer shared" accordion on the client's files screen: files grouped by type, unread badge, optional detail sheet.
 // Flow: keep trainer-authored items → bucket by file type → newest first → tap a category to expand FileCards.
 // Used by: the client files screen. Opening a new file marks it read, then calls onOpenItem.
+//
+// vocab: neobrutalist = thick borders, hard shadows, no gradients except for unread badge
 
 import React, { useMemo, useState } from 'react';
-import { Modal, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { Text, TouchableOpacity, View, useColorScheme, StyleSheet } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import NbCard from '../../look-and-feel/NbCard';
+import { lightColors, darkColors } from '../../look-and-feel/colorPalette';
 import { FileCard } from './FileCard';
 import { getFileTypeFromItem } from '../../helpers/fileSizeAndDateText';
 
@@ -16,41 +20,17 @@ const DEFAULT_EXPANDED_CATEGORY = 'documents';
 const EPOCH = 0;
 
 const CATEGORIES = [
-  { id: 'documents', label: 'Documents', color: '#3B82F6', match: (fileType) => fileType === 'document' },
-  { id: 'spreadsheets', label: 'Spreadsheets', color: '#10B981', match: (fileType) => fileType === 'spreadsheet' },
-  { id: 'pdfs', label: 'PDFs', color: '#EF4444', match: (fileType) => fileType === 'pdf' },
-  { id: 'images', label: 'Images', color: '#06B6D4', match: (fileType) => fileType === 'image' },
-  { id: 'videos', label: 'Videos', color: '#A855F7', match: (fileType) => fileType === 'video' },
-  { id: 'other', label: 'Other', color: '#9CA3AF', match: (fileType) => fileType === 'file' },
+  { id: 'documents', label: 'Documents', match: (fileType) => fileType === 'document' },
+  { id: 'spreadsheets', label: 'Spreadsheets', match: (fileType) => fileType === 'spreadsheet' },
+  { id: 'pdfs', label: 'PDFs', match: (fileType) => fileType === 'pdf' },
+  { id: 'images', label: 'Images', match: (fileType) => fileType === 'image' },
+  { id: 'videos', label: 'Videos', match: (fileType) => fileType === 'video' },
+  { id: 'other', label: 'Other', match: (fileType) => fileType === 'file' },
 ];
 
 const FALLBACK_CATEGORY = CATEGORIES[CATEGORIES.length - 1];
 
 // ===== HELPER FUNCTIONS =====
-
-/**
- * @param {boolean} isDark
- */
-function sharedSectionTheme(isDark) {
-  if (isDark) {
-    return {
-      card: '#141419',
-      text: '#FFFFFF',
-      text60: 'rgba(255,255,255,0.6)',
-      text50: 'rgba(255,255,255,0.5)',
-      border: 'rgba(255,255,255,0.10)',
-      inputBg: 'rgba(255,255,255,0.08)',
-    };
-  }
-  return {
-    card: '#F8F8FB',
-    text: '#0A0A0F',
-    text60: 'rgba(10,10,15,0.6)',
-    text50: 'rgba(10,10,15,0.5)',
-    border: 'rgba(10,10,15,0.10)',
-    inputBg: 'rgba(10,10,15,0.05)',
-  };
-}
 
 /**
  * Trainer-authored files, plus documents that carry a trainerId (older docs may omit addedBy).
@@ -126,17 +106,42 @@ async function openSharedItem(item, onMarkRead, onOpenItem) {
   onOpenItem?.(item);
 }
 
+function CategoryHeader({ category, count, isExpanded, onToggle, colors }) {
+  return (
+    <TouchableOpacity onPress={onToggle} activeOpacity={0.8}>
+      <NbCard style={styles.categoryHeader} noShadow>
+        <View style={styles.categoryRow}>
+          <View style={styles.categoryLeft}>
+            <Text style={[styles.categoryLabel, { color: colors.nbInk }]}>{category.label}</Text>
+            {count > 0 && (
+              <View style={[styles.countBadge, { backgroundColor: colors.nbSurfaceChip, borderColor: colors.nbBorder }]}>
+                <Text style={[styles.countText, { color: colors.nbInk }]}>{count}</Text>
+              </View>
+            )}
+          </View>
+          <Feather 
+            name={isExpanded ? 'chevron-up' : 'chevron-down'} 
+            size={20} 
+            color={colors.nbMuted} 
+          />
+        </View>
+      </NbCard>
+    </TouchableOpacity>
+  );
+}
+
 // ===== MAIN FUNCTION =====
 
 /**
  * Accordion of files the trainer shared with this client.
+ * Neobrutalist redesign: NbCard, thick borders, clean layout.
  * vocab: useState remembers which category is expanded (starts on Documents).
- * @param {{ items: Array, isDark?: boolean, onOpenItem?: Function, onDownloadItem?: Function, onMarkRead?: Function }} props
+ * @param {object} props
  */
-export function SharedByTrainerSection({ items, isDark = true, onOpenItem, onDownloadItem, onMarkRead }) {
+export function SharedByTrainerSection({ items, onOpenItem, onDownloadItem, onMarkRead }) {
+  const colorScheme = useColorScheme();
+  const colors = colorScheme === 'dark' ? darkColors : lightColors;
   const [expanded, setExpanded] = useState(DEFAULT_EXPANDED_CATEGORY);
-  const [detail, setDetail] = useState(null);
-  const theme = sharedSectionTheme(isDark);
 
   const trainerItems = useMemo(() => {
     const list = Array.isArray(items) ? items : [];
@@ -146,180 +151,134 @@ export function SharedByTrainerSection({ items, isDark = true, onOpenItem, onDow
   const grouped = useMemo(() => groupTrainerItemsByCategory(trainerItems), [trainerItems]);
   const unreadCount = useMemo(() => countUnreadSharedItems(trainerItems), [trainerItems]);
 
+  if (trainerItems.length === 0) {
+    return (
+      <View style={styles.section}>
+        <Text style={[styles.sectionTitle, { color: colors.nbMuted }]}>SHARED BY TRAINER</Text>
+        <NbCard style={styles.emptyCard}>
+          <Text style={[styles.emptyText, { color: colors.nbMuted }]}>
+            No files shared yet
+          </Text>
+        </NbCard>
+      </View>
+    );
+  }
+
   return (
-    <View style={{ marginBottom: 26 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-        <Text style={{ fontSize: 12, fontWeight: '900', letterSpacing: 2, color: theme.text50 }}>
-          TRAINER SHARED
-        </Text>
+    <View style={styles.section}>
+      <View style={styles.headerRow}>
+        <Text style={[styles.sectionTitle, { color: colors.nbMuted }]}>SHARED BY TRAINER</Text>
         {unreadCount > 0 && (
-          <View
-            style={{
-              backgroundColor: 'rgba(255, 107, 157, 0.18)',
-              borderColor: 'rgba(255, 107, 157, 0.45)',
-              borderWidth: 1,
-              paddingHorizontal: 10,
-              paddingVertical: 6,
-              borderRadius: 999,
-            }}
-          >
-            <Text style={{ color: '#FF6B9D', fontWeight: '900', fontSize: 11 }}>
-              {unreadCount} new
-            </Text>
+          <View style={[styles.unreadBadge, { backgroundColor: colors.error }]}>
+            <Text style={styles.unreadText}>{unreadCount}</Text>
           </View>
         )}
       </View>
 
-      <View
-        style={{
-          backgroundColor: theme.card,
-          borderRadius: 16,
-          borderWidth: 1,
-          borderColor: theme.border,
-          padding: 12,
-          gap: 12,
-        }}
-      >
-        {CATEGORIES.map((category) => {
-          const files = grouped[category.id] || [];
-          if (!files.length) return null;
-          const isExpanded = expanded === category.id;
-          const newCount = files.filter((item) => item?.isRead === false).length;
-
-          return (
-            <View key={category.id} style={{ gap: 10 }}>
-              <TouchableOpacity
-                onPress={() => setExpanded(isExpanded ? null : category.id)}
-                style={{
-                  paddingHorizontal: 12,
-                  paddingVertical: 12,
-                  borderRadius: 14,
-                  backgroundColor: theme.inputBg,
-                  borderWidth: 1,
-                  borderColor: theme.border,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                }}
-              >
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                  <View style={{ width: 4, height: 22, borderRadius: 2, backgroundColor: category.color }} />
-                  <View>
-                    <Text style={{ color: theme.text, fontWeight: '900', fontSize: 14 }}>
-                      {category.label}
-                    </Text>
-                    <Text style={{ color: theme.text60, fontWeight: '700', fontSize: 12 }}>
-                      {files.length} {files.length === 1 ? 'file' : 'files'}
-                      {newCount > 0 ? ` • ${newCount} new` : ''}
-                    </Text>
-                  </View>
-                </View>
-                <Feather
-                  name="chevron-right"
-                  size={20}
-                  color={theme.text60}
-                  style={{ transform: isExpanded ? [{ rotate: '90deg' }] : [] }}
-                />
-              </TouchableOpacity>
-
-              {isExpanded && (
-                <View style={{ gap: 12 }}>
-                  {files.map((item) => (
-                    <FileCard
-                      key={item.id}
-                      item={item}
-                      isTrainerShared
-                      isNew={item?.isRead === false}
-                      isDark={isDark}
-                      onOpen={() => openSharedItem(item, onMarkRead, onOpenItem)}
-                      onDownload={onDownloadItem ? () => onDownloadItem(item) : undefined}
-                    />
-                  ))}
-                </View>
-              )}
-            </View>
-          );
-        })}
-
-        {trainerItems.length === 0 && (
-          <View
-            style={{
-              paddingVertical: 18,
-              paddingHorizontal: 14,
-              borderRadius: 14,
-              backgroundColor: 'rgba(255,255,255,0.03)',
-              borderWidth: 1,
-              borderColor: 'rgba(255,255,255,0.08)',
-            }}
-          >
-            <Text style={{ color: 'rgba(255,255,255,0.62)', fontWeight: '700', fontSize: 13, textAlign: 'center', lineHeight: 18 }}>
-              Nothing shared yet. When your coach shares documents or files, they’ll show up here.
-            </Text>
-          </View>
-        )}
-      </View>
-
-      <Modal visible={!!detail} transparent animationType="slide" onRequestClose={() => setDetail(null)}>
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.78)', justifyContent: 'flex-end' }}>
-          <View
-            style={{
-              backgroundColor: '#12121A',
-              borderTopLeftRadius: 22,
-              borderTopRightRadius: 22,
-              padding: 18,
-              borderWidth: 1,
-              borderColor: 'rgba(255,255,255,0.10)',
-              maxHeight: '80%',
-            }}
-          >
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <Text style={{ fontSize: 16, fontWeight: '900', color: '#fff' }} numberOfLines={1}>
-                {detail?.name || detail?.title || 'Shared item'}
-              </Text>
-              <TouchableOpacity onPress={() => setDetail(null)} hitSlop={12}>
-                <Feather name="x" size={22} color="rgba(255,255,255,0.7)" />
-              </TouchableOpacity>
-            </View>
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 12 }}>
-              <View style={{ gap: 10 }}>
-                {(detail?.sharedBy || detail?.trainerName) && (
-                  <View style={{ backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' }}>
-                    <Text style={{ color: 'rgba(255,255,255,0.6)', fontWeight: '800', fontSize: 12 }}>From</Text>
-                    <Text style={{ color: '#fff', fontWeight: '900', fontSize: 14, marginTop: 4 }}>
-                      {detail?.sharedBy || detail?.trainerName}
-                    </Text>
-                  </View>
-                )}
-                {detail?.previewSnippet && (
-                  <View style={{ backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' }}>
-                    <Text style={{ color: 'rgba(255,255,255,0.6)', fontWeight: '800', fontSize: 12 }}>Notes</Text>
-                    <Text style={{ color: 'rgba(255,255,255,0.85)', fontWeight: '700', fontSize: 14, marginTop: 6, lineHeight: 20 }}>
-                      {detail.previewSnippet}
-                    </Text>
-                  </View>
-                )}
+      {CATEGORIES.map((category) => {
+        const categoryItems = grouped[category.id] || [];
+        if (categoryItems.length === 0) return null;
+        
+        const isExpanded = expanded === category.id;
+        
+        return (
+          <View key={category.id} style={styles.categoryBlock}>
+            <CategoryHeader
+              category={category}
+              count={categoryItems.length}
+              isExpanded={isExpanded}
+              onToggle={() => setExpanded(isExpanded ? null : category.id)}
+              colors={colors}
+            />
+            
+            {isExpanded && (
+              <View style={styles.categoryContent}>
+                {categoryItems.map((item) => (
+                  <FileCard
+                    key={item.id}
+                    item={item}
+                    showActions
+                    isTrainerShared
+                    isNew={item?.isRead === false}
+                    onOpen={() => openSharedItem(item, onMarkRead, onOpenItem)}
+                    onDownload={() => onDownloadItem?.(item)}
+                  />
+                ))}
               </View>
-            </ScrollView>
-            <TouchableOpacity
-              onPress={() => {
-                const selectedItem = detail;
-                setDetail(null);
-                onOpenItem?.(selectedItem);
-              }}
-              style={{
-                height: 52,
-                borderRadius: 14,
-                backgroundColor: '#FF6B9D',
-                alignItems: 'center',
-                justifyContent: 'center',
-                marginTop: 10,
-              }}
-            >
-              <Text style={{ color: '#fff', fontWeight: '900' }}>Open</Text>
-            </TouchableOpacity>
+            )}
           </View>
-        </View>
-      </Modal>
+        );
+      })}
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  section: {
+    marginBottom: 24,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  sectionTitle: {
+    fontSize: 12,
+    fontFamily: 'Inter_600SemiBold',
+    textTransform: 'uppercase',
+    letterSpacing: 0.1,
+  },
+  unreadBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+  },
+  unreadText: {
+    fontSize: 11,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#FFFFFF',
+  },
+  emptyCard: {
+    padding: 24,
+    alignItems: 'center',
+  },
+  emptyText: {
+    fontSize: 14,
+    fontFamily: 'Inter_400Regular',
+  },
+  categoryBlock: {
+    marginBottom: 12,
+  },
+  categoryHeader: {
+    padding: 14,
+  },
+  categoryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  categoryLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  categoryLabel: {
+    fontSize: 15,
+    fontFamily: 'Inter_600SemiBold',
+  },
+  countBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+    borderWidth: 2.5,
+  },
+  countText: {
+    fontSize: 12,
+    fontFamily: 'Inter_600SemiBold',
+  },
+  categoryContent: {
+    marginTop: 8,
+    gap: 12,
+  },
+});

@@ -3,24 +3,16 @@
 // Used by: client navigation when the dedicated generator screen is opened. The full plan viewer lives elsewhere.
 
 import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, ActivityIndicator, Alert, useColorScheme } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
 import { generateWorkoutPlanWithClaude, loadOnboardingAndPlanArtifacts, loadWorkoutGenerationUsage } from '../create-plan/CreateWorkoutPlanScreen';
+import NbCard from '../../look-and-feel/NbCard';
+import NbButton from '../../look-and-feel/NbButton';
+import { lightColors, darkColors, gradients } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
-
-const GENERATE_SCREEN_ACCENT_PINK = '#FF6B9D';
-const SCREEN_DARK = '#0A0A0F';
-const SCREEN_LIGHT = '#F5F5F5';
-const SURFACE_DARK = '#13131A';
-const SURFACE_LIGHT = '#FFFFFF';
-const TEXT_DARK = '#FFFFFF';
-const TEXT_LIGHT = '#0A0A0F';
-const MUTED_DARK = 'rgba(255,255,255,0.6)';
-const MUTED_LIGHT = 'rgba(0,0,0,0.55)';
-const BUTTON_LABEL_COLOR = '#fff';
 
 const WORKOUT_MONTHLY_LIMIT_ERROR_CODE = 'monthly_limit_reached';
 
@@ -35,12 +27,12 @@ const LOAD_FAIL_FALLBACK = 'Failed to load data.';
 
 // ===== HELPER FUNCTIONS =====
 
-function screenPalette(isDark) {
+function screenPalette(colors) {
   return {
-    screenBackground: isDark ? SCREEN_DARK : SCREEN_LIGHT,
-    surface: isDark ? SURFACE_DARK : SURFACE_LIGHT,
-    textColor: isDark ? TEXT_DARK : TEXT_LIGHT,
-    muted: isDark ? MUTED_DARK : MUTED_LIGHT,
+    screenBackground: colors.nbBackground,
+    surface: colors.nbSurface,
+    textColor: colors.nbInk,
+    muted: colors.nbMuted,
   };
 }
 
@@ -93,23 +85,23 @@ function savedPlanCaption(generatedPlan) {
 function LoadingBody({ screenBackground, textColor }) {
   return (
     <View style={{ flex: 1, backgroundColor: screenBackground, justifyContent: 'center', alignItems: 'center' }}>
-      <ActivityIndicator size="large" color={GENERATE_SCREEN_ACCENT_PINK} />
-      <Text style={{ color: textColor, marginTop: 10 }}>Loading…</Text>
+      <ActivityIndicator size="large" color={gradients.brand.colors[0]} />
+      <Text style={{ color: textColor, fontFamily: 'Inter_400Regular', marginTop: 10 }}>Loading…</Text>
     </View>
   );
 }
 
-function ErrorBody({ screenBackground, surface, textColor, muted, error, onBack }) {
+function ErrorBody({ screenBackground, surface: deprecatedSurface, textColor, muted, error, onBack }) {
   return (
     <View style={{ flex: 1, backgroundColor: screenBackground, padding: 16 }}>
       <SafeAreaView style={{ flex: 1 }}>
         <TouchableOpacity onPress={onBack} style={{ width: 44, height: 44, justifyContent: 'center' }}>
           <Ionicons name="chevron-back" size={24} color={textColor} />
         </TouchableOpacity>
-        <View style={{ flex: 1, backgroundColor: surface, borderRadius: 16, padding: 16, justifyContent: 'center' }}>
-          <Text style={{ color: textColor, fontWeight: '800', fontSize: 18 }}>Error</Text>
-          <Text style={{ color: muted, marginTop: 8 }}>{error}</Text>
-        </View>
+        <NbCard style={{ flex: 1, padding: 16, justifyContent: 'center' }}>
+          <Text style={{ color: textColor, fontFamily: 'SpaceGrotesk_700Bold', fontSize: 18 }}>Error</Text>
+          <Text style={{ color: muted, fontFamily: 'Inter_400Regular', marginTop: 8 }}>{error}</Text>
+        </NbCard>
       </SafeAreaView>
     </View>
   );
@@ -118,7 +110,7 @@ function ErrorBody({ screenBackground, surface, textColor, muted, error, onBack 
 function UsageLine({ genUsage, muted }) {
   if (!genUsage) return null;
   return (
-    <Text style={{ color: muted, marginTop: 14, fontSize: 13, fontWeight: '600' }}>
+    <Text style={{ color: muted, marginTop: 14, fontSize: 13, fontFamily: 'Inter_500Medium' }}>
       {genUsage.generations_used} of {genUsage.generations_limit} plans used this month
     </Text>
   );
@@ -126,25 +118,15 @@ function UsageLine({ genUsage, muted }) {
 
 function GeneratePlanButton({ isGenerating, onPress }) {
   return (
-    <TouchableOpacity
-      onPress={onPress}
-      disabled={isGenerating}
-      style={{
-        marginTop: 18,
-        height: 48,
-        borderRadius: 14,
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: GENERATE_SCREEN_ACCENT_PINK,
-        opacity: isGenerating ? 0.7 : 1,
-      }}
-    >
-      {isGenerating ? (
-        <ActivityIndicator color={BUTTON_LABEL_COLOR} />
-      ) : (
-        <Text style={{ color: BUTTON_LABEL_COLOR, fontWeight: '800' }}>Generate New Plan</Text>
-      )}
-    </TouchableOpacity>
+    <View style={{ marginTop: 18 }}>
+      <NbButton 
+        variant="brand" 
+        onPress={onPress} 
+        disabled={isGenerating}
+      >
+        {isGenerating ? 'Generating...' : 'Generate New Plan'}
+      </NbButton>
+    </View>
   );
 }
 
@@ -167,6 +149,8 @@ export default function GenerateMyWorkoutPlanScreen({
 }) {
   const theme = useTheme();
   const { isDark } = theme;
+  const colorScheme = useColorScheme();
+  const colors = colorScheme === 'dark' ? darkColors : lightColors;
 
   const [loading, setLoading] = useState(true);
   const [onboardingData, setOnboardingData] = useState(null);
@@ -235,17 +219,17 @@ export default function GenerateMyWorkoutPlanScreen({
           <TouchableOpacity onPress={onBack} style={{ width: 44, height: 44, justifyContent: 'center' }}>
             <Ionicons name="chevron-back" size={24} color={textColor} />
           </TouchableOpacity>
-          <Text style={{ color: textColor, fontWeight: '800', fontSize: 16 }}>Workout Plan</Text>
+          <Text style={{ color: textColor, fontFamily: 'SpaceGrotesk_700Bold', fontSize: 16 }}>Workout Plan</Text>
           <View style={{ width: 44 }} />
         </View>
 
-        <View style={{ flex: 1, backgroundColor: surface, borderRadius: 16, padding: 16, marginTop: 12 }}>
-          <Text style={{ color: textColor, fontWeight: '800', fontSize: 18 }}>Generation</Text>
-          <Text style={{ color: muted, marginTop: 8, lineHeight: 18 }}>
+        <NbCard style={{ flex: 1, padding: 16, marginTop: 12 }}>
+          <Text style={{ color: textColor, fontFamily: 'SpaceGrotesk_700Bold', fontSize: 18 }}>Generation</Text>
+          <Text style={{ color: muted, fontFamily: 'Inter_400Regular', marginTop: 8, lineHeight: 18 }}>
             This screen is a minimal wrapper. Your plan viewer UI is being rebuilt separately.
           </Text>
 
-          <Text style={{ color: muted, marginTop: 12 }}>
+          <Text style={{ color: muted, fontFamily: 'Inter_400Regular', marginTop: 12 }}>
             {savedPlanCaption(generatedPlan)}
           </Text>
 
@@ -265,7 +249,7 @@ export default function GenerateMyWorkoutPlanScreen({
               />
             </>
           ) : null}
-        </View>
+        </NbCard>
       </SafeAreaView>
     </View>
   );

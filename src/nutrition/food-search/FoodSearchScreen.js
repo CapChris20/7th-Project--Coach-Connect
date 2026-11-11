@@ -33,6 +33,7 @@ import { auth } from '../../app-start/cloudConnection';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
 import { useShellBottomNavInset } from '../../navigation/bottomMenuSpacing';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { lightColors, darkColors, nb } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
@@ -52,8 +53,10 @@ const DEFAULT_SERVING_GRAMS = 100;
 const GRADIENT_LEFT = { x: 0, y: 0 };
 const GRADIENT_RIGHT = { x: 1, y: 0 };
 const GRADIENT_DIAGONAL_END = { x: 1, y: 1 };
-const ACTIVE_TAB_BG = 'rgba(190,24,93,0.2)';
-const ACTIVE_TAB_BORDER = '#BE185D';
+const ACTIVE_TAB_BG_DARK = 'rgba(255,107,157,0.15)';
+const ACTIVE_TAB_BG_LIGHT = 'rgba(190,24,93,0.15)';
+const ACTIVE_TAB_BORDER_DARK = '#FF6B9D';
+const ACTIVE_TAB_BORDER_LIGHT = '#BE185D';
 
 const QUICK_PICKS = [
   { label: 'Chicken Breast', icon: 'barbell-outline', accentKey: 'pink' },
@@ -66,8 +69,8 @@ const QUICK_PICKS = [
 
 // Static fallback for StyleSheets
 const DARK = {
-  text: '#ffffff',
-  textMuted: '#A6A6A6',
+  text: darkColors.nbInk,
+  textMuted: darkColors.nbMuted,
   pink: brandColors.orangePink[1],
   orange: brandColors.orangePink[0],
   purple: brandColors.orangePurple[1],
@@ -76,7 +79,7 @@ const DARK = {
   carbsGradient: gradients.carbs,
   fatGradient: gradients.fat,
   calGradient: gradients.calories,
-  inputBg: '#1A1A24',
+  inputBg: darkColors.nbSurfaceChip,
   borderGradient: ['#6D62CE', '#9468A8', '#4F87BA'],
 };
 
@@ -88,6 +91,7 @@ const DARK = {
  * @returns {object}
  */
 function getColors(isDark) {
+  const nbColors = isDark ? darkColors : lightColors;
   const shared = {
     pink: brandColors.orangePink[1],
     orange: brandColors.orangePink[0],
@@ -98,34 +102,19 @@ function getColors(isDark) {
     carbsGradient: gradients.carbs,
     fatGradient: gradients.fat,
     calGradient: gradients.calories,
-    borderGradient: ['#6D62CE', '#9468A8', '#4F87BA'],
+    borderGradient: isDark ? ['#6D62CE', '#9468A8', '#4F87BA'] : ['#7D72D4', '#9E72A4', '#5F92C4'],
   };
-  if (isDark) {
-    return {
-      ...shared,
-      bg: '#0A0A0F',
-      surface: '#1A1A24',
-      border: '#2A2A35',
-      text: '#FFFFFF',
-      textMuted: '#A6A6A6',
-      textDim: 'rgba(255,255,255,0.35)',
-      inputBg: '#1A1A24',
-      cardBg: '#1A1A24',
-      cardBorder: '#2A2A35',
-    };
-  }
   return {
     ...shared,
-    borderGradient: ['#7D72D4', '#9E72A4', '#5F92C4'],
-    bg: '#FFFFFF',
-    surface: '#F5F5F5',
-    border: '#E5E5E5',
-    text: '#0A0A0F',
-    textMuted: '#666666',
-    textDim: 'rgba(10,10,15,0.45)',
-    inputBg: '#F5F5F5',
-    cardBg: '#F5F5F5',
-    cardBorder: '#E5E5E5',
+    bg: nbColors.nbBackground,
+    surface: nbColors.nbSurface,
+    border: nbColors.nbBorder,
+    text: nbColors.nbInk,
+    textMuted: nbColors.nbMuted,
+    textDim: isDark ? 'rgba(255,255,255,0.35)' : 'rgba(10,10,15,0.45)',
+    inputBg: nbColors.nbSurfaceChip,
+    cardBg: nbColors.nbSurface,
+    cardBorder: nbColors.nbBorder,
   };
 }
 
@@ -841,6 +830,8 @@ function FoodSearchScreen({
         <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12, paddingHorizontal: 0 }}>
           {browseTabs.map((tab) => {
             const isActive = browseTab === tab.id;
+            const activeBg = isDark ? ACTIVE_TAB_BG_DARK : ACTIVE_TAB_BG_LIGHT;
+            const activeBorder = isDark ? ACTIVE_TAB_BORDER_DARK : ACTIVE_TAB_BORDER_LIGHT;
             return (
               <TouchableOpacity
                 key={tab.id}
@@ -849,14 +840,14 @@ function FoodSearchScreen({
                   paddingHorizontal: 14,
                   paddingVertical: 8,
                   borderRadius: 999,
-                  backgroundColor: isActive ? ACTIVE_TAB_BG : colors.inputBg,
-                  borderWidth: 1,
-                  borderColor: isActive ? ACTIVE_TAB_BORDER : colors.cardBorder,
+                  backgroundColor: isActive ? activeBg : colors.inputBg,
+                  borderWidth: nb.borderWidth,
+                  borderColor: isActive ? activeBorder : colors.cardBorder,
                 }}
               >
                 <Text
                   style={{
-                    color: isActive ? ACTIVE_TAB_BORDER : colors.textMuted,
+                    color: isActive ? activeBorder : colors.textMuted,
                     fontWeight: '700',
                     fontSize: 13,
                   }}

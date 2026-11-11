@@ -9,14 +9,12 @@ import { useTheme } from '../look-and-feel/lightDarkMode';
 import { getSupportEmail } from './supportContact';
 import TopHeader from '../for-both/loading-and-header/TopHeader';
 import { SHELL_SAFE_AREA_EDGES, FORM_SCROLL_PROPS, useShellBottomNavInset } from '../navigation/bottomMenuSpacing';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import NbCard from '../look-and-feel/NbCard';
+import { nb, gradients, spacing } from '../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
-const PURPLE = '#C084FC';
-const PINK = '#FF6B9D';
-const BORDER_PAD = 0.35;
 const SHELL_NAV_INSET = 24;
 const EXTRA_SCROLL_PAD = 16;
 const FADE_MS = 350;
@@ -159,36 +157,7 @@ const FAQ_SECTIONS = [
 
 // ===== HELPER FUNCTIONS =====
 
-/**
- * @param {boolean} isDark
- * @returns {object}
- */
-function getCardTokens(isDark) {
-  if (isDark) {
-    return {
-      cardBackground: '#141419',
-      border: 'rgba(255,255,255,0.08)',
-      text2: 'rgba(255,255,255,0.92)',
-      text3: 'rgba(255,255,255,0.72)',
-      chev: 'rgba(255,255,255,0.65)',
-    };
-  }
-  return {
-    cardBackground: '#FFFFFF',
-    border: 'rgba(10,10,15,0.06)',
-    text2: 'rgba(10,10,15,0.86)',
-    text3: 'rgba(10,10,15,0.68)',
-    chev: 'rgba(10,10,15,0.65)',
-  };
-}
-
-function GradientCard({ borderColors, style, innerStyle, children }) {
-  return (
-    <LinearGradient colors={borderColors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={style}>
-      <View style={innerStyle}>{children}</View>
-    </LinearGradient>
-  );
-}
+// Helpers removed - using NbCard directly
 
 /**
  * Extra room above the shell tab bar, or the home-indicator when this screen owns the stack.
@@ -202,15 +171,15 @@ function faqScrollBottomPad(embedShellBottomNav, shellNavInset, bottomInset) {
   return Math.max(bottomInset, EXTRA_SCROLL_PAD) + SHELL_NAV_INSET;
 }
 
-function FaqHero({ styles: cardStyles }) {
+function FaqHero({ styles: cardStyles, colors }) {
   return (
-    <GradientCard borderColors={[PURPLE, PINK]} style={cardStyles.heroOuter} innerStyle={cardStyles.heroInner}>
-      <GradientCard borderColors={[PURPLE, PINK]} style={cardStyles.heroIconOuter} innerStyle={cardStyles.heroIconInner}>
-        <Ionicons name="help-circle-outline" size={34} color="#FFFFFF" />
-      </GradientCard>
+    <NbCard style={cardStyles.heroCard}>
+      <View style={[cardStyles.heroIcon, { backgroundColor: colors.nbSurfaceChip }]}>
+        <Ionicons name="help-circle-outline" size={34} color={colors.nbInk} />
+      </View>
       <Text style={cardStyles.heroTitle}>Frequently Asked Questions</Text>
       <Text style={cardStyles.heroSub}>Quick answers, no jargon.</Text>
-    </GradientCard>
+    </NbCard>
   );
 }
 
@@ -227,21 +196,13 @@ function FaqQuestionCard({ item, index, openKey, onToggle, styles: cardStyles })
   const key = `${item.question}-${index}`;
   const isOpen = openKey === key;
   return (
-    <View key={key} style={cardStyles.faqCard}>
-      <View style={cardStyles.faqCardBody}>
-        <Pressable onPress={() => onToggle(key)} style={cardStyles.questionRow}>
-          <Text style={cardStyles.qText}>{item.question}</Text>
-          <Text style={cardStyles.chev}>{isOpen ? '⌄' : '›'}</Text>
-        </Pressable>
-        {isOpen ? <Text style={cardStyles.answerText}>{item.answer}</Text> : null}
-      </View>
-      <LinearGradient
-        colors={[PURPLE, PINK]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        style={cardStyles.faqBottomAccent}
-      />
-    </View>
+    <NbCard key={key} style={cardStyles.faqCard}>
+      <Pressable onPress={() => onToggle(key)} style={cardStyles.questionRow}>
+        <Text style={cardStyles.qText}>{item.question}</Text>
+        <Text style={cardStyles.chev}>{isOpen ? '⌄' : '›'}</Text>
+      </Pressable>
+      {isOpen ? <Text style={cardStyles.answerText}>{item.answer}</Text> : null}
+    </NbCard>
   );
 }
 
@@ -256,91 +217,107 @@ function FaqFooter({ supportEmail, styles: cardStyles }) {
   );
 }
 
-function buildFaqStyles(isDark, cardTokens, scrollBottomPad, colors, spacing) {
+function buildFaqStyles(scrollBottomPad, colors) {
   return StyleSheet.create({
     container: {
       flex: 1,
-      backgroundColor: isDark ? '#0A0A0F' : '#FFFFFF',
+      backgroundColor: colors.nbBackground,
     },
     scrollContent: {
-      paddingHorizontal: 16,
-      paddingTop: 16,
+      paddingHorizontal: spacing.md,
+      paddingTop: spacing.md,
       paddingBottom: scrollBottomPad,
     },
-    heroOuter: { borderRadius: 16, padding: BORDER_PAD, marginBottom: 16 },
-    heroInner: {
-      borderRadius: 14,
-      padding: 24,
-      backgroundColor: cardTokens.cardBackground,
+    heroCard: {
       alignItems: 'center',
-      borderWidth: 0,
+      padding: spacing.lg,
+      marginBottom: spacing.md,
     },
-    heroIconOuter: { width: 64, height: 64, borderRadius: 32, padding: BORDER_PAD, marginBottom: 14 },
-    heroIconInner: {
-      flex: 1,
-      borderRadius: 30,
+    heroIcon: {
+      width: 64,
+      height: 64,
+      borderRadius: 32,
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: 'rgba(255,255,255,0.03)',
-      borderWidth: 0,
+      marginBottom: spacing.sm,
     },
-    heroTitle: { fontSize: 32, fontWeight: '900', color: isDark ? '#FFFFFF' : '#1A1A2E', textAlign: 'center', marginBottom: 8, letterSpacing: -0.3 },
-    heroSub: { fontSize: 15, fontWeight: '600', color: cardTokens.text2, textAlign: 'center', lineHeight: 21 },
-    introTitle: { fontSize: 26, fontWeight: '900', color: colors.text, marginBottom: 8 },
-    introSub: { fontSize: 14, color: colors.textSecondary, lineHeight: 20, marginBottom: spacing.lg },
+    heroTitle: {
+      fontFamily: 'SpaceGrotesk_700Bold',
+      fontSize: 32,
+      color: colors.nbInk,
+      textAlign: 'center',
+      marginBottom: spacing.sm,
+      letterSpacing: -0.3,
+    },
+    heroSub: {
+      fontFamily: 'Inter_600SemiBold',
+      fontSize: 15,
+      color: colors.nbMuted,
+      textAlign: 'center',
+      lineHeight: 21,
+    },
     sectionHeading: {
+      fontFamily: 'SpaceGrotesk_700Bold',
       fontSize: 12,
-      fontWeight: '900',
       letterSpacing: 0.5,
       textTransform: 'uppercase',
-      color: cardTokens.text3,
-      marginTop: 24,
-      marginBottom: 12,
+      color: colors.nbMuted,
+      marginTop: spacing.lg,
+      marginBottom: spacing.sm,
     },
-    sectionUnderline: { width: 22, height: 1.5, backgroundColor: PURPLE, marginTop: 8, borderRadius: 999 },
-    sectionHeaderRow: { marginTop: 8, marginBottom: 12 },
+    sectionHeaderRow: { marginTop: spacing.sm, marginBottom: spacing.sm },
     faqCard: {
-      backgroundColor: cardTokens.cardBackground,
-      borderRadius: 12,
-      marginBottom: 10,
-      overflow: 'hidden',
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: 'rgba(255,255,255,0.08)',
+      marginBottom: spacing.sm,
+      padding: spacing.md,
     },
-    faqCardBody: {
-      paddingVertical: 14,
-      paddingHorizontal: 16,
-      minHeight: 56,
+    questionRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: spacing.sm,
     },
-    faqBottomAccent: {
-      height: 1,
-      width: '100%',
+    qText: {
+      flex: 1,
+      fontFamily: 'SpaceGrotesk_700Bold',
+      fontSize: 14,
+      color: colors.nbInk,
+      lineHeight: 19,
+      letterSpacing: -0.15,
     },
-    questionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-    qText: { flex: 1, fontSize: 14, fontWeight: '900', color: isDark ? '#FFFFFF' : '#0A0A0F', lineHeight: 19, letterSpacing: -0.15 },
-    chev: { fontSize: 18, fontWeight: '900', color: cardTokens.chev },
-    answerText: { marginTop: 10, fontSize: 14, fontWeight: '600', color: cardTokens.text2, lineHeight: 22 },
+    chev: {
+      fontFamily: 'SpaceGrotesk_700Bold',
+      fontSize: 18,
+      color: colors.nbMuted,
+    },
+    answerText: {
+      marginTop: spacing.sm,
+      fontFamily: 'Inter_600SemiBold',
+      fontSize: 14,
+      color: colors.nbMuted,
+      lineHeight: 22,
+    },
     footer: {
-      marginTop: 16,
-      padding: 16,
-      backgroundColor: cardTokens.cardBackground,
-      borderRadius: 12,
-      borderWidth: 0,
+      marginTop: spacing.md,
+      padding: spacing.md,
     },
-    footerText: { fontSize: 13, fontWeight: '600', color: cardTokens.text2, lineHeight: 20 },
+    footerText: {
+      fontFamily: 'Inter_600SemiBold',
+      fontSize: 13,
+      color: colors.nbMuted,
+      lineHeight: 20,
+    },
   });
 }
 
 // ===== MAIN FUNCTION =====
 
 export default function HelpFAQScreen({ onClose, embedShellBottomNav = false }) {
-  const { colors, spacing, isDark } = useTheme();
+  const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const shellNavInset = useShellBottomNavInset(SHELL_NAV_INSET);
   const scrollBottomPad = faqScrollBottomPad(embedShellBottomNav, shellNavInset, insets.bottom);
   const supportEmail = getSupportEmail();
   const [openKey, setOpenKey] = useState(null);
-  const cardTokens = getCardTokens(isDark);
 
   const fade = useRef(new Animated.Value(0)).current;
   const rise = useRef(new Animated.Value(RISE_FROM)).current;
@@ -352,7 +329,7 @@ export default function HelpFAQScreen({ onClose, embedShellBottomNav = false }) 
   }, [fade, rise]);
 
   const rows = useMemo(() => FAQ_SECTIONS, []);
-  const styles = buildFaqStyles(isDark, cardTokens, scrollBottomPad, colors, spacing);
+  const styles = buildFaqStyles(scrollBottomPad, colors);
 
   const toggle = (key) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -371,7 +348,7 @@ export default function HelpFAQScreen({ onClose, embedShellBottomNav = false }) 
         showsVerticalScrollIndicator
       >
         <Animated.View style={{ opacity: fade, transform: [{ translateY: rise }] }}>
-          <FaqHero styles={styles} />
+          <FaqHero styles={styles} colors={colors} />
 
           {rows.map((item, index) => {
             if (item.type === 'heading') {

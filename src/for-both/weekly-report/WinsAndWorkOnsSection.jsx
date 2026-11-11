@@ -1,5 +1,5 @@
 // Weekly report "pros & cons" block: what went well and what to improve.
-// Flow: pick the top tips → if none, hide the section → otherwise paint the glass card with both lists.
+import { NbCard } from '../../look-and-feel/NbCard';// Flow: pick the top tips → if none, hide the section → otherwise paint the glass card with both lists.
 // Used by: WeeklyReportBody after the week's food/workout stats.
 
 import React from 'react';

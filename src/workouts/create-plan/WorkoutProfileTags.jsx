@@ -3,7 +3,7 @@
 // Used by the create-plan screen. Field keys (editKey / id) stay as whichProfileCardsToShow already knows them.
 
 import React from 'react';
-import { Dimensions, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Dimensions, StyleSheet, Text, TouchableOpacity, View, useColorScheme } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import ProfileIcon from '../../for-both/icons/ProfileIcon';
@@ -15,6 +15,8 @@ import {
   displayForFieldKey,
   formatProfileHeightDisplay,
 } from '../create-plan/planQuestionLabels';
+import NbCard from '../../look-and-feel/NbCard';
+import { lightColors, darkColors, gradients, nb, borderRadius } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
@@ -24,10 +26,6 @@ const FALLBACK_SCREEN_WIDTH = 390;
 const MIN_USABLE_WIDTH = 280;
 const PROFILE_TAG_EMPTY_VALUE = '—';
 const JOURNEY_PLACEHOLDER = 'Tap to add your journey text…';
-const PILL_EDITABLE_COLORS = ['#6D28D9', '#C2410C'];
-const PILL_READONLY_COLORS = ['rgba(148,163,184,0.45)', 'rgba(148,163,184,0.35)'];
-const SECTION_PILL_COLORS = ['#9333EA', '#DB2777'];
-const PILL_TEXT_COLOR = '#FFFFFF';
 
 // ===== HELPER FUNCTIONS =====
 
@@ -152,7 +150,7 @@ function pushItemByLayout(item, normal, fullWidth, wide) {
 }
 
 function EditPill({ isEditable }) {
-  const pillColors = isEditable ? PILL_EDITABLE_COLORS : PILL_READONLY_COLORS;
+  const pillColors = isEditable ? gradients.ink.colors : [lightColors.nbMuted, darkColors.nbMuted];
   const pillText = isEditable ? 'Tap to edit' : 'Read only';
   return (
     <LinearGradient
@@ -161,14 +159,16 @@ function EditPill({ isEditable }) {
       end={{ x: 1, y: 0 }}
       style={{ alignSelf: 'flex-start', marginTop: 12, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999 }}
     >
-      <Text style={{ color: PILL_TEXT_COLOR, fontSize: 11, fontWeight: '900', letterSpacing: 0.2 }}>
+      <Text style={{ color: '#FFFFFF', fontSize: 11, fontFamily: 'SpaceGrotesk_700Bold', letterSpacing: 0.2 }}>
         {pillText}
       </Text>
     </LinearGradient>
   );
 }
 
-function JourneyCard({ item, cellStyle, cardBg, planBuilderDivider, isDark, onboardingData, lovableMuted, lovableText, isEditable, onEditField }) {
+function JourneyCard({ item, cellStyle, cardBg: deprecatedCardBg, planBuilderDivider: deprecatedDivider, isDark: deprecatedIsDark, onboardingData, lovableMuted, lovableText, isEditable, onEditField }) {
+  const colorScheme = useColorScheme();
+  const colors = colorScheme === 'dark' ? darkColors : lightColors;
   return (
     <TouchableOpacity
       key={item.id}
@@ -177,36 +177,32 @@ function JourneyCard({ item, cellStyle, cardBg, planBuilderDivider, isDark, onbo
       disabled={!isEditable}
       style={[cellStyle, { marginTop: 10, marginBottom: 6 }]}
     >
-      <View
-        style={{
-          borderRadius: 22,
-          borderWidth: 1,
-          borderColor: planBuilderDivider,
-          backgroundColor: cardBg,
-        }}
-      >
-        <View style={{ padding: 16, minHeight: 172, flexDirection: 'row', alignItems: 'flex-start' }}>
+      <NbCard style={{ padding: 16, minHeight: 172 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
           <View style={{ flex: 1, flexDirection: 'row' }}>
-            <View style={profileCardIconWrapStyle(isDark)}>
+            <View style={profileCardIconWrapStyle(colorScheme === 'dark')}>
               <ProfileIcon itemId={item.id} onboardingData={onboardingData} fallbackIcon={item.icon} />
             </View>
             <View style={{ flex: 1, marginLeft: 14 }}>
-              <Text style={{ fontSize: 10, fontWeight: '900', letterSpacing: 0.8, color: lovableMuted, textTransform: 'uppercase' }}>
+              <Text style={{ fontSize: 12, fontFamily: 'SpaceGrotesk_700Bold', letterSpacing: 0.8, color: colors.nbMuted, textTransform: 'uppercase' }}>
                 {item.label}
               </Text>
-              <Text style={{ fontSize: 14, fontWeight: '800', color: lovableText, marginTop: 8 }} numberOfLines={2}>
+              <Text style={{ fontSize: 14, fontFamily: 'SpaceGrotesk_700Bold', color: colors.nbInk, marginTop: 8 }} numberOfLines={2}>
                 {item.value}
               </Text>
               <EditPill isEditable={isEditable} />
             </View>
           </View>
         </View>
-      </View>
+      </NbCard>
     </TouchableOpacity>
   );
 }
 
-function StandardPillCard({ item, cellStyle, cardBg, planBuilderDivider, isDark, onboardingData, lovableMuted, lovableText, lovableSubtle, isEditable, onEditField }) {
+function StandardPillCard({ item, cellStyle, cardBg: deprecatedCardBg, planBuilderDivider: deprecatedDivider, isDark: deprecatedIsDark, onboardingData, lovableMuted, lovableText, lovableSubtle, isEditable, onEditField }) {
+  const colorScheme = useColorScheme();
+  const colors = colorScheme === 'dark' ? darkColors : lightColors;
+  const pillColors = isEditable ? gradients.ink.colors : [colors.nbMuted, colors.nbMuted];
   return (
     <TouchableOpacity
       key={item.id}
@@ -215,44 +211,38 @@ function StandardPillCard({ item, cellStyle, cardBg, planBuilderDivider, isDark,
       disabled={!isEditable}
       style={[cellStyle, { marginBottom: 14 }]}
     >
-      <View
-        style={{
-          borderRadius: 22,
-          borderWidth: 1,
-          borderColor: planBuilderDivider,
-          backgroundColor: cardBg,
-          paddingHorizontal: 16,
-          paddingVertical: 16,
-          minHeight: 138,
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
+      <NbCard style={{
+        paddingHorizontal: 16,
+        paddingVertical: 16,
+        minHeight: 138,
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}>
         <View style={{ width: '100%', alignItems: 'center' }}>
-          <View style={profileCardIconWrapStyle(isDark)}>
+          <View style={profileCardIconWrapStyle(colorScheme === 'dark')}>
             <ProfileIcon itemId={item.id} onboardingData={onboardingData} fallbackIcon={item.icon} />
           </View>
-          <Text style={{ marginTop: 12, fontSize: 9, fontWeight: '800', letterSpacing: 0.9, color: lovableMuted, textTransform: 'uppercase', textAlign: 'center' }}>
+          <Text style={{ marginTop: 12, fontSize: 12, fontFamily: 'SpaceGrotesk_700Bold', letterSpacing: 0.9, color: colors.nbMuted, textTransform: 'uppercase', textAlign: 'center' }}>
             {item.label}
           </Text>
-          <Text style={{ marginTop: 8, fontSize: 17, fontWeight: '900', color: lovableText, textAlign: 'center' }} numberOfLines={2}>
+          <Text style={{ marginTop: 8, fontSize: 17, fontFamily: 'SpaceGrotesk_700Bold', color: colors.nbInk, textAlign: 'center' }} numberOfLines={2}>
             {item.value}
           </Text>
-          <Text style={{ marginTop: 8, fontSize: 11, fontWeight: '600', color: lovableSubtle, textAlign: 'center' }} numberOfLines={1}>
+          <Text style={{ marginTop: 8, fontSize: 11, fontFamily: 'Inter_500Medium', color: colors.nbMuted, textAlign: 'center' }} numberOfLines={1}>
             {item.helper}
           </Text>
           <LinearGradient
-            colors={isEditable ? PILL_EDITABLE_COLORS : PILL_READONLY_COLORS}
+            colors={pillColors}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
             style={{ marginTop: 12, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999 }}
           >
-            <Text style={{ color: PILL_TEXT_COLOR, fontSize: 11, fontWeight: '900', letterSpacing: 0.2 }}>
+            <Text style={{ color: '#FFFFFF', fontSize: 11, fontFamily: 'SpaceGrotesk_700Bold', letterSpacing: 0.2 }}>
               {isEditable ? 'Tap to edit' : 'Read only'}
             </Text>
           </LinearGradient>
         </View>
-      </View>
+      </NbCard>
     </TouchableOpacity>
   );
 }
@@ -279,29 +269,31 @@ function PillCard({ item, layout, theme, onEditField }) {
   return <StandardPillCard {...shared} lovableSubtle={theme.lovableSubtle} />;
 }
 
-function SnapshotHeader({ isDark, lovableText, lovableMuted, isCoachViewingClientProfile, profileCardSectionLabels, profileCardPillText, planBuilderDivider }) {
+function SnapshotHeader({ isDark: deprecatedIsDark, lovableText, lovableMuted, isCoachViewingClientProfile, profileCardSectionLabels, profileCardPillText, planBuilderDivider: deprecatedDivider }) {
+  const colorScheme = useColorScheme();
+  const colors = colorScheme === 'dark' ? darkColors : lightColors;
   return (
     <View style={{ paddingHorizontal: 20, paddingTop: 22, paddingBottom: 12, alignItems: 'center' }}>
       <Text
         style={{
-          fontSize: 10,
-          fontWeight: '900',
+          fontSize: 12,
+          fontFamily: 'SpaceGrotesk_700Bold',
           letterSpacing: 1.2,
           textTransform: 'uppercase',
-          color: isDark ? 'rgba(233,213,255,0.72)' : 'rgba(109,40,217,0.75)',
+          color: colors.nbMuted,
           textAlign: 'center',
         }}
       >
         Onboarding snapshot
       </Text>
-      <Text style={{ fontSize: 22, fontWeight: '900', color: lovableText, marginTop: 6, textAlign: 'center', letterSpacing: -0.3 }}>
+      <Text style={{ fontSize: 22, fontFamily: 'SpaceGrotesk_700Bold', color: colors.nbInk, marginTop: 6, textAlign: 'center', letterSpacing: -0.3 }}>
         Profile Cards
       </Text>
       <Text
         style={{
           fontSize: 13,
-          fontWeight: '600',
-          color: lovableMuted,
+          fontFamily: 'Inter_500Medium',
+          color: colors.nbMuted,
           lineHeight: 19,
           textAlign: 'center',
           marginTop: 8,
@@ -314,7 +306,7 @@ function SnapshotHeader({ isDark, lovableText, lovableMuted, isCoachViewingClien
       </Text>
       {profileCardSectionLabels.length > 0 ? (
         <LinearGradient
-          colors={SECTION_PILL_COLORS}
+          colors={gradients.ink.colors}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 0 }}
           style={{ borderRadius: 999, padding: 1, marginTop: 14 }}
@@ -324,14 +316,14 @@ function SnapshotHeader({ isDark, lovableText, lovableMuted, isCoachViewingClien
               borderRadius: 999,
               paddingHorizontal: 16,
               paddingVertical: 8,
-              backgroundColor: isDark ? 'rgba(10,8,18,0.96)' : 'rgba(255,255,255,0.98)',
+              backgroundColor: colors.nbSurface,
             }}
           >
             <Text
               style={{
                 fontSize: 11,
-                fontWeight: '800',
-                color: isDark ? 'rgba(255,255,255,0.78)' : 'rgba(15,23,42,0.72)',
+                fontFamily: 'SpaceGrotesk_700Bold',
+                color: colors.nbInk,
                 letterSpacing: 0.3,
                 textAlign: 'center',
               }}
@@ -341,34 +333,30 @@ function SnapshotHeader({ isDark, lovableText, lovableMuted, isCoachViewingClien
           </View>
         </LinearGradient>
       ) : null}
-      <View style={{ marginTop: 18, width: '100%', height: StyleSheet.hairlineWidth, backgroundColor: planBuilderDivider }} />
+      <View style={{ marginTop: 18, width: '100%', height: nb.borderWidth, backgroundColor: colors.nbBorder }} />
     </View>
   );
 }
 
-function EmptyOnboardingState({ isDark, lovableMuted, lovableText }) {
+function EmptyOnboardingState({ isDark: deprecatedIsDark, lovableMuted, lovableText }) {
+  const colorScheme = useColorScheme();
+  const colors = colorScheme === 'dark' ? darkColors : lightColors;
   return (
-    <View
-      style={{
-        marginTop: 8,
-        marginBottom: 16,
-        paddingVertical: 28,
-        paddingHorizontal: 20,
-        alignItems: 'center',
-        borderRadius: 18,
-        borderWidth: 1,
-        borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.08)',
-        backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(15,23,42,0.03)',
-      }}
-    >
-      <Ionicons name="document-text-outline" size={28} color={lovableMuted} />
-      <Text style={{ color: lovableText, fontSize: 16, fontWeight: '800', marginTop: 12, textAlign: 'center' }}>
+    <NbCard style={{
+      marginTop: 8,
+      marginBottom: 16,
+      paddingVertical: 28,
+      paddingHorizontal: 20,
+      alignItems: 'center',
+    }}>
+      <Ionicons name="document-text-outline" size={28} color={colors.nbMuted} />
+      <Text style={{ color: colors.nbInk, fontSize: 16, fontFamily: 'SpaceGrotesk_700Bold', marginTop: 12, textAlign: 'center' }}>
         No onboarding answers yet
       </Text>
-      <Text style={{ color: lovableMuted, fontSize: 13, lineHeight: 18, marginTop: 6, textAlign: 'center', maxWidth: 280 }}>
+      <Text style={{ color: colors.nbMuted, fontSize: 13, fontFamily: 'Inter_400Regular', lineHeight: 18, marginTop: 6, textAlign: 'center', maxWidth: 280 }}>
         Cards appear here only for fields this client completed during onboarding.
       </Text>
-    </View>
+    </NbCard>
   );
 }
 

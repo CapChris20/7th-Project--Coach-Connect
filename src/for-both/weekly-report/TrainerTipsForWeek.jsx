@@ -1,5 +1,5 @@
 // Trainer snapshot on the weekly report: workout adherence, red flags, and the week's note.
-// Flow: read week.trainerInsights → skip the section if every piece is empty → stack the cards that have data.
+import { NbCard } from '../../look-and-feel/NbCard';// Flow: read week.trainerInsights → skip the section if every piece is empty → stack the cards that have data.
 // Used by WeeklyReportBody under the sleep chart.
 
 import React from 'react';

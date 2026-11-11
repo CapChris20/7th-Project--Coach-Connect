@@ -1,11 +1,14 @@
-// Premium hero for the trainer marketplace on the client home screen.
-// Flow: paint the gradient rim → label, headline, benefits → optional CTA with a notification badge.
+// Neobrutalist hero for the trainer marketplace on the client home screen.
+// Flow: neobrutalist card → label, headline, benefits → optional CTA with a notification badge.
 // Used by: client home. Optional props reuse the same shell (e.g. trainer session form).
 
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '../../look-and-feel/lightDarkMode';
+import { NbCard } from '../../look-and-feel/NbCard';
+import { NbButton } from '../../look-and-feel/NbButton';
 
 // ===== NAMED CONSTANTS =====
 
@@ -97,29 +100,19 @@ function MarketplaceCta({
 }) {
   if (hideCta || !onPress) return null;
   return (
-    <LinearGradient
-      colors={CTA_GRADIENT}
-      start={GRADIENT_LEFT}
-      end={GRADIENT_RIGHT}
-      style={styles.ctaGradient}
-    >
-      <TouchableOpacity
-        onPress={onPress}
-        activeOpacity={0.88}
-        style={styles.ctaTouchable}
-        accessibilityRole="button"
-        accessibilityLabel={ctaLabel}
-      >
-        <Ionicons name={ctaIcon} size={20} color="#FFFFFF" />
-        <Text style={styles.ctaText}>{ctaLabel}</Text>
-        {notificationCount > 0 ? (
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>{marketplaceBadgeLabel(notificationCount)}</Text>
-          </View>
-        ) : null}
-        <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
-      </TouchableOpacity>
-    </LinearGradient>
+    <View style={styles.ctaWrap}>
+      <NbButton variant="brand" onPress={onPress}>
+        <View style={styles.ctaContent}>
+          <Ionicons name={ctaIcon} size={20} color="#0A0A0F" />
+          <Text style={styles.ctaText}>{ctaLabel}</Text>
+          {notificationCount > 0 ? (
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>{marketplaceBadgeLabel(notificationCount)}</Text>
+            </View>
+          ) : null}
+        </View>
+      </NbButton>
+    </View>
   );
 }
 
@@ -146,24 +139,19 @@ export default function FindTrainerBanner({
   subheadColor: subheadColorProp,
   benefitTextColor: benefitTextColorProp,
 }) {
+  const { colors: themeColors } = useTheme();
   const colors = bannerTextColors(isDark, subheadColorProp, benefitTextColorProp);
   const benefitLines = benefits || [];
 
-  // 1. Dark-first paint. Optional color props only restyle the two text slots.
-  // 2. Paint the rim, copy, benefits, and the Browse CTA (hidden when hideCta or no onPress).
+  // 1. Neobrutalist card with hard shadow
+  // 2. Paint the card, copy, benefits, and the CTA (hidden when hideCta or no onPress).
   return (
     <View
       style={[styles.outer, outerStyle]}
       accessibilityRole="summary"
       accessibilityLabel={accessibilityLabel}
     >
-      <LinearGradient
-        colors={ACCENT_BORDER_GRADIENT}
-        start={GRADIENT_TOP_LEFT}
-        end={GRADIENT_BOTTOM_RIGHT}
-        style={[styles.borderRing, isDark ? styles.borderRingShadowDark : styles.borderRingShadowLight]}
-      >
-        <View style={[styles.innerCard, { backgroundColor: colors.innerBackground }]}>
+      <NbCard>
           <View
             style={[
               StyleSheet.absoluteFill,
@@ -198,8 +186,7 @@ export default function FindTrainerBanner({
               notificationCount={notificationCount}
             />
           </View>
-        </View>
-      </LinearGradient>
+      </NbCard>
     </View>
   );
 }
@@ -209,28 +196,6 @@ const styles = StyleSheet.create({
     marginTop: 8,
     marginBottom: 8,
     paddingHorizontal: 16,
-  },
-  borderRing: {
-    borderRadius: 24,
-    padding: 2.5,
-  },
-  borderRingShadowDark: {
-    shadowColor: '#C084FC',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.28,
-    shadowRadius: 14,
-    elevation: 8,
-  },
-  borderRingShadowLight: {
-    shadowColor: '#A855F7',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.22,
-    shadowRadius: 12,
-    elevation: 6,
-  },
-  innerCard: {
-    borderRadius: 21,
-    overflow: 'hidden',
   },
   innerWash: {
     zIndex: 0,

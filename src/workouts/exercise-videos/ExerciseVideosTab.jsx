@@ -17,6 +17,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  useColorScheme,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -30,6 +31,7 @@ import ExerciseSection from '../exercise-rows/ExerciseSection';
 import ExerciseCard from './ExerciseCard';
 import ShortVideoCard from './ShortVideoCard';
 import { useShellBottomNavInset } from '../../navigation/bottomMenuSpacing';
+import { lightColors, darkColors, gradients } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
@@ -37,14 +39,14 @@ const { width: SCREEN_W } = Dimensions.get('window');
 const GUTTER = 20;
 const SAVED_KEY = '@coachconnect_exercise_library_saved';
 
-/** Aurora rim — hot pink → dark orange (matches home hero + user prefs) */
-const LIBRARY_RIM = ['#FF6B9D', '#C2410C'];
+/** Use brand gradient throughout */
+const LIBRARY_RIM = gradients.brand.colors;
 const SEARCH_FIELD_BORDER_GRADIENT = LIBRARY_RIM;
 const SECTION_GRADIENT = {
-  primary: ['#FF6B9D', '#C084FC'],
-  goals: ['#C2410C', '#FF6B9D'],
-  form: ['#06B6D4', '#C2410C'],
-  shorts: ['#F97316', '#FF6B9D'],
+  primary: gradients.brand.colors,
+  goals: gradients.brand.colors,
+  form: gradients.brand.colors,
+  shorts: gradients.brand.colors,
   search: LIBRARY_RIM,
 };
 const FILTER_ACTIVE_GRADIENT = LIBRARY_RIM;
@@ -1594,7 +1596,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   filterPillText: { fontSize: 13, fontWeight: '600' },
-  filterPillTextActive: { fontSize: 13, fontWeight: '700', color: '#FFFFFF' },
+  filterPillTextActive: { fontSize: 13, fontFamily: 'SpaceGrotesk_700Bold', color: '#FFFFFF' },
   filterPillSecondary: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14, borderWidth: 1 },
   filterPillTextSm: { fontSize: 11, fontWeight: '600' },
   banner: {
@@ -1656,7 +1658,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 12,
   },
-  channelBadgeText: { fontSize: 10, fontWeight: '600', color: '#FFFFFF' },
+  channelBadgeText: { fontSize: 10, fontFamily: 'Inter_500Medium', color: '#FFFFFF' },
   cardTitle: { fontSize: 15, fontWeight: '700', lineHeight: 20 },
   badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   badge: {
@@ -1685,7 +1687,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   tileLabels: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 6 },
-  tileTitle: { fontSize: 9, fontWeight: '700', color: '#FFFFFF' },
+  tileTitle: { fontSize: 9, fontFamily: 'SpaceGrotesk_700Bold', color: '#FFFFFF' },
   tileSub: { fontSize: 8, color: 'rgba(255,255,255,0.72)' },
   modalOverlay: { flex: 1, justifyContent: 'flex-end', position: 'relative' },
   modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.65)' },
@@ -1725,7 +1727,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   modeChipText: { fontSize: 11, fontWeight: '700' },
-  modeChipTextActive: { fontSize: 11, fontWeight: '800', color: '#FFFFFF' },
+  modeChipTextActive: { fontSize: 11, fontFamily: 'SpaceGrotesk_700Bold', color: '#FFFFFF' },
 
   mdlSheet: {
     borderTopLeftRadius: 24,

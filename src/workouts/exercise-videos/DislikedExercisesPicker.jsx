@@ -19,6 +19,7 @@ import {
   searchExerciseDislikeCatalog,
 } from './dislikableExercises';
 import { parseExerciseDislikes, serializeExerciseDislikes } from './dislikedExercisesText';
+import { nb } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
@@ -225,12 +226,12 @@ function LotteryDriftPill({ index, label, selected, onPress, t: theme, animate }
           borderRadius: 50,
           marginRight: 8,
           marginBottom: 8,
-          borderWidth: 1.5,
+          borderWidth: nb.borderWidth,
           borderColor: selected ? theme.cardSelectedBorder : theme.cardBorder,
           backgroundColor: selected ? theme.cardSelectedBg : theme.cardBg,
         }}
       >
-        <Text style={{ fontSize: 13, fontWeight: '600', color: theme.textPrimary }}>{label}</Text>
+        <Text style={{ fontSize: 13, fontFamily: 'Inter_500Medium', color: theme.textPrimary }}>{label}</Text>
       </TouchableOpacity>
     </Animated.View>
   );
@@ -366,25 +367,27 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   hint: {
-    fontSize: 12,
+    fontSize: 13,
+    fontFamily: 'Inter_400Regular',
     lineHeight: 18,
     marginBottom: 10,
   },
   search: {
-    borderWidth: 1,
+    borderWidth: nb.borderWidth,
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 10,
     fontSize: 15,
+    fontFamily: 'Inter_400Regular',
     marginBottom: 8,
   },
   section: {
     marginTop: 10,
   },
   sectionLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 0.6,
+    fontSize: 12,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    letterSpacing: 0.8,
     textTransform: 'uppercase',
     marginBottom: 6,
   },
@@ -393,11 +396,12 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
   },
   otherInput: {
-    borderWidth: 1,
+    borderWidth: nb.borderWidth,
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 10,
     fontSize: 14,
+    fontFamily: 'Inter_400Regular',
     minHeight: 72,
     textAlignVertical: 'top',
   },

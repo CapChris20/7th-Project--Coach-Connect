@@ -1,5 +1,5 @@
 // One metric tile on the weekly report (sleep, water, steps, food log, workout, energy, mood).
-// Flow: map the icon to a metric → paint glass + gradient → value + optional vs-last-week trend.
+import { NbCard } from '../../look-and-feel/NbCard';// Flow: map the icon to a metric → paint glass + gradient → value + optional vs-last-week trend.
 // Used by the weekly report stats grid for both trainer and client.
 
 import React from 'react';

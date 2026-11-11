@@ -12,17 +12,13 @@ import { getApiBase } from '../for-both/online-connection/whereToConnect';
 import { getAuth } from 'firebase/auth';
 import TopHeader from '../for-both/loading-and-header/TopHeader';
 import { SHELL_SAFE_AREA_EDGES, FORM_SCROLL_PROPS, useShellBottomNavInset } from '../navigation/bottomMenuSpacing';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import NbCard from '../look-and-feel/NbCard';
+import NbButton from '../look-and-feel/NbButton';
+import { nb, gradients, spacing } from '../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
-const PINK = '#FF6B9D';
-const PURPLE = '#C084FC';
-const CYAN = '#06B6D4';
-const ORANGE = '#F97316';
-const NUTRITION_GRADIENT = ['#E91E63', '#FF6B9D', '#C084FC'];
-const BORDER_PAD = 0.35;
 const SHELL_NAV_INSET = 24;
 const EXTRA_SCROLL_PAD = 16;
 const FADE_MS = 350;
@@ -33,36 +29,12 @@ const DELIVERY_FIRESTORE = 'firestore';
 
 // ===== HELPER FUNCTIONS =====
 
-/**
- * @param {boolean} isDark
- * @returns {object}
- */
-function getCardTokens(isDark) {
-  if (isDark) {
-    return {
-      cardBackground: '#141419',
-      border: 'rgba(255,255,255,0.08)',
-      text2: 'rgba(255,255,255,0.92)',
-      text3: 'rgba(255,255,255,0.72)',
-      inputBg: 'rgba(255,255,255,0.03)',
-    };
-  }
-  return {
-    cardBackground: '#FFFFFF',
-    border: 'rgba(10,10,15,0.06)',
-    text2: 'rgba(10,10,15,0.86)',
-    text3: 'rgba(10,10,15,0.68)',
-    inputBg: 'rgba(0,0,0,0.01)',
-  };
+// Simple wrapper - no longer using gradients, just NbCard
+function GradientCard({ children }) {
+  return children;
 }
 
-function GradientCard({ borderColors, style, innerStyle, children }) {
-  return (
-    <LinearGradient colors={borderColors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={style}>
-      <View style={innerStyle}>{children}</View>
-    </LinearGradient>
-  );
-}
+const NUTRITION_GRADIENT = gradients.brand.colors;
 
 function openSupportMail() {
   openSupportMailto({ subject: MAIL_SUBJECT_DEFAULT });
@@ -124,72 +96,135 @@ function alertAfterSupportSend(supportEmail, json) {
   Alert.alert('Sent', 'Thanks — we received your message (and opened email as a backup).');
 }
 
-function buildSupportStyles(isDark, cardTokens, scrollBottomPad) {
+function buildSupportStyles(scrollBottomPad, colors) {
   return StyleSheet.create({
-    container: { flex: 1, backgroundColor: isDark ? '#0A0A0F' : '#FFFFFF' },
-    scroll: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: scrollBottomPad },
-    heroOuter: { borderRadius: 16, padding: BORDER_PAD, marginBottom: 16 },
-    heroInner: {
-      borderRadius: 14,
-      padding: 24,
-      backgroundColor: cardTokens.cardBackground,
+    container: { flex: 1, backgroundColor: colors.nbBackground },
+    scroll: { paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: scrollBottomPad },
+    heroCard: {
       alignItems: 'center',
-      borderWidth: 0,
+      padding: spacing.lg,
+      marginBottom: spacing.md,
     },
-    heroIconOuter: { width: 64, height: 64, borderRadius: 32, padding: BORDER_PAD, marginBottom: 14 },
-    heroIconInner: {
-      flex: 1,
-      borderRadius: 30,
+    heroIcon: {
+      width: 64,
+      height: 64,
+      borderRadius: 32,
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: 'rgba(255,255,255,0.03)',
-      borderWidth: 0,
+      marginBottom: spacing.sm,
     },
-    heroTitle: { fontSize: 32, fontWeight: '900', color: isDark ? '#FFFFFF' : '#1A1A2E', textAlign: 'center', marginBottom: 8, letterSpacing: -0.3 },
-    heroSub: { fontSize: 15, fontWeight: '600', color: cardTokens.text2, textAlign: 'center', lineHeight: 21 },
-    intro: { fontSize: 14, fontWeight: '600', color: cardTokens.text2, lineHeight: 22, marginBottom: 16 },
-    sectionHeaderRow: { marginTop: 8, marginBottom: 12 },
+    heroTitle: {
+      fontFamily: 'SpaceGrotesk_700Bold',
+      fontSize: 32,
+      color: colors.nbInk,
+      textAlign: 'center',
+      marginBottom: spacing.sm,
+      letterSpacing: -0.3,
+    },
+    heroSub: {
+      fontFamily: 'Inter_600SemiBold',
+      fontSize: 15,
+      color: colors.nbMuted,
+      textAlign: 'center',
+      lineHeight: 21,
+    },
+    intro: {
+      fontFamily: 'Inter_600SemiBold',
+      fontSize: 14,
+      color: colors.nbMuted,
+      lineHeight: 22,
+      marginBottom: spacing.md,
+    },
+    sectionHeaderRow: { marginTop: spacing.sm, marginBottom: spacing.sm },
     sectionHeader: {
+      fontFamily: 'SpaceGrotesk_700Bold',
       fontSize: 12,
-      fontWeight: '900',
       letterSpacing: 0.5,
       textTransform: 'uppercase',
-      color: cardTokens.text3,
+      color: colors.nbMuted,
     },
-    sectionUnderline: { width: 22, height: 1.5, backgroundColor: '#FF6B9D', marginTop: 8, borderRadius: 999 },
-    cardOuter: { borderRadius: 14, padding: BORDER_PAD, marginBottom: 12 },
-    cardInner: { borderRadius: 12, padding: 16, backgroundColor: cardTokens.cardBackground, borderWidth: 0 },
-    cardTitle: { fontSize: 16, fontWeight: '900', color: isDark ? '#FFFFFF' : '#0A0A0F', marginBottom: 8, letterSpacing: -0.2 },
-    body: { fontSize: 14, fontWeight: '600', color: cardTokens.text2, lineHeight: 22 },
-    bullet: { fontSize: 14, fontWeight: '600', color: cardTokens.text2, lineHeight: 22, marginBottom: 8 },
-    label: { fontSize: 11, fontWeight: '900', letterSpacing: 0.5, textTransform: 'uppercase', color: cardTokens.text3, marginTop: 14, marginBottom: 8 },
-    formTitle: { fontSize: 17, fontWeight: '900', color: isDark ? '#FFFFFF' : '#0A0A0F', marginBottom: 6, letterSpacing: -0.2 },
-    formSub: { fontSize: 14, fontWeight: '600', color: cardTokens.text2, lineHeight: 21 },
+    card: {
+      padding: spacing.md,
+      marginBottom: spacing.sm,
+    },
+    cardTitle: {
+      fontFamily: 'SpaceGrotesk_700Bold',
+      fontSize: 16,
+      color: colors.nbInk,
+      marginBottom: spacing.sm,
+      letterSpacing: -0.2,
+    },
+    body: {
+      fontFamily: 'Inter_600SemiBold',
+      fontSize: 14,
+      color: colors.nbMuted,
+      lineHeight: 22,
+    },
+    bullet: {
+      fontFamily: 'Inter_600SemiBold',
+      fontSize: 14,
+      color: colors.nbMuted,
+      lineHeight: 22,
+      marginBottom: spacing.sm,
+    },
+    label: {
+      fontFamily: 'SpaceGrotesk_700Bold',
+      fontSize: 11,
+      letterSpacing: 0.5,
+      textTransform: 'uppercase',
+      color: colors.nbMuted,
+      marginTop: spacing.sm,
+      marginBottom: spacing.sm,
+    },
+    formTitle: {
+      fontFamily: 'SpaceGrotesk_700Bold',
+      fontSize: 17,
+      color: colors.nbInk,
+      marginBottom: 6,
+      letterSpacing: -0.2,
+    },
+    formSub: {
+      fontFamily: 'Inter_600SemiBold',
+      fontSize: 14,
+      color: colors.nbMuted,
+      lineHeight: 21,
+    },
     input: {
+      fontFamily: 'Inter_400Regular',
       height: 48,
-      borderWidth: 0.5,
-      borderColor: 'rgba(255,107,157,0.20)',
+      borderWidth: nb.borderWidth,
+      borderColor: colors.nbBorder,
       borderRadius: 10,
-      paddingHorizontal: 14,
-      color: isDark ? '#FFFFFF' : '#0A0A0F',
-      backgroundColor: cardTokens.inputBg,
-      marginTop: 10,
+      paddingHorizontal: spacing.sm,
+      color: colors.nbInk,
+      backgroundColor: colors.nbSurface,
+      marginTop: spacing.sm,
     },
-    inputMultiline: { minHeight: 120, height: undefined, paddingTop: 12, paddingBottom: 12, textAlignVertical: 'top' },
-    helper: { fontSize: 12, fontWeight: '600', color: cardTokens.text3, marginTop: 10, lineHeight: 17 },
-    buttonWrap: { marginTop: 14 },
-    button: { borderRadius: 999, overflow: 'hidden' },
-    buttonInner: { height: 48, alignItems: 'center', justifyContent: 'center' },
-    buttonText: { fontSize: 14, fontWeight: '900', color: '#FFFFFF', letterSpacing: 0.3 },
+    inputMultiline: {
+      minHeight: 120,
+      height: undefined,
+      paddingTop: spacing.sm,
+      paddingBottom: spacing.sm,
+      textAlignVertical: 'top',
+    },
+    helper: {
+      fontFamily: 'Inter_600SemiBold',
+      fontSize: 12,
+      color: colors.nbMuted,
+      marginTop: spacing.sm,
+      lineHeight: 17,
+    },
+    buttonWrap: { marginTop: spacing.sm },
     footer: {
-      marginTop: 12,
-      padding: 16,
-      backgroundColor: cardTokens.cardBackground,
-      borderColor: cardTokens.border,
-      borderWidth: 0,
-      borderRadius: 12,
+      marginTop: spacing.sm,
+      padding: spacing.md,
     },
-    footerText: { fontSize: 13, fontWeight: '600', color: cardTokens.text2, lineHeight: 20 },
+    footerText: {
+      fontFamily: 'Inter_600SemiBold',
+      fontSize: 13,
+      color: colors.nbMuted,
+      lineHeight: 20,
+    },
   });
 }
 
@@ -233,12 +268,11 @@ function BulletCard({ title, lines, styles: cardStyles }) {
 // ===== MAIN FUNCTION =====
 
 export default function ContactSupportScreen({ onClose, embedShellBottomNav = false }) {
-  const { colors, spacing, isDark } = useTheme();
+  const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const shellNavInset = useShellBottomNavInset(SHELL_NAV_INSET);
   const scrollBottomPad = supportScrollBottomPad(embedShellBottomNav, shellNavInset, insets.bottom);
   const supportEmail = getSupportEmail();
-  const cardTokens = getCardTokens(isDark);
   const [subject, setSubject] = useState('');
   const [message, setMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -305,7 +339,7 @@ export default function ContactSupportScreen({ onClose, embedShellBottomNav = fa
     }
   }
 
-  const styles = buildSupportStyles(isDark, cardTokens, scrollBottomPad);
+  const styles = buildSupportStyles(scrollBottomPad, colors);
   const footerCopy = supportEmail
     ? `Questions? Email ${supportEmail}. We can’t give medical advice; for health emergencies, contact local emergency services.`
     : 'We can’t give medical advice; for health emergencies, contact local emergency services.';
@@ -322,7 +356,7 @@ export default function ContactSupportScreen({ onClose, embedShellBottomNav = fa
         showsVerticalScrollIndicator
       >
         <Animated.View style={{ opacity: fade, transform: [{ translateY: rise }] }}>
-          <SupportHero styles={styles} />
+          <SupportHero styles={styles} colors={colors} />
 
           <Text style={styles.intro}>
             We’re glad you’re here. Tell us what’s going on and we’ll work through it with you.
@@ -385,22 +419,9 @@ export default function ContactSupportScreen({ onClose, embedShellBottomNav = fa
             </Text>
 
             <View style={styles.buttonWrap}>
-              <Pressable
-                style={({ pressed }) => [styles.button, pressed && { transform: [{ scale: 0.98 }] }]}
-                onPress={submit}
-                disabled={submitting}
-              >
-                <LinearGradient colors={NUTRITION_GRADIENT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.buttonInner}>
-                  {submitting ? (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                      <ActivityIndicator color="#fff" />
-                      <Text style={styles.buttonText}>Sending…</Text>
-                    </View>
-                  ) : (
-                    <Text style={styles.buttonText}>Send message</Text>
-                  )}
-                </LinearGradient>
-              </Pressable>
+              <NbButton variant="brand" onPress={submit} disabled={submitting}>
+                {submitting ? 'Sending…' : 'Send message'}
+              </NbButton>
             </View>
 
             {supportEmail ? (

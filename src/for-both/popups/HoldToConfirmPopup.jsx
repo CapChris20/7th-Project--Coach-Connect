@@ -1,4 +1,4 @@
-// Destructive confirmation: the user must press and hold until the progress bar fills.
+// Neobrutalist destructive confirmation: the user must press and hold until the progress bar fills.
 // Flow: press in → animate 0→1 → if they hold to the end, run onHoldComplete; release early → bar resets.
 // Used by: delete / unlink / other irreversible actions. Release early never fires the action.
 
@@ -14,6 +14,8 @@ import {
   Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useTheme } from '../../look-and-feel/lightDarkMode';
+import { NbCard } from '../../look-and-feel/NbCard';
 
 // ===== NAMED CONSTANTS =====
 
@@ -174,41 +176,46 @@ export default function HoldToConfirmPopup({
     outputRange: ['0%', '100%'],
   });
 
+  const { colors } = useTheme();
+  
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={submitting ? undefined : onClose}>
       <Pressable style={styles.overlay} onPress={submitting ? undefined : onClose}>
-        <Pressable style={[styles.card, { backgroundColor: palette.cardBg }]} onPress={(event) => event.stopPropagation?.()}>
-          <Text style={[styles.title, { color: palette.textColor }]}>{title}</Text>
-          {message ? <Text style={[styles.message, { color: palette.muted }]}>{message}</Text> : null}
+        <Pressable style={styles.cardWrap} onPress={(event) => event.stopPropagation?.()}>
+          <NbCard>
+            <Text style={[styles.title, { color: colors.nbInk }]}>{title}</Text>
+            {message ? <Text style={[styles.message, { color: colors.nbMuted }]}>{message}</Text> : null}
 
-          <View style={[styles.track, { backgroundColor: trackColor }]}>
-            <Animated.View style={[styles.fillWrap, { width: fillWidth }]}>
-              <LinearGradient colors={barGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
-            </Animated.View>
-          </View>
+            <View style={[styles.track, { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder }]}>
+              <Animated.View style={[styles.fillWrap, { width: fillWidth }]}>
+                <LinearGradient colors={barGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
+              </Animated.View>
+            </View>
 
-          <Pressable
-            onPressIn={onPressIn}
-            onPressOut={onPressOut}
-            disabled={submitting}
-            style={({ pressed }) => [
-              styles.holdPill,
-              {
-                opacity: holdPillOpacity(submitting, pressed),
-                borderColor: palette.pillBorder,
-              },
-            ]}
-          >
-            {submitting ? (
-              <ActivityIndicator color={SPINNER_COLOR} />
-            ) : (
-              <Text style={[styles.holdLabel, { color: palette.textColor }]}>{pillLabel}</Text>
-            )}
-          </Pressable>
+            <Pressable
+              onPressIn={onPressIn}
+              onPressOut={onPressOut}
+              disabled={submitting}
+              style={({ pressed }) => [
+                styles.holdPill,
+                {
+                  opacity: holdPillOpacity(submitting, pressed),
+                  borderColor: colors.nbBorder,
+                  backgroundColor: colors.nbSurfaceChip,
+                },
+              ]}
+            >
+              {submitting ? (
+                <ActivityIndicator color={SPINNER_COLOR} />
+              ) : (
+                <Text style={[styles.holdLabel, { color: colors.nbInk }]}>{pillLabel}</Text>
+              )}
+            </Pressable>
 
-          <Pressable onPress={submitting ? undefined : onClose} style={styles.cancelWrap} disabled={submitting}>
-            <Text style={[styles.cancel, { color: palette.muted }]}>Cancel</Text>
-          </Pressable>
+            <Pressable onPress={submitting ? undefined : onClose} style={styles.cancelWrap} disabled={submitting}>
+              <Text style={[styles.cancel, { color: colors.nbMuted }]}>Cancel</Text>
+            </Pressable>
+          </NbCard>
         </Pressable>
       </Pressable>
     </Modal>
@@ -222,9 +229,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 24,
   },
-  card: {
-    borderRadius: 20,
-    padding: 22,
+  cardWrap: {
     maxWidth: 400,
     alignSelf: 'center',
     width: '100%',
@@ -244,6 +249,7 @@ const styles = StyleSheet.create({
   track: {
     height: 8,
     borderRadius: 6,
+    borderWidth: 2.5,
     overflow: 'hidden',
     marginBottom: 16,
   },
@@ -255,10 +261,9 @@ const styles = StyleSheet.create({
   holdPill: {
     minHeight: 52,
     borderRadius: 14,
-    borderWidth: 1,
+    borderWidth: 2.5,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.04)',
   },
   holdLabel: {
     fontSize: 15,

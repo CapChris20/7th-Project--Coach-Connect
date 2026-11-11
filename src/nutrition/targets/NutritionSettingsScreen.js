@@ -20,15 +20,17 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
 import { useShellBottomNavInset, SHELL_SAFE_AREA_EDGES } from '../../navigation/bottomMenuSpacing';
 import { NUT_MACRO_GRADIENTS } from '../nutritionColors';
+import { lightColors, darkColors, nb, borderRadius, gradients as nbGradients } from '../../look-and-feel/colorPalette';
+import NbCard from '../../look-and-feel/NbCard';
+import NbButton from '../../look-and-feel/NbButton';
 
 // ===== NAMED CONSTANTS =====
 
-const PINK = '#BE185D';
-const PINK_SOFT = '#FF6B9D';
-const ORANGE = '#C2410C';
-const ORANGE_SOFT = '#F97316';
+// Use neobrutalist gradients from tokens
+const CTA_GRAD = nbGradients.brand.colors;
+const PINK_SOFT = nbGradients.brand.colors[0];
+const ORANGE_SOFT = nbGradients.brand.colors[1];
 const CYAN = '#06B6D4';
-const CTA_GRAD = [PINK, ORANGE];
 
 const DEFAULT_CALORIES = 2000;
 const DEFAULT_PROTEIN_GRAMS = 150;
@@ -88,33 +90,19 @@ const MACRO_LANES = [
  * @returns {object}
  */
 function getPalette(isDark) {
-  if (isDark) {
-    return {
-      bg: '#0A0A0F',
-      panel: 'rgba(255,255,255,0.045)',
-      cardSolid: '#12131A',
-      panelBorder: 'rgba(255,255,255,0.10)',
-      text: '#FFFFFF',
-      textSoft: 'rgba(255,255,255,0.62)',
-      textMuted: 'rgba(255,255,255,0.38)',
-      inputBg: 'rgba(255,255,255,0.07)',
-      stepBg: 'rgba(255,255,255,0.06)',
-      stepBorder: 'rgba(255,255,255,0.12)',
-      destructive: '#FCA5A5',
-    };
-  }
+  const nbColors = isDark ? darkColors : lightColors;
   return {
-    bg: '#F4F4F8',
-    panel: '#FFFFFF',
-    cardSolid: '#FFFFFF',
-    panelBorder: 'rgba(10,10,15,0.08)',
-    text: '#0A0A0F',
-    textSoft: 'rgba(10,10,15,0.62)',
-    textMuted: 'rgba(10,10,15,0.42)',
-    inputBg: 'rgba(0,0,0,0.04)',
-    stepBg: 'rgba(190,24,93,0.06)',
-    stepBorder: 'rgba(190,24,93,0.22)',
-    destructive: '#DC2626',
+    bg: nbColors.nbBackground,
+    panel: nbColors.nbSurface,
+    cardSolid: nbColors.nbSurface,
+    panelBorder: nbColors.nbBorder,
+    text: nbColors.nbInk,
+    textSoft: nbColors.nbMuted,
+    textMuted: nbColors.nbMuted,
+    inputBg: nbColors.nbSurfaceChip,
+    stepBg: nbColors.nbSurfaceChip,
+    stepBorder: nbColors.nbBorder,
+    destructive: isDark ? '#FCA5A5' : '#DC2626',
   };
 }
 
@@ -218,7 +206,7 @@ function MacroLane({ row, value, onChange, palette }) {
   const fillWidth = `${laneFillWidthPercent(fillFraction)}%`;
 
   return (
-    <View style={[laneStyles.wrap, { backgroundColor: palette.cardSolid, borderColor: palette.panelBorder }]}>
+    <NbCard style={laneStyles.wrap}>
       <View style={laneStyles.topRow}>
         <Image source={row.icon} style={laneStyles.icon} resizeMode="contain" />
         <Text style={[laneStyles.label, { color: palette.text }]}>{row.label}</Text>
@@ -245,7 +233,7 @@ function MacroLane({ row, value, onChange, palette }) {
           />
         </View>
       </View>
-    </View>
+    </NbCard>
   );
 }
 
@@ -255,7 +243,7 @@ function MacroLane({ row, value, onChange, palette }) {
  */
 function CaloriePanel({ calories, setCalories, onNudge, estMacros, palette }) {
   return (
-    <View style={[screenStyles.calPanel, { backgroundColor: palette.cardSolid, borderColor: palette.panelBorder }]}>
+    <NbCard style={screenStyles.calPanel}>
       <LinearGradient colors={CTA_GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={screenStyles.calStripe} />
       <Text style={[screenStyles.calLabel, { color: palette.textMuted }]}>CALORIES PER DAY</Text>
 
@@ -298,7 +286,7 @@ function CaloriePanel({ calories, setCalories, onNudge, estMacros, palette }) {
         {' · '}
         <Text style={{ color: CYAN }}>{estMacros.fat}g F</Text>
       </Text>
-    </View>
+    </NbCard>
   );
 }
 
@@ -354,18 +342,9 @@ function GoalsEditorBody({
         />
       ))}
 
-      <TouchableOpacity
-        onPress={onSave}
-        activeOpacity={0.88}
-        style={[
-          screenStyles.saveBtn,
-          { backgroundColor: palette.cardSolid, borderColor: palette.panelBorder },
-        ]}
-        disabled={saving}
-      >
-        <LinearGradient colors={CTA_GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={screenStyles.saveStripe} />
-        <Text style={[screenStyles.saveText, { color: PINK_SOFT }]}>{saving ? 'Saving…' : 'Save goals'}</Text>
-      </TouchableOpacity>
+      <NbButton variant="brand" onPress={onSave} disabled={saving}>
+        {saving ? 'Saving…' : 'Save goals'}
+      </NbButton>
 
       <View style={[screenStyles.resetZone, { borderTopColor: palette.panelBorder }]}>
         <Text style={[screenStyles.resetHint, { color: palette.textSoft }]}>
@@ -538,8 +517,6 @@ const screenStyles = StyleSheet.create({
     marginBottom: 22,
   },
   calPanel: {
-    borderRadius: 20,
-    borderWidth: 1,
     paddingHorizontal: 18,
     paddingBottom: 18,
     marginBottom: 20,
@@ -567,8 +544,8 @@ const screenStyles = StyleSheet.create({
     minWidth: 52,
     paddingHorizontal: 10,
     paddingVertical: 12,
-    borderRadius: 14,
-    borderWidth: 1,
+    borderRadius: borderRadius.nbChip,
+    borderWidth: nb.borderWidth,
     alignItems: 'center',
   },
   stepBtnText: {
@@ -604,27 +581,6 @@ const screenStyles = StyleSheet.create({
     textTransform: 'uppercase',
     marginBottom: 12,
   },
-  saveBtn: {
-    marginTop: 8,
-    borderRadius: 16,
-    borderWidth: 1,
-    paddingVertical: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  saveStripe: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 3,
-  },
-  saveText: {
-    fontSize: 16,
-    fontWeight: '800',
-    letterSpacing: 0.2,
-  },
   resetZone: {
     marginTop: 28,
     paddingTop: 22,
@@ -646,8 +602,6 @@ const screenStyles = StyleSheet.create({
 
 const laneStyles = StyleSheet.create({
   wrap: {
-    borderRadius: 18,
-    borderWidth: 1,
     padding: 16,
     marginBottom: 12,
   },

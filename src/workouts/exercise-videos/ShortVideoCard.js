@@ -13,15 +13,16 @@ import {
   Text,
   View,
 } from 'react-native';
+import { useColorScheme } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import NbCard from '../../look-and-feel/NbCard';
+import { lightColors, darkColors, gradients } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
 const PRESS_ANIMATION_MS = 220;
-const DEFAULT_RIM = ['#FF6B9D', '#C2410C'];
 const SECONDS_PER_MINUTE = 60;
 const SHORTS_ASPECT_RATIO = 1.78;
 const PRESS_SCALE = 1.02;
@@ -30,8 +31,6 @@ const MIN_GRADIENT_STOPS = 2;
 const YOUTUBE_THUMB_HOST = 'https://i.ytimg.com/vi';
 const FALLBACK_LABEL = '—';
 const BOOKMARK_HIT_SLOP = 10;
-const SAVED_BOOKMARK_COLOR = '#FF6B9D';
-const UNSAVED_BOOKMARK_COLOR = '#FFFFFF';
 
 // ===== HELPER FUNCTIONS =====
 
@@ -60,12 +59,12 @@ function formatShortDuration(seconds) {
 }
 
 /**
- * A one-stop array would crash LinearGradient, so fall back to the pink/orange rim.
+ * A one-stop array would crash LinearGradient, so fall back to the brand gradient.
  * @param {string[]|undefined} accentGradient
  * @returns {string[]}
  */
 function rimColors(accentGradient) {
-  return accentGradient?.length >= MIN_GRADIENT_STOPS ? accentGradient : DEFAULT_RIM;
+  return accentGradient?.length >= MIN_GRADIENT_STOPS ? accentGradient : gradients.brand.colors;
 }
 
 // ===== MAIN FUNCTION =====
@@ -77,14 +76,16 @@ function rimColors(accentGradient) {
 export default function ShortVideoCard({
   item,
   width = 110,
-  accentGradient = DEFAULT_RIM,
-  isDark = true,
+  accentGradient,
+  isDark: deprecatedIsDark,
   onPress,
   saved = false,
   onToggleSave,
   style,
 }) {
   // vocab: Animated.Value = a number the native driver can tween without bouncing through JS.
+  const colorScheme = useColorScheme();
+  const colors = colorScheme === 'dark' ? darkColors : lightColors;
   const scale = useRef(new Animated.Value(1)).current;
   const translateY = useRef(new Animated.Value(0)).current;
   const [isPressed, setIsPressed] = useState(false);
@@ -140,7 +141,7 @@ export default function ShortVideoCard({
               <Ionicons
                 name={saved ? 'bookmark' : 'bookmark-outline'}
                 size={14}
-                color={saved ? SAVED_BOOKMARK_COLOR : UNSAVED_BOOKMARK_COLOR}
+                color={saved ? gradients.brand.colors[0] : colors.nbSurface}
               />
             </Pressable>
           ) : null}
@@ -210,8 +211,8 @@ const styles = StyleSheet.create({
     zIndex: 8,
     gap: 3,
   },
-  title: { fontSize: 12, fontWeight: '800', color: '#FFFFFF', lineHeight: 16 },
-  channel: { fontSize: 10, fontWeight: '700', color: 'rgba(255,255,255,0.72)' },
+  title: { fontSize: 12, fontFamily: 'SpaceGrotesk_700Bold', color: '#FFFFFF', lineHeight: 16 },
+  channel: { fontSize: 10, fontFamily: 'Inter_500Medium', color: 'rgba(255,255,255,0.72)' },
   durationRow: { marginTop: 2 },
   durationChip: {
     alignSelf: 'flex-start',
@@ -219,5 +220,5 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     borderRadius: 999,
   },
-  duration: { fontSize: 9, fontWeight: '800', color: '#FFFFFF', letterSpacing: 0.3 },
+  duration: { fontSize: 9, fontFamily: 'SpaceGrotesk_700Bold', color: '#FFFFFF', letterSpacing: 0.3 },
 });

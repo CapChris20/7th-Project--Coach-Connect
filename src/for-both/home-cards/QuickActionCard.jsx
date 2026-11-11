@@ -1,11 +1,14 @@
-// Horizontal quick-action tile — centered icon, gradient rim, gradient CTA.
-// Flow: pick dark/light paint → optional badge → icon → label/subtitle → CTA pill.
+// Neobrutalist quick-action tile — centered icon, hard shadow, gradient CTA.
+// Flow: pick dark/light paint → optional badge → icon → label/subtitle → CTA button.
 // Used by: home screens for shortcuts (messages, marketplace, workouts).
 
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '../../look-and-feel/lightDarkMode';
+import { NbCard } from '../../look-and-feel/NbCard';
+import { NbButton } from '../../look-and-feel/NbButton';
 
 // ===== NAMED CONSTANTS =====
 
@@ -83,11 +86,11 @@ export default function QuickActionCard({
   style,
   accessibilityLabel,
 }) {
-  const colors = quickActionColors(isDark);
+  const { colors } = useTheme();
   const showBadge = typeof badgeCount === 'number' && badgeCount > 0;
   const spokenLabel = accessibilityLabel || defaultAccessibilityLabel(label, subtitle, ctaLabel);
 
-  // 1. Dark vs light paint, and a spoken label if the parent did not pass one.
+  // 1. Neobrutalist card with hard shadow
   // 2. Paint the tile. The badge only appears when badgeCount is a number above 0.
   return (
     <TouchableOpacity
@@ -97,106 +100,41 @@ export default function QuickActionCard({
       accessibilityLabel={spokenLabel}
       style={[{ width, marginRight: 12 }, style]}
     >
-      <View
-        style={[
-          styles.borderRing,
-          isDark ? styles.shadowDark : styles.shadowLight,
-          { borderWidth: 1, borderColor: colors.hairline, padding: 0, backgroundColor: colors.innerBackground },
-        ]}
-      >
-        <View style={styles.innerClip}>
-          <LinearGradient
-            colors={colors.backgroundGradient}
-            start={GRADIENT_TOP}
-            end={GRADIENT_BOTTOM}
-            style={styles.fill}
-          >
-            <View style={styles.body}>
-              {showBadge ? (
-                <View style={styles.badge}>
-                  <Text style={styles.badgeText}>{badgeLabel(badgeCount)}</Text>
-                </View>
-              ) : null}
-
-              <View style={styles.iconWrap}>
-                <View
-                  style={[
-                    styles.iconRing,
-                    {
-                      borderWidth: 1,
-                      borderColor: colors.hairline,
-                      padding: 0,
-                      backgroundColor: colors.iconInnerBackground,
-                    },
-                  ]}
-                >
-                  <View style={[styles.iconInner, { backgroundColor: 'transparent' }]}>
-                    <Ionicons name={icon} size={26} color={colors.iconColor} />
-                  </View>
-                </View>
-              </View>
-
-              <Text style={[styles.title, { color: colors.headlineColor }]} numberOfLines={2}>
-                {label}
-              </Text>
-              <Text style={[styles.sub, { color: colors.subColor }]} numberOfLines={2}>
-                {subtitle}
-              </Text>
-
-              <LinearGradient
-                colors={CTA_GRADIENT}
-                start={GRADIENT_LEFT}
-                end={GRADIENT_RIGHT}
-                style={styles.ctaPill}
-              >
-                <View style={styles.ctaInner}>
-                  <Text style={styles.ctaText}>{ctaLabel}</Text>
-                  <Ionicons name="arrow-forward" size={15} color="#FFFFFF" />
-                </View>
-              </LinearGradient>
+      <NbCard style={styles.card}>
+        <View style={styles.body}>
+          {showBadge ? (
+            <View style={[styles.badge, { backgroundColor: colors.nbSurfaceChip, borderColor: colors.nbBorder }]}>
+              <Text style={[styles.badgeText, { color: colors.nbInk }]}>{badgeLabel(badgeCount)}</Text>
             </View>
-          </LinearGradient>
+          ) : null}
+
+          <View style={styles.iconWrap}>
+            <View style={[styles.iconRing, { borderColor: colors.nbBorder, backgroundColor: colors.nbSurfaceChip }]}>
+              <Ionicons name={icon} size={26} color={COLORS.pink} />
+            </View>
+          </View>
+
+          <Text style={[styles.title, { color: colors.nbInk }]} numberOfLines={2}>
+            {label}
+          </Text>
+          <Text style={[styles.sub, { color: colors.nbMuted }]} numberOfLines={2}>
+            {subtitle}
+          </Text>
+
+          <View style={styles.ctaWrap}>
+            <NbButton variant="brand" size="sm" onPress={onPress}>
+              {ctaLabel}
+            </NbButton>
+          </View>
         </View>
-      </View>
+      </NbCard>
     </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
-  borderRing: {
-    borderRadius: 20,
-    padding: 2,
-  },
-  shadowDark: {
-    ...(Platform.OS === 'ios'
-      ? {
-          shadowColor: '#000000',
-          shadowOffset: { width: 0, height: 8 },
-          shadowOpacity: 0.22,
-          shadowRadius: 16,
-        }
-      : { elevation: 6 }),
-  },
-  shadowLight: {
-    ...(Platform.OS === 'ios'
-      ? {
-          shadowColor: ACCENT_ORANGE,
-          shadowOffset: { width: 0, height: 6 },
-          shadowOpacity: 0.14,
-          shadowRadius: 12,
-        }
-      : { elevation: 4 }),
-  },
-  innerClip: {
-    borderRadius: 18,
-    overflow: 'hidden',
-  },
-  fill: {
+  card: {
     minHeight: 168,
-  },
-  topAccent: {
-    height: 3,
-    width: '100%',
   },
   body: {
     position: 'relative',
@@ -216,14 +154,11 @@ const styles = StyleSheet.create({
     height: 22,
     paddingHorizontal: 7,
     borderRadius: 11,
-    backgroundColor: 'rgba(109,40,217,0.22)',
-    borderWidth: 1,
-    borderColor: 'rgba(194,65,12,0.4)',
+    borderWidth: 2.5,
     alignItems: 'center',
     justifyContent: 'center',
   },
   badgeText: {
-    color: '#FFEDD5',
     fontSize: 11,
     fontWeight: '800',
   },
@@ -236,15 +171,8 @@ const styles = StyleSheet.create({
   iconRing: {
     width: 56,
     height: 56,
-    borderRadius: 18,
-    padding: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  iconInner: {
-    width: 52,
-    height: 52,
-    borderRadius: 16,
+    borderRadius: 14,
+    borderWidth: 2.5,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -265,24 +193,8 @@ const styles = StyleSheet.create({
     width: '100%',
     letterSpacing: 0.1,
   },
-  ctaPill: {
+  ctaWrap: {
     marginTop: 14,
-    borderRadius: 14,
-    overflow: 'hidden',
     alignSelf: 'stretch',
-  },
-  ctaInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-  },
-  ctaText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    letterSpacing: 0.3,
   },
 });

@@ -18,6 +18,7 @@ import {
 import { Video, ResizeMode } from 'expo-av';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '../../../look-and-feel/lightDarkMode';
 
 // ===== NAMED CONSTANTS =====
 

@@ -1,6 +1,6 @@
-// Welcome hero at the top of client and trainer home: greeting, brand line, quote, live clock.
-// Flow: pick morning/afternoon/evening/night → paint the gradient card → clock ticks every second.
-// Used by client home, trainer home, and any screen that wants the same aurora banner.
+// Neobrutalist welcome hero at the top of client and trainer home: greeting, brand line, quote, live clock.
+// Flow: pick morning/afternoon/evening/night → paint the neobrutalist card → clock ticks every second.
+// Used by client home, trainer home, and any screen that wants the same banner.
 
 import React, { useEffect, useState } from 'react';
 import {
@@ -17,6 +17,8 @@ import { DailyQuotePill } from './DailyQuoteCard';
 import CardGlow from './CardGlow';
 import ColorText from '../../look-and-feel/ColorText';
 import { HERO_TITLE_TEXT_GRADIENT } from '../../look-and-feel/brandColors';
+import { useTheme } from '../../look-and-feel/lightDarkMode';
+import { NbCard } from '../../look-and-feel/NbCard';
 
 // ===== NAMED CONSTANTS =====
 

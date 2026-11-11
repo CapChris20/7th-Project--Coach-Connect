@@ -1,12 +1,15 @@
 // One coaching-session row for the trainer calendar and upcoming-session lists.
 // Flow: map status → chip colors → show client, time, duration, and a notes/Zoom preview.
 // Used by trainer scheduling screens. `showDate` adds a date chip when the list spans several days.
+//
+// vocab: neobrutalist = thick outlines (2.5px), hard shadows, nb tokens for colors
 
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, useColorScheme } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { formatTime12 } from '../../helpers/sessionTimeText';
+import { lightColors, darkColors, nb, borderRadius, gradients } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 

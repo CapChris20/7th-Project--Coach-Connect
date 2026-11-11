@@ -9,6 +9,9 @@
 //
 // Used by: TrainerAppStart (the trainer's main "Sessions" tab) and the client detail screen
 // (embedded=true, filtered to one clientId).
+//
+// vocab: neobrutalist = thick outlines (2.5px), hard shadows, nb tokens for colors
+
 import React, { useMemo, useState } from 'react';
 import {
   ScrollView,
@@ -16,6 +19,7 @@ import {
   Text,
   TouchableOpacity,
   View,
+  useColorScheme,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Plus, CalendarDays, List as ListIcon } from 'lucide-react-native';
@@ -25,6 +29,9 @@ import { MonthCalendar } from './MonthCalendar';
 import { SessionCard } from './SessionCard';
 import { formatDateLong } from '../../helpers/sessionTimeText';
 import { FORM_SCROLL_PROPS, useEmbeddedScrollBottomPad } from '../../navigation/bottomMenuSpacing';
+import { lightColors, darkColors, gradients, nb, borderRadius } from '../../look-and-feel/colorPalette';
+import NbCard from '../../look-and-feel/NbCard';
+import NbButton from '../../look-and-feel/NbButton';
 
 // ===== NAMED CONSTANTS =====
 
@@ -33,61 +40,59 @@ import { FORM_SCROLL_PROPS, useEmbeddedScrollBottomPad } from '../../navigation/
 const SCROLL_BOTTOM_PAD_EMBEDDED = 24;
 const SCROLL_BOTTOM_PAD_STANDALONE = 40;
 
-// Every color this screen uses, grouped by theme. colors.text, colors.bg, etc. below all
-// come from whichever of these two objects matches the current theme prop.
-const COLORS = {
-  dark: {
-    bg: '#0c0c0e',
-    surface: '#141418',
-    text: '#FFFFFF',
-    textSecondary: 'rgba(255,255,255,0.6)',
-    border: 'rgba(255,255,255,0.10)',
-    glass: 'rgba(255,255,255,0.04)',
-    glassBorder: 'rgba(255,255,255,0.08)',
-    primary: '#FF6B9D',
-    primaryLight: 'rgba(255,107,157,0.15)',
-    primaryGlow: 'rgba(255,107,157,0.4)',
-  },
-  light: {
-    bg: '#f5f5f7',
-    surface: '#FFFFFF',
-    text: '#0A0A0F',
-    textSecondary: 'rgba(10,10,15,0.55)',
-    border: 'rgba(10,10,15,0.10)',
-    glass: '#FFFFFF',
-    glassBorder: 'rgba(10,10,15,0.10)',
-    primary: '#FF6B9D',
-    primaryLight: 'rgba(255,107,157,0.12)',
-    primaryGlow: 'rgba(255,107,157,0.4)',
-  },
-};
-
 // ===== HELPER FUNCTIONS =====
 
 // One pill in the Calendar/List switcher. "active" just means this is the tab currently showing.
-const SegBtn = ({ active, onPress, icon, label, colors }) => (
-  <TouchableOpacity style={[styles.segBtn, active && { backgroundColor: colors.primary }]} onPress={onPress} activeOpacity={0.7}>
-    {icon}
-    <Text style={[styles.segBtnText, { color: active ? 'white' : colors.textSecondary }]}>{label}</Text>
-  </TouchableOpacity>
-);
+const SegBtn = ({ active, onPress, icon, label, colors, isDark }) => {
+  const buttonContent = (
+    <View style={[styles.segBtn, active && styles.segBtnActive]}>
+      {icon}
+      <Text style={[styles.segBtnText, { color: active ? '#0A0A0F' : colors.nbMuted }]}>{label}</Text>
+    </View>
+  );
+
+  if (active) {
+    return (
+      <TouchableOpacity onPress={onPress} activeOpacity={0.85}>
+        <LinearGradient
+          colors={gradients.brand.colors}
+          start={gradients.brand.start}
+          end={gradients.brand.end}
+          style={styles.segBtnGradient}
+        >
+          {buttonContent}
+        </LinearGradient>
+      </TouchableOpacity>
+    );
+  }
+
+  return (
+    <TouchableOpacity onPress={onPress} activeOpacity={0.85}>
+      {buttonContent}
+    </TouchableOpacity>
+  );
+};
 
 // A reusable "nothing here" card: icon, title, optional subtitle, optional call-to-action button.
 // Used whenever a day or the whole list has zero sessions to show.
 const EmptyState = ({ title, subtitle, cta, onCta, colors }) => (
-  <View style={[styles.emptyState, { backgroundColor: colors.glass, borderColor: colors.glassBorder }]}>
-    <View style={[styles.emptyIcon, { backgroundColor: colors.primaryLight }]}>
-      <CalendarDays color={colors.primary} size={20} />
-    </View>
-    <Text style={[styles.emptyTitle, { color: colors.text }]}>{title}</Text>
-    {subtitle ? <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>{subtitle}</Text> : null}
+  <NbCard style={[styles.emptyState, { borderStyle: 'dashed' }]}>
+    <LinearGradient
+      colors={gradients.brand.colors}
+      start={gradients.brand.start}
+      end={gradients.brand.end}
+      style={styles.emptyIcon}
+    >
+      <CalendarDays color="#0A0A0F" size={20} />
+    </LinearGradient>
+    <Text style={[styles.emptyTitle, { color: colors.nbInk }]}>{title}</Text>
+    {subtitle ? <Text style={[styles.emptySubtitle, { color: colors.nbMuted }]}>{subtitle}</Text> : null}
     {cta && onCta ? (
-      <TouchableOpacity style={[styles.emptyBtn, { backgroundColor: colors.primary }]} onPress={onCta} activeOpacity={0.8}>
-        <Plus color="white" size={14} />
-        <Text style={styles.emptyBtnText}>{cta}</Text>
-      </TouchableOpacity>
+      <NbButton variant="brand" onPress={onCta} sm style={styles.emptyBtn}>
+        {cta}
+      </NbButton>
     ) : null}
-  </View>
+  </NbCard>
 );
 
 // Only shown when the screen is standalone (not embedded) — logo, app name, and screen subtitle.
@@ -114,44 +119,40 @@ const StandaloneHeaderBrand = ({ colors, title }) => (
 );
 
 // The Calendar / List pill switcher at the top of the content area.
-const TabSwitcher = ({ tab, onSelectTab, colors, embedded }) => (
+const TabSwitcher = ({ tab, onSelectTab, colors, embedded, isDark }) => (
   <View
     style={[
       styles.segmentedControl,
       embedded && styles.segmentedEmbedded,
-      { backgroundColor: colors.glass, borderColor: colors.glassBorder },
+      { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder },
     ]}
   >
     <SegBtn
       active={tab === 'calendar'}
       onPress={() => onSelectTab('calendar')}
-      icon={<CalendarDays size={14} color={tab === 'calendar' ? 'white' : colors.textSecondary} />}
+      icon={<CalendarDays size={14} color={tab === 'calendar' ? '#0A0A0F' : colors.nbMuted} />}
       label="Calendar"
       colors={colors}
+      isDark={isDark}
     />
     <SegBtn
       active={tab === 'list'}
       onPress={() => onSelectTab('list')}
-      icon={<ListIcon size={14} color={tab === 'list' ? 'white' : colors.textSecondary} />}
+      icon={<ListIcon size={14} color={tab === 'list' ? '#0A0A0F' : colors.nbMuted} />}
       label="List"
       colors={colors}
+      isDark={isDark}
     />
   </View>
 );
 
-// The pink/purple "New session" button at the top of the scrollable content.
+// The "New session" button at the top of the scrollable content.
 const NewSessionButton = ({ onPress }) => (
-  <TouchableOpacity onPress={onPress} activeOpacity={0.88} style={styles.newSessionRow}>
-    <LinearGradient
-      colors={['#E94EAD', '#A348D0', '#6B3AD9']}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 0 }}
-      style={styles.newSessionBtn}
-    >
-      <Plus color="#FFFFFF" size={18} />
-      <Text style={styles.newSessionText}>New session</Text>
-    </LinearGradient>
-  </TouchableOpacity>
+  <View style={styles.newSessionRow}>
+    <NbButton variant="brand" onPress={onPress}>
+      + New session
+    </NbButton>
+  </View>
 );
 
 /**
@@ -174,10 +175,10 @@ function CalendarDayPanel({
 }) {
   const dayListHeader = (
     <View style={styles.dayListHeader}>
-      <Text style={[styles.dayListTitle, { color: colors.text }]}>{dayListTitle}</Text>
+      <Text style={[styles.dayListTitle, { color: colors.nbInk }]}>{dayListTitle}</Text>
       {selectedDate && (
         <TouchableOpacity onPress={onClearDate}>
-          <Text style={[styles.clearBtn, { color: colors.primary }]}>Clear</Text>
+          <Text style={[styles.clearBtn, { color: gradients.brand.colors[0] }]}>Clear</Text>
         </TouchableOpacity>
       )}
     </View>
@@ -195,10 +196,10 @@ function CalendarDayPanel({
           style={[
             styles.emptyPrompt,
             embedded && styles.emptyPromptEmbedded,
-            !embedded && { backgroundColor: colors.glass, borderColor: colors.glassBorder, borderWidth: 1 },
+            !embedded && { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder, borderWidth: nb.borderWidth },
           ]}
         >
-          <Text style={[styles.emptyPromptText, { color: colors.textSecondary }]}>{promptText}</Text>
+          <Text style={[styles.emptyPromptText, { color: colors.nbMuted }]}>{promptText}</Text>
         </View>
       </View>
     );
@@ -250,8 +251,8 @@ function UpcomingSessionsPanel({
 }) {
   const listHeader = (
     <View style={styles.listHeader}>
-      <Text style={[styles.listTitle, { color: colors.text }]}>Upcoming · {clientLabel}</Text>
-      <Text style={[styles.listCount, { color: colors.textSecondary }]}>
+      <Text style={[styles.listTitle, { color: colors.nbInk }]}>Upcoming · {clientLabel}</Text>
+      <Text style={[styles.listCount, { color: colors.nbMuted }]}>
         Next {upcomingSessions.length} {upcomingSessions.length === 1 ? 'session' : 'sessions'}
       </Text>
     </View>
@@ -321,6 +322,7 @@ function ScreenLayout({
   embedded,
   theme,
   colors,
+  isDark,
   scrollBottomPad,
   clientId,
   clientLabel,
@@ -346,15 +348,15 @@ function ScreenLayout({
   const rootContainerStyle = [
     styles.container,
     embedded && styles.embeddedRoot,
-    { backgroundColor: embedded ? 'transparent' : colors.bg },
+    { backgroundColor: embedded ? 'transparent' : colors.nbBackground },
   ];
   const headerBorderStyle = embedded
     ? null
-    : { borderBottomColor: colors.glassBorder, borderBottomWidth: 1 };
+    : { borderBottomColor: colors.nbBorder, borderBottomWidth: nb.borderWidth };
   const headerContainerStyle = [
     styles.header,
     embedded && styles.headerEmbedded,
-    { backgroundColor: embedded ? 'transparent' : colors.bg },
+    { backgroundColor: embedded ? 'transparent' : colors.nbBackground },
     headerBorderStyle,
   ];
   const screenTitleForHeader = clientId ? `Calendar · ${clientLabel}` : 'Trainer scheduling';
@@ -368,12 +370,12 @@ function ScreenLayout({
 
   return (
     <Root style={rootContainerStyle}>
-      {!embedded && <View style={[styles.aurora, { backgroundColor: colors.bg }]} />}
+      {!embedded && <View style={[styles.aurora, { backgroundColor: colors.nbBackground }]} />}
 
       {/* Sticky header: brand row (standalone only) + the Calendar/List switcher */}
       <View style={headerContainerStyle}>
         {!embedded && <StandaloneHeaderBrand colors={colors} title={screenTitleForHeader} />}
-        <TabSwitcher tab={tab} onSelectTab={onSelectTab} colors={colors} embedded={embedded} />
+        <TabSwitcher tab={tab} onSelectTab={onSelectTab} colors={colors} embedded={embedded} isDark={isDark} />
       </View>
 
       {/* Scrollable content: New-session button, then whichever tab is active */}
@@ -439,8 +441,10 @@ function ScreenLayout({
  * @param {string} [props.clientName]
  * @returns {JSX.Element}
  */
-export const BookSessionScreen = ({ theme = 'dark', embedded = true, onNavigate, clientId, clientName }) => {
-  const colors = COLORS[theme] || COLORS.dark;
+export const BookSessionScreen = ({ theme, embedded = true, onNavigate, clientId, clientName }) => {
+  const colorScheme = useColorScheme();
+  const isDark = theme === 'dark' || (theme == null && colorScheme === 'dark');
+  const colors = isDark ? darkColors : lightColors;
 
   // Live data: whenever Firestore changes, useSessions() re-renders this screen automatically.
   const { sessions } = useSessions();
@@ -518,6 +522,7 @@ export const BookSessionScreen = ({ theme = 'dark', embedded = true, onNavigate,
       embedded={embedded}
       theme={theme}
       colors={colors}
+      isDark={isDark}
       scrollBottomPad={scrollBottomPad}
       clientId={clientId}
       clientLabel={clientLabel}
@@ -540,8 +545,7 @@ export const BookSessionScreen = ({ theme = 'dark', embedded = true, onNavigate,
 
 export default BookSessionScreen;
 
-// Fixed layout numbers (sizes, spacing, radii) for every piece above. Colors are not in here —
-// those come from COLORS[theme] above so dark/light mode can swap them live.
+// Fixed layout numbers (sizes, spacing, radii) for every piece above.
 const styles = StyleSheet.create({
   container: { flex: 1 },
   embeddedRoot: { flexGrow: 0, flexShrink: 0 },
@@ -569,12 +573,13 @@ const styles = StyleSheet.create({
   brandIcon: {
     width: 40,
     height: 40,
-    borderRadius: 16,
+    borderRadius: borderRadius.nbCard,
     alignItems: 'center',
     justifyContent: 'center',
   },
   appTitle: {
     fontSize: 16,
+    fontFamily: 'SpaceGrotesk_700Bold',
     fontWeight: '700',
     letterSpacing: -0.5,
   },
@@ -585,9 +590,9 @@ const styles = StyleSheet.create({
   themeToggle: { width: 44, height: 32 },
   segmentedControl: {
     flexDirection: 'row',
-    borderRadius: 20,
+    borderRadius: borderRadius.nbSheet,
     padding: 4,
-    borderWidth: 1,
+    borderWidth: nb.borderWidth,
     gap: 4,
   },
   segmentedEmbedded: {
@@ -600,27 +605,28 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 9,
     paddingHorizontal: 8,
-    borderRadius: 14,
+    borderRadius: borderRadius.nbCard,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
   },
-  segBtnText: { fontSize: 12, fontWeight: '600' },
+  segBtnActive: {
+    // gradient background applied as wrapper
+  },
+  segBtnGradient: {
+    borderRadius: borderRadius.nbCard,
+    overflow: 'hidden',
+  },
+  segBtnText: { 
+    fontSize: 12, 
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontWeight: '700' 
+  },
   content: { flexGrow: 0 },
   scrollContent: { gap: 0 },
   scrollContentEmbedded: { gap: 12 },
-  newSessionRow: { marginBottom: 4 },
-  newSessionBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-  },
-  newSessionText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
+  newSessionRow: { marginBottom: 8, paddingHorizontal: 16 },
   section: { padding: 16, paddingTop: 0 },
   sectionEmbedded: { paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0 },
   dayListSection: { marginTop: 14 },
@@ -631,8 +637,16 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     paddingHorizontal: 0,
   },
-  dayListTitle: { fontSize: 14, fontWeight: '700' },
-  clearBtn: { fontSize: 12, fontWeight: '600' },
+  dayListTitle: { 
+    fontSize: 14, 
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontWeight: '700' 
+  },
+  clearBtn: { 
+    fontSize: 12, 
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontWeight: '700' 
+  },
   listHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -640,11 +654,15 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     paddingHorizontal: 4,
   },
-  listTitle: { fontSize: 14, fontWeight: '700' },
+  listTitle: { 
+    fontSize: 14, 
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontWeight: '700' 
+  },
   listCount: { fontSize: 12 },
   sessionsList: { gap: 14 },
   emptyPrompt: {
-    borderRadius: 16,
+    borderRadius: borderRadius.nbCard,
     paddingVertical: 24,
     paddingHorizontal: 16,
     alignItems: 'center',
@@ -656,32 +674,27 @@ const styles = StyleSheet.create({
   },
   emptyPromptText: { fontSize: 14, textAlign: 'center', lineHeight: 20 },
   emptyState: {
-    borderRadius: 16,
     paddingVertical: 40,
     paddingHorizontal: 16,
     alignItems: 'center',
-    borderWidth: 1,
-    borderStyle: 'dashed',
   },
   emptyIcon: {
     width: 48,
     height: 48,
-    borderRadius: 12,
+    borderRadius: borderRadius.nbChip,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 12,
   },
-  emptyTitle: { fontSize: 16, fontWeight: '600', marginBottom: 4 },
+  emptyTitle: { 
+    fontSize: 16, 
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontWeight: '700', 
+    marginBottom: 4 
+  },
   emptySubtitle: { fontSize: 12, marginBottom: 16, textAlign: 'center', lineHeight: 18 },
   emptyBtn: {
-    flexDirection: 'row',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
-    marginTop: 16,
-    alignItems: 'center',
-    gap: 6,
+    marginTop: 12,
   },
-  emptyBtnText: { color: 'white', fontSize: 14, fontWeight: '600' },
 });
 

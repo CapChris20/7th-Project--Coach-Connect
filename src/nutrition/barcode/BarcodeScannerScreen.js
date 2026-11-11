@@ -17,6 +17,7 @@ import { useTheme } from '../../look-and-feel/lightDarkMode';
 import searchFoods from '../food-search/searchFoods';
 import { fixBarcodeDigits } from '../barcode/fixBarcodeDigits';
 import { cacheFoodProduct } from '../daily-log/saveLoggedFood';
+import { lightColors, darkColors, nb, borderRadius, gradients as nbGradients } from '../../look-and-feel/colorPalette';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { LinearGradient } from 'expo-linear-gradient';
 import FoodConfirmSheet from '../food-search/ConfirmFoodPopup';
@@ -45,9 +46,10 @@ const JUNK_SUGGESTION_PATTERN = /barcode|gs1|tracker|nutritionix|fnic|calorie co
 
 const FALLBACK_WRONG_ITEM_SEARCH = 'packaged food';
 
-const MISS_BORDER_GRADIENT_DARK = ['#BE185D', '#EA580C'];
-const MISS_BORDER_GRADIENT_LIGHT = ['#BE185D', '#FB923C'];
-const LOOKUP_BUTTON_GRADIENT = ['#9F1239', '#EA580C'];
+// Use neobrutalist gradients
+const MISS_BORDER_GRADIENT_DARK = nbGradients.ink.colors;
+const MISS_BORDER_GRADIENT_LIGHT = nbGradients.ink.colors;
+const LOOKUP_BUTTON_GRADIENT = nbGradients.brand.colors;
 
 // ===== HELPER FUNCTIONS =====
 
@@ -57,31 +59,18 @@ const LOOKUP_BUTTON_GRADIENT = ['#9F1239', '#EA580C'];
  * @returns {object}
  */
 function getTokens(isDark) {
-  if (isDark) {
-    return {
-      ...ACCENT,
-      screenBg: '#0A0A0F',
-      cardBg: 'rgba(255,255,255,0.06)',
-      cardBorder: 'rgba(255,255,255,0.10)',
-      surfaceOpaque: '#15151C',
-      text: '#ffffff',
-      textMuted: 'rgba(255,255,255,0.68)',
-      textVeryMuted: 'rgba(255,255,255,0.45)',
-      inputBg: 'rgba(255,255,255,0.07)',
-      secondaryAction: 'rgba(255,255,255,0.88)',
-    };
-  }
+  const nbColors = isDark ? darkColors : lightColors;
   return {
     ...ACCENT,
-    screenBg: '#F5F3FF',
-    cardBg: 'rgba(255,255,255,0.92)',
-    cardBorder: 'rgba(0,0,0,0.10)',
-    surfaceOpaque: '#FFFFFF',
-    text: '#1a0a2e',
-    textMuted: 'rgba(26,10,46,0.62)',
-    textVeryMuted: 'rgba(26,10,46,0.45)',
-    inputBg: 'rgba(0,0,0,0.04)',
-    secondaryAction: 'rgba(26,10,46,0.78)',
+    screenBg: nbColors.nbBackground,
+    cardBg: nbColors.nbSurface,
+    cardBorder: nbColors.nbBorder,
+    surfaceOpaque: nbColors.nbSurface,
+    text: nbColors.nbInk,
+    textMuted: nbColors.nbMuted,
+    textVeryMuted: nbColors.nbMuted,
+    inputBg: nbColors.nbSurfaceChip,
+    secondaryAction: nbColors.nbInk,
   };
 }
 
@@ -173,7 +162,7 @@ function createStyles(spacing, themeTokens) {
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.sm,
       backgroundColor: themeTokens.cardBg,
-      borderBottomWidth: 1,
+      borderBottomWidth: nb.borderWidth,
       borderBottomColor: themeTokens.cardBorder,
     },
     closeButton: {
@@ -258,7 +247,7 @@ function createStyles(spacing, themeTokens) {
     instructions: {
       padding: spacing.lg,
       backgroundColor: themeTokens.cardBg,
-      borderTopWidth: 1,
+      borderTopWidth: nb.borderWidth,
       borderTopColor: themeTokens.cardBorder,
       alignItems: 'center',
     },
@@ -272,9 +261,9 @@ function createStyles(spacing, themeTokens) {
       paddingVertical: spacing.sm,
       paddingHorizontal: spacing.md,
       backgroundColor: themeTokens.cardBg,
-      borderWidth: 1,
+      borderWidth: nb.borderWidth,
       borderColor: themeTokens.cardBorder,
-      borderRadius: 8,
+      borderRadius: borderRadius.nbChip,
     },
     rescanText: {
       color: themeTokens.text,
@@ -298,9 +287,9 @@ function createStyles(spacing, themeTokens) {
       paddingVertical: spacing.md,
       paddingHorizontal: spacing.lg,
       backgroundColor: themeTokens.cardBg,
-      borderWidth: 1,
+      borderWidth: nb.borderWidth,
       borderColor: themeTokens.cardBorder,
-      borderRadius: 8,
+      borderRadius: borderRadius.nbChip,
     },
     buttonText: {
       color: themeTokens.text,
@@ -327,19 +316,19 @@ function createStyles(spacing, themeTokens) {
     },
     barcodeInput: {
       backgroundColor: themeTokens.inputBg,
-      borderRadius: 12,
+      borderRadius: borderRadius.nbChip,
       padding: spacing.md,
       color: themeTokens.text,
       fontSize: 18,
       textAlign: 'center',
       marginBottom: spacing.md,
-      borderWidth: 1,
+      borderWidth: nb.borderWidth,
       borderColor: themeTokens.cardBorder,
     },
     searchButton: {
-      borderRadius: 14,
+      borderRadius: borderRadius.nbCard,
       overflow: 'hidden',
-      borderWidth: 1,
+      borderWidth: nb.borderWidth,
       borderColor: themeTokens.cardBorder,
       marginBottom: spacing.md,
     },
@@ -390,12 +379,12 @@ function createStyles(spacing, themeTokens) {
     },
     amountInput: {
       backgroundColor: themeTokens.inputBg,
-      borderRadius: 12,
+      borderRadius: borderRadius.nbChip,
       padding: spacing.md,
       color: themeTokens.text,
       fontSize: 20,
       marginBottom: spacing.sm,
-      borderWidth: 1,
+      borderWidth: nb.borderWidth,
       borderColor: themeTokens.cardBorder,
     },
     amountEstimated: {

@@ -29,6 +29,7 @@ import ColorText from '../food-cards/ColorText';
 import { SHELL_SAFE_AREA_EDGES, useShellBottomNavInset } from '../../navigation/bottomMenuSpacing';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
 import TopHeader from '../../for-both/loading-and-header/TopHeader';
+import { lightColors, darkColors, nb, gradients as nbGradients } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
@@ -66,9 +67,9 @@ const MACRO_GRADIENTS = {
 };
 
 const GRADIENT_KEYS = ['carbs', 'protein', 'fat', 'bonus'];
-const CAL_GRADIENT = ['#FF6B35', '#FF8C42', '#FF69B4', '#FF1493'];
-const LOG_GRADIENT = ['#F59E0B', '#F97316', '#EF4444', '#EC4899'];
-const UNIT_ACTIVE_GRADIENT = ['#F97316', '#EC4899'];
+// Use neobrutalist brand gradient for primary actions
+const LOG_GRADIENT = nbGradients.brand.colors;
+const UNIT_ACTIVE_GRADIENT = nbGradients.ink.colors;
 const DISPLAY = Platform.select({
   ios: 'SpaceGrotesk_700Bold',
   default: 'SpaceGrotesk_700Bold',
@@ -138,18 +139,19 @@ function unitToGrams(value, unit, servingGrams) {
  * @returns {object}
  */
 function themeTokens(isDark) {
+  const nbColors = isDark ? darkColors : lightColors;
   return {
-    bg: isDark ? '#0B0E14' : '#F8FAFC',
-    primary: isDark ? '#FFFFFF' : '#0F172A',
-    secondary: isDark ? 'rgba(255,255,255,0.55)' : '#64748B',
-    muted: isDark ? 'rgba(255,255,255,0.70)' : '#475569',
-    label: isDark ? 'rgba(255,255,255,0.45)' : '#64748B',
-    glassBg: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.72)',
-    glassBorder: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.06)',
-    chipBg: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(15,23,42,0.03)',
-    chipBorder: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.08)',
-    inputBg: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(15,23,42,0.03)',
-    inputBorder: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(15,23,42,0.08)',
+    bg: nbColors.nbBackground,
+    primary: nbColors.nbInk,
+    secondary: nbColors.nbMuted,
+    muted: nbColors.nbMuted,
+    label: nbColors.nbMuted,
+    glassBg: nbColors.nbSurface,
+    glassBorder: nbColors.nbBorder,
+    chipBg: nbColors.nbSurfaceChip,
+    chipBorder: nbColors.nbBorder,
+    inputBg: nbColors.nbSurfaceChip,
+    inputBorder: nbColors.nbBorder,
   };
 }
 
@@ -177,18 +179,11 @@ function ConfirmGlassCard({ isDark, children, style }) {
         {
           backgroundColor: tokens.glassBg,
           borderColor: tokens.glassBorder,
+          borderWidth: nb.borderWidth,
         },
         style,
       ]}
     >
-      {Platform.OS === 'ios' ? (
-        <BlurView
-          intensity={blurIntensity}
-          tint={blurTint}
-          style={StyleSheet.absoluteFill}
-          pointerEvents="none"
-        />
-      ) : null}
       <View style={styles.glassInner} pointerEvents="box-none">
         {children}
       </View>
@@ -720,7 +715,7 @@ export default function FoodConfirmSheet({
               </View>
               <View style={styles.calHeroRight}>
                 <ColorText
-                  colors={CAL_GRADIENT}
+                  colors={nbGradients.brand.colors}
                   style={[styles.calHeroValue, { fontFamily: DISPLAY }]}
                 >
                   {macros.calories}
@@ -1040,7 +1035,6 @@ const styles = StyleSheet.create({
   },
   glassCard: {
     borderRadius: 18,
-    borderWidth: 1,
     overflow: 'hidden',
     ...Platform.select({
       ios: {

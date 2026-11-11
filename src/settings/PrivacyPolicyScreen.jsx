@@ -9,15 +9,13 @@ import { useTheme } from '../look-and-feel/lightDarkMode';
 import { getSupportEmail, getPrivacyPolicyUrl } from './supportContact';
 import TopHeader from '../for-both/loading-and-header/TopHeader';
 import { SHELL_SAFE_AREA_EDGES, FORM_SCROLL_PROPS, useShellBottomNavInset } from '../navigation/bottomMenuSpacing';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import NbCard from '../look-and-feel/NbCard';
+import { nb, spacing } from '../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
 const LAST_UPDATED = 'September 23, 2026';
-const CYAN = '#06B6D4';
-const PURPLE = '#C084FC';
-const BORDER_PAD = 0.6;
 const SHELL_NAV_INSET = 24;
 const EXTRA_SCROLL_PAD = 16;
 const FADE_MS = 350;
@@ -129,48 +127,7 @@ const LEGAL_NOTE =
 
 // ===== HELPER FUNCTIONS =====
 
-/**
- * @param {boolean} isDark
- * @returns {object}
- */
-function getCardTokens(isDark) {
-  if (isDark) {
-    return {
-      cardBackground: '#141419',
-      border: 'rgba(255,255,255,0.08)',
-      text2: 'rgba(255,255,255,0.92)',
-      text3: 'rgba(255,255,255,0.72)',
-    };
-  }
-  return {
-    cardBackground: '#FFFFFF',
-    border: 'rgba(10,10,15,0.06)',
-    text2: 'rgba(10,10,15,0.86)',
-    text3: 'rgba(10,10,15,0.68)',
-  };
-}
-
-function GradientCard({ borderColors, style, innerStyle, children }) {
-  return (
-    <LinearGradient colors={borderColors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={style}>
-      <View style={innerStyle}>{children}</View>
-    </LinearGradient>
-  );
-}
-
-function PolicySectionCard({ styles: cardStyles, children }) {
-  return (
-    <View style={cardStyles.sectionCard}>
-      <View style={cardStyles.sectionCardBody}>{children}</View>
-      <LinearGradient
-        colors={[CYAN, PURPLE]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        style={cardStyles.sectionBottomAccent}
-      />
-    </View>
-  );
-}
+// Helpers removed - using NbCard directly
 
 /**
  * @param {boolean} embedShellBottomNav
@@ -183,79 +140,89 @@ function policyScrollBottomPad(embedShellBottomNav, shellNavInset, bottomInset) 
   return Math.max(bottomInset, EXTRA_SCROLL_PAD) + SHELL_NAV_INSET;
 }
 
-function buildPolicyStyles(isDark, cardTokens, scrollBottomPad) {
+function buildPolicyStyles(scrollBottomPad, colors) {
   return StyleSheet.create({
-    container: { flex: 1, backgroundColor: isDark ? '#0A0A0F' : '#FFFFFF' },
-    scrollContent: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: scrollBottomPad },
-    heroOuter: { borderRadius: 16, padding: BORDER_PAD, marginBottom: 16 },
-    heroInner: {
-      borderRadius: 14,
-      padding: 24,
-      backgroundColor: cardTokens.cardBackground,
+    container: { flex: 1, backgroundColor: colors.nbBackground },
+    scrollContent: { paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: scrollBottomPad },
+    heroCard: {
       alignItems: 'center',
-      borderWidth: 0.5,
-      borderColor: cardTokens.border,
+      padding: spacing.lg,
+      marginBottom: spacing.md,
     },
-    heroIconOuter: { width: 64, height: 64, borderRadius: 32, padding: BORDER_PAD, marginBottom: 14 },
-    heroIconInner: {
-      flex: 1,
-      borderRadius: 30,
+    heroIcon: {
+      width: 64,
+      height: 64,
+      borderRadius: 32,
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: 'rgba(255,255,255,0.03)',
-      borderWidth: 0.5,
-      borderColor: 'rgba(255,255,255,0.08)',
+      marginBottom: spacing.sm,
     },
-    heroTitle: { fontSize: 32, fontWeight: '900', color: isDark ? '#FFFFFF' : '#1A1A2E', textAlign: 'center', marginBottom: 8, letterSpacing: -0.3 },
-    heroSub: { fontSize: 15, fontWeight: '600', color: cardTokens.text2, textAlign: 'center', lineHeight: 21 },
-    pageSub: { fontSize: 14, fontWeight: '600', color: cardTokens.text2, lineHeight: 22, marginBottom: 16 },
+    heroTitle: {
+      fontFamily: 'SpaceGrotesk_700Bold',
+      fontSize: 32,
+      color: colors.nbInk,
+      textAlign: 'center',
+      marginBottom: spacing.sm,
+      letterSpacing: -0.3,
+    },
+    heroSub: {
+      fontFamily: 'Inter_600SemiBold',
+      fontSize: 15,
+      color: colors.nbMuted,
+      textAlign: 'center',
+      lineHeight: 21,
+    },
+    pageSub: {
+      fontFamily: 'Inter_600SemiBold',
+      fontSize: 14,
+      color: colors.nbMuted,
+      lineHeight: 22,
+      marginBottom: spacing.md,
+    },
     legalNote: {
+      fontFamily: 'Inter_400Regular',
       fontSize: 12,
-      color: cardTokens.text2,
+      color: colors.nbMuted,
       fontStyle: 'italic',
-      marginTop: 12,
-      padding: 16,
-      backgroundColor: cardTokens.cardBackground,
-      borderRadius: 12,
-      borderWidth: 0.5,
-      borderColor: cardTokens.border,
+      marginTop: spacing.sm,
+      padding: spacing.md,
       lineHeight: 18,
     },
     sectionCard: {
-      marginBottom: 12,
-      backgroundColor: cardTokens.cardBackground,
-      borderRadius: 12,
-      overflow: 'hidden',
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: 'rgba(255,255,255,0.08)',
+      padding: spacing.md,
+      marginBottom: spacing.sm,
     },
-    sectionCardBody: { padding: 16 },
-    sectionBottomAccent: { height: 1, width: '100%' },
-    sectionTitle: { fontSize: 16, fontWeight: '900', color: isDark ? '#FFFFFF' : '#0A0A0F', marginBottom: 10, letterSpacing: -0.2 },
+    sectionTitle: {
+      fontFamily: 'SpaceGrotesk_700Bold',
+      fontSize: 16,
+      color: colors.nbInk,
+      marginBottom: spacing.sm,
+      letterSpacing: -0.2,
+    },
     sectionText: {
+      fontFamily: 'Inter_600SemiBold',
       fontSize: 14,
-      fontWeight: '600',
-      color: cardTokens.text2,
+      color: colors.nbMuted,
       lineHeight: 22,
     },
   });
 }
 
-function PolicyHero({ styles: cardStyles }) {
+function PolicyHero({ styles: cardStyles, colors }) {
   return (
-    <GradientCard borderColors={[CYAN, PURPLE]} style={cardStyles.heroOuter} innerStyle={cardStyles.heroInner}>
-      <GradientCard borderColors={[CYAN, PURPLE]} style={cardStyles.heroIconOuter} innerStyle={cardStyles.heroIconInner}>
-        <Ionicons name="shield-checkmark-outline" size={34} color="#FFFFFF" />
-      </GradientCard>
+    <NbCard style={cardStyles.heroCard}>
+      <View style={[cardStyles.heroIcon, { backgroundColor: colors.nbSurfaceChip }]}>
+        <Ionicons name="shield-checkmark-outline" size={34} color={colors.nbInk} />
+      </View>
       <Text style={cardStyles.heroTitle}>Privacy Policy</Text>
       <Text style={cardStyles.heroSub}>Last updated: {LAST_UPDATED}</Text>
-    </GradientCard>
+    </NbCard>
   );
 }
 
 function PolicySection({ section, contactLine, styles: cardStyles }) {
   return (
-    <PolicySectionCard styles={cardStyles}>
+    <NbCard style={cardStyles.sectionCard}>
       <Text style={cardStyles.sectionTitle}>{section.title}</Text>
       {section.paragraphs.map((paragraph) => (
         <Text key={paragraph.slice(0, 24)} style={cardStyles.sectionText}>
@@ -263,24 +230,23 @@ function PolicySection({ section, contactLine, styles: cardStyles }) {
         </Text>
       ))}
       {section.appendContactLine ? (
-        <Text style={[cardStyles.sectionText, { marginTop: 10 }]}>{contactLine}</Text>
+        <Text style={[cardStyles.sectionText, { marginTop: spacing.sm }]}>{contactLine}</Text>
       ) : null}
-    </PolicySectionCard>
+    </NbCard>
   );
 }
 
 // ===== MAIN FUNCTION =====
 
 export default function PrivacyPolicyScreen({ onClose, embedShellBottomNav = false }) {
-  const { colors, spacing, isDark } = useTheme();
+  const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const shellNavInset = useShellBottomNavInset(SHELL_NAV_INSET);
   const scrollBottomPad = policyScrollBottomPad(embedShellBottomNav, shellNavInset, insets.bottom);
   const supportEmail = getSupportEmail();
   const privacyUrl = getPrivacyPolicyUrl();
-  const cardTokens = getCardTokens(isDark);
   const contactLine = `Privacy questions: ${supportEmail}`;
-  const styles = buildPolicyStyles(isDark, cardTokens, scrollBottomPad);
+  const styles = buildPolicyStyles(scrollBottomPad, colors);
 
   const fade = useRef(new Animated.Value(0)).current;
   const rise = useRef(new Animated.Value(RISE_FROM)).current;
@@ -303,29 +269,33 @@ export default function PrivacyPolicyScreen({ onClose, embedShellBottomNav = fal
         showsVerticalScrollIndicator
       >
         <Animated.View style={{ opacity: fade, transform: [{ translateY: rise }] }}>
-          <PolicyHero styles={styles} />
+          <PolicyHero styles={styles} colors={colors} />
 
           <Text style={styles.pageSub}>
             Plain-language summary of how Coach Connect handles personal information. This is not personal legal advice.
           </Text>
           {privacyUrl ? (
-            <Pressable onPress={() => Linking.openURL(privacyUrl)} style={{ marginBottom: 16 }}>
-              <Text style={[styles.pageSub, { color: PURPLE, marginBottom: 0 }]}>
+            <Pressable onPress={() => Linking.openURL(privacyUrl)} style={{ marginBottom: spacing.md }}>
+              <Text
+                style={[
+                  styles.pageSub,
+                  { color: colors.nbInk, textDecorationLine: 'underline', marginBottom: 0 },
+                ]}
+              >
                 Also online: {privacyUrl}
               </Text>
             </Pressable>
           ) : null}
 
           {POLICY_SECTIONS.map((section) => (
-            <PolicySection
-              key={section.title}
-              section={section}
-              contactLine={contactLine}
-              styles={styles}
-            />
+            <PolicySection key={section.title} section={section} contactLine={contactLine} styles={styles} />
           ))}
 
-          <Text style={styles.legalNote}>{LEGAL_NOTE}</Text>
+          <NbCard style={styles.legalNote}>
+            <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 12, color: colors.nbMuted, lineHeight: 18 }}>
+              {LEGAL_NOTE}
+            </Text>
+          </NbCard>
         </Animated.View>
       </ScrollView>
     </SafeAreaView>

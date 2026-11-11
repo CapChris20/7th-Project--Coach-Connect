@@ -1,11 +1,16 @@
 // Trainer Progress tab: weight, wellness metrics, and daily scorecards for the selected client.
 // Flow: read client log props → layout metric cards → show empty Lotties when values are missing.
 // Used by the trainer client dashboard. Shared Lotties/colors come from trainerHomePieces.
+//
+// vocab: neobrutalist cards with nb tokens
 
 import React, { useState, useMemo } from 'react';
 import { View, Text, TouchableOpacity, useWindowDimensions, Platform, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import LottieView from 'lottie-react-native';
+import { lightColors, darkColors, gradients, nb, borderRadius } from '../../look-and-feel/colorPalette';
+import NbCard from '../../look-and-feel/NbCard';
+import NbButton from '../../look-and-feel/NbButton';
 import ProgressTopCard from './ProgressTopCard';
 import {
   GradientOutlineText,
@@ -16,7 +21,6 @@ import {
   HOME_STAT_WORKOUT_GRADIENT,
 } from '../../look-and-feel/homeStatColors';
 import {
-  GlassCard,
   HomeTopBanner,
   Icon,
   ICON_ACCENT,
@@ -25,7 +29,6 @@ import {
   TABS,
   CategoryCard,
   ArcProgress,
-  BorderedCard,
   TrainerNotesFilesHeroAndWorkspace,
   PremiumTabEmptyState,
   EmptyState,

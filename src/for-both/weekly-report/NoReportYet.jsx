@@ -1,5 +1,5 @@
 // Empty weekly-report card when nobody has logged a week yet.
-// Flow: paint the background → show the "no report" card → list the three things that fill it in.
+import { NbCard } from '../../look-and-feel/NbCard';// Flow: paint the background → show the "no report" card → list the three things that fill it in.
 // Used by the client and trainer weekly report screens.
 
 import React from 'react';

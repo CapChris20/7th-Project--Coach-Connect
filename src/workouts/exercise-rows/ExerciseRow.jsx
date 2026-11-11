@@ -3,7 +3,9 @@
 // Used by: workout plan builders. UI only — the parent owns the saved plan.
 
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, useColorScheme } from 'react-native';
+import NbCard from '../../look-and-feel/NbCard';
+import { lightColors, darkColors, spacing as nbSpacing, nb } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
@@ -57,51 +59,46 @@ function exerciseTargetLine(exercise) {
 }
 
 /**
- * @param {object} spacing
- * @param {object} colors
- * @param {boolean} isDark
+ * @param {object} colors - neobrutalist colors
  */
-function createStyles(spacing, colors, isDark) {
+function createStyles(colors) {
   return StyleSheet.create({
-    exerciseRow: {
-      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.03)',
-      borderRadius: 12,
-      padding: spacing.md,
-      borderWidth: 1,
-      borderColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)',
+    cardInner: {
+      padding: nbSpacing.md,
     },
     exerciseHeader: {
       flexDirection: 'row',
       alignItems: 'flex-start',
-      marginBottom: spacing.sm,
+      marginBottom: nbSpacing.sm,
     },
     exerciseNumber: {
       fontSize: 16,
-      fontWeight: '700',
-      color: colors.primary,
+      fontFamily: 'SpaceGrotesk_700Bold',
+      color: colors.nbInk,
       width: 24,
-      marginRight: spacing.sm,
+      marginRight: nbSpacing.sm,
     },
     exerciseNameContainer: {
       flex: 1,
     },
     exerciseName: {
       fontSize: 16,
-      fontWeight: '600',
-      color: colors.text,
-      marginBottom: spacing.xs / 2,
+      fontFamily: 'SpaceGrotesk_700Bold',
+      color: colors.nbInk,
+      marginBottom: 2,
     },
     exerciseTarget: {
       fontSize: 13,
-      color: colors.textSecondary,
+      fontFamily: 'Inter_400Regular',
+      color: colors.nbMuted,
       textTransform: 'capitalize',
     },
     exerciseDetails: {
       flexDirection: 'row',
       justifyContent: 'space-around',
-      paddingTop: spacing.sm,
-      borderTopWidth: 1,
-      borderTopColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)',
+      paddingTop: nbSpacing.sm,
+      borderTopWidth: nb.borderWidth,
+      borderTopColor: colors.nbBorder,
     },
     detailItem: {
       alignItems: 'center',
@@ -109,41 +106,47 @@ function createStyles(spacing, colors, isDark) {
     },
     detailLabel: {
       fontSize: 12,
-      color: colors.textSecondary,
-      marginBottom: spacing.xs / 2,
-      fontWeight: '500',
+      fontFamily: 'Inter_500Medium',
+      color: colors.nbMuted,
+      marginBottom: 4,
+      textTransform: 'uppercase',
+      letterSpacing: 0.1,
     },
     detailValue: {
       fontSize: 16,
-      fontWeight: '700',
-      color: colors.text,
+      fontFamily: 'SpaceGrotesk_700Bold',
+      color: colors.nbInk,
+      fontVariant: ['tabular-nums'],
     },
     detailInput: {
       fontSize: 16,
-      fontWeight: '700',
-      color: colors.primary,
+      fontFamily: 'SpaceGrotesk_700Bold',
+      color: colors.nbInk,
       textAlign: 'center',
       minWidth: 40,
-      backgroundColor: isDark ? 'rgba(88, 86, 214, 0.2)' : 'rgba(88, 86, 214, 0.1)',
+      backgroundColor: colors.nbSurfaceChip,
       borderRadius: 6,
-      padding: spacing.xs,
-      borderWidth: 1,
-      borderColor: colors.primary,
+      padding: nbSpacing.xs,
+      borderWidth: nb.borderWidth,
+      borderColor: colors.nbBorder,
     },
     notesContainer: {
-      marginTop: spacing.sm,
-      paddingTop: spacing.sm,
-      borderTopWidth: 1,
-      borderTopColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)',
+      marginTop: nbSpacing.sm,
+      paddingTop: nbSpacing.sm,
+      borderTopWidth: nb.borderWidth,
+      borderTopColor: colors.nbBorder,
     },
     notesInput: {
       fontSize: 14,
-      color: colors.text,
-      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.03)' : 'rgba(0, 0, 0, 0.02)',
+      fontFamily: 'Inter_400Regular',
+      color: colors.nbInk,
+      backgroundColor: colors.nbSurfaceChip,
       borderRadius: 8,
-      padding: spacing.sm,
+      padding: nbSpacing.sm,
       minHeight: 40,
       textAlignVertical: 'top',
+      borderWidth: nb.borderWidth,
+      borderColor: colors.nbBorder,
     },
   });
 }
@@ -159,17 +162,19 @@ export default function ExerciseRow({
   exercise,
   index,
   onUpdate,
-  isDark,
-  colors,
-  spacing,
+  isDark: deprecatedIsDark,
+  colors: deprecatedColors,
+  spacing: deprecatedSpacing,
 }) {
+  const colorScheme = useColorScheme();
+  const colors = colorScheme === 'dark' ? darkColors : lightColors;
   const [isEditing, setIsEditing] = useState(false);
   const [localSets, setLocalSets] = useState(String(exercise.sets || DEFAULT_SETS));
   const [localReps, setLocalReps] = useState(String(exercise.reps || DEFAULT_REPS));
   const [localRest, setLocalRest] = useState(String(exercise.restSeconds || DEFAULT_REST_SECONDS));
   const [localNotes, setLocalNotes] = useState(exercise.notes || '');
 
-  const styles = createStyles(spacing, colors, isDark);
+  const styles = createStyles(colors);
   const targetLine = exerciseTargetLine(exercise);
 
   const handleBlur = () => {
@@ -186,86 +191,87 @@ export default function ExerciseRow({
 
   return (
     <TouchableOpacity
-      style={styles.exerciseRow}
       onPress={() => setIsEditing(true)}
       activeOpacity={0.7}
     >
-      <View style={styles.exerciseHeader}>
-        <Text style={styles.exerciseNumber}>{index + 1}</Text>
-        <View style={styles.exerciseNameContainer}>
-          <Text style={styles.exerciseName}>{exerciseDisplayName(exercise, index)}</Text>
-          {(exercise.target || exercise.bodyPart) && (
-            <Text style={styles.exerciseTarget}>{targetLine}</Text>
-          )}
+      <NbCard style={styles.cardInner}>
+        <View style={styles.exerciseHeader}>
+          <Text style={styles.exerciseNumber}>{index + 1}</Text>
+          <View style={styles.exerciseNameContainer}>
+            <Text style={styles.exerciseName}>{exerciseDisplayName(exercise, index)}</Text>
+            {(exercise.target || exercise.bodyPart) && (
+              <Text style={styles.exerciseTarget}>{targetLine}</Text>
+            )}
+          </View>
         </View>
-      </View>
 
-      <View style={styles.exerciseDetails}>
-        <View style={styles.detailItem}>
-          <Text style={styles.detailLabel}>Sets</Text>
-          {isEditing ? (
+        <View style={styles.exerciseDetails}>
+          <View style={styles.detailItem}>
+            <Text style={styles.detailLabel}>Sets</Text>
+            {isEditing ? (
+              <TextInput
+                style={styles.detailInput}
+                value={localSets}
+                onChangeText={setLocalSets}
+                onBlur={handleBlur}
+                keyboardType="numeric"
+                selectTextOnFocus
+              />
+            ) : (
+              <Text style={styles.detailValue}>{exercise.sets || DEFAULT_SETS}</Text>
+            )}
+          </View>
+
+          <View style={styles.detailItem}>
+            <Text style={styles.detailLabel}>Reps</Text>
+            {isEditing ? (
+              <TextInput
+                style={styles.detailInput}
+                value={localReps}
+                onChangeText={setLocalReps}
+                onBlur={handleBlur}
+                keyboardType="numeric"
+                selectTextOnFocus
+              />
+            ) : (
+              <Text style={styles.detailValue}>{exercise.reps || DEFAULT_REPS}</Text>
+            )}
+          </View>
+
+          <View style={styles.detailItem}>
+            <Text style={styles.detailLabel}>Rest</Text>
+            {isEditing ? (
+              <TextInput
+                style={styles.detailInput}
+                value={localRest}
+                onChangeText={setLocalRest}
+                onBlur={handleBlur}
+                keyboardType="numeric"
+                placeholder="seconds"
+                selectTextOnFocus
+              />
+            ) : (
+              <Text style={styles.detailValue}>
+                {formatRestTime(exercise.restSeconds || DEFAULT_REST_SECONDS)}
+              </Text>
+            )}
+          </View>
+        </View>
+
+        {(isEditing || localNotes) && (
+          <View style={styles.notesContainer}>
             <TextInput
-              style={styles.detailInput}
-              value={localSets}
-              onChangeText={setLocalSets}
+              style={styles.notesInput}
+              value={localNotes}
+              onChangeText={setLocalNotes}
               onBlur={handleBlur}
-              keyboardType="numeric"
-              selectTextOnFocus
+              placeholder="Add notes (optional)"
+              placeholderTextColor={colors.nbMuted}
+              multiline
             />
-          ) : (
-            <Text style={styles.detailValue}>{exercise.sets || DEFAULT_SETS}</Text>
-          )}
-        </View>
-
-        <View style={styles.detailItem}>
-          <Text style={styles.detailLabel}>Reps</Text>
-          {isEditing ? (
-            <TextInput
-              style={styles.detailInput}
-              value={localReps}
-              onChangeText={setLocalReps}
-              onBlur={handleBlur}
-              keyboardType="numeric"
-              selectTextOnFocus
-            />
-          ) : (
-            <Text style={styles.detailValue}>{exercise.reps || DEFAULT_REPS}</Text>
-          )}
-        </View>
-
-        <View style={styles.detailItem}>
-          <Text style={styles.detailLabel}>Rest</Text>
-          {isEditing ? (
-            <TextInput
-              style={styles.detailInput}
-              value={localRest}
-              onChangeText={setLocalRest}
-              onBlur={handleBlur}
-              keyboardType="numeric"
-              placeholder="seconds"
-              selectTextOnFocus
-            />
-          ) : (
-            <Text style={styles.detailValue}>
-              {formatRestTime(exercise.restSeconds || DEFAULT_REST_SECONDS)}
-            </Text>
-          )}
-        </View>
-      </View>
-
-      {(isEditing || localNotes) && (
-        <View style={styles.notesContainer}>
-          <TextInput
-            style={styles.notesInput}
-            value={localNotes}
-            onChangeText={setLocalNotes}
-            onBlur={handleBlur}
-            placeholder="Add notes (optional)"
-            placeholderTextColor={colors.textSecondary}
-            multiline
-          />
-        </View>
-      )}
+          </View>
+        )}
+      </NbCard>
     </TouchableOpacity>
   );
 }

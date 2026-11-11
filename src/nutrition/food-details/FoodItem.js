@@ -1,12 +1,14 @@
 // One food row in a meal list: name, serving, calories, plus add or delete.
 // Flow: scale calories by serving size → pick a serving label → paint the card → add or trash.
 // Used by: MealCard on the daily nutrition log.
+// Redesigned with neobrutalist tokens and NbListRow styling.
 
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
+import { lightColors, darkColors, nb, gradients } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
@@ -19,21 +21,7 @@ const CALORIE_UNIT_LABEL = 'cal';
 const ICON_RESTAURANT = 'restaurant-outline';
 const ICON_TRASH = 'trash-outline';
 const ICON_ADD = 'add';
-const TEXT_DARK = '#FFFFFF';
-const TEXT_LIGHT = '#0A0A0F';
-const MUTED_DARK = 'rgba(255,255,255,0.55)';
-const MUTED_LIGHT = 'rgba(10,10,15,0.55)';
-const CARD_BG_DARK = 'rgba(255,255,255,0.06)';
-const CARD_BG_LIGHT = 'rgba(255,255,255,0.92)';
-const BORDER_DARK = 'rgba(255,255,255,0.08)';
-const BORDER_LIGHT = 'rgba(10,10,15,0.07)';
-const ICON_COLOR_DARK = '#FF6B9D';
-const ICON_COLOR_LIGHT = '#BE185D';
 const DELETE_ICON_COLOR = '#EF4444';
-const ADD_BORDER_DARK = 'rgba(255,255,255,0.15)';
-const ADD_BORDER_LIGHT = 'rgba(10,10,15,0.15)';
-const GRADIENT_DARK = ['rgba(255,107,157,0.18)', 'rgba(192,132,252,0.14)'];
-const GRADIENT_LIGHT = ['rgba(255,107,157,0.12)', 'rgba(192,132,252,0.10)'];
 const GRADIENT_START = { x: 0, y: 0 };
 const GRADIENT_END = { x: 1, y: 1 };
 
@@ -54,19 +42,21 @@ function servingLabel(food, servingSize) {
 }
 
 /**
- * Theme colors for this card. Dark mode uses faint glass; light mode uses an almost-solid white.
+ * Neobrutalist color tokens for dark vs light mode.
+ * vocab: nb tokens = thick borders, hard shadows, gradient accents.
  * @param {boolean} isDark
  * @returns {object}
  */
 function foodItemColors(isDark) {
+  const colors = isDark ? darkColors : lightColors;
   return {
-    textColor: isDark ? TEXT_DARK : TEXT_LIGHT,
-    textMuted: isDark ? MUTED_DARK : MUTED_LIGHT,
-    cardBackground: isDark ? CARD_BG_DARK : CARD_BG_LIGHT,
-    borderColor: isDark ? BORDER_DARK : BORDER_LIGHT,
-    iconColor: isDark ? ICON_COLOR_DARK : ICON_COLOR_LIGHT,
-    addBorderColor: isDark ? ADD_BORDER_DARK : ADD_BORDER_LIGHT,
-    gradientColors: isDark ? GRADIENT_DARK : GRADIENT_LIGHT,
+    textColor: colors.nbInk,
+    textMuted: colors.nbMuted,
+    cardBackground: colors.nbSurface,
+    borderColor: colors.nbBorder,
+    iconColor: gradients.brand.colors[0],
+    addBorderColor: colors.nbBorder,
+    gradientColors: gradients.soft.colors,
   };
 }
 
@@ -142,7 +132,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     padding: 12,
     marginBottom: 10,
-    borderWidth: 1,
+    borderWidth: nb.borderWidth,
   },
   leftSection: {
     flexDirection: 'row',
@@ -162,13 +152,13 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   name: {
+    fontFamily: 'SpaceGrotesk_700Bold',
     fontSize: 14,
-    fontWeight: '700',
     marginBottom: 3,
   },
   serving: {
+    fontFamily: 'Inter_500Medium',
     fontSize: 12,
-    fontWeight: '500',
   },
   rightSection: {
     flexDirection: 'row',
@@ -180,20 +170,21 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   calNum: {
+    fontFamily: 'SpaceGrotesk_700Bold',
     fontSize: 17,
-    fontWeight: '800',
     lineHeight: 20,
+    fontVariant: ['tabular-nums'],
   },
   calLabel: {
+    fontFamily: 'Inter_600SemiBold',
     fontSize: 10,
-    fontWeight: '600',
     letterSpacing: 0.4,
   },
   addBtn: {
     width: 30,
     height: 30,
     borderRadius: 10,
-    borderWidth: 1,
+    borderWidth: nb.borderWidth,
     alignItems: 'center',
     justifyContent: 'center',
   },

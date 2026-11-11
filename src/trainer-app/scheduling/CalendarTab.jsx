@@ -1,6 +1,8 @@
 // Trainer Sessions tab: month calendar, upcoming list, and the new/edit session form.
 // Flow: pick calendar or list → tap a day or a strip → open the schedule screen in this tab.
-// Used on the trainer's client profile. Colors come from getSessionSchedulingColors (keys bg, cardBg, text).
+// Used on the trainer's client profile.
+//
+// vocab: neobrutalist = thick outlines (2.5px), hard shadows, nb tokens for colors
 
 import React, { useMemo, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -8,16 +10,13 @@ import { format } from 'date-fns';
 import { CalendarDays, List as ListIcon, Check, ArrowRight } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
+import { lightColors, darkColors, gradients, nb, borderRadius } from '../../look-and-feel/colorPalette';
+import NbCard from '../../look-and-feel/NbCard';
+import NbButton from '../../look-and-feel/NbButton';
 import { useSessions } from '../scheduling/mySessions';
 import { MonthCalendar } from './MonthCalendar';
 import { formatTime12 } from '../../helpers/sessionTimeText';
 import ScheduleSessionScreen from '../scheduling/ScheduleSessionScreen';
-import {
-  ACCENT_GRADIENT,
-  DARK_PINK,
-  getSessionSchedulingColors,
-  SESSION_GRADIENT,
-} from '../scheduling/schedulingColors';
 
 // ===== NAMED CONSTANTS =====
 
@@ -95,28 +94,43 @@ function SessionStrip({ session, colors, onPress }) {
   const status = String(session?.status || REQUEST_STATUS_PENDING);
   const statusLabel = status.charAt(0).toUpperCase() + status.slice(1);
   return (
-    <TouchableOpacity
-      onPress={onPress}
-      activeOpacity={0.88}
-      style={[styles.sessionStrip, { backgroundColor: colors.cardBg, borderColor: colors.border }]}
-    >
-      <Text style={[styles.sessionStripTime, { color: colors.text }]}>
-        {formatTime12(session?.time) || '—'} – {formatDurationMin(session?.durationMin || session?.duration)}
-      </Text>
-      <Text style={[styles.sessionStripStatus, { color: colors.muted }]}>Status: {statusLabel}</Text>
+    <TouchableOpacity onPress={onPress} activeOpacity={0.88}>
+      <NbCard style={styles.sessionStrip}>
+        <Text style={[styles.sessionStripTime, { color: colors.nbInk }]}>
+          {formatTime12(session?.time) || '—'} – {formatDurationMin(session?.durationMin || session?.duration)}
+        </Text>
+        <Text style={[styles.sessionStripStatus, { color: colors.nbMuted }]}>Status: {statusLabel}</Text>
+      </NbCard>
     </TouchableOpacity>
   );
 }
 
 function SegBtn({ active, onPress, icon, label, colors }) {
-  return (
-    <TouchableOpacity
-      onPress={onPress}
-      activeOpacity={0.85}
-      style={[styles.segBtn, active && { backgroundColor: SESSION_GRADIENT[0] }]}
-    >
+  const buttonContent = (
+    <View style={styles.segBtn}>
       {icon}
-      <Text style={[styles.segBtnText, { color: active ? WHITE : colors.muted }]}>{label}</Text>
+      <Text style={[styles.segBtnText, { color: active ? '#0A0A0F' : colors.nbMuted }]}>{label}</Text>
+    </View>
+  );
+
+  if (active) {
+    return (
+      <TouchableOpacity onPress={onPress} activeOpacity={0.85}>
+        <LinearGradient
+          colors={gradients.brand.colors}
+          start={gradients.brand.start}
+          end={gradients.brand.end}
+          style={styles.segBtnGradient}
+        >
+          {buttonContent}
+        </LinearGradient>
+      </TouchableOpacity>
+    );
+  }
+
+  return (
+    <TouchableOpacity onPress={onPress} activeOpacity={0.85}>
+      {buttonContent}
     </TouchableOpacity>
   );
 }
@@ -140,13 +154,13 @@ function DaySessionsSection({ daySectionTitle, dayList, colors, onClearDate, onN
   return (
     <View style={styles.daySection}>
       <View style={styles.dayHeader}>
-        <Text style={[styles.dayTitle, { color: colors.text }]}>{daySectionTitle}</Text>
+        <Text style={[styles.dayTitle, { color: colors.nbInk }]}>{daySectionTitle}</Text>
         <TouchableOpacity onPress={onClearDate}>
-          <Text style={[styles.clearLink, { color: DARK_PINK }]}>Clear</Text>
+          <Text style={[styles.clearLink, { color: gradients.brand.colors[0] }]}>Clear</Text>
         </TouchableOpacity>
       </View>
       {dayList.length === 0 ? (
-        <Text style={[styles.emptyCopy, { color: colors.muted }]}>
+        <Text style={[styles.emptyCopy, { color: colors.nbMuted }]}>
           No sessions on this day.
         </Text>
       ) : (
@@ -169,7 +183,7 @@ function CalendarSection({
 }) {
   return (
     <View style={styles.section}>
-      <View style={[styles.calendarCard, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
+      <NbCard style={styles.calendarCard}>
         <MonthCalendar
           sessions={sessionsForClient}
           selectedDate={selectedDate}
@@ -177,10 +191,8 @@ function CalendarSection({
           onMonthChange={setCalendarMonth}
           theme={theme}
           borderless
-          accentColor={DARK_PINK}
-          cardBg={colors.cardBg}
         />
-      </View>
+      </NbCard>
       {daySectionTitle ? (
         <DaySessionsSection
           daySectionTitle={daySectionTitle}
@@ -190,7 +202,7 @@ function CalendarSection({
           onNavigate={onNavigate}
         />
       ) : (
-        <Text style={[styles.hint, { color: colors.muted }]}>
+        <Text style={[styles.hint, { color: colors.nbMuted }]}>
           Tap a day to see sessions for that date.
         </Text>
       )}
@@ -201,9 +213,9 @@ function CalendarSection({
 function UpcomingListSection({ upcoming, clientLabel, colors, onNavigate }) {
   return (
     <View style={styles.section}>
-      <Text style={[styles.dayTitle, { color: colors.text }]}>Upcoming · {clientLabel}</Text>
+      <Text style={[styles.dayTitle, { color: colors.nbInk }]}>Upcoming · {clientLabel}</Text>
       {upcoming.length === 0 ? (
-        <Text style={[styles.emptyCopy, { color: colors.muted }]}>No upcoming sessions.</Text>
+        <Text style={[styles.emptyCopy, { color: colors.nbMuted }]}>No upcoming sessions.</Text>
       ) : (
         <SessionStripList sessions={upcoming} colors={colors} onNavigate={onNavigate} />
       )}
@@ -215,7 +227,7 @@ function UpcomingListSection({ upcoming, clientLabel, colors, onNavigate }) {
 
 const CalendarTab = ({ clientId, clientName }) => {
   const { isDark } = useTheme();
-  const colors = getSessionSchedulingColors(isDark);
+  const colors = isDark ? darkColors : lightColors;
   const theme = isDark ? 'dark' : 'light';
   const { sessions } = useSessions();
   const [route, setRoute] = useState(HOME_ROUTE);
@@ -288,21 +300,21 @@ const CalendarTab = ({ clientId, clientName }) => {
 
   return (
     <View style={styles.home}>
-      <Text style={[styles.title, { color: colors.text }]}>Sessions with {clientLabel}</Text>
-      <Text style={[styles.subtitle, { color: colors.muted }]}>{monthLabel}</Text>
+      <Text style={[styles.title, { color: colors.nbInk }]}>Sessions with {clientLabel}</Text>
+      <Text style={[styles.subtitle, { color: colors.nbMuted }]}>{monthLabel}</Text>
 
-      <View style={[styles.segmented, { borderColor: colors.divider, backgroundColor: colors.cardBg }]}>
+      <View style={[styles.segmented, { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface }]}>
         <SegBtn
           active={tab === TAB_CALENDAR}
           onPress={() => setTab(TAB_CALENDAR)}
-          icon={<CalendarDays size={14} color={tab === TAB_CALENDAR ? WHITE : colors.muted} />}
+          icon={<CalendarDays size={14} color={tab === TAB_CALENDAR ? '#0A0A0F' : colors.nbMuted} />}
           label="Calendar"
           colors={colors}
         />
         <SegBtn
           active={tab === TAB_LIST}
           onPress={() => setTab(TAB_LIST)}
-          icon={<ListIcon size={14} color={tab === TAB_LIST ? WHITE : colors.muted} />}
+          icon={<ListIcon size={14} color={tab === TAB_LIST ? '#0A0A0F' : colors.nbMuted} />}
           label="List"
           colors={colors}
         />
@@ -329,22 +341,13 @@ const CalendarTab = ({ clientId, clientName }) => {
         />
       )}
 
-      <TouchableOpacity
+      <NbButton 
+        variant="brand" 
         onPress={() => onNavigate(newSessionPath(selectedDate))}
-        activeOpacity={0.9}
-        style={styles.newBtnWrap}
+        style={styles.newBtn}
       >
-        <LinearGradient
-          colors={ACCENT_GRADIENT}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={styles.newBtn}
-        >
-          <Check color={WHITE} size={18} />
-          <Text style={styles.newBtnText}>+ New Session</Text>
-          <ArrowRight color={WHITE} size={18} />
-        </LinearGradient>
-      </TouchableOpacity>
+        + New Session
+      </NbButton>
     </View>
   );
 };
@@ -357,7 +360,8 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 18,
-    fontWeight: '800',
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontWeight: '700',
     letterSpacing: -0.3,
   },
   subtitle: {
@@ -367,8 +371,8 @@ const styles = StyleSheet.create({
   },
   segmented: {
     flexDirection: 'row',
-    borderRadius: 12,
-    borderWidth: 1,
+    borderRadius: borderRadius.nbChip,
+    borderWidth: nb.borderWidth,
     padding: 4,
     gap: 6,
   },
@@ -379,15 +383,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
     paddingVertical: 10,
-    borderRadius: 10,
+    borderRadius: borderRadius.nbChip,
   },
-  segBtnText: { fontSize: 13, fontWeight: '700' },
+  segBtnGradient: {
+    borderRadius: borderRadius.nbChip,
+    overflow: 'hidden',
+  },
+  segBtnText: { 
+    fontSize: 13, 
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontWeight: '700' 
+  },
   section: { gap: 16 },
   calendarCard: {
-    borderWidth: 2,
-    borderRadius: 14,
     padding: 12,
-    overflow: 'hidden',
   },
   daySection: { gap: 10 },
   dayHeader: {
@@ -395,27 +404,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  dayTitle: { fontSize: 15, fontWeight: '700' },
-  clearLink: { fontSize: 13, fontWeight: '700' },
+  dayTitle: { 
+    fontSize: 15, 
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontWeight: '700' 
+  },
+  clearLink: { 
+    fontSize: 13, 
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontWeight: '700' 
+  },
   hint: { fontSize: 14, lineHeight: 20 },
   emptyCopy: { fontSize: 14, lineHeight: 20 },
   stripList: { gap: 10 },
   sessionStrip: {
-    borderWidth: 2,
-    borderRadius: 12,
     padding: 14,
     gap: 4,
   },
-  sessionStripTime: { fontSize: 15, fontWeight: '700' },
-  sessionStripStatus: { fontSize: 13, fontWeight: '500' },
-  newBtnWrap: { borderRadius: 12, overflow: 'hidden', marginTop: 4 },
-  newBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
+  sessionStripTime: { 
+    fontSize: 15, 
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontWeight: '700' 
   },
-  newBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
+  sessionStripStatus: { fontSize: 13, fontWeight: '500' },
+  newBtn: {
+    marginTop: 4,
+  },
 });

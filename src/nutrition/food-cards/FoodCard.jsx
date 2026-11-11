@@ -30,6 +30,7 @@ import {
 import ColorText from './ColorText';
 import NutritionFactsPanel from './NutritionFactsPanel';
 import { gradients, radii, fonts, pillBackgroundGradient, getFoodCardPalette } from './foodCardColors';
+import { nb, borderRadius, gradients as nbGradients } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
@@ -134,30 +135,20 @@ export default function FoodCard({
     onAdd?.();
   };
 
+  // Neobrutalist hard shadow: no blur (shadowRadius: 0), offset by nb.shadowOffset
   const cardShadow =
     isExpanded && !embedded
       ? Platform.select({
           ios: {
-            shadowColor: '#000000',
-            shadowOpacity: 0.5,
-            shadowRadius: 30,
-            shadowOffset: { width: 0, height: 18 },
+            shadowColor: palette.borderStrong || '#000000',
+            shadowOpacity: 1,
+            shadowRadius: 0,
+            shadowOffset: { width: nb.shadowOffset, height: nb.shadowOffset },
           },
-          android: { elevation: 12 },
+          android: { elevation: 0 }, // Android doesn't support hard shadows well
           default: {},
         })
-      : isExpanded && embedded
-        ? Platform.select({
-            ios: {
-              shadowColor: '#000000',
-              shadowOpacity: 0.12,
-              shadowRadius: 12,
-              shadowOffset: { width: 0, height: 4 },
-            },
-            android: { elevation: 3 },
-            default: {},
-          })
-        : null;
+      : null;
 
   return (
     <AnimatedPressable
@@ -172,7 +163,7 @@ export default function FoodCard({
         {
           backgroundColor: isExpanded ? palette.expandedSurface : palette.background,
           borderColor: isExpanded ? palette.borderStrong : palette.border,
-          borderWidth: embedded ? StyleSheet.hairlineWidth : 1,
+          borderWidth: nb.borderWidth,
           overflow: onAdd || embedded ? 'visible' : 'hidden',
         },
         cardShadow,
@@ -216,8 +207,8 @@ export default function FoodCard({
                   {(pressed) => (
                     <Heart
                       size={15}
-                      color={isFavorite || pressed ? '#BE185D' : palette.subtle}
-                      fill={isFavorite ? '#BE185D' : 'transparent'}
+                      color={isFavorite || pressed ? nbGradients.brand.colors[0] : palette.subtle}
+                      fill={isFavorite ? nbGradients.brand.colors[0] : 'transparent'}
                       strokeWidth={2}
                     />
                   )}
@@ -284,7 +275,7 @@ export default function FoodCard({
           hitSlop={4}
         >
           <LinearGradient
-            colors={['#BE185D', '#C2410C']}
+            colors={nbGradients.brand.colors}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
             style={styles.addFabInner}
@@ -349,7 +340,7 @@ export default function FoodCard({
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: radii.card,
+    borderRadius: borderRadius.nbCard,
     position: 'relative',
   },
   innerHighlight: {
@@ -440,14 +431,15 @@ const styles = StyleSheet.create({
     bottom: 14,
     borderRadius: 22,
     zIndex: 4,
+    // Neobrutalist hard shadow for FAB
     ...Platform.select({
       ios: {
-        shadowColor: '#BE185D',
-        shadowOpacity: 0.45,
-        shadowRadius: 10,
-        shadowOffset: { width: 0, height: 4 },
+        shadowColor: nbGradients.brand.colors[0],
+        shadowOpacity: 1,
+        shadowRadius: 0,
+        shadowOffset: { width: nb.shadowOffset, height: nb.shadowOffset },
       },
-      android: { elevation: 8 },
+      android: { elevation: 0 },
       default: {},
     }),
   },
@@ -460,8 +452,8 @@ const styles = StyleSheet.create({
   },
   macroPillOuter: {
     flex: 1,
-    borderRadius: radii.pill,
-    borderWidth: 1,
+    borderRadius: borderRadius.nbChip,
+    borderWidth: nb.borderWidth,
     overflow: 'hidden',
   },
   macroPillBg: {
@@ -490,7 +482,7 @@ const styles = StyleSheet.create({
     marginLeft: 1,
   },
   expandedSection: {
-    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: nb.borderWidth,
     paddingTop: 16,
     paddingHorizontal: 16,
     paddingBottom: 20,
@@ -526,7 +518,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    borderWidth: 1,
+    borderWidth: nb.borderWidth,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,

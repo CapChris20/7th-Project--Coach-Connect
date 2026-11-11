@@ -1,6 +1,8 @@
 // Premium food-card design tokens — Coach Connect macro palette, radii, fonts, and panel colors.
 // Flow: pick brand gradients → map macros → tint pills → dark vs light palettes for FoodCard / nutrition facts.
 // Used by FoodCard, NutritionFactsPanel, FoodListScreen, and the food-search screens.
+//
+// vocab: radii now match neobrutalist roles (chip 12 / card 14) from docs/design/DESIGN.md.
 
 // ===== NAMED CONSTANTS =====
 
@@ -159,10 +161,12 @@ export const colors = {
   subtle: '#6F7480',
 };
 
+// vocab: radii match nb tokens (nbCard: 14, nbChip: 12) from colorPalette.js
+// These are kept here for backward compatibility but should stay synchronized with nb tokens.
 export const radii = {
-  card: 22,
-  pill: 16,
-  chip: 12,
+  card: 14,  // matches borderRadius.nbCard
+  pill: 12,  // matches borderRadius.nbChip
+  chip: 12,  // matches borderRadius.nbChip
 };
 
 export const fonts = {

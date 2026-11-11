@@ -1,6 +1,10 @@
-// Past-chat sidebar: collapsed rail, docked panel, or overlay drawer.
+// Past-chat sidebar (neobrutalist design): collapsed rail, docked panel, or overlay drawer.
 // Flow: filter by search → group Today / This Week / Earlier → tap to open or swipe to delete.
-// Used by CoachConversationScreen and CoachHomeScreen.
+// Used by: CoachConversationScreen and CoachHomeScreen.
+//
+// vocab: NbCard = neobrutalist card for list rows
+// vocab: NbListRow = neobrutalist list row with title, subtitle, and accessory
+// vocab: neobrutalist = thick borders, hard shadows, no blur
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -16,10 +20,10 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { useColorScheme } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Swipeable } from 'react-native-gesture-handler';
-import { AI_COACH_UI } from '../coachColors';
+import { lightColors, darkColors, spacing, borderRadius, nb } from '../../look-and-feel/colorPalette';
 import {
   formatSessionDisplayTitle,
   groupSessionsForSidebar,
@@ -35,41 +39,11 @@ export const COACH_SIDEBAR_WIDTH = Math.min(SIDEBAR_MAX_WIDTH, WINDOW_WIDTH * SI
 // Manipulate here: collapsed rail width when the docked sidebar is shut.
 export const COACH_SIDEBAR_RAIL = 52;
 
-const BORDER_SUBTLE = ['rgba(157,23,77,0.42)', 'rgba(154,52,18,0.36)'];
 // Manipulate here: phones narrower than this get the overlay drawer instead of an inline dock.
 const NARROW_WINDOW_WIDTH = 768;
 // Manipulate here: how long the drawer slides in, in milliseconds.
 const DRAWER_SLIDE_MS = 260;
 const DRAWER_ELEVATION = 24;
-
-const TOKENS = {
-  dark: {
-    panelBg: '#0C0C14',
-    border: AI_COACH_UI.borderHairline,
-    textPrimary: '#FFFFFF',
-    textMuted: 'rgba(255,255,255,0.45)',
-    meta: 'rgba(255,255,255,0.42)',
-    hover: 'rgba(255,255,255,0.06)',
-    active: 'rgba(255,107,157,0.14)',
-    activeBorder: 'rgba(255,107,157,0.35)',
-    accent: AI_COACH_UI.pink,
-    inputBg: 'rgba(255,255,255,0.06)',
-    railBg: '#08080E',
-  },
-  light: {
-    panelBg: '#F5F5F7',
-    border: 'rgba(0,0,0,0.1)',
-    textPrimary: '#0A0A0F',
-    textMuted: 'rgba(0,0,0,0.4)',
-    meta: 'rgba(10,10,15,0.45)',
-    hover: 'rgba(0,0,0,0.04)',
-    active: 'rgba(190,24,93,0.10)',
-    activeBorder: 'rgba(190,24,93,0.28)',
-    accent: '#BE185D',
-    inputBg: 'rgba(0,0,0,0.04)',
-    railBg: '#FFFFFF',
-  },
-};
 
 // ===== HELPER FUNCTIONS =====
 
@@ -87,22 +61,16 @@ function sessionsMatchingSearch(sessions, searchQuery) {
   return matches;
 }
 
-function rowDividerColor(isDark) {
-  if (isDark) return 'rgba(255,255,255,0.06)';
-  return 'rgba(0,0,0,0.06)';
-}
-
-function SessionRowDivider({ isLast, isDark }) {
+function SessionRowDivider({ isLast, colors }) {
   if (isLast) return null;
-  return <View style={[styles.rowDivider, { backgroundColor: rowDividerColor(isDark) }]} />;
+  return <View style={[styles.rowDivider, { backgroundColor: colors.nbBorder, opacity: 0.2 }]} />;
 }
 
 // vocab: Swipeable = react-native-gesture-handler row that reveals a delete action under a swipe.
 function SessionRow({
   session,
   isActive,
-  isDark,
-  panelColors,
+  colors,
   onPress,
   onDelete,
   isLast,
@@ -116,7 +84,7 @@ function SessionRow({
         onDelete?.(session);
       }}
       activeOpacity={0.85}
-      style={styles.deleteAction}
+      style={[styles.deleteAction, { backgroundColor: colors.error || '#DC2626' }]}
     >
       <Ionicons name="trash-outline" size={18} color="#FFFFFF" />
       <Text style={styles.deleteLabel}>Delete</Text>
@@ -129,15 +97,37 @@ function SessionRow({
         onPress={onPress}
         style={({ pressed }) => [
           styles.sessionRow,
-          isActive && { backgroundColor: panelColors.active, borderColor: panelColors.activeBorder, borderWidth: 1, borderRadius: 12 },
-          pressed && !isActive && { backgroundColor: panelColors.hover },
+          {
+            backgroundColor: isActive ? 'rgba(255, 107, 157, 0.1)' : colors.nbSurface,
+            borderColor: isActive ? '#FF6B9D' : colors.nbBorder,
+            borderWidth: nb.borderWidth,
+            borderRadius: borderRadius.nbCard,
+            marginBottom: spacing.xs,
+          },
+          pressed && !isActive && { opacity: 0.85 },
         ]}
       >
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={{ color: panelColors.textPrimary, fontSize: 14, fontWeight: '600' }} numberOfLines={2}>
+          <Text
+            style={{
+              color: colors.nbInk,
+              fontSize: 14,
+              fontFamily: 'SpaceGrotesk_700Bold',
+            }}
+            numberOfLines={2}
+          >
             {formatSessionDisplayTitle(session.title)}
           </Text>
-          <Text style={{ color: panelColors.meta, fontSize: 11, marginTop: 3 }}>{session.date}</Text>
+          <Text
+            style={{
+              color: colors.nbMuted,
+              fontSize: 11,
+              fontFamily: 'Inter_400Regular',
+              marginTop: 3,
+            }}
+          >
+            {session.date}
+          </Text>
         </View>
         <TouchableOpacity
           onPress={() => onDelete?.(session)}
@@ -145,31 +135,68 @@ function SessionRow({
           style={styles.deleteBtn}
           accessibilityLabel="Delete conversation"
         >
-          <Ionicons name="trash-outline" size={15} color={panelColors.meta} style={{ opacity: 0.55 }} />
+          <Ionicons name="trash-outline" size={15} color={colors.nbMuted} />
         </TouchableOpacity>
       </Pressable>
-      <SessionRowDivider isLast={isLast} isDark={isDark} />
+      <SessionRowDivider isLast={isLast} colors={colors} />
     </Swipeable>
   );
 }
 
-function EmptyHistory({ panelColors }) {
+function EmptyHistory({ colors }) {
   return (
-    <View style={[styles.emptyCard, { backgroundColor: panelColors.inputBg, borderColor: panelColors.border }]}>
-      <Ionicons name="time-outline" size={24} color={panelColors.textMuted} style={{ marginBottom: 8 }} />
-      <Text style={{ color: panelColors.textPrimary, fontSize: 15, fontWeight: '700' }}>No history yet</Text>
-      <Text style={{ color: panelColors.meta, fontSize: 13, marginTop: 6, lineHeight: 18 }}>
+    <View
+      style={[
+        styles.emptyCard,
+        {
+          backgroundColor: colors.nbSurface,
+          borderColor: colors.nbBorder,
+          borderWidth: nb.borderWidth,
+        },
+      ]}
+    >
+      <Ionicons name="time-outline" size={24} color={colors.nbMuted} style={{ marginBottom: 8 }} />
+      <Text style={{ color: colors.nbInk, fontSize: 15, fontFamily: 'SpaceGrotesk_700Bold' }}>
+        No history yet
+      </Text>
+      <Text
+        style={{
+          color: colors.nbMuted,
+          fontSize: 13,
+          fontFamily: 'Inter_400Regular',
+          marginTop: 6,
+          lineHeight: 18,
+        }}
+      >
         Start a conversation — your chats will appear here.
       </Text>
     </View>
   );
 }
 
-function NoSearchMatches({ panelColors }) {
+function NoSearchMatches({ colors }) {
   return (
-    <View style={[styles.emptyCard, { backgroundColor: panelColors.inputBg, borderColor: panelColors.border }]}>
-      <Text style={{ color: panelColors.textPrimary, fontSize: 14, fontWeight: '600' }}>No matches</Text>
-      <Text style={{ color: panelColors.meta, fontSize: 12, marginTop: 4 }}>Try a different search term.</Text>
+    <View
+      style={[
+        styles.emptyCard,
+        {
+          backgroundColor: colors.nbSurface,
+          borderColor: colors.nbBorder,
+          borderWidth: nb.borderWidth,
+        },
+      ]}
+    >
+      <Text style={{ color: colors.nbInk, fontSize: 14, fontFamily: 'SpaceGrotesk_700Bold' }}>No matches</Text>
+      <Text
+        style={{
+          color: colors.nbMuted,
+          fontSize: 12,
+          fontFamily: 'Inter_400Regular',
+          marginTop: 4,
+        }}
+      >
+        Try a different search term.
+      </Text>
     </View>
   );
 }
@@ -179,23 +206,31 @@ function SessionGroups({
   filteredSessions,
   groups,
   activeSessionId,
-  isDark,
-  panelColors,
+  colors,
   onSessionPress,
   onDeleteSession,
 }) {
-  if (sessions.length === 0) return <EmptyHistory panelColors={panelColors} />;
-  if (filteredSessions.length === 0) return <NoSearchMatches panelColors={panelColors} />;
+  if (sessions.length === 0) return <EmptyHistory colors={colors} />;
+  if (filteredSessions.length === 0) return <NoSearchMatches colors={colors} />;
   return groups.map((group) => (
-    <View key={group.key} style={{ marginBottom: 16 }}>
-      <Text style={[styles.groupLabel, { color: panelColors.textMuted }]}>{group.label}</Text>
+    <View key={group.key} style={{ marginBottom: spacing.md + 4 }}>
+      <Text
+        style={[
+          styles.groupLabel,
+          {
+            color: colors.nbMuted,
+            fontFamily: 'SpaceGrotesk_700Bold',
+          },
+        ]}
+      >
+        {group.label}
+      </Text>
       {group.items.map((session, rowIndex) => (
         <SessionRow
           key={session.id}
           session={session}
           isActive={(session.sessionId || session.id) === activeSessionId}
-          isDark={isDark}
-          panelColors={panelColors}
+          colors={colors}
           onPress={() => onSessionPress?.(session)}
           onDelete={onDeleteSession}
           isLast={rowIndex === group.items.length - 1}
@@ -215,8 +250,7 @@ function SidebarPanel({
   onDeleteSession,
   onNewChat,
   onClose,
-  isDark,
-  panelColors,
+  colors,
   insets,
   showClose = true,
 }) {
@@ -224,55 +258,100 @@ function SidebarPanel({
 
   return (
     <View style={{ flex: 1 }}>
-      <LinearGradient colors={BORDER_SUBTLE} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ height: 2 }} />
       <View
         style={{
           paddingTop: (insets?.top || 0) + 10,
-          paddingHorizontal: 14,
-          paddingBottom: 12,
+          paddingHorizontal: spacing.md,
+          paddingBottom: spacing.md,
           flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'space-between',
+          borderBottomWidth: nb.borderWidth,
+          borderBottomColor: colors.nbBorder,
         }}
       >
         <View style={{ flex: 1 }}>
-          <Text style={{ color: panelColors.textMuted, fontSize: 10, fontWeight: '800', letterSpacing: 1, textTransform: 'uppercase' }}>
+          <Text
+            style={{
+              color: colors.nbMuted,
+              fontSize: 10,
+              fontFamily: 'SpaceGrotesk_700Bold',
+              letterSpacing: 1,
+              textTransform: 'uppercase',
+            }}
+          >
             AI Coach
           </Text>
-          <Text style={{ color: panelColors.textPrimary, fontSize: 18, fontWeight: '800', marginTop: 2 }}>Chat History</Text>
+          <Text
+            style={{
+              color: colors.nbInk,
+              fontSize: 18,
+              fontFamily: 'SpaceGrotesk_700Bold',
+              marginTop: 2,
+            }}
+          >
+            Chat History
+          </Text>
         </View>
-        <View style={{ flexDirection: 'row', gap: 6 }}>
+        <View style={{ flexDirection: 'row', gap: spacing.xs + 2 }}>
           <TouchableOpacity
             onPress={onNewChat}
             hitSlop={8}
-            style={[styles.iconBtn, { backgroundColor: panelColors.inputBg }]}
+            style={[
+              styles.iconBtn,
+              {
+                backgroundColor: colors.nbSurface,
+                borderColor: colors.nbBorder,
+                borderWidth: nb.borderWidth,
+              },
+            ]}
             accessibilityLabel="New conversation"
           >
-            <Ionicons name="create-outline" size={18} color={panelColors.accent} />
+            <Ionicons name="create-outline" size={18} color="#FF6B9D" />
           </TouchableOpacity>
           {showClose ? (
-            <TouchableOpacity onPress={onClose} hitSlop={8} style={[styles.iconBtn, { backgroundColor: panelColors.inputBg }]}>
-              <Ionicons name="close" size={18} color={panelColors.textPrimary} />
+            <TouchableOpacity
+              onPress={onClose}
+              hitSlop={8}
+              style={[
+                styles.iconBtn,
+                {
+                  backgroundColor: colors.nbSurface,
+                  borderColor: colors.nbBorder,
+                  borderWidth: nb.borderWidth,
+                },
+              ]}
+            >
+              <Ionicons name="close" size={18} color={colors.nbInk} />
             </TouchableOpacity>
           ) : null}
         </View>
       </View>
 
-      <View style={{ paddingHorizontal: 14, marginBottom: 10 }}>
-        <View style={[styles.searchWrap, { backgroundColor: panelColors.inputBg, borderColor: panelColors.border }]}>
-          <Ionicons name="search-outline" size={16} color={panelColors.textMuted} />
+      <View style={{ paddingHorizontal: spacing.md, marginTop: spacing.md, marginBottom: spacing.sm + 2 }}>
+        <View
+          style={[
+            styles.searchWrap,
+            {
+              backgroundColor: colors.nbSurface,
+              borderColor: colors.nbBorder,
+              borderWidth: nb.borderWidth,
+            },
+          ]}
+        >
+          <Ionicons name="search-outline" size={16} color={colors.nbMuted} />
           <TextInput
             value={searchQuery}
             onChangeText={onSearchChange}
             placeholder="Search conversations…"
-            placeholderTextColor={panelColors.textMuted}
-            style={[styles.searchInput, { color: panelColors.textPrimary }]}
+            placeholderTextColor={colors.nbMuted}
+            style={[styles.searchInput, { color: colors.nbInk }]}
             autoCorrect={false}
             clearButtonMode="while-editing"
           />
           {searchQuery ? (
             <TouchableOpacity onPress={() => onSearchChange('')} hitSlop={8}>
-              <Ionicons name="close-circle" size={16} color={panelColors.textMuted} />
+              <Ionicons name="close-circle" size={16} color={colors.nbMuted} />
             </TouchableOpacity>
           ) : null}
         </View>
@@ -280,7 +359,10 @@ function SidebarPanel({
 
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingHorizontal: 10, paddingBottom: 20 + (insets?.bottom || 0) }}
+        contentContainerStyle={{
+          paddingHorizontal: spacing.sm + 2,
+          paddingBottom: spacing.lg + (insets?.bottom || 0),
+        }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
@@ -289,8 +371,7 @@ function SidebarPanel({
           filteredSessions={filteredSessions}
           groups={groups}
           activeSessionId={activeSessionId}
-          isDark={isDark}
-          panelColors={panelColors}
+          colors={colors}
           onSessionPress={onSessionPress}
           onDeleteSession={onDeleteSession}
         />
@@ -299,10 +380,6 @@ function SidebarPanel({
   );
 }
 
-function panelColorsForTheme(isDark) {
-  if (isDark) return TOKENS.dark;
-  return TOKENS.light;
-}
 
 function overlayIsOpen(mode, open, collapsed, isNarrow) {
   if (mode === 'overlay') return open;
@@ -327,32 +404,48 @@ function drawerShadowStyle() {
   return { elevation: DRAWER_ELEVATION };
 }
 
-function CollapsedChatRail({ panelColors, insets, onToggleCollapse, onNewChat }) {
+function CollapsedChatRail({ colors, insets, onToggleCollapse, onNewChat }) {
   return (
     <View
       style={[
         styles.rail,
         {
           width: COACH_SIDEBAR_RAIL,
-          backgroundColor: panelColors.railBg,
-          borderRightColor: panelColors.border,
+          backgroundColor: colors.nbBackground,
+          borderRightColor: colors.nbBorder,
+          borderRightWidth: nb.borderWidth,
           paddingTop: (insets?.top || 0) + 8,
         },
       ]}
     >
       <TouchableOpacity
         onPress={onToggleCollapse}
-        style={[styles.railBtn, { backgroundColor: panelColors.inputBg }]}
+        style={[
+          styles.railBtn,
+          {
+            backgroundColor: colors.nbSurface,
+            borderColor: colors.nbBorder,
+            borderWidth: nb.borderWidth,
+          },
+        ]}
         accessibilityLabel="Open chat history"
       >
-        <Ionicons name="chatbubbles-outline" size={20} color={panelColors.accent} />
+        <Ionicons name="chatbubbles-outline" size={20} color="#FF6B9D" />
       </TouchableOpacity>
       <TouchableOpacity
         onPress={onNewChat}
-        style={[styles.railBtn, { backgroundColor: panelColors.inputBg, marginTop: 8 }]}
+        style={[
+          styles.railBtn,
+          {
+            backgroundColor: colors.nbSurface,
+            borderColor: colors.nbBorder,
+            borderWidth: nb.borderWidth,
+            marginTop: spacing.sm,
+          },
+        ]}
         accessibilityLabel="New conversation"
       >
-        <Ionicons name="add-outline" size={22} color={panelColors.textMuted} />
+        <Ionicons name="add-outline" size={22} color={colors.nbInk} />
       </TouchableOpacity>
       <View style={{ flex: 1 }} />
       <TouchableOpacity
@@ -360,7 +453,7 @@ function CollapsedChatRail({ panelColors, insets, onToggleCollapse, onNewChat })
         style={styles.railBtn}
         accessibilityLabel="Expand sidebar"
       >
-        <Ionicons name="chevron-forward" size={16} color={panelColors.textMuted} />
+        <Ionicons name="chevron-forward" size={16} color={colors.nbMuted} />
       </TouchableOpacity>
     </View>
   );
@@ -374,7 +467,7 @@ function PastChatsPanelLayout({
   open,
   onToggleCollapse,
   onClose,
-  panelColors,
+  colors,
   insets,
   panelProps,
   slideAnim,
@@ -382,7 +475,7 @@ function PastChatsPanelLayout({
   if (mode === 'docked' && collapsed) {
     return (
       <CollapsedChatRail
-        panelColors={panelColors}
+        colors={colors}
         insets={insets}
         onToggleCollapse={onToggleCollapse}
         onNewChat={panelProps.onNewChat}
@@ -395,9 +488,9 @@ function PastChatsPanelLayout({
       <View
         style={{
           width: COACH_SIDEBAR_WIDTH,
-          backgroundColor: panelColors.panelBg,
-          borderRightWidth: 1,
-          borderRightColor: panelColors.border,
+          backgroundColor: colors.nbBackground,
+          borderRightWidth: nb.borderWidth,
+          borderRightColor: colors.nbBorder,
         }}
       >
         <SidebarPanel {...panelProps} showClose={false} onClose={onToggleCollapse} />
@@ -427,9 +520,9 @@ function PastChatsPanelLayout({
             bottom: 0,
             width: COACH_SIDEBAR_WIDTH,
             transform: [{ translateX: slideAnim }],
-            backgroundColor: panelColors.panelBg,
-            borderRightWidth: 1,
-            borderRightColor: panelColors.border,
+            backgroundColor: colors.nbBackground,
+            borderRightWidth: nb.borderWidth,
+            borderRightColor: colors.nbBorder,
             zIndex: 2,
             ...drawerShadowStyle(),
           }}
@@ -462,7 +555,8 @@ export default function PastChatsPanel({
   isDark = true,
   insets,
 }) {
-  const panelColors = panelColorsForTheme(isDark);
+  const colorScheme = useColorScheme();
+  const colors = colorScheme === 'dark' ? darkColors : lightColors;
   const [searchQuery, setSearchQuery] = useState('');
   const slideAnim = useRef(new Animated.Value(-COACH_SIDEBAR_WIDTH)).current;
   const isNarrow = WINDOW_WIDTH < NARROW_WINDOW_WIDTH;
@@ -493,8 +587,7 @@ export default function PastChatsPanel({
     onDeleteSession,
     onNewChat,
     onClose: onClose || onToggleCollapse,
-    isDark,
-    panelColors,
+    colors,
     insets,
   };
 
@@ -507,7 +600,7 @@ export default function PastChatsPanel({
       open={open}
       onToggleCollapse={onToggleCollapse}
       onClose={onClose}
-      panelColors={panelColors}
+      colors={colors}
       insets={insets}
       panelProps={panelProps}
       slideAnim={slideAnim}
@@ -517,73 +610,75 @@ export default function PastChatsPanel({
 
 const styles = StyleSheet.create({
   rail: {
-    borderRightWidth: 1,
     alignItems: 'center',
-    paddingHorizontal: 6,
-    paddingBottom: 12,
+    paddingHorizontal: spacing.xs + 2,
+    paddingBottom: spacing.md,
   },
   railBtn: {
     width: 40,
     height: 40,
-    borderRadius: 12,
+    borderRadius: borderRadius.nbCard,
     alignItems: 'center',
     justifyContent: 'center',
   },
   iconBtn: {
     width: 34,
     height: 34,
-    borderRadius: 17,
+    borderRadius: borderRadius.nbCard,
     alignItems: 'center',
     justifyContent: 'center',
   },
   searchWrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    borderRadius: 12,
-    borderWidth: 1,
-    paddingHorizontal: 10,
+    gap: spacing.sm,
+    borderRadius: borderRadius.nbCard,
+    paddingHorizontal: spacing.sm + 2,
     paddingVertical: Platform.OS === 'ios' ? 9 : 6,
   },
   searchInput: {
     flex: 1,
     fontSize: 14,
+    fontFamily: 'Inter_400Regular',
     paddingVertical: 0,
   },
   groupLabel: {
     fontSize: 10,
-    fontWeight: '800',
     letterSpacing: 0.9,
     textTransform: 'uppercase',
-    marginBottom: 6,
-    paddingHorizontal: 6,
+    marginBottom: spacing.xs + 2,
+    paddingHorizontal: spacing.xs + 2,
   },
   sessionRow: {
-    paddingVertical: 11,
-    paddingHorizontal: 10,
+    paddingVertical: spacing.sm + 3,
+    paddingHorizontal: spacing.sm + 2,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: spacing.sm,
   },
   rowDivider: {
     height: StyleSheet.hairlineWidth,
-    marginHorizontal: 10,
+    marginHorizontal: spacing.sm + 2,
   },
   deleteBtn: { padding: 4 },
   deleteAction: {
-    backgroundColor: '#DC2626',
     justifyContent: 'center',
     alignItems: 'center',
     width: 76,
     marginVertical: 4,
-    borderRadius: 12,
+    borderRadius: borderRadius.nbCard,
     marginRight: 4,
   },
-  deleteLabel: { color: '#FFF', fontSize: 10, fontWeight: '700', marginTop: 2 },
+  deleteLabel: {
+    color: '#FFF',
+    fontSize: 10,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    marginTop: 2,
+  },
   emptyCard: {
-    marginTop: 28,
-    padding: 18,
-    borderRadius: 14,
-    borderWidth: 1,
+    marginTop: spacing.lg + 4,
+    padding: spacing.md + 2,
+    borderRadius: borderRadius.nbCard,
+    alignItems: 'center',
   },
 });

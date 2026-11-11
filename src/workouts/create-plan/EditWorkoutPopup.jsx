@@ -12,43 +12,18 @@ import {
   Text,
   TouchableOpacity,
   View,
+  useColorScheme,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import NbButton from '../../look-and-feel/NbButton';
+import { lightColors, darkColors, spacing, nb } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
-const EDIT_POPUP_CARD_BG = '#0D1117';
-const EDIT_POPUP_TEXT_COLOR = '#FFFFFF';
-const EDIT_POPUP_MUTED_COLOR = 'rgba(255,255,255,0.55)';
-const DEFAULT_BORDER_COLOR = 'rgba(255,255,255,0.12)';
-const DEFAULT_DONE_GRADIENT = ['#C084FC', '#FF4D8D'];
 const FALLBACK_TITLE = 'Field';
 const EDIT_FIELD_LABEL = 'Edit Field';
-const CANCEL_LABEL = 'Cancel';
-const DONE_LABEL = 'Done';
 const PLATFORM_IOS = 'ios';
 const KEYBOARD_BEHAVIOR_PADDING = 'padding';
-const DRAG_HANDLE_DARK = 'rgba(255,255,255,0.22)';
-const DRAG_HANDLE_LIGHT = 'rgba(15,23,42,0.12)';
-const CANCEL_BG_DARK = 'rgba(255,255,255,0.03)';
-const CANCEL_BG_LIGHT = 'rgba(15,23,42,0.04)';
-const GRADIENT_START = { x: 0, y: 0 };
-const GRADIENT_END = { x: 1, y: 0 };
-
-// ===== HELPER FUNCTIONS =====
-
-/**
- * Sheet chrome (handle, cancel fill) is slightly stronger in dark mode so it still reads on glass.
- * @param {boolean} isDark
- * @returns {{ dragHandle: string, cancelBackground: string }}
- */
-function sheetChromeColors(isDark) {
-  return {
-    dragHandle: isDark ? DRAG_HANDLE_DARK : DRAG_HANDLE_LIGHT,
-    cancelBackground: isDark ? CANCEL_BG_DARK : CANCEL_BG_LIGHT,
-  };
-}
 
 // ===== MAIN FUNCTION =====
 
@@ -61,19 +36,20 @@ export function EditModalForm({
   visible,
   fieldKey,
   title,
-  cardBg = EDIT_POPUP_CARD_BG,
-  textColor = EDIT_POPUP_TEXT_COLOR,
-  mutedColor = EDIT_POPUP_MUTED_COLOR,
-  borderColor = DEFAULT_BORDER_COLOR,
-  doneGradient = DEFAULT_DONE_GRADIENT,
-  /** When false, sheet chrome (handle, cancel fill) uses light-mode neutrals */
-  isDark = true,
+  cardBg: deprecatedCardBg,
+  textColor: deprecatedTextColor,
+  mutedColor: deprecatedMutedColor,
+  borderColor: deprecatedBorderColor,
+  doneGradient: deprecatedDoneGradient,
+  isDark: deprecatedIsDark,
   children,
   onClose,
   onDone,
 }) {
+  const colorScheme = useColorScheme();
+  const colors = colorScheme === 'dark' ? darkColors : lightColors;
+  
   if (!visible) return null;
-  const chrome = sheetChromeColors(isDark);
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
@@ -83,18 +59,18 @@ export function EditModalForm({
       >
         <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
 
-        <View style={[styles.sheet, { backgroundColor: cardBg, borderColor }]}>
-          <View style={[styles.dragHandle, { backgroundColor: chrome.dragHandle }]} />
+        <View style={[styles.sheet, { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder }]}>
+          <View style={[styles.dragHandle, { backgroundColor: colors.nbMuted }]} />
 
-          <View style={[styles.header, { borderBottomColor: borderColor }]}>
+          <View style={[styles.header, { borderBottomColor: colors.nbBorder }]}>
             <View style={{ flex: 1 }}>
-              <Text style={[styles.label, { color: mutedColor }]}>{EDIT_FIELD_LABEL}</Text>
-              <Text style={[styles.title, { color: textColor }]} numberOfLines={1}>
+              <Text style={[styles.label, { color: colors.nbMuted }]}>{EDIT_FIELD_LABEL}</Text>
+              <Text style={[styles.title, { color: colors.nbInk }]} numberOfLines={1}>
                 {title || fieldKey || FALLBACK_TITLE}
               </Text>
             </View>
-            <TouchableOpacity onPress={onClose} style={[styles.closeBtn, { borderColor }]} activeOpacity={0.9}>
-              <Ionicons name="close" size={22} color={textColor} />
+            <TouchableOpacity onPress={onClose} style={[styles.closeBtn, { borderColor: colors.nbBorder }]} activeOpacity={0.9}>
+              <Ionicons name="close" size={22} color={colors.nbInk} />
             </TouchableOpacity>
           </View>
 
@@ -103,30 +79,12 @@ export function EditModalForm({
           </ScrollView>
 
           <View style={styles.actions}>
-            <TouchableOpacity
-              onPress={onClose}
-              style={[
-                styles.cancelBtn,
-                {
-                  borderColor,
-                  backgroundColor: chrome.cancelBackground,
-                },
-              ]}
-              activeOpacity={0.9}
-            >
-              <Text style={[styles.cancelText, { color: textColor }]}>{CANCEL_LABEL}</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity onPress={onDone} style={styles.saveBtnWrap} activeOpacity={0.9}>
-              <LinearGradient
-                colors={doneGradient}
-                start={GRADIENT_START}
-                end={GRADIENT_END}
-                style={styles.saveBtn}
-              >
-                <Text style={styles.saveText}>{DONE_LABEL}</Text>
-              </LinearGradient>
-            </TouchableOpacity>
+            <NbButton variant="plain" onPress={onClose} style={{ flex: 1 }}>
+              Cancel
+            </NbButton>
+            <NbButton variant="brand" onPress={onDone} style={{ flex: 1 }}>
+              Done
+            </NbButton>
           </View>
         </View>
       </KeyboardAvoidingView>
@@ -138,50 +96,46 @@ const styles = StyleSheet.create({
   overlay: { flex: 1, justifyContent: 'flex-end' },
   backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)' },
   sheet: {
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    borderWidth: 1,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    borderTopWidth: nb.borderWidth,
+    borderLeftWidth: nb.borderWidth,
+    borderRightWidth: nb.borderWidth,
     maxHeight: '88%',
     overflow: 'hidden',
   },
   dragHandle: {
-    width: 48,
+    width: 40,
     height: 4,
     borderRadius: 2,
     alignSelf: 'center',
-    marginTop: 10,
-    marginBottom: 10,
+    marginTop: spacing.sm + 4,
+    marginBottom: spacing.sm,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 12,
-    paddingHorizontal: 18,
-    paddingBottom: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.md,
+    borderBottomWidth: nb.borderWidth,
   },
-  label: { fontSize: 11, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 4 },
-  title: { fontSize: 20, fontWeight: '900' },
+  label: { 
+    fontSize: 12, 
+    fontFamily: 'SpaceGrotesk_700Bold', 
+    textTransform: 'uppercase', 
+    letterSpacing: 1.2, 
+    marginBottom: 4 
+  },
+  title: { fontSize: 20, fontFamily: 'SpaceGrotesk_700Bold' },
   closeBtn: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    borderWidth: 1,
+    borderWidth: nb.borderWidth,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  content: { paddingHorizontal: 18, paddingTop: 14, paddingBottom: 18 },
-  actions: { flexDirection: 'row', gap: 10, paddingHorizontal: 18, paddingBottom: 18 },
-  cancelBtn: {
-    flex: 1,
-    height: 48,
-    borderRadius: 14,
-    borderWidth: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  cancelText: { fontSize: 15, fontWeight: '800' },
-  saveBtnWrap: { flex: 1, borderRadius: 14, overflow: 'hidden' },
-  saveBtn: { height: 48, alignItems: 'center', justifyContent: 'center' },
-  saveText: { color: '#FFFFFF', fontSize: 15, fontWeight: '900' },
+  content: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.lg },
+  actions: { flexDirection: 'row', gap: spacing.sm + 2, paddingHorizontal: spacing.lg, paddingBottom: spacing.lg },
 });

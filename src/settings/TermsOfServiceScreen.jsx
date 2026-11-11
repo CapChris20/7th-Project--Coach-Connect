@@ -9,61 +9,22 @@ import { useTheme } from '../look-and-feel/lightDarkMode';
 import { getSupportEmail } from './supportContact';
 import TopHeader from '../for-both/loading-and-header/TopHeader';
 import { SHELL_SAFE_AREA_EDGES, FORM_SCROLL_PROPS, useShellBottomNavInset } from '../navigation/bottomMenuSpacing';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import NbCard from '../look-and-feel/NbCard';
+import { nb, spacing } from '../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
-const PINK = '#FF6B9D';
-const CYAN = '#06B6D4';
-const PURPLE = '#C084FC';
-const BORDER_PAD = 0.6;
 const LAST_UPDATED = 'May 9, 2026';
 const SHELL_NAV_INSET_FALLBACK = 24;
 const SCROLL_BOTTOM_EXTRA = 24;
 const MIN_BOTTOM_INSET = 16;
 const FADE_MS = 350;
 const RISE_START = 10;
-const HERO_BORDER = [CYAN, PURPLE];
-const SECTION_ACCENT = [CYAN, PURPLE];
-const GRADIENT_TOP_LEFT = { x: 0, y: 0 };
-const GRADIENT_BOTTOM_RIGHT = { x: 1, y: 1 };
-const GRADIENT_LEFT = { x: 0, y: 0 };
-const GRADIENT_RIGHT = { x: 1, y: 0 };
 
 // ===== HELPER FUNCTIONS =====
 
-/**
- * Dark vs light paint for the cards. Kept as a helper so the screen body is just layout.
- * @param {boolean} isDark
- */
-function getCardTokens(isDark) {
-  if (isDark) {
-    return {
-      bg: '#141419',
-      border: 'rgba(255,255,255,0.08)',
-      text2: 'rgba(255,255,255,0.92)',
-      text3: 'rgba(255,255,255,0.72)',
-    };
-  }
-  return {
-    bg: '#FFFFFF',
-    border: 'rgba(10,10,15,0.06)',
-    text2: 'rgba(10,10,15,0.86)',
-    text3: 'rgba(10,10,15,0.68)',
-  };
-}
-
-/**
- * Gradient rim wrapping a solid inner. Reused for the hero, the icon badge, and (via LinearGradient) section feet.
- */
-function GradientCard({ borderColors, style, innerStyle, children }) {
-  return (
-    <LinearGradient colors={borderColors} start={GRADIENT_TOP_LEFT} end={GRADIENT_BOTTOM_RIGHT} style={style}>
-      <View style={innerStyle}>{children}</View>
-    </LinearGradient>
-  );
-}
+// Helpers removed - using NbCard directly
 
 /**
  * Copy is data, not JSX, so legal edits happen in one list.
@@ -156,62 +117,78 @@ function termsSections(contactLine) {
 
 /**
  * Styles depend on theme + the scroll pad, so they are built after those hooks run.
- * @param {{ isDark: boolean, cardTokens: object, scrollBottomPad: number }} args
  */
-function buildTermsStyles({ isDark, cardTokens, scrollBottomPad }) {
+function buildTermsStyles(scrollBottomPad, colors) {
   return StyleSheet.create({
-    container: { flex: 1, backgroundColor: isDark ? '#0A0A0F' : '#FFFFFF' },
-    scrollContent: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: scrollBottomPad },
-
-    heroOuter: { borderRadius: 16, padding: BORDER_PAD, marginBottom: 16 },
-    heroInner: {
-      borderRadius: 14,
-      padding: 24,
-      backgroundColor: cardTokens.bg,
+    container: { flex: 1, backgroundColor: colors.nbBackground },
+    scrollContent: { paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: scrollBottomPad },
+    heroCard: {
       alignItems: 'center',
-      borderWidth: 0.5,
-      borderColor: cardTokens.border,
+      padding: spacing.lg,
+      marginBottom: spacing.md,
     },
-    heroIconOuter: { width: 64, height: 64, borderRadius: 32, padding: BORDER_PAD, marginBottom: 14 },
-    heroIconInner: {
-      flex: 1,
-      borderRadius: 30,
+    heroIcon: {
+      width: 64,
+      height: 64,
+      borderRadius: 32,
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: 'rgba(255,255,255,0.03)',
-      borderWidth: 0.5,
-      borderColor: 'rgba(255,255,255,0.08)',
+      marginBottom: spacing.sm,
     },
-    heroTitle: { fontSize: 32, fontWeight: '900', color: isDark ? '#FFFFFF' : '#1A1A2E', textAlign: 'center', marginBottom: 8, letterSpacing: -0.3 },
-    heroSub: { fontSize: 15, fontWeight: '600', color: cardTokens.text2, textAlign: 'center', lineHeight: 21 },
-
-    pageSub: { fontSize: 14, fontWeight: '600', color: cardTokens.text2, lineHeight: 22, marginBottom: 16 },
-
+    heroTitle: {
+      fontFamily: 'SpaceGrotesk_700Bold',
+      fontSize: 32,
+      color: colors.nbInk,
+      textAlign: 'center',
+      marginBottom: spacing.sm,
+      letterSpacing: -0.3,
+    },
+    heroSub: {
+      fontFamily: 'Inter_600SemiBold',
+      fontSize: 15,
+      color: colors.nbMuted,
+      textAlign: 'center',
+      lineHeight: 21,
+    },
+    pageSub: {
+      fontFamily: 'Inter_600SemiBold',
+      fontSize: 14,
+      color: colors.nbMuted,
+      lineHeight: 22,
+      marginBottom: spacing.md,
+    },
     sectionCard: {
-      marginBottom: 12,
-      backgroundColor: cardTokens.bg,
-      borderRadius: 12,
-      overflow: 'hidden',
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: 'rgba(255,255,255,0.08)',
+      padding: spacing.md,
+      marginBottom: spacing.sm,
     },
-    sectionCardBody: { padding: 16 },
-    sectionBottomAccent: { height: 1, width: '100%' },
-    sectionHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
-    sectionNum: { width: 24, fontSize: 14, fontWeight: '900', color: PINK },
-    sectionTitle: { flex: 1, fontSize: 15, fontWeight: '900', color: isDark ? '#FFFFFF' : '#0A0A0F', letterSpacing: -0.15 },
-    sectionText: { marginLeft: 24, fontSize: 14, fontWeight: '600', color: cardTokens.text2, lineHeight: 22 },
-
+    sectionHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.sm },
+    sectionNum: {
+      width: 24,
+      fontFamily: 'SpaceGrotesk_700Bold',
+      fontSize: 14,
+      color: colors.nbInk,
+    },
+    sectionTitle: {
+      flex: 1,
+      fontFamily: 'SpaceGrotesk_700Bold',
+      fontSize: 15,
+      color: colors.nbInk,
+      letterSpacing: -0.15,
+    },
+    sectionText: {
+      marginLeft: 24,
+      fontFamily: 'Inter_600SemiBold',
+      fontSize: 14,
+      color: colors.nbMuted,
+      lineHeight: 22,
+    },
     legalNote: {
+      fontFamily: 'Inter_400Regular',
       fontSize: 12,
-      color: cardTokens.text2,
+      color: colors.nbMuted,
       fontStyle: 'italic',
-      marginTop: 12,
-      padding: 16,
-      backgroundColor: cardTokens.bg,
-      borderRadius: 10,
-      borderWidth: 0.5,
-      borderColor: cardTokens.border,
+      marginTop: spacing.sm,
+      padding: spacing.md,
       lineHeight: 18,
     },
   });
@@ -237,14 +214,15 @@ function playTermsEnterAnimation(fade, rise) {
  * @param {{ onClose?: Function, embedShellBottomNav?: boolean }} props
  */
 export default function TermsOfServiceScreen({ onClose, embedShellBottomNav = false }) {
-  const { colors, spacing, isDark } = useTheme();
+  const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const shellNavInset = useShellBottomNavInset(SHELL_NAV_INSET_FALLBACK);
-  const scrollBottomPad = embedShellBottomNav ? shellNavInset : Math.max(insets.bottom, MIN_BOTTOM_INSET) + SCROLL_BOTTOM_EXTRA;
+  const scrollBottomPad = embedShellBottomNav
+    ? shellNavInset
+    : Math.max(insets.bottom, MIN_BOTTOM_INSET) + SCROLL_BOTTOM_EXTRA;
   const supportEmail = getSupportEmail();
-  const cardTokens = getCardTokens(isDark);
   const contactLine = `Contact: ${supportEmail}`;
-  const styles = buildTermsStyles({ isDark, cardTokens, scrollBottomPad });
+  const styles = buildTermsStyles(scrollBottomPad, colors);
   const sections = termsSections(contactLine);
 
   const fade = useRef(new Animated.Value(0)).current;
@@ -265,38 +243,32 @@ export default function TermsOfServiceScreen({ onClose, embedShellBottomNav = fa
         showsVerticalScrollIndicator
       >
         <Animated.View style={{ opacity: fade, transform: [{ translateY: rise }] }}>
-          <GradientCard borderColors={HERO_BORDER} style={styles.heroOuter} innerStyle={styles.heroInner}>
-            <GradientCard borderColors={HERO_BORDER} style={styles.heroIconOuter} innerStyle={styles.heroIconInner}>
-              <Ionicons name="document-text-outline" size={34} color="#FFFFFF" />
-            </GradientCard>
+          <NbCard style={styles.heroCard}>
+            <View style={[styles.heroIcon, { backgroundColor: colors.nbSurfaceChip }]}>
+              <Ionicons name="document-text-outline" size={34} color={colors.nbInk} />
+            </View>
             <Text style={styles.heroTitle}>Terms of Service</Text>
             <Text style={styles.heroSub}>Last updated: {LAST_UPDATED}</Text>
-          </GradientCard>
+          </NbCard>
 
           <Text style={styles.pageSub}>Friendly, plain-language terms for using the app.</Text>
 
           {sections.map((section) => (
-            <View key={section.num} style={styles.sectionCard}>
-              <View style={styles.sectionCardBody}>
-                <View style={styles.sectionHeader}>
-                  <Text style={styles.sectionNum}>{section.num}</Text>
-                  <Text style={styles.sectionTitle}>{section.title}</Text>
-                </View>
-                <Text style={styles.sectionText}>{section.body}</Text>
+            <NbCard key={section.num} style={styles.sectionCard}>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionNum}>{section.num}</Text>
+                <Text style={styles.sectionTitle}>{section.title}</Text>
               </View>
-              <LinearGradient
-                colors={SECTION_ACCENT}
-                start={GRADIENT_LEFT}
-                end={GRADIENT_RIGHT}
-                style={styles.sectionBottomAccent}
-              />
-            </View>
+              <Text style={styles.sectionText}>{section.body}</Text>
+            </NbCard>
           ))}
 
-          <Text style={styles.legalNote}>
-            This is a readable summary. Your lawyer should provide the binding legal version for your entity and
-            jurisdiction.
-          </Text>
+          <NbCard style={styles.legalNote}>
+            <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 12, color: colors.nbMuted, lineHeight: 18 }}>
+              This is a readable summary. Your lawyer should provide the binding legal version for your entity and
+              jurisdiction.
+            </Text>
+          </NbCard>
         </Animated.View>
       </ScrollView>
     </SafeAreaView>

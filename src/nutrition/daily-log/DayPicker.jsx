@@ -7,18 +7,20 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { getClientDateKey } from '../../helpers/dateStrings';
-import { NUT_ACTION_GRADIENT } from '../nutritionColors';
+import { gradients, lightColors, darkColors, nb } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
 // vocab: date keys are YYYY-MM-DD. Noon avoids a timezone shifting the day backward.
 const DATE_KEY_NOON_SUFFIX = 'T12:00:00';
 const DAYS_IN_A_WEEK = 7;
-const CIRCLE = 40;
+// Manipulate here: day circle diameter (keep >= 44 for touch target)
+const CIRCLE = 44;
 const TODAY_LABEL = 'Today';
 const WEEKDAY_NARROW = { weekday: 'narrow' };
 const MONTH_YEAR = { month: 'long', year: 'numeric' };
-const ACTIVE_WEEKDAY_COLOR = '#FF6B9D';
+// Brand pink from gradients.brand[0] — used as selected weekday accent
+const ACTIVE_WEEKDAY_COLOR = gradients.brand.colors[0];
 
 // ===== HELPER FUNCTIONS =====
 
@@ -74,26 +76,21 @@ function dateKeysForWeek(weekStart) {
 }
 
 /**
+ * Theme → neobrutalist tokens for the week strip.
  * @param {boolean} isDark
  */
 function dayPickerColors(isDark) {
-  if (isDark) {
-    return {
-      text: '#FFFFFF',
-      muted: 'rgba(255,255,255,0.42)',
-      circle: 'rgba(255,255,255,0.06)',
-      chevron: 'rgba(255,255,255,0.55)',
-      chevronDisabled: 'rgba(255,255,255,0.18)',
-      dot: '#34D399',
-    };
-  }
+  const c = isDark ? darkColors : lightColors;
   return {
-    text: '#0A0A0F',
-    muted: 'rgba(10,10,15,0.42)',
-    circle: 'rgba(0,0,0,0.04)',
-    chevron: 'rgba(10,10,15,0.55)',
-    chevronDisabled: 'rgba(10,10,15,0.18)',
-    dot: '#16A34A',
+    text: c.nbInk,
+    muted: c.nbMuted,
+    circle: c.nbSurfaceChip,
+    circleBorder: c.nbBorder,
+    chevron: c.nbInk,
+    chevronDisabled: c.nbMuted,
+    // Manipulate here: log-presence dot color
+    dot: c.success,
+    surface: c.nbSurface,
   };
 }
 
@@ -137,17 +134,17 @@ function LogDayCell({
       </Text>
       {isActive ? (
         <LinearGradient
-          colors={NUT_ACTION_GRADIENT}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.circleActiveRing}
+          colors={gradients.brand.colors}
+          start={gradients.brand.start}
+          end={gradients.brand.end}
+          style={[styles.circleActiveRing, { borderColor: colors.circleBorder }]}
         >
-          <View style={[styles.circleActiveInner, { backgroundColor: isDark ? '#121018' : '#FFFFFF' }]}>
-            <Text style={[styles.dayNum, { color: colors.text, fontWeight: '800' }]}>{dayNumber}</Text>
+          <View style={[styles.circleActiveInner, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.dayNum, { color: colors.text, fontFamily: 'SpaceGrotesk_700Bold' }]}>{dayNumber}</Text>
           </View>
         </LinearGradient>
       ) : (
-        <View style={[styles.circle, { backgroundColor: colors.circle }]}>
+        <View style={[styles.circle, { backgroundColor: colors.circle, borderColor: colors.circleBorder }]}>
           <Text style={[styles.dayNum, { color: colors.text }]}>{dayNumber}</Text>
         </View>
       )}
@@ -263,18 +260,20 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   chevronBtn: { width: 32, alignItems: 'center' },
-  monthLabel: { fontSize: 14, fontWeight: '800', letterSpacing: -0.2 },
+  monthLabel: { fontSize: 14, fontFamily: 'SpaceGrotesk_700Bold', letterSpacing: -0.2 },
   daysRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
   },
   dayCol: { flex: 1, alignItems: 'center', gap: 6 },
-  weekday: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.3 },
+  // Design rule: never below 12px
+  weekday: { fontSize: 12, fontFamily: 'SpaceGrotesk_700Bold', textTransform: 'uppercase', letterSpacing: 0.3 },
   circle: {
     width: CIRCLE,
     height: CIRCLE,
     borderRadius: CIRCLE / 2,
+    borderWidth: nb.borderWidth,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -290,18 +289,19 @@ const styles = StyleSheet.create({
     width: CIRCLE + 4,
     height: CIRCLE + 4,
     borderRadius: (CIRCLE + 4) / 2,
+    borderWidth: nb.borderWidth,
     padding: 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
   circleActiveInner: {
-    width: CIRCLE,
-    height: CIRCLE,
-    borderRadius: CIRCLE / 2,
+    width: CIRCLE - 4,
+    height: CIRCLE - 4,
+    borderRadius: (CIRCLE - 4) / 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  dayNum: { fontSize: 15, fontWeight: '700' },
+  dayNum: { fontSize: 15, fontFamily: 'SpaceGrotesk_700Bold' },
   dotSlot: { height: 5, justifyContent: 'center' },
   dot: { width: 5, height: 5, borderRadius: 3 },
 });

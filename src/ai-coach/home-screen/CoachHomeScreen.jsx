@@ -1,6 +1,9 @@
-// Coach home: greeting, hourly prompts, and the box that starts a chat.
-// Flow: load today's logs → build this hour's prompts → show cards → open a chat with text or a photo.
-// Used as the AI Coach tab. Past chats open from the header.
+// Coach home (neobrutalist design): greeting, hourly prompts, and the box that starts a chat.
+// Flow: load today's logs → build this hour's prompts → show NbCards → open a chat with text or a photo.
+// Used as: AI Coach tab. Past chats open from the header.
+//
+// vocab: NbCard = neobrutalist card with thick border and hard shadow
+// vocab: NbButton = neobrutalist button for primary actions
 
 import React, { useState, useEffect, useRef } from 'react';
 import {
@@ -38,6 +41,8 @@ import BottomMenuBar from '../../navigation/BottomMenuBar';
 import { ShellBottomNavAnchor } from '../../navigation/bottomMenuSpacing';
 import TopHeader from '../../for-both/loading-and-header/TopHeader';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
+import { lightColors, darkColors, spacing, borderRadius, nb, gradients } from '../../look-and-feel/colorPalette';
+import NbCard from '../../look-and-feel/NbCard';
 import { useCoachSpeech, COACH_VOICE_INPUT_AVAILABLE } from '../conversation/_voiceStub';
 import { keyboardBehavior, COACH_COMPOSER_TEXT_INPUT_PROPS } from '../conversation/keyboardBehavior';
 import { AI_COACH_UI } from '../coachColors';
@@ -516,8 +521,9 @@ function ChatHistoryHeaderButton({ isDark, onPress, compact = false }) {
 }
 
 const CoachActionOrb = ({ action, isDark, onPress }) => {
+  const { isDark: themeIsDark } = useTheme();
+  const colors = themeIsDark ? darkColors : lightColors;
   const scaleAnim = useRef(new Animated.Value(1)).current;
-  const rim = action.rim || BORDER_SUBTLE;
 
   const pressIn = () => {
     Animated.spring(scaleAnim, { toValue: 0.92, useNativeDriver: true, speed: 48, bounciness: 0 }).start();
@@ -539,51 +545,32 @@ const CoachActionOrb = ({ action, isDark, onPress }) => {
       style={{ alignItems: 'center', flex: 1 }}
     >
       <Animated.View style={{ transform: [{ scale: scaleAnim }], alignItems: 'center' }}>
-        <LinearGradient
-          colors={rim}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
+        {/* Neobrutalist orb: thick border, hard shadow, no gradient rim */}
+        <View
           style={{
             width: 70,
             height: 70,
             borderRadius: 35,
-            padding: 2,
-            ...(Platform.OS === 'ios' && isDark
-              ? { shadowColor: rim[0], shadowOpacity: 0.22, shadowRadius: 14, shadowOffset: { width: 0, height: 6 } }
-              : null),
-            elevation: isDark ? 7 : 2,
+            backgroundColor: colors.nbSurface,
+            borderWidth: 2.5,
+            borderColor: colors.nbBorder,
+            alignItems: 'center',
+            justifyContent: 'center',
+            // Hard shadow iOS
+            ...(Platform.OS === 'ios'
+              ? { shadowColor: colors.nbShadow, shadowOpacity: 1, shadowRadius: 0, shadowOffset: { width: 4, height: 4 } }
+              : {}),
           }}
         >
-          <View
-            style={{
-              flex: 1,
-              borderRadius: 33,
-              alignItems: 'center',
-              justifyContent: 'center',
-              backgroundColor: isDark ? AI_COACH_UI.surface : '#FFFFFF',
-              borderWidth: 1,
-              borderColor: isDark ? AI_COACH_UI.borderHairline : 'rgba(15,23,42,0.08)',
-              overflow: 'hidden',
-            }}
-          >
-            {isDark ? (
-              <LinearGradient
-                colors={HERO_INNER}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 0, y: 1 }}
-                style={StyleSheet.absoluteFillObject}
-              />
-            ) : null}
-            <Ionicons name={action.icon} size={24} color={isDark ? '#FFFFFF' : '#0A0A0F'} />
-          </View>
-        </LinearGradient>
+          <Ionicons name={action.icon} size={24} color={colors.nbInk} />
+        </View>
         <Text
           style={{
             marginTop: 8,
             fontSize: 12,
-            fontWeight: '700',
+            fontFamily: 'SpaceGrotesk_700Bold',
             letterSpacing: 0.2,
-            color: isDark ? '#FFFFFF' : 'rgba(10,10,15,0.72)',
+            color: colors.nbInk,
           }}
         >
           {action.label}
@@ -593,10 +580,11 @@ const CoachActionOrb = ({ action, isDark, onPress }) => {
             style={{
               marginTop: 2,
               fontSize: 9,
+              fontFamily: 'Inter_600Semi',
               fontWeight: '600',
               letterSpacing: 0.3,
               textTransform: 'uppercase',
-              color: isDark ? 'rgba(255,255,255,0.38)' : 'rgba(10,10,15,0.38)',
+              color: colors.nbMuted,
             }}
             numberOfLines={1}
           >
@@ -652,57 +640,57 @@ const CanHelpWithCarousel = ({ items, isDark, t, onPress }) => {
             }}
             style={{ width: CAN_HELP_CARD_WIDTH }}
           >
-            <View
-              style={{
-                borderRadius: 16,
-                overflow: 'hidden',
-                borderWidth: 1,
-                borderColor: isDark ? AI_COACH_UI.borderHairline : 'rgba(15,23,42,0.08)',
-                backgroundColor: isDark ? AI_COACH_UI.surface : '#FFFFFF',
-              }}
-            >
-            <View
-              style={{
-                paddingVertical: 16,
-                paddingHorizontal: 16,
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 14,
-                minHeight: 88,
-              }}
-            >
-              <LinearGradient
-                colors={item.rim || ['#FF6B9D', '#C084FC']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={{ borderRadius: 14, padding: 1.5 }}
-              >
+            <NbCard>
               <View
                 style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: 12.5,
+                  paddingVertical: 16,
+                  paddingHorizontal: 16,
+                  flexDirection: 'row',
                   alignItems: 'center',
-                  justifyContent: 'center',
-                  backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(10,10,15,0.04)',
+                  gap: 14,
+                  minHeight: 88,
                 }}
               >
-                <Ionicons name={item.icon} size={22} color={isDark ? '#FFFFFF' : '#0A0A0F'} />
-              </View>
-              </LinearGradient>
-              <View style={{ flex: 1 }}>
-                <Text
-                  style={{ fontSize: 15, fontWeight: '800', color: t.textPrimary, marginBottom: 4 }}
-                  numberOfLines={2}
+                {/* Icon circle with simple border, no gradient rim */}
+                <View
+                  style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: 22,
+                    borderWidth: 2,
+                    borderColor: isDark ? darkColors.nbBorder : lightColors.nbBorder,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: isDark ? darkColors.nbSurfaceChip : lightColors.nbSurfaceChip,
+                  }}
                 >
-                  {item.title}
-                </Text>
-                <Text style={{ fontSize: 13, color: t.textMuted }} numberOfLines={2}>
-                  {item.subtitle}
-                </Text>
+                  <Ionicons name={item.icon} size={22} color={isDark ? darkColors.nbInk : lightColors.nbInk} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={{
+                      fontSize: 15,
+                      fontFamily: 'SpaceGrotesk_700Bold',
+                      color: t.textPrimary,
+                      marginBottom: 4,
+                    }}
+                    numberOfLines={2}
+                  >
+                    {item.title}
+                  </Text>
+                  <Text
+                    style={{
+                      fontSize: 13,
+                      fontFamily: 'Inter_400Regular',
+                      color: t.textMuted,
+                    }}
+                    numberOfLines={2}
+                  >
+                    {item.subtitle}
+                  </Text>
+                </View>
               </View>
-            </View>
-            </View>
+            </NbCard>
           </Pressable>
         )}
       />
@@ -789,15 +777,7 @@ const SpotlightSuggestion = ({ suggestions, isDark, t, onPress }) => {
         accessibilityLabel={`Start chat: ${text}`}
         style={({ pressed }) => [{ opacity: pressed ? 0.9 : 1 }]}
       >
-        <View
-          style={{
-            borderRadius: 16,
-            overflow: 'hidden',
-            borderWidth: 1,
-            borderColor: isDark ? AI_COACH_UI.borderHairline : 'rgba(15,23,42,0.08)',
-            backgroundColor: isDark ? AI_COACH_UI.surface : '#FFFFFF',
-          }}
-        >
+        <NbCard>
           <View
             style={{
               paddingVertical: 16,
@@ -808,25 +788,21 @@ const SpotlightSuggestion = ({ suggestions, isDark, t, onPress }) => {
               minHeight: 88,
             }}
           >
-            <LinearGradient
-              colors={iconRim}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={{ borderRadius: 14, padding: 1.5 }}
+            {/* Simple icon circle, no gradient */}
+            <View
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: 22,
+                borderWidth: 2,
+                borderColor: isDark ? darkColors.nbBorder : lightColors.nbBorder,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: isDark ? darkColors.nbSurfaceChip : lightColors.nbSurfaceChip,
+              }}
             >
-              <View
-                style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: 12.5,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(10,10,15,0.04)',
-                }}
-              >
-                <Ionicons name={iconName} size={22} color={isDark ? '#FFFFFF' : '#0A0A0F'} />
-              </View>
-            </LinearGradient>
+              <Ionicons name={iconName} size={22} color={isDark ? darkColors.nbInk : lightColors.nbInk} />
+            </View>
             <Animated.View
               style={{
                 flex: 1,
@@ -837,7 +813,7 @@ const SpotlightSuggestion = ({ suggestions, isDark, t, onPress }) => {
               <Text
                 style={{
                   fontSize: 15,
-                  fontWeight: '700',
+                  fontFamily: 'SpaceGrotesk_700Bold',
                   lineHeight: 21,
                   color: t.textPrimary,
                   letterSpacing: -0.2,
@@ -847,10 +823,11 @@ const SpotlightSuggestion = ({ suggestions, isDark, t, onPress }) => {
                 {text}
               </Text>
             </Animated.View>
+            {/* Brand gradient chevron for the primary action */}
             <LinearGradient
-              colors={['#FF6B9D', '#DB2777']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
+              colors={gradients.brand.colors}
+              start={gradients.brand.start}
+              end={gradients.brand.end}
               style={{
                 width: 40,
                 height: 40,
@@ -859,10 +836,10 @@ const SpotlightSuggestion = ({ suggestions, isDark, t, onPress }) => {
                 justifyContent: 'center',
               }}
             >
-              <Ionicons name="chevron-forward" size={20} color="#FFFFFF" />
+              <Ionicons name="chevron-forward" size={20} color="#0A0A0F" />
             </LinearGradient>
           </View>
-        </View>
+        </NbCard>
       </Pressable>
 
       {items.length > 1 ? (
@@ -1345,6 +1322,9 @@ function IdleCoachHome({
 }
 
 function AttachmentPreview({ attachment, t }) {
+  const { isDark } = useTheme();
+  const colors = isDark ? darkColors : lightColors;
+  
   if (attachment.preview) {
     return (
       <Image
@@ -1352,9 +1332,9 @@ function AttachmentPreview({ attachment, t }) {
         style={{
           width: 72,
           height: 72,
-          borderRadius: 12,
-          borderWidth: 1,
-          borderColor: t.chipBorder,
+          borderRadius: borderRadius.nbCard,
+          borderWidth: nb.borderWidth,
+          borderColor: colors.nbBorder,
         }}
         resizeMode="cover"
       />
@@ -1365,28 +1345,31 @@ function AttachmentPreview({ attachment, t }) {
       style={{
         width: 72,
         height: 72,
-        borderRadius: 12,
-        backgroundColor: t.chipBg,
-        borderWidth: 1,
-        borderColor: t.chipBorder,
+        borderRadius: borderRadius.nbCard,
+        backgroundColor: colors.nbSurfaceChip,
+        borderWidth: nb.borderWidth,
+        borderColor: colors.nbBorder,
         alignItems: 'center',
         justifyContent: 'center',
       }}
     >
-      <Ionicons name="document-outline" size={22} color={t.textSecondary} />
+      <Ionicons name="document-outline" size={22} color={colors.nbMuted} />
     </View>
   );
 }
 
 function ComposerAttachments({ attachments, t, removeAttachment }) {
+  const { isDark } = useTheme();
+  const colors = isDark ? darkColors : lightColors;
+  
   if (attachments.length === 0) return null;
   return (
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
-      style={{ flexGrow: 0, marginBottom: 10 }}
-      contentContainerStyle={{ gap: 10, alignItems: 'center' }}
+      style={{ flexGrow: 0, marginBottom: spacing.sm + 2 }}
+      contentContainerStyle={{ gap: spacing.sm + 2, alignItems: 'center' }}
     >
       {attachments.map((attachment) => (
         <View key={attachment.id} style={{ position: 'relative' }}>
@@ -1401,12 +1384,14 @@ function ComposerAttachments({ attachments, t, removeAttachment }) {
               width: 22,
               height: 22,
               borderRadius: 11,
-              backgroundColor: t.textSecondary,
+              backgroundColor: colors.error || '#DC2626',
+              borderWidth: 2,
+              borderColor: colors.nbBorder,
               alignItems: 'center',
               justifyContent: 'center',
             }}
           >
-            <Ionicons name="close" size={13} color={t.bg} />
+            <Ionicons name="close" size={13} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
       ))}
@@ -1414,9 +1399,8 @@ function ComposerAttachments({ attachments, t, removeAttachment }) {
   );
 }
 
-function inputBackground(isDark) {
-  if (isDark) return 'rgba(255,255,255,0.05)';
-  return 'rgba(0,0,0,0.04)';
+function inputBackground(colors) {
+  return colors.nbSurface;
 }
 
 function ComposerBar({
@@ -1436,28 +1420,30 @@ function ComposerBar({
   micBackground,
   canSend,
 }) {
+  const colors = isDark ? darkColors : lightColors;
+  
   return (
     <Animated.View
       style={{
         opacity: inputOpacity,
         transform: [{ translateY: inputTranslateY }],
-        borderTopWidth: StyleSheet.hairlineWidth,
-        borderTopColor: t.border,
-        backgroundColor: t.inputBarBg,
-        paddingHorizontal: 16,
+        borderTopWidth: nb.borderWidth,
+        borderTopColor: colors.nbBorder,
+        backgroundColor: colors.nbBackground,
+        paddingHorizontal: spacing.md,
         paddingTop: composerPaddingTop(attachments.length),
         paddingBottom: composerKeyboardPad,
       }}
     >
       <ComposerAttachments attachments={attachments} t={t} removeAttachment={removeAttachment} />
 
-      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 10 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: spacing.sm + 2 }}>
         <TouchableOpacity
           onPress={openAttachMenu}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           style={{ padding: 4, marginBottom: 4 }}
         >
-          <Ionicons name="add-circle-outline" size={26} color={attachIconColor(isDark)} />
+          <Ionicons name="add-circle-outline" size={26} color={colors.nbInk} />
         </TouchableOpacity>
         <TextInput
           {...COACH_COMPOSER_TEXT_INPUT_PROPS}
@@ -1467,19 +1453,20 @@ function ComposerBar({
             minHeight: 40,
             maxHeight: 100,
             fontSize: 15,
-            color: t.textPrimary,
+            fontFamily: 'Inter_400Regular',
+            color: colors.nbInk,
             paddingVertical: 10,
             paddingHorizontal: 14,
-            backgroundColor: inputBackground(isDark),
-            borderRadius: 20,
-            borderWidth: 1,
-            borderColor: t.border,
+            backgroundColor: colors.nbSurface,
+            borderRadius: borderRadius.nbCard,
+            borderWidth: nb.borderWidth,
+            borderColor: colors.nbBorder,
           }}
           value={inputText}
           onChangeText={setInputText}
           onSubmitEditing={handleSend}
           placeholder="Ask your coach..."
-          placeholderTextColor={t.textMuted}
+          placeholderTextColor={colors.nbMuted}
           returnKeyType="send"
           blurOnSubmit={false}
           accessibilityLabel="Message input"
@@ -1497,13 +1484,15 @@ function ComposerBar({
             justifyContent: 'center',
             marginBottom: 2,
             backgroundColor: micBackground,
+            borderWidth: nb.borderWidth,
+            borderColor: colors.nbBorder,
           }}
           accessibilityLabel={micAccessibilityLabel(listening)}
         >
           <Ionicons
             name={micIconName(listening)}
             size={22}
-            color={micIconColor(isDark)}
+            color={colors.nbInk}
           />
         </TouchableOpacity>
         ) : null}
@@ -1516,18 +1505,20 @@ function ComposerBar({
           accessibilityLabel="Send message"
         >
           <LinearGradient
-            colors={composerSendColors(isDark)}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
+            colors={gradients.brand.colors}
+            start={gradients.brand.start}
+            end={gradients.brand.end}
             style={{
               width: 44,
               height: 44,
               borderRadius: 22,
               alignItems: 'center',
               justifyContent: 'center',
+              borderWidth: nb.borderWidth,
+              borderColor: colors.nbBorder,
             }}
           >
-            <Ionicons name="arrow-up" size={20} color="#FFFFFF" />
+            <Ionicons name="arrow-up" size={20} color="#0A0A0F" />
           </LinearGradient>
         </TouchableOpacity>
       </View>

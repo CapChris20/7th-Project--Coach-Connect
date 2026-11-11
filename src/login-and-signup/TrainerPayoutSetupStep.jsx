@@ -6,19 +6,17 @@ import React, { useMemo } from 'react';
 import {
   View,
   Text,
-  TouchableOpacity,
   ActivityIndicator,
   StyleSheet,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { trainerPayoutSetupFlow } from '../for-both/payments/trainerPayoutSetupFlow';
 import { TrainerPayoutSetupPopup } from '../for-both/payments/TrainerPayoutSetupPopup';
+import NbButton from '../look-and-feel/NbButton';
+import { nb, gradients } from '../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
-const ICON_GRADIENT = ['#FF6B9D', '#22D3EE'];
-const BUTTON_GRADIENT = ['#FF6B9D', '#C084FC'];
 const IDENTITY_ICON_COLOR = '#C084FC';
 const PAYMENT_ICON_COLOR = '#FF6B9D';
 const SPINNER_CONNECTING_COLOR = '#FF6B9D';
@@ -39,15 +37,17 @@ const PHASE_ACTIVE = 'active';
 function payoutStepPalette(isDark) {
   if (isDark) {
     return {
-      textPrimary: '#FFFFFF',
-      textSecondary: 'rgba(255,255,255,0.55)',
-      compareBorder: 'rgba(255,255,255,0.12)',
+      textPrimary: '#F3EEFF',
+      textSecondary: '#A7A1BE',
+      compareBorder: '#F3EEFF',
+      cardBg: '#17171F',
     };
   }
   return {
     textPrimary: '#0A0A0F',
-    textSecondary: 'rgba(0,0,0,0.5)',
-    compareBorder: 'rgba(0,0,0,0.08)',
+    textSecondary: '#55506B',
+    compareBorder: '#0A0A0F',
+    cardBg: '#FFFFFF',
   };
 }
 
@@ -71,14 +71,28 @@ function payoutPhaseFlags(phase) {
 function IdentityVsPaymentCards({ styles, palette }) {
   return (
     <View style={styles.compareRow}>
-      <View style={[styles.compareCard, { borderColor: palette.compareBorder }]}>
+      <View style={[
+        styles.compareCard,
+        {
+          borderColor: palette.compareBorder,
+          backgroundColor: palette.cardBg,
+          borderWidth: nb.borderWidth,
+        }
+      ]}>
         <Ionicons name="scan-outline" size={22} color={IDENTITY_ICON_COLOR} />
         <Text style={[styles.compareTitle, { color: palette.textPrimary }]}>Identity Verification</Text>
         <Text style={[styles.compareBody, { color: palette.textSecondary }]}>
           Face ID selfie on your profile step — manual review for the Verified badge. Separate from payments.
         </Text>
       </View>
-      <View style={[styles.compareCard, { borderColor: palette.compareBorder }]}>
+      <View style={[
+        styles.compareCard,
+        {
+          borderColor: palette.compareBorder,
+          backgroundColor: palette.cardBg,
+          borderWidth: nb.borderWidth,
+        }
+      ]}>
         <Ionicons name="card-outline" size={22} color={PAYMENT_ICON_COLOR} />
         <Text style={[styles.compareTitle, { color: palette.textPrimary }]}>Payment Method</Text>
         <Text style={[styles.compareBody, { color: palette.textSecondary }]}>
@@ -136,7 +150,6 @@ function PayoutActionButtons({
   startConnect,
   onSkip,
   onComplete,
-  styles,
   palette,
 }) {
   const primaryLabel = error ? 'RETRY' : 'CONNECT WITH STRIPE';
@@ -145,40 +158,25 @@ function PayoutActionButtons({
     <>
       {showButtons ? (
         <View style={styles.actions}>
-          <TouchableOpacity activeOpacity={0.9} onPress={primaryPress} style={styles.primaryWrap}>
-            <LinearGradient
-              colors={BUTTON_GRADIENT}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.primaryBtn}
-            >
-              <Text style={styles.primaryText}>{primaryLabel}</Text>
-            </LinearGradient>
-          </TouchableOpacity>
-
-          <TouchableOpacity activeOpacity={0.85} onPress={onSkip} style={styles.secondaryBtn}>
-            <Text style={[styles.secondaryText, { color: palette.textSecondary }]}>SKIP FOR NOW</Text>
-          </TouchableOpacity>
+          <NbButton variant="brand" onPress={primaryPress}>
+            {primaryLabel}
+          </NbButton>
+          <NbButton variant="plain" onPress={onSkip} style={styles.skipButton}>
+            SKIP FOR NOW
+          </NbButton>
         </View>
       ) : null}
 
       {isActive ? (
-        <TouchableOpacity activeOpacity={0.9} onPress={onComplete} style={styles.primaryWrap}>
-          <LinearGradient
-            colors={BUTTON_GRADIENT}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.primaryBtn}
-          >
-            <Text style={styles.primaryText}>Continue</Text>
-          </LinearGradient>
-        </TouchableOpacity>
+        <NbButton variant="brand" onPress={onComplete}>
+          Continue
+        </NbButton>
       ) : null}
     </>
   );
 }
 
-function makeStyles(isDark) {
+function makeStyles() {
   return StyleSheet.create({
     container: {
       alignItems: 'center',
@@ -186,13 +184,14 @@ function makeStyles(isDark) {
     },
     iconWrap: {
       marginBottom: 20,
-    },
-    iconGradient: {
       width: 72,
       height: 72,
       borderRadius: 20,
       alignItems: 'center',
       justifyContent: 'center',
+      backgroundColor: gradients.brand.colors[0],
+      borderWidth: nb.borderWidth,
+      borderColor: '#0A0A0F',
     },
     compareRow: {
       width: '100%',
@@ -202,7 +201,6 @@ function makeStyles(isDark) {
     },
     compareCard: {
       flex: 1,
-      borderWidth: 1,
       borderRadius: 14,
       padding: 12,
       gap: 6,
@@ -264,32 +262,10 @@ function makeStyles(isDark) {
     actions: {
       width: '100%',
       marginTop: 8,
+      gap: 12,
     },
-    primaryWrap: {
-      width: '100%',
-      marginBottom: 12,
-    },
-    primaryBtn: {
-      height: 56,
-      borderRadius: 16,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    primaryText: {
-      color: '#FFFFFF',
-      fontSize: 15,
-      fontWeight: '800',
-      letterSpacing: 0.4,
-    },
-    secondaryBtn: {
-      height: 48,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    secondaryText: {
-      fontSize: 14,
-      fontWeight: '700',
-      letterSpacing: 0.3,
+    skipButton: {
+      marginTop: 0,
     },
   });
 }
@@ -298,7 +274,7 @@ function makeStyles(isDark) {
 
 /**
  * Optional Stripe Connect step during trainer signup.
- * vocab: trainerPayoutSetupFlow = hook that opens Stripe’s hosted form and reports phase.
+ * vocab: trainerPayoutSetupFlow = hook that opens Stripe's hosted form and reports phase.
  * @param {{ email?: string, isDark?: boolean, onSkip?: function, onComplete?: function }} props
  */
 export function TrainerPayoutSetupStep({ email, isDark = true, onSkip, onComplete }) {
@@ -316,21 +292,14 @@ export function TrainerPayoutSetupStep({ email, isDark = true, onSkip, onComplet
     onActive: () => onComplete?.(),
   });
 
-  const styles = useMemo(() => makeStyles(isDark), [isDark]);
+  const styles = useMemo(() => makeStyles(), []);
   const palette = payoutStepPalette(isDark);
   const { showButtons, isConnecting, isPending, isActive } = payoutPhaseFlags(phase);
 
   return (
     <View style={styles.container}>
       <View style={styles.iconWrap}>
-        <LinearGradient
-          colors={ICON_GRADIENT}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.iconGradient}
-        >
-          <Ionicons name="card-outline" size={36} color="#FFFFFF" />
-        </LinearGradient>
+        <Ionicons name="card-outline" size={36} color="#FFFFFF" />
       </View>
 
       <Text style={[styles.title, { color: palette.textPrimary }]}>Payment Method</Text>
@@ -360,7 +329,6 @@ export function TrainerPayoutSetupStep({ email, isDark = true, onSkip, onComplet
         startConnect={startConnect}
         onSkip={onSkip}
         onComplete={onComplete}
-        styles={styles}
         palette={palette}
       />
 

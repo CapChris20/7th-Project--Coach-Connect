@@ -1,4 +1,4 @@
-// Glass session card on the home screen. Invite mode asks Pass / I'm in. Reminder mode can open the workout.
+// Neobrutalist session card on the home screen. Invite mode asks Pass / I'm in. Reminder mode can open the workout.
 // Flow: read the session → paint date, time, and length → show invite buttons or the workout button.
 // Used by the client home when a coach sends or confirms a session.
 
@@ -6,6 +6,9 @@ import React, { useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '../../look-and-feel/lightDarkMode';
+import { NbCard } from '../../look-and-feel/NbCard';
+import { NbButton } from '../../look-and-feel/NbButton';
 import { formatTime12, formatDateLong } from '../../helpers/sessionTimeText';
 
 // ===== NAMED CONSTANTS =====
@@ -101,12 +104,11 @@ function InviteActionButtons({ theme, isDark, sessionId, onRespond }) {
 function ReminderWorkoutButton({ onPressViewWorkout }) {
   if (!onPressViewWorkout) return null;
   return (
-    <TouchableOpacity activeOpacity={0.92} onPress={onPressViewWorkout} style={{ marginTop: 4 }}>
-      <LinearGradient colors={[PINK, PURPLE]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.primaryBtnFull}>
-        <Text style={styles.primaryBtnText}>View / Log Workout</Text>
-        <Ionicons name="barbell-outline" size={20} color="#fff" />
-      </LinearGradient>
-    </TouchableOpacity>
+    <View style={{ marginTop: 4 }}>
+      <NbButton variant="brand" onPress={onPressViewWorkout}>
+        View / Log Workout
+      </NbButton>
+    </View>
   );
 }
 
@@ -163,6 +165,7 @@ export function UpcomingSessionCard({
   onRespond,
   onPressViewWorkout,
 }) {
+  const { colors } = useTheme();
   const theme = glassTheme(isDark);
   // vocab: useMemo = keep the first name unless coachName changes, so the card does not re-split on every paint.
   const coachFirst = useMemo(() => coachFirstName(coachName), [coachName]);
@@ -178,7 +181,7 @@ export function UpcomingSessionCard({
   const isReminder = isReminderMode(mode);
 
   return (
-    <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+    <NbCard style={styles.card}>
       <LinearGradient
         colors={[`${PINK}20`, 'transparent', 'transparent']}
         start={{ x: 0, y: 0 }}
@@ -261,17 +264,13 @@ export function UpcomingSessionCard({
         onRespond={onRespond}
         onPressViewWorkout={onPressViewWorkout}
       />
-    </View>
+    </NbCard>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
     marginBottom: 14,
-    borderRadius: 24,
-    borderWidth: 1,
-    padding: 18,
-    overflow: 'hidden',
   },
   topRow: {
     flexDirection: 'row',
@@ -378,42 +377,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     marginTop: 16,
-  },
-  outlineBtn: {
-    paddingVertical: 14,
-    paddingHorizontal: 18,
-    borderRadius: 16,
-    borderWidth: 1,
-    minWidth: 88,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  outlineBtnText: {
-    fontSize: 15,
-    fontWeight: '800',
-  },
-  primaryBtn: {
-    borderRadius: 16,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  primaryBtnFull: {
-    borderRadius: 16,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  primaryBtnText: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '900',
-    letterSpacing: 0.2,
   },
 });

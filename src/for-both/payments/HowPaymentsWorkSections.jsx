@@ -5,6 +5,8 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '../../look-and-feel/lightDarkMode';
+import { NbCard } from '../../look-and-feel/NbCard';
 import {
   HOW_PAYMENTS_WORK,
   VENMO_VS_COACHCONNECT,
@@ -85,21 +87,22 @@ export function EarningsDashboardPreview({
   borderColor = DEFAULT_BORDER_COLOR,
   surfaceColor = DEFAULT_SURFACE_COLOR,
 }) {
+  const { colors } = useTheme();
   // 1. Fake pending total + three example rows so a new trainer can see the dashboard.
   return (
-    <View style={[styles.previewCard, { borderColor, backgroundColor: surfaceColor }]}>
-      <Text style={[styles.previewLabel, { color: mutedColor }]}>After your first client pays, you will see:</Text>
+    <NbCard>
+      <Text style={[styles.previewLabel, { color: colors.nbMuted }]}>After your first client pays, you will see:</Text>
       <View style={styles.previewRow}>
-        <Text style={[styles.previewStat, { color: textColor }]}>{EARNINGS_MOCK.pendingLabel}</Text>
-        <Text style={[styles.previewMeta, { color: mutedColor }]}>Next payout: {EARNINGS_MOCK.nextPayout}</Text>
+        <Text style={[styles.previewStat, { color: colors.nbInk }]}>{EARNINGS_MOCK.pendingLabel}</Text>
+        <Text style={[styles.previewMeta, { color: colors.nbMuted }]}>Next payout: {EARNINGS_MOCK.nextPayout}</Text>
       </View>
       {EARNINGS_MOCK.transactions.map((transaction) => (
-        <View key={`${transaction.date}-${transaction.name}`} style={[styles.txRow, { borderTopColor: borderColor }]}>
-          <Text style={[styles.txDate, { color: mutedColor }]}>{transaction.date}</Text>
-          <Text style={[styles.txName, { color: textColor }]} numberOfLines={1}>
+        <View key={`${transaction.date}-${transaction.name}`} style={[styles.txRow, { borderTopColor: colors.nbBorder }]}>
+          <Text style={[styles.txDate, { color: colors.nbMuted }]}>{transaction.date}</Text>
+          <Text style={[styles.txName, { color: colors.nbInk }]} numberOfLines={1}>
             {transaction.name}
           </Text>
-          <Text style={[styles.txAmount, { color: textColor }]}>{formatPaymentDollars(transaction.amount)}</Text>
+          <Text style={[styles.txAmount, { color: colors.nbInk }]}>{formatPaymentDollars(transaction.amount)}</Text>
           <Text
             style={[
               styles.txStatus,
@@ -110,7 +113,7 @@ export function EarningsDashboardPreview({
           </Text>
         </View>
       ))}
-    </View>
+    </NbCard>
   );
 }
 
@@ -189,13 +192,6 @@ const styles = StyleSheet.create({
   bulletRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 6 },
   bulletIcon: { marginTop: 1, marginRight: 8 },
   bulletText: { flex: 1, lineHeight: 18 },
-  previewCard: {
-    width: '100%',
-    borderWidth: 1,
-    borderRadius: 14,
-    padding: 12,
-    marginBottom: 16,
-  },
   previewLabel: { fontSize: 11, fontWeight: '600', marginBottom: 8 },
   previewRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   previewStat: { fontSize: 18, fontWeight: '800' },
@@ -204,7 +200,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingTop: 8,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: 2.5,
     gap: 6,
   },
   txDate: { width: 44, fontSize: 11, fontWeight: '600' },

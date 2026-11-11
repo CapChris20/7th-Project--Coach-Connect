@@ -1,26 +1,18 @@
 // Weekly report hero card on trainer and client dashboards.
 // Flow: pick client vs trainer copy → show ready/loading chip → tap opens the report.
 // Used by trainer home and client home.
+//
+// vocab: NbCard / NbButton / NbPill = shared neobrutalist primitives (thick outline, hard shadow)
 
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { WR_BRAND_GRADIENT } from './WeeklyReportBars';
-
-const ACCENT_PURPLE = '#9333EA';
-
-/** Dark purple → dark orange (matches Today card & Quick Actions). */
-const PREMIUM_BORDER_GRADIENT = WR_BRAND_GRADIENT;
-const PREMIUM_CTA_GRADIENT = WR_BRAND_GRADIENT;
-const PREMIUM_BG_DARK = ['#12081f', '#08050f'];
-const PREMIUM_BG_LIGHT = ['#F3F0FA', '#FFFFFF'];
-
-const ACCENT_BORDER_GRADIENT = WR_BRAND_GRADIENT;
+import { lightColors, darkColors, nb, borderRadius, spacing } from '../../look-and-feel/colorPalette';
+import NbCard from '../../look-and-feel/NbCard';
+import NbButton from '../../look-and-feel/NbButton';
+import NbPill from '../../look-and-feel/NbPill';
 
 // ===== NAMED CONSTANTS =====
-
-const CHECK_COLORS = ['#67E8F9', '#F472B6', '#FB923C', '#C084FC'];
 
 const BENEFITS_CLIENT = [
   'Week-at-a-glance averages (sleep, water, energy, steps)',
@@ -43,34 +35,27 @@ function firstNameFromDisplay(name) {
   return displayName.split(/\s+/)[0] || 'Client';
 }
 
-/**
- * Entry card for weekly intelligence — matches FindTrainerBanner / dashboard heroes.
- * `audience`: athlete home vs trainer dashboard copy.
- * `variant`: `hero` (default, tall) or `compact` (slim horizontal row — client dashboard).
- * `compactSurface`: `marketing` (gradient rim, default) or `inline` (tighter padding — still uses gradient rim; trainer dashboard).
- */
-/** Small status chip — no nested gradient ring (design-system compact row). */
-function InlineStatusChip({ isDark, loading, ready }) {
-  const border = isDark ? 'rgba(255,255,255,0.12)' : 'rgba(10,10,15,0.1)';
-  const chipBackground = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(10,10,15,0.04)';
-  const muted = isDark ? 'rgba(255,255,255,0.55)' : 'rgba(10,10,15,0.5)';
-  const readyColor = isDark ? '#A7F3D0' : '#047857';
+function themeColors(isDark) {
+  return isDark ? darkColors : lightColors;
+}
 
+/** Small status chip — ready / loading / not ready. */
+function InlineStatusChip({ isDark, loading, ready }) {
+  const colors = themeColors(isDark);
+  if (loading) {
+    return (
+      <View style={[styles.statusChip, { borderColor: colors.nbBorder, backgroundColor: colors.nbSurfaceChip }]}>
+        <ActivityIndicator size="small" color={colors.nbInk} />
+      </View>
+    );
+  }
+  if (ready) {
+    return <NbPill variant="energy">Ready</NbPill>;
+  }
   return (
-    <View style={[inlineStyles.statusChip, { borderColor: border, backgroundColor: chipBackground }]}>
-      {loading ? (
-        <ActivityIndicator size="small" color={ACCENT_PURPLE} />
-      ) : ready ? (
-        <>
-          <Ionicons name="checkmark-circle" size={13} color={readyColor} />
-          <Text style={[inlineStyles.statusText, { color: readyColor }]}>Ready</Text>
-        </>
-      ) : (
-        <>
-          <Ionicons name="time-outline" size={13} color={muted} />
-          <Text style={[inlineStyles.statusText, { color: muted }]}>Not ready</Text>
-        </>
-      )}
+    <View style={[styles.statusChip, { borderColor: colors.nbBorder, backgroundColor: colors.nbSurfaceChip }]}>
+      <Ionicons name="time-outline" size={13} color={colors.nbMuted} />
+      <Text style={[styles.statusText, { color: colors.nbMuted }]}>Not ready</Text>
     </View>
   );
 }
@@ -79,6 +64,8 @@ function InlineStatusChip({ isDark, loading, ready }) {
 
 /**
  * Weekly-report entry card. Tap opens the report when one is ready.
+ * `audience`: athlete home vs trainer dashboard copy.
+ * `variant`: `hero` (default, tall) or `compact` (slim horizontal row).
  */
 export default function WeeklyReportBanner({
   onOpenReport,
@@ -92,11 +79,7 @@ export default function WeeklyReportBanner({
   variant = 'hero',
   compactSurface = 'marketing',
 }) {
-  const innerBg = isDark ? '#0A0A0F' : '#F8F9FC';
-  const headlineColor = isDark ? '#FFFFFF' : '#0A0A0F';
-  const subColor = isDark ? 'rgba(255,255,255,0.6)' : 'rgba(10,10,15,0.62)';
-  const benefitTextColor = isDark ? 'rgba(255,255,255,0.92)' : 'rgba(10,10,15,0.85)';
-  const labelColor = isDark ? 'rgba(255,255,255,0.45)' : 'rgba(10,10,15,0.45)';
+  const colors = themeColors(isDark);
   const ctaDisabled = loading || !hasReport;
   const benefits = audience === 'trainer' ? BENEFITS_TRAINER : BENEFITS_CLIENT;
   const label = 'Weekly report';
@@ -133,12 +116,8 @@ export default function WeeklyReportBanner({
         ? `Latest ${weekRangeLabel} · trends & daily notes`
         : 'Recap appears here after your weekly summary runs.';
 
+  // Compact row — trainer dashboard / client home slim entry.
   if (variant === 'compact') {
-    const innerBg = isDark ? '#0A0812' : '#FFFFFF';
-    const bgGrad = isDark ? PREMIUM_BG_DARK : PREMIUM_BG_LIGHT;
-    const iconInnerBg = isDark ? 'rgba(14,12,22,0.98)' : 'rgba(255,255,255,0.98)';
-    const iconColor = isDark ? '#FED7AA' : '#6D28D9';
-    const kickerColor = isDark ? 'rgba(233,213,255,0.72)' : 'rgba(109,40,217,0.75)';
     const savedCount = reportCount > 0 ? reportCount : hasReport ? 1 : 0;
 
     return (
@@ -151,367 +130,127 @@ export default function WeeklyReportBanner({
           accessibilityLabel={ctaLabel}
           accessibilityState={{ disabled: ctaDisabled }}
         >
-          <LinearGradient
-            colors={PREMIUM_BORDER_GRADIENT}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={[compactStyles.borderRing, isDark ? styles.borderRingShadowDark : styles.borderRingShadowLight]}
-          >
-            <View style={[compactStyles.innerCard, { backgroundColor: innerBg }]}>
-              <LinearGradient colors={bgGrad} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }}>
-                <LinearGradient
-                  colors={PREMIUM_BORDER_GRADIENT}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={compactStyles.topAccent}
-                />
-                <View style={compactStyles.row}>
-                  <LinearGradient
-                    colors={PREMIUM_BORDER_GRADIENT}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={compactStyles.iconBubbleRing}
-                  >
-                    <View style={[compactStyles.iconBubbleInner, { backgroundColor: iconInnerBg }]}>
-                      {loading ? (
-                        <ActivityIndicator color={iconColor} size="small" />
-                      ) : (
-                        <Ionicons name="bar-chart" size={24} color={iconColor} />
-                      )}
-                    </View>
-                  </LinearGradient>
+          <NbCard style={compactStyles.card}>
+            <View style={compactStyles.row}>
+              <View style={[compactStyles.iconBubble, { borderColor: colors.nbBorder, backgroundColor: colors.nbSurfaceChip }]}>
+                {loading ? (
+                  <ActivityIndicator color={colors.nbInk} size="small" />
+                ) : (
+                  <Ionicons name="bar-chart" size={22} color={colors.nbInk} />
+                )}
+              </View>
 
-                  <View style={compactStyles.textBlock}>
-                    <Text style={[compactStyles.label, { color: kickerColor }]}>{label.toUpperCase()}</Text>
-                    <Text style={[compactStyles.headline, { color: headlineColor }]} numberOfLines={1}>
-                      {compactHeadline}
-                    </Text>
-                    {compactSub ? (
-                      <Text style={[compactStyles.sub, { color: subColor }]} numberOfLines={2}>
-                        {compactSub}
-                      </Text>
-                    ) : null}
-                    {savedCount > 1 ? (
-                      <View style={compactStyles.chipRow}>
-                        <View style={[compactStyles.chip, { borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(15,23,42,0.1)', backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.04)' }]}>
-                          <Text style={[compactStyles.chipText, { color: subColor }]}>{savedCount} weeks saved</Text>
-                        </View>
-                      </View>
-                    ) : null}
+              <View style={compactStyles.textBlock}>
+                <Text style={[compactStyles.label, { color: colors.nbMuted }]}>{label.toUpperCase()}</Text>
+                <Text style={[compactStyles.headline, { color: colors.nbInk }]} numberOfLines={1}>
+                  {compactHeadline}
+                </Text>
+                {compactSub ? (
+                  <Text style={[compactStyles.sub, { color: colors.nbMuted }]} numberOfLines={2}>
+                    {compactSub}
+                  </Text>
+                ) : null}
+                {savedCount > 1 ? (
+                  <View style={compactStyles.chipRow}>
+                    <NbPill>{`${savedCount} weeks saved`}</NbPill>
                   </View>
+                ) : null}
+              </View>
 
-                  {ctaDisabled ? (
-                    <InlineStatusChip isDark={isDark} loading={loading} ready={false} />
-                  ) : (
-                    <LinearGradient
-                      colors={PREMIUM_CTA_GRADIENT}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 0 }}
-                      style={compactStyles.ctaPill}
-                    >
-                      <View style={compactStyles.ctaInner}>
-                        <Text style={compactStyles.ctaText}>Open</Text>
-                        <Ionicons name="chevron-forward" size={16} color="#FFFFFF" />
-                      </View>
-                    </LinearGradient>
-                  )}
-                </View>
-              </LinearGradient>
+              {ctaDisabled ? (
+                <InlineStatusChip isDark={isDark} loading={loading} ready={false} />
+              ) : (
+                <NbButton variant="brand" sm onPress={onOpenReport}>
+                  Open
+                </NbButton>
+              )}
             </View>
-          </LinearGradient>
+          </NbCard>
         </TouchableOpacity>
       </View>
     );
   }
 
-  if (variant === 'compact' && compactSurface === 'inline') {
-    // Legacy inline path — same premium compact layout above.
-    return null;
-  }
-
-  if (false && variant === 'compact') {
-    const compactLabelColor =
-      audience === 'trainer'
-        ? isDark
-          ? 'rgba(196,181,253,0.9)'
-          : 'rgba(91,33,182,0.75)'
-        : labelColor;
-
-    const row = (
-      <TouchableOpacity
-        style={compactStyles.row}
-        onPress={onOpenReport}
-        disabled={ctaDisabled}
-        activeOpacity={ctaDisabled ? 1 : 0.88}
-        accessibilityRole="button"
-        accessibilityLabel={ctaLabel}
-        accessibilityState={{ disabled: ctaDisabled }}
-      >
-        <LinearGradient
-          colors={['rgba(190,24,93,0.75)', 'rgba(194,65,12,0.55)']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={compactStyles.iconBubbleRing}
-        >
-          <View
-            style={[
-              compactStyles.iconBubbleInner,
-              { backgroundColor: isDark ? 'rgba(10,8,16,0.94)' : 'rgba(255,255,255,0.97)' },
-            ]}
-          >
-            {loading ? (
-              <ActivityIndicator color="#BE185D" size="small" />
-            ) : (
-              <Ionicons name="document-text-outline" size={22} color={isDark ? '#FCE7F3' : '#BE185D'} />
-            )}
-          </View>
-        </LinearGradient>
-        <View style={compactStyles.textBlock}>
-          <Text style={[compactStyles.label, { color: compactLabelColor }]}>{label}</Text>
-          <Text style={[compactStyles.headline, { color: headlineColor }]} numberOfLines={1}>
-            {compactHeadline}
-          </Text>
-          <Text style={[compactStyles.sub, { color: subColor }]} numberOfLines={2}>
-            {compactSub}
-          </Text>
-        </View>
-        {ctaDisabled ? (
-          <InlineStatusChip isDark={isDark} loading={loading} ready={false} />
-        ) : (
-          <LinearGradient
-            colors={['#BE185D', '#C2410C']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={compactStyles.ctaPill}
-          >
-            <View style={compactStyles.ctaInner}>
-              <Text style={compactStyles.ctaText}>{loading ? '…' : 'Open'}</Text>
-              {!loading ? <Ionicons name="chevron-forward" size={18} color="#FFFFFF" /> : null}
-            </View>
-          </LinearGradient>
-        )}
-      </TouchableOpacity>
-    );
-
-    return (
-      <View style={compactStyles.outer} accessibilityRole="summary" accessibilityLabel="Weekly report">
-        <LinearGradient
-          colors={ACCENT_BORDER_GRADIENT}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={[compactStyles.borderRing, isDark ? styles.borderRingShadowDark : styles.borderRingShadowLight]}
-        >
-          <View style={[compactStyles.innerCard, { backgroundColor: innerBg }]}>{row}</View>
-        </LinearGradient>
-      </View>
-    );
-  }
-
+  // Hero card — full benefits list + primary CTA (one brand gradient moment via NbButton).
   return (
     <View style={styles.outer} accessibilityRole="summary" accessibilityLabel="Weekly report">
-      <LinearGradient
-        colors={ACCENT_BORDER_GRADIENT}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={[styles.borderRing, isDark ? styles.borderRingShadowDark : styles.borderRingShadowLight]}
-      >
-        <View style={[styles.innerCard, { backgroundColor: innerBg }]}>
-          <View
-            style={[
-              StyleSheet.absoluteFill,
-              styles.innerWash,
-              { backgroundColor: isDark ? 'rgba(255,255,255,0.02)' : 'transparent' },
-            ]}
-            pointerEvents="none"
-          />
-          <View style={styles.content}>
-            <Text style={[styles.label, { color: labelColor }]}>{label}</Text>
+      <NbCard style={styles.card}>
+        <View style={styles.content}>
+          <Text style={[styles.label, { color: colors.nbMuted }]}>{label}</Text>
+          <Text style={[styles.headline, { color: colors.nbInk }]}>{headline}</Text>
+          <Text style={[styles.subhead, { color: colors.nbMuted }]}>{subhead}</Text>
 
-            <Text style={[styles.headline, { color: headlineColor }]}>{headline}</Text>
-
-            <Text style={[styles.subhead, { color: subColor }]}>{subhead}</Text>
-
-            <View style={styles.benefits}>
-              {benefits.map((line, i) => (
-                <View key={line} style={styles.benefitRow}>
-                  <Ionicons name="checkmark-circle" size={18} color={CHECK_COLORS[i % CHECK_COLORS.length]} style={styles.checkIcon} />
-                  <Text style={[styles.benefitText, { color: benefitTextColor }]}>{line}</Text>
-                </View>
-              ))}
-            </View>
-
-            <LinearGradient
-              colors={ctaDisabled ? ['rgba(148,163,184,0.45)', 'rgba(148,163,184,0.35)'] : WR_BRAND_GRADIENT}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.ctaGradient}
-            >
-              <TouchableOpacity
-                onPress={onOpenReport}
-                disabled={ctaDisabled}
-                activeOpacity={0.88}
-                style={styles.ctaTouchable}
-                accessibilityRole="button"
-                accessibilityLabel={audience === 'trainer' && hasReport ? 'Open weekly reports' : 'Open weekly report'}
-                accessibilityState={{ disabled: ctaDisabled }}
-              >
-                {loading ? (
-                  <ActivityIndicator color="#FFFFFF" size="small" />
-                ) : (
-                  <Ionicons name="document-text-outline" size={20} color="#FFFFFF" />
-                )}
-                <Text style={styles.ctaText}>{ctaLabel}</Text>
-                {!loading && hasReport ? <Ionicons name="arrow-forward" size={20} color="#FFFFFF" /> : null}
-              </TouchableOpacity>
-            </LinearGradient>
+          <View style={styles.benefits}>
+            {benefits.map((line) => (
+              <View key={line} style={styles.benefitRow}>
+                <Ionicons name="checkmark-circle" size={18} color={colors.nbInk} style={styles.checkIcon} />
+                <Text style={[styles.benefitText, { color: colors.nbInk }]}>{line}</Text>
+              </View>
+            ))}
           </View>
+
+          <NbButton
+            variant="brand"
+            onPress={onOpenReport}
+            disabled={ctaDisabled}
+            style={styles.ctaButton}
+          >
+            {ctaLabel}
+          </NbButton>
         </View>
-      </LinearGradient>
+      </NbCard>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   outer: {
-    marginTop: 8,
-    marginBottom: 8,
-    paddingHorizontal: 16,
+    marginTop: spacing.sm,
+    marginBottom: spacing.sm,
+    paddingHorizontal: spacing.md,
   },
-  borderRing: {
-    borderRadius: 24,
-    padding: 3,
-  },
-  borderRingShadowDark: {
-    shadowColor: '#9333EA',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.22,
-    shadowRadius: 14,
-    elevation: 8,
-  },
-  borderRingShadowLight: {
-    shadowColor: '#A855F7',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.18,
-    shadowRadius: 12,
-    elevation: 6,
-  },
-  innerCard: {
-    borderRadius: 21,
-    overflow: 'hidden',
-  },
-  innerWash: {
-    zIndex: 0,
+  card: {
+    padding: 0,
   },
   content: {
     padding: 20,
     gap: 14,
-    zIndex: 1,
   },
   label: {
-    fontSize: 11,
-    fontWeight: '700',
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 12,
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
   headline: {
-    fontSize: 28,
-    fontWeight: '900',
-    lineHeight: 34,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 24,
+    lineHeight: 30,
   },
   subhead: {
+    fontFamily: 'Inter_500Medium',
     fontSize: 14,
-    fontWeight: '600',
     lineHeight: 21,
   },
   benefits: {
-    gap: 8,
+    gap: spacing.sm,
     marginTop: 2,
   },
   benefitRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
+    gap: 12,
   },
-  checkBubble: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    alignItems: 'center',
-    justifyContent: 'center',
+  checkIcon: {
     marginTop: 1,
   },
   benefitText: {
     flex: 1,
+    fontFamily: 'Inter_500Medium',
     fontSize: 13,
-    fontWeight: '500',
     lineHeight: 18,
   },
-  ctaGradient: {
-    borderRadius: 16,
-    marginTop: 4,
-    overflow: 'hidden',
-  },
-  ctaTouchable: {
-    minHeight: 54,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-  },
-  ctaText: {
-    fontSize: 16,
-    fontWeight: '900',
-    color: '#FFFFFF',
-  },
-});
-
-/** Trainer dashboard row — matches Quick Actions cards on TrainerAppStart */
-const inlineStyles = StyleSheet.create({
-  wrapper: {
-    marginTop: 0,
-    marginBottom: 0,
-  },
-  card: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    borderRadius: 18,
-    borderWidth: 1,
-    paddingVertical: 14,
-    paddingHorizontal: 14,
-    minHeight: 88,
-  },
-  iconWell: {
-    width: 46,
-    height: 46,
-    borderRadius: 14,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  textCol: {
-    flex: 1,
-    minWidth: 0,
-    justifyContent: 'center',
-    paddingRight: 4,
-  },
-  label: {
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 0.9,
-    marginBottom: 3,
-  },
-  title: {
-    fontSize: 16,
-    fontWeight: '800',
-    letterSpacing: -0.2,
-  },
-  sub: {
-    fontSize: 12,
-    fontWeight: '600',
-    lineHeight: 16,
+  ctaButton: {
     marginTop: 4,
   },
   statusChip: {
@@ -520,12 +259,12 @@ const inlineStyles = StyleSheet.create({
     gap: 4,
     paddingVertical: 4,
     paddingHorizontal: 8,
-    borderRadius: 8,
-    borderWidth: 1,
+    borderRadius: borderRadius.nbChip,
+    borderWidth: nb.borderWidth,
   },
   statusText: {
-    fontSize: 11,
-    fontWeight: '700',
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 12,
   },
 });
 
@@ -535,34 +274,22 @@ const compactStyles = StyleSheet.create({
     marginBottom: 2,
     paddingHorizontal: 0,
   },
-  borderRing: {
-    borderRadius: 18,
-    padding: 2,
-  },
-  innerCard: {
-    borderRadius: 16,
-    overflow: 'hidden',
+  card: {
+    padding: 0,
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
+    paddingVertical: spacing.sm,
     paddingHorizontal: 10,
     gap: 10,
     minHeight: 56,
   },
-  iconBubbleRing: {
+  iconBubble: {
     width: 42,
     height: 42,
-    borderRadius: 14,
-    padding: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  iconBubbleInner: {
-    width: 38,
-    height: 38,
-    borderRadius: 11,
+    borderRadius: borderRadius.nbCard,
+    borderWidth: nb.borderWidth,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -572,40 +299,24 @@ const compactStyles = StyleSheet.create({
     justifyContent: 'center',
   },
   label: {
-    fontSize: 10,
-    fontWeight: '800',
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 12,
     textTransform: 'uppercase',
     letterSpacing: 1,
     marginBottom: 2,
   },
   headline: {
+    fontFamily: 'SpaceGrotesk_700Bold',
     fontSize: 15,
-    fontWeight: '900',
     letterSpacing: -0.2,
   },
   sub: {
-    fontSize: 11,
-    fontWeight: '600',
-    lineHeight: 15,
+    fontFamily: 'Inter_500Medium',
+    fontSize: 12,
+    lineHeight: 16,
     marginTop: 2,
   },
-  ctaPill: {
-    borderRadius: 12,
-    overflow: 'hidden',
-    minWidth: 76,
-  },
-  ctaInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-  },
-  ctaText: {
-    fontSize: 13,
-    fontWeight: '900',
-    color: '#FFFFFF',
-    letterSpacing: 0.2,
+  chipRow: {
+    marginTop: 6,
   },
 });

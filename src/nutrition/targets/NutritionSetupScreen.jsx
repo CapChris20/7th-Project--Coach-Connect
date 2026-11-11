@@ -17,22 +17,24 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { lightColors, darkColors, nb, borderRadius, gradients as nbGradients } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
+// Use neobrutalist tokens with onboarding-specific overrides
 const ONBOARDING_THEME = {
-  bg: ['#0a0a1a', '#1a0a2e', '#0d1117'],
-  solidBg: '#0d0d1f',
-  cardBg: 'rgba(255,255,255,0.05)',
-  cardBorder: 'rgba(255,255,255,0.08)',
-  text: '#ffffff',
-  textMuted: 'rgba(255,255,255,0.5)',
-  textVeryMuted: 'rgba(255,255,255,0.4)',
-  inputBg: 'rgba(255,255,255,0.06)',
-  inputBorder: 'rgba(255,255,255,0.10)',
-  hotPink: '#BE185D',
-  brandCta: ['#BE185D', '#C2410C'],
-  progressFill: ['#BE185D', '#C2410C'],
+  bg: [darkColors.nbBackground, '#1a0a2e', '#0d1117'],
+  solidBg: darkColors.nbSurface,
+  cardBg: darkColors.nbSurface,
+  cardBorder: darkColors.nbBorder,
+  text: darkColors.nbInk,
+  textMuted: darkColors.nbMuted,
+  textVeryMuted: darkColors.nbMuted,
+  inputBg: darkColors.nbSurfaceChip,
+  inputBorder: darkColors.nbBorder,
+  hotPink: nbGradients.brand.colors[0],
+  brandCta: nbGradients.brand.colors,
+  progressFill: nbGradients.brand.colors,
   progressEmpty: 'rgba(255,255,255,0.1)',
 };
 
@@ -203,10 +205,10 @@ function GlassCardActive({ children, style }) {
     <View
       style={[
         {
-          borderRadius: 20,
+          borderRadius: borderRadius.nbCard,
           backgroundColor: ONBOARDING_THEME.solidBg,
-          borderWidth: 1,
-          borderColor: 'rgba(190,24,93,0.45)',
+          borderWidth: nb.borderWidth,
+          borderColor: nbGradients.brand.colors[0],
           padding: 16,
         },
         style,
@@ -705,9 +707,9 @@ const progressStyles = StyleSheet.create({
 const macroStyles = StyleSheet.create({
   card: {
     backgroundColor: ONBOARDING_THEME.cardBg,
-    borderWidth: 1,
+    borderWidth: nb.borderWidth,
     borderColor: ONBOARDING_THEME.cardBorder,
-    borderRadius: 20,
+    borderRadius: borderRadius.nbCard,
     padding: 16,
   },
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
@@ -730,9 +732,9 @@ const favoriteStyles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     backgroundColor: ONBOARDING_THEME.cardBg,
-    borderWidth: 1,
+    borderWidth: nb.borderWidth,
     borderColor: ONBOARDING_THEME.cardBorder,
-    borderRadius: 20,
+    borderRadius: borderRadius.nbCard,
     paddingHorizontal: 12,
     paddingVertical: 10,
     marginBottom: 12,
@@ -747,7 +749,7 @@ const favoriteStyles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 12,
     borderRadius: 999,
-    borderWidth: 1,
+    borderWidth: nb.borderWidth,
     borderColor: ONBOARDING_THEME.cardBorder,
     backgroundColor: ONBOARDING_THEME.cardBg,
   },
@@ -789,7 +791,7 @@ const stepStyles = StyleSheet.create({
     alignItems: 'center',
   },
   heroCardFlat: {
-    borderWidth: 1,
+    borderWidth: nb.borderWidth,
     borderColor: ONBOARDING_THEME.cardBorder,
     marginBottom: 16,
   },
@@ -812,7 +814,7 @@ const stepStyles = StyleSheet.create({
     height: 52,
     borderRadius: 26,
     backgroundColor: ONBOARDING_THEME.cardBg,
-    borderWidth: 1,
+    borderWidth: nb.borderWidth,
     borderColor: ONBOARDING_THEME.cardBorder,
     alignItems: 'center',
     justifyContent: 'center',
@@ -838,9 +840,9 @@ const stepStyles = StyleSheet.create({
   },
   macroPreviewCard: {
     backgroundColor: ONBOARDING_THEME.cardBg,
-    borderWidth: 1,
+    borderWidth: nb.borderWidth,
     borderColor: ONBOARDING_THEME.cardBorder,
-    borderRadius: 16,
+    borderRadius: borderRadius.nbChip,
     padding: 14,
     marginBottom: 8,
   },
