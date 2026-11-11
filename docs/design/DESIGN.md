@@ -2,16 +2,12 @@
 
 Source of truth for the **look and feel** of the redesign. Visual reference: `docs/design/mockups/index.html` (open in a browser, 43 screens, light and dark toggle).
 
-## How to use the mockup: style only, not structure
-The mockup shows the visual language: outlines, shadows, gradients, type, spacing, chips, tiles, sheets, motion. It is **not** a layout spec.
-- Keep every screen's existing structure: its sections, order, content, features, data and navigation.
-- Do not add, remove or reorder sections, tabs or fields to match a mockup board. Some boards are loose sketches, and some content in them is placeholder.
-- Apply the look to the components the app already has (a card stays a card, a list stays a list), using the shared Nb* components.
-- Only structural changes requested on purpose: replace the wheel scheduler (see Replace), and anything the owner asks for later.
-- If a mockup board and the real screen differ, the real screen's structure wins and the mockup's styling is applied to it.
-
-## Look in one line
-Thick outlines, hard offset shadows with no blur, neutral surfaces, and the brand gradient as the only decoration. One gradient moment per screen: the primary action.
+## How to use the mockup: style AND a better structure
+The mockup shows the visual language (outlines, shadows, gradients, type, spacing, components) and the kind of layout the owner wants: fewer, clearer sections, content grouped by task, cards placed differently from the old screens.
+- Redesign each screen's layout. Do not just re-skin the old arrangement of cards.
+- Keep the screen's behavior, data, props, hooks and navigation exactly as they are. Only the arrangement and look change.
+- Every feature the old screen had must still be reachable. Remove clutter, not capability.
+- Work one screen per change. Never batch many screens.
 
 ## Tokens (add to `src/look-and-feel/colorPalette.js`, keep existing exports and key names)
 
@@ -64,4 +60,4 @@ Cards below the first screen rise 22px and fade in as they enter (Reanimated, ea
 - Auth and marketplace: `src/login-and-signup`, `src/client-app/find-a-trainer`, `src/for-both/trainer-listing`
 
 ## Process for Cursor
-1. Read this file and open the mockup. 2. Implement tokens and the shared components first, with no screen changes. 3. Port one screen at a time, in this order: scheduler, client home, onboarding, find-a-trainer, nutrition, AI coach, trainer screens. 4. After each screen run the existing tests and `npm run lint`, and compare the styling (not the layout) against the matching mockup board in light and dark. 5. Keep behavior, data, navigation and each screen's existing structure unchanged: this is a visual pass.
+1. Read this file and open the mockup. 2. Implement tokens and the shared components first, with no screen changes. 3. Port one screen at a time, in this order: scheduler, client home, onboarding, find-a-trainer, nutrition, AI coach, trainer screens. 4. After each screen run the existing tests and `npm run lint`, and compare the styling (not the layout) against the matching mockup board in light and dark. 5. Keep behavior, data and navigation unchanged. Layout is redesigned per screen.

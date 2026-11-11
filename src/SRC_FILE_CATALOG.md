@@ -4521,12 +4521,6 @@ Copies: `src/SRC_FILE_CATALOG.md` and `docs/SRC_FILE_CATALOG.md`
 - **Who uses it:** Trainer app
 - **Suggested name:** ___
 
-### `SessionTimePicker.jsx`
-
-- **Path:** `src/trainer-app/scheduling/SessionTimePicker.jsx`
-- **What it is:** Session Time Picker in `trainer-app/scheduling`. Part of `trainer-app/scheduling` — search the repo for "SessionTimePicker" to see what imports it before renaming.
-- **Who uses it:** Trainer app
-- **Suggested name:** ___
 
 ### `SharedSessionList.jsx`
 
@@ -4535,12 +4529,6 @@ Copies: `src/SRC_FILE_CATALOG.md` and `docs/SRC_FILE_CATALOG.md`
 - **Who uses it:** Trainer app
 - **Suggested name:** ___
 
-### `WheelPicker.jsx`
-
-- **Path:** `src/trainer-app/scheduling/WheelPicker.jsx`
-- **What it is:** Off-center rows dim via opacity only — hue stays pure white/black. Wheel Picker Purpose: Wheel Picker.
-- **Who uses it:** Trainer app
-- **Suggested name:** ___
 
 ### `alertTraineeOfSession.js`
 
