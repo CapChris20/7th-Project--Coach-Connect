@@ -1,6 +1,9 @@
 // Weekly workout plan viewer: training-day cards, rest-day cards, and exercise popups.
 // Flow: split the plan into workout vs rest → tap a day → tap an exercise or recovery item.
 // Used when the client opens a saved plan. Day keys (short, focus, rest) stay as the plan stores them.
+//
+// vocab: neobrutalist = thick outlines (2.5px), hard shadows (no blur), offset 4/4
+// Manipulate here: card border radius (14), shadow offset (4), gradient rim padding (1.5)
 
 import React, { useMemo, useState, useCallback, useEffect } from "react";
 import {
@@ -17,6 +20,9 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { FORM_SCROLL_PROPS, useModalScrollBottomPad, useShellBottomNavInset } from "../../navigation/bottomMenuSpacing";
+import NbCard from "../../look-and-feel/NbCard";
+import NbButton from "../../look-and-feel/NbButton";
+import NbListRow from "../../look-and-feel/NbListRow";
 
 const CTA_GRAD = ["#9D174D", "#B45309"];
 const TOKENS = {

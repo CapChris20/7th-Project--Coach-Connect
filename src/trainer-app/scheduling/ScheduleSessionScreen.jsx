@@ -1,6 +1,8 @@
-// Schedule / edit a training session: date wheels, duration chips, notes, Zoom link.
-// Flow: load editing session if any → pick date/time/duration → create or update via mySessions hooks.
+// Schedule / edit a training session: neobrutalist date chips, time slots, duration/where segmented controls.
+// Flow: load editing session if any → pick date/time/duration/location → create or update via mySessions hooks.
 // Used from the trainer calendar tab and client scheduling entry points.
+//
+// vocab: neobrutalist = thick outlines, hard shadows, gradient when active. Replaced wheel pickers with chip grids.
 
 import React, { useContext, useEffect, useMemo, useState } from 'react';
 import {
@@ -11,13 +13,11 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  useColorScheme,
 } from 'react-native';
 import { NavigationContext, NavigationRouteContext } from '@react-navigation/native';
-import { ArrowLeft, ArrowRight, Check } from 'lucide-react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { format, getDaysInMonth, set as setDateParts } from 'date-fns';
-import LabeledRow from '../../look-and-feel/LabeledRow';
-import { useTheme } from '../../look-and-feel/lightDarkMode';
+import { ArrowLeft } from 'lucide-react-native';
+import { format, addDays, startOfWeek, set as setDateParts } from 'date-fns';
 import { FORM_SCROLL_PROPS, useModalScrollBottomPad } from '../../navigation/bottomMenuSpacing';
 import {
   useCreateTrainingSession,
@@ -25,63 +25,78 @@ import {
   useDeleteTrainingSession,
   useGetTrainingSession,
 } from '../scheduling/mySessions';
-import {
-  ACCENT_GRADIENT,
-  DARK_PINK,
-  getSessionSchedulingColors,
-} from '../scheduling/schedulingColors';
-import SessionTimePicker from './SessionTimePicker';
+import NbChip from '../../look-and-feel/NbChip';
+import NbSegmented from '../../look-and-feel/NbSegmented';
+import NbButton from '../../look-and-feel/NbButton';
+import { lightColors, darkColors, nb, borderRadius, spacing } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
-const NOON_HOUR_FOR_DATE_PARSE = 12;
-const MINUTE_SNAP = 5;
+// Manipulate here: default session length and available time slots
 const DEFAULT_DURATION_MIN = 60;
-const YEAR_RANGE_BACK = 1;
-const YEAR_RANGE_FORWARD = 3;
-const SCROLL_BOTTOM_PAD = 48;
-const HOURS_ON_12H_CLOCK = 12;
+const SCROLL_BOTTOM_PAD = 80; // Extra space for sticky CTA
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
+// Duration options (30/45/60/90 min)
 const DURATIONS = [
-  { label: '15m', min: 15 },
-  { label: '30m', min: 30 },
-  { label: '45m', min: 45 },
-  { label: '1h', min: DEFAULT_DURATION_MIN },
-  { label: '1h 15m', min: 75 },
-  { label: '1h 30m', min: 90 },
-  { label: '2h', min: 120 },
+  { id: '30', label: '30m', min: 30 },
+  { id: '45', label: '45m', min: 45 },
+  { id: '60', label: '60m', min: 60 },
+  { id: '90', label: '90m', min: 90 },
 ];
+
+// Where options (In person/Video)
+const WHERE_OPTIONS = [
+  { id: 'in-person', label: 'In person' },
+  { id: 'video', label: 'Video' },
+];
+
+// Common time slots (3-column grid)
+const TIME_SLOTS = [
+  '6:00 AM', '7:00 AM', '7:30 AM', '8:00 AM', '9:00 AM', '9:30 AM',
+  '10:00 AM', '11:00 AM', '12:00 PM', '1:00 PM', '2:00 PM', '3:00 PM',
+  '4:00 PM', '4:30 PM', '5:00 PM', '6:00 PM', '7:00 PM', '8:00 PM',
+];
+
+const WEEKDAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
 // ===== HELPER FUNCTIONS =====
 
-function parseTimeTo12(timeStr) {
-  if (!timeStr) return { hour: 9, minute: 0, period: 'AM' };
+// Parse 24-hour time string to display format (e.g. "14:30" → "2:30 PM")
+function parseTime24ToDisplay(timeStr) {
+  if (!timeStr) return '9:00 AM';
   const [hStr, mStr] = String(timeStr).split(':');
   const h24 = parseInt(hStr, 10);
-  const minute = Math.round(parseInt(mStr || '0', 10) / MINUTE_SNAP) * MINUTE_SNAP;
-  const period = h24 >= NOON_HOUR_FOR_DATE_PARSE ? 'PM' : 'AM';
-  const hour = ((h24 + 11) % HOURS_ON_12H_CLOCK) + 1;
-  return { hour, minute, period };
+  const minute = parseInt(mStr || '0', 10);
+  const period = h24 >= 12 ? 'PM' : 'AM';
+  const hour12 = h24 % 12 || 12;
+  const minuteStr = String(minute).padStart(2, '0');
+  return `${hour12}:${minuteStr} ${period}`;
 }
 
-function build24HourTime(hour12, minute, period) {
-  let h24 = hour12 % 12;
-  if (period === 'PM') h24 += 12;
-  return { h24, minute };
+// Parse display time to 24-hour format (e.g. "2:30 PM" → "14:30")
+function parseDisplayTimeTo24(displayTime) {
+  const match = displayTime.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+  if (!match) return '09:00';
+  let hour = parseInt(match[1], 10);
+  const minute = match[2];
+  const period = match[3].toUpperCase();
+  
+  if (period === 'PM' && hour !== 12) hour += 12;
+  if (period === 'AM' && hour === 12) hour = 0;
+  
+  return `${String(hour).padStart(2, '0')}:${minute}`;
 }
 
-function buildInitialDate(editing, initialDate, today) {
-  if (editing?.date) return new Date(`${editing.date}T12:00:00`);
-  if (initialDate) return new Date(`${String(initialDate).slice(0, 10)}T12:00:00`);
-  return new Date(today.getFullYear(), today.getMonth(), today.getDate());
+// Generate week strip starting from today
+function generateWeekDates(startDate) {
+  const weekStart = startOfWeek(startDate, { weekStartsOn: 0 }); // Sunday
+  return Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
 }
 
 // ===== MAIN FUNCTION =====
 
 /**
- * Inline schedule / edit session form for the trainer calendar.
+ * Neobrutalist session scheduler: date chip strip, time-slot grid, segmented controls, sticky CTA.
  * @param {object} [props]
  */
 export function ScheduleSessionScreen(props = {}) {
@@ -97,8 +112,8 @@ export function ScheduleSessionScreen(props = {}) {
   const onNavigate = props.onNavigate;
   const embedded = props.embedded === true;
 
-  const { isDark } = useTheme();
-  const colors = getSessionSchedulingColors(isDark);
+  const colorScheme = useColorScheme();
+  const colors = colorScheme === 'dark' ? darkColors : lightColors;
   const scrollBottomPad = useModalScrollBottomPad(SCROLL_BOTTOM_PAD);
 
   const createSession = useCreateTrainingSession();
@@ -110,76 +125,55 @@ export function ScheduleSessionScreen(props = {}) {
   const isEdit = Boolean(editing);
   const today = useMemo(() => new Date(), []);
 
-  const initDate = useMemo(
-    () => buildInitialDate(editing, initialDate, today),
-    [editing, initialDate, today],
-  );
-  const initTime = useMemo(() => parseTimeTo12(editing?.time), [editing?.time]);
+  // Parse initial date from editing session or route params
+  const initDate = useMemo(() => {
+    if (editing?.date) return new Date(`${editing.date}T12:00:00`);
+    if (initialDate) return new Date(`${String(initialDate).slice(0, 10)}T12:00:00`);
+    return today;
+  }, [editing, initialDate, today]);
 
-  const [mounted, setMounted] = useState(false);
-  const [month, setMonth] = useState(initDate.getMonth());
-  const [day, setDay] = useState(initDate.getDate());
-  const [year, setYear] = useState(initDate.getFullYear());
-  const [hour, setHour] = useState(initTime.hour);
-  const [minute, setMinute] = useState(initTime.minute);
-  const [period, setPeriod] = useState(initTime.period);
-  const [duration, setDuration] = useState(editing?.durationMin ?? editing?.duration ?? DEFAULT_DURATION_MIN);
+  // State: selected date (Date object), selected time (display string), duration, where, notes
+  const [selectedDate, setSelectedDate] = useState(initDate);
+  const [selectedTime, setSelectedTime] = useState(
+    editing?.time ? parseTime24ToDisplay(editing.time) : '9:00 AM'
+  );
+  const [duration, setDuration] = useState(String(editing?.durationMin ?? editing?.duration ?? DEFAULT_DURATION_MIN));
+  const [whereOption, setWhereOption] = useState(
+    editing?.zoomLink ? 'video' : 'in-person'
+  );
   const [notes, setNotes] = useState(editing?.notes ?? '');
-  const [videoLink, setVideoLink] = useState(editing?.zoomLink ?? '');
   const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  // Generate week chip data
+  const weekDates = useMemo(() => generateWeekDates(today), [today]);
+  const weekChips = useMemo(() => {
+    return weekDates.map((date) => ({
+      id: format(date, 'yyyy-MM-dd'),
+      label: (
+        <View style={styles.dateChipContent}>
+          <Text style={styles.dateChipDay}>{WEEKDAY_LABELS[date.getDay()]}</Text>
+          <Text style={styles.dateChipDate}>{format(date, 'd')}</Text>
+        </View>
+      ),
+    }));
+  }, [weekDates]);
 
+  const selectedDateKey = format(selectedDate, 'yyyy-MM-dd');
+
+  // When editing session loads, sync state
   useEffect(() => {
     if (!editing) return;
-    const initial = buildInitialDate(editing, null, today);
-    setMonth(initial.getMonth());
-    setDay(initial.getDate());
-    setYear(initial.getFullYear());
-    const parsedTime = parseTimeTo12(editing.time);
-    setHour(parsedTime.hour);
-    setMinute(parsedTime.minute);
-    setPeriod(parsedTime.period);
-    setDuration(editing.durationMin ?? editing.duration ?? DEFAULT_DURATION_MIN);
+    if (editing.date) {
+      const editDate = new Date(`${editing.date}T12:00:00`);
+      setSelectedDate(editDate);
+    }
+    if (editing.time) {
+      setSelectedTime(parseTime24ToDisplay(editing.time));
+    }
+    setDuration(String(editing.durationMin ?? editing.duration ?? DEFAULT_DURATION_MIN));
+    setWhereOption(editing.zoomLink ? 'video' : 'in-person');
     setNotes(editing.notes ?? '');
-    setVideoLink(editing.zoomLink ?? '');
-  }, [editing?.id, today]);
-
-  const years = useMemo(() => {
-    const start = today.getFullYear() - YEAR_RANGE_BACK;
-    const end = today.getFullYear() + YEAR_RANGE_FORWARD;
-    return Array.from({ length: end - start + 1 }, (_, i) => start + i);
-  }, [today]);
-
-  const daysInMonth = useMemo(() => getDaysInMonth(new Date(year, month, 1)), [year, month]);
-
-  useEffect(() => {
-    if (day > daysInMonth) setDay(daysInMonth);
-  }, [day, daysInMonth]);
-
-  const monthItems = useMemo(() => MONTHS.map((m, i) => ({ value: i, label: m })), []);
-  const dayItems = useMemo(
-    () => Array.from({ length: daysInMonth }, (_, i) => ({ value: i + 1, label: String(i + 1) })),
-    [daysInMonth],
-  );
-  const yearItems = useMemo(() => years.map((y) => ({ value: y, label: String(y) })), [years]);
-  const hourItems = useMemo(
-    () => Array.from({ length: HOURS_ON_12H_CLOCK }, (_, i) => ({ value: i + 1, label: String(i + 1) })),
-    [],
-  );
-  const minuteItems = useMemo(
-    () => Array.from({ length: 12 }, (_, i) => ({ value: i * 5, label: String(i * 5).padStart(2, '0') })),
-    [],
-  );
-  const periodItems = useMemo(
-    () => [
-      { value: 'AM', label: 'AM' },
-      { value: 'PM', label: 'PM' },
-    ],
-    [],
-  );
+  }, [editing?.id]);
 
   const goBack = () => {
     if (navigation?.canGoBack?.()) {
@@ -195,10 +189,13 @@ export function ScheduleSessionScreen(props = {}) {
       return;
     }
 
-    const { h24, minute: mm } = build24HourTime(hour, minute, period);
-    const merged = setDateParts(new Date(year, month, day), {
-      hours: h24,
-      minutes: mm,
+    // Build final date-time
+    const time24 = parseDisplayTimeTo24(selectedTime);
+    const dateStr = format(selectedDate, 'yyyy-MM-dd');
+    const [hStr, mStr] = time24.split(':');
+    const merged = setDateParts(selectedDate, {
+      hours: parseInt(hStr, 10),
+      minutes: parseInt(mStr, 10),
       seconds: 0,
       milliseconds: 0,
     });
@@ -206,13 +203,13 @@ export function ScheduleSessionScreen(props = {}) {
     const payload = {
       clientId,
       clientName: clientName || undefined,
-      date: format(merged, 'yyyy-MM-dd'),
-      time: format(merged, 'HH:mm'),
+      date: dateStr,
+      time: time24,
       startAtMs: merged.getTime(),
-      durationMin: duration,
+      durationMin: parseInt(duration, 10),
       status: isEdit ? editing?.status || 'pending' : 'pending',
       notes: notes.trim() || undefined,
-      zoomLink: videoLink.trim() || undefined,
+      zoomLink: whereOption === 'video' ? (editing?.zoomLink || 'https://zoom.us/j/placeholder') : undefined,
     };
 
     setSubmitting(true);
@@ -247,247 +244,271 @@ export function ScheduleSessionScreen(props = {}) {
     ]);
   };
 
+  // Build live summary for CTA
+  const durationLabel = DURATIONS.find((d) => d.id === duration)?.label || '60m';
+  const dayOfWeek = format(selectedDate, 'EEE'); // Mon, Tue, etc.
+  const monthDay = format(selectedDate, 'MMM d'); // Nov 9
+  const ctaSummary = `Book ${dayOfWeek}, ${monthDay} · ${selectedTime} · ${durationLabel}`;
+
   const body = (
-    <>
+    <View style={styles.formContainer}>
+      {/* Header with back button */}
       <View style={styles.headerRow}>
         <TouchableOpacity onPress={goBack} style={styles.backBtn} accessibilityLabel="Back">
-          <ArrowLeft color={colors.text} size={22} />
+          <ArrowLeft color={colors.nbInk} size={22} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.text }]}>Schedule Session</Text>
+        <Text style={[styles.headerTitle, { color: colors.nbInk }]}>New session</Text>
       </View>
 
-      <View style={[styles.formCard, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
-        <LabeledRow label="Client" mutedColor={colors.label} borderColor={colors.divider}>
-          <Text style={[styles.readOnlyField, { color: '#FFFFFF' }]}>{clientName}</Text>
-          <View style={styles.clientNameUnderline} />
-        </LabeledRow>
-
-        <LabeledRow label="Date" mutedColor={colors.label} borderColor={colors.divider}>
-          {mounted ? (
-            <View style={[styles.wheelRow, { backgroundColor: colors.wheelShell }]}>
-              <SessionTimePicker
-                data={monthItems}
-                value={month}
-                onValueChanged={({ item }) => setMonth(item.value)}
-                inactiveTextColor={colors.wheelInactive}
-              />
-              <SessionTimePicker
-                data={dayItems}
-                value={Math.min(day, daysInMonth)}
-                onValueChanged={({ item }) => setDay(item.value)}
-                inactiveTextColor={colors.wheelInactive}
-              />
-              <SessionTimePicker
-                data={yearItems}
-                value={year}
-                onValueChanged={({ item }) => setYear(item.value)}
-                inactiveTextColor={colors.wheelInactive}
-              />
-            </View>
-          ) : (
-            <View style={[styles.wheelPlaceholder, { backgroundColor: colors.wheelShell }]} />
-          )}
-        </LabeledRow>
-
-        <LabeledRow label="Time" mutedColor={colors.label} borderColor={colors.divider}>
-          {mounted ? (
-            <View style={[styles.wheelRow, styles.timeRow, { backgroundColor: colors.wheelShell }]}>
-              <SessionTimePicker
-                data={hourItems}
-                value={hour}
-                onValueChanged={({ item }) => setHour(item.value)}
-                inactiveTextColor={colors.wheelInactive}
-              />
-              <Text style={[styles.colon, { color: colors.muted }]}>:</Text>
-              <SessionTimePicker
-                data={minuteItems}
-                value={minute}
-                onValueChanged={({ item }) => setMinute(item.value)}
-                inactiveTextColor={colors.wheelInactive}
-              />
-              <SessionTimePicker
-                data={periodItems}
-                value={period}
-                onValueChanged={({ item }) => setPeriod(item.value)}
-                inactiveTextColor={colors.wheelInactive}
-              />
-            </View>
-          ) : (
-            <View style={[styles.wheelPlaceholder, { backgroundColor: colors.wheelShell }]} />
-          )}
-        </LabeledRow>
-
-        <LabeledRow label="Duration" mutedColor={colors.label} borderColor={colors.divider}>
-          <View style={styles.durationRow}>
-            {DURATIONS.map((d) => {
-              const active = duration === d.min;
-              if (active) {
-                return (
-                  <LinearGradient
-                    key={d.min}
-                    colors={ACCENT_GRADIENT}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                    style={styles.durationPillActive}
-                  >
-                    <TouchableOpacity onPress={() => setDuration(d.min)} style={styles.durationPillHit}>
-                      <Text style={styles.durationPillTextActive}>{d.label}</Text>
-                    </TouchableOpacity>
-                  </LinearGradient>
-                );
-              }
-              return (
-                <TouchableOpacity
-                  key={d.min}
-                  onPress={() => setDuration(d.min)}
-                  style={[
-                    styles.durationPill,
-                    { backgroundColor: colors.wheelShell, borderColor: colors.divider },
-                  ]}
-                >
-                  <Text style={[styles.durationPillText, { color: colors.muted }]}>{d.label}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </LabeledRow>
-
-        <LabeledRow label="Notes" mutedColor={colors.label} borderColor={colors.divider}>
-          <TextInput
-            style={[styles.input, { borderColor: colors.divider, color: colors.text, backgroundColor: colors.inputBg }]}
-            placeholder="Session focus, equipment, prep notes..."
-            placeholderTextColor={colors.muted}
-            multiline
-            numberOfLines={3}
-            value={notes}
-            onChangeText={setNotes}
-            textAlignVertical="top"
-          />
-        </LabeledRow>
-
-        <LabeledRow label="Video link" mutedColor={colors.label} borderColor={colors.divider}>
-          <TextInput
-            style={[styles.input, { borderColor: colors.divider, color: colors.text, backgroundColor: colors.inputBg }]}
-            placeholder="https://zoom.us/j/..."
-            placeholderTextColor={colors.muted}
-            keyboardType="url"
-            autoCapitalize="none"
-            value={videoLink}
-            onChangeText={setVideoLink}
-          />
-        </LabeledRow>
+      {/* Client card */}
+      <View style={[styles.clientCard, { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder }]}>
+        <Text style={[styles.clientName, { color: colors.nbInk }]}>{clientName}</Text>
       </View>
 
-      <TouchableOpacity onPress={handleSubmit} disabled={submitting} activeOpacity={0.9} style={styles.submitWrap}>
-        <LinearGradient
-          colors={ACCENT_GRADIENT}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={styles.submitGradient}
+      {/* Date strip (horizontal scroll week chips) */}
+      <View style={styles.section}>
+        <Text style={[styles.label, { color: colors.nbMuted }]}>DATE · NOVEMBER</Text>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.weekStrip}
         >
-          <Check color="#FFFFFF" size={18} />
-          <Text style={styles.submitText}>{isEdit ? 'Update Session' : 'Create Session'}</Text>
-          <ArrowRight color="#FFFFFF" size={18} />
-        </LinearGradient>
-      </TouchableOpacity>
+          {weekChips.map((chip) => (
+            <NbChip
+              key={chip.id}
+              selected={chip.id === selectedDateKey}
+              onPress={() => {
+                const foundDate = weekDates.find((d) => format(d, 'yyyy-MM-dd') === chip.id);
+                if (foundDate) setSelectedDate(foundDate);
+              }}
+              style={styles.dateChip}
+            >
+              {chip.label}
+            </NbChip>
+          ))}
+        </ScrollView>
+      </View>
 
-      {isEdit ? (
+      {/* Time slots (3-column grid) */}
+      <View style={styles.section}>
+        <Text style={[styles.label, { color: colors.nbMuted }]}>START TIME</Text>
+        <View style={styles.timeGrid}>
+          {TIME_SLOTS.map((time) => (
+            <NbChip
+              key={time}
+              selected={selectedTime === time}
+              onPress={() => setSelectedTime(time)}
+              style={styles.timeChip}
+            >
+              {time}
+            </NbChip>
+          ))}
+        </View>
+      </View>
+
+      {/* Duration segmented control */}
+      <View style={styles.section}>
+        <Text style={[styles.label, { color: colors.nbMuted }]}>LENGTH</Text>
+        <NbSegmented
+          segments={DURATIONS}
+          selected={duration}
+          onSelect={setDuration}
+        />
+      </View>
+
+      {/* Where segmented control */}
+      <View style={styles.section}>
+        <Text style={[styles.label, { color: colors.nbMuted }]}>WHERE</Text>
+        <NbSegmented
+          segments={WHERE_OPTIONS}
+          selected={whereOption}
+          onSelect={setWhereOption}
+        />
+      </View>
+
+      {/* Notes field */}
+      <View style={styles.section}>
+        <Text style={[styles.label, { color: colors.nbMuted }]}>NOTES FOR {clientName.toUpperCase()}</Text>
+        <TextInput
+          style={[
+            styles.notesInput,
+            {
+              borderColor: colors.nbBorder,
+              color: colors.nbInk,
+              backgroundColor: colors.nbSurface,
+            },
+          ]}
+          placeholder="Focus, equipment, what to bring"
+          placeholderTextColor={colors.nbMuted}
+          multiline
+          numberOfLines={3}
+          value={notes}
+          onChangeText={setNotes}
+          textAlignVertical="top"
+        />
+      </View>
+
+      {/* Delete button for edit mode */}
+      {isEdit && (
         <TouchableOpacity onPress={handleDelete} style={styles.deleteBtn}>
           <Text style={styles.deleteText}>Delete Session</Text>
         </TouchableOpacity>
-      ) : null}
-    </>
+      )}
+    </View>
   );
 
   if (embedded) {
-    return <View style={[styles.embeddedRoot, { paddingBottom: scrollBottomPad }]}>{body}</View>;
+    return (
+      <View style={[styles.embeddedRoot, { backgroundColor: colors.nbBackground }]}>
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: scrollBottomPad }]}
+          {...FORM_SCROLL_PROPS}
+        >
+          {body}
+        </ScrollView>
+        {/* Sticky CTA */}
+        <View style={[styles.stickyCTA, { borderTopColor: colors.nbBorder, backgroundColor: colors.nbSurface }]}>
+          <NbButton
+            variant="brand"
+            onPress={handleSubmit}
+            disabled={submitting}
+          >
+            {ctaSummary}
+          </NbButton>
+        </View>
+      </View>
+    );
   }
 
   return (
-    <ScrollView
-      style={[styles.root, { backgroundColor: colors.bg }]}
-      contentContainerStyle={[styles.scroll, { paddingBottom: scrollBottomPad }]}
-      {...FORM_SCROLL_PROPS}
-    >
-      {body}
-    </ScrollView>
+    <View style={[styles.root, { backgroundColor: colors.nbBackground }]}>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: scrollBottomPad }]}
+        {...FORM_SCROLL_PROPS}
+      >
+        {body}
+      </ScrollView>
+      {/* Sticky CTA */}
+      <View style={[styles.stickyCTA, { borderTopColor: colors.nbBorder, backgroundColor: colors.nbSurface }]}>
+        <NbButton
+          variant="brand"
+          onPress={handleSubmit}
+          disabled={submitting}
+        >
+          {ctaSummary}
+        </NbButton>
+      </View>
+    </View>
   );
 }
 
 export default ScheduleSessionScreen;
 
 const styles = StyleSheet.create({
-  root: { flex: 1 },
-  embeddedRoot: {
-    gap: 16,
+  root: {
+    flex: 1,
   },
-  scroll: {
-    padding: 20,
-    gap: 16,
+  embeddedRoot: {
+    flex: 1,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+  },
+  formContainer: {
+    gap: spacing.lg,
   },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
   },
-  backBtn: { padding: 4, marginLeft: -4 },
-  headerTitle: { fontSize: 20, fontWeight: '700', letterSpacing: -0.3 },
-  formCard: {
-    borderWidth: 2,
-    borderRadius: 14,
-    padding: 16,
-    gap: 8,
+  backBtn: {
+    padding: 4,
+    marginLeft: -4,
   },
-  readOnlyField: {
-    fontSize: 18,
-    fontWeight: '600',
+  headerTitle: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 20,
+    letterSpacing: -0.3,
+  },
+  clientCard: {
+    borderWidth: nb.borderWidth,
+    borderRadius: borderRadius.nbCard,
+    padding: spacing.md,
+    alignItems: 'center',
+  },
+  clientName: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 16,
+  },
+  section: {
+    gap: spacing.sm,
+  },
+  label: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 12,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+  },
+  weekStrip: {
+    flexDirection: 'row',
+    gap: spacing.sm,
     paddingVertical: 4,
   },
-  clientNameUnderline: {
-    height: 2,
-    backgroundColor: '#FF6B9D',
-    marginTop: 8,
-    width: '30%',
+  dateChip: {
+    minWidth: 52,
   },
-  wheelRow: {
-    flexDirection: 'row',
-    gap: 8,
-    padding: 12,
-    borderRadius: 10,
+  dateChipContent: {
     alignItems: 'center',
+    gap: 2,
   },
-  timeRow: { justifyContent: 'center' },
-  colon: { fontSize: 24, fontWeight: '300', marginHorizontal: -2 },
-  wheelPlaceholder: { height: 200, borderRadius: 10 },
-  durationRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  durationPill: {
-    borderRadius: 10,
-    borderWidth: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+  dateChipDay: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 10,
+    textTransform: 'uppercase',
   },
-  durationPillActive: { borderRadius: 10, overflow: 'hidden' },
-  durationPillHit: { paddingHorizontal: 14, paddingVertical: 10 },
-  durationPillText: { fontSize: 14, fontWeight: '600' },
-  durationPillTextActive: { fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
-  input: {
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+  dateChipDate: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 15,
+  },
+  timeGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  timeChip: {
+    width: '31%', // 3 columns with gaps
+  },
+  notesInput: {
+    borderWidth: nb.borderWidth,
+    borderRadius: borderRadius.nbChip,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 12,
+    fontFamily: 'Inter_500Medium',
     fontSize: 14,
-    minHeight: 44,
+    minHeight: 80,
   },
-  submitWrap: { borderRadius: 12, overflow: 'hidden' },
-  submitGradient: {
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    flexDirection: 'row',
-    justifyContent: 'center',
+  deleteBtn: {
     alignItems: 'center',
-    gap: 8,
+    paddingVertical: spacing.sm,
+    marginTop: spacing.sm,
   },
-  submitText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
-  deleteBtn: { alignItems: 'center', paddingVertical: 8 },
-  deleteText: { color: '#EF4444', fontSize: 15, fontWeight: '600' },
+  deleteText: {
+    color: '#EF4444',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  stickyCTA: {
+    borderTopWidth: nb.borderWidth,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    paddingBottom: spacing.lg,
+  },
 });

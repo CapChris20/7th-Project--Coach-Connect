@@ -1,10 +1,13 @@
 // One protein / carb / fat bar on the daily food log.
 // Flow: turn current vs target into a percent → animate the fill if a shared Animated.Value was passed → paint the bar.
 // Used by: the client's daily food log screen.
+// Redesigned with neobrutalist gradient bars with thick borders and hard shadows.
 
 import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, Animated } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
+import { lightColors, darkColors, nb, gradients } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
@@ -45,35 +48,40 @@ function barColorForFill(current, target, color) {
  * @param {boolean} isDark
  */
 function createStyles(spacing, colors, isDark) {
+  const themeColors = isDark ? darkColors : lightColors;
   return StyleSheet.create({
     container: {
-      marginBottom: 16,
+      marginBottom: 12,
     },
     labelRow: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      marginBottom: 8,
+      marginBottom: 6,
     },
     label: {
-      fontSize: 14,
-      fontWeight: '800',
-      color: colors.text,
+      fontFamily: 'SpaceGrotesk_700Bold',
+      fontSize: 13,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+      color: themeColors.nbInk,
     },
     value: {
+      fontFamily: 'Inter_600SemiBold',
       fontSize: 13,
-      fontWeight: '700',
-      color: colors.textSecondary,
+      color: themeColors.nbMuted,
+      fontVariant: ['tabular-nums'],
     },
     barContainer: {
-      height: 8,
-      backgroundColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(26,26,26,0.08)',
-      borderRadius: 4,
+      height: 14,
+      backgroundColor: themeColors.nbSurfaceChip,
+      borderRadius: 8,
+      borderWidth: nb.borderWidth,
+      borderColor: themeColors.nbBorder,
       overflow: 'hidden',
     },
     bar: {
       height: '100%',
-      borderRadius: 4,
     },
   });
 }
@@ -116,14 +124,15 @@ export default function MacroBar({
       })
     : `${percentage}%`;
 
-  const barColor = barColorForFill(current, target, color);
+  // vocab: gradient bar uses brand gradient for macro visualization
+  const gradientColors = gradients.brand.colors;
 
   return (
     <View style={styles.container}>
       <View style={styles.labelRow}>
         <Text style={styles.label} selectable={true}>{label}</Text>
         <Text style={styles.value} selectable={true}>
-          {current.toFixed(1)}/{target.toFixed(1)}g
+          {Math.round(current)}/{Math.round(target)}g
         </Text>
       </View>
       <View style={styles.barContainer}>
@@ -132,10 +141,16 @@ export default function MacroBar({
             styles.bar,
             {
               width: animatedWidth,
-              backgroundColor: barColor,
             },
           ]}
-        />
+        >
+          <LinearGradient
+            colors={gradientColors}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={StyleSheet.absoluteFill}
+          />
+        </Animated.View>
       </View>
     </View>
   );

@@ -258,6 +258,11 @@ export function ClientSettingsScreen() {
         trainerData={shell.trainerData}
         embedShellBottomNav
         onOpenCoachingPayment={shell.openCoachingPayment}
+        onOpenRemoveTrainer={
+          shell.trainerData
+            ? () => shell.setShowRemoveTrainerPopup?.(true)
+            : undefined
+        }
       />
       {shell.addNotesFilesModalEl}
     </>,

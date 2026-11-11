@@ -1698,6 +1698,8 @@ function TrainingHomeScreenLayout({
   trainerLocation,
   onPressMessage,
   handleViewProfile,
+  // Opens RemoveTrainerPopup so the client can end the link from this card.
+  onOpenRemoveTrainer,
   showCoachingPaymentOnCard,
   handleOpenPayment,
   coachingPaymentButtonLabel,
@@ -1953,7 +1955,7 @@ function TrainingHomeScreenLayout({
                         { color: isDark ? 'rgba(255,255,255,0.5)' : 'rgba(15,23,42,0.55)' },
                       ]}
                     >
-                      Message, view profile, and manage coaching from here.
+                      Message, view profile, manage coaching, or remove your trainer from here.
                     </Text>
                   </View>
                 </View>
@@ -1977,6 +1979,7 @@ function TrainingHomeScreenLayout({
                     ctaLabel="Message"
                     secondaryCtaLabel="View Profile"
                     onPressPayment={showCoachingPaymentOnCard ? handleOpenPayment : undefined}
+                    onPressRemove={typeof onOpenRemoveTrainer === 'function' ? onOpenRemoveTrainer : undefined}
                     paymentButtonLabel={coachingPaymentButtonLabel}
                     paymentButtonShortLabel={coachingPaymentShortLabel}
                     paymentRateLabel={coachingRateLabel ? `${coachingRateLabel}/mo` : trainerPricingLine || null}
@@ -2683,6 +2686,7 @@ export const TrainingHomeScreen = ({
     trainerLocation,
     onPressMessage,
     handleViewProfile,
+    onOpenRemoveTrainer,
     showCoachingPaymentOnCard,
     handleOpenPayment,
     coachingPaymentButtonLabel,

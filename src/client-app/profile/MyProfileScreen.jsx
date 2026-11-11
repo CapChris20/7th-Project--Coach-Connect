@@ -48,6 +48,9 @@ import {
 import { useTheme } from '../../look-and-feel/lightDarkMode';
 import { onUserSignOut } from '../../logout-cleanup/clearDataOnLogout';
 import { syncTrainerMarketplaceDoc } from '../../for-both/trainer-listing/keepTrainerListingUpdated';
+import NbCard from '../../look-and-feel/NbCard';
+import NbButton from '../../look-and-feel/NbButton';
+import NbListRow from '../../look-and-feel/NbListRow';
 import {
   Camera,
   Dumbbell,
@@ -335,17 +338,9 @@ function EditPencilBtn({ isDark }) {
 /** Single grouped card for profile rows — matches app glass panels (no per-field rainbow borders). */
 function ProfileSettingsCard({ children, theme, isDark }) {
   return (
-    <View
-      style={[
-        styles.settingsCard,
-        {
-          backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#FFFFFF',
-          borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(10,10,15,0.08)',
-        },
-      ]}
-    >
+    <NbCard style={{ marginBottom: 28 }}>
       {children}
-    </View>
+    </NbCard>
   );
 }
 

@@ -1,6 +1,9 @@
 // One horizontal exercise tile: YouTube thumb, title, instructor initials, difficulty or duration.
 // Flow: press-in scales the card up → press-out snaps back; tap opens the video; bookmark is optional.
 // Used by the exercise-video list. Dark vs light inner colors follow colors.background.
+//
+// vocab: neobrutalist = thick outlines (2.5px), hard shadows (no blur), offset 4/4
+// Manipulate here: card border radius (16), press scale (1.02), animation duration (220ms)
 
 import React, { useMemo, useRef, useState } from 'react';
 import {
@@ -13,6 +16,7 @@ import {
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import NbCard from '../../look-and-feel/NbCard';
 
 // ===== NAMED CONSTANTS =====
 
@@ -142,74 +146,72 @@ export default function ExerciseCard({
       style={[styles.press, style]}
     >
       <Animated.View style={{ transform: [{ translateY }, { scale }] }}>
-        <LinearGradient colors={rim} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.rim}>
-          <View style={[styles.card, { backgroundColor: innerBg }]}>
-            <View style={[styles.imageWrap, { height: imageHeight }]}>
-              <Image
-                source={{ uri: youtubeThumbUrl(exercise.videoId) }}
-                style={styles.image}
-                contentFit="cover"
-                transition={PRESS_ANIMATION_MS}
-              />
-              <LinearGradient
-                colors={['rgba(0,0,0,0.05)', 'rgba(0,0,0,0.45)']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 0, y: 1 }}
-                style={StyleSheet.absoluteFill}
-              />
-              {onToggleSave ? (
-                <Pressable
-                  onPress={(event) => {
-                    event?.stopPropagation?.();
-                    onToggleSave();
-                  }}
-                  hitSlop={BOOKMARK_HIT_SLOP}
-                  style={styles.saveBtn}
-                >
-                  <Ionicons
-                    name={saved ? 'bookmark' : 'bookmark-outline'}
-                    size={16}
-                    color={saved ? SAVED_BOOKMARK_COLOR : UNSAVED_BOOKMARK_COLOR}
-                  />
-                </Pressable>
-              ) : null}
-            </View>
-
-            <View style={styles.body}>
-              <Text style={[styles.title, { color: colors?.text || '#FFFFFF' }]} numberOfLines={2}>
-                {exercise?.name || FALLBACK_LABEL}
-              </Text>
-
-              <View style={styles.instructorRow}>
-                <LinearGradient colors={rim} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.avatarGrad}>
-                  <View style={[styles.avatarInner, { backgroundColor: isDark ? '#0A0A0F' : '#FFFFFF' }]}>
-                    <Text style={[styles.avatarText, { color: isDark ? '#FFFFFF' : '#0A0A0F' }]}>
-                      {instructorInitials}
-                    </Text>
-                  </View>
-                </LinearGradient>
-                <Text style={[styles.instructor, { color: channelColor }]} numberOfLines={1}>
-                  {exercise?.channel || FALLBACK_LABEL}
-                </Text>
-              </View>
-
-              {difficulty ? (
-                <LinearGradient
-                  colors={[`${rim[0]}22`, `${rim[1] ?? rim[0]}14`]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={styles.diffChip}
-                >
-                  <Text style={[styles.diffText, { color: rim[0] }]}>{difficulty}</Text>
-                </LinearGradient>
-              ) : metaText ? (
-                <Text style={[styles.meta, { color: metaColor }]} numberOfLines={1}>
-                  {metaText}
-                </Text>
-              ) : null}
-            </View>
+        <NbCard style={{ padding: 0, overflow: 'hidden' }}>
+          <View style={[styles.imageWrap, { height: imageHeight }]}>
+            <Image
+              source={{ uri: youtubeThumbUrl(exercise.videoId) }}
+              style={styles.image}
+              contentFit="cover"
+              transition={PRESS_ANIMATION_MS}
+            />
+            <LinearGradient
+              colors={['rgba(0,0,0,0.05)', 'rgba(0,0,0,0.45)']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 0, y: 1 }}
+              style={StyleSheet.absoluteFill}
+            />
+            {onToggleSave ? (
+              <Pressable
+                onPress={(event) => {
+                  event?.stopPropagation?.();
+                  onToggleSave();
+                }}
+                hitSlop={BOOKMARK_HIT_SLOP}
+                style={styles.saveBtn}
+              >
+                <Ionicons
+                  name={saved ? 'bookmark' : 'bookmark-outline'}
+                  size={16}
+                  color={saved ? SAVED_BOOKMARK_COLOR : UNSAVED_BOOKMARK_COLOR}
+                />
+              </Pressable>
+            ) : null}
           </View>
-        </LinearGradient>
+
+          <View style={styles.body}>
+            <Text style={[styles.title, { color: colors?.text || '#FFFFFF' }]} numberOfLines={2}>
+              {exercise?.name || FALLBACK_LABEL}
+            </Text>
+
+            <View style={styles.instructorRow}>
+              <LinearGradient colors={rim} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.avatarGrad}>
+                <View style={[styles.avatarInner, { backgroundColor: isDark ? '#0A0A0F' : '#FFFFFF' }]}>
+                  <Text style={[styles.avatarText, { color: isDark ? '#FFFFFF' : '#0A0A0F' }]}>
+                    {instructorInitials}
+                  </Text>
+                </View>
+              </LinearGradient>
+              <Text style={[styles.instructor, { color: channelColor }]} numberOfLines={1}>
+                {exercise?.channel || FALLBACK_LABEL}
+              </Text>
+            </View>
+
+            {difficulty ? (
+              <LinearGradient
+                colors={[`${rim[0]}22`, `${rim[1] ?? rim[0]}14`]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.diffChip}
+              >
+                <Text style={[styles.diffText, { color: rim[0] }]}>{difficulty}</Text>
+              </LinearGradient>
+            ) : metaText ? (
+              <Text style={[styles.meta, { color: metaColor }]} numberOfLines={1}>
+                {metaText}
+              </Text>
+            ) : null}
+          </View>
+        </NbCard>
       </Animated.View>
     </Pressable>
   );
@@ -217,14 +219,6 @@ export default function ExerciseCard({
 
 const styles = StyleSheet.create({
   press: { width: '100%' },
-  rim: {
-    borderRadius: 16,
-    padding: 1.5,
-  },
-  card: {
-    borderRadius: 14.5,
-    overflow: 'hidden',
-  },
   imageWrap: {
     width: '100%',
     overflow: 'hidden',

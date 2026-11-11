@@ -1,6 +1,7 @@
 // Nutrition Today: calorie ring, macros, meal cards, and weekly sparkline.
 // Flow: pick a day → read consumed/macros/meals from props → scan/search/quick-add per meal.
 // Rendered by DailyLogContent after goals exist; does not talk to Firestore itself.
+// Redesigned with neobrutalist components: NbRing, gradient bars, NbButton, NbListRow, NbCard.
 
 import React, { useMemo } from 'react';
 import { View, Text, TouchableOpacity, Pressable, ScrollView, StyleSheet, Platform } from 'react-native';
@@ -10,6 +11,11 @@ import { Ionicons } from '@expo/vector-icons';
 import Svg, { Circle, Defs, LinearGradient as SvgGradient, Stop, Polyline } from 'react-native-svg';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
 import { useShellBottomNavInset, FORM_SCROLL_PROPS } from '../../navigation/bottomMenuSpacing';
+import NbRing from '../../look-and-feel/NbRing';
+import NbCard from '../../look-and-feel/NbCard';
+import NbButton from '../../look-and-feel/NbButton';
+import NbListRow from '../../look-and-feel/NbListRow';
+import { lightColors, darkColors, nb, gradients } from '../../look-and-feel/colorPalette';
 
 import DayPicker from './DayPicker';
 import LoggedFoodRow from '../food-cards/LoggedFoodRow';
@@ -148,98 +154,47 @@ const getMealEmptyVisual = (mealName) => {
 };
 
 const CalorieRing = ({ consumed, total, isDark = true, isEmpty = false }) => {
-  const size = 264;
-  const cx = size / 2;
-  const cy = size / 2;
-  const strokeInner = 16;
-  const rInner = (size - strokeInner) / 2 - 12;
-  const circumferenceInner = Math.PI * 2 * rInner;
+  // vocab: NbRing renders the neobrutalist calorie ring with gradient stroke
   const progress = total > 0 ? Math.min(consumed / total, 1) : 0;
-  const offset = circumferenceInner - progress * circumferenceInner;
-  const trackOuter = isDark ? NUT_NEUTRAL_TRACK.dark : NUT_NEUTRAL_TRACK.light;
-  const innerDiscR = Math.max(rInner - strokeInner / 2 - 14, size * 0.26);
-  const innerDiscFill = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.035)';
-  const innerDiscStroke = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)';
-
+  const colors = isDark ? darkColors : lightColors;
+  
   return (
-    <Svg width={size} height={size} style={{ transform: [{ rotate: '-90deg' }] }}>
-      <Defs>
-        <SvgGradient id="calorieGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <Stop offset="0%" stopColor={NUT_CALORIES_GRADIENT[0]} stopOpacity={1} />
-          <Stop offset="100%" stopColor={NUT_CALORIES_GRADIENT[1]} stopOpacity={1} />
-        </SvgGradient>
-      </Defs>
-      <Circle cx={cx} cy={cy} r={innerDiscR} fill={innerDiscFill} stroke={innerDiscStroke} strokeWidth={1} />
-      <Circle cx={cx} cy={cy} r={rInner} stroke={trackOuter} strokeWidth={strokeInner} fill="none" />
-      {!isEmpty ? (
-        <Circle
-          cx={cx}
-          cy={cy}
-          r={rInner}
-          stroke="url(#calorieGrad)"
-          strokeWidth={strokeInner}
-          fill="none"
-          strokeDasharray={circumferenceInner}
-          strokeDashoffset={offset}
-          strokeLinecap="round"
-        />
-      ) : null}
-    </Svg>
+    <NbRing
+      progress={isEmpty ? 0 : progress}
+      size={168}
+      strokeWidth={14}
+      value={Math.round(isEmpty ? 0 : consumed).toLocaleString()}
+      label="kcal"
+      style={{ marginVertical: 20 }}
+    />
   );
 };
 
-const ArcProgress = ({
-  size,
-  stroke,
-  progress,
-  gradientColors = NUT_CALORIES_GRADIENT,
-  trackColor = 'rgba(255,255,255,0.08)',
-  isDark = true,
-  isEmpty = false,
-}) => {
-  const cx = size / 2;
-  const cy = size / 2;
-  const ringRadius = (size - stroke) / 2;
-  const circumference = Math.PI * 2 * ringRadius;
-  const offset = circumference - (Math.min(Math.max(progress, 0), 100) / 100) * circumference;
-  const innerDiscR = Math.max(ringRadius - stroke / 2 - 8, size * 0.2);
-  const innerDiscFill = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.04)';
-  const innerDiscStroke = isDark ? 'rgba(255,255,255,0.09)' : 'rgba(0,0,0,0.06)';
-  const gradId = `macroGrad-${size}-${gradientColors.join('-')}`;
-
-  if (isEmpty) {
-    return (
-      <Svg width={size} height={size} style={{ transform: [{ rotate: '-90deg' }] }}>
-        <Circle cx={cx} cy={cy} r={innerDiscR} fill={innerDiscFill} stroke={innerDiscStroke} strokeWidth={1} />
-        <Circle cx={cx} cy={cy} r={ringRadius} stroke={trackColor} strokeWidth={stroke} fill="none" />
-      </Svg>
-    );
-  }
-
+// vocab: Macro gradient bar = horizontal progress bar with gradient fill and thick border
+const MacroGradientBar = ({ label, current, target, gradientColors, isDark }) => {
+  const colors = isDark ? darkColors : lightColors;
+  const fillPercent = target > 0 ? Math.min((current / target) * 100, 100) : 0;
+  const trackColor = colors.nbSurfaceChip;
+  
   return (
-    <Svg width={size} height={size} style={{ transform: [{ rotate: '-90deg' }] }}>
-      <Defs>
-        <SvgGradient id={gradId} x1="0%" y1="0%" x2="100%" y2="100%">
-          <Stop offset="0%" stopColor={gradientColors[0]} stopOpacity={1} />
-          <Stop offset="100%" stopColor={gradientColors[1]} stopOpacity={1} />
-        </SvgGradient>
-      </Defs>
-      <Circle cx={cx} cy={cy} r={innerDiscR} fill={innerDiscFill} stroke={innerDiscStroke} strokeWidth={1} />
-      <Circle cx={cx} cy={cy} r={ringRadius} stroke={trackColor} strokeWidth={stroke} fill="none" />
-      {progress > 0 ? (
-        <Circle
-          cx={cx}
-          cy={cy}
-          r={ringRadius}
-          stroke={`url(#${gradId})`}
-          strokeWidth={stroke}
-          fill="none"
-          strokeDasharray={circumference}
-          strokeDashoffset={offset}
-          strokeLinecap="round"
+    <View style={{ marginBottom: 10 }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
+        <Text style={{ fontFamily: 'SpaceGrotesk_700Bold', fontSize: 13, color: colors.nbInk, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+          {label}
+        </Text>
+        <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 13, color: colors.nbMuted, fontVariant: ['tabular-nums'] }}>
+          {Math.round(current)} / {Math.round(target)}g
+        </Text>
+      </View>
+      <View style={{ height: 14, borderRadius: 8, backgroundColor: trackColor, overflow: 'hidden', borderWidth: nb.borderWidth, borderColor: colors.nbBorder }}>
+        <LinearGradient
+          colors={gradientColors}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={{ width: `${fillPercent}%`, height: '100%' }}
         />
-      ) : null}
-    </Svg>
+      </View>
+    </View>
   );
 };
 
@@ -306,61 +261,24 @@ const MealSection = ({ meal, goal, onScan, onLog, onQuickAdd, onRemoveLog, onEdi
   const mealCals = Number(meal?.cals) || 0;
   const innerShadow = cardShadowStyle(isDark);
 
+  // vocab: NbButton components for scan/search/quick-add actions with neobrutalist style
   const actionRow = () => (
     <View style={mealS.btnRow}>
-      <Pressable
-        onPress={() => onScan(meal.name)}
-        style={({ pressed }) => [mealS.actionBtnWrap, { opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] }]}
-      >
-        <LinearGradient colors={actionColors.scanGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={mealS.actionBtn}>
-          <Ionicons name="barcode-outline" size={15} color={actionColors.label} />
-          <Text
-            style={[mealS.actionBtnText, { color: actionColors.label }]}
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.85}
-          >
-            Scan
-          </Text>
-        </LinearGradient>
-      </Pressable>
-      <Pressable
-        onPress={() => onLog(meal.name)}
-        style={({ pressed }) => [mealS.actionBtnWrap, { opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] }]}
-      >
-        <LinearGradient colors={actionColors.searchGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={mealS.actionBtn}>
-          <Ionicons name="search-outline" size={15} color={actionColors.label} />
-          <Text
-            style={[mealS.actionBtnText, { color: actionColors.label }]}
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.85}
-          >
-            Search
-          </Text>
-        </LinearGradient>
-      </Pressable>
-      <Pressable
-        onPress={() => onQuickAdd?.(mealType)}
-        style={({ pressed }) => [mealS.actionBtnWrap, mealS.actionBtnWrapWide, { opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] }]}
-      >
-        <LinearGradient colors={actionColors.quickGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={mealS.actionBtn}>
-          <Ionicons name="flash-outline" size={15} color={actionColors.label} />
-          <Text
-            style={[mealS.actionBtnText, { color: actionColors.label }]}
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.8}
-          >
-            Quick Add
-          </Text>
-        </LinearGradient>
-      </Pressable>
+      <NbButton variant="brand" sm onPress={() => onScan(meal.name)} style={{ flex: 1 }}>
+        Scan
+      </NbButton>
+      <NbButton variant="ink" sm onPress={() => onLog(meal.name)} style={{ flex: 1 }}>
+        Search
+      </NbButton>
+      <NbButton variant="plain" sm onPress={() => onQuickAdd?.(mealType)} style={{ flex: 1.2 }}>
+        Quick Add
+      </NbButton>
     </View>
   );
 
+  // vocab: NbCard wraps meal content with neobrutalist thick border and hard shadow
   return (
-    <View style={[mealS.outer, { backgroundColor: colors.mealOuterBg }]}>
+    <NbCard style={{ padding: 16, marginHorizontal: 16, marginBottom: 14 }}>
       <View style={mealS.header}>
         <View style={mealS.titleBlock}>
           <Text style={[mealS.mealName, { color: mealTitleColor }]}>{meal?.name ?? 'Meal'}</Text>
@@ -381,123 +299,51 @@ const MealSection = ({ meal, goal, onScan, onLog, onQuickAdd, onRemoveLog, onEdi
         </View>
       )}
       {hasFood ? (
-        <View
-          style={[
-            mealS.inner,
-            mealS.innerWithFood,
-            { backgroundColor: colors.mealInnerBg, borderColor: colors.cardBorder },
-            innerShadow,
-          ]}
-        >
+        <View style={{ marginTop: 8 }}>
           <View style={mealS.foodList}>
             {meal.foods.map((food) => (
-              <LoggedFoodRow
+              <NbListRow
                 key={food.id || food.food_name}
-                log={food}
-                isDark={isDark}
-                amount={toDisplayAmount(food.serving_grams ?? 0, (food.metadata?.servingUnit || '').toLowerCase() === 'ml') || '—'}
-                onRemove={onRemoveLog}
-                onEdit={onEditLog}
+                title={food.food_name || 'Unknown'}
+                subtitle={`${toDisplayAmount(food.serving_grams ?? 0, (food.metadata?.servingUnit || '').toLowerCase() === 'ml') || '—'} • ${Math.round(food.calories || 0)} cal`}
+                right={
+                  <TouchableOpacity onPress={() => onRemoveLog?.(food)}>
+                    <Ionicons name="close-circle-outline" size={22} color={isDark ? darkColors.nbMuted : lightColors.nbMuted} />
+                  </TouchableOpacity>
+                }
+                onPress={() => onEditLog?.(food)}
+                style={{ marginBottom: 6 }}
               />
             ))}
           </View>
           {actionRow()}
         </View>
       ) : (
-        <View style={[mealS.inner, { backgroundColor: colors.mealInnerBg, borderColor: colors.cardBorder }, innerShadow]}>
-          <View style={emptyStyles.container}>
-            <View style={emptyStyles.lottieWrap}>
-              <LottieView source={emptyVisual.lottie} autoPlay loop style={emptyStyles.lottie} />
-            </View>
-            <Text style={[emptyStyles.title, { color: colors.text }]}>Fuel Your Progress</Text>
-            <Text style={emptyStyles.subtitle}>
-              Your {mealLabel.toLowerCase()} is a blank canvas. Start tracking to see your macros in action.
-            </Text>
-            <View style={emptyStyles.buttonRow}>
-              <Pressable
-                onPress={() => onScan(meal?.name)}
-                style={({ pressed }) => [emptyStyles.actionBtnWrap, { opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] }]}
-              >
-                <LinearGradient colors={actionColors.scanGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={emptyStyles.actionBtn}>
-                  <Ionicons name="barcode-outline" size={15} color={actionColors.label} />
-                  <Text
-                    style={[emptyStyles.actionText, { color: actionColors.label }]}
-                    numberOfLines={1}
-                    adjustsFontSizeToFit
-                    minimumFontScale={0.85}
-                  >
-                    Scan
-                  </Text>
-                </LinearGradient>
-              </Pressable>
-              <Pressable
-                onPress={() => onLog(meal?.name)}
-                style={({ pressed }) => [emptyStyles.actionBtnWrap, { opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] }]}
-              >
-                <LinearGradient colors={actionColors.searchGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={emptyStyles.actionBtn}>
-                  <Ionicons name="search-outline" size={15} color={actionColors.label} />
-                  <Text
-                    style={[emptyStyles.actionText, { color: actionColors.label }]}
-                    numberOfLines={1}
-                    adjustsFontSizeToFit
-                    minimumFontScale={0.85}
-                  >
-                    Search
-                  </Text>
-                </LinearGradient>
-              </Pressable>
-              <Pressable
-                onPress={() => onQuickAdd?.(mealType)}
-                style={({ pressed }) => [emptyStyles.actionBtnWrap, emptyStyles.actionBtnWrapWide, { opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] }]}
-              >
-                <LinearGradient colors={actionColors.quickGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={emptyStyles.actionBtn}>
-                  <Ionicons name="flash-outline" size={15} color={actionColors.label} />
-                  <Text
-                    style={[emptyStyles.actionText, { color: actionColors.label }]}
-                    numberOfLines={1}
-                    adjustsFontSizeToFit
-                    minimumFontScale={0.8}
-                  >
-                    Quick Add
-                  </Text>
-                </LinearGradient>
-              </Pressable>
-            </View>
+        <View style={emptyStyles.container}>
+          <View style={emptyStyles.lottieWrap}>
+            <LottieView source={emptyVisual.lottie} autoPlay loop style={emptyStyles.lottie} />
           </View>
+          <Text style={[emptyStyles.title, { color: colors.text }]}>Fuel Your Progress</Text>
+          <Text style={emptyStyles.subtitle}>
+            Your {mealLabel.toLowerCase()} is a blank canvas. Start tracking to see your macros in action.
+          </Text>
+          {actionRow()}
         </View>
       )}
-    </View>
+    </NbCard>
   );
 };
 
 const createMealS = (colors) =>
   StyleSheet.create({
-    outer: {
-      borderRadius: 28,
-      padding: 16,
-      marginBottom: 14,
-      overflow: 'visible',
-    },
-    inner: {
-      borderRadius: 22,
-      borderWidth: StyleSheet.hairlineWidth,
-      marginTop: 4,
-      overflow: 'hidden',
-    },
-    innerWithFood: {
-      overflow: 'visible',
-      paddingTop: 8,
-      paddingHorizontal: 8,
-      paddingBottom: 12,
-    },
     foodList: {
-      marginBottom: 6,
+      marginBottom: 8,
     },
-    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 },
+    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 },
     titleBlock: { flex: 1 },
     accentBar: { width: 44, height: 4, borderRadius: 2, marginTop: 8 },
-    mealName: { fontSize: 17, fontWeight: '800' },
-    mealCals: { fontSize: 13, fontWeight: '600', marginTop: 2 },
+    mealName: { fontFamily: 'SpaceGrotesk_700Bold', fontSize: 18, letterSpacing: -0.2 },
+    mealCals: { fontFamily: 'Inter_600SemiBold', fontSize: 13, marginTop: 2, fontVariant: ['tabular-nums'] },
     progressTrack: {
       height: 4,
       borderRadius: 99,
@@ -507,36 +353,8 @@ const createMealS = (colors) =>
     progressFill: { height: '100%', borderRadius: 99 },
     btnRow: {
       flexDirection: 'row',
-      gap: 6,
-      marginTop: 8,
-      flexWrap: 'nowrap',
-      alignItems: 'stretch',
-      justifyContent: 'space-between',
-    },
-    actionBtnWrap: {
-      flex: 1,
-      minWidth: 0,
-      borderRadius: 22,
-      overflow: 'hidden',
-    },
-    actionBtnWrapWide: {
-      flex: 1.25,
-    },
-    actionBtn: {
-      minHeight: 44,
-      borderRadius: 22,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 4,
-      paddingHorizontal: 6,
-      paddingVertical: 10,
-    },
-    actionBtnText: {
-      fontSize: 11,
-      fontWeight: '800',
-      letterSpacing: 0,
-      flexShrink: 1,
+      gap: 8,
+      marginTop: 10,
     },
   });
 
@@ -618,19 +436,12 @@ const WeeklyChart = ({ weekData, colors = FALLBACK_DARK_COLORS, isDark }) => {
     const y = chartH - pad - (hasData ? (cals / weekMax) * (chartH - pad * 2) : chartH / 2 - pad);
     return `${x},${y}`;
   });
-  const shadow = cardShadowStyle(isDark);
   return (
-    <View
-      style={[
-        chart.card,
-        { backgroundColor: colors.weeklyGlass, borderColor: colors.cardBorder },
-        shadow,
-      ]}
-    >
+    <NbCard style={{ padding: 16, marginHorizontal: 16, marginBottom: 12 }}>
       <View style={chart.header}>
         <View>
-          <Text style={[chart.title, { color: colors.text }]}>Weekly Momentum</Text>
-          <Text style={[chart.sub, { color: colors.textMuted }]}>
+          <Text style={[chart.title, { fontFamily: 'SpaceGrotesk_700Bold', color: colors.text }]}>Weekly Momentum</Text>
+          <Text style={[chart.sub, { fontFamily: 'Inter_500Medium', color: colors.textMuted }]}>
             {hasData ? `Avg ${Math.round(weekAvg).toLocaleString()} cal / day` : 'Your journey starts this week'}
           </Text>
         </View>
@@ -669,7 +480,7 @@ const WeeklyChart = ({ weekData, colors = FALLBACK_DARK_COLORS, isDark }) => {
                   style={[
                     chart.dayInitial,
                     { color: colors.textMuted },
-                    isToday && { color: colors.text, fontWeight: '800' },
+                    isToday && { fontFamily: 'SpaceGrotesk_700Bold', color: colors.text },
                   ]}
                 >
                   {dayLabels[i].charAt(0)}
@@ -679,7 +490,7 @@ const WeeklyChart = ({ weekData, colors = FALLBACK_DARK_COLORS, isDark }) => {
                 style={[
                   chart.dayLabel,
                   { color: colors.textMuted },
-                  isToday && { color: colors.text, fontWeight: '700' },
+                  isToday && { fontFamily: 'Inter_600SemiBold', color: colors.text },
                 ]}
               >
                 {dayLabels[i].substring(0, 3)}
@@ -688,7 +499,7 @@ const WeeklyChart = ({ weekData, colors = FALLBACK_DARK_COLORS, isDark }) => {
           );
         })}
       </View>
-    </View>
+    </NbCard>
   );
 };
 
@@ -917,94 +728,38 @@ export const DailyFoodLogScreen = ({
           />
         ) : null}
 
-        {/* Calorie ring — center hero */}
-        <View
-          style={[
-            screen.ringCard,
-            { backgroundColor: solidCardBg, borderColor: colors.cardBorder },
-            ringShadow,
-            screen.ringCardOuter,
-          ]}
-        >
-          <View style={screen.ringCenter}>
-            <CalorieRing consumed={consumed} total={goal} isDark={isDark} isEmpty={isEmpty} />
-            <View style={screen.ringTextOverlay}>
-              {isEmpty ? (
-                <Text style={[screen.ringSmallLabel, { color: colors.textMuted }]}>Start logging</Text>
-              ) : (
-                <Text style={[screen.ringSmallLabel, { color: colors.textMuted }]}>CONSUMED</Text>
-              )}
-              <Text style={[screen.ringBigNumber, { color: colors.text }]}>
-                {(isEmpty ? remainingKcal : Math.round(consumed)).toLocaleString()}
-              </Text>
-              <Text style={[screen.ringSubLabel, { color: colors.textMuted }]}>
-                {isEmpty
-                  ? `of ${goal.toLocaleString()} remaining`
-                  : `of ${goal.toLocaleString()} kcal`}
-              </Text>
-            </View>
-          </View>
-        </View>
+        {/* Calorie ring — center hero with NbRing */}
+        <NbCard style={{ alignItems: 'center', paddingVertical: 20, paddingHorizontal: 16, marginHorizontal: 16, marginTop: 12, marginBottom: 12 }}>
+          <Text style={{ fontFamily: 'SpaceGrotesk_700Bold', fontSize: 11, textTransform: 'uppercase', letterSpacing: 1.1, color: colors.textMuted, marginBottom: 8 }}>
+            {isEmpty ? 'Start logging' : 'Today'}
+          </Text>
+          <CalorieRing consumed={consumed} total={goal} isDark={isDark} isEmpty={isEmpty} />
+          <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 13, color: colors.textMuted, marginTop: 8 }}>
+            {isEmpty
+              ? `${remainingKcal.toLocaleString()} of ${goal.toLocaleString()} remaining`
+              : `${Math.round(consumed).toLocaleString()} of ${goal.toLocaleString()} kcal`}
+          </Text>
+        </NbCard>
 
-        {/* Macro rings + bars */}
-        <View style={screen.macroRow}>
+        {/* Macro gradient bars - neobrutalist style with thick borders */}
+        <NbCard style={{ padding: 16, marginHorizontal: 16, marginBottom: 12 }}>
           {(macros || DEFAULT_MACROS).map((m, macroIndex) => {
-            const pct = Math.min(Math.max(Math.round(Number(m.pct) || 0), 0), 999);
-            const pctFill = Math.min(Number(m.pct) || 0, 100);
             const val = Math.round(Number(m.val) || 0);
             const gGoal = Math.round(Number(m.goal) || 0);
             const macroKey = String(m.label || '').toLowerCase();
-            const macroEmpty = val <= 0 && pctFill <= 0;
-            const trackColor = isDark ? NUT_NEUTRAL_TRACK.dark : NUT_NEUTRAL_TRACK.light;
             const gradColors = NUT_MACRO_GRADIENTS_LOCAL[macroKey] ?? NUT_CALORIES_GRADIENT;
             return (
-              <View
+              <MacroGradientBar
                 key={m.label}
-                style={[
-                  screen.macroCard,
-                  { backgroundColor: solidCardBg, borderColor: colors.cardBorderSubtle },
-                  ringShadow,
-                ]}
-              >
-                <View style={{ position: 'relative', width: 100, height: 100, alignItems: 'center', justifyContent: 'center' }}>
-                  <ArcProgress
-                    size={100}
-                    stroke={8}
-                    progress={pctFill}
-                    gradientColors={gradColors}
-                    trackColor={trackColor}
-                    isDark={isDark}
-                    isEmpty={macroEmpty}
-                  />
-                  <View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}>
-                    <MacroPercentText style={screen.macroPct} color={colors.text}>
-                      {pct}%
-                    </MacroPercentText>
-                    <Text style={[screen.macroRemaining, { color: colors.textMuted }]}>
-                      {Math.max(gGoal - val, 0)}g left
-                    </Text>
-                  </View>
-                </View>
-                <Text style={[screen.macroLabel, { color: colors.textMuted }]}>{m.label}</Text>
-                <Text style={[screen.macroGoal, { color: colors.text }]}>
-                  {val} / {gGoal}g
-                </Text>
-                {macroEmpty ? null : (
-                  <View style={[screen.macroBarTrack, { backgroundColor: trackColor }]}>
-                    <View style={[screen.macroBarFill, { width: `${pctFill}%` }]}>
-                      <LinearGradient
-                        colors={gradColors}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 0 }}
-                        style={StyleSheet.absoluteFill}
-                      />
-                    </View>
-                  </View>
-                )}
-              </View>
+                label={m.label}
+                current={val}
+                target={gGoal}
+                gradientColors={gradColors}
+                isDark={isDark}
+              />
             );
           })}
-        </View>
+        </NbCard>
 
         <WeeklyChart weekData={weekData ?? DEFAULT_WEEK} colors={colors} isDark={isDark} />
 

@@ -1,0 +1,10 @@
+appId: com.coachconnect
+---
+- runFlow:
+    when:
+      visible: "Get Started"
+    commands:
+      - tapOn: "Sign In"
+- extendedWaitUntil:
+    visible: "Welcome Back|Submit login|Login email"
+    timeout: 30000

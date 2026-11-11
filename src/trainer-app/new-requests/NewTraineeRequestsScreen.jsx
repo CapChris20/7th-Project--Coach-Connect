@@ -22,6 +22,9 @@ import TopHeader from '../../for-both/loading-and-header/TopHeader';
 import { pendingRequestCount } from './pendingRequestCount';
 import TrainerListingPopup from '../home/TrainerListingPopup';
 import { clientRequestTypeLabel } from '../../ai-coach/coach-actions/alertTrainer';
+import NbCard from '../../look-and-feel/NbCard';
+import NbAvatar from '../../look-and-feel/NbAvatar';
+import NbButton from '../../look-and-feel/NbButton';
 
 // ===== NAMED CONSTANTS =====
 
@@ -105,19 +108,25 @@ function RequestCard({ item, palette, onPress }) {
     <TouchableOpacity
       activeOpacity={0.85}
       onPress={() => onPress(item)}
-      style={[styles.requestCard, { backgroundColor: palette.cardBackground }]}
+      style={{ marginBottom: 12 }}
     >
-      <LinearGradient colors={GRADIENT_AVATAR} style={styles.avatar}>
-        <Text style={styles.avatarText}>{clientInitials(item.clientName)}</Text>
-      </LinearGradient>
-      <View style={styles.requestContent}>
-        <Text style={[styles.requestName, { color: palette.nameColor }]}>{item.clientName}</Text>
-        <Text style={[styles.requestType, { color: palette.typeColor }]}>{requestTypeLine(item)}</Text>
-        <Text style={[styles.requestPreview, { color: palette.previewColor }]} numberOfLines={2}>
-          {requestPreviewText(item)}
-        </Text>
-      </View>
-      <Text style={styles.chevron}>›</Text>
+      <NbCard style={{ padding: 16 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <NbAvatar initials={clientInitials(item.clientName)} size={48} />
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={{ color: palette.nameColor, fontSize: 16, fontWeight: '700', fontFamily: 'SpaceGrotesk_700Bold' }}>
+              {item.clientName}
+            </Text>
+            <Text style={{ color: palette.typeColor, fontSize: 11, fontWeight: '800', fontFamily: 'SpaceGrotesk_700Bold', letterSpacing: 0.6, textTransform: 'uppercase', marginTop: 2 }}>
+              {requestTypeLine(item)}
+            </Text>
+            <Text style={{ color: palette.previewColor, fontSize: 13, fontFamily: 'Inter_400Regular', marginTop: 4 }} numberOfLines={2}>
+              {requestPreviewText(item)}
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={palette.mutedColor} />
+        </View>
+      </NbCard>
     </TouchableOpacity>
   );
 }
@@ -145,41 +154,18 @@ function RequestsError({ error, palette, onRetry }) {
 function EmptyInboxCard({ palette }) {
   return (
     <View style={styles.emptyWrap}>
-      <View
-        style={[
-          styles.emptyCardShell,
-          {
-            backgroundColor: palette.emptyCardBackground,
-            borderColor: palette.emptyCardBorder,
-          },
-          Platform.select({
-            ios: {
-              shadowColor: '#6366f1',
-              shadowOffset: { width: 0, height: 6 },
-              shadowOpacity: 0.14,
-              shadowRadius: 12,
-            },
-            android: { elevation: 8 },
-          }),
-        ]}
-      >
-        <LinearGradient
-          colors={EMPTY_ACCENT_GRADIENT}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={styles.emptyTopAccent}
-        />
-        <View style={[styles.emptyInner, { borderColor: 'transparent' }]}>
-          <LinearGradient colors={EMPTY_ICON_GRADIENT} style={styles.emptyIconGrad}>
-            <Ionicons name="mail-open-outline" size={30} color="#FFFFFF" />
-          </LinearGradient>
-          <Text style={[styles.emptyKicker, { color: palette.mutedColor }]}>INBOX</Text>
-          <Text style={[styles.emptyTitle, { color: palette.textColor }]}>You are all caught up</Text>
-          <Text style={[styles.emptySubtext, { color: palette.mutedColor }]}>
-            Connection requests, workout plan asks, and other client requests from the app show up here — not in Messages. Open a row to acknowledge or accept.
-          </Text>
-        </View>
-      </View>
+      <NbCard style={{ padding: 26, alignItems: 'center' }}>
+        <LinearGradient colors={EMPTY_ICON_GRADIENT} style={styles.emptyIconGrad}>
+          <Ionicons name="mail-open-outline" size={30} color="#FFFFFF" />
+        </LinearGradient>
+        <Text style={{ color: palette.mutedColor, fontSize: 10, fontWeight: '800', fontFamily: 'SpaceGrotesk_700Bold', letterSpacing: 1.4, marginBottom: 6, textTransform: 'uppercase' }}>INBOX</Text>
+        <Text style={{ color: palette.textColor, fontSize: 20, fontWeight: '900', fontFamily: 'SpaceGrotesk_700Bold', marginBottom: 10, textAlign: 'center', letterSpacing: -0.35 }}>
+          You are all caught up
+        </Text>
+        <Text style={{ color: palette.mutedColor, fontSize: 14, fontFamily: 'Inter_500Medium', textAlign: 'center', lineHeight: 21, maxWidth: 320 }}>
+          Connection requests, workout plan asks, and other client requests from the app show up here — not in Messages. Open a row to acknowledge or accept.
+        </Text>
+      </NbCard>
     </View>
   );
 }

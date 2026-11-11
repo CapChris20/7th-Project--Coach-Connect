@@ -1,5 +1,5 @@
 // App settings: theme, reminders, AI toggle, billing/payouts, account, and support links.
-// Flow: load user doc → edit prefs → Stripe / delete account / open support sub-screens.
+// Flow: load user doc → edit prefs → Stripe / remove trainer (client) / delete account / open support.
 // Used by: client and trainer shells. Firebase projectId stays anatrox-auth.
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
@@ -535,6 +535,8 @@ export default function SettingsScreen({
   onRestorePurchases,
   restorePurchasesLoading = false,
   onOpenCoachingPayment,
+  // Client only: opens RemoveTrainerPopup to end the coach link (same sheet as the home card).
+  onOpenRemoveTrainer,
 }) {
   const onNavigate = useShellNavigate(onNavigateProp);
   const onBack = onBackProp || onClose;
@@ -720,6 +722,11 @@ export default function SettingsScreen({
   }
 
   const showClientBilling = !isTrainer && !!(userDataProp?.trainerId || trainerDataProp?.id);
+  // Show Remove Trainer only for clients who still have a linked coach + a wired handler.
+  const showRemoveTrainer =
+    !isTrainer &&
+    typeof onOpenRemoveTrainer === 'function' &&
+    !!(userDataProp?.trainerId || trainerDataProp?.id);
   const showProSection = isTrainer && Platform.OS === PLATFORM_IOS && platformSubscriptionStatus;
   const aiMeterPercent = Math.round((toggleMeter.monthlyUseFraction ?? 0) * PERCENT_SCALE);
   const paymentButtonLabel =
@@ -1085,6 +1092,20 @@ export default function SettingsScreen({
           >
             <Text style={[styles.chevron, { color: colors.textSecondary }]}>›</Text>
           </SettingsRow>
+          {showRemoveTrainer ? (
+            <>
+              <View style={[styles.divider, { backgroundColor: colors.border }]} />
+              <TouchableOpacity
+                onPress={onOpenRemoveTrainer}
+                style={[styles.row, { justifyContent: 'space-between' }]}
+                accessibilityRole="button"
+                accessibilityLabel="Remove trainer"
+              >
+                <Text style={[styles.rowLabel, { color: '#EF4444', fontWeight: '700' }]}>Remove Trainer</Text>
+                <Text style={[styles.chevron, { color: colors.textSecondary }]}>›</Text>
+              </TouchableOpacity>
+            </>
+          ) : null}
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
           <TouchableOpacity
             onPress={() => setShowDeleteHoldModal(true)}

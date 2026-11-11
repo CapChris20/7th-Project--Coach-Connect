@@ -50,7 +50,6 @@ import SpreadsheetViewer from '../../for-both/files-and-notes/viewers/Spreadshee
 import DocumentViewer from '../../for-both/files-and-notes/viewers/DocumentViewer';
 import PhotoVideoViewer from '../../for-both/files-and-notes/viewers/PhotoVideoViewer';
 import WebPageViewer from '../../for-both/files-and-notes/viewers/WebPageViewer';
-import RemoveTrainerPopup from '../../for-both/popups/RemoveTrainerPopup';
 import WriteTrainerReviewPopup from '../home/WriteTrainerReviewPopup';
 import FindTrainerBanner from '../../for-both/home-cards/FindTrainerBanner';
 import TopBannerCard from '../home/TopBannerCard';
@@ -69,7 +68,6 @@ const PAYMENT_STATUS_PAST_DUE = 'past_due';
 const AI_CHAT_HOME = 'home';
 const DEFAULT_SELF_NAME = 'You';
 const DEFAULT_COACH_NAME = 'Your coach';
-const DEFAULT_TRAINER_NAME = 'Your trainer';
 const ROLE_TRAINER = 'trainer';
 const SCROLL_BOTTOM_PAD = 130;
 
@@ -807,22 +805,7 @@ export default function ClientMainScreen() {
         isDark={isDark}
         onClose={() => setEmbedWebViewer({ visible: false, uri: null, title: null })}
       />
-      <RemoveTrainerPopup
-        visible={showRemoveTrainerPopup}
-        onClose={() => setShowRemoveTrainerPopup(false)}
-        onRemovalComplete={() => {
-          if (trainerData) {
-            setReviewPromptTrainer({ id: trainerData.id, name: trainerData.displayName || trainerData.name || DEFAULT_TRAINER_NAME });
-          }
-          setTrainerData(null);
-          setShowRemoveTrainerPopup(false);
-        }}
-        trainerName={trainerData?.displayName || trainerData?.name}
-        clientName={user?.displayName || userData?.firstName}
-        removedBy="client"
-        trainerId={trainerData?.id}
-        clientId={user?.uid}
-      />
+      {/* RemoveTrainerPopup mounts on ClientAppShellLayout so Settings can open it too. */}
       {reviewPromptTrainer && (
         <WriteTrainerReviewPopup
           visible={showReviewSheetForPrompt}

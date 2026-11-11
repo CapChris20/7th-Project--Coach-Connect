@@ -8,6 +8,9 @@ import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ArrowRight, ChevronRight, Download, FileSpreadsheet, FileText, MessageSquare } from 'lucide-react-native';
 import { deleteNotesAndFilesItem, markNotesAndFilesItemRead, resolveTrainerSpreadsheetView, packSpreadsheetRowsHaveContent } from '../../for-both/files-and-notes/saveNotesAndFiles';
+import NbCard from '../../look-and-feel/NbCard';
+import NbButton from '../../look-and-feel/NbButton';
+import NbListRow from '../../look-and-feel/NbListRow';
 import {
   getEmbedViewerUri,
   isImageFile as isNotesImageFile,
@@ -263,38 +266,20 @@ function FileRow({ file, accent = ACCENT_CYAN, theme, onOpen, onDownload, onShar
   const typeLabel = fileRowTypeLabel(fileType);
   const when = file?.createdAt ? formatDateShort(file.createdAt?.toDate?.() || file.createdAt) : '';
   return (
-    <TouchableOpacity
-      activeOpacity={0.88}
+    <NbListRow
+      title={name}
+      subtitle={`${typeLabel}${when ? ` \u00B7 ${when}` : ''}`}
       onPress={async () => {
         await onMarkRead(file);
         onOpen(file);
       }}
-      onLongPress={() => {
-        Alert.alert(name, '', [
-          { text: 'Open', onPress: () => onOpen(file) },
-          { text: 'Download', onPress: () => onDownload(file) },
-          { text: 'Share', onPress: () => onShare(file) },
-          { text: 'Delete', style: 'destructive', onPress: () => onDelete(file) },
-          { text: 'Cancel', style: 'cancel' },
-        ]);
-      }}
-      delayLongPress={LONG_PRESS_MS}
-      style={[styles.fileRow, { backgroundColor: theme.card, borderColor: theme.border }]}
-    >
-      <View style={[styles.fileRowIcon, { backgroundColor: `${accent}12` }]}>
-        <Icon size={20} color={accent} />
-      </View>
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={[styles.fileRowName, { color: theme.text }]} numberOfLines={1}>{name}</Text>
-        <Text style={[styles.fileRowMeta, { color: theme.text50 }]} numberOfLines={1}>
-          {typeLabel}{when ? ` \u00B7 ${when}` : ''}
-        </Text>
-      </View>
-      <TouchableOpacity onPress={() => onDownload(file)} hitSlop={12} style={[styles.fileRowDl, { borderColor: `${accent}30`, backgroundColor: `${accent}08` }]} activeOpacity={0.8}>
-        <Download size={16} color={accent} />
-      </TouchableOpacity>
-      <ChevronRight size={16} color={theme.text30} style={{ marginLeft: 2 }} />
-    </TouchableOpacity>
+      right={
+        <TouchableOpacity onPress={() => onDownload(file)} hitSlop={12} activeOpacity={0.8}>
+          <Download size={20} color={accent} />
+        </TouchableOpacity>
+      }
+      style={{ marginBottom: 8 }}
+    />
   );
 }
 
@@ -303,29 +288,31 @@ function NoteCard({ note, theme, isDark, onMarkRead }) {
   const preview = String(note?.content || note?.preview || '').trim();
   const when = note?.createdAt ? formatDateShort(note.createdAt?.toDate?.() || note.createdAt) : null;
   return (
-    <TouchableOpacity
-      activeOpacity={0.88}
-      onPress={async () => {
-        await onMarkRead(note);
-        Alert.alert(`Note from ${coach}`, preview || '\u2014');
-      }}
-      style={[styles.noteCard, { backgroundColor: theme.card, borderColor: isDark ? 'rgba(192,132,252,0.15)' : 'rgba(192,132,252,0.10)' }]}
-    >
-      <View style={styles.noteHeader}>
-        <View style={styles.noteIconWrap}>
-          <MessageSquare size={16} color={ACCENT_PURPLE} />
+    <NbCard style={{ marginBottom: 10 }}>
+      <TouchableOpacity
+        activeOpacity={0.88}
+        onPress={async () => {
+          await onMarkRead(note);
+          Alert.alert(`Note from ${coach}`, preview || '\u2014');
+        }}
+        style={{ padding: 16 }}
+      >
+        <View style={styles.noteHeader}>
+          <View style={styles.noteIconWrap}>
+            <MessageSquare size={16} color={ACCENT_PURPLE} />
+          </View>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={[styles.noteLabel, { color: theme.text }]} numberOfLines={1}>{coach}</Text>
+            <Text style={[styles.noteMeta, { color: theme.text50 }]}>Coaching note{when ? ` \u00B7 ${when}` : ''}</Text>
+          </View>
         </View>
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={[styles.noteLabel, { color: theme.text }]} numberOfLines={1}>{coach}</Text>
-          <Text style={[styles.noteMeta, { color: theme.text50 }]}>Coaching note{when ? ` \u00B7 ${when}` : ''}</Text>
+        <Text style={[styles.notePreview, { color: theme.text70 }]} numberOfLines={3}>{preview || '\u2014'}</Text>
+        <View style={styles.noteFooter}>
+          <Text style={styles.noteFooterText}>Read full note</Text>
+          <ArrowRight size={13} color={ACCENT_PINK} />
         </View>
-      </View>
-      <Text style={[styles.notePreview, { color: theme.text70 }]} numberOfLines={3}>{preview || '\u2014'}</Text>
-      <View style={styles.noteFooter}>
-        <Text style={styles.noteFooterText}>Read full note</Text>
-        <ArrowRight size={13} color={ACCENT_PINK} />
-      </View>
-    </TouchableOpacity>
+      </TouchableOpacity>
+    </NbCard>
   );
 }
 
@@ -334,7 +321,6 @@ function SectionBlock({ sectionKey, title, children, count, theme }) {
   return (
     <View style={styles.section}>
       <View style={styles.sectionHead}>
-        <LinearGradient colors={meta.gradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.sectionAccent} />
         <View style={[styles.sectionIconWrap, { backgroundColor: `${meta.color}14` }]}>
           <Feather name={meta.icon} size={14} color={meta.color} />
         </View>
@@ -352,21 +338,18 @@ function SectionBlock({ sectionKey, title, children, count, theme }) {
 
 function EmptyCard({ icon, color, title, subtitle, showUpload, isDark, theme, onUploadPress }) {
   return (
-    <View style={[styles.emptyCard, { borderColor: `${color}${isDark ? '18' : '14'}`, backgroundColor: `${color}06` }]}>
+    <NbCard style={{ padding: 28, alignItems: 'center' }}>
       <View style={[styles.emptyIconWrap, { backgroundColor: `${color}14` }]}>
         <Feather name={icon} size={24} color={color} />
       </View>
       <Text style={[styles.emptyTitle, { color: theme.text }]}>{title}</Text>
       <Text style={[styles.emptySub, { color: theme.text50 }]}>{subtitle}</Text>
       {showUpload && typeof onUploadPress === 'function' && (
-        <TouchableOpacity activeOpacity={0.85} onPress={onUploadPress}>
-          <LinearGradient colors={[ACCENT_PINK, '#F97316']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.emptyCta}>
-            <Feather name="plus" size={14} color="#fff" />
-            <Text style={styles.emptyCtaText}>Upload file</Text>
-          </LinearGradient>
-        </TouchableOpacity>
+        <NbButton variant="brand" onPress={onUploadPress} style={{ marginTop: 16 }}>
+          Upload file
+        </NbButton>
       )}
-    </View>
+    </NbCard>
   );
 }
 

@@ -53,6 +53,10 @@ import {
   getClientInitials,
   getClientRosterStats,
 } from './trainerHomePieces';
+import NbCard from '../../look-and-feel/NbCard';
+import NbButton from '../../look-and-feel/NbButton';
+import NbAvatar from '../../look-and-feel/NbAvatar';
+import NbTile from '../../look-and-feel/NbTile';
 import { PayoutSetupReminderPopup } from '../../for-both/payments/PayoutSetupReminderPopup';
 import { shouldShowPayoutSetupReminderPopup } from '../../for-both/payments/whenToAskForPayoutSetup';
 
@@ -1124,149 +1128,96 @@ const DashboardContent = ({
                 const initials = getClientInitials(displayName);
                 const hasWeekly = !!weeklySummaryMap[client.id];
 
-                const innerCardBg = isDark ? '#0f0f16' : '#FAFAFC';
-                const innerPressableStyle = {
-                  width: '100%',
-                  borderRadius: 18,
-                  backgroundColor: innerCardBg,
-                  paddingHorizontal: 16,
-                  paddingTop: 16,
-                  paddingBottom: 16,
-                  minHeight: 158,
-                };
-
-                const cardBody = (
-                  <TouchableOpacity
-                    activeOpacity={0.88}
-                    onPress={() => setSelectedClientId(client.id)}
-                    style={innerPressableStyle}
-                  >
-                    <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
-                      <LinearGradient
-                        colors={['#9F1239', '#C2410C']}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 1 }}
-                        style={{
-                          width: 52,
-                          height: 52,
-                          borderRadius: 18,
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                        }}
-                      >
-                        <Text style={{ color: '#fff', fontSize: 18, fontWeight: '900', letterSpacing: 0.5 }}>
-                          {initials}
-                        </Text>
-                      </LinearGradient>
-                      <View style={{ flex: 1, marginLeft: 14, minWidth: 0, paddingRight: 36 }}>
-                        <Text style={{ color: textColor, fontSize: 18, fontWeight: '900', letterSpacing: -0.3 }} numberOfLines={1}>
-                          {displayName}
-                        </Text>
-                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', marginTop: 8 }}>
-                          {stats.goal ? (
-                            <View
-                              style={{
-                                paddingHorizontal: 10,
-                                paddingVertical: 5,
-                                borderRadius: 999,
-                                backgroundColor: isDark ? 'rgba(157, 23, 57, 0.22)' : 'rgba(190, 24, 93, 0.1)',
-                                borderWidth: 1,
-                                borderColor: isDark ? 'rgba(234, 88, 12, 0.28)' : 'rgba(194, 65, 12, 0.22)',
-                                marginRight: 8,
-                                marginBottom: 4,
-                              }}
-                            >
-                              <Text style={{ color: isDark ? 'rgba(254, 205, 211, 0.92)' : '#9F1239', fontSize: 11, fontWeight: '800' }} numberOfLines={1}>
-                                {stats.goal}
-                              </Text>
-                            </View>
-                          ) : null}
-                          {hasWeekly ? (
-                            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
-                              <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: '#4ade80' }} />
-                              <Text style={{ color: mutedColor, fontSize: 11, fontWeight: '700', marginLeft: 5 }}>Weekly ready</Text>
-                            </View>
-                          ) : (
-                            <Text style={{ color: mutedColor, fontSize: 11, fontWeight: '600', marginBottom: 4 }}>No weekly yet</Text>
-                          )}
-                        </View>
-                      </View>
-                    </View>
-
-                    <View style={{ flexDirection: 'row', marginTop: 14 }}>
-                      {[
-                        { key: 'age', cap: 'Age', val: stats.age ? `${stats.age} yrs` : '—' },
-                        { key: 'wt', cap: 'Weight', val: stats.weight ? `${stats.weight} lbs` : '—' },
-                        { key: 'ht', cap: 'Height', val: stats.height || '—' },
-                      ].map((cell, idx) => (
-                        <View
-                          key={cell.key}
-                          style={{
-                            flex: 1,
-                            borderRadius: 14,
-                            paddingVertical: 12,
-                            paddingHorizontal: 8,
-                            backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(15,23,42,0.04)',
-                            borderWidth: 1,
-                            borderColor: isDark ? 'rgba(244, 114, 182, 0.12)' : 'rgba(194, 65, 12, 0.1)',
-                            alignItems: 'center',
-                            marginRight: idx < 2 ? 10 : 0,
-                          }}
-                        >
-                          <Text
-                            style={{
-                              color: isDark ? 'rgba(244, 182, 196, 0.88)' : 'rgba(136, 19, 55, 0.78)',
-                              fontSize: 12,
-                              fontWeight: '800',
-                              letterSpacing: 1,
-                              marginTop: 0,
-                              textTransform: 'uppercase',
-                            }}
-                          >
-                            {cell.cap}
-                          </Text>
-                          <Text
-                            style={{
-                              color: isDark ? 'rgba(255, 247, 247, 0.96)' : '#0f172a',
-                              fontSize: 17,
-                              fontWeight: '800',
-                              marginTop: 6,
-                              letterSpacing: -0.2,
-                            }}
-                            numberOfLines={1}
-                          >
-                            {cell.val}
-                          </Text>
-                        </View>
-                      ))}
-                    </View>
-                  </TouchableOpacity>
-                );
-
                 return (
                   <View key={client.id} style={{ width: rosterCardWidth, marginRight: 12, position: 'relative' }}>
-                    {selected ? (
-                      <LinearGradient
-                        colors={['#9F1239', '#C2410C', '#B45309']}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 1 }}
-                        style={{ borderRadius: 20, padding: 2.5 }}
-                      >
-                        {cardBody}
-                      </LinearGradient>
-                    ) : (
-                      <View
-                        style={{
-                          borderRadius: 20,
-                          borderWidth: 1.5,
-                          borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(15,23,42,0.1)',
-                          overflow: 'hidden',
-                          backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.92)',
-                        }}
-                      >
-                        {cardBody}
-                      </View>
-                    )}
+                    <TouchableOpacity
+                      activeOpacity={0.88}
+                      onPress={() => setSelectedClientId(client.id)}
+                    >
+                      <NbCard style={{ padding: 16 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
+                          <NbAvatar
+                            initials={initials}
+                            size={52}
+                          />
+                          <View style={{ flex: 1, minWidth: 0, paddingRight: 36 }}>
+                            <Text style={{ color: textColor, fontSize: 18, fontWeight: '900', letterSpacing: -0.3, fontFamily: 'SpaceGrotesk_700Bold' }} numberOfLines={1}>
+                              {displayName}
+                            </Text>
+                            <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', marginTop: 8 }}>
+                              {stats.goal ? (
+                                <View
+                                  style={{
+                                    paddingHorizontal: 10,
+                                    paddingVertical: 5,
+                                    borderRadius: 999,
+                                    backgroundColor: isDark ? 'rgba(157, 23, 57, 0.22)' : 'rgba(190, 24, 93, 0.1)',
+                                    borderWidth: 1,
+                                    borderColor: isDark ? 'rgba(234, 88, 12, 0.28)' : 'rgba(194, 65, 12, 0.22)',
+                                    marginRight: 8,
+                                    marginBottom: 4,
+                                  }}
+                                >
+                                  <Text style={{ color: isDark ? 'rgba(254, 205, 211, 0.92)' : '#9F1239', fontSize: 11, fontWeight: '800', fontFamily: 'SpaceGrotesk_700Bold' }} numberOfLines={1}>
+                                    {stats.goal}
+                                  </Text>
+                                </View>
+                              ) : null}
+                              {hasWeekly ? (
+                                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                                  <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: '#4ade80' }} />
+                                  <Text style={{ color: mutedColor, fontSize: 11, fontWeight: '700', marginLeft: 5 }}>Weekly ready</Text>
+                                </View>
+                              ) : (
+                                <Text style={{ color: mutedColor, fontSize: 11, fontWeight: '600', marginBottom: 4 }}>No weekly yet</Text>
+                              )}
+                            </View>
+                          </View>
+                        </View>
+
+                        <View style={{ flexDirection: 'row', marginTop: 12, gap: 10 }}>
+                          {[
+                            { key: 'age', cap: 'AGE', val: stats.age ? `${stats.age}` : '—' },
+                            { key: 'wt', cap: 'WEIGHT', val: stats.weight ? `${stats.weight} lbs` : '—' },
+                            { key: 'ht', cap: 'HEIGHT', val: stats.height || '—' },
+                          ].map((cell) => (
+                            <View
+                              key={cell.key}
+                              style={{
+                                flex: 1,
+                                alignItems: 'center',
+                              }}
+                            >
+                              <Text
+                                style={{
+                                  color: mutedColor,
+                                  fontSize: 12,
+                                  fontWeight: '700',
+                                  letterSpacing: 1.2,
+                                  fontFamily: 'SpaceGrotesk_700Bold',
+                                  textTransform: 'uppercase',
+                                }}
+                              >
+                                {cell.cap}
+                              </Text>
+                              <Text
+                                style={{
+                                  color: textColor,
+                                  fontSize: 17,
+                                  fontWeight: '800',
+                                  fontFamily: 'SpaceGrotesk_700Bold',
+                                  marginTop: 4,
+                                  letterSpacing: -0.2,
+                                }}
+                                numberOfLines={1}
+                              >
+                                {cell.val}
+                              </Text>
+                            </View>
+                          ))}
+                        </View>
+                      </NbCard>
+                    </TouchableOpacity>
                     <TouchableOpacity
                       accessibilityLabel={`Remove ${client.name || 'client'} from roster`}
                       accessibilityHint="Opens a confirmation step"

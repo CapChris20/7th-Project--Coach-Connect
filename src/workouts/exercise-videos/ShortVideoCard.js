@@ -1,6 +1,9 @@
 // One vertical "Shorts" tile: YouTube thumb, title, channel, duration chip, optional bookmark.
 // Flow: press-in scales the card up → overlay darkens → press-out snaps back; tap opens the video.
 // Used by the exercise-video grid. Bookmark is omitted unless the parent passes onToggleSave.
+//
+// vocab: neobrutalist = thick outlines (2.5px), hard shadows (no blur), offset 4/4
+// Manipulate here: card border radius (16), press scale (1.02), animation duration (220ms)
 
 import React, { useMemo, useRef, useState } from 'react';
 import {
@@ -13,6 +16,7 @@ import {
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import NbCard from '../../look-and-feel/NbCard';
 
 // ===== NAMED CONSTANTS =====
 
@@ -116,82 +120,65 @@ export default function ShortVideoCard({
       style={[{ width }, style]}
     >
       <Animated.View style={{ transform: [{ translateY }, { scale }] }}>
-        <LinearGradient
-          colors={rim}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={[styles.rim, { height: height + 3 }]}
-        >
-          <View style={[styles.card, { height }]}>
-            <Image
-              source={{ uri: youtubeThumbUrl(item?.videoId) }}
-              style={styles.image}
-              contentFit="cover"
-              transition={PRESS_ANIMATION_MS}
-            />
+        <NbCard style={{ height, padding: 0 }}>
+          <Image
+            source={{ uri: youtubeThumbUrl(item?.videoId) }}
+            style={styles.image}
+            contentFit="cover"
+            transition={PRESS_ANIMATION_MS}
+          />
 
-            {onToggleSave ? (
-              <Pressable
-                onPress={(event) => {
-                  event?.stopPropagation?.();
-                  onToggleSave();
-                }}
-                hitSlop={BOOKMARK_HIT_SLOP}
-                style={styles.bookmarkBtn}
+          {onToggleSave ? (
+            <Pressable
+              onPress={(event) => {
+                event?.stopPropagation?.();
+                onToggleSave();
+              }}
+              hitSlop={BOOKMARK_HIT_SLOP}
+              style={styles.bookmarkBtn}
+            >
+              <Ionicons
+                name={saved ? 'bookmark' : 'bookmark-outline'}
+                size={14}
+                color={saved ? SAVED_BOOKMARK_COLOR : UNSAVED_BOOKMARK_COLOR}
+              />
+            </Pressable>
+          ) : null}
+
+          <LinearGradient
+            colors={['rgba(0,0,0,0)', isPressed ? 'rgba(0,0,0,0.92)' : 'rgba(0,0,0,0.78)']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0, y: 1 }}
+            style={styles.scrim}
+          />
+
+          <View style={styles.overlay}>
+            <Text style={styles.title} numberOfLines={2}>
+              {item?.name || FALLBACK_LABEL}
+            </Text>
+            <Text style={styles.channel} numberOfLines={1}>
+              {item?.channel || FALLBACK_LABEL}
+            </Text>
+            <View style={styles.durationRow}>
+              <LinearGradient
+                colors={rim}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.durationChip}
               >
-                <Ionicons
-                  name={saved ? 'bookmark' : 'bookmark-outline'}
-                  size={14}
-                  color={saved ? SAVED_BOOKMARK_COLOR : UNSAVED_BOOKMARK_COLOR}
-                />
-              </Pressable>
-            ) : null}
-
-            <LinearGradient
-              colors={['rgba(0,0,0,0)', isPressed ? 'rgba(0,0,0,0.92)' : 'rgba(0,0,0,0.78)']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 0, y: 1 }}
-              style={styles.scrim}
-            />
-
-            <View style={styles.overlay}>
-              <Text style={styles.title} numberOfLines={2}>
-                {item?.name || FALLBACK_LABEL}
-              </Text>
-              <Text style={styles.channel} numberOfLines={1}>
-                {item?.channel || FALLBACK_LABEL}
-              </Text>
-              <View style={styles.durationRow}>
-                <LinearGradient
-                  colors={rim}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={styles.durationChip}
-                >
-                  <Text style={styles.duration} numberOfLines={1}>
-                    {durationText}
-                  </Text>
-                </LinearGradient>
-              </View>
+                <Text style={styles.duration} numberOfLines={1}>
+                  {durationText}
+                </Text>
+              </LinearGradient>
             </View>
           </View>
-        </LinearGradient>
+        </NbCard>
       </Animated.View>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  rim: {
-    borderRadius: 16,
-    padding: 1.5,
-  },
-  card: {
-    borderRadius: 14.5,
-    overflow: 'hidden',
-    position: 'relative',
-    backgroundColor: '#0A0A0F',
-  },
   image: { width: '100%', height: '100%' },
   bookmarkBtn: {
     position: 'absolute',

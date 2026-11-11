@@ -1,6 +1,8 @@
-// Client marketplace: search, specialty pills, and a scrollable list of trainer cards.
-// Flow: loading spinner → welcome hero + search + pills → cards, with an empty state when nothing matches.
+// Client marketplace: search, specialty chips, and a scrollable list of trainer cards.
+// Flow: loading spinner → welcome hero + search + chips → cards, with an empty state when nothing matches.
 // Used by Find a Trainer. Filters and paging stay in the parent; this screen only paints the list.
+//
+// vocab: neobrutalist = thick borders, hard shadows, gradient only for primary moment per screen
 
 import React from 'react';
 import {
@@ -8,22 +10,20 @@ import {
   Text,
   TextInput,
   FlatList,
-  ScrollView,
   StyleSheet,
   ActivityIndicator,
   Pressable,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { useColorScheme } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import TrainerCard from './TrainerCard';
 import { FORM_SCROLL_PROPS } from '../../navigation/bottomMenuSpacing';
-import {
-  GlassCard,
-  GlassPanel,
-  Pill,
-  FilterColorButton,
-} from './FindTrainerPieces';
-import { BRAND, MP_FONT, QUICK_SPECIALTIES, getTheme } from './trainerFilters';
+import { BRAND, QUICK_SPECIALTIES, getTheme } from './trainerFilters';
+import NbHero from '../../look-and-feel/NbHero';
+import NbCard from '../../look-and-feel/NbCard';
+import NbChipRow from '../../look-and-feel/NbChipRow';
+import NbButton from '../../look-and-feel/NbButton';
+import { lightColors, darkColors } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
@@ -48,93 +48,68 @@ function trainerCountLabel(count) {
   return `${count} trainer${suffix}`;
 }
 
-function WelcomeHero({ isDark }) {
-  const innerBackground = isDark ? '#0A0A0F' : '#FFFFFF';
-  const kickerColor = isDark ? 'rgba(255,255,255,0.65)' : 'rgba(10,10,15,0.55)';
-  const taglineColor = isDark ? 'rgba(255,255,255,0.42)' : 'rgba(0,0,0,0.45)';
-  const shadowStyle = isDark ? styles.heroOuterShadowDark : styles.heroOuterShadowLight;
-  const borderColors = isDark ? HERO_BORDER_DARK : HERO_BORDER_LIGHT;
-  const innerBorder = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
-
+/**
+ * Welcome hero using NbHero component.
+ * One gradient moment per screen: the hero title.
+ */
+function WelcomeHero() {
   return (
-    <View style={[styles.heroOuter, shadowStyle]}>
-      <LinearGradient
-        colors={borderColors}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.heroBorderRing}
-      >
-        <View
-          style={[
-            styles.heroInner,
-            {
-              backgroundColor: innerBackground,
-              borderColor: innerBorder,
-            },
-          ]}
-        >
-          <View style={styles.heroKickerBlock}>
-            <Text style={[styles.heroKicker, { color: kickerColor }]}>WELCOME TO</Text>
-            <LinearGradient
-              colors={TITLE_GRADIENT}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.heroKickerLine}
-            />
-          </View>
-
-          <Text style={styles.heroTitle}>Find a Trainer</Text>
-
-          <Text style={[styles.heroTagline, { color: taglineColor }]}>
-            FIND A TRAINER · COMPARE · CONNECT WITH YOUR TRAINER
-          </Text>
-        </View>
-      </LinearGradient>
-    </View>
+    <NbHero 
+      title="Find a Trainer"
+      subtitle="Browse coaches by specialty and price"
+      style={styles.hero}
+    />
   );
 }
 
-function SearchAndFilterBar({ isDark, theme, search, onSearchChange, onOpenFilters }) {
+/**
+ * Search bar with filter button using NbCard.
+ * Manipulate here: search input styling, filter button
+ */
+function SearchAndFilterBar({ colors, search, onSearchChange, onOpenFilters }) {
   return (
-    <GlassPanel
-      isDark={isDark}
-      borderRadius={16}
-      contentWrapperStyle={styles.searchRow}
-      contentStyle={styles.searchInner}
-    >
-      <Ionicons name="search" size={18} color={theme.mutedForeground} />
-      <TextInput
-        value={search}
-        onChangeText={onSearchChange}
-        placeholder="Search trainers, cities…"
-        placeholderTextColor={theme.mutedForeground}
-        style={[styles.searchInput, { color: theme.foreground }]}
-      />
-      <FilterColorButton onPress={() => onOpenFilters?.()} />
-    </GlassPanel>
-  );
-}
-
-function QuickSpecialtyPills({ theme, isDark, quickSpecialty, onQuickSpecialtyChange }) {
-  return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickPills}>
-      {QUICK_SPECIALTIES.map((spec) => (
-        <Pill
-          key={spec}
-          label={spec}
-          active={quickSpecialty === spec}
-          onPress={() => onQuickSpecialtyChange?.(spec)}
-          t={theme}
-          isDark={isDark}
+    <NbCard style={styles.searchCard} noShadow>
+      <View style={styles.searchRow}>
+        <Ionicons name="search" size={18} color={colors.nbMuted} />
+        <TextInput
+          value={search}
+          onChangeText={onSearchChange}
+          placeholder="Search trainers, cities…"
+          placeholderTextColor={colors.nbMuted}
+          style={[styles.searchInput, { color: colors.nbInk }]}
         />
-      ))}
-    </ScrollView>
+        <NbButton variant="brand" sm onPress={onOpenFilters}>
+          Filter
+        </NbButton>
+      </View>
+    </NbCard>
   );
 }
 
+/**
+ * Horizontal scrolling specialty filter chips using NbChipRow.
+ */
+function QuickSpecialtyChips({ quickSpecialty, onQuickSpecialtyChange }) {
+  const chipItems = QUICK_SPECIALTIES.map((spec) => ({
+    id: spec,
+    label: spec,
+  }));
+
+  return (
+    <NbChipRow
+      items={chipItems}
+      selected={quickSpecialty}
+      onSelect={onQuickSpecialtyChange}
+      style={styles.chipRow}
+    />
+  );
+}
+
+/**
+ * List header: hero, search, specialty chips, and result count.
+ */
 function TrainerListHeader({
-  isDark,
-  theme,
+  colors,
   search,
   onSearchChange,
   onOpenFilters,
@@ -145,52 +120,59 @@ function TrainerListHeader({
 }) {
   return (
     <>
-      <WelcomeHero isDark={isDark} />
+      <WelcomeHero />
       <SearchAndFilterBar
-        isDark={isDark}
-        theme={theme}
+        colors={colors}
         search={search}
         onSearchChange={onSearchChange}
         onOpenFilters={onOpenFilters}
       />
-      <QuickSpecialtyPills
-        theme={theme}
-        isDark={isDark}
+      <QuickSpecialtyChips
         quickSpecialty={quickSpecialty}
         onQuickSpecialtyChange={onQuickSpecialtyChange}
       />
       <View style={styles.listHeader}>
-        <Text style={[styles.listCount, { color: theme.foreground }]}>{trainerCountLabel(trainerCount)}</Text>
+        <Text style={[styles.listCount, { color: colors.nbInk }]}>
+          {trainerCountLabel(trainerCount)}
+        </Text>
         <Pressable onPress={() => onOpenFilters?.()} style={styles.sortRow} hitSlop={8}>
-          <Text style={{ color: theme.mutedForeground, fontSize: 13, fontWeight: '600' }}>{sortLabel}</Text>
-          <Ionicons name="chevron-down" size={14} color={theme.mutedForeground} style={{ marginLeft: 2 }} />
+          <Text style={[styles.sortLabel, { color: colors.nbMuted }]}>{sortLabel}</Text>
+          <Ionicons name="chevron-down" size={14} color={colors.nbMuted} style={{ marginLeft: 2 }} />
         </Pressable>
       </View>
     </>
   );
 }
 
-function EmptyTrainerResults({ theme, isDark }) {
+/**
+ * Empty state when no trainers match the current filters.
+ */
+function EmptyTrainerResults({ colors }) {
   return (
-    <GlassCard t={theme} isDark={isDark} contentStyle={{ padding: 32, alignItems: 'center' }}>
-      <Ionicons name="search-outline" size={40} color={theme.mutedForeground} style={{ marginBottom: 12 }} />
-      <Text style={{ color: theme.foreground, fontWeight: '800', fontSize: 16 }}>
-        No trainers match your filters.
-      </Text>
-      <Text style={{ color: theme.mutedForeground, marginTop: 8, textAlign: 'center', lineHeight: 20 }}>
-        Try adjusting specialty or price range.
-      </Text>
-    </GlassCard>
+    <NbCard style={styles.emptyCard}>
+      <View style={styles.emptyContent}>
+        <Ionicons name="search-outline" size={40} color={colors.nbMuted} style={{ marginBottom: 12 }} />
+        <Text style={[styles.emptyTitle, { color: colors.nbInk }]}>
+          No trainers match your filters
+        </Text>
+        <Text style={[styles.emptySubtitle, { color: colors.nbMuted }]}>
+          Try adjusting specialty or price range
+        </Text>
+      </View>
+    </NbCard>
   );
 }
 
-function MarketplaceLoading({ screenGrad }) {
+/**
+ * Loading spinner shown while initial trainer data loads.
+ */
+function MarketplaceLoading({ colors }) {
   return (
-    <LinearGradient colors={screenGrad} style={styles.flex}>
+    <View style={[styles.flex, { backgroundColor: colors.nbBackground }]}>
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color={BRAND.pink} />
+        <ActivityIndicator size="large" color="#FF6B9D" />
       </View>
-    </LinearGradient>
+    </View>
   );
 }
 
@@ -198,6 +180,7 @@ function MarketplaceLoading({ screenGrad }) {
 
 /**
  * Find-a-trainer marketplace list. Parent owns filters, search text, and paging.
+ * Neobrutalist redesign: uses Nb components, simpler layout.
  * @param {object} props
  */
 export function BrowseTrainersScreen({
@@ -219,11 +202,12 @@ export function BrowseTrainersScreen({
   /** Bottom clearance for floating shell BottomMenuBar (defaults to legacy fixed pad). */
   listBottomPad = DEFAULT_LIST_BOTTOM_PAD,
 }) {
+  const colorScheme = useColorScheme();
+  const colors = colorScheme === 'dark' ? darkColors : lightColors;
   const theme = getTheme(isDark);
-  const screenGrad = screenGradientColors(isDark, theme);
 
   if (loading) {
-    return <MarketplaceLoading screenGrad={screenGrad} />;
+    return <MarketplaceLoading colors={colors} />;
   }
 
   const handleEndReached = () => {
@@ -232,7 +216,7 @@ export function BrowseTrainersScreen({
   };
 
   return (
-    <LinearGradient colors={screenGrad} style={styles.flex}>
+    <View style={[styles.flex, { backgroundColor: colors.nbBackground }]}>
       <FlatList
         style={styles.flex}
         contentContainerStyle={[styles.listScroll, { paddingBottom: listBottomPad }]}
@@ -245,8 +229,7 @@ export function BrowseTrainersScreen({
         onEndReachedThreshold={END_REACHED_THRESHOLD}
         ListHeaderComponent={
           <TrainerListHeader
-            isDark={isDark}
-            theme={theme}
+            colors={colors}
             search={search}
             onSearchChange={onSearchChange}
             onOpenFilters={onOpenFilters}
@@ -256,7 +239,7 @@ export function BrowseTrainersScreen({
             sortLabel={filters.sort}
           />
         }
-        ListEmptyComponent={!loading ? <EmptyTrainerResults theme={theme} isDark={isDark} /> : null}
+        ListEmptyComponent={!loading ? <EmptyTrainerResults colors={colors} /> : null}
         renderItem={({ item: trainer }) => (
           <TrainerCard
             trainer={trainer}
@@ -270,13 +253,13 @@ export function BrowseTrainersScreen({
         ListFooterComponent={
           loadingMore ? (
             <View style={styles.footerLoader}>
-              <ActivityIndicator size="small" color={BRAND.pink} />
+              <ActivityIndicator size="small" color="#FF6B9D" />
             </View>
           ) : null
         }
         {...FORM_SCROLL_PROPS}
       />
-    </LinearGradient>
+    </View>
   );
 }
 
@@ -284,101 +267,80 @@ export default BrowseTrainersScreen;
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  listScroll: { paddingHorizontal: 20, paddingBottom: 100, gap: 16, paddingTop: 8 },
-  footerLoader: { paddingVertical: 16, alignItems: 'center' },
-  centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  heroOuter: {
-    marginBottom: 4,
-    borderRadius: 28,
+  listScroll: { 
+    paddingHorizontal: 20, 
+    paddingBottom: 100, 
+    gap: 16, 
+    paddingTop: 16,
   },
-  heroOuterShadowDark: {
-    shadowColor: '#C084FC',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.28,
-    shadowRadius: 14,
-    elevation: 8,
-  },
-  heroOuterShadowLight: {
-    shadowColor: '#A855F7',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    elevation: 6,
-  },
-  heroBorderRing: {
-    borderRadius: 28,
-    padding: 2,
-  },
-  heroInner: {
-    borderRadius: 26,
-    borderWidth: 1,
-    paddingHorizontal: 18,
-    paddingTop: 22,
-    paddingBottom: 20,
+  footerLoader: { 
+    paddingVertical: 16, 
     alignItems: 'center',
-    overflow: 'hidden',
   },
-  heroKickerBlock: {
-    alignItems: 'center',
-    marginBottom: 4,
+  centered: { 
+    flex: 1, 
+    alignItems: 'center', 
+    justifyContent: 'center',
   },
-  heroKicker: {
-    fontSize: 16,
-    fontFamily: MP_FONT.bodyBold,
-    letterSpacing: 3,
-    textAlign: 'center',
+  hero: {
+    marginBottom: 16,
   },
-  heroKickerLine: {
-    width: 86,
-    height: 4,
-    borderRadius: 999,
-    marginTop: 10,
-    opacity: 0.9,
-  },
-  heroTitle: {
-    marginTop: 14,
-    fontSize: 36,
-    fontFamily: MP_FONT.displayBold,
-    fontWeight: '900',
-    color: '#FF6B9D',
-    textAlign: 'center',
-    letterSpacing: 0.2,
-    lineHeight: 42,
-    paddingHorizontal: 4,
-  },
-  heroTagline: {
-    marginTop: 10,
-    fontSize: 12,
-    fontFamily: MP_FONT.bodySemi,
-    fontWeight: '700',
-    letterSpacing: 1.6,
-    textTransform: 'uppercase',
-    textAlign: 'center',
-    lineHeight: 18,
-    paddingHorizontal: 4,
+  searchCard: {
+    marginBottom: 12,
+    padding: 0,
   },
   searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
   },
-  searchInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    minHeight: 52,
-    paddingLeft: 14,
-    paddingRight: 8,
-    gap: 8,
+  searchInput: { 
+    flex: 1, 
+    fontSize: 14, 
+    fontFamily: 'Inter_500Medium',
+    paddingVertical: 8,
   },
-  searchInput: { flex: 1, fontSize: 14, fontFamily: MP_FONT.bodyMedium, paddingVertical: 0 },
-  quickPills: { gap: 8, paddingVertical: 4 },
+  chipRow: {
+    paddingVertical: 8,
+  },
   listHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 4,
-    marginBottom: 4,
+    marginTop: 12,
+    marginBottom: 8,
   },
-  listCount: { fontSize: 20, fontFamily: MP_FONT.displayBold },
-  sortRow: { flexDirection: 'row', alignItems: 'center' },
+  listCount: { 
+    fontSize: 18, 
+    fontFamily: 'SpaceGrotesk_700Bold',
+  },
+  sortRow: { 
+    flexDirection: 'row', 
+    alignItems: 'center',
+  },
+  sortLabel: {
+    fontSize: 13,
+    fontFamily: 'Inter_600SemiBold',
+  },
+  emptyCard: {
+    marginTop: 24,
+  },
+  emptyContent: {
+    padding: 32,
+    alignItems: 'center',
+  },
+  emptyTitle: {
+    fontSize: 16,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    textAlign: 'center',
+  },
+  emptySubtitle: {
+    marginTop: 8,
+    fontSize: 13,
+    fontFamily: 'Inter_400Regular',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
 });

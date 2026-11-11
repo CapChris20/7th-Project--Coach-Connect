@@ -1,5 +1,5 @@
-// Client home card for the linked trainer: photo, specialty, Message / Profile / Pay.
-// Flow: read trainer fields → paint the glass card → Message is the brand CTA, Pay only when onPressPayment is passed.
+// Client home card for the linked trainer: photo, specialty, Message / Profile / Pay / Remove.
+// Flow: read trainer fields → paint the glass card → Message is the brand CTA; Pay / Remove only when those callbacks are passed.
 // Used on the client home screen. Accent keys (pink, purple, cyan, orange, green) stay as callers pass `accent`.
 
 import React, { useRef } from 'react';
@@ -7,6 +7,8 @@ import { View, Text, StyleSheet, TouchableOpacity, Animated, Image } from 'react
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { trainerPhotoUri } from '../../helpers/trainerProfilePhoto';
+import NbCard from '../../look-and-feel/NbCard';
+import NbButton from '../../look-and-feel/NbButton';
 
 // ===== NAMED CONSTANTS =====
 
@@ -183,6 +185,8 @@ export default function MyTrainerCard({
   secondaryCtaLabel = 'View Profile',
   onPressSecondaryCTA,
   onPressPayment,
+  // vocab: onPressRemove = opens the hold-to-confirm RemoveTrainerPopup (ends the link; does not delete accounts)
+  onPressRemove,
   paymentButtonLabel = 'Manage Coaching Payment',
   paymentButtonShortLabel = 'Pay',
   paymentRateLabel,
@@ -204,26 +208,29 @@ export default function MyTrainerCard({
   const years = typeof trainer?.experienceYears === 'number' ? trainer.experienceYears : null;
   const photoSrc = trainerPhotoUri(trainer);
   const hasPayment = typeof onPressPayment === 'function';
+  // Only show Remove when the parent passed a handler (linked trainer + popup wired).
+  const hasRemove = typeof onPressRemove === 'function';
   const showPaymentMeta = (paymentRateLabel || paymentStatusLabel) && hasPayment;
 
   return (
     <Animated.View style={{ transform: [{ scale }] }}>
-      <TouchableOpacity
-        activeOpacity={1}
-        onPress={onPressCard}
-        onPressIn={pressIn}
-        onPressOut={pressOut}
+      <View
+        style={[
+          styles.cardShell,
+          {
+            borderColor: tokens.border,
+            backgroundColor: tokens.cardBackground,
+          },
+        ]}
       >
-        <View
-          style={[
-            styles.cardShell,
-            {
-              borderColor: tokens.border,
-              backgroundColor: tokens.cardBackground,
-            },
-          ]}
+        {/* Card body is pressable for Message; Remove sits below so it never steals that press. */}
+        <TouchableOpacity
+          activeOpacity={1}
+          onPress={onPressCard}
+          onPressIn={pressIn}
+          onPressOut={pressOut}
         >
-          <View style={styles.outer}>
+          <View style={[styles.outer, hasRemove ? styles.outerWithRemove : null]}>
             <View style={styles.row}>
               <TrainerAvatar
                 photoSrc={photoSrc}
@@ -325,8 +332,22 @@ export default function MyTrainerCard({
               />
             ) : null}
           </View>
-        </View>
-      </TouchableOpacity>
+        </TouchableOpacity>
+
+        {/* Quiet exit below the pressable body so Remove never also fires Message. */}
+        {hasRemove ? (
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={onPressRemove}
+            accessibilityRole="button"
+            accessibilityLabel={`Remove ${name} as your trainer`}
+            style={styles.removeRow}
+          >
+            <Ionicons name="person-remove-outline" size={14} color={ERROR_STATUS_COLOR} />
+            <Text style={styles.removeText}>Remove trainer</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
     </Animated.View>
   );
 }
@@ -346,6 +367,10 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     padding: 18,
     overflow: 'hidden',
+  },
+  // Tighten bottom padding when the remove link follows, so the card does not look padded twice.
+  outerWithRemove: {
+    paddingBottom: 8,
   },
   row: { flexDirection: 'row', gap: 14, alignItems: 'center' },
   avatarRing: { width: 76, height: 76, borderRadius: 38, overflow: 'hidden' },
@@ -422,4 +447,19 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   paymentStatusText: { fontSize: 11, fontWeight: '800' },
+  // Manipulate here: padding around the remove link; keep it secondary to the CTA row.
+  removeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingTop: 0,
+    paddingBottom: 14,
+    paddingHorizontal: 18,
+  },
+  removeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: ERROR_STATUS_COLOR,
+  },
 });

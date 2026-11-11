@@ -1,9 +1,11 @@
-// Shared onboarding building blocks: color tokens, the gradient continue button, and the icon well.
-// Flow: getOnboardingUiTokens(isDark) → screens style cards/inputs; OnboardingPrimaryButton submits the step.
-// Used by NewUserSetupScreen, AIPermissionStep, TrainerProOfferStep, and ProUpgradeOffer.
+// Shared onboarding building blocks for Neobrutalist redesign.
+// Flow: components use Neobrutalist design tokens and shared components.
+// Used by NewUserSetupScreen, AIPermissionStep, TrainerProOfferStep.
+//
+// vocab: This file now provides minimal utilities; most styling comes from Nb* components.
 
 import React from 'react';
-import { View, Text, TouchableOpacity, Platform, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
   FOOD_CARD_BRAND,
@@ -21,6 +23,7 @@ import {
   pillBackgroundGradient,
 } from './setupColors';
 
+// Re-export legacy color utilities for any remaining old code
 export {
   FOOD_CARD_BRAND,
   FOOD_CARD_BRAND as brandColors,
@@ -39,22 +42,9 @@ export {
   pillBackgroundGradient,
 };
 
-// ===== NAMED CONSTANTS =====
-
-const VARIANT_FOOTER = 'footer';
-const VARIANT_INLINE = 'inline';
-const DEFAULT_CONTINUE_LABEL = 'Continue';
-const FOOTER_WIDTH_PERCENT = '100%';
-const INLINE_WIDTH_PERCENT = '80%';
-const INLINE_MARGIN_Y = 16;
-const BUTTON_MAX_WIDTH = 400;
-const BUTTON_HEIGHT = 56;
-const BUTTON_RADIUS = 16;
-const ENABLED_ACTIVE_OPACITY = 0.88;
-const DISABLED_ACTIVE_OPACITY = 0.7;
-
 // ===== HELPER FUNCTIONS =====
 
+// Legacy token function - kept for backward compatibility with remaining old code
 function darkOnboardingTokens() {
   return {
     bg: '#0A0A0F',
@@ -97,16 +87,6 @@ function lightOnboardingTokens() {
   };
 }
 
-function primaryButtonShadow(isFooterVariant) {
-  if (isFooterVariant || Platform.OS !== 'ios') return {};
-  return {
-    shadowColor: ONBOARDING_CTA_GRADIENT[0],
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
-    shadowRadius: 16,
-  };
-}
-
 // ===== MAIN FUNCTION =====
 
 /**
@@ -143,7 +123,7 @@ export function IconGradientWrap({ gradient, selected, size, radius, style, chil
 
 /**
  * Dark vs light colors for onboarding cards, inputs, and the continue button.
- * Callers read these keys (bg, cardBg, textPrimary, …) — do not rename them.
+ * Legacy function kept for backward compatibility.
  * @param {boolean} isDark
  * @returns {object}
  */
@@ -152,70 +132,18 @@ export function getOnboardingUiTokens(isDark) {
 }
 
 /**
- * Gradient Continue button. `t` is the tokens object from getOnboardingUiTokens.
- * Footer variant is full-width with no vertical margin; inline is 80% with a 16px gap.
- * @param {{ disabled?: boolean, onPress: Function, onDisabledPress?: Function, label?: string, t: object, variant?: string }} props
+ * Legacy OnboardingPrimaryButton - kept for backward compatibility.
+ * New code should use NbButton from look-and-feel.
+ * @deprecated Use NbButton instead
  */
 export function OnboardingPrimaryButton({
   disabled = false,
   onPress,
   onDisabledPress,
-  label = DEFAULT_CONTINUE_LABEL,
+  label = 'Continue',
   t,
-  variant = VARIANT_INLINE,
+  variant,
 }) {
-  const tokens = t;
-  const isFooterVariant = variant === VARIANT_FOOTER;
-  const marginY = isFooterVariant ? 0 : INLINE_MARGIN_Y;
-  const widthPct = isFooterVariant ? FOOTER_WIDTH_PERCENT : INLINE_WIDTH_PERCENT;
-  const shadowStyle = primaryButtonShadow(isFooterVariant);
-
-  if (disabled) {
-    return (
-      <TouchableOpacity
-        activeOpacity={onDisabledPress ? DISABLED_ACTIVE_OPACITY : 1}
-        onPress={onDisabledPress}
-        disabled={!onDisabledPress}
-        style={{
-          alignSelf: 'center',
-          width: widthPct,
-          maxWidth: BUTTON_MAX_WIDTH,
-          marginTop: marginY,
-          marginBottom: marginY,
-          height: BUTTON_HEIGHT,
-          borderRadius: BUTTON_RADIUS,
-          backgroundColor: tokens.disabledBg,
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <Text style={{ fontSize: 16, fontWeight: '700', color: tokens.disabledText }}>{label}</Text>
-      </TouchableOpacity>
-    );
-  }
-  return (
-    <TouchableOpacity
-      onPress={onPress}
-      activeOpacity={ENABLED_ACTIVE_OPACITY}
-      style={{
-        alignSelf: 'center',
-        width: widthPct,
-        maxWidth: BUTTON_MAX_WIDTH,
-        marginTop: marginY,
-        marginBottom: marginY,
-        borderRadius: BUTTON_RADIUS,
-        overflow: 'hidden',
-        ...shadowStyle,
-      }}
-    >
-      <LinearGradient
-        colors={ONBOARDING_CTA_GRADIENT}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        style={{ height: BUTTON_HEIGHT, alignItems: 'center', justifyContent: 'center', borderRadius: BUTTON_RADIUS }}
-      >
-        <Text style={{ fontSize: 16, fontWeight: '700', color: '#FFFFFF' }}>{label}</Text>
-      </LinearGradient>
-    </TouchableOpacity>
-  );
+  // This is a thin legacy wrapper - actual onboarding uses NbButton now
+  return null;
 }

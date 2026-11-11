@@ -670,6 +670,32 @@ function ClientAppShellLayout({
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      {/* Remove-trainer sheet lives outside the navigator (same idea as PayTrainerPopup) so Dashboard
+          and Settings can both open it without fighting the stack. */}
+      <RemoveTrainerPopup
+        visible={!!shell.showRemoveTrainerPopup}
+        onClose={() => shell.setShowRemoveTrainerPopup?.(false)}
+        onRemovalComplete={() => {
+          // Keep the removed coach’s name for the optional “leave a review” banner on home.
+          if (shell.trainerData) {
+            shell.setReviewPromptTrainer?.({
+              id: shell.trainerData.id,
+              name:
+                shell.trainerData.displayName ||
+                shell.trainerData.name ||
+                'Your trainer',
+            });
+          }
+          shell.setTrainerData?.(null);
+          shell.setShowRemoveTrainerPopup?.(false);
+        }}
+        trainerName={shell.trainerData?.displayName || shell.trainerData?.name}
+        clientName={shell.user?.displayName || shell.userData?.firstName}
+        removedBy="client"
+        trainerId={shell.trainerData?.id}
+        clientId={shell.user?.uid}
+      />
     </ClientAppStartShellProvider>
   );
 }

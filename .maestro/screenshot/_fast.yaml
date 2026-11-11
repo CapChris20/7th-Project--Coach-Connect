@@ -1,0 +1,18 @@
+appId: com.coachconnect
+---
+- tapOn:
+    point: "30%,28%"
+- tapOn:
+    point: "50%,36%"
+- eraseText
+- inputText: "${MAESTRO_CLIENT_EMAIL}"
+- tapOn:
+    point: "50%,46%"
+- eraseText
+- inputText: "${MAESTRO_CLIENT_PASSWORD}"
+- hideKeyboard
+- tapOn:
+    point: "50%,58%"
+- extendedWaitUntil:
+    visible: "Home|Nutrition|Workout|Explore Dashboard"
+    timeout: 45000

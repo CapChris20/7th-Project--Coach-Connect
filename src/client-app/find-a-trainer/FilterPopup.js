@@ -1,36 +1,34 @@
 // Bottom sheet for marketplace filters: sort, specialty, experience, price, session type.
 // Flow: copy current filters into a draft → edit the draft → Apply writes it back, Reset restores defaults.
 // Used by SearchTrainersScreen. The parent owns the live filters; this sheet only edits a copy.
+//
+// vocab: neobrutalist = thick borders, hard shadows, gradient only for primary moment
 
 import React, { useState, useEffect } from 'react';
 import {
-  Modal,
   Platform,
-  Pressable,
-  ScrollView,
   StyleSheet,
   Switch,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { useColorScheme } from 'react-native';
 import Slider from '@react-native-community/slider';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
-  BRAND,
   DEFAULT_FILTERS,
   EXPERIENCE_OPTIONS,
   FILTER_SPECIALTIES,
-  MP_FONT,
   PRICE_CEILING,
   PRICE_FLOOR,
   SESSION_TYPES,
   SORT_OPTIONS,
-  getTheme,
 } from './trainerFilters';
-import { Pill, PrimaryButton, SecondaryButton, SectionLabel } from './FindTrainerPieces';
-import BlurredBackground from '../../look-and-feel/BlurredBackground';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import NbSheet from '../../look-and-feel/NbSheet';
+import NbChipRow from '../../look-and-feel/NbChipRow';
+import NbButton from '../../look-and-feel/NbButton';
+import { lightColors, darkColors, spacing } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 

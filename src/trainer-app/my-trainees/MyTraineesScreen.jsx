@@ -29,6 +29,9 @@ import {
   getClientRosterStats,
   getClientSubtext,
 } from '../home/trainerHomePieces';
+import NbCard from '../../look-and-feel/NbCard';
+import NbAvatar from '../../look-and-feel/NbAvatar';
+import NbButton from '../../look-and-feel/NbButton';
 
 // ===== NAMED CONSTANTS =====
 
@@ -319,44 +322,19 @@ const ClientsListScreen = ({
             overshootRight={false}
             renderRightActions={() => renderRightActions(client)}
           >
-            <View style={{ marginBottom: 12 }}>
-              <View
-                style={{
-                  borderRadius: 20,
-                  borderWidth: 1.5,
-                  borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(15,23,42,0.1)',
-                  overflow: 'hidden',
-                  backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.92)',
-                }}
+            <View style={{ marginBottom: 12, position: 'relative' }}>
+              <TouchableOpacity
+                activeOpacity={0.88}
+                onPress={() => onSelectClient(client.id)}
               >
-                <TouchableOpacity
-                  activeOpacity={0.88}
-                  onPress={() => onSelectClient(client.id)}
-                  style={{
-                    borderRadius: 18,
-                    backgroundColor: innerCardBg,
-                    paddingHorizontal: 16,
-                    paddingTop: 16,
-                    paddingBottom: 14,
-                  }}
-                >
-                  <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
-                    <LinearGradient
-                      colors={ROSTER_LIST_AVATAR_GRADIENT}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={{
-                        width: 52,
-                        height: 52,
-                        borderRadius: 18,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}
-                    >
-                      <Text style={{ color: '#fff', fontSize: 18, fontWeight: '900', letterSpacing: 0.5 }}>{initials}</Text>
-                    </LinearGradient>
-                    <View style={{ flex: 1, marginLeft: 14, minWidth: 0, paddingRight: 36 }}>
-                      <Text style={{ color: textColor, fontSize: 18, fontWeight: '900', letterSpacing: -0.3 }} numberOfLines={1}>
+                <NbCard style={{ padding: 16 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
+                    <NbAvatar
+                      initials={initials}
+                      size={52}
+                    />
+                    <View style={{ flex: 1, minWidth: 0, paddingRight: 36 }}>
+                      <Text style={{ color: textColor, fontSize: 18, fontWeight: '900', letterSpacing: -0.3, fontFamily: 'SpaceGrotesk_700Bold' }} numberOfLines={1}>
                         {displayName}
                       </Text>
                       <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', marginTop: 8 }}>
@@ -373,7 +351,7 @@ const ClientsListScreen = ({
                               marginBottom: 4,
                             }}
                           >
-                            <Text style={{ color: isDark ? 'rgba(254, 205, 211, 0.92)' : '#9F1239', fontSize: 11, fontWeight: '800' }} numberOfLines={1}>
+                            <Text style={{ color: isDark ? 'rgba(254, 205, 211, 0.92)' : '#9F1239', fontSize: 11, fontWeight: '800', fontFamily: 'SpaceGrotesk_700Bold' }} numberOfLines={1}>
                               {stats.goal}
                             </Text>
                           </View>
@@ -384,32 +362,26 @@ const ClientsListScreen = ({
                     </View>
                   </View>
 
-                  <View style={{ flexDirection: 'row', marginTop: 14 }}>
+                  <View style={{ flexDirection: 'row', marginTop: 14, gap: 10 }}>
                     {[
-                      { key: 'age', cap: 'Age', val: stats.age ? `${stats.age} yrs` : '—' },
-                      { key: 'wt', cap: 'Weight', val: stats.weight ? `${stats.weight} lbs` : '—' },
-                      { key: 'ht', cap: 'Height', val: stats.height || '—' },
-                    ].map((cell, idx) => (
+                      { key: 'age', cap: 'AGE', val: stats.age ? `${stats.age}` : '—' },
+                      { key: 'wt', cap: 'WEIGHT', val: stats.weight ? `${stats.weight} lbs` : '—' },
+                      { key: 'ht', cap: 'HEIGHT', val: stats.height || '—' },
+                    ].map((cell) => (
                       <View
                         key={cell.key}
                         style={{
                           flex: 1,
-                          borderRadius: 14,
-                          paddingVertical: 10,
-                          paddingHorizontal: 8,
-                          backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(15,23,42,0.04)',
-                          borderWidth: 1,
-                          borderColor: isDark ? 'rgba(244, 114, 182, 0.12)' : 'rgba(194, 65, 12, 0.1)',
                           alignItems: 'center',
-                          marginRight: idx < 2 ? 10 : 0,
                         }}
                       >
                         <Text
                           style={{
-                            color: isDark ? 'rgba(244, 182, 196, 0.88)' : 'rgba(136, 19, 55, 0.78)',
-                            fontSize: 11,
-                            fontWeight: '800',
-                            letterSpacing: 1,
+                            color: mutedColor,
+                            fontSize: 12,
+                            fontWeight: '700',
+                            letterSpacing: 1.2,
+                            fontFamily: 'SpaceGrotesk_700Bold',
                             textTransform: 'uppercase',
                           }}
                         >
@@ -417,9 +389,10 @@ const ClientsListScreen = ({
                         </Text>
                         <Text
                           style={{
-                            color: isDark ? 'rgba(255, 247, 247, 0.96)' : '#0f172a',
+                            color: textColor,
                             fontSize: 15,
                             fontWeight: '800',
+                            fontFamily: 'SpaceGrotesk_700Bold',
                             marginTop: 4,
                             letterSpacing: -0.2,
                           }}
@@ -430,29 +403,29 @@ const ClientsListScreen = ({
                       </View>
                     ))}
                   </View>
-                </TouchableOpacity>
+                </NbCard>
+              </TouchableOpacity>
 
-                <TouchableOpacity
-                  onPress={() => openRemoveSheet(client)}
-                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                  accessibilityLabel={`Remove ${displayName}`}
-                  style={{
-                    position: 'absolute',
-                    top: 12,
-                    right: 12,
-                    width: 34,
-                    height: 34,
-                    borderRadius: 17,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    backgroundColor: isDark ? 'rgba(190, 24, 93, 0.18)' : 'rgba(190, 24, 93, 0.08)',
-                    borderWidth: 1,
-                    borderColor: isDark ? 'rgba(244, 114, 182, 0.22)' : 'rgba(190, 24, 93, 0.15)',
-                  }}
-                >
-                  <Ionicons name="trash-outline" size={17} color={DELETE_ICON_PINK} />
-                </TouchableOpacity>
-              </View>
+              <TouchableOpacity
+                onPress={() => openRemoveSheet(client)}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                accessibilityLabel={`Remove ${displayName}`}
+                style={{
+                  position: 'absolute',
+                  top: 12,
+                  right: 12,
+                  width: 34,
+                  height: 34,
+                  borderRadius: 17,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: isDark ? 'rgba(190, 24, 93, 0.18)' : 'rgba(190, 24, 93, 0.08)',
+                  borderWidth: 1,
+                  borderColor: isDark ? 'rgba(244, 114, 182, 0.22)' : 'rgba(190, 24, 93, 0.15)',
+                }}
+              >
+                <Ionicons name="trash-outline" size={17} color={DELETE_ICON_PINK} />
+              </TouchableOpacity>
             </View>
           </Swipeable>
         );

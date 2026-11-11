@@ -48,6 +48,9 @@ import {
   GRADIENT_AVATAR,
   CARD_BORDER_PINK_ORANGE,
 } from '../home/trainerHomePieces';
+import NbCard from '../../look-and-feel/NbCard';
+import NbAvatar from '../../look-and-feel/NbAvatar';
+import NbListRow from '../../look-and-feel/NbListRow';
 
 // ===== NAMED CONSTANTS =====
 
@@ -696,49 +699,21 @@ const ClientDetailScreen = ({
           }}
           {...FORM_SCROLL_PROPS}
         >
-          <GlassCard
-            isDark={isDark}
-            style={{ padding: 16, borderRadius: 16, borderColor: CARD_BORDER_PINK_ORANGE }}
-          >
+          <NbCard style={{ padding: 16 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-              <View
-                style={{
-                  width: 48,
-                  height: 48,
-                  borderRadius: 24,
-                  overflow: 'hidden',
-                  backgroundColor: 'rgba(255,255,255,0.06)',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                {client?.photoURL ? (
-                  <Image source={{ uri: client.photoURL }} style={{ width: 48, height: 48 }} />
-                ) : (
-                  <LinearGradient
-                    colors={GRADIENT_AVATAR}
-                    style={{
-                      width: 48,
-                      height: 48,
-                      borderRadius: 24,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <Text style={{ color: WHITE, fontWeight: 'bold', fontSize: 16 }}>
-                      {getClientInitials(client?.name)}
-                    </Text>
-                  </LinearGradient>
-                )}
-              </View>
+              {client?.photoURL ? (
+                <NbAvatar source={client.photoURL} size={48} />
+              ) : (
+                <NbAvatar initials={getClientInitials(client?.name)} size={48} />
+              )}
               <View style={{ flex: 1 }}>
-                <Text style={{ color: textColor, fontWeight: 'bold', fontSize: 17 }}>
+                <Text style={{ color: textColor, fontFamily: 'SpaceGrotesk_700Bold', fontSize: 17 }}>
                   {client?.name || NO_NAME_LABEL}
                 </Text>
-                <Text style={{ color: mutedColor, fontSize: 12, marginTop: 2 }}>
+                <Text style={{ color: mutedColor, fontSize: 12, marginTop: 2, fontFamily: 'Inter_400Regular' }}>
                   {getClientSubtext(client)}
                 </Text>
-                <Text style={{ color: mutedColor, fontSize: 11, marginTop: 4 }}>
+                <Text style={{ color: mutedColor, fontSize: 11, marginTop: 4, fontFamily: 'Inter_400Regular' }}>
                   {checkInLabel}
                 </Text>
               </View>
@@ -752,33 +727,25 @@ const ClientDetailScreen = ({
               }}
             >
               <TouchableOpacity onPress={openRemoveClientMenu} hitSlop={HIT_SLOP_REMOVE_LINK}>
-                <Text style={{ color: DANGER_RED, fontSize: 14, fontWeight: '600' }}>
+                <Text style={{ color: DANGER_RED, fontSize: 14, fontWeight: '600', fontFamily: 'Inter_600SemiBold' }}>
                   Remove from my roster
                 </Text>
-                <Text style={{ color: mutedColor, fontSize: 12, marginTop: 4, lineHeight: 16 }}>
+                <Text style={{ color: mutedColor, fontSize: 12, marginTop: 4, lineHeight: 16, fontFamily: 'Inter_400Regular' }}>
                   Unlinks this client from you (same as the ⋮ menu). They keep their account and can work with another coach.
                 </Text>
               </TouchableOpacity>
             </View>
-          </GlassCard>
+          </NbCard>
 
           {showLikedExercises ? (
-            <GlassCard
-              isDark={isDark}
-              style={{
-                padding: 14,
-                borderRadius: 16,
-                marginTop: 12,
-                borderColor: CARD_BORDER_PINK_ORANGE,
-              }}
-            >
-              <Text style={{ color: textColor, fontWeight: '800', fontSize: 13, marginBottom: 8 }}>
-                Liked exercises (prioritize when programming)
+            <NbCard style={{ padding: 14 }}>
+              <Text style={{ color: textColor, fontFamily: 'SpaceGrotesk_700Bold', fontSize: 13, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1.2 }}>
+                Liked exercises
               </Text>
-              <Text style={{ color: mutedColor, fontSize: 13, lineHeight: 18 }}>
+              <Text style={{ color: mutedColor, fontSize: 13, lineHeight: 18, fontFamily: 'Inter_400Regular' }}>
                 {likedExercisesDisplayText(clientData.likedExercises)}
               </Text>
-            </GlassCard>
+            </NbCard>
           ) : null}
 
           <TabPills activeTab={activeTab} onTabChange={setActiveTab} isDark={isDark} />
