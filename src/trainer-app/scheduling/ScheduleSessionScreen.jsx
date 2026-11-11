@@ -15,6 +15,7 @@ import { NbSegmented } from '../../look-and-feel/nb/NbSegmented';
 import { NbSurface } from '../../look-and-feel/nb/NbSurface';
 import {
   MINIMUM_TOUCH_SIZE,
+  NB_MUTED_TEXT_ON_LIGHT_GRADIENT,
   NB_RADIUS,
   NB_SPACING,
   NB_TEXT_ON_LIGHT_GRADIENT,
@@ -150,10 +151,9 @@ function IconSquare({ onPress, label, children }) {
  * Who the session is with: a round initial and the name.
  * @param {object} props
  * @param {string} props.clientName
- * @param {object} props.colors
  * @returns {JSX.Element}
  */
-function ClientBanner({ clientName, colors }) {
+function ClientBanner({ clientName }) {
   const initial = String(clientName || 'C').trim().charAt(0).toUpperCase();
   return (
     <NbSurface gradient="soft" innerStyle={styles.bannerInner}>
@@ -164,7 +164,7 @@ function ClientBanner({ clientName, colors }) {
         <Text numberOfLines={1} style={[styles.clientName, { color: NB_TEXT_ON_LIGHT_GRADIENT }]}>
           {clientName}
         </Text>
-        <Text style={[styles.bannerSub, { color: colors.muted }]}>Training session</Text>
+        <Text style={[styles.bannerSub, { color: NB_MUTED_TEXT_ON_LIGHT_GRADIENT }]}>Training session</Text>
       </View>
     </NbSurface>
   );
@@ -419,7 +419,7 @@ export function ScheduleSessionScreen(props = {}) {
         <Text style={[styles.screenTitle, { color: colors.ink }]}>{isEdit ? 'Edit session' : 'New session'}</Text>
       </View>
 
-      <ClientBanner clientName={clientName} colors={colors} />
+      <ClientBanner clientName={clientName} />
 
       <View style={styles.sectionGap}>
         <SectionLabel text="Date" color={colors.ink} />

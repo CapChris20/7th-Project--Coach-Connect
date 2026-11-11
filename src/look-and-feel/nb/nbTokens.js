@@ -39,6 +39,8 @@ export const NB_GRADIENTS = {
 // Text that sits on a gradient is always near-black, except on the ink gradient, which uses white.
 export const NB_TEXT_ON_LIGHT_GRADIENT = '#0A0A0F';
 export const NB_TEXT_ON_INK_GRADIENT = '#FFFFFF';
+// Secondary text on a light gradient must stay dark in dark mode too, so it is not part of the theme palette.
+export const NB_MUTED_TEXT_ON_LIGHT_GRADIENT = '#3A3550';
 
 const LIGHT_COLORS = {
   background: '#F3EEFF',
