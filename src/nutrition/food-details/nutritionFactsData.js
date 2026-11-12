@@ -1,12 +1,32 @@
 // Build nutrition-facts view models from logged food entries (macros, micros, FDA-style rows, daily totals).
 // Flow: flatten metadata → scale per-100g / label-serving → extract nutrients → merge API enrichment → build card rows.
 // Used by: NutritionFactsScreen, daily nutrition cards, and log enrichment after search.
+// Chrome accents use Design Law foodMacroGradients / accentGradients only — never green #22C55E.
 
 import {
   NUT_MACRO_RING_GRADIENTS,
   NUT_CALORIES_GRADIENT,
   NUT_SECTION_GRADIENT,
 } from '../nutritionColors';
+import { accentGradients } from '../../look-and-feel/colorPalette';
+import { gradients as foodMacroGradients } from '../food-cards/foodCardColors';
+
+// Manipulate here: single-food card bar accents — Design Law only (never green #22C55E)
+const FACTS_CARD_MACRO_CHROME = {
+  protein: { gradient: foodMacroGradients.protein, barColor: foodMacroGradients.protein[0] },
+  carbs: { gradient: foodMacroGradients.carbs, barColor: foodMacroGradients.carbs[0] },
+  fat: { gradient: foodMacroGradients.fat, barColor: foodMacroGradients.fat[0] },
+};
+const FACTS_CARD_BAR = {
+  totalFat: foodMacroGradients.fat[0],
+  saturatedFat: accentGradients[0][0],
+  transFat: foodMacroGradients.fat[1],
+  poly: accentGradients[3][0],
+  mono: accentGradients[4][1],
+  totalCarbs: foodMacroGradients.carbs[1],
+  fiber: foodMacroGradients.protein[0],
+  sugars: accentGradients[5][1],
+};
 
 // ===== NAMED CONSTANTS =====
 
@@ -902,37 +922,53 @@ export function buildNutritionFactsCardData(nutrients) {
         value: nutrientMap.protein,
         display: formatGrams(nutrientMap.protein),
         pct: pctOfDv(nutrientMap.protein, DAILY_VALUES.protein),
-        gradient: ['#6D28D9', '#FDE68A'],
-        barColor: '#FF6B9D',
+        gradient: FACTS_CARD_MACRO_CHROME.protein.gradient,
+        barColor: FACTS_CARD_MACRO_CHROME.protein.barColor,
       },
       {
         label: 'Carbs',
         value: nutrientMap.carbs,
         display: formatGrams(nutrientMap.carbs),
         pct: pctOfDv(nutrientMap.carbs, DAILY_VALUES.carbs),
-        gradient: ['#FBBF24', '#FB7185'],
-        barColor: '#F97316',
+        gradient: FACTS_CARD_MACRO_CHROME.carbs.gradient,
+        barColor: FACTS_CARD_MACRO_CHROME.carbs.barColor,
       },
       {
         label: 'Fat',
         value: nutrientMap.fat,
         display: formatGrams(nutrientMap.fat),
         pct: pctOfDv(nutrientMap.fat, DAILY_VALUES.fat),
-        gradient: ['#6D28D9', '#DB2777'],
-        barColor: '#64D2FF',
+        gradient: FACTS_CARD_MACRO_CHROME.fat.gradient,
+        barColor: FACTS_CARD_MACRO_CHROME.fat.barColor,
       },
     ],
     fats: [
-      macroBar('Total Fat', nutrientMap.fat, DAILY_VALUES.fat, '#64D2FF'),
-      macroBar('Saturated Fat', nutrientMap.saturatedFat, DAILY_VALUES.saturatedFat, '#FF6B9D'),
-      macroBar('Trans Fat', nutrientMap.transFat, TRANS_FAT_BAR_MAX, '#EF4444'),
-      macroBar('Polyunsaturated', nutrientMap.polyunsaturatedFat, POLY_FAT_BAR_MAX, '#C084FC'),
-      macroBar('Monounsaturated', nutrientMap.monounsaturatedFat, MONO_FAT_BAR_MAX, '#A78BFA'),
+      macroBar('Total Fat', nutrientMap.fat, DAILY_VALUES.fat, FACTS_CARD_BAR.totalFat),
+      macroBar(
+        'Saturated Fat',
+        nutrientMap.saturatedFat,
+        DAILY_VALUES.saturatedFat,
+        FACTS_CARD_BAR.saturatedFat,
+      ),
+      macroBar('Trans Fat', nutrientMap.transFat, TRANS_FAT_BAR_MAX, FACTS_CARD_BAR.transFat),
+      macroBar(
+        'Polyunsaturated',
+        nutrientMap.polyunsaturatedFat,
+        POLY_FAT_BAR_MAX,
+        FACTS_CARD_BAR.poly,
+      ),
+      macroBar(
+        'Monounsaturated',
+        nutrientMap.monounsaturatedFat,
+        MONO_FAT_BAR_MAX,
+        FACTS_CARD_BAR.mono,
+      ),
     ],
     carbs: [
-      macroBar('Total Carbs', nutrientMap.carbs, DAILY_VALUES.carbs, '#F97316'),
-      macroBar('Dietary Fiber', nutrientMap.fiber, DAILY_VALUES.fiber, '#22C55E'),
-      macroBar('Sugars', nutrientMap.sugar, SUGAR_BAR_MAX, '#FB7185'),
+      macroBar('Total Carbs', nutrientMap.carbs, DAILY_VALUES.carbs, FACTS_CARD_BAR.totalCarbs),
+      // Fiber was #22C55E green — now protein blue (Design Law: never green)
+      macroBar('Dietary Fiber', nutrientMap.fiber, DAILY_VALUES.fiber, FACTS_CARD_BAR.fiber),
+      macroBar('Sugars', nutrientMap.sugar, SUGAR_BAR_MAX, FACTS_CARD_BAR.sugars),
     ],
     minerals: [
       micro('cholesterol', 'Cholesterol'),

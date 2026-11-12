@@ -1,6 +1,6 @@
-// Trainer earnings and client billing rates (Stripe connect + per-client monthly rates).
-// Flow: load Stripe status/balance → list clients with rates → edit rate / toggle billing → payout setup.
-// Used by the trainer payments tab. Stripe helpers live under for-both/payments.
+// Trainer Money screen — Stripe balance, global billing toggle, per-client pay status (Design Law).
+// Flow: hero available balance → billing + rate card → client status list → edit-rate sheet (NbSlider).
+// Used by trainer payments tab. Data keys (monthlyRate, paymentStatus) unchanged; projectId stays anatrox-auth.
 
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import {
@@ -9,12 +9,11 @@ import {
   ScrollView,
   TouchableOpacity,
   Modal,
-  TextInput,
   KeyboardAvoidingView,
+  Pressable,
   Platform,
   StyleSheet,
   Alert,
-  ActivityIndicator,
   Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -22,10 +21,12 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { setDoc, serverTimestamp } from 'firebase/firestore';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
-import { lightColors, darkColors, gradients, nb, borderRadius } from '../../look-and-feel/colorPalette';
+import { lightColors, darkColors, nb, borderRadius, accentGradients } from '../../look-and-feel/colorPalette';
 import NbCard from '../../look-and-feel/NbCard';
 import NbButton from '../../look-and-feel/NbButton';
 import NbAvatar from '../../look-and-feel/NbAvatar';
+import NbSlider from '../../look-and-feel/NbSlider';
+import HardShadow from '../../look-and-feel/HardShadow';
 import TopHeader from '../../for-both/loading-and-header/TopHeader';
 import BottomMenuBar from '../../navigation/BottomMenuBar';
 import { SHELL_SAFE_AREA_EDGES, ShellBottomNavAnchor, FORM_SCROLL_PROPS, useShellBottomNavInset } from '../../navigation/bottomMenuSpacing';
@@ -34,10 +35,6 @@ import { getClientInitials } from '../home/trainerHomePieces';
 import { resolveStripeStatus, verifyStripeConnectStatus, getStripeConnectBalance } from '../../for-both/payments/trainerPayoutSetup';
 import { trainerPayoutSetupFlow } from '../../for-both/payments/trainerPayoutSetupFlow';
 import { TrainerPayoutSetupPopup } from '../../for-both/payments/TrainerPayoutSetupPopup';
-import {
-  HowPaymentsWorkSection,
-  EarningsDashboardPreview,
-} from '../../for-both/payments/HowPaymentsWorkSections';
 import { trainerPaymentHistory } from '../../for-both/payments/trainerPaymentHistory';
 import { postSetClientRate } from '../../for-both/online-connection/linkTrainerAndTrainee';
 import { trainerClientDocRef } from '../trainee-records/traineeDatabaseLocations';
@@ -49,6 +46,9 @@ const PLATFORM_FEE_RATE = 0.1;
 const CENTS_PER_DOLLAR = 100;
 const MIN_CENTS_AS_STORED_RATE = 100;
 const SHELL_BOTTOM_INSET_EXTRA = 24;
+// Manipulate here: edit-rate sheet slider bounds (Design Law mock 30–200, step 5)
+const RATE_SLIDER_MIN = 30;
+const RATE_SLIDER_MAX = 200;
 
 // ===== HELPER FUNCTIONS =====
 
@@ -101,37 +101,65 @@ function clientPaymentStatusLabel(status, rateCents) {
   }
 }
 
-// vocab: NbChip styled as neobrutalist status chip with thick border
-function StatusChip({ label, tone, colors, isDark }) {
-  const toneColor =
-    tone === 'success'
-      ? colors.success
-      : tone === 'warning'
-        ? colors.warning
-        : tone === 'error'
-          ? colors.error
-          : colors.nbMuted;
+function formatBalanceDollars(dollars) {
+  const n = Number(dollars);
+  if (!Number.isFinite(n)) return '$0';
+  return `$${Math.round(n).toLocaleString('en-US')}`;
+}
 
+function clientSessionsSubline(client) {
+  const count =
+    client?.sessionsThisMonth ??
+    client?.sessionsCountThisMonth ??
+    client?.monthSessionCount;
+  if (count == null || count === '') return null;
+  const n = Number(count);
+  if (!Number.isFinite(n)) return null;
+  return `${n} session${n === 1 ? '' : 's'} this month`;
+}
+
+/** Design Law pay status — gradients only on Paid up / Past due; awaiting = neutral outline. */
+function PaymentStatusPill({ label, tone, colors }) {
+  const textStyle = [pillStyles.text, { color: colors.nbInk }];
+  if (tone === 'success') {
+    return (
+      <LinearGradient colors={accentGradients[8]} style={pillStyles.gradient}>
+        <Text style={textStyle}>{label}</Text>
+      </LinearGradient>
+    );
+  }
+  if (tone === 'error') {
+    return (
+      <LinearGradient colors={accentGradients[1]} style={pillStyles.gradient}>
+        <Text style={textStyle}>{label}</Text>
+      </LinearGradient>
+    );
+  }
   return (
-    <View style={[chipStyles.wrap, { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface }]}>
-      <Text style={[chipStyles.text, { color: toneColor }]}>{label}</Text>
+    <View style={[pillStyles.neutral, { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface }]}>
+      <Text style={textStyle}>{label}</Text>
     </View>
   );
 }
 
-const chipStyles = StyleSheet.create({
-  wrap: {
+const pillStyles = StyleSheet.create({
+  gradient: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: borderRadius.nbChip,
+    borderWidth: nb.borderWidth,
+    borderColor: '#0A0A0F',
+  },
+  neutral: {
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: borderRadius.nbChip,
     borderWidth: nb.borderWidth,
   },
-  text: { 
-    fontSize: 11, 
+  text: {
+    fontSize: 12,
     fontFamily: 'SpaceGrotesk_700Bold',
-    fontWeight: '700', 
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
+    fontWeight: '700',
   },
 });
 
@@ -149,9 +177,8 @@ export default function EarningsScreen() {
   const profile = shell.trainerProfileDoc || {};
 
   const stripeConnectStatus = resolveStripeStatus(profile);
-  const stripeAccountId = profile.stripeAccountId || '';
   const trainerUid = auth?.currentUser?.uid || profile.uid || profile.id || '';
-  const { rows: paymentHistory, loading: paymentHistoryLoading } = trainerPaymentHistory(
+  const { rows: paymentHistory } = trainerPaymentHistory(
     stripeConnectStatus === 'active' ? trainerUid : null,
   );
   const [stripeBalance, setStripeBalance] = useState({ pending: null, available: null });
@@ -195,11 +222,6 @@ export default function EarningsScreen() {
     grossCents === (earningsFromHistory?.grossCents || 0) && earningsFromHistory
       ? earningsFromHistory.netCents
       : Math.max(profileNetCents, earningsFromHistory?.netCents || 0);
-  const nextPayout =
-    stripeBalance.available != null
-      ? `$${Number(stripeBalance.available).toFixed(2)} available`
-      : profile.nextPayoutLabel || profile.nextPayoutDate || '—';
-
   const textColor = colors.nbInk;
   const mutedColor = colors.nbMuted;
 
@@ -216,23 +238,53 @@ export default function EarningsScreen() {
     [mutedColor],
   );
 
+  const [rateModalOpen, setRateModalOpen] = useState(false);
+  const [rateModalAllClients, setRateModalAllClients] = useState(true);
   const [rateModalClient, setRateModalClient] = useState(null);
-  const [rateInput, setRateInput] = useState('');
+  const [rateSliderDollars, setRateSliderDollars] = useState(75);
   const [savingRate, setSavingRate] = useState(false);
   const [refreshingStripe, setRefreshingStripe] = useState(false);
   const [rateOverrides, setRateOverrides] = useState({});
 
-  const openRateModal = useCallback((client) => {
-    const existing = rateOverrides[client?.id]?.monthlyRate ?? client?.monthlyRate;
-    const display =
-      existing != null && Number(existing) >= 100
-        ? String(Number(existing) / 100)
-        : existing != null
-          ? String(existing)
-          : '';
-    setRateInput(display);
-    setRateModalClient(client);
-  }, [rateOverrides]);
+  const globalRateCents = useMemo(() => {
+    for (const client of clients) {
+      const override = rateOverrides[client.id] || {};
+      const cents = monthlyRateToCents(override.monthlyRate ?? client.monthlyRate);
+      if (cents > 0) return cents;
+    }
+    return 0;
+  }, [clients, rateOverrides]);
+
+  const anyBillingOn = useMemo(
+    () =>
+      clients.some((client) => {
+        const override = rateOverrides[client.id] || {};
+        const rateCents = monthlyRateToCents(override.monthlyRate ?? client.monthlyRate);
+        const payStatus = override.paymentStatus || client.paymentStatus || 'inactive';
+        return isBillingEnabled(payStatus, rateCents);
+      }),
+    [clients, rateOverrides],
+  );
+
+  const openRateModal = useCallback(
+    ({ allClients = true, client = null } = {}) => {
+      const existingCents = allClients
+        ? globalRateCents
+        : monthlyRateToCents(
+            rateOverrides[client?.id]?.monthlyRate ?? client?.monthlyRate,
+          );
+      const dollars =
+        existingCents > 0
+          ? existingCents / CENTS_PER_DOLLAR
+          : Math.max(RATE_SLIDER_MIN, 75);
+      const clamped = Math.min(RATE_SLIDER_MAX, Math.max(RATE_SLIDER_MIN, dollars));
+      setRateSliderDollars(Math.round(clamped));
+      setRateModalAllClients(allClients);
+      setRateModalClient(client);
+      setRateModalOpen(true);
+    },
+    [globalRateCents, rateOverrides],
+  );
 
   const refreshStripeStatus = useCallback(async () => {
     setRefreshingStripe(true);
@@ -349,79 +401,102 @@ export default function EarningsScreen() {
     [shell, clients, rateOverrides],
   );
 
-  const handleToggleBilling = useCallback(
-    async (client, turnOn) => {
-      const override = rateOverrides[client.id] || {};
-      const rateCents = monthlyRateToCents(override.monthlyRate ?? client.monthlyRate);
-
+  const handleGlobalBillingToggle = useCallback(
+    async (turnOn) => {
       if (turnOn) {
+        const rateCents = globalRateCents;
         if (!rateCents) {
-          openRateModal(client);
+          openRateModal({ allClients: true });
           return;
         }
         try {
-          await handleSetClientRate(client.id, rateCents, { billingEnabled: true });
+          for (const client of clients) {
+            await handleSetClientRate(client.id, rateCents, { billingEnabled: true });
+          }
         } catch (e) {
           Alert.alert('Couldn’t enable billing', e?.message || 'Please try again.');
         }
         return;
       }
-
       try {
-        await handleSetClientRate(client.id, rateCents, { billingEnabled: false });
+        for (const client of clients) {
+          const override = rateOverrides[client.id] || {};
+          const rateCents = monthlyRateToCents(override.monthlyRate ?? client.monthlyRate);
+          await handleSetClientRate(client.id, rateCents, { billingEnabled: false });
+        }
       } catch (e) {
         Alert.alert('Couldn’t turn off billing', e?.message || 'Please try again.');
       }
     },
-    [rateOverrides, openRateModal, handleSetClientRate],
+    [clients, globalRateCents, openRateModal, handleSetClientRate, rateOverrides],
   );
 
-  const parsedRatePreview = useMemo(() => {
-    const dollars = parseFloat(String(rateInput).replace(/[^0-9.]/g, ''));
-    if (!Number.isFinite(dollars) || dollars <= 0) return null;
-    const net = dollars * (1 - PLATFORM_FEE_RATE);
-    return { gross: dollars, net };
-  }, [rateInput]);
+  const availableBalanceDollars =
+    stripeBalance.available != null ? Number(stripeBalance.available) : netCents / CENTS_PER_DOLLAR;
+  const pendingBalanceDollars =
+    stripeBalance.pending != null ? Number(stripeBalance.pending) : null;
+  const payoutSubline = useMemo(() => {
+    const pendingPart =
+      pendingBalanceDollars != null && pendingBalanceDollars > 0
+        ? `$${Math.round(pendingBalanceDollars)} pending`
+        : null;
+    const nextPart =
+      profile.nextPayoutLabel ||
+      profile.nextPayoutDate ||
+      (stripeConnectStatus === 'active' ? 'Next payout on Stripe schedule' : '—');
+    if (pendingPart) return `${nextPart}. ${pendingPart}.`;
+    return `${nextPart}.`;
+  }, [pendingBalanceDollars, profile, stripeConnectStatus]);
 
   const saveRate = useCallback(async () => {
-    if (!rateModalClient?.id || savingRate) return;
-    const dollars = parseFloat(String(rateInput).replace(/[^0-9.]/g, ''));
+    if (!rateModalOpen || savingRate) return;
+    const dollars = Number(rateSliderDollars);
     if (!Number.isFinite(dollars) || dollars < 1) {
-      Alert.alert('Invalid rate', 'Enter a monthly rate of at least $1.');
+      Alert.alert('Invalid rate', 'Enter a rate of at least $1.');
       return;
     }
+    const amountInCents = Math.round(dollars * CENTS_PER_DOLLAR);
     setSavingRate(true);
     try {
-      await handleSetClientRate(rateModalClient.id, Math.round(dollars * 100), {
-        billingEnabled: true,
-      });
+      const targets = rateModalAllClients
+        ? clients
+        : rateModalClient?.id
+          ? [rateModalClient]
+          : clients;
+      for (const client of targets) {
+        if (!client?.id) continue;
+        await handleSetClientRate(client.id, amountInCents, { billingEnabled: true });
+      }
+      setRateModalOpen(false);
       setRateModalClient(null);
-      setRateInput('');
     } catch (e) {
       Alert.alert('Couldn’t save rate', e?.message || 'Please try again.');
     } finally {
       setSavingRate(false);
     }
-  }, [rateModalClient, rateInput, handleSetClientRate, savingRate]);
+  }, [
+    rateModalOpen,
+    rateSliderDollars,
+    rateModalAllClients,
+    rateModalClient,
+    clients,
+    handleSetClientRate,
+    savingRate,
+  ]);
 
-  const payoutStatusChip = () => {
-    if (stripeConnectStatus === 'active') {
-      return <StatusChip label="Active" tone="success" colors={colors} isDark={isDark} />;
-    }
-    if (stripeConnectStatus === 'pending') {
-      return <StatusChip label="Pending verification" tone="warning" colors={colors} isDark={isDark} />;
-    }
-    return <StatusChip label="Not connected" tone="neutral" colors={colors} isDark={isDark} />;
+  const globalRateDisplay = globalRateCents
+    ? formatUsdFromCents(globalRateCents).replace('.00', '')
+    : '—';
+
+  const closeRateSheet = () => {
+    setRateModalOpen(false);
+    setRateModalClient(null);
   };
-
-  const bankMask = stripeAccountId ? `****${String(stripeAccountId).slice(-4)}` : null;
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.nbBackground }]} edges={SHELL_SAFE_AREA_EDGES}>
       <TopHeader
-        title="PAYMENTS"
         skipTopSafeInset
-        onBack={shell.rootGoBack}
         onProfilePress={shell.openProfile}
         onSettingsPress={shell.openSettings}
       />
@@ -430,264 +505,166 @@ export default function EarningsScreen() {
         contentContainerStyle={[styles.scroll, { paddingBottom: shellNavInset }]}
         {...FORM_SCROLL_PROPS}
       >
-        {/* Section 1 — Payout Account */}
-        <NbCard style={styles.card}>
-          <View style={styles.sectionHeaderRow}>
-            <Text style={sectionLabelStyle}>PAYOUT ACCOUNT</Text>
-            {payoutStatusChip()}
-          </View>
-
-          {stripeConnectStatus === 'not_connected' ? (
-            <>
-              <Text style={[styles.bodyText, { color: mutedColor }]}>
-                Connect your bank account to receive in-app payments from clients. You keep 90% of each
-                payment; payouts typically arrive in 2–5 business days.
-              </Text>
-              <View style={{ marginVertical: 12 }}>
-                <HowPaymentsWorkSection
-                  compact
-                  textColor={textColor}
-                  mutedColor={mutedColor}
-                />
-                <EarningsDashboardPreview
-                  textColor={textColor}
-                  mutedColor={mutedColor}
-                  borderColor={isDark ? 'rgba(255,255,255,0.1)' : colors.border}
-                />
-              </View>
-              <NbButton variant="brand" onPress={handleConnectBank} style={styles.ctaButton}>
-                Connect Bank Account
-              </NbButton>
-            </>
-          ) : null}
-
-          {stripeConnectStatus === 'pending' ? (
-            <>
-              <Text style={[styles.bodyText, { color: mutedColor }]}>
-                {bankMask ? `Account: ${bankMask}. ` : ''}
-                Stripe still needs your payout details, or is finishing verification. If you already
-                submitted everything, tap Refresh — otherwise Finish setup.
-              </Text>
-              <NbButton 
-                variant="brand" 
-                onPress={handleConnectBank}
-                disabled={refreshingStripe}
-                style={styles.ctaButton}
-              >
-                Finish setup
-              </NbButton>
-              <NbButton
-                variant="plain"
-                onPress={refreshStripeStatus}
-                disabled={refreshingStripe}
-                style={styles.secondaryButton}
-              >
-                {refreshingStripe ? 'Loading…' : 'Refresh status'}
-              </NbButton>
-            </>
-          ) : null}
-
-          {stripeConnectStatus === 'active' ? (
-            <>
-              <Text style={[styles.bodyText, { color: mutedColor }]}>
-                {bankMask ? `Bank account: ${bankMask}. ` : ''}
-                Payouts are sent automatically every 2 business days by Stripe
-              </Text>
-              <NbButton
-                variant="plain"
-                onPress={handleManageBank}
-                style={styles.secondaryButton}
-              >
-                Manage Payout Account
-              </NbButton>
-            </>
-          ) : null}
-        </NbCard>
-
-        {/* Section 2 — Earnings This Month */}
-        <NbCard style={styles.card}>
-          <Text style={sectionLabelStyle}>EARNINGS THIS MONTH</Text>
-          <View style={styles.earningsRow}>
-            <Text style={[styles.earningsLabel, { color: mutedColor }]}>Gross earnings</Text>
-            <Text style={[styles.earningsValue, { color: textColor }]}>{formatUsdFromCents(grossCents)}</Text>
-          </View>
-          <View style={styles.earningsRow}>
-            <Text style={[styles.earningsLabel, { color: mutedColor }]}>Platform fees (10%)</Text>
-            <Text style={[styles.earningsValue, { color: textColor }]}>{formatUsdFromCents(feesCents)}</Text>
-          </View>
-          <View style={[styles.divider, { backgroundColor: colors.nbBorder }]} />
-          <View style={styles.earningsRow}>
-            <Text style={[styles.earningsLabelNet, { color: textColor }]}>Your net</Text>
-            <Text style={[styles.earningsValueNet, { color: textColor }]}>{formatUsdFromCents(netCents)}</Text>
-          </View>
-          <View style={[styles.divider, { backgroundColor: colors.nbBorder, marginTop: 12 }]} />
-          <View style={[styles.earningsRow, { marginTop: 12, marginBottom: 0 }]}>
-            <Text style={[styles.earningsLabel, { color: mutedColor }]}>Next payout</Text>
-            <Text style={[styles.earningsValue, { color: textColor }]}>{String(nextPayout)}</Text>
-          </View>
-        </NbCard>
-
-        {/* Section 3 — Client Billing Overview */}
-        <View style={styles.billingHeaderBlock}>
-          <Text style={[sectionLabelStyle, { marginBottom: 6 }]}>CLIENT BILLING</Text>
-          <Text style={[styles.billingHint, { color: mutedColor }]}>
-            Flip billing on, set their monthly rate. They get charged that amount in-app; you keep 90%.
-          </Text>
+        <View style={styles.pageHeaderRow}>
+          <HardShadow offset={nb.shadowOffset} radius={borderRadius.nbButton}>
+            <Pressable
+              onPress={shell.rootGoBack}
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
+              style={[
+                styles.backSq,
+                { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface },
+              ]}
+            >
+              <Ionicons name="chevron-back" size={22} color={colors.nbInk} />
+            </Pressable>
+          </HardShadow>
+          <Text style={[styles.pageTitle, { color: colors.nbInk }]}>Money</Text>
         </View>
-        {clients.length === 0 ? (
-          <NbCard style={styles.card}>
-            <Text style={[styles.bodyText, { color: mutedColor }]}>No connected clients yet.</Text>
-          </NbCard>
-        ) : (
-          clients.map((client) => {
-            const override = rateOverrides[client.id] || {};
-            const monthlyRate = override.monthlyRate ?? client.monthlyRate;
-            const rateCents = monthlyRateToCents(monthlyRate);
-            const name = client.name || client.displayName || 'Client';
-            const initials = getClientInitials(name);
-            const rateLabel = formatMonthlyRate(monthlyRate);
-            const payStatus = override.paymentStatus || client.paymentStatus || 'inactive';
-            const billingOn = isBillingEnabled(payStatus, rateCents);
-            const youKeep = rateCents
-              ? formatUsdFromCents(Math.round(rateCents * (1 - PLATFORM_FEE_RATE)))
-              : null;
-            const statusTone =
-              !rateCents || !billingOn
-                ? 'neutral'
-                : payStatus === 'active'
-                  ? 'success'
-                  : payStatus === 'past_due'
-                    ? 'error'
-                    : payStatus === 'awaiting_payment' || payStatus === 'payment_required'
-                      ? 'warning'
-                      : 'neutral';
 
-            return (
-              <NbCard key={client.id} style={styles.clientCard}>
-                <View style={styles.clientRow}>
-                  <NbAvatar size={44} text={initials} />
-                  <View style={styles.clientBody}>
-                    <Text style={[styles.clientName, { color: textColor }]} numberOfLines={1}>
-                      {name}
-                    </Text>
-                    {rateLabel ? (
-                      <Text style={[styles.clientRate, { color: textColor }]}>
-                        {rateLabel}/mo
-                        {youKeep ? (
-                          <Text style={{ color: mutedColor, fontWeight: '600' }}>
-                            {' '}
-                            · you keep {youKeep}
-                          </Text>
-                        ) : null}
-                      </Text>
-                    ) : (
-                      <Text style={[styles.clientRate, { color: mutedColor }]}>
-                        No monthly rate yet
-                      </Text>
-                    )}
-                  </View>
-                  <View style={styles.billingToggleCol}>
-                    <Text style={[styles.billingToggleLabel, { color: mutedColor }]}>
-                      {billingOn ? 'On' : 'Off'}
-                    </Text>
-                    <Switch
-                      value={billingOn}
-                      onValueChange={(on) => handleToggleBilling(client, on)}
-                      trackColor={{
-                        false: colors.nbBorder,
-                        true: gradients.brand.colors[0],
-                      }}
-                      thumbColor="#FFFFFF"
-                      ios_backgroundColor={colors.nbBorder}
-                    />
-                  </View>
-                </View>
+        <HardShadow style={styles.heroShadow}>
+          <View style={[styles.heroCard, { backgroundColor: colors.nbFill, borderColor: colors.nbBorder }]}>
+            <Text style={[styles.heroEyebrow, { color: colors.nbOnFill, opacity: 0.75 }]}>
+              AVAILABLE BALANCE
+            </Text>
+            <Text style={[styles.heroAmount, { color: colors.nbOnFill }]}>
+              {formatBalanceDollars(availableBalanceDollars)}
+            </Text>
+            <Text style={[styles.heroSub, { color: colors.nbOnFill, opacity: 0.8 }]}>{payoutSubline}</Text>
+          </View>
+        </HardShadow>
 
-                <View
-                  style={[
-                    styles.clientActionsRow,
-                    {
-                      borderTopColor: colors.nbBorder,
-                    },
-                  ]}
-                >
-                  <StatusChip
-                    label={clientPaymentStatusLabel(payStatus, rateCents)}
-                    tone={statusTone}
-                    colors={colors}
-                    isDark={isDark}
-                  />
-                  <TouchableOpacity
-                    activeOpacity={0.88}
-                    onPress={() => openRateModal(client)}
-                    style={[
-                      styles.setRateBtn,
-                      {
-                        borderColor: colors.nbBorder,
-                        backgroundColor: colors.nbSurface,
-                      },
-                    ]}
-                  >
-                    <Text style={[styles.setRateBtnText, { color: textColor }]}>
-                      {rateLabel ? 'Edit rate' : 'Set rate'}
-                    </Text>
-                    <Ionicons name="chevron-forward" size={16} color={mutedColor} />
-                  </TouchableOpacity>
-                </View>
-              </NbCard>
-            );
-          })
-        )}
-
-        {/* Section 4 — Payment / Payout History */}
-        <NbCard style={styles.card}>
-          <Text style={sectionLabelStyle}>PAYMENT HISTORY</Text>
-          {paymentHistoryLoading ? (
-            <ActivityIndicator color={textColor} style={{ marginVertical: 16 }} />
-          ) : paymentHistory.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Ionicons name="receipt-outline" size={36} color={mutedColor} />
-              <Text style={[styles.emptyTitle, { color: textColor }]}>No payments yet</Text>
-              <Text style={[styles.emptySub, { color: mutedColor }]}>
-                When clients pay you in-app, each charge (minus the 10% platform fee) shows up here.
-              </Text>
-            </View>
-          ) : (
-            paymentHistory.map((row) => (
-              <View
-                key={row.id}
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  paddingVertical: 10,
-                  borderBottomWidth: nb.borderWidth,
-                  borderBottomColor: colors.nbBorder,
-                }}
-              >
-                <View style={{ flex: 1, paddingRight: 12 }}>
-                  <Text style={{ color: textColor, fontWeight: '700', fontSize: 14 }}>
-                    ${Number(row.net).toFixed(2)} net
-                  </Text>
-                  <Text style={{ color: mutedColor, fontSize: 12, marginTop: 2 }}>
-                    {row.date} · ${Number(row.amount).toFixed(2)} gross · {row.status}
-                  </Text>
-                </View>
-                <Text style={{ color: mutedColor, fontSize: 12 }}>
-                  Fee ${Number(row.fee).toFixed(2)}
+        <HardShadow style={{ marginBottom: 16 }}>
+          <NbCard style={styles.billingCard}>
+            <View style={styles.billingTopRow}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={[styles.billingTitle, { color: colors.nbInk }]}>
+                  {anyBillingOn ? 'Billing is on' : 'Billing is off'}
+                </Text>
+                <Text style={[styles.billingSub, { color: colors.nbMuted }]}>
+                  Clients are charged per session
                 </Text>
               </View>
-            ))
-          )}
-          {stripeBalance.pending != null || stripeBalance.available != null ? (
-            <Text style={{ color: mutedColor, fontSize: 12, marginTop: 12 }}>
-              Stripe balance — available ${Number(stripeBalance.available || 0).toFixed(2)}
-              {stripeBalance.pending != null
-                ? ` · pending $${Number(stripeBalance.pending).toFixed(2)}`
-                : ''}
+              <Switch
+                value={anyBillingOn}
+                onValueChange={handleGlobalBillingToggle}
+                trackColor={{ false: colors.nbBorder, true: colors.nbFill }}
+                thumbColor={isDark ? darkColors.nbSurface : lightColors.white}
+                ios_backgroundColor={colors.nbBorder}
+              />
+            </View>
+            <View style={[styles.billingDivider, { borderTopColor: colors.nbBorder }]} />
+            <View style={styles.rateRow}>
+              <View>
+                <Text style={[styles.rateEyebrow, { color: colors.nbMuted }]}>Your rate</Text>
+                <Text style={[styles.rateAmount, { color: colors.nbInk }]}>
+                  {globalRateDisplay}{' '}
+                  <Text style={[styles.rateUnit, { color: colors.nbMuted }]}>/ session</Text>
+                </Text>
+              </View>
+              <NbButton variant="ghost" sm onPress={() => openRateModal({ allClients: true })}>
+                Edit rate
+              </NbButton>
+            </View>
+          </NbCard>
+        </HardShadow>
+
+        <View style={styles.clientsSectionHead}>
+          <Text style={sectionLabelStyle}>CLIENTS</Text>
+          <NbButton variant="ghost" sm onPress={refreshStripeStatus} disabled={refreshingStripe}>
+            {refreshingStripe ? 'Loading…' : 'Refresh status'}
+          </NbButton>
+        </View>
+
+        {clients.length === 0 ? (
+          <NbCard style={styles.card}>
+            <Text style={[styles.bodyText, { color: mutedColor, marginBottom: 0 }]}>
+              No connected clients yet.
             </Text>
-          ) : null}
-        </NbCard>
+          </NbCard>
+        ) : (
+          <HardShadow>
+            <NbCard style={styles.clientListCard}>
+              {clients.map((client, index) => {
+                const override = rateOverrides[client.id] || {};
+                const rateCents = monthlyRateToCents(override.monthlyRate ?? client.monthlyRate);
+                const name = client.name || client.displayName || 'Client';
+                const initials = getClientInitials(name);
+                const payStatus = override.paymentStatus || client.paymentStatus || 'inactive';
+                const billingOn = isBillingEnabled(payStatus, rateCents);
+                const sessionsLine = clientSessionsSubline(client);
+                const statusTone =
+                  !rateCents || !billingOn
+                    ? 'neutral'
+                    : payStatus === 'active'
+                      ? 'success'
+                      : payStatus === 'past_due'
+                        ? 'error'
+                        : payStatus === 'awaiting_payment' || payStatus === 'payment_required'
+                          ? 'warning'
+                          : 'neutral';
+
+                return (
+                  <View
+                    key={client.id}
+                    style={[
+                      styles.clientListRow,
+                      index > 0 ? { borderTopWidth: nb.borderWidth, borderTopColor: colors.nbBorder } : null,
+                    ]}
+                  >
+                    <NbAvatar size={44} initials={initials} />
+                    <View style={styles.clientBody}>
+                      <Text style={[styles.clientName, { color: textColor }]} numberOfLines={1}>
+                        {name}
+                      </Text>
+                      <Text style={[styles.clientSub, { color: mutedColor }]} numberOfLines={1}>
+                        {sessionsLine || 'Connected client'}
+                      </Text>
+                    </View>
+                    <PaymentStatusPill
+                      label={clientPaymentStatusLabel(payStatus, rateCents)}
+                      tone={statusTone}
+                      colors={colors}
+                    />
+                  </View>
+                );
+              })}
+            </NbCard>
+          </HardShadow>
+        )}
+
+        {stripeConnectStatus === 'not_connected' ? (
+          <View style={styles.stripeFoot}>
+            <Text style={[styles.stripeFootText, { color: mutedColor }]}>
+              Connect Stripe to receive payouts in-app.
+            </Text>
+            <NbButton variant="fill" onPress={handleConnectBank} style={{ marginTop: 10 }}>
+              Connect bank account
+            </NbButton>
+          </View>
+        ) : null}
+
+        {stripeConnectStatus === 'pending' ? (
+          <View style={styles.stripeFoot}>
+            <Text style={[styles.stripeFootText, { color: mutedColor }]}>
+              Stripe still asking for info? Try Finish setup.
+            </Text>
+            <View style={styles.stripeFootActions}>
+              <NbButton variant="ghost" onPress={refreshStripeStatus} disabled={refreshingStripe}>
+                Refresh status
+              </NbButton>
+              <NbButton variant="fill" onPress={handleConnectBank} disabled={refreshingStripe}>
+                Finish setup
+              </NbButton>
+            </View>
+          </View>
+        ) : null}
+
+        {stripeConnectStatus === 'active' ? (
+          <TouchableOpacity onPress={handleManageBank} style={styles.managePayoutLink}>
+            <Text style={[styles.stripeFootText, { color: mutedColor }]}>Manage payout account</Text>
+          </TouchableOpacity>
+        ) : null}
       </ScrollView>
 
       <ShellBottomNavAnchor>
@@ -706,73 +683,38 @@ export default function EarningsScreen() {
         />
       </ShellBottomNavAnchor>
 
-      <Modal visible={!!rateModalClient} transparent animationType="slide" onRequestClose={() => setRateModalClient(null)}>
+      <Modal visible={rateModalOpen} transparent animationType="slide" onRequestClose={closeRateSheet}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalRoot}>
-          <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setRateModalClient(null)} />
+          <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={closeRateSheet} />
           <View
             style={[
               styles.bottomSheet,
-              {
-                backgroundColor: colors.nbSurface,
-                borderColor: colors.nbBorder,
-              },
+              { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder },
             ]}
           >
-            <Text style={[styles.sheetTitle, { color: colors.text }]}>Monthly rate</Text>
-            {rateModalClient ? (
-              <Text style={[styles.sheetSubtitle, { color: colors.textSecondary }]}>
-                {rateModalClient.name || rateModalClient.displayName || 'Client'} — what they pay you each month
+            <View style={[styles.sheetHandle, { backgroundColor: colors.nbMuted }]} />
+            <Text style={[styles.sheetTitle, { color: colors.nbInk }]}>Edit rate</Text>
+            <View style={styles.sheetRateLine}>
+              <Text style={[styles.sheetRateValue, { color: colors.nbInk }]}>
+                ${rateSliderDollars}
               </Text>
-            ) : null}
-
-            <View
-              style={[
-                styles.netPreview,
-                {
-                  backgroundColor: colors.nbSurfaceChip,
-                  borderColor: colors.nbBorder,
-                },
-              ]}
-            >
-              <Text style={[styles.netPreviewLabel, { color: colors.textSecondary }]}>You receive</Text>
-              <Text style={[styles.netPreviewValue, { color: colors.text }]}>
-                {parsedRatePreview ? `$${parsedRatePreview.net.toFixed(2)}/mo` : '—/mo'}
-              </Text>
-              <Text style={[styles.netPreviewHint, { color: colors.textSecondary }]}>After 10% platform fee</Text>
+              <Text style={[styles.sheetRateUnit, { color: colors.nbMuted }]}>per session</Text>
             </View>
-
-            <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Monthly rate (USD)</Text>
-            <View
-              style={[
-                styles.inputWrap,
-                {
-                  backgroundColor: colors.nbSurfaceChip,
-                  borderColor: colors.nbBorder,
-                },
-              ]}
-            >
-              <Text style={[styles.inputPrefix, { color: colors.textSecondary }]}>$</Text>
-              <TextInput
-                style={[styles.input, { color: colors.text }]}
-                value={rateInput}
-                onChangeText={setRateInput}
-                keyboardType="decimal-pad"
-                placeholder="0.00"
-                placeholderTextColor={colors.textSecondary}
-              />
+            <NbSlider
+              min={RATE_SLIDER_MIN}
+              max={RATE_SLIDER_MAX}
+              value={rateSliderDollars}
+              onChange={setRateSliderDollars}
+              style={{ marginBottom: 20 }}
+            />
+            <View style={styles.sheetActions}>
+              <NbButton variant="ghost" onPress={closeRateSheet} style={{ flex: 1 }}>
+                Cancel
+              </NbButton>
+              <NbButton variant="fill" onPress={saveRate} disabled={savingRate} style={{ flex: 1.6 }}>
+                {savingRate ? 'Saving…' : 'Save and turn billing on'}
+              </NbButton>
             </View>
-
-            <NbButton 
-              variant="brand" 
-              onPress={saveRate}
-              disabled={savingRate}
-              style={styles.ctaButton}
-            >
-              {savingRate ? 'Saving…' : 'Save & turn billing on'}
-            </NbButton>
-            <TouchableOpacity style={styles.cancelBtn} onPress={() => setRateModalClient(null)}>
-              <Text style={[styles.cancelBtnText, { color: colors.textSecondary }]}>Cancel</Text>
-            </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
       </Modal>
@@ -791,78 +733,91 @@ export default function EarningsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  scroll: { paddingHorizontal: 16, paddingTop: 12 },
-  card: { padding: 16, marginBottom: 16 },
-  clientCard: { padding: 14, marginBottom: 10 },
-  sectionHeaderRow: {
+  scroll: { paddingHorizontal: 16, paddingTop: 8 },
+  pageHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-    marginBottom: 4,
+    gap: 12,
+    marginBottom: 16,
   },
-  bodyText: { fontSize: 14, lineHeight: 20, marginTop: 4, marginBottom: 16 },
-  ctaButton: { marginTop: 8 },
-  secondaryButton: { marginTop: 8 },
-  earningsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  earningsLabel: { fontSize: 14, fontWeight: '600' },
-  earningsValue: { fontSize: 15, fontWeight: '700' },
-  earningsLabelNet: { fontSize: 15, fontWeight: '800' },
-  earningsValueNet: { fontSize: 22, fontWeight: '900', letterSpacing: -0.5 },
-  divider: { height: nb.borderWidth, marginVertical: 4 },
-  clientRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 },
-  clientBody: { flex: 1, minWidth: 0 },
-  clientName: { 
-    fontSize: 16, 
-    fontFamily: 'SpaceGrotesk_700Bold',
-    fontWeight: '700', 
-    letterSpacing: -0.2 
-  },
-  clientRate: { fontSize: 13, fontWeight: '600', marginTop: 3 },
-  billingHeaderBlock: { marginLeft: 0, marginBottom: 12 },
-  billingHint: { fontSize: 13, lineHeight: 18, fontWeight: '500', paddingRight: 8 },
-  billingToggleCol: { alignItems: 'center', gap: 4 },
-  billingToggleLabel: { 
-    fontSize: 10, 
-    fontFamily: 'SpaceGrotesk_700Bold',
-    fontWeight: '700', 
-    letterSpacing: 0.6, 
-    textTransform: 'uppercase' 
-  },
-  clientActionsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingTop: 12,
-    borderTopWidth: nb.borderWidth,
-    gap: 10,
-  },
-  setRateBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: borderRadius.nbChip,
+  backSq: {
+    width: nb.minTouchTarget,
+    height: nb.minTouchTarget,
     borderWidth: nb.borderWidth,
+    borderRadius: borderRadius.nbButton,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  setRateBtnText: { 
-    fontSize: 13, 
+  pageTitle: {
+    fontSize: 26,
     fontFamily: 'SpaceGrotesk_700Bold',
-    fontWeight: '700' 
+    fontWeight: '800',
+    letterSpacing: -0.5,
   },
-  emptyState: { alignItems: 'center', paddingVertical: 20, gap: 8 },
-  emptyTitle: { 
-    fontSize: 16, 
+  heroShadow: { marginBottom: 16 },
+  heroCard: {
+    borderWidth: nb.borderWidth,
+    borderRadius: borderRadius.nbCard,
+    padding: 20,
+    gap: 6,
+  },
+  heroEyebrow: {
+    fontSize: 12,
     fontFamily: 'SpaceGrotesk_700Bold',
-    fontWeight: '700' 
+    fontWeight: '700',
+    letterSpacing: 1.1,
   },
-  emptySub: { fontSize: 13, textAlign: 'center', lineHeight: 18, paddingHorizontal: 12 },
+  heroAmount: {
+    fontSize: 52,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontWeight: '800',
+    letterSpacing: -1.5,
+    lineHeight: 56,
+  },
+  heroSub: { fontSize: 14, fontWeight: '600', lineHeight: 20 },
+  billingCard: { padding: 16, marginBottom: 0 },
+  billingTopRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  billingTitle: { fontSize: 17, fontFamily: 'SpaceGrotesk_700Bold', fontWeight: '700' },
+  billingSub: { fontSize: 13, marginTop: 4, fontWeight: '600' },
+  billingDivider: { borderTopWidth: nb.borderWidth, marginTop: 14, paddingTop: 14 },
+  rateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  rateEyebrow: { fontSize: 13, fontWeight: '600' },
+  rateAmount: { fontSize: 30, fontFamily: 'SpaceGrotesk_700Bold', fontWeight: '800', marginTop: 2 },
+  rateUnit: { fontSize: 14, fontWeight: '600' },
+  clientsSectionHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+    marginTop: 4,
+  },
+  card: { padding: 16, marginBottom: 16 },
+  clientListCard: { paddingVertical: 4, paddingHorizontal: 14, marginBottom: 16 },
+  clientListRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 14,
+    minHeight: nb.minTouchTarget + 8,
+  },
+  clientBody: { flex: 1, minWidth: 0 },
+  clientName: {
+    fontSize: 16,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontWeight: '700',
+    letterSpacing: -0.2,
+  },
+  clientSub: { fontSize: 13, fontWeight: '600', marginTop: 3 },
+  bodyText: { fontSize: 14, lineHeight: 20 },
+  stripeFoot: { marginTop: 16, alignItems: 'center', paddingHorizontal: 8 },
+  stripeFootText: { fontSize: 13, textAlign: 'center', lineHeight: 18, fontWeight: '600' },
+  stripeFootActions: { flexDirection: 'row', gap: 10, marginTop: 10, width: '100%' },
+  managePayoutLink: { marginTop: 16, alignItems: 'center' },
   modalRoot: { flex: 1, justifyContent: 'flex-end' },
   modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.55)' },
   bottomSheet: {
@@ -872,53 +827,27 @@ const styles = StyleSheet.create({
     paddingBottom: 32,
     borderTopWidth: nb.borderWidth,
   },
-  sheetTitle: { 
-    fontSize: 18, 
-    fontFamily: 'SpaceGrotesk_700Bold',
-    fontWeight: '700', 
-    textAlign: 'center', 
-    marginBottom: 4 
-  },
-  sheetSubtitle: { fontSize: 14, textAlign: 'center', marginBottom: 16, fontWeight: '600' },
-  netPreview: {
-    borderRadius: borderRadius.nbCard,
-    borderWidth: nb.borderWidth,
-    padding: 14,
-    alignItems: 'center',
+  sheetHandle: {
+    width: 48,
+    height: 5,
+    borderRadius: 4,
+    alignSelf: 'center',
     marginBottom: 16,
   },
-  netPreviewLabel: { 
-    fontSize: 12, 
+  sheetTitle: {
+    fontSize: 20,
     fontFamily: 'SpaceGrotesk_700Bold',
-    fontWeight: '700', 
-    letterSpacing: 0.1, 
-    textTransform: 'uppercase' 
+    fontWeight: '800',
+    marginBottom: 12,
   },
-  netPreviewValue: { 
-    fontSize: 28, 
+  sheetRateLine: { flexDirection: 'row', alignItems: 'baseline', gap: 8, marginBottom: 16 },
+  sheetRateValue: {
+    fontSize: 52,
     fontFamily: 'SpaceGrotesk_700Bold',
-    fontWeight: '700', 
-    marginTop: 4 
+    fontWeight: '800',
+    letterSpacing: -1,
+    lineHeight: 54,
   },
-  netPreviewHint: { fontSize: 12, marginTop: 4 },
-  inputLabel: { 
-    fontSize: 12, 
-    fontFamily: 'SpaceGrotesk_700Bold',
-    fontWeight: '700', 
-    marginBottom: 8, 
-    letterSpacing: 0.1,
-    textTransform: 'uppercase'
-  },
-  inputWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: borderRadius.nbChip,
-    borderWidth: nb.borderWidth,
-    paddingHorizontal: 12,
-    marginBottom: 16,
-  },
-  inputPrefix: { fontSize: 18, fontWeight: '700', marginRight: 4 },
-  input: { flex: 1, fontSize: 18, fontWeight: '700', paddingVertical: 14 },
-  cancelBtn: { paddingVertical: 14, alignItems: 'center' },
-  cancelBtnText: { fontSize: 15, fontWeight: '600' },
+  sheetRateUnit: { fontSize: 16, fontWeight: '600' },
+  sheetActions: { flexDirection: 'row', gap: 10, marginTop: 4 },
 });

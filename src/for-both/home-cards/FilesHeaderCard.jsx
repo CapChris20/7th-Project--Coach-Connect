@@ -1,25 +1,21 @@
-// Neobrutalist hero card that opens Notes & Files. Shows how many files exist and how many are new.
-// Flow: show the count + four feature chips → badge the CTA when newCount > 0.
+// Design Law hero card that opens Notes & Files — NbCard + HardShadow, no purple gradients.
+// Flow: show file count + headline → NbButton CTA (badge when newCount > 0).
 // Used by client and trainer home/files tabs. Copy falls back to client-facing defaults when omitted.
+//
+// vocab: NbCard = thick ink border + hard shadow; accents stay on chips/CTA only
 
 import React from 'react';
-import { View, Text, Pressable, StyleSheet, Platform } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons } from '@expo/vector-icons';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
-import { NbCard } from '../../look-and-feel/NbCard';
-import { NbButton } from '../../look-and-feel/NbButton';
+import NbCard from '../../look-and-feel/NbCard';
+import NbButton from '../../look-and-feel/NbButton';
+import NbIconChip from '../../look-and-feel/NbIconChip';
+import { spacing } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
-const BG_GRADIENT_DARK = ['#1a0a2e', '#0f0a1a'];
-const BG_GRADIENT_LIGHT = ['#F8FAFF', '#FFFFFF'];
-// Manipulate here: dark orange → dark purple. Same pair as the CTA glow.
-const ORANGE_PURPLE_GRADIENT = ['#C2410C', '#4C1D95'];
-const CTA_GRADIENT = ORANGE_PURPLE_GRADIENT;
-const PINK = '#FF6B9D';
-const INK = '#0A0A0F';
-// Manipulate here: 100+ new files would overflow the red circle, so the digits stop at 99+.
+const PICTURE_ICON = require('../../assets/icons/handoff/picture.png');
+// Manipulate here: 100+ new files would overflow the badge, so digits stop at 99+.
 const NEW_FILE_BADGE_CAP = 99;
 
 const DEFAULT_HEADER_LABEL = 'Files & Documents';
@@ -30,50 +26,10 @@ const DEFAULT_STAT_SINGULAR = 'file';
 const DEFAULT_STAT_PLURAL = 'files';
 const DEFAULT_STAT_SHARED_SUFFIX = 'shared';
 
-// Manipulate here: the four chips under the headline. Icon names are Ionicons.
-const FEATURES = [
-  { icon: 'document-text-outline', label: 'Docs' },
-  { icon: 'camera-outline', label: 'Photos' },
-  { icon: 'chatbubble-outline', label: 'Notes' },
-  { icon: 'cloud-upload-outline', label: 'Uploads' },
-];
-
 // ===== HELPER FUNCTIONS =====
 
 /**
- * Dark vs light text/fill for the card. Kept in one place so the JSX only paints.
- * @param {boolean} isDark
- * @returns {object}
- */
-function filesCardPalette(isDark) {
-  if (isDark) {
-    return {
-      backgroundGradient: BG_GRADIENT_DARK,
-      labelColor: 'rgba(255,255,255,0.45)',
-      headlineColor: '#FFFFFF',
-      subheadColor: 'rgba(255,255,255,0.6)',
-      pillBackground: 'rgba(255,255,255,0.08)',
-      pillText: '#FFFFFF',
-      badgeBorder: '#1a0a2e',
-      statSubColor: 'rgba(255,255,255,0.5)',
-    };
-  }
-  return {
-    backgroundGradient: BG_GRADIENT_LIGHT,
-    labelColor: 'rgba(10,10,15,0.55)',
-    headlineColor: INK,
-    subheadColor: 'rgba(10,10,15,0.6)',
-    pillBackground: 'rgba(10,10,15,0.06)',
-    pillText: INK,
-    badgeBorder: '#FFFFFF',
-    statSubColor: 'rgba(10,10,15,0.5)',
-  };
-}
-
-/**
  * vocab/symbol: ?? keeps an explicit empty string if a parent ever passes one.
- * @param {object} props
- * @returns {object}
  */
 function resolvedCardCopy({
   headerLabel,
@@ -96,74 +52,22 @@ function resolvedCardCopy({
   };
 }
 
-/**
- * 100+ new files would overflow the red circle, so the digits stop at 99+.
- * @param {number} newCount
- * @returns {string|number}
- */
 function newFilesBadgeLabel(newCount) {
   if (newCount > NEW_FILE_BADGE_CAP) return '99+';
   return newCount;
 }
 
-/**
- * @param {object} palette
- */
-function FeaturePills({ palette }) {
-  return (
-    <View style={styles.pillsRow}>
-      {FEATURES.map((feature) => (
-        <View key={feature.label} style={[styles.pill, { backgroundColor: palette.pillBackground }]}>
-          <Ionicons name={feature.icon} size={12} color={PINK} style={styles.pillIcon} />
-          <Text style={[styles.pillText, { color: palette.pillText }]} numberOfLines={1}>
-            {feature.label}
-          </Text>
-        </View>
-      ))}
-    </View>
-  );
-}
-
-/**
- * Orange-purple bar. The red bubble sits on the top-right when there are unread files.
- * @param {object} props
- */
-function OpenFilesButton({ ctaLabel, newCount, palette }) {
-  const hasNewFiles = newCount > 0;
-  return (
-    <View style={styles.ctaWrap}>
-      {hasNewFiles ? (
-        <View style={[styles.badge, { borderColor: palette.badgeBorder }]}>
-          <Text style={styles.badgeText}>{newFilesBadgeLabel(newCount)}</Text>
-        </View>
-      ) : null}
-      <LinearGradient
-        colors={CTA_GRADIENT}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        style={styles.ctaGradient}
-      >
-        <View style={styles.ctaInner}>
-          <Ionicons name="folder-open-outline" size={16} color="#FFFFFF" />
-          <Text style={styles.ctaText}>{ctaLabel}</Text>
-          <Ionicons name="arrow-forward" size={16} color="#FFFFFF" />
-        </View>
-      </LinearGradient>
-    </View>
-  );
-}
-
 // ===== MAIN FUNCTION =====
 
 /**
- * Files & notes hero. `newCount` drives the red badge; `fileCount` is the big number.
+ * Files & notes hero. `newCount` drives the badge; `fileCount` is the big number.
  * @param {object} props
  */
 export default function FilesHeaderCard({
   onPress,
   fileCount = 0,
   newCount = 0,
-  isDark = true,
+  isDark: _isDarkIgnored,
   headerLabel,
   headline,
   subhead,
@@ -172,7 +76,7 @@ export default function FilesHeaderCard({
   statPlural = DEFAULT_STAT_PLURAL,
   statSharedSuffix = DEFAULT_STAT_SHARED_SUFFIX,
 }) {
-  const palette = filesCardPalette(isDark);
+  const { colors } = useTheme();
   const copy = resolvedCardCopy({
     headerLabel,
     headline,
@@ -184,52 +88,41 @@ export default function FilesHeaderCard({
     statSharedSuffix,
   });
 
-  // 1. Dark vs light paint, then the copy the parent passed (or the client defaults).
-  // 2. Paint the hero. The red badge only appears when newCount is above 0.
   return (
-    // vocab: Pressable = tap target that reports pressed/hovered. LinearGradient = expo fill between two colors.
     <View style={styles.wrapper} accessibilityRole="summary" accessibilityLabel="Your files and notes">
       <Pressable
         onPress={onPress}
-        style={({ pressed, hovered }) => [
-          styles.pressable,
-          pressed && styles.pressablePressed,
-          hovered && styles.pressableHovered,
-        ]}
-        android_ripple={{ color: 'rgba(255,255,255,0.12)' }}
+        style={({ pressed }) => [styles.pressable, pressed && styles.pressablePressed]}
+        android_ripple={{ color: 'rgba(0,0,0,0.08)' }}
       >
-        <View style={styles.cardShadow}>
-          <View style={styles.cardClip}>
-            <LinearGradient
-              colors={palette.backgroundGradient}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 0, y: 1 }}
-              style={styles.inner}
-            >
-              <View style={styles.headerRow}>
-                <Text style={[styles.label, { color: palette.labelColor }]}>{copy.headerLabel}</Text>
-                <Ionicons name="folder-open-outline" size={24} color={PINK} />
-              </View>
+        <NbCard style={styles.inner}>
+          <View style={styles.headerRow}>
+            <Text style={[styles.label, { color: colors.nbMuted }]}>{copy.headerLabel}</Text>
+            <NbIconChip source={PICTURE_ICON} index={0} size={40} />
+          </View>
 
-              <View style={styles.statRow}>
-                <Text style={styles.statNumber}>{fileCount}</Text>
-                <Text style={[styles.statLabel, { color: palette.statSubColor }]}>
-                  {copy.countWord} {copy.sharedSuffix}
+          <View style={styles.statRow}>
+            <Text style={[styles.statNumber, { color: colors.nbInk }]}>{fileCount}</Text>
+            <Text style={[styles.statLabel, { color: colors.nbMuted }]}>
+              {copy.countWord} {copy.sharedSuffix}
+            </Text>
+          </View>
+
+          <Text style={[styles.headline, { color: colors.nbInk }]}>{copy.headline}</Text>
+          <Text style={[styles.subhead, { color: colors.nbMuted }]}>{copy.subhead}</Text>
+
+          <View style={styles.ctaWrap}>
+            {newCount > 0 ? (
+              <View style={[styles.badge, { backgroundColor: colors.nbFill, borderColor: colors.nbBorder }]}>
+                <Text style={[styles.badgeText, { color: colors.nbOnFill }]}>
+                  {newFilesBadgeLabel(newCount)}
                 </Text>
               </View>
-
-              <Text style={[styles.headline, { color: palette.headlineColor }]}>{copy.headline}</Text>
-
-              <Text style={[styles.subhead, { color: palette.subheadColor }]}>{copy.subhead}</Text>
-
-              <FeaturePills palette={palette} />
-
-              <View style={styles.ctaWrap}>
-                <NbButton variant="brand" onPress={onPress}>
-                  {copy.ctaLabel}
-                  {newCount > 0 && <Text style={styles.ctaBadge}> {newCount > NEW_FILE_BADGE_CAP ? '99+' : newCount}</Text>}
-                </NbButton>
-              </View>
+            ) : null}
+            <NbButton variant="fill" onPress={onPress}>
+              {copy.ctaLabel}
+            </NbButton>
+          </View>
         </NbCard>
       </Pressable>
     </View>
@@ -240,21 +133,15 @@ const styles = StyleSheet.create({
   wrapper: {
     marginTop: 10,
     marginBottom: 20,
-    paddingHorizontal: 16,
+    paddingHorizontal: spacing.md,
   },
   pressablePressed: {
     opacity: 0.94,
   },
+  pressable: {},
   inner: {
-    padding: 24,
-    minHeight: 220,
-  },
-  ctaWrap: {
-    marginTop: 18,
-  },
-  ctaBadge: {
-    marginLeft: 8,
-    fontWeight: '900',
+    padding: 20,
+    minHeight: 200,
   },
   headerRow: {
     flexDirection: 'row',
@@ -263,8 +150,8 @@ const styles = StyleSheet.create({
   },
   label: {
     flex: 1,
+    fontFamily: 'SpaceGrotesk_700Bold',
     fontSize: 11,
-    fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 1,
     marginRight: 8,
@@ -276,51 +163,27 @@ const styles = StyleSheet.create({
     marginTop: 14,
   },
   statNumber: {
+    fontFamily: 'SpaceGrotesk_700Bold',
     fontSize: 42,
-    fontWeight: '900',
-    color: PINK,
     lineHeight: 46,
     letterSpacing: -1,
   },
   statLabel: {
+    fontFamily: 'Inter_600SemiBold',
     fontSize: 14,
-    fontWeight: '700',
     letterSpacing: -0.2,
   },
   headline: {
     marginTop: 6,
+    fontFamily: 'SpaceGrotesk_700Bold',
     fontSize: 22,
-    fontWeight: '900',
     lineHeight: 28,
   },
   subhead: {
     marginTop: 6,
+    fontFamily: 'Inter_500Medium',
     fontSize: 14,
-    fontWeight: '600',
     lineHeight: 21,
-  },
-  pillsRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 16,
-  },
-  pill: {
-    flex: 1,
-    minWidth: 0,
-    height: 40,
-    borderRadius: 10,
-    paddingHorizontal: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-  },
-  pillIcon: {
-    marginTop: 0,
-  },
-  pillText: {
-    fontSize: 10,
-    fontWeight: '600',
   },
   ctaWrap: {
     marginTop: 16,
@@ -331,7 +194,6 @@ const styles = StyleSheet.create({
     top: -8,
     right: 8,
     zIndex: 10,
-    backgroundColor: '#FF3B30',
     borderRadius: 11,
     minWidth: 22,
     height: 22,
@@ -341,27 +203,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
   },
   badgeText: {
-    color: '#FFFFFF',
+    fontFamily: 'SpaceGrotesk_700Bold',
     fontSize: 11,
-    fontWeight: '800',
-  },
-  ctaGradient: {
-    borderRadius: 14,
-    overflow: 'hidden',
-    height: 48,
-    justifyContent: 'center',
-  },
-  ctaInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    height: 48,
-    paddingHorizontal: 16,
-  },
-  ctaText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#FFFFFF',
   },
 });

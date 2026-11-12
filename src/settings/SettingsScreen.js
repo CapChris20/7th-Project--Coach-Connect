@@ -1,4 +1,4 @@
-// App settings: theme, reminders, AI toggle, billing/payouts, account, and support links.
+// Design Law Settings — identity card, Light/Dark/System, grouped NbCards, delete alone at bottom.
 // Flow: load user doc → edit prefs → Stripe / remove trainer (client) / delete account / open support.
 // Used by: client and trainer shells. Firebase projectId stays anatrox-auth.
 
@@ -16,6 +16,7 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Animated,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../look-and-feel/lightDarkMode';
@@ -26,7 +27,6 @@ import { httpsCallable } from 'firebase/functions';
 import { functions } from '../app-start/cloudConnection';
 import * as Notifications from 'expo-notifications';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import TopHeader from '../for-both/loading-and-header/TopHeader';
 import BottomMenuBar from '../navigation/BottomMenuBar';
 import { useShellNavigate } from '../navigation/goToScreenByKeyword';
 import { SHELL_SAFE_AREA_EDGES, FORM_SCROLL_PROPS, ShellBottomNavAnchor, useShellBottomNavInset } from '../navigation/bottomMenuSpacing';
@@ -37,17 +37,13 @@ import HoldToConfirmPopup from '../for-both/popups/HoldToConfirmPopup';
 import { resolveStripeStatus } from '../for-both/payments/trainerPayoutSetup';
 import { trainerPayoutSetupFlow } from '../for-both/payments/trainerPayoutSetupFlow';
 import { TrainerPayoutSetupPopup } from '../for-both/payments/TrainerPayoutSetupPopup';
-import {
-  TRAINER_CLIENT_MESSAGE_RECOMMENDED,
-  TRAINER_CLIENT_MESSAGE_VENMO_WARNING,
-} from '../for-both/payments/howPaymentsWorkText';
-import { traineePaymentHistory } from '../for-both/payments/traineePaymentHistory';
 import BlockedUsersScreen from '../block-and-report/BlockedUsersScreen';
 import { APPLE_MANAGE_SUBSCRIPTIONS_URL } from '../trainer-pro-plan/proPlanSwitches';
+import { onUserSignOut } from '../logout-cleanup/clearDataOnLogout';
 import NbCard from '../look-and-feel/NbCard';
-import NbListRow from '../look-and-feel/NbListRow';
 import NbSwitch from '../look-and-feel/NbSwitch';
 import NbButton from '../look-and-feel/NbButton';
+import NbPageHeader from '../look-and-feel/NbPageHeader';
 import { nb, gradients, spacing } from '../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
@@ -312,14 +308,76 @@ function buildClientBillingTone({ monthlyRate, userDataProp, trainerDataProp, pa
 }
 
 /**
- * Theme subtitle under the Light/Dark pills.
+ * Theme subtitle under the Light / Dark / System pills.
  * @param {string} themeMode
  * @returns {string}
  */
 function appearanceSubtitle(themeMode) {
-  if (themeMode === 'system') return 'Following your device — tap to set light or dark.';
+  if (themeMode === 'system') return 'Following your device appearance.';
   if (themeMode === 'dark') return 'Dark mode is on.';
   return 'Light mode is on.';
+}
+
+/** Initials for the settings identity avatar when no photo is set. */
+function initialsFromDisplayName(name) {
+  const nameText = String(name || '').trim();
+  if (!nameText) return 'CC';
+  return nameText
+    .split(/\s+/)
+    .map((part) => part[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase();
+}
+
+/**
+ * Design Law identity card at the top of Settings — avatar, name, role line, Edit.
+ */
+function SettingsProfileCard({ name, subtitle, initials, photoURL, onEdit, colors }) {
+  return (
+    <NbCard style={styles.identityCard}>
+      <View style={styles.identityRow}>
+        <LinearGradient
+          colors={gradients.brand.colors}
+          start={gradients.brand.start}
+          end={gradients.brand.end}
+          style={styles.identityAvatar}
+        >
+          {photoURL ? (
+            <Image source={{ uri: photoURL }} style={styles.identityAvatarImg} />
+          ) : (
+            <Text style={styles.identityInitials}>{initials}</Text>
+          )}
+        </LinearGradient>
+        <View style={styles.identityCopy}>
+          <Text style={[styles.identityName, { color: colors.nbInk }]} numberOfLines={1}>
+            {name}
+          </Text>
+          <Text style={[styles.identitySub, { color: colors.nbMuted }]} numberOfLines={2}>
+            {subtitle}
+          </Text>
+        </View>
+        {typeof onEdit === 'function' ? (
+          <TouchableOpacity
+            onPress={onEdit}
+            style={[
+              styles.editChip,
+              {
+                borderColor: colors.nbBorder,
+                backgroundColor: colors.nbSurface,
+                shadowColor: colors.nbShadow,
+              },
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="Edit profile"
+            activeOpacity={0.85}
+          >
+            <Text style={[styles.editChipText, { color: colors.nbInk }]}>Edit</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
+    </NbCard>
+  );
 }
 
 /**
@@ -405,6 +463,7 @@ function SegmentedPills({ options, selectedValue, onChange, isDark, colors }) {
       ]}
       onLayout={(event) => setTrackWidth(event.nativeEvent.layout.width)}
     >
+      {/* Design Law selected thumb = solid fill block (not brand gradient) */}
       {segmentWidth > 0 ? (
         <Animated.View
           pointerEvents="none"
@@ -414,16 +473,10 @@ function SegmentedPills({ options, selectedValue, onChange, isDark, colors }) {
               width: segmentWidth,
               transform: [{ translateX }],
               left: SEGMENT_TRACK_PAD,
+              backgroundColor: colors.nbFill,
             },
           ]}
-        >
-          <LinearGradient
-            colors={gradients.brand.colors}
-            start={gradients.brand.start}
-            end={gradients.brand.end}
-            style={StyleSheet.absoluteFill}
-          />
-        </Animated.View>
+        />
       ) : null}
       <View style={pillStyles.row}>
         {options.map((option) => {
@@ -437,7 +490,7 @@ function SegmentedPills({ options, selectedValue, onChange, isDark, colors }) {
               <Text
                 style={[
                   pillStyles.cellLabel,
-                  { color: selected ? colors.nbInk : colors.nbMuted },
+                  { color: selected ? colors.nbOnFill : colors.nbMuted },
                   selected && pillStyles.cellLabelSelected,
                 ]}
               >
@@ -460,12 +513,65 @@ function SectionHeader({ title, colors }) {
 }
 
 /**
- * Small status pill next to a settings row label. Uses nb tokens.
- * @param {{ label: string, tone: string, colors: object, isDark: boolean }} props
+ * Borderless row inside an NbCard group — Design Law list rows use dividers, not nested cards.
+ * vocab: NbListRow draws its own 3px border; that nests badly inside a group card, so we use this instead.
  */
-function PaymentStatusChip({ label, tone, colors, isDark }) {
+function SettingsGroupRow({
+  title,
+  subtitle,
+  right,
+  onPress,
+  colors,
+  titleColor,
+  showChevron = false,
+}) {
+  const body = (
+    <View style={styles.groupRow}>
+      <View style={styles.groupRowText}>
+        <Text style={[styles.groupRowTitle, { color: titleColor || colors.nbInk }]} numberOfLines={1}>
+          {title}
+        </Text>
+        {subtitle ? (
+          <Text style={[styles.groupRowSubtitle, { color: colors.nbMuted }]} numberOfLines={2}>
+            {subtitle}
+          </Text>
+        ) : null}
+      </View>
+      {right ? <View style={styles.groupRowRight}>{right}</View> : null}
+      {showChevron ? <Ionicons name="chevron-forward" size={20} color={colors.nbMuted} /> : null}
+    </View>
+  );
+  if (typeof onPress !== 'function') return body;
+  return (
+    <TouchableOpacity onPress={onPress} activeOpacity={0.85} accessibilityRole="button">
+      {body}
+    </TouchableOpacity>
+  );
+}
+
+function GroupDivider({ colors }) {
+  return <View style={[styles.divider, { backgroundColor: colors.nbBorder }]} />;
+}
+
+/**
+ * Small status pill next to a settings row label.
+ * Design Law Active badge = purple→blue gradient fill.
+ */
+function PaymentStatusChip({ label, tone, colors }) {
+  const isActive = String(label || '').toLowerCase().includes('active') || tone === 'success';
+  if (isActive) {
+    return (
+      <LinearGradient
+        colors={['#A78BFA', '#60A5FA']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.statusChip}
+      >
+        <Text style={[styles.statusChipText, { color: colors.nbInk }]}>{label}</Text>
+      </LinearGradient>
+    );
+  }
   const toneColor = statusChipToneColor(tone, colors);
-  const chipBackground = statusChipBackground(tone, isDark);
   return (
     <View
       style={[
@@ -473,6 +579,7 @@ function PaymentStatusChip({ label, tone, colors, isDark }) {
         {
           backgroundColor: colors.nbSurfaceChip,
           borderColor: colors.nbBorder,
+          borderWidth: nb.borderWidth,
         },
       ]}
     >
@@ -571,8 +678,8 @@ export default function SettingsScreen({
   const go = (screen) => openSettingsSubScreen(screen, onNavigate);
   const { colors, isDark, themeMode, toggleTheme } = useTheme();
   const shellNavInset = useShellBottomNavInset(SHELL_NAV_INSET);
-  /** Pill position: explicit light/dark, or match current UI when theme follows system. */
-  const appearanceValue = themeMode === 'system' ? (isDark ? 'dark' : 'light') : themeMode;
+  // Design Law Appearance has Light / Dark / System — selected value is the saved themeMode itself.
+  const appearanceValue = themeMode || 'system';
   const { aiEnabled, toggleAI, toggleMeter, refreshToggleMeter } = useAI();
   const [workoutReminders, setWorkoutReminders] = useState(false);
   const [reminderTime, setReminderTime] = useState(new Date());
@@ -581,6 +688,7 @@ export default function SettingsScreen({
   const [newPassword, setNewPassword] = useState('');
   const [showDeleteHoldModal, setShowDeleteHoldModal] = useState(false);
   const [showBlockedUsers, setShowBlockedUsers] = useState(false);
+  const [aiDetailsOpen, setAiDetailsOpen] = useState(false);
   const [resolvedUserRole, setResolvedUserRole] = useState(userRoleProp || null);
   const [stripeConnectStatus, setStripeConnectStatus] = useState('not_connected');
   const [stripeAccountId, setStripeAccountId] = useState('');
@@ -594,10 +702,6 @@ export default function SettingsScreen({
   const isTrainer = userRole === ROLE_TRAINER;
   const clientCoachName =
     trainerDataProp?.name || trainerDataProp?.displayName || trainerDataProp?.firstName || 'Coach';
-  const { rows: clientPaymentHistory, loading: clientPaymentHistoryLoading } = traineePaymentHistory(
-    !isTrainer ? user?.uid : null,
-    clientCoachName,
-  );
   const resolvedStripeStatus = resolveStripeStatus({
     stripeStatus: stripeConnectStatus,
     stripeConnectStatus,
@@ -757,40 +861,58 @@ export default function SettingsScreen({
     !!(userDataProp?.trainerId || trainerDataProp?.id);
   const showProSection = isTrainer && Platform.OS === PLATFORM_IOS && platformSubscriptionStatus;
   const aiMeterPercent = Math.round((toggleMeter.monthlyUseFraction ?? 0) * PERCENT_SCALE);
-  const paymentButtonLabel =
-    (paymentStatus || userDataProp?.paymentStatus) === STATUS_ACTIVE
-      ? 'Update payment method'
-      : 'Add payment method';
-  const stripeButtonLabel =
-    resolvedStripeStatus === STATUS_ACTIVE ? 'Update bank account' : 'Connect with Stripe';
+  // Identity card copy — matches Design Law settings header card.
+  const settingsDisplayName =
+    `${String(userDataProp?.firstName || '').trim()} ${String(userDataProp?.lastName || '').trim()}`.trim() ||
+    String(userDataProp?.name || userDataProp?.displayName || user?.displayName || '').trim() ||
+    'Your profile';
+  const settingsPhotoURL = userDataProp?.photoURL || user?.photoURL || null;
+  const settingsRoleSubtitle = isTrainer
+    ? `Trainer · ${userDataProp?.clientCount != null ? `${userDataProp.clientCount} clients` : 'Coach Connect'}`
+    : trainerDataProp?.id || userDataProp?.trainerId
+      ? `Client · ${clientCoachName} is your trainer`
+      : 'Client';
+
+  const handleSignOut = async () => {
+    try {
+      await onUserSignOut();
+    } catch (error) {
+      Alert.alert('Sign out failed', error?.message || 'Please try again.');
+    }
+  };
 
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: colors.nbBackground }]}
       edges={SHELL_SAFE_AREA_EDGES}
     >
-      <TopHeader
-        title="SETTINGS"
-        skipTopSafeInset
+      <NbPageHeader
+        title="Settings"
+        subtitle={isTrainer ? 'Trainer' : null}
         onBack={onBack || undefined}
-        onProfilePress={onNavigate ? () => go('profile') : null}
-        onSettingsPress={() => {}}
       />
       <ScrollView
         contentContainerStyle={[styles.scrollContent, { paddingBottom: shellNavInset }]}
         {...FORM_SCROLL_PROPS}
       >
+        <SettingsProfileCard
+          name={settingsDisplayName}
+          subtitle={settingsRoleSubtitle}
+          initials={initialsFromDisplayName(settingsDisplayName)}
+          photoURL={settingsPhotoURL}
+          onEdit={onNavigate ? () => go('profile') : undefined}
+          colors={colors}
+        />
+
+        {/* Design Law 01: APPEARANCE = Light / Dark / System only (no Theme essay) */}
         <SectionHeader title="APPEARANCE" colors={colors} />
-        <NbCard style={styles.sectionCard}>
-          <View style={styles.appearanceBlock}>
-            <Text style={[styles.blockTitle, { color: colors.nbInk }]}>Theme</Text>
-            <Text style={[styles.blockSubtitle, { color: colors.nbMuted }]}>
-              {appearanceSubtitle(themeMode)}
-            </Text>
+        <NbCard style={styles.groupCard}>
+          <View style={styles.appearancePad}>
             <SegmentedPills
               options={[
                 { value: 'light', label: 'Light' },
                 { value: 'dark', label: 'Dark' },
+                { value: 'system', label: 'System' },
               ]}
               selectedValue={appearanceValue}
               onChange={(mode) => toggleTheme(mode)}
@@ -801,61 +923,61 @@ export default function SettingsScreen({
         </NbCard>
 
         <SectionHeader title="PREFERENCES" colors={colors} />
-        <NbCard style={styles.sectionCard}>
-          <View style={styles.row}>
-            <Text style={[styles.rowLabel, { color: colors.nbInk }]}>Workout Reminders</Text>
-            <NbSwitch value={workoutReminders} onValueChange={handleReminderToggle} />
-          </View>
+        <NbCard style={styles.groupCard}>
+          <SettingsGroupRow
+            title="Workout reminders"
+            subtitle={
+              workoutReminders
+                ? `Time to workout! at ${reminderTime.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
+                : null
+            }
+            colors={colors}
+            right={<NbSwitch value={workoutReminders} onValueChange={handleReminderToggle} />}
+          />
         </NbCard>
 
         <SectionHeader title="AI FEATURES" colors={colors} />
-        <NbCard style={styles.sectionCard}>
-          <View style={styles.row}>
-            <View style={{ flex: 1, paddingRight: spacing.sm }}>
-              <Text style={[styles.rowLabel, { color: colors.nbInk }]}>AI-powered features</Text>
-              <Text style={[styles.aiDescription, { color: colors.nbMuted }]}>
-                {aiEnabled
-                  ? 'AI Fitness Coach and workout generator are on.'
-                  : 'Off — your coach and manual tools still work.'}
-              </Text>
+        <NbCard style={styles.groupCard}>
+          <SettingsGroupRow
+            title="AI-powered features"
+            subtitle={getAiToggleMeterHint(toggleMeter)}
+            colors={colors}
+            right={
+              <NbSwitch
+                value={!!aiEnabled}
+                onValueChange={(enabled) => toggleAI(enabled)}
+                style={{ opacity: toggleMeter.isFrozenFromChurn && !aiEnabled ? 0.45 : 1 }}
+              />
+            }
+          />
+          <GroupDivider colors={colors} />
+          <SettingsGroupRow
+            title="What you can use when AI is on"
+            colors={colors}
+            showChevron
+            onPress={() => setAiDetailsOpen((open) => !open)}
+          />
+          {aiDetailsOpen ? (
+            <View style={styles.aiDetailsPad}>
               {!toggleMeter.isFrozenFromChurn ? (
-                <>
-                  <Text style={[styles.aiMeterLabel, { color: colors.nbInk }]}>This month's switch use</Text>
-                  <View
-                    style={[
-                      styles.aiMeterTrack,
-                      {
-                        backgroundColor: colors.nbSurface,
-                        borderColor: colors.nbBorder,
-                        borderWidth: nb.borderWidth,
-                      },
-                    ]}
-                    accessibilityRole="progressbar"
-                    accessibilityValue={{
-                      min: 0,
-                      max: PERCENT_SCALE,
-                      now: aiMeterPercent,
-                    }}
-                    accessibilityLabel="How much of this month's AI switch allowance has been used"
-                  >
-                    <LinearGradient
-                      colors={gradients.brand.colors}
-                      start={gradients.brand.start}
-                      end={gradients.brand.end}
-                      style={[
-                        styles.aiMeterFill,
-                        {
-                          width: `${Math.min(PERCENT_SCALE, aiMeterPercent)}%`,
-                        },
-                      ]}
-                    />
-                  </View>
-                </>
+                <View
+                  style={[
+                    styles.aiMeterTrack,
+                    {
+                      backgroundColor: colors.nbSurfaceChip,
+                      borderColor: colors.nbBorder,
+                      borderWidth: nb.borderWidth,
+                    },
+                  ]}
+                >
+                  <LinearGradient
+                    colors={gradients.brand.colors}
+                    start={gradients.brand.start}
+                    end={gradients.brand.end}
+                    style={[styles.aiMeterFill, { width: `${Math.min(PERCENT_SCALE, aiMeterPercent)}%` }]}
+                  />
+                </View>
               ) : null}
-              <Text style={[styles.aiMeterHint, { color: colors.nbMuted }]}>
-                {getAiToggleMeterHint(toggleMeter)}
-              </Text>
-              <Text style={[styles.aiFeaturesTitle, { color: colors.nbInk }]}>What you can use when AI is on</Text>
               <Text style={[styles.aiBullet, { color: colors.nbMuted }]}>
                 • AI Fitness Coach — chat for coaching-style tips
               </Text>
@@ -869,12 +991,7 @@ export default function SettingsScreen({
                 • Form & recovery suggestions where available
               </Text>
             </View>
-            <NbSwitch
-              value={!!aiEnabled}
-              onValueChange={(enabled) => toggleAI(enabled)}
-              style={{ opacity: toggleMeter.isFrozenFromChurn && !aiEnabled ? 0.45 : 1 }}
-            />
-          </View>
+          ) : null}
         </NbCard>
 
         {showTimePicker ? (
@@ -890,205 +1007,91 @@ export default function SettingsScreen({
         {showClientBilling ? (
           <>
             <SectionHeader title="BILLING" colors={colors} />
-            <NbCard style={styles.sectionCard}>
-              <NbListRow
+            <NbCard style={styles.groupCard}>
+              <SettingsGroupRow
                 title="Coaching payment"
+                subtitle={
+                  clientBillingLabel && clientBillingLabel !== 'Active'
+                    ? `${clientCoachName} · ${clientBillingLabel}`
+                    : `${clientCoachName}`
+                }
+                colors={colors}
+                showChevron={typeof onOpenCoachingPayment === 'function'}
+                onPress={
+                  typeof onOpenCoachingPayment === 'function' ? onOpenCoachingPayment : undefined
+                }
                 right={
                   <PaymentStatusChip
-                    label={clientBillingLabel}
+                    label={
+                      (paymentStatus || userDataProp?.paymentStatus) === STATUS_ACTIVE
+                        ? 'Active'
+                        : clientBillingLabel
+                    }
                     tone={clientBillingTone}
                     colors={colors}
-                    isDark={isDark}
                   />
                 }
-                style={styles.listRow}
               />
-              {typeof onOpenCoachingPayment === 'function' ? (
-                <>
-                  <View style={[styles.divider, { backgroundColor: colors.nbBorder }]} />
-                  <View style={{ paddingHorizontal: spacing.md, paddingVertical: spacing.sm }}>
-                    <Text
-                      style={{
-                        fontFamily: 'Inter_400Regular',
-                        fontSize: 13,
-                        color: colors.nbMuted,
-                      }}
-                    >
-                      Add or update the card you use to pay your coach. This is not a bank payout account — clients
-                      pay by card.
-                    </Text>
-                    <View style={{ marginTop: spacing.sm }}>
-                      <NbButton variant="brand" onPress={onOpenCoachingPayment}>
-                        {paymentButtonLabel}
-                      </NbButton>
-                    </View>
-                  </View>
-                  <View style={[styles.divider, { backgroundColor: colors.nbBorder }]} />
-                  <View style={{ paddingHorizontal: spacing.md, paddingVertical: spacing.sm }}>
-                    <Text
-                      style={{
-                        fontFamily: 'SpaceGrotesk_700Bold',
-                        fontSize: 15,
-                        color: colors.nbInk,
-                        marginBottom: spacing.sm,
-                      }}
-                    >
-                      Payment history
-                    </Text>
-                    {clientPaymentHistoryLoading ? (
-                      <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 13, color: colors.nbMuted }}>
-                        Loading…
-                      </Text>
-                    ) : null}
-                    {!clientPaymentHistoryLoading && clientPaymentHistory.length === 0 ? (
-                      <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 13, color: colors.nbMuted }}>
-                        No payments yet. Completed payments appear here with date, amount, and status.
-                      </Text>
-                    ) : null}
-                    {!clientPaymentHistoryLoading && clientPaymentHistory.length > 0
-                      ? clientPaymentHistory.map((row) => <PaymentHistoryRow key={row.id} row={row} colors={colors} />)
-                      : null}
-                  </View>
-                </>
-              ) : null}
             </NbCard>
           </>
         ) : null}
 
         {isTrainer ? (
           <>
-            <SectionHeader title="PAYMENTS & PAYOUTS" colors={colors} />
-            <NbCard style={styles.sectionCard}>
-              <View style={{ paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.sm }}>
-                <Text
-                  style={{
-                    fontFamily: 'SpaceGrotesk_700Bold',
-                    fontSize: 15,
-                    color: colors.nbInk,
-                    marginBottom: 4,
-                  }}
-                >
-                  Two different steps
-                </Text>
-                <Text
-                  style={{
-                    fontFamily: 'Inter_400Regular',
-                    fontSize: 12,
-                    lineHeight: 17,
-                    color: colors.nbMuted,
-                  }}
-                >
-                  Identity Verification (Face ID) proves who you are for the Verified badge. Payment Method is Stripe
-                  Connect — bank transfer, debit card, or other payout options so you can get paid.
-                </Text>
-              </View>
-              <View style={[styles.divider, { backgroundColor: colors.nbBorder }]} />
-              <NbListRow
-                title="Identity Verification (Face ID)"
+            <SectionHeader title="PAYMENTS AND PAYOUTS" colors={colors} />
+            <NbCard style={styles.groupCard}>
+              <SettingsGroupRow
+                title="Identity verification (Face ID)"
+                colors={colors}
+                showChevron
                 onPress={() => go('profile')}
-                right={<Ionicons name="chevron-forward" size={20} color={colors.nbMuted} />}
-                style={styles.listRow}
+                right={
+                  <PaymentStatusChip
+                    label={resolvedStripeStatus === STATUS_ACTIVE ? 'Verified' : payoutChipLabel(resolvedStripeStatus)}
+                    tone={payoutChipTone(resolvedStripeStatus)}
+                    colors={colors}
+                  />
+                }
               />
-              <View style={[styles.divider, { backgroundColor: colors.nbBorder }]} />
-              <NbListRow
-                title="Payment Method (Stripe)"
+              <GroupDivider colors={colors} />
+              <SettingsGroupRow
+                title="Payment method (Stripe)"
+                subtitle={maskStripeAccountId(stripeAccountId)}
+                colors={colors}
+                showChevron
+                onPress={() => {
+                  if (stripeConnect.error) stripeConnect.retry();
+                  else stripeConnect.startConnect();
+                }}
                 right={
                   <PaymentStatusChip
                     label={payoutChipLabel(resolvedStripeStatus)}
                     tone={payoutChipTone(resolvedStripeStatus)}
                     colors={colors}
-                    isDark={isDark}
                   />
                 }
-                style={styles.listRow}
               />
-              <View style={[styles.divider, { backgroundColor: colors.nbBorder }]} />
-              <View style={{ paddingHorizontal: spacing.md, paddingVertical: spacing.sm }}>
-                <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 13, color: colors.nbMuted }}>
-                  Bank account: {maskStripeAccountId(stripeAccountId)}
-                </Text>
-                <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 13, color: colors.nbMuted, marginTop: 4 }}>
-                  Status: {payoutChipLabel(resolvedStripeStatus)}
-                </Text>
-                <View style={{ marginTop: spacing.sm }}>
-                  <NbButton
-                    variant="brand"
-                    onPress={() => {
-                      if (stripeConnect.error) stripeConnect.retry();
-                      else stripeConnect.startConnect();
-                    }}
-                  >
-                    {stripeButtonLabel}
-                  </NbButton>
-                </View>
-              </View>
-              <View style={[styles.divider, { backgroundColor: colors.nbBorder }]} />
-              <NbListRow
+              <GroupDivider colors={colors} />
+              <SettingsGroupRow
                 title="Payout account"
+                colors={colors}
+                showChevron
                 onPress={() => go('payments')}
                 right={
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
-                    <PaymentStatusChip
-                      label={payoutChipLabel(resolvedStripeStatus)}
-                      tone={payoutChipTone(resolvedStripeStatus)}
-                      colors={colors}
-                      isDark={isDark}
-                    />
-                    <Ionicons name="chevron-forward" size={20} color={colors.nbMuted} />
-                  </View>
+                  <PaymentStatusChip
+                    label={payoutChipLabel(resolvedStripeStatus)}
+                    tone={payoutChipTone(resolvedStripeStatus)}
+                    colors={colors}
+                  />
                 }
-                style={styles.listRow}
               />
-              <View style={[styles.divider, { backgroundColor: colors.nbBorder }]} />
-              <NbListRow
-                title="Earnings & payouts"
+              <GroupDivider colors={colors} />
+              <SettingsGroupRow
+                title="Earnings and payouts"
+                colors={colors}
+                showChevron
                 onPress={() => go('payments')}
-                right={<Ionicons name="chevron-forward" size={20} color={colors.nbMuted} />}
-                style={styles.listRow}
               />
-              <View style={[styles.divider, { backgroundColor: colors.nbBorder }]} />
-              <View style={{ paddingHorizontal: spacing.md, paddingVertical: spacing.sm }}>
-                <Text
-                  style={{
-                    fontFamily: 'SpaceGrotesk_700Bold',
-                    fontSize: 15,
-                    color: colors.nbInk,
-                    marginBottom: 6,
-                  }}
-                >
-                  Tell clients how to pay you
-                </Text>
-                <Text
-                  style={{
-                    fontFamily: 'Inter_400Regular',
-                    fontSize: 12,
-                    color: colors.nbMuted,
-                    marginBottom: spacing.sm,
-                  }}
-                >
-                  Recommended message (copy and send in chat):
-                </Text>
-                <View
-                  style={{
-                    padding: spacing.sm,
-                    borderRadius: 12,
-                    backgroundColor: colors.nbSurfaceChip,
-                    borderWidth: nb.borderWidth,
-                    borderColor: colors.success,
-                    marginBottom: spacing.sm,
-                  }}
-                >
-                  <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 13, color: colors.nbInk, lineHeight: 18 }}>
-                    {TRAINER_CLIENT_MESSAGE_RECOMMENDED}
-                  </Text>
-                </View>
-                <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 12, color: colors.nbMuted, marginBottom: 6 }}>
-                  If a client asks about Venmo:
-                </Text>
-                <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 12, color: colors.warning, lineHeight: 17 }}>
-                  {TRAINER_CLIENT_MESSAGE_VENMO_WARNING}
-                </Text>
-              </View>
             </NbCard>
           </>
         ) : null}
@@ -1096,24 +1099,25 @@ export default function SettingsScreen({
         {showProSection ? (
           <>
             <SectionHeader title="COACH CONNECT PRO" colors={colors} />
-            <NbCard style={styles.sectionCard}>
-              <NbListRow
+            <NbCard style={styles.groupCard}>
+              <SettingsGroupRow
                 title="Platform subscription"
+                colors={colors}
                 right={
                   <PaymentStatusChip
                     label={platformSubscriptionStatus}
                     tone={platformSubTone(platformSubscriptionStatus)}
                     colors={colors}
-                    isDark={isDark}
                   />
                 }
-                style={styles.listRow}
               />
               {typeof onRestorePurchases === 'function' ? (
                 <>
-                  <View style={[styles.divider, { backgroundColor: colors.nbBorder }]} />
-                  <NbListRow
+                  <GroupDivider colors={colors} />
+                  <SettingsGroupRow
                     title="Restore purchases"
+                    colors={colors}
+                    showChevron={!restorePurchasesLoading}
                     onPress={() => {
                       if (!restorePurchasesLoading) onRestorePurchases();
                     }}
@@ -1122,11 +1126,8 @@ export default function SettingsScreen({
                         <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 14, color: colors.nbMuted }}>
                           Working…
                         </Text>
-                      ) : (
-                        <Ionicons name="chevron-forward" size={20} color={colors.nbMuted} />
-                      )
+                      ) : null
                     }
-                    style={styles.listRow}
                   />
                 </>
               ) : null}
@@ -1135,105 +1136,88 @@ export default function SettingsScreen({
         ) : null}
 
         <SectionHeader title="ACCOUNT" colors={colors} />
-        <NbCard style={styles.sectionCard}>
-          <NbListRow
-            title="Edit Profile"
+        <NbCard style={styles.groupCard}>
+          <SettingsGroupRow
+            title="Edit profile"
+            colors={colors}
+            showChevron
             onPress={() => go('profile')}
-            right={<Ionicons name="chevron-forward" size={20} color={colors.nbMuted} />}
-            style={styles.listRow}
           />
-          <View style={[styles.divider, { backgroundColor: colors.nbBorder }]} />
-          <NbListRow
-            title="Change Password"
+          <GroupDivider colors={colors} />
+          <SettingsGroupRow
+            title="Change password"
+            colors={colors}
+            showChevron
             onPress={() => setPasswordModalVisible(true)}
-            right={<Ionicons name="chevron-forward" size={20} color={colors.nbMuted} />}
-            style={styles.listRow}
           />
-          <View style={[styles.divider, { backgroundColor: colors.nbBorder }]} />
-          <NbListRow
+          <GroupDivider colors={colors} />
+          <SettingsGroupRow
             title="Blocked users"
+            colors={colors}
+            showChevron
             onPress={() => setShowBlockedUsers(true)}
-            right={<Ionicons name="chevron-forward" size={20} color={colors.nbMuted} />}
-            style={styles.listRow}
           />
           {showRemoveTrainer ? (
             <>
-              <View style={[styles.divider, { backgroundColor: colors.nbBorder }]} />
-              <TouchableOpacity
+              <GroupDivider colors={colors} />
+              <SettingsGroupRow
+                title="Remove trainer"
+                colors={colors}
+                titleColor={colors.error}
+                showChevron
                 onPress={onOpenRemoveTrainer}
-                style={[styles.row, { justifyContent: 'space-between' }]}
-                accessibilityRole="button"
-                accessibilityLabel="Remove trainer"
-              >
-                <Text
-                  style={{
-                    fontFamily: 'SpaceGrotesk_700Bold',
-                    fontSize: 15,
-                    color: colors.error,
-                  }}
-                >
-                  Remove Trainer
-                </Text>
-                <Ionicons name="chevron-forward" size={20} color={colors.nbMuted} />
-              </TouchableOpacity>
+              />
             </>
           ) : null}
-          <View style={[styles.divider, { backgroundColor: colors.nbBorder }]} />
-          <TouchableOpacity
-            onPress={() => setShowDeleteHoldModal(true)}
-            style={[styles.row, { justifyContent: 'space-between' }]}
-            disabled={!user}
-          >
-            <Text style={{ fontFamily: 'SpaceGrotesk_700Bold', fontSize: 15, color: colors.error }}>
-              Delete Account
-            </Text>
-            <Ionicons name="chevron-forward" size={20} color={colors.nbMuted} />
-          </TouchableOpacity>
+          <GroupDivider colors={colors} />
+          <SettingsGroupRow title="Sign out" colors={colors} showChevron onPress={handleSignOut} />
         </NbCard>
 
         <SectionHeader title="SUPPORT" colors={colors} />
-        <NbCard style={styles.sectionCard}>
-          <NbListRow
-            title="Contact Support"
+        <NbCard style={styles.groupCard}>
+          <SettingsGroupRow
+            title="Contact support"
+            colors={colors}
+            showChevron
             onPress={() => openSettingsSubScreen('contactSupport', onNavigate)}
-            right={<Ionicons name="chevron-forward" size={20} color={colors.nbMuted} />}
-            style={styles.listRow}
           />
-          <View style={[styles.divider, { backgroundColor: colors.nbBorder }]} />
-          <NbListRow
-            title="Report a Bug"
+          <GroupDivider colors={colors} />
+          <SettingsGroupRow
+            title="Report a bug"
+            colors={colors}
+            showChevron
             onPress={() => openSettingsSubScreen('bugReport', onNavigate)}
-            right={<Ionicons name="chevron-forward" size={20} color={colors.nbMuted} />}
-            style={styles.listRow}
           />
-          <View style={[styles.divider, { backgroundColor: colors.nbBorder }]} />
-          <NbListRow
+          <GroupDivider colors={colors} />
+          <SettingsGroupRow
             title="FAQ"
+            colors={colors}
+            showChevron
             onPress={() => openSettingsSubScreen('helpFaq', onNavigate)}
-            right={<Ionicons name="chevron-forward" size={20} color={colors.nbMuted} />}
-            style={styles.listRow}
           />
-          <View style={[styles.divider, { backgroundColor: colors.nbBorder }]} />
-          <NbListRow
-            title="Terms of Service"
+          <GroupDivider colors={colors} />
+          <SettingsGroupRow
+            title="Terms of service"
+            colors={colors}
+            showChevron
             onPress={() => openSettingsSubScreen('terms', onNavigate)}
-            right={<Ionicons name="chevron-forward" size={20} color={colors.nbMuted} />}
-            style={styles.listRow}
           />
-          <View style={[styles.divider, { backgroundColor: colors.nbBorder }]} />
-          <NbListRow
-            title="Privacy Policy"
+          <GroupDivider colors={colors} />
+          <SettingsGroupRow
+            title="Privacy policy"
+            colors={colors}
+            showChevron
             onPress={() => openSettingsSubScreen('privacy', onNavigate)}
-            right={<Ionicons name="chevron-forward" size={20} color={colors.nbMuted} />}
-            style={styles.listRow}
           />
-          <View style={[styles.divider, { backgroundColor: colors.nbBorder }]} />
-          <NbListRow
-            title="Privacy & data rights"
+          <GroupDivider colors={colors} />
+          <SettingsGroupRow
+            title="Privacy and data rights"
+            colors={colors}
+            showChevron
             onPress={() =>
               Alert.alert(
                 'Privacy & your data',
-                'Use Delete Account (above) to permanently remove your account from this app. Details and any limits are in the Privacy Policy.\n\nFor a copy of your data, corrections, or other privacy requests (including under laws like the GDPR), contact us through Contact Support. We may ask you to verify your identity.\n\nThis app cannot provide legal advice; work with counsel if you need a formal compliance review.',
+                'Use Delete account (below) to permanently remove your account from this app. Details and any limits are in the Privacy Policy.\n\nFor a copy of your data, corrections, or other privacy requests (including under laws like the GDPR), contact us through Contact Support. We may ask you to verify your identity.\n\nThis app cannot provide legal advice; work with counsel if you need a formal compliance review.',
                 [
                   { text: 'Privacy Policy', onPress: () => openSettingsSubScreen('privacy', onNavigate) },
                   { text: 'Contact Support', onPress: () => openSettingsSubScreen('contactSupport', onNavigate) },
@@ -1241,19 +1225,32 @@ export default function SettingsScreen({
                 ],
               )
             }
-            right={<Ionicons name="chevron-forward" size={20} color={colors.nbMuted} />}
-            style={styles.listRow}
           />
-          <View style={[styles.divider, { backgroundColor: colors.nbBorder }]} />
-          <NbListRow
+          <GroupDivider colors={colors} />
+          <SettingsGroupRow
             title="Version"
+            colors={colors}
             right={
-              <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 14, color: colors.nbMuted }}>
-                Coach Connect v1.0.0
-              </Text>
+              <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 14, color: colors.nbMuted }}>2.4.0</Text>
             }
-            style={styles.listRow}
           />
+        </NbCard>
+
+        <NbCard style={styles.deleteCard}>
+          <TouchableOpacity
+            onPress={() => setShowDeleteHoldModal(true)}
+            disabled={!user}
+            accessibilityRole="button"
+            accessibilityLabel="Delete account"
+            style={styles.deleteRow}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.deleteTitle, { color: colors.nbInk }]}>Delete account</Text>
+              <Text style={[styles.deleteHint, { color: colors.nbMuted }]}>
+                Permanently removes your data.
+              </Text>
+            </View>
+          </TouchableOpacity>
         </NbCard>
       </ScrollView>
 
@@ -1262,26 +1259,36 @@ export default function SettingsScreen({
           behavior={Platform.OS === PLATFORM_IOS ? 'padding' : 'height'}
           style={styles.modalContainer}
         >
-          <View style={[styles.bottomSheet, { backgroundColor: colors.nbSurface }]}>
-            <Text style={[styles.bottomSheetTitle, { color: colors.nbInk }]}>Change Password</Text>
+          <View
+            style={[
+              styles.bottomSheet,
+              {
+                backgroundColor: colors.nbBackground,
+                borderColor: colors.nbBorder,
+              },
+            ]}
+          >
+            <Text style={[styles.bottomSheetTitle, { color: colors.nbInk }]}>Change password</Text>
+            <Text style={[styles.passwordLabel, { color: colors.nbMuted }]}>NEW PASSWORD</Text>
             <TextInput
               style={[
                 styles.passwordInput,
                 {
-                  backgroundColor: colors.nbSurfaceChip,
+                  backgroundColor: colors.nbSurface,
                   color: colors.nbInk,
                   borderColor: colors.nbBorder,
+                  shadowColor: colors.nbShadow,
                 },
               ]}
-              placeholder="New Password"
+              placeholder="New password"
               placeholderTextColor={colors.nbMuted}
               secureTextEntry
               value={newPassword}
               onChangeText={setNewPassword}
             />
             <View style={styles.confirmButtonOuter}>
-              <NbButton variant="brand" onPress={handleChangePassword}>
-                Confirm
+              <NbButton variant="fill" onPress={handleChangePassword}>
+                Update password
               </NbButton>
             </View>
             <TouchableOpacity style={styles.cancelButton} onPress={() => setPasswordModalVisible(false)}>
@@ -1372,6 +1379,57 @@ const pillStyles = StyleSheet.create({
 const styles = StyleSheet.create({
   container: { flex: 1 },
   scrollContent: { paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.xl },
+  identityCard: {
+    marginBottom: spacing.lg,
+    padding: spacing.md,
+  },
+  identityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  identityAvatar: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  identityAvatarImg: { width: 52, height: 52, borderRadius: 26 },
+  identityInitials: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 18,
+    color: '#0A0A0A',
+  },
+  identityCopy: { flex: 1, minWidth: 0 },
+  identityName: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 17,
+    letterSpacing: -0.2,
+  },
+  identitySub: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 13,
+    marginTop: 2,
+    lineHeight: 17,
+  },
+  editChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: nb.borderWidth,
+    minHeight: nb.minTouchTarget,
+    justifyContent: 'center',
+    shadowOffset: { width: nb.shadowOffsetSmall, height: nb.shadowOffsetSmall },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 3,
+  },
+  editChipText: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 14,
+  },
   sectionHeader: {
     fontFamily: 'SpaceGrotesk_700Bold',
     textTransform: 'uppercase',
@@ -1381,54 +1439,60 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
     marginLeft: spacing.xs,
   },
-  sectionCard: {
+  // Manipulate here: group cards are padding:0 so rows + dividers own the spacing
+  groupCard: {
     marginBottom: spacing.lg,
-    padding: spacing.md,
+    padding: 0,
+    overflow: 'hidden',
   },
-  listRow: {
-    marginBottom: 0,
-  },
-  appearanceBlock: { padding: 0 },
-  blockTitle: {
-    fontFamily: 'SpaceGrotesk_700Bold',
-    fontSize: 16,
-    marginBottom: spacing.xs,
-    letterSpacing: -0.2,
-  },
-  blockSubtitle: {
-    fontFamily: 'Inter_400Regular',
-    fontSize: 13,
-    lineHeight: 18,
-    marginBottom: spacing.sm,
-  },
-  row: {
+  appearancePad: { padding: spacing.md },
+  groupRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: spacing.sm,
+    paddingVertical: 14,
     paddingHorizontal: spacing.md,
     minHeight: nb.minTouchTarget,
+    gap: spacing.sm,
   },
-  rowLabel: {
+  groupRowText: { flex: 1, minWidth: 0 },
+  groupRowTitle: {
     fontFamily: 'SpaceGrotesk_700Bold',
     fontSize: 15,
+    letterSpacing: -0.15,
   },
-  aiDescription: {
+  groupRowSubtitle: {
     fontFamily: 'Inter_400Regular',
     fontSize: 13,
-    marginTop: 6,
-    lineHeight: 18,
+    marginTop: 2,
+    lineHeight: 17,
   },
-  aiMeterLabel: {
+  groupRowRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  deleteCard: {
+    marginBottom: spacing.xl,
+    padding: spacing.md,
+  },
+  deleteRow: {
+    minHeight: nb.minTouchTarget,
+    justifyContent: 'center',
+  },
+  deleteTitle: {
     fontFamily: 'SpaceGrotesk_700Bold',
-    fontSize: 12,
-    marginTop: spacing.sm,
-    letterSpacing: 0.2,
+    fontSize: 16,
+    textDecorationLine: 'underline',
+  },
+  deleteHint: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 13,
+    marginTop: 4,
+  },
+  aiDetailsPad: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.md,
   },
   aiMeterTrack: {
     height: 8,
     borderRadius: 4,
-    marginTop: 6,
+    marginBottom: spacing.sm,
     overflow: 'hidden',
   },
   aiMeterFill: {
@@ -1436,57 +1500,58 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     minWidth: 2,
   },
-  aiMeterHint: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 12,
-    marginTop: spacing.sm,
-    lineHeight: 17,
-  },
-  aiFeaturesTitle: {
-    fontFamily: 'SpaceGrotesk_700Bold',
-    fontSize: 13,
-    marginTop: spacing.sm,
-    marginBottom: 4,
-  },
   aiBullet: {
     fontFamily: 'Inter_400Regular',
-    fontSize: 12,
-    lineHeight: 17,
+    fontSize: 13,
+    lineHeight: 18,
     marginTop: 2,
   },
   statusChip: {
     paddingHorizontal: spacing.sm,
-    paddingVertical: 3,
+    paddingVertical: 4,
     borderRadius: 999,
-    borderWidth: nb.borderWidth,
-    marginRight: spacing.xs,
+    overflow: 'hidden',
   },
   statusChipText: {
     fontFamily: 'SpaceGrotesk_700Bold',
     fontSize: 11,
   },
   divider: {
-    height: nb.borderWidth,
+    height: nb.borderWidthDivider,
     marginHorizontal: spacing.md,
   },
-  modalContainer: { flex: 1, justifyContent: 'flex-end' },
+  modalContainer: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.35)' },
   bottomSheet: {
     padding: spacing.lg,
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
+    borderTopWidth: nb.borderWidth,
+    borderLeftWidth: nb.borderWidth,
+    borderRightWidth: nb.borderWidth,
   },
   bottomSheetTitle: {
     fontFamily: 'SpaceGrotesk_700Bold',
-    fontSize: 18,
-    textAlign: 'center',
+    fontSize: 22,
+    letterSpacing: -0.3,
     marginBottom: spacing.md,
+  },
+  passwordLabel: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 11,
+    letterSpacing: 1.2,
+    marginBottom: spacing.sm,
   },
   passwordInput: {
     fontFamily: 'Inter_400Regular',
-    borderRadius: 8,
-    padding: spacing.sm,
+    borderRadius: 12,
+    padding: spacing.md,
     marginBottom: spacing.md,
     borderWidth: nb.borderWidth,
+    minHeight: 48,
+    shadowOffset: { width: nb.shadowOffsetSmall, height: nb.shadowOffsetSmall },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 3,
   },
   confirmButtonOuter: {
     marginBottom: spacing.sm,

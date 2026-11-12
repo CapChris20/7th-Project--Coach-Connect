@@ -15,24 +15,25 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
-import { NbCard } from '../../look-and-feel/NbCard';
+import NbCard from '../../look-and-feel/NbCard';
+import { lightColors } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
 const DEFAULT_HOLD_DURATION_MS = 1200;
 const RESET_DURATION_MS = 180;
-const DEFAULT_BAR_GRADIENT = ['#8B5CF6', '#DB7093'];
+const DEFAULT_BAR_GRADIENT = ['#E25588', '#DB7093'];
 const DEFAULT_TRACK_COLOR = 'rgba(255,255,255,0.12)';
 const DEFAULT_PILL_LABEL = 'Hold to confirm';
 const DEFAULT_TITLE = 'Confirm';
 const SPINNER_COLOR = '#FDA4AF';
 
-const DARK_TEXT = '#FFFFFF';
+const DARK_TEXT = lightColors.white;
 const LIGHT_TEXT = '#1a0a2e';
 const DARK_MUTED = 'rgba(255,255,255,0.55)';
 const LIGHT_MUTED = 'rgba(26,10,46,0.55)';
 const DARK_CARD = 'rgba(14,14,20,0.98)';
-const LIGHT_CARD = '#FFFFFF';
+const LIGHT_CARD = lightColors.white;
 const DARK_PILL_BORDER = 'rgba(255,255,255,0.14)';
 const LIGHT_PILL_BORDER = 'rgba(0,0,0,0.1)';
 

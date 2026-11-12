@@ -159,7 +159,7 @@ function EditPill({ isEditable }) {
       end={{ x: 1, y: 0 }}
       style={{ alignSelf: 'flex-start', marginTop: 12, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999 }}
     >
-      <Text style={{ color: '#FFFFFF', fontSize: 11, fontFamily: 'SpaceGrotesk_700Bold', letterSpacing: 0.2 }}>
+      <Text style={{ color: lightColors.white, fontSize: 11, fontFamily: 'SpaceGrotesk_700Bold', letterSpacing: 0.2 }}>
         {pillText}
       </Text>
     </LinearGradient>
@@ -237,7 +237,7 @@ function StandardPillCard({ item, cellStyle, cardBg: deprecatedCardBg, planBuild
             end={{ x: 1, y: 0 }}
             style={{ marginTop: 12, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999 }}
           >
-            <Text style={{ color: '#FFFFFF', fontSize: 11, fontFamily: 'SpaceGrotesk_700Bold', letterSpacing: 0.2 }}>
+            <Text style={{ color: lightColors.white, fontSize: 11, fontFamily: 'SpaceGrotesk_700Bold', letterSpacing: 0.2 }}>
               {isEditable ? 'Tap to edit' : 'Read only'}
             </Text>
           </LinearGradient>
@@ -251,7 +251,7 @@ function PillCard({ item, layout, theme, onEditField }) {
   const isJourney = item.wide === true;
   const isFullWidth = item.fullWidth === true || isJourney;
   const cellStyle = isFullWidth ? { width: layout.usableW, alignSelf: 'center' } : { width: layout.gridCardW };
-  const cardBg = theme.isDark ? '#13131A' : '#FFFFFF';
+  const cardBg = theme.isDark ? '#13131A' : lightColors.white;
   const isEditable = !theme.isCoachViewingClientProfile;
   const shared = {
     item,

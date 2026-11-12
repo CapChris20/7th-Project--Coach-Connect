@@ -4,7 +4,6 @@
 
 import React from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
-import { BlurView } from 'expo-blur';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '../weekly-report/reportColorSettings';
@@ -88,7 +87,7 @@ export function WeekPicker({ label, canPrev, canNext, onPrev, onNext, onSettings
         },
       ]}
     >
-      <BlurView intensity={BLUR_INTENSITY} tint={colors.blurTint} style={StyleSheet.absoluteFill} />
+      <View intensity={BLUR_INTENSITY} tint={colors.blurTint} style={StyleSheet.absoluteFill} />
       <View style={styles.row}>
         {onBack ? (
           <Pressable

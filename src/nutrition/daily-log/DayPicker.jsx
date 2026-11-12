@@ -1,72 +1,48 @@
-// Week strip on the food log. Each circle is one day. Future days stay disabled.
-// Flow: snap to the Sunday of the selected week → draw seven days → block weeks after today.
-// Used by: the daily food log screen.
+// Design Law week strip on the daily food log (nutrition PNG 01–04 / mockup `.d7`).
+// Flow: snap to Sunday of selected week → seven day capsules → block future days.
+// Used by DailyFoodLogScreen. Active = nbFill + onFill + HardShadow; log dots are ink only.
 
 import React, { useMemo, useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { getClientDateKey } from '../../helpers/dateStrings';
-import { gradients, lightColors, darkColors, nb } from '../../look-and-feel/colorPalette';
+import { lightColors, darkColors, nb, borderRadius } from '../../look-and-feel/colorPalette';
+import HardShadow from '../../look-and-feel/HardShadow';
 
 // ===== NAMED CONSTANTS =====
 
-// vocab: date keys are YYYY-MM-DD. Noon avoids a timezone shifting the day backward.
 const DATE_KEY_NOON_SUFFIX = 'T12:00:00';
 const DAYS_IN_A_WEEK = 7;
-// Manipulate here: day circle diameter (keep >= 44 for touch target)
-const CIRCLE = 44;
-const TODAY_LABEL = 'Today';
+// Manipulate here: PNG `.d7 button` — min-height 62, radius 8, gap 4, shadow 3
+const DAY_CARD_MIN_HEIGHT = 62;
+const DAY_CARD_RADIUS = 8;
+const DAY_GAP = 4;
+const DOT_SIZE = 8;
 const WEEKDAY_NARROW = { weekday: 'narrow' };
 const MONTH_YEAR = { month: 'long', year: 'numeric' };
-// Brand pink from gradients.brand[0] — used as selected weekday accent
-const ACTIVE_WEEKDAY_COLOR = gradients.brand.colors[0];
 
 // ===== HELPER FUNCTIONS =====
 
-/**
- * @param {string} dateKey
- * @returns {Date}
- */
 function dateAtNoon(dateKey) {
   return new Date(`${dateKey}${DATE_KEY_NOON_SUFFIX}`);
 }
 
-/**
- * @param {string} dateKey
- * @param {number} dayCount
- * @returns {string}
- */
 function addDays(dateKey, dayCount) {
   const nextDate = dateAtNoon(dateKey);
   nextDate.setDate(nextDate.getDate() + dayCount);
   return getClientDateKey(nextDate);
 }
 
-/**
- * Sunday of the week that contains this date key. getDay() is 0 on Sunday.
- * @param {string} dateKey
- * @returns {string}
- */
 function weekStartKey(dateKey) {
   const date = dateAtNoon(dateKey);
   date.setDate(date.getDate() - date.getDay());
   return getClientDateKey(date);
 }
 
-/**
- * @param {string} weekStart
- * @returns {string}
- */
 function formatMonthLabel(weekStart) {
   return dateAtNoon(weekStart).toLocaleDateString(undefined, MONTH_YEAR);
 }
 
-/**
- * Seven date keys starting at Sunday.
- * @param {string} weekStart
- * @returns {string[]}
- */
 function dateKeysForWeek(weekStart) {
   const list = [];
   for (let dayIndex = 0; dayIndex < DAYS_IN_A_WEEK; dayIndex += 1) {
@@ -75,42 +51,73 @@ function dateKeysForWeek(weekStart) {
   return list;
 }
 
-/**
- * Theme → neobrutalist tokens for the week strip.
- * @param {boolean} isDark
- */
 function dayPickerColors(isDark) {
   const c = isDark ? darkColors : lightColors;
   return {
     text: c.nbInk,
     muted: c.nbMuted,
-    circle: c.nbSurfaceChip,
-    circleBorder: c.nbBorder,
+    // vocab: chip = unselected day fill (Design Law `chip` token)
+    chip: c.nbSurfaceChip || c.nbSurface,
+    surface: c.nbSurface,
+    fill: c.nbFill,
+    onFill: c.nbOnFill,
+    border: c.nbBorder,
+    soft: c.nbSoft,
+    // Log-presence dots stay ink (never green / pink — Design Law)
+    dot: c.nbFill,
     chevron: c.nbInk,
     chevronDisabled: c.nbMuted,
-    // Manipulate here: log-presence dot color
-    dot: c.success,
-    surface: c.nbSurface,
   };
 }
 
 /**
- * Future days are visible but not tappable so a client cannot log food that has not happened yet.
+ * Bottom status dot: always an outlined circle; fills when logged / active+logged.
+ * PNG: empty ring always visible; `.has` fills ink; active fills onFill.
+ */
+function DayStatusDot({ hasLogs, isActive, colors }) {
+  const borderColor = isActive ? colors.onFill : colors.border;
+  const fillColor = !hasLogs ? 'transparent' : isActive ? colors.onFill : colors.dot;
+  return (
+    <View
+      style={[
+        styles.dot,
+        {
+          borderColor,
+          backgroundColor: fillColor,
+        },
+      ]}
+    />
+  );
+}
+
+/**
+ * Future day — visible but not tappable. Still HardShadow (PNG 01 every capsule has offset).
  */
 function FutureDayCell({ dateKey, weekday, dayNumber, colors }) {
   return (
     <View key={dateKey} style={styles.dayCol}>
-      <Text style={[styles.weekday, { color: colors.muted }]}>{weekday}</Text>
-      <View style={[styles.circleGhost, { backgroundColor: colors.circle }]}>
-        <Text style={[styles.dayNum, { color: colors.muted }]}>{dayNumber}</Text>
-      </View>
-      <View style={styles.dotSlot} />
+      <HardShadow offset={nb.shadowOffsetSmall} radius={DAY_CARD_RADIUS} style={{ width: '100%' }}>
+        <View
+          style={[
+            styles.dayCard,
+            {
+              backgroundColor: colors.soft,
+              borderColor: colors.border,
+              opacity: 0.5,
+            },
+          ]}
+        >
+          <Text style={[styles.weekday, { color: colors.muted }]}>{weekday}</Text>
+          <Text style={[styles.dayNum, { color: colors.muted }]}>{dayNumber}</Text>
+          <View style={[styles.dot, { borderColor: colors.muted, backgroundColor: 'transparent' }]} />
+        </View>
+      </HardShadow>
     </View>
   );
 }
 
 /**
- * Tappable day. The selected day gets the nutrition gradient ring; days with logs get a green dot.
+ * Tappable day capsule. EVERY day gets HardShadow (PNG 01); active = fill + onFill.
  */
 function LogDayCell({
   dateKey,
@@ -118,7 +125,6 @@ function LogDayCell({
   dayNumber,
   isActive,
   hasLogs,
-  isDark,
   colors,
   onSelectDate,
 }) {
@@ -126,31 +132,30 @@ function LogDayCell({
     <TouchableOpacity
       key={dateKey}
       onPress={() => onSelectDate(dateKey)}
-      activeOpacity={0.82}
+      activeOpacity={0.85}
       style={styles.dayCol}
+      accessibilityRole="button"
+      accessibilityState={{ selected: isActive }}
     >
-      <Text style={[styles.weekday, { color: isActive ? ACTIVE_WEEKDAY_COLOR : colors.muted }]}>
-        {weekdayLabel}
-      </Text>
-      {isActive ? (
-        <LinearGradient
-          colors={gradients.brand.colors}
-          start={gradients.brand.start}
-          end={gradients.brand.end}
-          style={[styles.circleActiveRing, { borderColor: colors.circleBorder }]}
+      <HardShadow offset={nb.shadowOffsetSmall} radius={DAY_CARD_RADIUS} style={{ width: '100%' }}>
+        <View
+          style={[
+            styles.dayCard,
+            {
+              backgroundColor: isActive ? colors.fill : colors.chip,
+              borderColor: colors.border,
+            },
+          ]}
         >
-          <View style={[styles.circleActiveInner, { backgroundColor: colors.surface }]}>
-            <Text style={[styles.dayNum, { color: colors.text, fontFamily: 'SpaceGrotesk_700Bold' }]}>{dayNumber}</Text>
-          </View>
-        </LinearGradient>
-      ) : (
-        <View style={[styles.circle, { backgroundColor: colors.circle, borderColor: colors.circleBorder }]}>
-          <Text style={[styles.dayNum, { color: colors.text }]}>{dayNumber}</Text>
+          <Text style={[styles.weekday, { color: isActive ? colors.onFill : colors.muted }]}>
+            {weekdayLabel}
+          </Text>
+          <Text style={[styles.dayNum, { color: isActive ? colors.onFill : colors.text }]}>
+            {dayNumber}
+          </Text>
+          <DayStatusDot hasLogs={hasLogs} isActive={isActive} colors={colors} />
         </View>
-      )}
-      <View style={styles.dotSlot}>
-        {hasLogs ? <View style={[styles.dot, { backgroundColor: colors.dot }]} /> : null}
-      </View>
+      </HardShadow>
     </TouchableOpacity>
   );
 }
@@ -158,9 +163,6 @@ function LogDayCell({
 // ===== MAIN FUNCTION =====
 
 /**
- * Week calendar — circular day buttons with prev/next week navigation.
- * vocab: useState holds which Sunday the strip is showing; selecting a date in another week
- * snaps it via useEffect.
  * @param {{ selectedDate: string, onSelectDate: Function, todayKey?: string, isDark?: boolean, datesWithLogs?: string[] }} props
  */
 export default function DayPicker({
@@ -178,7 +180,8 @@ export default function DayPicker({
   }, [selectedDate]);
 
   const todayWeekStart = weekStartKey(todayKey);
-  const canGoForward = weekStart !== todayWeekStart && addDays(weekStart, DAYS_IN_A_WEEK) <= todayWeekStart;
+  const canGoForward =
+    weekStart !== todayWeekStart && addDays(weekStart, DAYS_IN_A_WEEK) <= todayWeekStart;
 
   const weekDays = useMemo(() => dateKeysForWeek(weekStart), [weekStart]);
   const colors = dayPickerColors(isDark);
@@ -191,6 +194,7 @@ export default function DayPicker({
 
   return (
     <View style={styles.wrap}>
+      {/* Week jump — not on PNG chrome, kept so past weeks stay reachable */}
       <View style={styles.monthRow}>
         <TouchableOpacity onPress={() => shiftWeek(-1)} hitSlop={10} style={styles.chevronBtn}>
           <Ionicons name="chevron-back" size={18} color={colors.chevron} />
@@ -213,7 +217,6 @@ export default function DayPicker({
       <View style={styles.daysRow}>
         {weekDays.map((dateKey) => {
           const isActive = dateKey === selectedDate;
-          const isToday = dateKey === todayKey;
           const isFuture = dateKey > todayKey;
           const hasLogs = logSet.has(dateKey);
           const dayDate = dateAtNoon(dateKey);
@@ -236,11 +239,10 @@ export default function DayPicker({
             <LogDayCell
               key={dateKey}
               dateKey={dateKey}
-              weekdayLabel={isToday ? TODAY_LABEL : weekday}
+              weekdayLabel={weekday}
               dayNumber={dayNumber}
               isActive={isActive}
               hasLogs={hasLogs}
-              isDark={isDark}
               colors={colors}
               onSelectDate={onSelectDate}
             />
@@ -252,56 +254,59 @@ export default function DayPicker({
 }
 
 const styles = StyleSheet.create({
-  wrap: { width: '100%' },
+  wrap: { width: '100%', marginBottom: 4 },
   monthRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 14,
+    marginBottom: 10,
   },
-  chevronBtn: { width: 32, alignItems: 'center' },
-  monthLabel: { fontSize: 14, fontFamily: 'SpaceGrotesk_700Bold', letterSpacing: -0.2 },
+  chevronBtn: {
+    width: 32,
+    alignItems: 'center',
+    minHeight: nb.minTouchTarget,
+    justifyContent: 'center',
+  },
+  monthLabel: {
+    fontSize: 14,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    letterSpacing: -0.2,
+  },
   daysRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'stretch',
+    gap: DAY_GAP,
   },
-  dayCol: { flex: 1, alignItems: 'center', gap: 6 },
-  // Design rule: never below 12px
-  weekday: { fontSize: 12, fontFamily: 'SpaceGrotesk_700Bold', textTransform: 'uppercase', letterSpacing: 0.3 },
-  circle: {
-    width: CIRCLE,
-    height: CIRCLE,
-    borderRadius: CIRCLE / 2,
+  dayCol: { flex: 1, minWidth: 0 },
+  // PNG `.d7 button` — rounded-rect capsules (not circles)
+  dayCard: {
+    minHeight: DAY_CARD_MIN_HEIGHT,
+    borderRadius: DAY_CARD_RADIUS,
     borderWidth: nb.borderWidth,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 2,
+    gap: 2,
   },
-  circleGhost: {
-    width: CIRCLE,
-    height: CIRCLE,
-    borderRadius: CIRCLE / 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-    opacity: 0.45,
+  weekday: {
+    fontSize: 12,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
   },
-  circleActiveRing: {
-    width: CIRCLE + 4,
-    height: CIRCLE + 4,
-    borderRadius: (CIRCLE + 4) / 2,
-    borderWidth: nb.borderWidth,
-    padding: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
+  dayNum: {
+    fontSize: 17,
+    fontWeight: '900',
+    fontVariant: ['tabular-nums'],
   },
-  circleActiveInner: {
-    width: CIRCLE - 4,
-    height: CIRCLE - 4,
-    borderRadius: (CIRCLE - 4) / 2,
-    alignItems: 'center',
-    justifyContent: 'center',
+  // Always-visible ring; fill when `.has` / active+has
+  dot: {
+    width: DOT_SIZE,
+    height: DOT_SIZE,
+    borderRadius: DOT_SIZE / 2,
+    borderWidth: 2,
+    marginTop: 2,
   },
-  dayNum: { fontSize: 15, fontFamily: 'SpaceGrotesk_700Bold' },
-  dotSlot: { height: 5, justifyContent: 'center' },
-  dot: { width: 5, height: 5, borderRadius: 3 },
 });

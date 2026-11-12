@@ -1,6 +1,7 @@
 // Today's logged foods as a searchable list of FoodCards.
-// Flow: pick foods (or the demo bowl) → filter by the search box → sticky header + calorie total + cards.
-// Used by the nutrition tab. FoodCard owns expand/collapse; this screen only tracks which id is open.
+// Flow: pick foods (or the demo bowl) → filter by search → sticky header + calorie total + cards.
+// Used by nutrition demos / lists. FoodCard owns expand/collapse.
+// vocab: HardShadow = solid offset shadow (no blur)
 
 import React, { useMemo, useState, useCallback } from 'react';
 import {
@@ -17,7 +18,8 @@ import { Search } from 'lucide-react-native';
 import FoodCard from './FoodCard';
 import { colors, fonts } from './foodCardColors';
 import { DEMO_YOGURT_BOWL } from './foodCardText';
-import { lightColors, darkColors, nb, borderRadius } from '../../look-and-feel/colorPalette';
+import HardShadow from '../../look-and-feel/HardShadow';
+import { lightColors, darkColors, borderRadius, nb } from '../../look-and-feel/colorPalette';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
 
 // ===== NAMED CONSTANTS =====
@@ -126,17 +128,22 @@ export default function FoodListScreen({ foods, totalCalories }) {
         </View>
       </View>
 
-      <View style={[styles.searchRow, { borderColor: nbColors.nbBorder, backgroundColor: nbColors.nbSurfaceChip }]}>
-        <Search size={SEARCH_ICON_SIZE} color={nbColors.nbMuted} strokeWidth={SEARCH_ICON_STROKE_WIDTH} />
-        <TextInput
-          value={searchText}
-          onChangeText={setSearchText}
-          placeholder="Search logged foods…"
-          placeholderTextColor={nbColors.nbMuted}
-          style={[styles.searchInput, { color: nbColors.nbInk }]}
-          returnKeyType="search"
-        />
-      </View>
+      <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetCard} style={styles.searchFrame}>
+      <View style={[{ backgroundColor: isDark ? darkColors.nbSurface : lightColors.nbSurface, borderWidth: nb.borderWidth, borderColor: (typeof colors !== "undefined" && (colors.cardBorder || colors.nbBorder)) || lightColors.nbBorder, borderRadius: borderRadius.nbCard }, {}]}>
+
+        <View style={styles.searchRow}>
+          <Search size={SEARCH_ICON_SIZE} color={nbColors.nbMuted} strokeWidth={SEARCH_ICON_STROKE_WIDTH} />
+          <TextInput
+            value={searchText}
+            onChangeText={setSearchText}
+            placeholder="Search logged foods…"
+            placeholderTextColor={nbColors.nbMuted}
+            style={[styles.searchInput, { color: nbColors.nbInk }]}
+            returnKeyType="search"
+          />
+        </View>
+            </View>
+    </HardShadow>
 
       <FlatList
         data={foodItems}
@@ -195,14 +202,14 @@ const styles = StyleSheet.create({
     letterSpacing: 1.2,
     marginTop: 2,
   },
+  searchFrame: {
+    marginHorizontal: 20,
+    marginBottom: 12,
+  },
   searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    marginHorizontal: 20,
-    marginBottom: 12,
-    borderRadius: borderRadius.nbChip,
-    borderWidth: nb.borderWidth,
     paddingVertical: 10,
     paddingHorizontal: 14,
   },

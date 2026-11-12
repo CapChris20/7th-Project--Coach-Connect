@@ -1,110 +1,72 @@
-// Multi-select exercise pills with a slow lottery-cage drift. Selected ids are serialized back to the parent.
-// Flow: parse stored value → filter catalog by search → toggle ids → serializeExerciseDislikes.
-// Used by onboarding / plan-preference steps. The stored field is still `exercisesDislike`.
+// Multi-select exercise chips for avoid / prefer lists (Design Law fill + check).
+// Flow: parse stored value → optional search → toggle ids → serializeExerciseDislikes.
+// Used by: Exercises-to-avoid NbSheet, onboarding / plan-preference editors.
+// Persistence key stays `exercisesDislike` (legacy field name — do not rename).
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
-  Animated,
-  Easing,
   StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
+  Pressable,
   View,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import {
   EXERCISE_DISLIKE_CATEGORIES,
-  EXERCISE_DISLIKE_CATALOG,
   searchExerciseDislikeCatalog,
 } from './dislikableExercises';
 import { parseExerciseDislikes, serializeExerciseDislikes } from './dislikedExercisesText';
-import { nb } from '../../look-and-feel/colorPalette';
+import HardShadow from '../../look-and-feel/HardShadow';
+import { borderRadius, nb } from '../../look-and-feel/colorPalette';
+import { useTheme } from '../../look-and-feel/lightDarkMode';
 
 // ===== NAMED CONSTANTS =====
 
 const INTENT_DISLIKE = 'dislike';
 const INTENT_PREFER = 'prefer';
-const DRIFT_X_BASE_MS = 1600;
-const DRIFT_Y_BASE_MS = 1900;
-const ROTATION_BASE_MS = 2400;
-const DRIFT_X_STEP_MS = 240;
-const DRIFT_Y_STEP_MS = 200;
-const ROTATION_STEP_MS = 160;
-const DRIFT_X_INDEX_MOD = 6;
-const DRIFT_Y_INDEX_MOD = 5;
-const ROTATION_INDEX_MOD = 7;
-const AMP_X_INDEX_MOD = 4;
-const AMP_Y_INDEX_MOD = 5;
-const ROT_DEG_INDEX_MOD = 3;
-const ENTER_STAGGER_MS = 55;
-const ENTER_STAGGER_MOD = 9;
-const SELECT_POP_SCALE = 1.08;
-const SELECTED_DRIFT_DAMPEN = 0.35;
-const IDLE_DRIFT_AMOUNT = 1;
-const ENTER_SPRING_FRICTION = 5;
-const ENTER_SPRING_TENSION = 90;
-const POP_OUT_FRICTION = 4;
-const POP_OUT_TENSION = 200;
-const POP_IN_FRICTION = 6;
-const POP_IN_TENSION = 160;
-const AMP_X_BASE = 2.5;
-const AMP_X_STEP = 0.8;
-const AMP_Y_BASE = 2;
-const AMP_Y_STEP = 0.7;
-const ROT_DEG_BASE = 1.2;
-const ROT_DEG_STEP = 0.4;
-const INDEX_SPREAD = 3;
+
+// Manipulate here: sheet pins these ids first so the PNG-like list reads familiar
+const SHEET_PINNED_IDS = [
+  'burpee',
+  'lunge_walk',
+  'running',
+  'deadlift',
+  'pullup',
+  'jump_squat',
+  'plank',
+];
 
 // ===== HELPER FUNCTIONS =====
 
-function pillDriftAmplitudes(index) {
-  return {
-    ampX: AMP_X_BASE + (index % AMP_X_INDEX_MOD) * AMP_X_STEP,
-    ampY: AMP_Y_BASE + (index % AMP_Y_INDEX_MOD) * AMP_Y_STEP,
-    rotDeg: ROT_DEG_BASE + (index % ROT_DEG_INDEX_MOD) * ROT_DEG_STEP,
-  };
+function idsWithToggledId(selectedIds, id) {
+  if (selectedIds.includes(id)) return selectedIds.filter((selectedId) => selectedId !== id);
+  return [...selectedIds, id];
 }
 
-function sineLoop(animatedValue, durationMs) {
-  return Animated.loop(
-    Animated.sequence([
-      Animated.timing(animatedValue, {
-        toValue: 1,
-        duration: durationMs,
-        easing: Easing.inOut(Easing.sin),
-        useNativeDriver: true,
-      }),
-      Animated.timing(animatedValue, {
-        toValue: -1,
-        duration: durationMs,
-        easing: Easing.inOut(Easing.sin),
-        useNativeDriver: true,
-      }),
-    ]),
-  );
+function pickerHintText({ isPrefer, selectedCount }) {
+  const countSuffix = selectedCount > 0 ? ` (${selectedCount} selected)` : '';
+  if (isPrefer) {
+    return `Tap exercises you would prefer in your plan. Skip any you don't care about.${countSuffix}`;
+  }
+  return `Tap exercises you never want in your plan. Selected = avoided.${countSuffix}`;
 }
 
 /**
- * Three independent loops (x, y, rotate) so the pill wanders instead of circling on a perfect oval.
- * Durations stay slightly different per index so neighboring pills do not sync.
- * @param {object} args
+ * Flat catalog for the avoid sheet: pinned names first, then the rest A→Z.
+ * @param {Array} filtered
+ * @returns {Array}
  */
-function startPillDriftLoops({ driftX, driftY, rotation, index }) {
-  const durationX = DRIFT_X_BASE_MS + (index % DRIFT_X_INDEX_MOD) * DRIFT_X_STEP_MS;
-  const durationY = DRIFT_Y_BASE_MS + (index % DRIFT_Y_INDEX_MOD) * DRIFT_Y_STEP_MS;
-  const durationRotation = ROTATION_BASE_MS + (index % ROTATION_INDEX_MOD) * ROTATION_STEP_MS;
-  const loopX = sineLoop(driftX, durationX);
-  const loopY = sineLoop(driftY, durationY);
-  const loopRotation = sineLoop(rotation, durationRotation);
-  loopX.start();
-  loopY.start();
-  loopRotation.start();
-  return () => {
-    loopX.stop();
-    loopY.stop();
-    loopRotation.stop();
-  };
+function orderSheetExercises(filtered) {
+  const byId = new Map(filtered.map((exercise) => [exercise.id, exercise]));
+  const pinned = SHEET_PINNED_IDS.map((id) => byId.get(id)).filter(Boolean);
+  const pinnedSet = new Set(pinned.map((exercise) => exercise.id));
+  const rest = filtered
+    .filter((exercise) => !pinnedSet.has(exercise.id))
+    .slice()
+    .sort((a, b) => a.name.localeCompare(b.name));
+  return [...pinned, ...rest];
 }
 
 function exercisesGroupedByCategory(filteredExercises) {
@@ -120,166 +82,91 @@ function exercisesGroupedByCategory(filteredExercises) {
     .filter((category) => category.exercises.length > 0);
 }
 
-function pickerHintText({ isPrefer, selectedCount }) {
-  const countSuffix = selectedCount > 0 ? ` (${selectedCount} selected)` : '';
-  if (isPrefer) {
-    return `Tap exercises you would prefer in your plan. Skip any you don't care about.${countSuffix}`;
-  }
-  return `Tap exercises you never want in your plan. Selected = avoided.${countSuffix}`;
-}
-
-function idsWithToggledId(selectedIds, id) {
-  if (selectedIds.includes(id)) return selectedIds.filter((selectedId) => selectedId !== id);
-  return [...selectedIds, id];
-}
-
 /**
- * One drifting pill. Animation math stays in the Animated style interpolations (native driver / UI thread).
- * @param {object} props
+ * Fill chip: selected = nbFill + check + HardShadow; idle = surface + border only.
+ * vocab: HardShadow = solid offset sibling (Android) / shadowRadius 0 (iOS)
+ * Matches mockup: `.chip[aria-pressed=true]` gets shadow; `.tick` only when selected.
  */
-function LotteryDriftPill({ index, label, selected, onPress, t: theme, animate }) {
-  const driftX = useRef(new Animated.Value(0)).current;
-  const driftY = useRef(new Animated.Value(0)).current;
-  const rotation = useRef(new Animated.Value(0)).current;
-  const enter = useRef(new Animated.Value(0)).current;
-  const selectPop = useRef(new Animated.Value(1)).current;
+function AvoidChip({ label, selected, onPress }) {
+  const { colors } = useTheme();
+  const bg = selected ? colors.nbFill : colors.nbSurfaceChip || colors.nbSurface;
+  const fg = selected ? colors.nbOnFill : colors.nbInk;
 
-  const { ampX, ampY, rotDeg } = pillDriftAmplitudes(index);
-
-  useEffect(() => {
-    if (!animate) {
-      enter.setValue(1);
-      return undefined;
-    }
-
-    const delay = (index % ENTER_STAGGER_MOD) * ENTER_STAGGER_MS;
-    Animated.sequence([
-      Animated.delay(delay),
-      Animated.spring(enter, {
-        toValue: 1,
-        friction: ENTER_SPRING_FRICTION,
-        tension: ENTER_SPRING_TENSION,
-        useNativeDriver: true,
-      }),
-    ]).start();
-
-    return startPillDriftLoops({ driftX, driftY, rotation, index });
-  }, [animate, index, driftX, driftY, rotation, enter]);
-
-  useEffect(() => {
-    Animated.sequence([
-      Animated.spring(selectPop, {
-        toValue: SELECT_POP_SCALE,
-        friction: POP_OUT_FRICTION,
-        tension: POP_OUT_TENSION,
-        useNativeDriver: true,
-      }),
-      Animated.spring(selectPop, {
-        toValue: 1,
-        friction: POP_IN_FRICTION,
-        tension: POP_IN_TENSION,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [selected, selectPop]);
-
-  const idleDrift = selected ? SELECTED_DRIFT_DAMPEN : IDLE_DRIFT_AMOUNT;
-
-  return (
-    <Animated.View
-      style={{
-        transform: [
-          {
-            scale: Animated.multiply(
-              enter.interpolate({ inputRange: [0, 1], outputRange: [0.2, 1] }),
-              selectPop,
-            ),
-          },
-          {
-            translateX: driftX.interpolate({
-              inputRange: [-1, 1],
-              outputRange: [-ampX * idleDrift, ampX * idleDrift],
-            }),
-          },
-          {
-            translateY: driftY.interpolate({
-              inputRange: [-1, 1],
-              outputRange: [-ampY * idleDrift, ampY * idleDrift],
-            }),
-          },
-          {
-            rotate: rotation.interpolate({
-              inputRange: [-1, 1],
-              outputRange: [`-${rotDeg * idleDrift}deg`, `${rotDeg * idleDrift}deg`],
-            }),
-          },
-        ],
-        opacity: enter,
-      }}
+  const chip = (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
+      style={[
+        styles.chip,
+        {
+          backgroundColor: bg,
+          borderColor: colors.nbBorder,
+          minHeight: nb.minTouchTarget,
+        },
+      ]}
     >
-      <TouchableOpacity
-        onPress={onPress}
-        activeOpacity={0.85}
-        style={{
-          paddingVertical: 8,
-          paddingHorizontal: 14,
-          borderRadius: 50,
-          marginRight: 8,
-          marginBottom: 8,
-          borderWidth: nb.borderWidth,
-          borderColor: selected ? theme.cardSelectedBorder : theme.cardBorder,
-          backgroundColor: selected ? theme.cardSelectedBg : theme.cardBg,
-        }}
-      >
-        <Text style={{ fontSize: 13, fontFamily: 'Inter_500Medium', color: theme.textPrimary }}>{label}</Text>
-      </TouchableOpacity>
-    </Animated.View>
+      <Text style={[styles.chipText, { color: fg }]} numberOfLines={1}>
+        {label}
+      </Text>
+      {selected ? (
+        <Ionicons name="checkmark" size={16} color={fg} style={styles.chipCheck} />
+      ) : null}
+    </Pressable>
   );
-}
 
-function CategoryPillSection({ section, shuffleKey, selectedIds, onToggle, theme, animatePills }) {
+  if (!selected) return <View style={styles.chipShadow}>{chip}</View>;
   return (
-    <View key={section.id} style={styles.section}>
-      <Text style={[styles.sectionLabel, { color: theme.textSecondary }]}>{section.label}</Text>
-      <View style={styles.pillRow}>
-        {section.exercises.map((exercise, exerciseIndex) => (
-          <LotteryDriftPill
-            key={`${exercise.id}-${shuffleKey}`}
-            index={exerciseIndex + section.id.length * INDEX_SPREAD}
-            label={exercise.name}
-            selected={selectedIds.includes(exercise.id)}
-            onPress={() => onToggle(exercise.id)}
-            t={theme}
-            animate={animatePills}
-          />
-        ))}
-      </View>
-    </View>
+    <HardShadow radius={999} offset={nb.shadowOffsetSmall} style={styles.chipShadow}>
+      {chip}
+    </HardShadow>
   );
 }
 
 // ===== MAIN FUNCTION =====
 
 /**
- * Catalog multi-select. `intent` only changes the hint copy; the stored field is still exercisesDislike.
+ * Catalog multi-select. `intent` only changes hint copy; stored field is still exercisesDislike.
  * @param {object} props
+ * @param {'sheet'|'grouped'} [props.layout] sheet = flat wrap (avoid NbSheet); grouped = onboarding sections
+ * @param {boolean} [props.showSearch] search field under the hint
+ * @param {boolean} [props.showHint] helper sentence above chips
+ * @param {boolean} [props.showOtherField] free-text "Other" input
  */
 export default function DislikedExercisesPicker({
   value = '',
   onChange,
-  t: theme,
-  animatePills = true,
+  t: themeProp,
+  layout = 'grouped',
+  showSearch = true,
+  showHint = true,
   showOtherField = true,
-  /** Stored field is still `exercisesDislike`; selected items = exercises to prioritize */
+  /** Stored field is still `exercisesDislike`; selected items = exercises to prioritize when prefer */
   intent = INTENT_PREFER,
+  animatePills: _deprecatedAnimate,
 }) {
+  void _deprecatedAnimate;
+
+  const { colors: themeColors } = useTheme();
+  // Prefer live theme tokens; fall back to legacy `t` prop from older callers
+  const colors = themeProp
+    ? {
+        nbInk: themeProp.textPrimary || themeColors.nbInk,
+        nbMuted: themeProp.textSecondary || themeColors.nbMuted,
+        nbSurface: themeProp.cardBg || themeColors.nbSurface,
+        nbBorder: themeProp.cardBorder || themeColors.nbBorder,
+        nbFill: themeColors.nbFill,
+        nbOnFill: themeColors.nbOnFill,
+        nbSoft: themeColors.nbSoft,
+      }
+    : themeColors;
+
   const { selectedIds, customText } = useMemo(() => parseExerciseDislikes(value), [value]);
   const [search, setSearch] = useState('');
-  const shuffleKey = useRef(0);
 
   const filtered = useMemo(() => searchExerciseDislikeCatalog(search), [search]);
-
   const grouped = useMemo(() => exercisesGroupedByCategory(filtered), [filtered]);
+  const flatList = useMemo(() => orderSheetExercises(filtered), [filtered]);
 
   const toggleId = (id) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
@@ -291,68 +178,86 @@ export default function DislikedExercisesPicker({
     onChange?.(serializeExerciseDislikes(selectedIds, text));
   };
 
-  const handleSearchChange = (text) => {
-    setSearch(text);
-    shuffleKey.current += 1;
-  };
-
   const selectedCount = selectedIds.length;
   const isPrefer = intent !== INTENT_DISLIKE;
   const hintText = pickerHintText({ isPrefer, selectedCount });
   const otherLabel = isPrefer ? 'Other exercises you prefer' : 'Other (not listed)';
+  const isSheet = layout === 'sheet';
+
+  const renderChipRow = (exercises) => (
+    <View style={styles.pillRow}>
+      {exercises.map((exercise) => (
+        <AvoidChip
+          key={exercise.id}
+          label={exercise.name}
+          selected={selectedIds.includes(exercise.id)}
+          onPress={() => toggleId(exercise.id)}
+        />
+      ))}
+    </View>
+  );
 
   return (
     <View style={styles.root}>
-      <Text style={[styles.hint, { color: theme.textSecondary }]}>{hintText}</Text>
+      {showHint ? (
+        <Text style={[styles.hint, { color: colors.nbMuted }]}>{hintText}</Text>
+      ) : null}
 
-      <TextInput
-        value={search}
-        onChangeText={handleSearchChange}
-        placeholder="Search exercises..."
-        placeholderTextColor={theme.textSecondary}
-        style={[
-          styles.search,
-          {
-            color: theme.textPrimary,
-            backgroundColor: theme.cardBg,
-            borderColor: theme.cardBorder,
-          },
-        ]}
-      />
-
-      {grouped.map((section) => (
-        <CategoryPillSection
-          key={section.id}
-          section={section}
-          shuffleKey={shuffleKey.current}
-          selectedIds={selectedIds}
-          onToggle={toggleId}
-          theme={theme}
-          animatePills={animatePills}
+      {showSearch ? (
+        <TextInput
+          value={search}
+          onChangeText={setSearch}
+          placeholder="Search exercises..."
+          placeholderTextColor={colors.nbMuted}
+          style={[
+            styles.search,
+            {
+              color: colors.nbInk,
+              backgroundColor: colors.nbSurface,
+              borderColor: colors.nbBorder,
+            },
+          ]}
         />
-      ))}
+      ) : null}
 
-      {!grouped.length ? (
-        <Text style={{ color: theme.textSecondary, fontSize: 13, marginTop: 8 }}>
+      {isSheet ? (
+        flatList.length ? (
+          renderChipRow(flatList)
+        ) : (
+          <Text style={{ color: colors.nbMuted, fontSize: 13, marginTop: 8 }}>
+            No matches — add a custom exercise below.
+          </Text>
+        )
+      ) : (
+        grouped.map((section) => (
+          <View key={section.id} style={styles.section}>
+            <Text style={[styles.sectionLabel, { color: colors.nbMuted }]}>{section.label}</Text>
+            {renderChipRow(section.exercises)}
+          </View>
+        ))
+      )}
+
+      {!isSheet && !grouped.length ? (
+        <Text style={{ color: colors.nbMuted, fontSize: 13, marginTop: 8 }}>
           No matches — add a custom exercise below.
         </Text>
       ) : null}
 
       {showOtherField ? (
         <View style={{ marginTop: 12 }}>
-          <Text style={[styles.sectionLabel, { color: theme.textSecondary }]}>{otherLabel}</Text>
+          <Text style={[styles.sectionLabel, { color: colors.nbMuted }]}>{otherLabel}</Text>
           <TextInput
             value={customText}
             onChangeText={handleCustomChange}
             placeholder="e.g. sled drags, specific machine at your gym..."
-            placeholderTextColor={theme.textSecondary}
+            placeholderTextColor={colors.nbMuted}
             multiline
             style={[
               styles.otherInput,
               {
-                color: theme.textPrimary,
-                backgroundColor: theme.cardBg,
-                borderColor: theme.cardBorder,
+                color: colors.nbInk,
+                backgroundColor: colors.nbSurface,
+                borderColor: colors.nbBorder,
               },
             ]}
           />
@@ -374,12 +279,13 @@ const styles = StyleSheet.create({
   },
   search: {
     borderWidth: nb.borderWidth,
-    borderRadius: 12,
+    borderRadius: borderRadius.nbInput,
     paddingHorizontal: 14,
     paddingVertical: 10,
     fontSize: 15,
     fontFamily: 'Inter_400Regular',
-    marginBottom: 8,
+    marginBottom: 12,
+    minHeight: 48,
   },
   section: {
     marginTop: 10,
@@ -389,15 +295,34 @@ const styles = StyleSheet.create({
     fontFamily: 'SpaceGrotesk_700Bold',
     letterSpacing: 0.8,
     textTransform: 'uppercase',
-    marginBottom: 6,
+    marginBottom: 8,
   },
   pillRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    gap: 8,
+  },
+  chipShadow: {
+    marginBottom: 2,
+  },
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 999,
+    borderWidth: nb.borderWidth,
+  },
+  chipText: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 14,
+  },
+  chipCheck: {
+    marginLeft: 6,
   },
   otherInput: {
     borderWidth: nb.borderWidth,
-    borderRadius: 12,
+    borderRadius: borderRadius.nbInput,
     paddingHorizontal: 14,
     paddingVertical: 10,
     fontSize: 14,

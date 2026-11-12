@@ -22,8 +22,10 @@ import NbButton from '../../look-and-feel/NbButton';
 // Manipulate here: delay before focusing so the slide animation finishes first.
 const FOCUS_AFTER_OPEN_MS = 120;
 const SHEET_TITLE = 'Paste text';
-const SHEET_HINT = 'Copy on your Mac, then paste here (⌘V).';
-const DRAFT_PLACEHOLDER = 'Paste your message…';
+// Design Law PNG 11: full hint sentence + TEXT label + Cancel (not “Not now”).
+const SHEET_HINT = 'Add a workout, a nutrition label or a message. The coach reads it with your question.';
+const DRAFT_LABEL = 'TEXT';
+const DRAFT_PLACEHOLDER = 'Paste your text…';
 const CANCEL_LABEL = 'Cancel';
 const CONFIRM_LABEL = 'Add to message';
 
@@ -61,13 +63,13 @@ function PasteSheetActions({ canConfirmPaste, onClose, onConfirmDraft }) {
   return (
     <View style={styles.actionsRow}>
       <View style={{ flex: 1 }}>
-        <NbButton variant="plain" onPress={onClose}>
+        <NbButton variant="ghost" onPress={onClose}>
           {CANCEL_LABEL}
         </NbButton>
       </View>
       <View style={{ flex: 1 }}>
         <NbButton
-          variant="brand"
+          variant="fill"
           onPress={onConfirmDraft}
           disabled={!canConfirmPaste}
         >
@@ -84,9 +86,12 @@ function PasteSheetActions({ canConfirmPaste, onClose, onConfirmDraft }) {
  * Dedicated paste surface using NbSheet — avoids stale Simulator clipboard reads.
  * @param {{ visible: boolean, onClose: Function, onConfirm?: Function, t?: object, isDark?: boolean }} props
  */
-export default function PasteTextPopup({ visible, onClose, onConfirm, t, isDark = true }) {
+export default function PasteTextPopup({ visible, onClose, onConfirm, t, isDark: isDarkProp }) {
+  // Prefer the app theme prop; fall back to OS scheme only when the parent omitted it.
   const colorScheme = useColorScheme();
-  const colors = colorScheme === 'dark' ? darkColors : lightColors;
+  const isDark = typeof isDarkProp === 'boolean' ? isDarkProp : colorScheme === 'dark';
+  const colors = isDark ? darkColors : lightColors;
+  void t;
   const [draft, setDraft] = useState('');
   const inputRef = useRef(null);
 
@@ -119,6 +124,14 @@ export default function PasteTextPopup({ visible, onClose, onConfirm, t, isDark 
       >
         {SHEET_HINT}
       </Text>
+      <Text
+        style={[
+          styles.draftLabel,
+          { color: colors.nbMuted, fontFamily: 'SpaceGrotesk_700Bold' },
+        ]}
+      >
+        {DRAFT_LABEL}
+      </Text>
       <TextInput
         ref={inputRef}
         value={draft}
@@ -133,6 +146,7 @@ export default function PasteTextPopup({ visible, onClose, onConfirm, t, isDark 
             borderWidth: nb.borderWidth,
             color: colors.nbInk,
             backgroundColor: colors.nbSurface,
+            fontFamily: 'SpaceGrotesk_700Bold',
           },
         ]}
       />
@@ -149,6 +163,12 @@ const styles = StyleSheet.create({
   sheetHint: {
     fontSize: 13,
     marginBottom: spacing.md,
+    lineHeight: 18,
+  },
+  draftLabel: {
+    fontSize: 12,
+    letterSpacing: 1.2,
+    marginBottom: 8,
   },
   draftInput: {
     minHeight: 100,
@@ -156,7 +176,6 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.nbCard,
     padding: spacing.md,
     fontSize: 15,
-    fontFamily: 'Inter_400Regular',
   },
   actionsRow: {
     flexDirection: 'row',

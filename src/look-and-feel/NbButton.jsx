@@ -1,35 +1,33 @@
-// Neobrutalist button with three variants: brand (gradient), ink (gradient), plain (outlined)
-// Flow: displays pressable button with thick border, hard shadow, press animation (translate + shadow collapse)
+// Neobrutalist button: fill (black/white), ink alias, plain/ghost (surface).
+// Flow: pressable → hard shadow → solid fill or ghost → label. Handoff: no big gradient buttons.
 // Where used: CTAs, form actions, navigation across all screens
 //
-// vocab: neobrutalist = thick outlines, hard shadows, gradient fills
-// Manipulate here: press animation timing (150ms), shadow offset (4), border width (2.5)
+// vocab: fill = nbFill primary block; ghost = surface with border
+// Manipulate here: press animation timing (150ms), shadow offset (4), border width (3)
 
 import React, { useRef } from 'react';
 import { Text, StyleSheet, Pressable, Animated, Platform, View } from 'react-native';
 
-import { LinearGradient } from 'expo-linear-gradient';
-import { borderRadius, nb, gradients } from './colorPalette';
+import { borderRadius, nb } from './colorPalette';
 import { useTheme } from './lightDarkMode';
 
 /**
- * Neobrutalist button with gradient or outlined variants.
+ * Handoff button: fill / ink (=fill) / plain (ghost).
  * Press animation: translate 3,3 and collapse shadow to 0.
- * 
+ *
  * @param {object} props
- * @param {string} props.variant - 'brand' | 'ink' | 'plain'
+ * @param {string} props.variant - 'brand' | 'ink' | 'plain' | 'fill' | 'ghost'
  * @param {string} props.children - button text (single line)
- * @param {Function} [props.onPress] - press handler
- * @param {boolean} [props.disabled] - disabled state (45% opacity, keeps outline visible)
- * @param {boolean} [props.sm] - small size variant
- * @param {object} [props.style] - additional container styles
+ * @param {Function} [props.onPress]
+ * @param {boolean} [props.disabled]
+ * @param {boolean} [props.sm]
+ * @param {object} [props.style]
  */
 export default function NbButton({ variant = 'brand', children, onPress, disabled = false, sm = false, style }) {
   const { colors } = useTheme();
-  
+
   const translateAnim = useRef(new Animated.Value(0)).current;
-  
-  // Press in: translate 3,3 (shadow collapses)
+
   const handlePressIn = () => {
     Animated.timing(translateAnim, {
       toValue: 1,
@@ -37,8 +35,7 @@ export default function NbButton({ variant = 'brand', children, onPress, disable
       useNativeDriver: true,
     }).start();
   };
-  
-  // Press out: translate back to 0,0
+
   const handlePressOut = () => {
     Animated.timing(translateAnim, {
       toValue: 0,
@@ -46,94 +43,49 @@ export default function NbButton({ variant = 'brand', children, onPress, disable
       useNativeDriver: true,
     }).start();
   };
-  
+
   const translateX = translateAnim.interpolate({
     inputRange: [0, 1],
     outputRange: [0, 3],
   });
-  
+
   const translateY = translateAnim.interpolate({
     inputRange: [0, 1],
     outputRange: [0, 3],
   });
-  
-  // Shadow offset shrinks on press
+
   const shadowTranslateX = translateAnim.interpolate({
     inputRange: [0, 1],
     outputRange: [nb.shadowOffset, 0],
   });
-  
+
   const shadowTranslateY = translateAnim.interpolate({
     inputRange: [0, 1],
     outputRange: [nb.shadowOffset, 0],
   });
-  
-  // Text color by variant
-  let textColor = '#0A0A0F'; // brand and plain → black text
-  if (variant === 'ink') {
-    textColor = '#FFFFFF'; // ink → white text
-  } else if (variant === 'plain') {
-    textColor = colors.nbInk;
-  }
-  
-  // Height by size
-  const height = sm ? 36 : nb.minTouchTarget;
-  const fontSize = sm ? 14 : 15;
-  
-  // Gradient or solid background
-  const gradient = variant === 'brand' ? gradients.brand : variant === 'ink' ? gradients.ink : null;
-  
-  // Plain variant is outlined, no gradient
-  const plainBackground = variant === 'plain' ? colors.nbSurface : null;
-  
-  const buttonContent = (
+
+  const isGhost = variant === 'plain' || variant === 'ghost';
+  const fillBg = isGhost ? colors.nbSurface : colors.nbFill;
+  const textColor = isGhost ? colors.nbInk : colors.nbOnFill;
+
+  const height = sm ? nb.minTouchTarget : nb.buttonMinHeight;
+  const fontSize = sm ? 13 : 16;
+
+  const buttonInner = (
     <View
       style={[
         styles.button,
         {
           height,
           borderColor: colors.nbBorder,
-          backgroundColor: plainBackground,
+          backgroundColor: fillBg,
         },
       ]}
     >
-      <Text
-        style={[
-          styles.text,
-          { color: textColor, fontSize },
-        ]}
-        numberOfLines={1}
-      >
+      <Text style={[styles.text, { color: textColor, fontSize }]} numberOfLines={1}>
         {children}
       </Text>
     </View>
-  );
-  
-  const buttonInner = gradient ? (
-    <LinearGradient
-      colors={gradient.colors}
-      start={gradient.start}
-      end={gradient.end}
-      style={[
-        styles.button,
-        {
-          height,
-          borderColor: colors.nbBorder,
-        },
-      ]}
-    >
-      <Text
-        style={[
-          styles.text,
-          { color: textColor, fontSize },
-        ]}
-        numberOfLines={1}
-      >
-        {children}
-      </Text>
-    </LinearGradient>
-  ) : (
-    buttonContent
   );
   
   // Android hard shadow: render a duplicate offset view behind
@@ -218,16 +170,15 @@ const styles = StyleSheet.create({
     // Pressable is just the hit area
   },
   button: {
-    borderRadius: borderRadius.nbChip,
+    borderRadius: borderRadius.nbButton,
     borderWidth: nb.borderWidth,
     paddingHorizontal: nb.chipPadding,
     justifyContent: 'center',
     alignItems: 'center',
   },
   text: {
-    fontFamily: 'SpaceGrotesk_700Bold',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    fontWeight: '900',
+    letterSpacing: -0.2,
   },
   disabled: {
     opacity: 0.45,
@@ -241,3 +192,5 @@ const styles = StyleSheet.create({
     borderWidth: nb.borderWidth,
   },
 });
+
+export { NbButton };

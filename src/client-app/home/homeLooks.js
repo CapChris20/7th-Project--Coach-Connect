@@ -3,6 +3,7 @@
 // Used by the training home and the cards on it.
 
 import { StyleSheet, Dimensions, Platform } from 'react-native';
+import { lightColors } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
@@ -19,7 +20,7 @@ function buildHomeLooks() {
     flex: 1,
   },
   safeAreaLight: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: lightColors.white,
   },
   safeAreaDark: {
     backgroundColor: '#0A0A0A',
@@ -156,7 +157,7 @@ function buildHomeLooks() {
     fontSize: 22,
     fontWeight: '900',
     letterSpacing: 3,
-    color: '#FFFFFF',
+    color: lightColors.white,
   },
   logoSubtitle: {
     marginTop: 6,
@@ -209,14 +210,14 @@ function buildHomeLooks() {
     color: '#000000',
   },
   darkText: {
-    color: '#FFFFFF',
+    color: lightColors.white,
   },
   lightMutedText: {
     color: '#6B7280',
   },
   cardShadowWrap: {
     borderRadius: 12,
-    shadowColor: '#A855F7',
+    shadowColor: '#0A0A0F',
     shadowOffset: { width: 0, height: 18 },
     shadowOpacity: 0.28,
     shadowRadius: 28,
@@ -260,7 +261,7 @@ function buildHomeLooks() {
     overflow: 'visible',
   },
   videoRailContainerLight: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: lightColors.white,
   },
   videoRailContent: {
     paddingHorizontal: 20,
@@ -672,7 +673,7 @@ function buildHomeLooks() {
   weekHeaderText: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: lightColors.white,
     letterSpacing: 1.5,
     textTransform: 'uppercase',
     textAlign: 'center',
@@ -731,7 +732,7 @@ function buildHomeLooks() {
     position: 'absolute',
     top: -8,
     right: -8,
-    backgroundColor: '#FF3B30',
+    backgroundColor: lightColors.error,
     borderRadius: 10,
     minWidth: 20,
     height: 20,
@@ -836,7 +837,7 @@ function buildHomeLooks() {
   agendaTitle: {
     fontSize: 24,
     fontWeight: '800',
-    color: '#FFFFFF',
+    color: lightColors.white,
     letterSpacing: 0.2,
   },
   agendaTitleRow: {
@@ -851,21 +852,21 @@ function buildHomeLooks() {
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: '#1F1F2A',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.14)',
+    borderColor: '#F2F2F0',
   },
   agendaBadge: {
     alignSelf: 'flex-start',
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: '#1F1F2A',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.14)',
+    borderColor: '#F2F2F0',
   },
   agendaBadgeText: {
-    color: '#FFFFFF',
+    color: lightColors.white,
     fontSize: 11,
     fontWeight: '800',
     letterSpacing: 0.3,
@@ -884,14 +885,14 @@ function buildHomeLooks() {
     height: 8,
     borderRadius: 4,
     marginTop: 6,
-    backgroundColor: 'rgba(255,255,255,0.16)',
+    backgroundColor: '#1F1F2A',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
+    borderColor: '#F2F2F0',
   },
   agendaExerciseName: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#FFFFFF',
+    color: lightColors.white,
   },
   agendaExerciseSets: {
     marginTop: 3,
@@ -1045,7 +1046,7 @@ function buildHomeLooks() {
     backgroundColor: '#1F2937',
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
+    borderColor: '#F2F2F0',
     padding: 14,
   },
   nutritionCardLight: {
@@ -1194,7 +1195,7 @@ function buildHomeLooks() {
     borderRadius: 16,
     padding: 2,
     overflow: 'hidden',
-    ...(Platform.OS === 'ios' && { shadowColor: '#a855f7', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 12 }),
+    ...(Platform.OS === 'ios' && { shadowColor: '#E07A32', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 12 }),
     elevation: 4,
   },
   notesCardInner: {
@@ -1246,7 +1247,7 @@ function buildHomeLooks() {
     borderRadius: 16,
     padding: 16,
     gap: 8,
-    backgroundColor: 'rgba(255,255,255,0.03)',
+    backgroundColor: '#1F1F2A',
   },
   notesNoteText: { fontSize: 15, lineHeight: 22 },
   notesNoteDate: { fontSize: 12, fontWeight: '500' },
@@ -1282,7 +1283,7 @@ function buildHomeLooks() {
     paddingHorizontal: 16,
     borderRadius: 16,
     borderWidth: 1,
-    backgroundColor: 'rgba(255,255,255,0.02)',
+    backgroundColor: '#17171F',
   },
   notesDocName: { fontSize: 15, fontWeight: '600', marginBottom: 4 },
   notesFileInfo: { flex: 1, justifyContent: 'center', minWidth: 0 },
@@ -1353,13 +1354,13 @@ function buildHomeLooks() {
     borderRadius: 24,
     overflow: 'hidden',
     position: 'relative',
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    backgroundColor: '#1F1F2A',
   },
   glassCardBorder: {
     ...StyleSheet.absoluteFillObject,
     borderRadius: 24,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderColor: '#F2F2F0',
     pointerEvents: 'none',
   },
   heroCardContainer: {
@@ -1374,7 +1375,7 @@ function buildHomeLooks() {
   heroCard: {
     borderRadius: 24,
     padding: 24,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    backgroundColor: '#1F1F2A',
   },
   heroHeader: {
     flexDirection: 'row',
@@ -1385,7 +1386,7 @@ function buildHomeLooks() {
   heroTitle: {
     fontSize: 20,
     fontWeight: '600',
-    color: '#FFFFFF',
+    color: lightColors.white,
     marginBottom: 8,
     fontFamily: 'System',
   },
@@ -1396,7 +1397,7 @@ function buildHomeLooks() {
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
-    backgroundColor: 'rgba(108, 92, 231, 0.2)',
+    backgroundColor: 'rgba(226, 85, 136, 0.15)',
     alignSelf: 'flex-start',
   },
   aiBadgeText: {
@@ -1409,7 +1410,7 @@ function buildHomeLooks() {
   heroWorkoutName: {
     fontSize: 24,
     fontWeight: '600',
-    color: '#FFFFFF',
+    color: lightColors.white,
     marginBottom: 8,
     fontFamily: 'System',
   },
@@ -1450,7 +1451,7 @@ function buildHomeLooks() {
   heroButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#FFFFFF',
+    color: lightColors.white,
     fontFamily: 'System',
   },
   caloriesCard: {
@@ -1476,7 +1477,7 @@ function buildHomeLooks() {
   caloriesHeroValue: {
     fontSize: 40,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: lightColors.white,
     fontFamily: 'System',
     letterSpacing: -0.5,
   },
@@ -1526,7 +1527,7 @@ function buildHomeLooks() {
   smallStatValue: {
     fontSize: 24,
     fontWeight: '600',
-    color: '#FFFFFF',
+    color: lightColors.white,
     marginBottom: 4,
     fontFamily: 'System',
   },
@@ -1568,7 +1569,7 @@ function buildHomeLooks() {
   gridTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#FFFFFF',
+    color: lightColors.white,
     marginBottom: 4,
     textAlign: 'center',
     fontFamily: 'System',
@@ -1591,13 +1592,13 @@ function buildHomeLooks() {
     alignItems: 'center',
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.05)',
+    borderBottomColor: '#F2F2F0',
   },
   upcomingIcon: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    backgroundColor: '#1F1F2A',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 16,
@@ -1608,7 +1609,7 @@ function buildHomeLooks() {
   upcomingTitle: {
     fontSize: 16,
     fontWeight: '500',
-    color: '#FFFFFF',
+    color: lightColors.white,
     marginBottom: 4,
     fontFamily: 'System',
   },
@@ -1685,7 +1686,7 @@ function buildHomeLooks() {
   discoverTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#FFFFFF',
+    color: lightColors.white,
     marginBottom: 4,
     textAlign: 'center',
     fontFamily: 'System',
@@ -1719,7 +1720,7 @@ function buildHomeLooks() {
   findTrainersTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#FFFFFF',
+    color: lightColors.white,
     marginBottom: 4,
     fontFamily: 'System',
   },
@@ -1740,7 +1741,7 @@ function buildHomeLooks() {
     borderRadius: 16,
     gap: 10,
     borderWidth: 1,
-    borderColor: 'rgba(108, 92, 231, 0.3)',
+    borderColor: 'rgba(226, 85, 136, 0.3)',
   },
   searchBarPlaceholder: {
     fontSize: 15,
@@ -1761,7 +1762,7 @@ function buildHomeLooks() {
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: 'rgba(108, 92, 231, 0.2)',
+    backgroundColor: 'rgba(226, 85, 136, 0.15)',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 16,
@@ -1772,7 +1773,7 @@ function buildHomeLooks() {
   crmTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#FFFFFF',
+    color: lightColors.white,
     marginBottom: 4,
     fontFamily: 'System',
   },
@@ -1789,7 +1790,7 @@ function buildHomeLooks() {
     opacity: 0.7,
   },
   skeletonCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    backgroundColor: '#1F1F2A',
     borderRadius: 16,
     opacity: 0.7,
   },

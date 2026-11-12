@@ -8,7 +8,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '../weekly-report/reportColorSettings';
-import { NbButton } from '../../look-and-feel/NbButton';
+import NbButton from '../../look-and-feel/NbButton';
+import { lightColors } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
@@ -83,7 +84,7 @@ export function ColorButton({
         onPress={handlePress}
         testID={testID}
       >
-        {icon ? <Ionicons name={icon} size={16} color={buttonVariant === 'brand' ? '#0A0A0F' : themeColors.textPrimary} style={{ marginRight: 6 }} /> : null}
+        {icon ? <Ionicons name={icon} size={16} color={buttonVariant === 'brand' ? lightColors.nbInk : themeColors.textPrimary} style={{ marginRight: 6 }} /> : null}
         {label}
       </NbButton>
     </View>

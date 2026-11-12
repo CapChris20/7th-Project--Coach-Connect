@@ -1,5 +1,5 @@
 // Client home card for the linked trainer: photo, specialty, Message / Profile / Pay / Remove.
-// Flow: read trainer fields → paint the glass card → Message is the brand CTA; Pay / Remove only when those callbacks are passed.
+// Flow: read trainer fields → paint the nb surface card → Message is the brand CTA; Pay / Remove only when those callbacks are passed.
 // Used on the client home screen. Accent keys (pink, purple, cyan, orange, green) stay as callers pass `accent`.
 
 import React, { useRef } from 'react';
@@ -9,18 +9,19 @@ import { Ionicons } from '@expo/vector-icons';
 import { trainerPhotoUri } from '../../helpers/trainerProfilePhoto';
 import NbCard from '../../look-and-feel/NbCard';
 import NbButton from '../../look-and-feel/NbButton';
+import { lightColors, darkColors } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
 const ACCENTS = {
-  pink: '#BE185D',
-  purple: '#BE185D',
+  pink: lightColors.primaryDark,
+  purple: lightColors.primaryDark,
   cyan: '#C2410C',
   orange: '#C2410C',
   green: '#10B981',
 };
 
-const BRAND_CTA_GRADIENT = ['#BE185D', '#C2410C'];
+const BRAND_CTA_GRADIENT = [lightColors.primaryDark, '#C2410C'];
 const TRAINER_NAME_DEFAULT = 'Your Trainer';
 const SPECIALTY_DEFAULT = 'Strength & Nutrition';
 const LOCATION_DEFAULT = 'Remote';
@@ -35,13 +36,14 @@ const SPRING_BOUNCINESS_OUT = 7;
  * @param {boolean} isDark
  * @returns {object}
  */
-function glass(isDark) {
+function surfaceTokens(isDark) {
+  // Strip pass: solid nb surfaces — no glass fills.
   return {
-    cardBackground: isDark ? 'rgba(12,10,28,0.96)' : 'rgba(255,255,255,0.97)',
-    border: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
-    text: isDark ? '#FFFFFF' : '#0A0A0F',
-    muted: isDark ? 'rgba(255,255,255,0.65)' : 'rgba(10,10,15,0.55)',
-    dim: isDark ? 'rgba(255,255,255,0.45)' : 'rgba(10,10,15,0.45)',
+    cardBackground: isDark ? darkColors.nbSurface : lightColors.nbSurface,
+    border: isDark ? darkColors.nbBorder : lightColors.nbBorder,
+    text: isDark ? darkColors.nbInk : lightColors.nbInk,
+    muted: isDark ? darkColors.nbMuted : lightColors.nbMuted,
+    dim: isDark ? darkColors.nbMuted : lightColors.nbMuted,
   };
 }
 
@@ -104,8 +106,8 @@ function paymentStatusChipColors(paymentStatusTone, isDark, tokens) {
     };
   }
   return {
-    backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
-    borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)',
+    backgroundColor: isDark ? darkColors.nbSurfaceChip : lightColors.nbSurfaceChip,
+    borderColor: isDark ? darkColors.nbBorder : lightColors.nbBorder,
     color: tokens.muted,
   };
 }
@@ -131,12 +133,12 @@ function TrainerAvatar({ photoSrc, name, accentColor, isDark, tokens }) {
         styles.avatarRing,
         {
           borderWidth: 2,
-          borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)',
+          borderColor: isDark ? darkColors.nbBorder : lightColors.nbBorder,
           padding: 0,
         },
       ]}
     >
-      <View style={[styles.avatarInner, { backgroundColor: isDark ? '#0A0A0F' : '#FFFFFF', borderColor: tokens.border }]}>
+      <View style={[styles.avatarInner, { backgroundColor: isDark ? lightColors.nbInk : lightColors.white, borderColor: tokens.border }]}>
         {photoSrc ? (
           <Image source={{ uri: photoSrc }} style={styles.avatarImg} />
         ) : (
@@ -193,7 +195,7 @@ export default function MyTrainerCard({
   paymentStatusLabel,
   paymentStatusTone = 'neutral',
 }) {
-  const tokens = glass(isDark);
+  const tokens = surfaceTokens(isDark);
   const accentColor = ACCENTS[accent] || ACCENTS.purple;
 
   const scale = useRef(new Animated.Value(1)).current;
@@ -276,15 +278,15 @@ export default function MyTrainerCard({
               </View>
             ) : null}
 
-            <View style={[styles.divider, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)' }]} />
+            <View style={[styles.divider, { backgroundColor: isDark ? darkColors.nbBorder : lightColors.nbBorder }]} />
 
             <View style={styles.ctaRow}>
               <TouchableOpacity
                 activeOpacity={0.9}
                 onPress={onPressSecondaryCTA}
                 style={[styles.tertiaryBtn, {
-                  borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)',
-                  backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
+                  borderColor: isDark ? darkColors.nbBorder : lightColors.nbBorder,
+                  backgroundColor: isDark ? darkColors.nbSurfaceChip : lightColors.nbSurfaceChip,
                 }]}
               >
                 <Ionicons name="person-circle-outline" size={17} color={tokens.text} />
@@ -300,7 +302,7 @@ export default function MyTrainerCard({
                   end={{ x: 1, y: 0 }}
                   style={styles.primaryBtn}
                 >
-                  <Ionicons name="chatbubble-ellipses-outline" size={17} color="#FFFFFF" />
+                  <Ionicons name="chatbubble-ellipses-outline" size={17} color={lightColors.white} />
                   <Text style={styles.primaryText} numberOfLines={1}>{ctaLabel}</Text>
                 </LinearGradient>
               </TouchableOpacity>
@@ -310,8 +312,8 @@ export default function MyTrainerCard({
                   activeOpacity={0.9}
                   onPress={onPressPayment}
                   style={[styles.tertiaryBtn, {
-                    borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)',
-                    backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
+                    borderColor: isDark ? darkColors.nbBorder : lightColors.nbBorder,
+                    backgroundColor: isDark ? darkColors.nbSurfaceChip : lightColors.nbSurfaceChip,
                   }]}
                 >
                   <Ionicons name="card-outline" size={17} color={accentColor} />
@@ -431,7 +433,7 @@ const styles = StyleSheet.create({
     gap: 4,
     paddingHorizontal: 4,
   },
-  primaryText: { color: '#FFFFFF', fontSize: 11, fontWeight: '900' },
+  primaryText: { color: lightColors.white, fontSize: 11, fontWeight: '900' },
   paymentMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',

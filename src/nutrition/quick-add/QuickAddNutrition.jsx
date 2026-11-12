@@ -1,459 +1,288 @@
-// Type calories and macros without searching a food card.
-// Flow: type a name → fill macros → log it onto today’s meal.
-// Used by the daily log “Quick add” path.
-//
-// vocab: neobrutalist tokens (nb*) replace the old soft glass palette.
+// Design Law Quick add (PNG 17/18): name, calories, macros switch, meal chips, Log to Meal.
+// Flow: type fields → optional macro estimate → log into selected meal.
+// Used by DailyLogContent. Keeps onLogFood entry shape (name/calories/macros grams).
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert, StyleSheet } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import React, { useMemo, useState } from 'react';
+import { View, Text, TextInput, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
 import { useShellBottomNavInset } from '../../navigation/bottomMenuSpacing';
-import { getRecentFoods } from '../daily-log/saveLoggedFood';
 import { readableFoodTitle } from '../food-search/readableFoodTitle';
-import NbCard from '../../look-and-feel/NbCard';
+import NbPageHeader from '../../look-and-feel/NbPageHeader';
 import NbButton from '../../look-and-feel/NbButton';
-import { lightColors, darkColors, nb, borderRadius, spacing } from '../../look-and-feel/colorPalette';
+import NbSwitch from '../../look-and-feel/NbSwitch';
+import HardShadow from '../../look-and-feel/HardShadow';
+import { borderRadius, nb, spacing } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
-const QUICK_ADD_BOTTOM_PAD = 24;
-
-const initialMacros = {
-  protein: '',
-  carbs: '',
-  fat: '',
-  sodium: '',
-  fiber: '',
-  sugar: '',
-  servingSize: '',
-  servingUnit: '',
-};
-
-const defaultSuggestions = [
-  'Almond milk', 'Banana', 'Chicken breast', 'Greek yogurt',
-  'Oatmeal', 'Brown rice', 'Avocado', 'Eggs',
-];
+const MEALS = ['Breakfast', 'Lunch', 'Dinner', 'Snacks'];
+const KCAL_P = 4;
+const KCAL_C = 4;
+const KCAL_F = 9;
 
 // ===== HELPER FUNCTIONS =====
 
-// Map theme → neobrutalist surface/ink tokens for inputs and chips.
-function quickAddPalette(isDark) {
-  const colors = isDark ? darkColors : lightColors;
-  return {
-    cardBg: colors.nbSurface,
-    cardBorder: colors.nbBorder,
-    text: colors.nbInk,
-    textMuted: colors.nbMuted,
-    faint: colors.nbMuted,
-    inputBg: colors.nbSurfaceChip,
-    inputText: colors.nbInk,
-    inputPlaceholder: colors.nbMuted,
-    inputBorder: colors.nbBorder,
-    chipBg: colors.nbSurfaceChip,
-  };
+function mealTitle(mealType) {
+  const m = String(mealType || 'dinner');
+  const titled = m.charAt(0).toUpperCase() + m.slice(1);
+  return MEALS.includes(titled) ? titled : 'Dinner';
+}
+
+function Field({ label, value, onChangeText, colors, keyboardType = 'default', placeholder }) {
+  return (
+    <View style={{ marginBottom: 14 }}>
+      <Text style={[styles.fieldLabel, { color: colors.nbMuted }]}>{label}</Text>
+      <TextInput
+        value={value}
+        onChangeText={onChangeText}
+        keyboardType={keyboardType}
+        placeholder={placeholder}
+        placeholderTextColor={colors.nbMuted}
+        style={[
+          styles.fieldInput,
+          { borderColor: colors.nbBorder, color: colors.nbInk, backgroundColor: colors.nbSurface },
+        ]}
+      />
+    </View>
+  );
 }
 
 // ===== MAIN FUNCTION =====
 
 /**
- * Quick-add a food by typing calories and macros.
- * @param {{ onLogFood: Function, suggestions?: string[], userId?: string, reserveShellBottomNav?: boolean }} props
+ * @param {{ onLogFood: Function, userId?: string, reserveShellBottomNav?: boolean, mealType?: string, onBack?: Function }} props
  */
-export function QuickAddNutrition({ onLogFood, suggestions = defaultSuggestions, userId, reserveShellBottomNav = false }) {
-  const { isDark } = useTheme();
-  const nbColors = isDark ? darkColors : lightColors;
+export function QuickAddNutrition({
+  onLogFood,
+  reserveShellBottomNav = false,
+  mealType = 'dinner',
+  onBack,
+}) {
+  const { colors } = useTheme();
   const shellBottomPad = useShellBottomNavInset(16);
-  // Manipulate here: transparent when nested under a shell that already paints the background
-  const screenBg = reserveShellBottomNav ? 'transparent' : nbColors.nbBackground;
-  const palette = quickAddPalette(isDark);
+  const screenBg = colors.nbBackground;
 
   const [foodName, setFoodName] = useState('');
-  const [quantity, setQuantity] = useState(1);
   const [calories, setCalories] = useState('');
-  const [showMacros, setShowMacros] = useState(false);
-  const [macros, setMacros] = useState(initialMacros);
-  const [recentFoods, setRecentFoods] = useState([]);
+  const [showMacros, setShowMacros] = useState(true);
+  const [protein, setProtein] = useState('');
+  const [carbs, setCarbs] = useState('');
+  const [fat, setFat] = useState('');
+  const [meal, setMeal] = useState(mealTitle(mealType));
 
-  const loadRecentFoods = useCallback(async () => {
-    if (!userId) return;
-    try {
-      const recent = await getRecentFoods(userId, 12);
-      setRecentFoods(recent || []);
-    } catch (_) {
-      setRecentFoods([]);
-    }
-  }, [userId]);
-
-  useEffect(() => {
-    loadRecentFoods();
-  }, [loadRecentFoods]);
-
-  const applyRecentFood = (item) => {
-    const name = item?.name || item?.food_name || '';
-    setFoodName(name);
-    setQuantity(Number(item?.servingSize) || Number(item?.serving_size) || 1);
-    setCalories(String(Math.round(Number(item?.calories) || 0)));
-    setMacros({
-      protein: item?.protein ? String(item.protein) : '',
-      carbs: item?.carbs ? String(item.carbs) : '',
-      fat: item?.fat ? String(item.fat) : '',
-      sodium: item?.sodium ? String(item.sodium) : '',
-      fiber: item?.fiber ? String(item.fiber) : '',
-      sugar: item?.sugar ? String(item.sugar) : '',
-      servingSize: item?.servingGrams ? String(item.servingGrams) : '',
-      servingUnit: item?.servingUnit || item?.serving_unit || '',
-    });
-    if (item?.protein || item?.carbs || item?.fat) setShowMacros(true);
-  };
+  const estimatedKcal = useMemo(() => {
+    const p = Number(protein) || 0;
+    const c = Number(carbs) || 0;
+    const f = Number(fat) || 0;
+    return Math.round(KCAL_P * p + KCAL_C * c + KCAL_F * f);
+  }, [protein, carbs, fat]);
 
   const isValid = foodName.trim().length > 0 && Number(calories) > 0;
 
   const handleLog = () => {
     if (!isValid) return;
     const { name } = readableFoodTitle({ name: foodName.trim(), source: 'manual' });
-    const entry = {
+    onLogFood?.({
       name,
-      quantity,
+      quantity: 1,
       calories: parseFloat(calories),
-      ...macros,
-    };
-    onLogFood?.(entry);
-    Alert.alert('Success', `${entry.name} · ${entry.calories} cal logged`);
-    setFoodName('');
-    setQuantity(1);
-    setCalories('');
-    setMacros(initialMacros);
-    setShowMacros(false);
+      protein: showMacros ? protein : '',
+      carbs: showMacros ? carbs : '',
+      fat: showMacros ? fat : '',
+      mealType: String(meal).toLowerCase(),
+    });
   };
 
-  const updateMacro = (key, value) =>
-    setMacros((m) => ({ ...m, [key]: value }));
-
-  const updateQuantity = (delta) =>
-    setQuantity((q) => Math.max(0, parseFloat((q + delta).toFixed(2))));
-
   return (
-    <ScrollView
-      style={[styles.container, { backgroundColor: screenBg, flex: 1 }]}
-      contentContainerStyle={{ paddingBottom: reserveShellBottomNav ? shellBottomPad : QUICK_ADD_BOTTOM_PAD }}
-      showsVerticalScrollIndicator={false}
-      keyboardShouldPersistTaps="handled"
-    >
-        <NbCard style={styles.card}>
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.headerLeft}>
-            <View style={[styles.headerIcon, { borderColor: nbColors.nbBorder, backgroundColor: nbColors.nbSurfaceChip }]}>
-              <Ionicons name="flame" size={20} color={nbColors.nbInk} />
-            </View>
-            <View>
-              <Text style={[styles.headerTitle, { color: palette.text }]}>Quick Add</Text>
-              <Text style={[styles.headerSubtitle, { color: palette.textMuted }]}>Log your nutrition</Text>
-            </View>
+    <View style={{ flex: 1, backgroundColor: screenBg }}>
+      {typeof onBack === 'function' ? (
+        <NbPageHeader title="Quick add" subtitle="Log your nutrition" onBack={onBack} skipTopSafeInset />
+      ) : null}
+      <ScrollView
+        contentContainerStyle={{
+          paddingHorizontal: spacing.md,
+          paddingBottom: reserveShellBottomNav ? shellBottomPad + 24 : 40,
+        }}
+        keyboardShouldPersistTaps="handled"
+      >
+        <Field
+          label="FOOD NAME"
+          value={foodName}
+          onChangeText={setFoodName}
+          colors={colors}
+          placeholder="Homemade chili"
+        />
+        <Field
+          label="CALORIES"
+          value={calories}
+          onChangeText={setCalories}
+          colors={colors}
+          keyboardType="number-pad"
+          placeholder="520"
+        />
+
+        <View
+          style={[
+            styles.macroToggle,
+            { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface },
+          ]}
+        >
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.toggleTitle, { color: colors.nbInk }]}>Add macros</Text>
+            <Text style={[styles.toggleSub, { color: colors.nbMuted }]}>Protein, carbs and fat</Text>
           </View>
+          <NbSwitch value={showMacros} onValueChange={setShowMacros} />
         </View>
 
-        {recentFoods.length > 0 ? (
-          <View style={styles.recentSection}>
-            <Text style={[styles.label, { color: palette.textMuted, marginBottom: 10 }]}>Your saved foods</Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.recentScroll}
-            >
-              {recentFoods.map((item) => {
-                const key = item.id || item.name || item.food_name;
-                const label = item.name || item.food_name || 'Food';
-                const cal = Math.round(Number(item.calories) || 0);
-                return (
-                  <TouchableOpacity
-                    key={key}
-                    activeOpacity={0.85}
-                    onPress={() => applyRecentFood(item)}
-                    style={[styles.recentChip, { backgroundColor: palette.chipBg, borderColor: palette.inputBorder }]}
-                  >
-                    <Text style={[styles.recentChipName, { color: palette.text }]} numberOfLines={2}>
-                      {label}
-                    </Text>
-                    <Text style={[styles.recentChipMeta, { color: palette.textMuted }]}>
-                      {cal > 0 ? `${cal} cal` : 'Tap to fill'}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-          </View>
+        {showMacros ? (
+          <>
+            <View style={styles.macroGrid}>
+              {[
+                { label: 'PROTEIN (G)', value: protein, set: setProtein },
+                { label: 'CARBS (G)', value: carbs, set: setCarbs },
+                { label: 'FAT (G)', value: fat, set: setFat },
+              ].map((lane) => (
+                <View
+                  key={lane.label}
+                  style={[
+                    styles.macroLane,
+                    { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface },
+                  ]}
+                >
+                  <Text style={[styles.fieldLabel, { color: colors.nbMuted }]}>{lane.label}</Text>
+                  <TextInput
+                    value={lane.value}
+                    onChangeText={lane.set}
+                    keyboardType="decimal-pad"
+                    style={[
+                      styles.macroInput,
+                      { borderColor: colors.nbBorder, color: colors.nbInk, backgroundColor: colors.nbSoft },
+                    ]}
+                  />
+                </View>
+              ))}
+            </View>
+
+            <View style={[styles.estimateBox, { backgroundColor: colors.nbSoft, borderColor: colors.nbBorder }]}>
+              <Text style={[styles.estimateText, { color: colors.nbMuted }]}>
+                Estimated from macros: 4 × {protein || 0} + 4 × {carbs || 0} + 9 × {fat || 0} ={' '}
+                <Text style={{ color: colors.nbInk, fontWeight: '900' }}>{estimatedKcal}</Text> kcal. Tap
+                to fill sets calories to this.
+              </Text>
+            </View>
+            <HardShadow offset={nb.shadowOffsetSmall} radius={borderRadius.nbButton} style={{ marginBottom: 16 }}>
+              <TouchableOpacity
+                onPress={() => setCalories(String(estimatedKcal))}
+                style={[
+                  styles.fillBtn,
+                  { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface },
+                ]}
+              >
+                <Text style={[styles.fillBtnText, { color: colors.nbInk }]}>Tap to fill calories</Text>
+              </TouchableOpacity>
+            </HardShadow>
+          </>
         ) : null}
 
-        {/* Food Name */}
-        <View style={styles.inputGroup}>
-          <Text style={[styles.label, { color: palette.textMuted }]}>FOOD NAME</Text>
-          <FieldInput
-            placeholder="e.g. Almond milk"
-            value={foodName}
-            onChangeText={setFoodName}
-            palette={palette}
-          />
+        <Text style={[styles.sectionLabel, { color: colors.nbMuted }]}>MEAL</Text>
+        <View style={styles.mealRow}>
+          {MEALS.map((m) => {
+            const selected = meal === m;
+            return (
+              <TouchableOpacity
+                key={m}
+                onPress={() => setMeal(m)}
+                style={[
+                  styles.mealChip,
+                  {
+                    borderColor: colors.nbBorder,
+                    backgroundColor: selected ? colors.nbFill : colors.nbSurface,
+                  },
+                ]}
+              >
+                <Text style={{ color: selected ? colors.nbOnFill : colors.nbInk, fontWeight: '800', fontSize: 13 }}>
+                  {m}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
 
-        {/* Quantity */}
-        <View style={styles.inputGroup}>
-          <Text style={[styles.label, { color: palette.textMuted }]}>QUANTITY (SERVINGS)</Text>
-          <View style={[styles.quantityContainer, { borderColor: palette.inputBorder, backgroundColor: palette.inputBg }]}>
-            <TouchableOpacity
-              style={[styles.quantityButton, { backgroundColor: palette.chipBg }]}
-              onPress={() => updateQuantity(-0.5)}
-            >
-              <Ionicons name="remove" size={18} color={palette.textMuted} />
-            </TouchableOpacity>
-            <TextInput
-              style={[styles.quantityInput, { color: palette.inputText }]}
-              value={String(quantity)}
-              onChangeText={(val) => setQuantity(parseFloat(val) || 0)}
-              keyboardType="decimal-pad"
-              placeholderTextColor={palette.inputPlaceholder}
-            />
-            <TouchableOpacity
-              style={[styles.quantityButton, { backgroundColor: palette.chipBg }]}
-              onPress={() => updateQuantity(0.5)}
-            >
-              <Ionicons name="add" size={18} color={palette.textMuted} />
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Calories */}
-        <View style={styles.inputGroup}>
-          <Text style={[styles.label, { color: palette.textMuted }]}>CALORIES</Text>
-          <FieldInput
-            placeholder="e.g. 60"
-            value={calories}
-            onChangeText={setCalories}
-            keyboardType="number-pad"
-            palette={palette}
-          />
-        </View>
-
-        {/* Toggle Macros */}
-        <TouchableOpacity
-          style={styles.toggleMacros}
-          onPress={() => setShowMacros(!showMacros)}
-        >
-          <Ionicons
-            name={showMacros ? 'chevron-up' : 'chevron-down'}
-            size={16}
-            color={palette.textMuted}
-          />
-          <Text style={[styles.toggleText, { color: palette.textMuted }]}>
-            {showMacros ? 'Hide macros' : 'Add macros'}
-          </Text>
-        </TouchableOpacity>
-
-        {/* Macros Grid */}
-        {showMacros && (
-          <View style={styles.macrosGrid}>
-          <MacroField label="Protein (g)" value={macros.protein} onChange={(v) => updateMacro('protein', v)} palette={palette} />
-          <MacroField label="Carbs (g)" value={macros.carbs} onChange={(v) => updateMacro('carbs', v)} palette={palette} />
-          <MacroField label="Fat (g)" value={macros.fat} onChange={(v) => updateMacro('fat', v)} palette={palette} />
-          <MacroField label="Sodium (mg)" value={macros.sodium} onChange={(v) => updateMacro('sodium', v)} palette={palette} />
-          <MacroField label="Fiber (g)" value={macros.fiber} onChange={(v) => updateMacro('fiber', v)} palette={palette} />
-          <MacroField label="Sugar (g)" value={macros.sugar} onChange={(v) => updateMacro('sugar', v)} palette={palette} />
-
-            {/* Serving Size */}
-            <View style={styles.inputGroup}>
-              <Text style={[styles.label, { color: palette.textMuted }]}>SERVING SIZE (G/SERVING)</Text>
-              <FieldInput
-                placeholder="0"
-                value={macros.servingSize}
-                onChangeText={(v) => updateMacro('servingSize', v)}
-                keyboardType="number-pad"
-                palette={palette}
-              />
-            </View>
-
-            {/* Serving Unit */}
-            <View style={styles.inputGroup}>
-              <Text style={[styles.label, { color: palette.textMuted }]}>SERVING UNIT</Text>
-              <FieldInput
-                placeholder="g, ml, cup..."
-                value={macros.servingUnit}
-                onChangeText={(v) => updateMacro('servingUnit', v)}
-                palette={palette}
-              />
-            </View>
-          </View>
-        )}
-
-        {/* Log Food Button — brand gradient via NbButton */}
-        <NbButton variant="brand" onPress={handleLog} disabled={!isValid}>
-          Log Food
+        <NbButton onPress={handleLog} disabled={!isValid}>
+          {`Log to ${meal}`}
         </NbButton>
-        </NbCard>
-    </ScrollView>
-  );
-}
-
-/* ============ COMPONENTS ============ */
-
-function FieldInput({ palette, style, ...rest }) {
-  return (
-    <TextInput
-      {...rest}
-      style={[
-        styles.fieldInput,
-        {
-          backgroundColor: palette.inputBg,
-          color: palette.inputText,
-          borderColor: palette.inputBorder,
-        },
-        style,
-      ]}
-      placeholderTextColor={palette.inputPlaceholder}
-    />
-  );
-}
-
-function MacroField({ label, value, onChange, palette }) {
-  return (
-    <View style={styles.macroField}>
-      <Text style={[styles.macroLabelText, { color: palette.textMuted }]}>{label}</Text>
-      <FieldInput palette={palette} value={value} onChangeText={onChange} placeholder="0" keyboardType="number-pad" />
+      </ScrollView>
     </View>
   );
 }
 
-/* ============ STYLES ============ */
-
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.lg,
-  },
-  // NbCard owns border/shadow — only pad content here
-  card: {
-    padding: spacing.md + 4,
-    marginBottom: spacing.sm,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.lg,
-  },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  headerIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: borderRadius.nbChip,
-    borderWidth: nb.borderWidth,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  headerTitle: {
-    fontFamily: 'SpaceGrotesk_700Bold',
-    fontSize: 20,
-  },
-  headerSubtitle: {
-    fontFamily: 'Inter_500Medium',
-    fontSize: 13,
-    marginTop: 4,
-  },
-  inputGroup: {
-    marginBottom: spacing.md + 4,
-  },
-  label: {
-    fontFamily: 'SpaceGrotesk_700Bold',
-    fontSize: 12,
-    marginBottom: spacing.sm,
-    letterSpacing: 0.8,
-  },
+  fieldLabel: { fontSize: 12, fontWeight: '900', letterSpacing: 1.1, marginBottom: 6 },
   fieldInput: {
-    borderRadius: borderRadius.nbCard,
-    paddingHorizontal: nb.chipPadding,
-    paddingVertical: 14,
-    fontSize: 15,
-    fontFamily: 'Inter_500Medium',
     borderWidth: nb.borderWidth,
+    borderRadius: borderRadius.nbInput,
+    minHeight: 52,
+    paddingHorizontal: 14,
+    fontSize: 16,
+    fontWeight: '700',
   },
-  quantityContainer: {
+  macroToggle: {
+    borderWidth: nb.borderWidth,
+    borderRadius: borderRadius.nbCard,
+    padding: 14,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
-    borderRadius: borderRadius.nbCard,
-    borderWidth: nb.borderWidth,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 6,
+    gap: 12,
+    marginBottom: 14,
   },
-  quantityButton: {
-    width: nb.minTouchTarget,
-    height: nb.minTouchTarget,
-    borderRadius: borderRadius.nbChip,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  quantityInput: {
+  toggleTitle: { fontSize: 16, fontWeight: '900' },
+  toggleSub: { fontSize: 13, marginTop: 2 },
+  macroGrid: { flexDirection: 'row', gap: 8, marginBottom: 12 },
+  macroLane: {
     flex: 1,
-    textAlign: 'center',
-    fontSize: 18,
-    fontFamily: 'SpaceGrotesk_700Bold',
-  },
-  toggleMacros: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: spacing.md,
-    paddingVertical: spacing.sm,
-    minHeight: nb.minTouchTarget,
-  },
-  toggleText: {
-    fontSize: 13,
-    fontFamily: 'Inter_600SemiBold',
-  },
-  macrosGrid: {
-    gap: 10,
-    marginBottom: spacing.md + 4,
-  },
-  macroField: {
-    gap: 4,
-  },
-  macroLabelText: {
-    fontSize: 12,
-    fontFamily: 'SpaceGrotesk_700Bold',
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
-    marginBottom: 4,
-  },
-  recentSection: {
-    marginBottom: spacing.md + 4,
-  },
-  recentScroll: {
-    gap: 10,
-    paddingRight: spacing.sm,
-  },
-  recentChip: {
-    maxWidth: 140,
-    minWidth: 100,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: borderRadius.nbChip,
     borderWidth: nb.borderWidth,
+    borderRadius: borderRadius.nbCard,
+    padding: 10,
   },
-  recentChipName: {
-    fontSize: 13,
-    fontFamily: 'Inter_600SemiBold',
-    marginBottom: 4,
+  macroInput: {
+    borderWidth: nb.borderWidthDivider,
+    borderRadius: 8,
+    minHeight: 44,
+    paddingHorizontal: 8,
+    fontSize: 16,
+    fontWeight: '800',
+    textAlign: 'center',
   },
-  recentChipMeta: {
+  estimateBox: {
+    borderWidth: StyleSheet.hairlineWidth * 2,
+    borderRadius: borderRadius.nbCard,
+    padding: 12,
+    marginBottom: 10,
+  },
+  estimateText: { fontSize: 13, lineHeight: 18 },
+  fillBtn: {
+    minHeight: 48,
+    borderWidth: nb.borderWidth,
+    borderRadius: borderRadius.nbButton,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fillBtnText: { fontSize: 15, fontWeight: '900' },
+  sectionLabel: {
     fontSize: 12,
-    fontFamily: 'Inter_500Medium',
+    fontWeight: '900',
+    letterSpacing: 1.2,
+    marginBottom: 10,
+  },
+  mealRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 20 },
+  mealChip: {
+    minHeight: 44,
+    paddingHorizontal: 16,
+    borderRadius: 999,
+    borderWidth: nb.borderWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
 
 export default QuickAddNutrition;
-

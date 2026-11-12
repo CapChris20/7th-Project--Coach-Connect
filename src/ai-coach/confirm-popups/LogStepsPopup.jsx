@@ -1,77 +1,88 @@
-// Confirm popup before the coach writes a step count onto the dashboard.
-// Flow: read the step count off the coach action → show it → confirm or cancel.
-// Used by: the coach conversation when a tool wants to log steps.
+// Design Law steps confirm — big count + slider + today/yesterday (screens/ai-coach-popups/07).
+// Flow: prefill steps → slider in hundreds → Log steps.
+// Used by: ConfirmActionPopup when tool = logSteps.
 
-import React from 'react';
-import { ToolModalBody, DetailRow, ConfirmCancelRow, logDateLabel } from './sharedPopupParts';
+import React, { useMemo, useState } from 'react';
+import {
+  ToolModalBody,
+  BigValueBlock,
+  PopupSlider,
+  FillChipRow,
+  ConfirmCancelRow,
+} from './sharedPopupParts';
+import { accentGradients } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
-const POPUP_TITLE = 'Log steps on dashboard?';
-const STEPS_ROW_LABEL = 'Steps';
-const CONFIRM_BUTTON_LABEL = 'Log steps';
-const MISSING_VALUE = '—';
-const STEP_COUNT_KEYS = ['step_count', 'steps', 'stepCount'];
+const BADGE = 'Coach wants to log steps';
+const TITLE = 'Steps today';
+const CONFIRM_LABEL = 'Log steps';
+// Manipulate here: step slider range (slider units = hundreds of steps)
+const STEPS_MIN_HUNDREDS = 0;
+const STEPS_MAX_HUNDREDS = 200; // 20,000 steps
+const DAY_OPTIONS = [
+  { id: 'today', label: 'Today' },
+  { id: 'yesterday', label: 'Yesterday' },
+];
 
-// ===== HELPER FUNCTIONS =====
+// ===== HELPERS =====
 
-function valueWasProvided(value) {
-  if (value === undefined) return false;
-  if (value === null) return false;
-  return true;
+function readSteps(params) {
+  const raw = params?.step_count ?? params?.steps ?? params?.stepCount;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) return 6400;
+  return Math.round(n);
 }
 
-/**
- * The coach action has used more than one field name for the same number.
- * @param {object|undefined} params
- * @returns {string|number}
- */
-function readStepCount(params) {
-  if (!params) return MISSING_VALUE;
-  for (let index = 0; index < STEP_COUNT_KEYS.length; index += 1) {
-    const keyName = STEP_COUNT_KEYS[index];
-    const candidate = params[keyName];
-    if (valueWasProvided(candidate)) return candidate;
-  }
-  return MISSING_VALUE;
+function stepsToHundreds(steps) {
+  return Math.round(steps / 100);
 }
 
-/**
- * @param {string|number} stepCount
- * @returns {string}
- */
-function formatStepCountLabel(stepCount) {
-  if (stepCount === MISSING_VALUE) return MISSING_VALUE;
-  const numericSteps = Number(stepCount);
-  if (!Number.isFinite(numericSteps)) return String(stepCount);
-  return numericSteps.toLocaleString();
+function hundredsToSteps(hundreds) {
+  return Math.round(hundreds) * 100;
+}
+
+function readDay(params) {
+  const raw = String(params?.date || 'today').toLowerCase();
+  if (raw === 'yesterday') return 'yesterday';
+  return 'today';
 }
 
 // ===== MAIN FUNCTION =====
 
-/**
- * Confirm writing a step total onto the dashboard.
- * @param {{ params?: object, reasoning?: string, onConfirm: Function, onCancel: Function, loading?: boolean }} props
- */
 export default function LogStepsPopup({ params, reasoning, onConfirm, onCancel, loading }) {
-  // 1. Read the step count off the coach action (several field names have been used).
-  const stepCount = readStepCount(params);
-  const stepLabel = formatStepCountLabel(stepCount);
+  const [hundreds, setHundreds] = useState(() => stepsToHundreds(readSteps(params)));
+  const [day, setDay] = useState(() => readDay(params));
+  const steps = hundredsToSteps(hundreds);
 
-  // 2. Confirm writes that count. onConfirm still gets the original params.
-  function handleConfirmLogSteps() {
-    onConfirm(params);
-  }
+  const draftParams = useMemo(
+    () => ({
+      ...(params || {}),
+      steps,
+      step_count: steps,
+      stepCount: steps,
+      date: day === 'yesterday' ? 'yesterday' : undefined,
+    }),
+    [params, steps, day],
+  );
 
   return (
-    <ToolModalBody title={POPUP_TITLE} reasoning={reasoning}>
-      <DetailRow label={STEPS_ROW_LABEL} value={stepLabel} />
-      <DetailRow label="Date" value={logDateLabel(params)} />
+    <ToolModalBody title={TITLE} badge={BADGE} reasoning={reasoning}>
+      <BigValueBlock valueLabel={String(steps)}>
+        <PopupSlider
+          value={hundreds}
+          min={STEPS_MIN_HUNDREDS}
+          max={STEPS_MAX_HUNDREDS}
+          onChange={setHundreds}
+          colors={accentGradients[0]}
+        />
+      </BigValueBlock>
+      <FillChipRow options={DAY_OPTIONS} value={day} onChange={setDay} />
       <ConfirmCancelRow
-        onConfirm={handleConfirmLogSteps}
+        onConfirm={() => onConfirm(draftParams)}
         onCancel={onCancel}
         loading={loading}
-        confirmLabel={CONFIRM_BUTTON_LABEL}
+        confirmLabel={CONFIRM_LABEL}
       />
     </ToolModalBody>
   );

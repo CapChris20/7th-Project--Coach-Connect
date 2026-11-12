@@ -12,7 +12,6 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
 import { StatusBar } from 'expo-status-bar';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
@@ -90,7 +89,7 @@ function SleepTrendCard({ week, colors, colorMode }) {
 
   return (
     <View style={cardStyle}>
-      <BlurView intensity={25} tint={colors.blurTint} style={StyleSheet.absoluteFill} />
+      <View intensity={25} tint={colors.blurTint} style={StyleSheet.absoluteFill} />
       <View style={styles.chartHeader}>
         <View>
           <Text style={smallLabelStyle}>SLEEP TREND</Text>

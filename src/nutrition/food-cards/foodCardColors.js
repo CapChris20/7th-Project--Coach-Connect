@@ -6,6 +6,7 @@
 
 // ===== NAMED CONSTANTS =====
 
+import { lightColors } from '../../look-and-feel/colorPalette';
 const HEX_PREFIX = '#';
 const MIN_HEX_LENGTH = 6;
 const HEX_RADIX = 16;
@@ -41,10 +42,10 @@ function embeddedLightNutritionPalette(sharedAccents) {
     ...sharedAccents,
     panelBg: '#FFFBF5',
     panelBorder: hexToRgba(brandColors.orangePink[0], 0.12),
-    tileBg: '#FFFFFF',
+    tileBg: lightColors.white,
     tileBorder: hexToRgba(brandColors.orangePink[0], 0.1),
     trackBg: 'rgba(10,10,15,0.06)',
-    text: '#0A0A0F',
+    text: lightColors.nbInk,
     textMuted: '#5C4A42',
     textSubtle: '#8A7268',
     badgeBg: hexToRgba(brandColors.goldPink[0], 0.08),
@@ -95,7 +96,7 @@ function embeddedDarkFoodCardPalette() {
     expandedSurface: 'rgba(255,255,255,0.05)',
     border: 'rgba(255,255,255,0.12)',
     borderStrong: 'rgba(255,255,255,0.2)',
-    foreground: '#FFFFFF',
+    foreground: lightColors.white,
     mutedForeground: 'rgba(255,255,255,0.62)',
     subtle: 'rgba(255,255,255,0.45)',
     innerHighlight: 'rgba(255,255,255,0.08)',
@@ -112,7 +113,7 @@ function embeddedLightFoodCardPalette() {
     expandedSurface: 'rgba(0,0,0,0.025)',
     border: 'rgba(0,0,0,0.08)',
     borderStrong: 'rgba(0,0,0,0.14)',
-    foreground: '#0A0A0F',
+    foreground: lightColors.nbInk,
     mutedForeground: '#666666',
     subtle: 'rgba(10,10,15,0.5)',
     innerHighlight: 'rgba(0,0,0,0.05)',
@@ -123,33 +124,34 @@ function embeddedLightFoodCardPalette() {
 
 // ===== MAIN FUNCTION =====
 
+// Design Law accent pairs for food cards — never green, never solid purple borders.
+// Manipulate here: rotate neighbors with stride-of-3 from DESIGN-SYSTEM §2.
 export const brandColors = {
-  /** dark orange → pink */
-  orangePink: ['#9A3412', '#FF3D8A'],
-  /** dark orange → purple */
-  orangePurple: ['#9A3412', '#8B5CF6'],
-  /** gold → pink */
-  goldPink: ['#A67C00', '#FF6B9D'],
-  /** cyan → purple */
-  cyanPurple: ['#0891B2', '#8B5CF6'],
+  /** pink→orange (protein / primary action) */
+  orangePink: ['#FF6B9D', '#FB923C'],
+  /** orange→coral (calories) */
+  orangePurple: ['#FB923C', '#FB7185'],
+  /** coral→pink (carbs accent) */
+  goldPink: ['#FDA4AF', '#FB7185'],
+  /** cyan→blue (sodium / water) — no purple border chrome */
+  cyanPurple: ['#7DD3FC', '#60A5FA'],
 };
 
-/** Macro mapping — full stops for accents (dots, thin bars) */
+/** Macro mapping — PNG daily-log bar fills (protein blue, carbs coral, fats red) */
 export const gradients = {
-  protein: brandColors.orangePink,
-  carbs: brandColors.goldPink,
-  fat: brandColors.cyanPurple,
+  protein: ['#60A5FA', '#818CF8'],
+  carbs: ['#FDA4AF', '#FB923C'],
+  fat: ['#FB7185', '#EF4444'],
   calories: brandColors.orangePurple,
 };
 
 /** Same hues, pulled back for large surfaces (less neon on dark UI) */
 export const gradientsSoft = {
-  protein: ['#9A3412', '#BE185D'],
-  carbs: ['#8B6914', '#B84D6F'],
-  fat: ['#0E7490', '#6D28D9'],
-  calories: ['#9A3412', '#7C3AED'],
+  protein: ['#3B82F6', '#6366F1'],
+  carbs: ['#FB7185', '#F97316'],
+  fat: ['#F43F5E', '#DC2626'],
+  calories: ['#EA580C', '#E11D48'],
 };
-
 export const colors = {
   background: '#1A1B20',
   surface: '#23252C',

@@ -1,10 +1,6 @@
-// Past-chat sidebar (neobrutalist design): collapsed rail, docked panel, or overlay drawer.
-// Flow: filter by search → group Today / This Week / Earlier → tap to open or swipe to delete.
-// Used by: CoachConversationScreen and CoachHomeScreen.
-//
-// vocab: NbCard = neobrutalist card for list rows
-// vocab: NbListRow = neobrutalist list row with title, subtitle, and accessory
-// vocab: neobrutalist = thick borders, hard shadows, no blur
+// Design Law past-chats drawer: New chat, search, Today/Yesterday/Earlier, swipe to delete.
+// Flow: filter by search → group → tap to open or swipe left to delete.
+// Used by: CoachConversationScreen and CoachHomeScreen. PNG: screens/ai-coach/13–14.
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -20,10 +16,10 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useColorScheme } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Swipeable } from 'react-native-gesture-handler';
 import { lightColors, darkColors, spacing, borderRadius, nb } from '../../look-and-feel/colorPalette';
+import NbButton from '../../look-and-feel/NbButton';
 import {
   formatSessionDisplayTitle,
   groupSessionsForSidebar,
@@ -77,6 +73,13 @@ function SessionRow({
 }) {
   const swipeRef = useRef(null);
 
+  const msgCount = Number(session?.messageCount ?? 0);
+  const countLabel =
+    Number.isFinite(msgCount) && msgCount > 0
+      ? `${msgCount} message${msgCount === 1 ? '' : 's'}`
+      : session.date || '';
+
+  // Design Law swipe delete — solid fill panel (not red soft action)
   const renderRightActions = () => (
     <TouchableOpacity
       onPress={() => {
@@ -84,10 +87,9 @@ function SessionRow({
         onDelete?.(session);
       }}
       activeOpacity={0.85}
-      style={[styles.deleteAction, { backgroundColor: colors.error || '#DC2626' }]}
+      style={[styles.deleteAction, { backgroundColor: colors.nbFill }]}
     >
-      <Ionicons name="trash-outline" size={18} color="#FFFFFF" />
-      <Text style={styles.deleteLabel}>Delete</Text>
+      <Text style={[styles.deleteLabel, { color: colors.nbOnFill }]}>Delete</Text>
     </TouchableOpacity>
   );
 
@@ -98,21 +100,19 @@ function SessionRow({
         style={({ pressed }) => [
           styles.sessionRow,
           {
-            backgroundColor: isActive ? 'rgba(255, 107, 157, 0.1)' : colors.nbSurface,
-            borderColor: isActive ? '#FF6B9D' : colors.nbBorder,
-            borderWidth: nb.borderWidth,
-            borderRadius: borderRadius.nbCard,
-            marginBottom: spacing.xs,
+            backgroundColor: isActive ? colors.nbSoft : colors.nbSurface,
+            borderBottomColor: colors.nbBorder,
+            borderBottomWidth: isLast ? 0 : 2,
+            opacity: pressed ? 0.88 : 1,
           },
-          pressed && !isActive && { opacity: 0.85 },
         ]}
       >
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text
             style={{
               color: colors.nbInk,
-              fontSize: 14,
-              fontFamily: 'SpaceGrotesk_700Bold',
+              fontSize: 15,
+              fontWeight: '800',
             }}
             numberOfLines={2}
           >
@@ -121,24 +121,15 @@ function SessionRow({
           <Text
             style={{
               color: colors.nbMuted,
-              fontSize: 11,
-              fontFamily: 'Inter_400Regular',
+              fontSize: 13,
+              fontWeight: '500',
               marginTop: 3,
             }}
           >
-            {session.date}
+            {countLabel}
           </Text>
         </View>
-        <TouchableOpacity
-          onPress={() => onDelete?.(session)}
-          hitSlop={8}
-          style={styles.deleteBtn}
-          accessibilityLabel="Delete conversation"
-        >
-          <Ionicons name="trash-outline" size={15} color={colors.nbMuted} />
-        </TouchableOpacity>
       </Pressable>
-      <SessionRowDivider isLast={isLast} colors={colors} />
     </Swipeable>
   );
 }
@@ -266,36 +257,22 @@ function SidebarPanel({
           flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'space-between',
-          borderBottomWidth: nb.borderWidth,
-          borderBottomColor: colors.nbBorder,
         }}
       >
-        <View style={{ flex: 1 }}>
-          <Text
-            style={{
-              color: colors.nbMuted,
-              fontSize: 10,
-              fontFamily: 'SpaceGrotesk_700Bold',
-              letterSpacing: 1,
-              textTransform: 'uppercase',
-            }}
-          >
-            AI Coach
-          </Text>
-          <Text
-            style={{
-              color: colors.nbInk,
-              fontSize: 18,
-              fontFamily: 'SpaceGrotesk_700Bold',
-              marginTop: 2,
-            }}
-          >
-            Chat History
-          </Text>
-        </View>
-        <View style={{ flexDirection: 'row', gap: spacing.xs + 2 }}>
+        <Text
+          style={{
+            color: colors.nbInk,
+            fontSize: 22,
+            fontWeight: '900',
+            letterSpacing: -0.4,
+            flex: 1,
+          }}
+        >
+          Past chats
+        </Text>
+        {showClose ? (
           <TouchableOpacity
-            onPress={onNewChat}
+            onPress={onClose}
             hitSlop={8}
             style={[
               styles.iconBtn,
@@ -303,39 +280,39 @@ function SidebarPanel({
                 backgroundColor: colors.nbSurface,
                 borderColor: colors.nbBorder,
                 borderWidth: nb.borderWidth,
+                shadowColor: colors.nbShadow,
+                shadowOffset: { width: 3, height: 3 },
+                shadowOpacity: 1,
+                shadowRadius: 0,
+                elevation: 3,
               },
             ]}
-            accessibilityLabel="New conversation"
+            accessibilityLabel="Close past chats"
           >
-            <Ionicons name="create-outline" size={18} color="#FF6B9D" />
+            <Ionicons name="close" size={20} color={colors.nbInk} />
           </TouchableOpacity>
-          {showClose ? (
-            <TouchableOpacity
-              onPress={onClose}
-              hitSlop={8}
-              style={[
-                styles.iconBtn,
-                {
-                  backgroundColor: colors.nbSurface,
-                  borderColor: colors.nbBorder,
-                  borderWidth: nb.borderWidth,
-                },
-              ]}
-            >
-              <Ionicons name="close" size={18} color={colors.nbInk} />
-            </TouchableOpacity>
-          ) : null}
-        </View>
+        ) : null}
       </View>
 
-      <View style={{ paddingHorizontal: spacing.md, marginTop: spacing.md, marginBottom: spacing.sm + 2 }}>
+      <View style={{ paddingHorizontal: spacing.md, marginBottom: spacing.sm }}>
+        <NbButton variant="fill" onPress={onNewChat} style={{ width: '100%' }}>
+          + New chat
+        </NbButton>
+      </View>
+
+      <View style={{ paddingHorizontal: spacing.md, marginBottom: spacing.sm + 2 }}>
         <View
           style={[
             styles.searchWrap,
             {
-              backgroundColor: colors.nbSurface,
               borderColor: colors.nbBorder,
+              backgroundColor: colors.nbSurface,
               borderWidth: nb.borderWidth,
+              shadowColor: colors.nbShadow,
+              shadowOffset: { width: 3, height: 3 },
+              shadowOpacity: 1,
+              shadowRadius: 0,
+              elevation: 3,
             },
           ]}
         >
@@ -343,7 +320,7 @@ function SidebarPanel({
           <TextInput
             value={searchQuery}
             onChangeText={onSearchChange}
-            placeholder="Search conversations…"
+            placeholder="Search your chats"
             placeholderTextColor={colors.nbMuted}
             style={[styles.searchInput, { color: colors.nbInk }]}
             autoCorrect={false}
@@ -360,7 +337,7 @@ function SidebarPanel({
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{
-          paddingHorizontal: spacing.sm + 2,
+          paddingHorizontal: spacing.md,
           paddingBottom: spacing.lg + (insets?.bottom || 0),
         }}
         showsVerticalScrollIndicator={false}
@@ -375,6 +352,17 @@ function SidebarPanel({
           onSessionPress={onSessionPress}
           onDeleteSession={onDeleteSession}
         />
+        <Text
+          style={{
+            marginTop: spacing.lg,
+            textAlign: 'center',
+            color: colors.nbMuted,
+            fontSize: 13,
+            fontWeight: '500',
+          }}
+        >
+          Swipe a chat left to delete it.
+        </Text>
       </ScrollView>
     </View>
   );
@@ -397,9 +385,15 @@ function drawerContentVisible(mode, open, collapsed) {
   return !collapsed;
 }
 
-function drawerShadowStyle() {
+function drawerShadowStyle(colors) {
+  // Hard nb shadow — no soft blur, no purple glow (docs/design/DESIGN.md).
   if (Platform.OS === 'ios') {
-    return { shadowColor: '#000', shadowOpacity: 0.32, shadowRadius: 14, shadowOffset: { width: 4, height: 0 } };
+    return {
+      shadowColor: colors.nbShadow,
+      shadowOpacity: 1,
+      shadowRadius: 0,
+      shadowOffset: { width: nb.shadowOffset, height: 0 },
+    };
   }
   return { elevation: DRAWER_ELEVATION };
 }
@@ -507,7 +501,7 @@ function PastChatsPanelLayout({
     <Modal visible transparent animationType="fade" onRequestClose={closeDrawer}>
       <View style={{ flex: 1 }}>
         <TouchableOpacity
-          style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.58)' }]}
+          style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.50)' }]}
           activeOpacity={1}
           onPress={closeDrawer}
           accessibilityLabel="Close chat history"
@@ -524,7 +518,7 @@ function PastChatsPanelLayout({
             borderRightWidth: nb.borderWidth,
             borderRightColor: colors.nbBorder,
             zIndex: 2,
-            ...drawerShadowStyle(),
+            ...drawerShadowStyle(colors),
           }}
         >
           <SidebarPanel {...panelProps} />
@@ -555,8 +549,8 @@ export default function PastChatsPanel({
   isDark = true,
   insets,
 }) {
-  const colorScheme = useColorScheme();
-  const colors = colorScheme === 'dark' ? darkColors : lightColors;
+  // Prefer the parent isDark prop so coach chrome matches ThemeProvider (not only OS scheme).
+  const colors = isDark ? darkColors : lightColors;
   const [searchQuery, setSearchQuery] = useState('');
   const slideAnim = useRef(new Animated.Value(-COACH_SIDEBAR_WIDTH)).current;
   const isNarrow = WINDOW_WIDTH < NARROW_WINDOW_WIDTH;
@@ -622,9 +616,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   iconBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: borderRadius.nbCard,
+    width: 44,
+    height: 44,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -632,9 +626,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    borderRadius: borderRadius.nbCard,
+    borderRadius: borderRadius.nbInput,
     paddingHorizontal: spacing.sm + 2,
-    paddingVertical: Platform.OS === 'ios' ? 9 : 6,
+    minHeight: 48,
+    paddingVertical: Platform.OS === 'ios' ? 10 : 6,
   },
   searchInput: {
     flex: 1,
@@ -664,16 +659,12 @@ const styles = StyleSheet.create({
   deleteAction: {
     justifyContent: 'center',
     alignItems: 'center',
-    width: 76,
-    marginVertical: 4,
-    borderRadius: borderRadius.nbCard,
-    marginRight: 4,
+    width: 88,
+    marginVertical: 0,
   },
   deleteLabel: {
-    color: '#FFF',
-    fontSize: 10,
-    fontFamily: 'SpaceGrotesk_700Bold',
-    marginTop: 2,
+    fontSize: 13,
+    fontWeight: '900',
   },
   emptyCard: {
     marginTop: spacing.lg + 4,

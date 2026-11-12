@@ -105,7 +105,7 @@ export default function EditWorkoutPopup({ params, reasoning, onConfirm, onCance
   }
 
   return (
-    <ToolModalBody title={POPUP_TITLE} reasoning={reasoning}>
+    <ToolModalBody badge="Coach wants to edit a workout" title={POPUP_TITLE} reasoning={reasoning}>
       <DetailRow label={REMOVE_ROW_LABEL} value={removedExercise} />
       {/* Position row hides itself when the model sent no indexes. */}
       <DetailRow label="Position" value={swapPosition} />

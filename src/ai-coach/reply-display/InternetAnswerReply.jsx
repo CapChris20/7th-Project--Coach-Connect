@@ -10,6 +10,7 @@ import {
   buildCoachMarkdownStyles,
   preprocessWebSearchLayout,
 } from '../reply-display/replyTextStyles';
+import { stripHonestyOpeners } from '../reply-display/stripHonestyOpeners';
 import { buildCoachMarkdownRules } from './coachMarkdownRules';
 
 // ===== NAMED CONSTANTS =====
@@ -38,15 +39,10 @@ function replyWithoutInlineCitations(replyAfterToolStrip) {
   return stripInlineWebCitations(replyAfterToolStrip);
 }
 
-/**
- * Citations and hidden tool JSON are not part of the answer the person should read.
- * @param {string} replyText
- * @returns {string}
- */
 function prepareInternetReply(replyText) {
   const withoutToolJson = replyWithoutHiddenToolJson(replyText);
   const withoutCitations = replyWithoutInlineCitations(withoutToolJson);
-  return preprocessWebSearchLayout(withoutCitations);
+  return preprocessWebSearchLayout(stripHonestyOpeners(withoutCitations));
 }
 
 // ===== MAIN FUNCTION =====
@@ -60,7 +56,7 @@ export default function InternetAnswerReply({ text, isDark = true }) {
   const replyMarkdown = useMemo(() => prepareInternetReply(text), [text]);
   const markdownStyles = useMemo(() => buildCoachMarkdownStyles(isDark), [isDark]);
   // Same scrolling-table rule as normal coach replies.
-  const markdownRules = useMemo(() => buildCoachMarkdownRules(), []);
+  const markdownRules = useMemo(() => buildCoachMarkdownRules({ isDark }), [isDark]);
 
   return (
     <Markdown style={markdownStyles} rules={markdownRules} onLinkPress={IGNORE_MARKDOWN_LINK_PRESS}>

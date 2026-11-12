@@ -1,0 +1,76 @@
+# Handing this to Cursor
+
+## Read this first: Cursor has to SEE the screens
+
+If Cursor only gets the `.html` files or a written description, it guesses, and the result looks like a loose imitation. The fix is not more installed skills. It is giving it the picture and making it compare.
+
+**`screens/<flow>/NN-light.png` and `NN-dark.png`** are full-length screenshots of every mockup screen (404 images). Attach the exact screenshot for the screen you are building in the Cursor chat, every time. Name the file in your prompt.
+
+Work on **one screen at a time**, in this loop:
+
+1. Attach the mockup screenshot (dark and light). Say which screen file and which repo file (`MAPPING.md`).
+2. Cursor changes that one screen.
+3. Run the app in the simulator. Screenshot it.
+4. Attach both images (mockup and app) and say: "List every difference you can see: spacing, sizes, colors, borders, shadows, order of sections, what is missing. Fix them all."
+5. Repeat until they match. Then the next screen.
+
+Prompt template:
+
+> Build the Client Home screen to match `screens/client-home/02-dark.png` exactly, section by section, top to bottom. Same order of sections, same card shapes, same sizes. Use `DESIGN-SYSTEM.md` tokens. Do not keep the old layout. Do not add sections that are not in the picture. Do not remove ones that are. Files: see MAPPING.md.
+
+Things seen in the first Cursor attempt that do not match the mockup (use these as checks):
+- The bottom bar must be a **flat, solid surface bar with a 3px top border**, not see-through. Content must not show through or sit under the labels. The active tab is a solid block, not a pale tint.
+- The home screen is a **sequence of different blocks**: welcome row, motivation card, Up next card with a time column, trainer row, week ring card, number tiles, nutrition ring with 3 colored bars, logged workout sets, sliders for check-in, notes, Go to tiles. Not a uniform stack of identical outlined boxes.
+- Check-ins are **sliders and chips**, not rows of 1 to 8 boxes that run off the edge.
+- Gradient accents appear on **pills, avatars, icon chips, rings and bars**. Icons inside outlined boxes stay plain.
+- Sample data is not real data. Keep the app's real data and fields.
+
+Honest note on the other question (should Cursor install the skills and repos): the skills are instructions written for Claude Code. They do not contain your screens. What makes the result match is the pictures, the exact tokens in `DESIGN-SYSTEM.md`, and the compare-and-fix loop above. Cloning reference repos into the project is harmless and can be done, but I would not expect it to change how close the screens look.
+
+## What Cursor needs
+
+1. **The mockups** (`mockups/*.html`). Open them in a browser. They need an internet connection for the animation libraries. Each page has a Light / Dark / Both switch. Cursor cannot look at a browser, so give it the mapping and the design system as text, and tell it which mockup to open for each task.
+2. **`DESIGN-SYSTEM.md`**: the tokens, shapes, type, components and the native notes.
+3. **`MAPPING.md`**: for each mockup screen, the existing repo files to change.
+4. **The rules file** (`cursor-rules/coach-connect-design.mdc`): copy it to `.cursor/rules/` in the repo so every Cursor chat sees it.
+5. **The assets** (`assets/icons`, `assets/lottie`). The recolored Lottie files replace or sit next to the ones in `src/assets/animations`.
+6. **The repo's own `CODING_STYLE.md`.** The repo requires every rewritten file to follow it (plain names, a numbered main function). Say "Follow CODING_STYLE.md (Variation 3)" in each request.
+
+## Do the skills and repos need to be installed or cloned?
+
+No. The skills and reference repos installed on this Mac (`apple-design`, `impeccable`, `ui-ux-pro-max`, the Expo, animation and React Native skills, and others) are Claude Code skills. Cursor does not load Claude Code skills. They are not needed to implement these designs. All the rules that matter are already written into `DESIGN-SYSTEM.md`.
+
+If you want Cursor to have reading material, clone the reference repos into a `docs/refs/` folder outside `src` and tell Cursor to read them when asked. Expo's docs and Reanimated's docs are the most useful. Cursor can also read documentation sites when you give it a link. I am less sure of Cursor's exact features than of Claude Code's, so check Cursor's own documentation for how rules and doc references are loaded in your version.
+
+## What the app already has
+
+The app already includes everything the designs need: `react-native-reanimated` 4, `react-native-gesture-handler`, `expo-linear-gradient`, `lottie-react-native`, `react-native-svg`, `expo-haptics`, `expo-blur`, `react-native-safe-area-context`, `expo-camera`, `expo-image-picker` and `react-native-webview`. Nothing new needs installing for the design. A drag-to-reorder list (the plan builder) would need a new package or a custom gesture.
+
+`src/look-and-feel/` already has `Nb*` components (`NbButton`, `NbCard`, `NbChip`, `NbSegmented`, `NbSheet`, `NbSwitch`, `NbTile`, `NbRing`, `NbBottomNav` and more) from an earlier neo-brutalist pass. The plan is to restyle these to `DESIGN-SYSTEM.md`, then build screens from them.
+
+## Conflicts to settle before starting
+
+- **`docs/design/DESIGN.md` says the opposite of the new look.** It says to keep the cool gradient borders and old color system. The mockups use black, white and gray with gradients only as small accents. The owner needs to confirm the new system, then replace `DESIGN.md` with `DESIGN-SYSTEM.md`.
+- **Fonts.** The brief says system fonts. The repo loads Space Grotesk in places.
+- **The three commits** on branch `claude/cool-planck-5qbxar` (kit tokens, a hook extraction, a new home layout) were made earlier without being asked. Decide whether to revert them before building on the `look-and-feel` folder.
+- **Navigation bar.** `BottomMenuBar.js` and `NbBottomNav.jsx` both exist. Pick one place for the new bar.
+- **Guessed content.** The + sheet items, the Pro price and trial length, the AI-step bullets, best times in trainer availability, the Map view, and all sample data are placeholders (see captions).
+
+## Suggested order of work
+
+1. Tokens: one theme file with the values in section 2 to 5 of `DESIGN-SYSTEM.md`, light and dark.
+2. Primitives: restyle the `Nb*` components, then add the missing ones (icon chip, bar, field, slider, stepper, toast, skeleton, empty state, hard shadow wrapper).
+3. Navigation bar and screen shell.
+4. One pilot flow on its own branch, for example Client dashboard. Run it on the iOS simulator and an Android device, and fix what the native notes in section 9 predict (shadows, dashed borders, gradient icons).
+5. Roll out the other flows in the order of `MAPPING.md`, one pull request per flow.
+6. Add the states: empty, loading, error, offline.
+
+## How to ask Cursor, per screen
+
+> Implement the "Trainer home" mockup (`mockups/trainer-home.html`, screens 1 to 3). Files to change are listed under "Trainer home" in `MAPPING.md`. Follow `DESIGN-SYSTEM.md` and `CODING_STYLE.md` (Variation 3). Keep the screen's data and behavior. Do not invent copy: use the text in the mockup only where the mockup caption says it comes from the app.
+
+## What Cursor cannot do for you
+
+- It cannot tell whether a screen "looks right". Compare against the mockup in a browser and on a device.
+- The mockups are web pages. They do not prove that any effect works on a phone.
+- A few screens are new (for example session mode). `MAPPING.md` marks them.

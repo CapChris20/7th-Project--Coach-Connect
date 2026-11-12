@@ -1,8 +1,7 @@
-// The entire signed-out experience: welcome screen, sign up, and sign in, in one component.
-// Flow: `currentView` state switches between the three screens → each auth path (email, Google, Apple)
-//       creates/signs in a Firebase user → writes the users/{uid} profile → calls onSignupSuccess or
-//       onLoginSuccess so LoginGate takes over routing.
-// Rendered by LoginGate whenever nobody is signed in. There is no navigator here — the views are just state.
+// Design Law signed-out stack: welcome poster → create account → sign in (one component, no navigator).
+// Flow: `currentView` swaps the three screens → email / Google / Apple auth → users/{uid} →
+//       onSignupSuccess or onLoginSuccess so LoginGate routes into the app.
+// Used by LoginGate when nobody is signed in. Visual law: screens/welcome-and-sign-in PNGs.
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
@@ -45,8 +44,16 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import AppLogo from '../for-both/icons/AppLogo';
 import { cachePendingSignupProfile } from './decideTraineeOrTrainer';
 import NbButton from '../look-and-feel/NbButton';
-import NbCard from '../look-and-feel/NbCard';
-import { nb, gradients } from '../look-and-feel/colorPalette';
+import NbPageHeader from '../look-and-feel/NbPageHeader';
+import HardShadow from '../look-and-feel/HardShadow';
+import {
+  nb,
+  lightColors,
+  darkColors,
+  borderRadius,
+  spacing,
+  accentGradients,
+} from '../look-and-feel/colorPalette';
 
 // Digs the Google tokens out of an OAuth response, whichever shape it arrived in.
 // Why this is messy: expo-auth-session returns tokens camelCase on `authentication`, snake_case on
@@ -143,35 +150,52 @@ const AUTH_FONT_ROUNDED = Platform.OS === 'ios' ? 'SF Pro Rounded' : 'System';
 
 const THEME_KEY = 'coachconnect-theme';
 
+// Design Law auth surfaces — map landing toggle onto nb* tokens (fill flips in dark).
 const DARK = {
-  bg: '#0A0A0F',
-  wordmark: '#F3EEFF',
-  heading: '#F3EEFF',
-  subtitle: '#A7A1BE',
-  toggleBg: '#17171F',
-  toggleBorder: '#F3EEFF',
-  toggleIcon: '#FF6B9D',
-  lottieGlow: 'rgba(255,107,157,0.28)',
-  signinMuted: '#A7A1BE',
-  signinLink: '#FF6B9D',
-  cardBorder: '#F3EEFF',
-  quoteBorder: '#FF6B9D',
+  bg: darkColors.nbBackground,
+  surface: darkColors.nbSurface,
+  fill: darkColors.nbFill,
+  onFill: darkColors.nbOnFill,
+  ink: darkColors.nbInk,
+  muted: darkColors.nbMuted,
+  border: darkColors.nbBorder,
+  shadow: darkColors.nbShadow,
+  soft: darkColors.nbSoft,
+  heading: darkColors.nbInk,
+  subtitle: darkColors.nbMuted,
+  toggleBg: darkColors.nbSurface,
+  toggleBorder: darkColors.nbBorder,
+  toggleIcon: darkColors.nbInk,
+  signinMuted: darkColors.nbMuted,
+  signinLink: darkColors.nbInk,
 };
 
 const LIGHT = {
-  bg: '#F3EEFF',
-  wordmark: '#0A0A0F',
-  heading: '#0A0A0F',
-  subtitle: '#55506B',
-  toggleBg: '#FFFFFF',
-  toggleBorder: '#0A0A0F',
-  toggleIcon: '#FF6B9D',
-  lottieGlow: 'rgba(255,107,157,0.12)',
-  signinMuted: '#55506B',
-  signinLink: '#FF6B9D',
-  cardBorder: '#0A0A0F',
-  quoteBorder: '#FF6B9D',
+  bg: lightColors.nbBackground,
+  surface: lightColors.nbSurface,
+  fill: lightColors.nbFill,
+  onFill: lightColors.nbOnFill,
+  ink: lightColors.nbInk,
+  muted: lightColors.nbMuted,
+  border: lightColors.nbBorder,
+  shadow: lightColors.nbShadow,
+  soft: lightColors.nbSoft,
+  heading: lightColors.nbInk,
+  subtitle: lightColors.nbMuted,
+  toggleBg: lightColors.nbSurface,
+  toggleBorder: lightColors.nbBorder,
+  toggleIcon: lightColors.nbInk,
+  signinMuted: lightColors.nbMuted,
+  signinLink: lightColors.nbInk,
 };
+
+// Manipulate here: welcome ticker copy under the black wordmark poster
+const WELCOME_TICKER = 'One Day or Day One!  |  One Day or Day One!  |  One Day or Day One!';
+const PASSWORD_RULE_LENGTH = '8+ characters';
+const PASSWORD_RULE_LETTER = 'A letter';
+const PASSWORD_RULE_NUMBER = 'A number';
+// Strength bar accent — Design Law allows pink→orange on small fills only
+const PASSWORD_STRENGTH_GRADIENT = accentGradients[0];
 
 
 
@@ -196,6 +220,16 @@ function passwordFieldError(passwordValue) {
   const hasNumber = /[0-9]/.test(passwordValue);
   if (!hasLetter || !hasNumber) return 'Password must include at least one letter and one number';
   return null;
+}
+
+// Design Law create-account chips + strength bar — same rules as passwordFieldError
+function passwordRuleChecks(passwordValue) {
+  const value = String(passwordValue || '');
+  return {
+    lengthOk: value.length >= MIN_PASSWORD_LENGTH,
+    letterOk: /[A-Za-z]/.test(value),
+    numberOk: /[0-9]/.test(value),
+  };
 }
 
 function confirmPasswordFieldError(passwordValue, confirmValue) {
@@ -671,122 +705,456 @@ function buildEmailSignupUserData({ name, email, role, bio, credentials, special
   return userData;
 }
 
-function FloatingInput({
+// Design Law field: caps label + 3px outlined input (+ optional SHOW for passwords).
+// vocab: secureTextEntry = RN hides glyphs; we flip it with the SHOW control, not a separate field.
+function AuthField({
   label,
   value,
   onChangeText,
   placeholder,
   secureTextEntry = false,
+  showSecureToggle = false,
+  secureVisible = false,
+  onToggleSecure,
   keyboardType = 'default',
-  isDark = true,
+  autoCapitalize = 'none',
+  theme,
   accessibilityLabel,
+  errorText,
+  dashedError = false,
 }) {
-  const [focused, setFocused] = useState(false);
+  const hideText = secureTextEntry && !secureVisible;
   return (
-    <View style={{ marginBottom: 14 }}>
-      <Text
-        style={{
-          fontSize: 10,
-          fontWeight: '700',
-          letterSpacing: 1,
-          textTransform: 'uppercase',
-          marginBottom: 6,
-          marginLeft: 2,
-          color: focused
-            ? (isDark ? 'rgba(255,255,255,0.78)' : 'rgba(15,23,42,0.78)')
-            : (isDark ? 'rgba(255,255,255,0.48)' : 'rgba(15,23,42,0.62)'),
-        }}
+    <View style={{ marginBottom: spacing.md }}>
+      <Text style={[authUiStyles.fieldLabel, { color: theme.muted }]}>{label}</Text>
+      <View
+        style={[
+          authUiStyles.fieldShell,
+          {
+            borderColor: theme.border,
+            backgroundColor: theme.surface,
+            shadowColor: theme.shadow,
+            borderStyle: dashedError ? 'dashed' : 'solid',
+          },
+        ]}
       >
-        {label}
-      </Text>
-      <TextInput
-        value={value}
-        onChangeText={onChangeText}
-        placeholder={placeholder}
-        placeholderTextColor={isDark ? 'rgba(255,255,255,0.28)' : 'rgba(15,23,42,0.35)'}
-        secureTextEntry={secureTextEntry}
-        keyboardType={keyboardType}
-        autoCapitalize="none"
-        accessibilityLabel={accessibilityLabel || label}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-        style={{
-          height: 52,
-          paddingHorizontal: 16,
-          borderRadius: 12,
-          borderWidth: 1.5,
-          fontSize: 15,
-          color: isDark ? '#FFFFFF' : '#0F172A',
-          backgroundColor: focused
-            ? (isDark ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.98)')
-            : (isDark ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.55)'),
-          borderColor: focused
-            ? (isDark ? 'rgba(255,255,255,0.32)' : 'rgba(193, 38, 90, 0.42)')
-            : (isDark ? 'rgba(255,255,255,0.14)' : 'rgba(15,23,42,0.18)'),
-        }}
-      />
+        <TextInput
+          value={value}
+          onChangeText={onChangeText}
+          placeholder={placeholder}
+          placeholderTextColor={theme.muted}
+          secureTextEntry={hideText}
+          keyboardType={keyboardType}
+          autoCapitalize={autoCapitalize}
+          accessibilityLabel={accessibilityLabel || label}
+          style={[authUiStyles.fieldInput, { color: theme.ink, flex: 1 }]}
+        />
+        {showSecureToggle ? (
+          <TouchableOpacity
+            onPress={onToggleSecure}
+            accessibilityRole="button"
+            accessibilityLabel={secureVisible ? 'Hide password' : 'Show password'}
+            style={[authUiStyles.showBtn, { backgroundColor: theme.soft, borderLeftColor: theme.border }]}
+            activeOpacity={0.85}
+          >
+            <Text style={[authUiStyles.showBtnText, { color: theme.ink }]}>
+              {secureVisible ? 'HIDE' : 'SHOW'}
+            </Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
+      {errorText ? (
+        <View style={authUiStyles.errorRow}>
+          <View style={[authUiStyles.errorDot, { borderColor: theme.border, backgroundColor: theme.fill }]}>
+            <Text style={[authUiStyles.errorBang, { color: theme.onFill }]}>!</Text>
+          </View>
+          <Text style={[authUiStyles.errorCopy, { color: theme.ink }]}>{errorText}</Text>
+        </View>
+      ) : null}
     </View>
   );
 }
 
-/** Role pill fill — matches onboarding CTA */
-const ROLE_TOGGLE_GRADIENT = AUTH_CTA_GRADIENT;
-
-/** Border-first role control — no sliding solid gradient fill. */
-function RoleToggle({ role, onRoleChange, isDark = true }) {
-  const muted = isDark ? 'rgba(255,255,255,0.5)' : 'rgba(15,23,42,0.5)';
-  const innerFill = isDark ? 'rgba(10,10,15,0.88)' : 'rgba(255,255,255,0.96)';
-  const idleBorder = isDark ? 'rgba(255,255,255,0.18)' : 'rgba(15,23,42,0.16)';
-  const idleBg = isDark ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.45)';
-
+// Design Law role segmented — selected = solid fill (black/white), not pink gradient.
+function RoleToggle({ role, onRoleChange, theme }) {
+  const tabs = [
+    { id: 'client', label: 'I am a client' },
+    { id: 'trainer', label: 'I am a trainer' },
+  ];
   return (
-    <View style={{ flexDirection: 'row', gap: 10, width: '100%', marginBottom: 28 }}>
-      {['client', 'trainer'].map((r) => {
-        const selected = role === r;
-        const label = r === 'client' ? 'Client' : 'Trainer';
-        const labelColor = selected ? (isDark ? '#FFFFFF' : '#0A0A0F') : muted;
-
-        const inner = (
-          <View
-            style={{
-              borderRadius: 14,
-              paddingVertical: 12,
-              alignItems: 'center',
-              justifyContent: 'center',
-              backgroundColor: selected ? innerFill : idleBg,
-              borderWidth: selected ? 0 : 1.5,
-              borderColor: idleBorder,
-            }}
-          >
-            <Text style={{ fontSize: 14, fontWeight: '800', textTransform: 'capitalize', color: labelColor }}>{label}</Text>
-          </View>
-        );
-
+    <View
+      style={[
+        authUiStyles.roleTabs,
+        {
+          borderColor: theme.border,
+          backgroundColor: theme.surface,
+          shadowColor: theme.shadow,
+        },
+      ]}
+    >
+      {tabs.map((tab) => {
+        const selected = role === tab.id;
         return (
           <TouchableOpacity
-            key={r}
+            key={tab.id}
             activeOpacity={0.88}
-            onPress={() => onRoleChange(r)}
-            style={{ flex: 1 }}
+            onPress={() => onRoleChange(tab.id)}
+            style={[
+              authUiStyles.roleTabCell,
+              selected ? { backgroundColor: theme.fill } : null,
+            ]}
+            accessibilityRole="button"
+            accessibilityState={{ selected }}
           >
-            {selected ? (
-              <LinearGradient
-                colors={ROLE_TOGGLE_GRADIENT}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={{ borderRadius: 16, padding: 2 }}
-              >
-                {inner}
-              </LinearGradient>
-            ) : (
-              inner
-            )}
+            <Text
+              style={[
+                authUiStyles.roleTabLabel,
+                { color: selected ? theme.onFill : theme.ink },
+              ]}
+              numberOfLines={1}
+            >
+              {tab.label}
+            </Text>
           </TouchableOpacity>
         );
       })}
     </View>
   );
 }
+
+// Square theme chip — matches welcome PNG moon control (HardShadow, 3px).
+function ThemeToggleChip({ isDarkLanding, onPress, theme }) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.85}
+      accessibilityRole="button"
+      accessibilityLabel={isDarkLanding ? 'Switch to light mode' : 'Switch to dark mode'}
+      style={[
+        authUiStyles.themeChip,
+        {
+          borderColor: theme.border,
+          backgroundColor: theme.surface,
+          shadowColor: theme.shadow,
+        },
+      ]}
+    >
+      <Ionicons
+        name={isDarkLanding ? 'sunny-outline' : 'moon-outline'}
+        size={20}
+        color={theme.toggleIcon}
+      />
+    </TouchableOpacity>
+  );
+}
+
+function AuthOrDivider({ label, theme }) {
+  return (
+    <View style={authUiStyles.orRow}>
+      <View style={[authUiStyles.orLine, { backgroundColor: theme.border }]} />
+      <Text style={[authUiStyles.orText, { color: theme.muted }]}>{label}</Text>
+      <View style={[authUiStyles.orLine, { backgroundColor: theme.border }]} />
+    </View>
+  );
+}
+
+function SocialAuthRow({
+  onApple,
+  onGoogle,
+  appleLogoSource,
+  googleIconSource,
+  disabled,
+  theme,
+  appleBusy,
+}) {
+  return (
+    <View style={authUiStyles.socialRow}>
+      {Platform.OS === 'ios' ? (
+        <HardShadow offset={nb.shadowOffset} radius={borderRadius.nbButton} style={{ flex: 1 }}>
+          <TouchableOpacity
+            onPress={onApple}
+            activeOpacity={0.85}
+            disabled={disabled || appleBusy}
+            style={[
+              authUiStyles.socialBtn,
+              {
+                borderColor: theme.border,
+                backgroundColor: theme.surface,
+                opacity: disabled || appleBusy ? 0.6 : 1,
+              },
+            ]}
+          >
+            <Image
+              source={appleLogoSource}
+              style={{ width: 18, height: 18, resizeMode: 'contain', tintColor: theme.ink }}
+            />
+            <Text style={[authUiStyles.socialLabel, { color: theme.ink }]}>Apple</Text>
+          </TouchableOpacity>
+        </HardShadow>
+      ) : null}
+      <HardShadow offset={nb.shadowOffset} radius={borderRadius.nbButton} style={{ flex: 1 }}>
+        <TouchableOpacity
+          onPress={onGoogle}
+          activeOpacity={0.85}
+          disabled={disabled}
+          style={[
+            authUiStyles.socialBtn,
+            {
+              borderColor: theme.border,
+              backgroundColor: theme.surface,
+              opacity: disabled ? 0.6 : 1,
+            },
+          ]}
+        >
+          <Image source={googleIconSource} style={{ width: 18, height: 18, resizeMode: 'contain' }} />
+          <Text style={[authUiStyles.socialLabel, { color: theme.ink }]}>Google</Text>
+        </TouchableOpacity>
+      </HardShadow>
+    </View>
+  );
+}
+
+function PasswordRuleChips({ password, theme }) {
+  const rules = passwordRuleChecks(password);
+  const chips = [
+    { key: 'len', label: PASSWORD_RULE_LENGTH, ok: rules.lengthOk },
+    { key: 'letter', label: PASSWORD_RULE_LETTER, ok: rules.letterOk },
+    { key: 'number', label: PASSWORD_RULE_NUMBER, ok: rules.numberOk },
+  ];
+  const passed = chips.filter((c) => c.ok).length;
+  // Manipulate here: strength fill grows with each rule met (0 / 33 / 66 / 100%)
+  const strengthPct = (passed / chips.length) * 100;
+
+  return (
+    <View style={{ marginTop: -spacing.sm, marginBottom: spacing.md }}>
+      <View style={authUiStyles.ruleChipRow}>
+        {chips.map((chip) => (
+          <View
+            key={chip.key}
+            style={[
+              authUiStyles.ruleChip,
+              {
+                borderColor: theme.border,
+                backgroundColor: chip.ok ? theme.fill : theme.surface,
+              },
+            ]}
+          >
+            <Text
+              style={[
+                authUiStyles.ruleChipText,
+                { color: chip.ok ? theme.onFill : theme.ink },
+              ]}
+              numberOfLines={1}
+            >
+              {chip.ok ? `✓ ${chip.label}` : chip.label}
+            </Text>
+          </View>
+        ))}
+      </View>
+      <View
+        style={[
+          authUiStyles.strengthTrack,
+          { borderColor: theme.border, backgroundColor: theme.surface },
+        ]}
+      >
+        <LinearGradient
+          colors={PASSWORD_STRENGTH_GRADIENT}
+          start={{ x: 0, y: 0.5 }}
+          end={{ x: 1, y: 0.5 }}
+          style={[authUiStyles.strengthFill, { width: `${Math.max(strengthPct, 4)}%` }]}
+        />
+      </View>
+    </View>
+  );
+}
+
+function AuthTextLink({ prefix, actionLabel, onPress, theme }) {
+  return (
+    <View style={authUiStyles.linkRow}>
+      {prefix ? <Text style={[authUiStyles.linkPrefix, { color: theme.signinMuted }]}>{prefix}</Text> : null}
+      <TouchableOpacity onPress={onPress} activeOpacity={0.8}>
+        <Text style={[authUiStyles.linkAction, { color: theme.signinLink, borderBottomColor: theme.border }]}>
+          {actionLabel}
+        </Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+const authUiStyles = StyleSheet.create({
+  fieldLabel: {
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 1.3,
+    textTransform: 'uppercase',
+    marginBottom: 8,
+  },
+  fieldShell: {
+    minHeight: 52,
+    borderWidth: nb.borderWidth,
+    borderRadius: borderRadius.nbInput,
+    paddingLeft: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    overflow: 'hidden',
+    shadowOffset: { width: nb.shadowOffsetSmall, height: nb.shadowOffsetSmall },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 3,
+  },
+  fieldInput: {
+    fontSize: 16,
+    fontWeight: '700',
+    paddingVertical: 14,
+    paddingRight: 12,
+  },
+  showBtn: {
+    minWidth: 64,
+    alignSelf: 'stretch',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    borderLeftWidth: nb.borderWidth,
+  },
+  showBtnText: {
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0.6,
+  },
+  errorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
+  },
+  errorDot: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  errorBang: {
+    fontSize: 11,
+    fontWeight: '900',
+    lineHeight: 12,
+  },
+  errorCopy: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '600',
+    lineHeight: 18,
+  },
+  roleTabs: {
+    flexDirection: 'row',
+    borderWidth: nb.borderWidth,
+    borderRadius: 999,
+    overflow: 'hidden',
+    marginBottom: 10,
+    shadowOffset: { width: nb.shadowOffsetSmall, height: nb.shadowOffsetSmall },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 3,
+  },
+  roleTabCell: {
+    flex: 1,
+    minHeight: nb.minTouchTarget,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+  },
+  roleTabLabel: {
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  themeChip: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    borderWidth: nb.borderWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowOffset: { width: nb.shadowOffsetSmall, height: nb.shadowOffsetSmall },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 3,
+  },
+  orRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    marginBottom: spacing.md,
+  },
+  orLine: { flex: 1, height: 2 },
+  orText: {
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 1,
+    marginHorizontal: 12,
+  },
+  socialRow: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+    marginBottom: spacing.lg,
+  },
+  socialBtn: {
+    height: 52,
+    borderRadius: borderRadius.nbButton,
+    borderWidth: nb.borderWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  socialLabel: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  ruleChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 10,
+  },
+  ruleChip: {
+    borderWidth: nb.borderWidthPill,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  ruleChipText: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  strengthTrack: {
+    height: 14,
+    borderWidth: nb.borderWidth,
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
+  strengthFill: {
+    height: '100%',
+  },
+  linkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+  },
+  linkPrefix: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  linkAction: {
+    fontSize: 14,
+    fontWeight: '900',
+    borderBottomWidth: 3,
+    paddingBottom: 1,
+  },
+});
 
 function OrSeparator({ isDark, label = 'OR' }) {
   return (
@@ -830,7 +1198,7 @@ function LiquidRolePill({ selected, onPress, label, iconSource, isDark }) {
             style={[
               stylesLiquidAuth.rolePillText,
               { color: isDark ? 'rgba(255,255,255,0.86)' : 'rgba(15,23,42,0.88)' },
-              selected && { color: isDark ? '#FFFFFF' : 'rgba(15,23,42,0.92)' },
+              selected && { color: isDark ? lightColors.white : 'rgba(15,23,42,0.92)' },
             ]}
           >
             {label}
@@ -960,7 +1328,7 @@ function SocialGlassButton({
 // ===== MAIN FUNCTION =====
 
 export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotPasswordFlowPress }) {
-  const { colors, typography, spacing, isDark, themeMode = 'dark', toggleTheme: togglelightDarkMode } = useTheme();
+  const { colors, typography, spacing, isDark, themeMode = 'light', toggleTheme: togglelightDarkMode } = useTheme();
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
@@ -974,13 +1342,14 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
   const [focusedField, setFocusedField] = useState(null);
   const [currentView, setCurrentView] = useState(() => roleMismatchNextViewInMemory || 'welcome'); // 'welcome' | 'signup' | 'login'
   const [selectedRole, setSelectedRole] = useState('client'); // 'trainer' | 'client'
-  // Auth screen local theme — default dark so cold start never flashes black-on-dark text
-  const [isDarkLanding, setIsDarkLanding] = useState(true);
-  const bgAnim = useRef(new RNAnimated.Value(1)).current;
+  // First paint / first login: light — Design Law pops harder in light; user can flip to dark.
+  const [isDarkLanding, setIsDarkLanding] = useState(false);
+  const bgAnim = useRef(new RNAnimated.Value(0)).current;
 
   useEffect(() => {
     AsyncStorage.getItem(THEME_KEY).then((val) => {
-      const dark = val === null ? true : val === 'dark';
+      // Manipulate here: null = first visit → light (not dark)
+      const dark = val === 'dark';
       setIsDarkLanding(dark);
       togglelightDarkMode?.(dark ? 'dark' : 'light');
       bgAnim.setValue(dark ? 1 : 0);
@@ -1030,6 +1399,10 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
   const [role, setRole] = useState('client');
   const [signupLoading, setSignupLoading] = useState(false);
   const [signupErrors, setSignupErrors] = useState({});
+  // Design Law SHOW toggles — passwords stay masked until the user taps SHOW
+  const [showSignupPassword, setShowSignupPassword] = useState(false);
+  const [showSignupConfirmPassword, setShowSignupConfirmPassword] = useState(false);
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [bio, setBio] = useState('');
   const [credentials, setCredentials] = useState('');
   const [specializations, setSpecializations] = useState('');
@@ -1431,261 +1804,187 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
   };
 
   // ==================== RENDER VIEWS ====================
+  // Design Law welcome (01/02): fill poster wordmark + ticker, paired illustration cards,
+  // headline, solid Get started, underlined Sign in. Theme chip top-right.
   const renderWelcomeView = () => (
     <RNAnimated.View style={{ flex: 1, backgroundColor: animatedBg }}>
-      {/* Soft pink wash — keeps atmosphere without crushing text */}
-      <View
-        pointerEvents="none"
-        style={{
-          ...StyleSheet.absoluteFillObject,
-          backgroundColor: isDarkLanding ? 'rgba(40,8,28,0.55)' : 'rgba(193,38,90,0.04)',
+      <ScrollView
+        contentContainerStyle={{
+          flexGrow: 1,
+          paddingTop: insets.top + spacing.sm,
+          paddingBottom: insets.bottom + spacing.lg,
+          paddingHorizontal: nb.screenGutter,
         }}
-      />
-
-      {/* Top bar */}
-      <View
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          paddingHorizontal: 20,
-          paddingTop: insets.top + 8,
-          paddingBottom: 8,
-        }}
+        showsVerticalScrollIndicator={false}
       >
-        <TouchableOpacity
-          onPress={toggleTheme}
-          activeOpacity={0.75}
-          style={{
-            width: 40,
-            height: 40,
-            borderRadius: 20,
-            borderWidth: 1,
-            backgroundColor: landingTheme.toggleBg,
-            borderColor: landingTheme.toggleBorder,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <Ionicons
-            name={isDarkLanding ? 'sunny-outline' : 'moon-outline'}
-            size={18}
-            color={landingTheme.toggleIcon}
+        <View style={{ alignItems: 'flex-end', marginBottom: spacing.sm }}>
+          <ThemeToggleChip
+            isDarkLanding={isDarkLanding}
+            onPress={toggleTheme}
+            theme={landingTheme}
           />
-        </TouchableOpacity>
-      </View>
+        </View>
 
-      {/* Welcome wordmark */}
-      <View style={{ width: '100%', alignItems: 'center', marginTop: 6, marginBottom: 8 }}>
-        <View
-          style={{
-            width: '88%',
-            maxWidth: 460,
-            borderRadius: 24,
-            paddingVertical: 22,
-            paddingHorizontal: 20,
-            alignItems: 'center',
-            justifyContent: 'center',
-            borderWidth: 1,
-            borderColor: landingTheme.cardBorder,
-            backgroundColor: isDarkLanding ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.72)',
-          }}
-        >
-          <Text
-            style={{
-              fontSize: 38,
-              fontWeight: '900',
-              letterSpacing: 3,
-              textAlign: 'center',
-              color: landingTheme.wordmark,
-            }}
-          >
-            COACH
-          </Text>
-          <Text
-            style={{
-              fontSize: 38,
-              fontWeight: '900',
-              letterSpacing: 3,
-              textAlign: 'center',
-              marginTop: -2,
-              color: '#FF6B9D',
-            }}
-          >
-            CONNECT
-          </Text>
-
+        {/* Black/white fill poster — brand is the hero, not an accent word */}
+        <HardShadow offset={nb.shadowOffsetHero} radius={borderRadius.nbHero} style={{ marginBottom: spacing.md }}>
           <View
             style={{
-              marginTop: 16,
-              borderRadius: 999,
-              paddingVertical: 11,
-              paddingHorizontal: 18,
-              alignSelf: 'stretch',
-              maxWidth: 340,
-              borderWidth: 1,
-              borderColor: landingTheme.quoteBorder,
-              backgroundColor: isDarkLanding ? 'rgba(255,107,157,0.10)' : 'rgba(193,38,90,0.06)',
+              borderWidth: nb.borderWidth,
+              borderColor: landingTheme.border,
+              backgroundColor: landingTheme.fill,
+              borderRadius: borderRadius.nbHero,
+              paddingTop: 22,
+              paddingHorizontal: 16,
+              paddingBottom: 14,
+              overflow: 'hidden',
             }}
           >
             <Text
               style={{
-                fontSize: 16,
-                fontWeight: '800',
-                letterSpacing: 0.2,
-                color: landingTheme.heading,
+                fontSize: 42,
+                fontWeight: '900',
+                letterSpacing: -2,
+                color: landingTheme.onFill,
                 textAlign: 'center',
-                fontStyle: 'italic',
               }}
             >
-              {"\u201cOne Day or Day One!\u201d"}
+              COACH CONNECT
             </Text>
+            <View
+              style={{
+                marginTop: 14,
+                borderTopWidth: 2,
+                borderTopColor: landingTheme.onFill,
+                paddingTop: 10,
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 13,
+                  fontWeight: '800',
+                  fontStyle: 'italic',
+                  color: landingTheme.onFill,
+                  letterSpacing: 0.2,
+                }}
+                numberOfLines={1}
+              >
+                {WELCOME_TICKER}
+              </Text>
+            </View>
           </View>
+        </HardShadow>
+
+        {/* Paired feature cards under the poster (AI Lottie + plans chip) */}
+        <View style={{ flexDirection: 'row', gap: 12, marginBottom: spacing.lg }}>
+          <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard} style={{ flex: 1 }}>
+            <View
+              style={{
+                borderWidth: nb.borderWidth,
+                borderColor: landingTheme.border,
+                backgroundColor: landingTheme.surface,
+                borderRadius: borderRadius.nbCard,
+                height: 140,
+                alignItems: 'center',
+                justifyContent: 'center',
+                overflow: 'hidden',
+              }}
+            >
+              <LottieView
+                source={require('../assets/animations/handoff/robot.json')}
+                autoPlay
+                loop
+                style={{ width: 120, height: 120 }}
+              />
+            </View>
+          </HardShadow>
+          <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard} style={{ flex: 1 }}>
+            <View
+              style={{
+                borderWidth: nb.borderWidth,
+                borderColor: landingTheme.border,
+                backgroundColor: landingTheme.surface,
+                borderRadius: borderRadius.nbCard,
+                height: 140,
+                padding: 12,
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 10,
+              }}
+            >
+              <View
+                style={{
+                  width: 52,
+                  height: 52,
+                  borderRadius: borderRadius.nbIconChip,
+                  borderWidth: nb.borderWidth,
+                  borderColor: landingTheme.border,
+                  overflow: 'hidden',
+                }}
+              >
+                <LinearGradient
+                  colors={accentGradients[3]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
+                >
+                  <Image
+                    source={require('../assets/icons/handoff/dumbbell.png')}
+                    style={{ width: 28, height: 28, resizeMode: 'contain' }}
+                  />
+                </LinearGradient>
+              </View>
+              <Text
+                style={{
+                  fontSize: 13,
+                  fontWeight: '900',
+                  color: landingTheme.ink,
+                  textAlign: 'center',
+                  lineHeight: 18,
+                }}
+              >
+                Plans, logs, check-ins
+              </Text>
+            </View>
+          </HardShadow>
         </View>
-      </View>
 
-      {/* Lottie animations */}
-      <View
-        style={{
-          flex: 1,
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: 24,
-          marginTop: -2,
-        }}
-      >
-        <View style={{ alignItems: 'center', justifyContent: 'center' }}>
-          <View
+        <View style={{ flex: 1, justifyContent: 'flex-end' }}>
+          <Text
             style={{
-              position: 'absolute',
-              width: 160,
-              height: 160,
-              borderRadius: 80,
-              backgroundColor: landingTheme.lottieGlow,
-            }}
-          />
-          <LottieView
-            source={require('../assets/animations/app-flows/Guy talking to Robot _ AI Help.json')}
-            autoPlay
-            loop
-            style={{ width: 160, height: 160 }}
-          />
-        </View>
-        <View style={{ alignItems: 'center', justifyContent: 'center' }}>
-          <View
-            style={{
-              position: 'absolute',
-              width: 160,
-              height: 160,
-              borderRadius: 80,
-              backgroundColor: landingTheme.lottieGlow,
-            }}
-          />
-          <LottieView
-            source={require('../assets/animations/app-flows/Exercise for diet or health.json')}
-            autoPlay
-            loop
-            style={{ width: 160, height: 160 }}
-          />
-        </View>
-      </View>
-
-      {/* Bottom branding + CTAs */}
-      <View
-        style={{
-          paddingHorizontal: 24,
-          alignItems: 'center',
-          paddingBottom: insets.bottom + 32,
-        }}
-      >
-        <Text
-          style={{
-            fontSize: 34,
-            fontWeight: '800',
-            textAlign: 'center',
-            lineHeight: 42,
-            letterSpacing: 0.3,
-            color: landingTheme.heading,
-            marginBottom: 12,
-          }}
-        >
-          {'Trainers and clients,\nfinally in sync.'}
-        </Text>
-
-        <Text
-          style={{
-            fontSize: 15,
-            textAlign: 'center',
-            lineHeight: 22,
-            color: landingTheme.subtitle,
-            marginBottom: 28,
-          }}
-        >
-          One platform for programming, tracking, and communication.
-        </Text>
-
-        <LinearGradient
-          colors={AUTH_CTA_GRADIENT}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={{
-            alignSelf: 'center',
-            width: '80%',
-            maxWidth: 400,
-            borderRadius: 16,
-            marginTop: 8,
-            marginBottom: 20,
-            ...(Platform.OS === 'ios'
-              ? {
-                  shadowColor: '#C1265A',
-                  shadowOffset: { width: 0, height: 8 },
-                  shadowOpacity: 0.45,
-                  shadowRadius: 18,
-                }
-              : {}),
-          }}
-        >
-          <TouchableOpacity
-            onPress={onGetStarted}
-            activeOpacity={0.88}
-            style={{
-              borderRadius: 16,
-              height: 54,
-              alignItems: 'center',
-              justifyContent: 'center',
+              fontSize: 28,
+              fontWeight: '900',
+              letterSpacing: -0.6,
+              color: landingTheme.heading,
+              marginBottom: 8,
+              lineHeight: 34,
             }}
           >
-            <Text
-              style={{
-                color: '#FFFFFF',
-                fontSize: 17,
-                fontWeight: '800',
-                letterSpacing: 0.3,
-              }}
-            >
-              Get Started
-            </Text>
-          </TouchableOpacity>
-        </LinearGradient>
-
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <Text style={{ fontSize: 14, color: landingTheme.signinMuted }}>
-            Already have an account?{' '}
+            Trainers and clients, finally in sync.
           </Text>
-          <TouchableOpacity onPress={onSignIn} activeOpacity={0.7}>
-            <Text
-              style={{
-                fontSize: 14,
-                fontWeight: '700',
-                color: landingTheme.signinLink,
-              }}
-            >
-              Sign In
-            </Text>
-          </TouchableOpacity>
+          <Text
+            style={{
+              fontSize: 15,
+              fontWeight: '500',
+              lineHeight: 22,
+              color: landingTheme.subtitle,
+              marginBottom: spacing.lg,
+            }}
+          >
+            One platform for programming, tracking, and communication.
+          </Text>
+
+          <NbButton variant="fill" onPress={onGetStarted} style={{ marginBottom: spacing.md }}>
+            Get started >
+          </NbButton>
+
+          <AuthTextLink
+            prefix="Already have an account? "
+            actionLabel="Sign in"
+            onPress={onSignIn}
+            theme={landingTheme}
+          />
         </View>
-      </View>
+      </ScrollView>
     </RNAnimated.View>
   );
 
@@ -1716,7 +2015,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
       logo: {
         fontSize: 36,
         fontWeight: '800',
-        color: isDarkLanding ? '#FFFFFF' : '#0A0A0F',
+        color: isDarkLanding ? lightColors.white : lightColors.nbInk,
         letterSpacing: 2,
         marginBottom: spacing.sm,
       },
@@ -1726,13 +2025,13 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
         textAlign: 'center',
       },
       form: {
-        backgroundColor: isDarkLanding ? colors.surfaceSecondary : '#FFFFFF',
+        backgroundColor: isDarkLanding ? colors.surfaceSecondary : lightColors.white,
         padding: spacing.lg,
         borderRadius: 16,
         marginBottom: spacing.lg,
         borderWidth: 1,
         borderColor: isDarkLanding ? 'rgba(255,255,255,0.12)' : 'rgba(88, 86, 214, 0.2)',
-        shadowColor: '#5856D6',
+        shadowColor: lightColors.primary,
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: isDarkLanding ? 0.15 : 0.3,
         shadowRadius: 8,
@@ -1743,7 +2042,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
       formTitle: {
         fontSize: 24,
         fontWeight: '700',
-        color: isDarkLanding ? '#FFFFFF' : '#0A0A0F',
+        color: isDarkLanding ? lightColors.white : lightColors.nbInk,
         textAlign: 'center',
         marginBottom: spacing.lg,
       },
@@ -1797,7 +2096,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
         alignItems: 'center',
       },
       roleButtonActive: {
-        borderColor: '#5856D6',
+        borderColor: lightColors.primary,
         backgroundColor: 'rgba(88, 86, 214, 0.2)',
       },
       roleButtonText: {
@@ -1806,17 +2105,17 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
         fontWeight: '600',
       },
       roleButtonTextActive: {
-        color: '#5856D6',
+        color: lightColors.primary,
         fontWeight: '700',
       },
       signupButton: {
-        backgroundColor: '#5856D6',
+        backgroundColor: lightColors.primary,
         padding: spacing.md,
         borderRadius: 12,
         alignItems: 'center',
         marginTop: spacing.md,
         marginBottom: spacing.md,
-        shadowColor: '#5856D6',
+        shadowColor: lightColors.primary,
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.4,
         shadowRadius: 8,
@@ -1824,7 +2123,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
       },
       signupButtonText: {
         fontSize: 16,
-        color: '#FFFFFF',
+        color: lightColors.white,
         fontWeight: '700',
       },
       divider: {
@@ -1855,7 +2154,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
       },
       appleButton: {
         flexDirection: 'row',
-        backgroundColor: isDarkLanding ? '#FFFFFF' : '#000000',
+        backgroundColor: isDarkLanding ? lightColors.white : '#000000',
         padding: spacing.md,
         borderRadius: 12,
         alignItems: 'center',
@@ -1866,13 +2165,13 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
       },
       googleButtonText: {
         fontSize: 16,
-        color: isDarkLanding ? '#FFFFFF' : '#0A0A0F',
+        color: isDarkLanding ? lightColors.white : lightColors.nbInk,
         fontWeight: '600',
         marginLeft: spacing.sm,
       },
       appleButtonText: {
         fontSize: 16,
-        color: isDarkLanding ? '#000000' : '#FFFFFF',
+        color: isDarkLanding ? '#000000' : lightColors.white,
         fontWeight: '600',
         marginLeft: spacing.sm,
       },
@@ -1885,7 +2184,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
         width: 20,
         height: 20,
         resizeMode: 'contain',
-        tintColor: isDarkLanding ? '#000000' : '#FFFFFF',
+        tintColor: isDarkLanding ? '#000000' : lightColors.white,
       },
       footer: {
         flexDirection: 'row',
@@ -1900,7 +2199,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
       },
       loginLink: {
         fontSize: 14,
-        color: '#5856D6',
+        color: lightColors.primary,
         fontWeight: '700',
       },
       textArea: {
@@ -2257,7 +2556,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
       logo: {
         fontSize: 36,
         fontWeight: '800',
-        color: isDarkLanding ? '#FFFFFF' : (colors.text ?? '#000000'),
+        color: isDarkLanding ? lightColors.white : (colors.text ?? '#000000'),
         letterSpacing: 2,
         marginBottom: spacing.sm,
       },
@@ -2273,7 +2572,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
         marginBottom: spacing.lg,
         borderWidth: 1,
         borderColor: isDarkLanding ? 'rgba(255,255,255,0.12)' : 'rgba(88, 86, 214, 0.2)',
-        shadowColor: '#5856D6',
+        shadowColor: lightColors.primary,
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: isDarkLanding ? 0.15 : 0.3,
         shadowRadius: 8,
@@ -2284,7 +2583,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
       formTitle: {
         fontSize: 24,
         fontWeight: '700',
-        color: isDarkLanding ? '#FFFFFF' : '#0A0A0F',
+        color: isDarkLanding ? lightColors.white : lightColors.nbInk,
         textAlign: 'center',
         marginBottom: spacing.lg,
       },
@@ -2312,13 +2611,13 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
         marginTop: spacing.xs,
       },
       loginButton: {
-        backgroundColor: '#5856D6',
+        backgroundColor: lightColors.primary,
         padding: spacing.md,
         borderRadius: 12,
         alignItems: 'center',
         marginTop: spacing.md,
         marginBottom: spacing.md,
-        shadowColor: '#5856D6',
+        shadowColor: lightColors.primary,
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.4,
         shadowRadius: 8,
@@ -2326,7 +2625,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
       },
       loginButtonText: {
         fontSize: 16,
-        color: '#FFFFFF',
+        color: lightColors.white,
         fontWeight: '700',
       },
       divider: {
@@ -2357,7 +2656,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
       },
       googleButtonText: {
         fontSize: 16,
-        color: isDarkLanding ? '#FFFFFF' : '#0A0A0F',
+        color: isDarkLanding ? lightColors.white : lightColors.nbInk,
         fontWeight: '600',
         marginLeft: spacing.sm,
       },
@@ -2372,7 +2671,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
       },
       forgotPasswordText: {
         fontSize: 14,
-        color: '#5856D6',
+        color: lightColors.primary,
         fontWeight: '600',
       },
       footer: {
@@ -2389,7 +2688,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
       },
       signupLink: {
         fontSize: 14,
-        color: '#5856D6',
+        color: lightColors.primary,
         fontWeight: '700',
       },
     });
@@ -2512,7 +2811,8 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
     );
   };
 
-  // ==================== LIQUID GLASS AUTH (iOS 18-style) ====================
+  // Design Law create account (03/04): role segmented, outlined fields, SHOW + rule chips,
+  // solid Create account, Apple/Google, Sign in link. Behavior unchanged.
   const renderSignupViewLiquid = () => {
     const onGoogle = () => {
       if (!request) {
@@ -2527,6 +2827,10 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
     };
 
     const onApple = () => handleAppleAuth({ mode: 'signup' });
+    const roleHint =
+      role === 'trainer'
+        ? 'Build plans, manage clients, and get paid in one place.'
+        : 'Find a trainer, or join the one you already have with a code.';
 
     return (
       <View style={{ flex: 1, backgroundColor: landingTheme.bg }}>
@@ -2534,350 +2838,127 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
           style={{ flex: 1 }}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
+          <NbPageHeader title="Create your account" onBack={() => setCurrentView('welcome')} />
           <ScrollView
             contentContainerStyle={{
-              paddingTop: insets.top + 40,
               paddingBottom: insets.bottom + 32,
-              paddingHorizontal: 24,
-              alignItems: 'center',
-              maxWidth: 400,
+              paddingHorizontal: nb.screenGutter,
+              maxWidth: 440,
               alignSelf: 'center',
               width: '100%',
             }}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
-            {/* Back + wordmark */}
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                width: '100%',
-                marginBottom: 24,
-              }}
-            >
-              <TouchableOpacity
-                onPress={() => setCurrentView('welcome')}
-                activeOpacity={0.8}
-                style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 18,
-                  borderWidth: 1,
-                  borderColor: isDarkLanding ? 'rgba(255,255,255,0.18)' : 'rgba(15,23,42,0.14)',
-                  backgroundColor: isDarkLanding ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.75)',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Ionicons name="chevron-back" size={20} color={landingTheme.heading} />
-              </TouchableOpacity>
-
-              <AppLogo width={108} />
-
-              <TouchableOpacity
-                onPress={toggleTheme}
-                activeOpacity={0.75}
-                style={{
-                  paddingHorizontal: 14,
-                  paddingVertical: 7,
-                  borderRadius: 20,
-                  borderWidth: 1,
-                  backgroundColor: landingTheme.toggleBg,
-                  borderColor: landingTheme.toggleBorder,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Ionicons
-                  name={isDarkLanding ? 'sunny-outline' : 'moon-outline'}
-                  size={18}
-                  color={landingTheme.toggleIcon}
-                />
-              </TouchableOpacity>
-            </View>
-
-            {/* Heading */}
+            <RoleToggle role={role} onRoleChange={setRole} theme={landingTheme} />
             <Text
               style={{
-                fontSize: 30,
-                fontWeight: '800',
-                color: landingTheme.heading,
-                textAlign: 'center',
-                letterSpacing: -0.8,
-                marginBottom: 8,
+                fontSize: 13,
+                fontWeight: '600',
+                color: landingTheme.muted,
+                marginBottom: spacing.md,
+                lineHeight: 18,
               }}
             >
-              Create account
+              {roleHint}
             </Text>
 
-            {/* Subtitle */}
-            <Text
-              style={{
-                fontSize: 14,
-                color: landingTheme.subtitle,
-                textAlign: 'center',
-                marginBottom: 28,
+            <AuthField
+              label="Full name"
+              value={name}
+              onChangeText={(text) => {
+                setName(text);
+                if (signupErrors.name) setSignupErrors({ ...signupErrors, name: '' });
               }}
-            >
-              Choose your role and get started.
-            </Text>
-
-            {/* Role toggle */}
-            <RoleToggle role={role} onRoleChange={setRole} isDark={isDarkLanding} />
-
-            {/* Fields */}
-            <View style={{ width: '100%' }}>
-              <FloatingInput
-                label="Full Name"
-                value={name}
-                onChangeText={(text) => {
-                  setName(text);
-                  if (signupErrors.name) setSignupErrors({ ...signupErrors, name: '' });
-                }}
-                placeholder="Alex Rivera"
-                isDark={isDarkLanding}
-              />
-              <FloatingInput
-                label="Email Address"
-                value={email}
-                onChangeText={(text) => {
-                  setEmail(text);
-                  if (signupErrors.email) setSignupErrors({ ...signupErrors, email: '' });
-                }}
-                placeholder="name@example.com"
-                keyboardType="email-address"
-                isDark={isDarkLanding}
-              />
-              <FloatingInput
-                label="Password"
-                value={password}
-                onChangeText={(text) => {
-                  setPassword(text);
-                  if (signupErrors.password) setSignupErrors({ ...signupErrors, password: '' });
-                }}
-                placeholder="••••••••"
-                secureTextEntry
-                isDark={isDarkLanding}
-              />
-              <FloatingInput
-                label="Confirm Password"
-                value={confirmPassword}
-                onChangeText={(text) => {
-                  setConfirmPassword(text);
-                  if (signupErrors.confirmPassword) {
-                    setSignupErrors({ ...signupErrors, confirmPassword: '' });
-                  }
-                }}
-                placeholder="••••••••"
-                secureTextEntry
-                isDark={isDarkLanding}
-              />
-
-              {signupErrors.name || signupErrors.email || signupErrors.password || signupErrors.confirmPassword ? (
-                <Text
-                  style={{
-                    fontSize: 12,
-                    color: '#FCA5A5',
-                    marginTop: 4,
-                    marginBottom: 8,
-                  }}
-                >
-                  Please fix the highlighted fields and try again.
-                </Text>
-              ) : null}
-            </View>
-
-            {/* Create Account CTA — gradient ring, not solid slab */}
-            <LinearGradient
-              colors={AUTH_CTA_GRADIENT}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={{
-                alignSelf: 'center',
-                width: '80%',
-                maxWidth: 400,
-                borderRadius: 16,
-                padding: 2,
-                marginTop: 16,
-                marginBottom: 24,
-                opacity: signupLoading ? 0.7 : 1,
-                ...(Platform.OS === 'ios'
-                  ? {
-                      shadowColor: '#C1265A',
-                      shadowOffset: { width: 0, height: 10 },
-                      shadowOpacity: 0.35,
-                      shadowRadius: 20,
-                    }
-                  : {}),
+              placeholder="Alex Rivera"
+              autoCapitalize="words"
+              theme={landingTheme}
+              errorText={signupErrors.name || null}
+              dashedError={!!signupErrors.name}
+            />
+            <AuthField
+              label="Email address"
+              value={email}
+              onChangeText={(text) => {
+                setEmail(text);
+                if (signupErrors.email) setSignupErrors({ ...signupErrors, email: '' });
               }}
-            >
-              <TouchableOpacity
-                onPress={handleSignup}
-                activeOpacity={0.88}
-                disabled={signupLoading}
-                style={{
-                  borderRadius: 14,
-                  height: 52,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  backgroundColor: isDarkLanding ? 'rgba(10,10,15,0.94)' : 'rgba(255,255,255,0.97)',
-                }}
-              >
-                <Text
-                  style={{
-                    color: isDarkLanding ? '#FFFFFF' : '#0A0A0F',
-                    fontSize: 17,
-                    fontWeight: '800',
-                    letterSpacing: 0.2,
-                  }}
-                >
-                  Create Account
-                </Text>
-              </TouchableOpacity>
-            </LinearGradient>
-
-            {/* OR divider */}
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                width: '100%',
-                marginBottom: 20,
+              placeholder="alex@example.com"
+              keyboardType="email-address"
+              theme={landingTheme}
+              errorText={signupErrors.email || null}
+              dashedError={!!signupErrors.email}
+            />
+            <AuthField
+              label="Password"
+              value={password}
+              onChangeText={(text) => {
+                setPassword(text);
+                if (signupErrors.password) setSignupErrors({ ...signupErrors, password: '' });
               }}
-            >
-              <View
-                style={{
-                  flex: 1,
-                  height: 1,
-                  backgroundColor: isDarkLanding ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.14)',
-                }}
-              />
-              <Text
-                style={{
-                  fontSize: 12,
-                  fontWeight: '500',
-                  color: isDarkLanding ? 'rgba(255,255,255,0.3)' : 'rgba(15,23,42,0.35)',
-                  marginHorizontal: 12,
-                }}
-              >
-                OR
-              </Text>
-              <View
-                style={{
-                  flex: 1,
-                  height: 1,
-                  backgroundColor: isDarkLanding ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.14)',
-                }}
-              />
-            </View>
-
-            {/* Social auth: Apple is iOS-only; Google shows on both. */}
-            <View
-              style={{
-                flexDirection: 'row',
-                gap: 12,
-                width: '100%',
-                marginBottom: 32,
+              placeholder="••••••••"
+              secureTextEntry
+              showSecureToggle
+              secureVisible={showSignupPassword}
+              onToggleSecure={() => setShowSignupPassword((v) => !v)}
+              theme={landingTheme}
+              errorText={signupErrors.password || null}
+              dashedError={!!signupErrors.password}
+            />
+            <PasswordRuleChips password={password} theme={landingTheme} />
+            <AuthField
+              label="Confirm password"
+              value={confirmPassword}
+              onChangeText={(text) => {
+                setConfirmPassword(text);
+                if (signupErrors.confirmPassword) {
+                  setSignupErrors({ ...signupErrors, confirmPassword: '' });
+                }
               }}
+              placeholder="Type it again"
+              secureTextEntry
+              showSecureToggle
+              secureVisible={showSignupConfirmPassword}
+              onToggleSecure={() => setShowSignupConfirmPassword((v) => !v)}
+              theme={landingTheme}
+              errorText={signupErrors.confirmPassword || null}
+              dashedError={!!signupErrors.confirmPassword}
+            />
+
+            <NbButton
+              variant="fill"
+              onPress={handleSignup}
+              disabled={signupLoading}
+              style={{ marginTop: spacing.sm, marginBottom: spacing.md }}
             >
-              {Platform.OS === 'ios' ? (
-                <TouchableOpacity
-                  onPress={onApple}
-                  activeOpacity={0.8}
-                  disabled={signupLoading || isLoadingApple}
-                  style={{
-                    flex: 1,
-                    height: 52,
-                    borderRadius: 12,
-                    borderWidth: 1,
-                    backgroundColor: isDarkLanding ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.86)',
-                    borderColor: isDarkLanding ? 'rgba(255,255,255,0.1)' : 'rgba(15,23,42,0.14)',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexDirection: 'row',
-                    gap: 8,
-                    opacity: signupLoading || isLoadingApple ? 0.6 : 1,
-                  }}
-                >
-                  <Image
-                    source={appleLogo}
-                    style={{ width: 20, height: 20, resizeMode: 'contain', tintColor: isDarkLanding ? '#FFFFFF' : '#0F172A' }}
-                  />
-                  <Text
-                    style={{
-                      fontSize: 14,
-                      fontWeight: '600',
-                      color: isDarkLanding ? '#FFFFFF' : '#0F172A',
-                    }}
-                  >
-                    Apple
-                  </Text>
-                </TouchableOpacity>
-              ) : null}
+              {signupLoading ? 'Creating…' : 'Create account'}
+            </NbButton>
 
-              <TouchableOpacity
-                onPress={onGoogle}
-                activeOpacity={0.8}
-                disabled={signupLoading || isLoadingGoogle}
-                style={{
-                  flex: 1,
-                  height: 52,
-                  borderRadius: 12,
-                  borderWidth: 1,
-                  backgroundColor: isDarkLanding ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.86)',
-                  borderColor: isDarkLanding ? 'rgba(255,255,255,0.1)' : 'rgba(15,23,42,0.14)',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexDirection: 'row',
-                  gap: 8,
-                }}
-              >
-                <Image
-                  source={googleIcon}
-                  style={{ width: 20, height: 20, resizeMode: 'contain' }}
-                />
-                <Text
-                  style={{
-                    fontSize: 14,
-                    fontWeight: '600',
-                    color: isDarkLanding ? '#FFFFFF' : '#0F172A',
-                  }}
-                >
-                  Google
-                </Text>
-              </TouchableOpacity>
-            </View>
+            <AuthOrDivider label="OR SIGN UP WITH" theme={landingTheme} />
+            <SocialAuthRow
+              onApple={onApple}
+              onGoogle={onGoogle}
+              appleLogoSource={appleLogo}
+              googleIconSource={googleIcon}
+              disabled={signupLoading || isLoadingGoogle}
+              appleBusy={isLoadingApple}
+              theme={landingTheme}
+            />
 
-            {/* Sign In link */}
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Text
-                style={{
-                  fontSize: 14,
-                  color: isDarkLanding ? 'rgba(255,255,255,0.5)' : 'rgba(15,23,42,0.55)',
-                }}
-              >
-                Already have an account?{' '}
-              </Text>
-              <TouchableOpacity onPress={onSignIn} activeOpacity={0.7}>
-                <Text
-                  style={{
-                    fontSize: 14,
-                    fontWeight: '800',
-                    color: isDarkLanding ? '#C084FC' : '#C1265A',
-                  }}
-                >
-                  Sign In
-                </Text>
-              </TouchableOpacity>
-            </View>
+            <AuthTextLink
+              prefix="Already a member? "
+              actionLabel="Sign in"
+              onPress={onSignIn}
+              theme={landingTheme}
+            />
           </ScrollView>
         </KeyboardAvoidingView>
       </View>
     );
   };
 
+  // Design Law sign in (05–08): header + hero line, outlined fields + SHOW, forgot link,
+  // solid Sign in, social row. Role toggle kept (auth mismatch needs it) even though PNG is lean.
   const renderLoginViewLiquid = () => {
     const onGoogle = () => {
       if (!request) {
@@ -2899,358 +2980,126 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
           style={{ flex: 1 }}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
+          <NbPageHeader
+            title="Sign in"
+            subtitle="Welcome back"
+            onBack={() => setCurrentView('welcome')}
+          />
           <ScrollView
             contentContainerStyle={{
-              paddingTop: insets.top + 40,
               paddingBottom: insets.bottom + 32,
-              paddingHorizontal: 24,
-              alignItems: 'center',
-              maxWidth: 400,
+              paddingHorizontal: nb.screenGutter,
+              maxWidth: 440,
               alignSelf: 'center',
               width: '100%',
             }}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
-            {/* Back + wordmark + theme */}
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                width: '100%',
-                marginBottom: 24,
-              }}
-            >
-              <TouchableOpacity
-                onPress={() => setCurrentView('welcome')}
-                activeOpacity={0.8}
-                style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 18,
-                  borderWidth: 1,
-                  borderColor: isDarkLanding ? 'rgba(255,255,255,0.18)' : 'rgba(15,23,42,0.14)',
-                  backgroundColor: isDarkLanding ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.75)',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Ionicons name="chevron-back" size={20} color={landingTheme.heading} />
-              </TouchableOpacity>
-
-              <AppLogo width={108} />
-
-              <TouchableOpacity
-                onPress={toggleTheme}
-                activeOpacity={0.75}
-                style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 18,
-                  borderWidth: 1,
-                  borderColor: isDarkLanding ? 'rgba(255,255,255,0.18)' : 'rgba(15,23,42,0.14)',
-                  backgroundColor: landingTheme.toggleBg,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Ionicons
-                  name={isDarkLanding ? 'sunny-outline' : 'moon-outline'}
-                  size={18}
-                  color={landingTheme.toggleIcon}
-                />
-              </TouchableOpacity>
-            </View>
-
-            {/* Heading */}
             <Text
               style={{
-                fontSize: 30,
-                fontWeight: '800',
-                color: landingTheme.heading,
-                textAlign: 'center',
-                letterSpacing: -0.8,
-                marginBottom: 8,
+                fontSize: 28,
+                fontWeight: '900',
+                letterSpacing: -0.6,
+                color: landingTheme.ink,
+                marginBottom: spacing.md,
+                lineHeight: 34,
               }}
             >
-              Sign in
+              Pick up where you left off.
             </Text>
 
-            {/* Subtitle */}
+            <RoleToggle role={role} onRoleChange={setRole} theme={landingTheme} />
             <Text
               style={{
-                fontSize: 14,
-                color: landingTheme.subtitle,
-                textAlign: 'center',
-                marginBottom: 28,
+                fontSize: 13,
+                fontWeight: '600',
+                color: landingTheme.muted,
+                marginBottom: spacing.md,
+                lineHeight: 18,
               }}
             >
-              Enter your details or continue with Apple/Google.
+              Match the toggle to your account type before signing in.
             </Text>
 
-            {/* Role toggle */}
-            <RoleToggle role={role} onRoleChange={setRole} isDark={isDarkLanding} />
+            <AuthField
+              label="Email address"
+              value={loginEmail}
+              onChangeText={(text) => {
+                setLoginEmail(text);
+                if (loginErrors.email) setLoginErrors({ ...loginErrors, email: '' });
+              }}
+              placeholder="alex@example.com"
+              keyboardType="email-address"
+              theme={landingTheme}
+              accessibilityLabel="Sign in email"
+              errorText={loginErrors.email || null}
+              dashedError={!!loginErrors.email}
+            />
+            <AuthField
+              label="Password"
+              value={loginPassword}
+              onChangeText={(text) => {
+                setLoginPassword(text);
+                if (loginErrors.password) setLoginErrors({ ...loginErrors, password: '' });
+              }}
+              placeholder="••••••••"
+              secureTextEntry
+              showSecureToggle
+              secureVisible={showLoginPassword}
+              onToggleSecure={() => setShowLoginPassword((v) => !v)}
+              theme={landingTheme}
+              accessibilityLabel="Sign in password"
+              errorText={loginErrors.password || null}
+              dashedError={!!loginErrors.password}
+            />
 
-            {/* Fields */}
-            <View style={{ width: '100%' }}>
-              <FloatingInput
-                label="Email Address"
-                value={loginEmail}
-                onChangeText={(text) => {
-                  setLoginEmail(text);
-                  if (loginErrors.email) setLoginErrors({ ...loginErrors, email: '' });
-                }}
-                placeholder="name@example.com"
-                keyboardType="email-address"
-                isDark={isDarkLanding}
-                accessibilityLabel="Sign in email"
-              />
-              {loginErrors.email ? (
-                <Text
-                  style={{
-                    fontSize: 12,
-                    color: '#FCA5A5',
-                    marginTop: -6,
-                    marginBottom: 8,
-                  }}
-                >
-                  {loginErrors.email}
-                </Text>
-              ) : null}
-
-              <FloatingInput
-                label="Password"
-                value={loginPassword}
-                onChangeText={(text) => {
-                  setLoginPassword(text);
-                  if (loginErrors.password) setLoginErrors({ ...loginErrors, password: '' });
-                }}
-                placeholder="••••••••"
-                secureTextEntry
-                isDark={isDarkLanding}
-                accessibilityLabel="Sign in password"
-              />
-              {loginErrors.password ? (
-                <Text
-                  style={{
-                    fontSize: 12,
-                    color: '#FCA5A5',
-                    marginTop: -6,
-                    marginBottom: 8,
-                  }}
-                >
-                  {loginErrors.password}
-                </Text>
-              ) : null}
-            </View>
-
-            {/* Forgot password */}
             <TouchableOpacity
-              onPress={() => onForgotPasswordFlowPress?.()}
+              onPress={() => onForgotPasswordFlowPress?.(loginEmail)}
               activeOpacity={0.8}
               disabled={loginLoading}
-              style={{ alignSelf: 'flex-end', marginBottom: 16 }}
+              style={{ alignSelf: 'flex-end', marginBottom: spacing.md }}
             >
               <Text
                 style={{
-                  fontSize: 13,
-                  color: isDarkLanding ? '#A5B4FC' : '#7C3AED',
-                  fontWeight: '700',
+                  fontSize: 14,
+                  fontWeight: '900',
+                  color: landingTheme.ink,
+                  borderBottomWidth: 3,
+                  borderBottomColor: landingTheme.border,
+                  paddingBottom: 1,
                 }}
               >
                 Forgot password?
               </Text>
             </TouchableOpacity>
 
-            {/* Sign In CTA — gradient ring */}
-            <LinearGradient
-              colors={AUTH_CTA_GRADIENT}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={{
-                alignSelf: 'center',
-                width: '80%',
-                maxWidth: 400,
-                borderRadius: 16,
-                padding: 2,
-                marginTop: 16,
-                marginBottom: 24,
-                opacity: loginLoading ? 0.7 : 1,
-                ...(Platform.OS === 'ios'
-                  ? {
-                      shadowColor: '#C1265A',
-                      shadowOffset: { width: 0, height: 10 },
-                      shadowOpacity: 0.32,
-                      shadowRadius: 20,
-                    }
-                  : {}),
-              }}
+            <NbButton
+              variant="fill"
+              onPress={handleLogin}
+              disabled={loginLoading}
+              style={{ marginBottom: spacing.md }}
             >
-              <TouchableOpacity
-                onPress={handleLogin}
-                activeOpacity={0.88}
-                disabled={loginLoading}
-                accessibilityLabel="Submit sign in"
-                style={{
-                  borderRadius: 14,
-                  height: 52,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  backgroundColor: isDarkLanding ? 'rgba(10,10,15,0.94)' : 'rgba(255,255,255,0.97)',
-                }}
-              >
-                <Text
-                  style={{
-                    color: isDarkLanding ? '#FFFFFF' : '#0A0A0F',
-                    fontSize: 17,
-                    fontWeight: '800',
-                    letterSpacing: 0.2,
-                  }}
-                >
-                  Sign In
-                </Text>
-              </TouchableOpacity>
-            </LinearGradient>
+              {loginLoading ? 'Signing in…' : 'Sign in'}
+            </NbButton>
 
-            {/* OR divider */}
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                width: '100%',
-                marginBottom: 20,
-              }}
-            >
-              <View
-                style={{
-                  flex: 1,
-                  height: 1,
-                  backgroundColor: isDarkLanding ? 'rgba(255,255,255,0.1)' : 'rgba(15,23,42,0.12)',
-                }}
-              />
-              <Text
-                style={{
-                  fontSize: 12,
-                  fontWeight: '600',
-                  color: isDarkLanding ? 'rgba(255,255,255,0.38)' : 'rgba(15,23,42,0.4)',
-                  marginHorizontal: 12,
-                }}
-              >
-                OR
-              </Text>
-              <View
-                style={{
-                  flex: 1,
-                  height: 1,
-                  backgroundColor: isDarkLanding ? 'rgba(255,255,255,0.1)' : 'rgba(15,23,42,0.12)',
-                }}
-              />
-            </View>
+            <AuthOrDivider label="OR CONTINUE WITH" theme={landingTheme} />
+            <SocialAuthRow
+              onApple={onApple}
+              onGoogle={onGoogle}
+              appleLogoSource={appleLogo}
+              googleIconSource={googleIcon}
+              disabled={loginLoading || isLoadingGoogle}
+              appleBusy={isLoadingApple}
+              theme={landingTheme}
+            />
 
-            {/* Social auth: Apple is iOS-only; Google shows on both. */}
-            <View
-              style={{
-                flexDirection: 'row',
-                gap: 12,
-                width: '100%',
-                marginBottom: 32,
-              }}
-            >
-              {Platform.OS === 'ios' ? (
-                <TouchableOpacity
-                  onPress={onApple}
-                  activeOpacity={0.8}
-                  disabled={loginLoading || isLoadingApple}
-                  style={{
-                    flex: 1,
-                    height: 52,
-                    borderRadius: 12,
-                    borderWidth: 1,
-                    backgroundColor: isDarkLanding ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.86)',
-                    borderColor: isDarkLanding ? 'rgba(255,255,255,0.12)' : 'rgba(15,23,42,0.14)',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexDirection: 'row',
-                    gap: 8,
-                    opacity: loginLoading || isLoadingApple ? 0.6 : 1,
-                  }}
-                >
-                  <Image
-                    source={appleLogo}
-                    style={{
-                      width: 20,
-                      height: 20,
-                      resizeMode: 'contain',
-                      tintColor: isDarkLanding ? '#FFFFFF' : '#0F172A',
-                    }}
-                  />
-                  <Text
-                    style={{
-                      fontSize: 14,
-                      fontWeight: '600',
-                      color: isDarkLanding ? '#FFFFFF' : '#0F172A',
-                    }}
-                  >
-                    Apple
-                  </Text>
-                </TouchableOpacity>
-              ) : null}
-
-              <TouchableOpacity
-                onPress={onGoogle}
-                activeOpacity={0.8}
-                style={{
-                  flex: 1,
-                  height: 52,
-                  borderRadius: 12,
-                  borderWidth: 1,
-                  backgroundColor: isDarkLanding ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.86)',
-                  borderColor: isDarkLanding ? 'rgba(255,255,255,0.12)' : 'rgba(15,23,42,0.14)',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexDirection: 'row',
-                  gap: 8,
-                }}
-              >
-                <Image
-                  source={googleIcon}
-                  style={{ width: 20, height: 20, resizeMode: 'contain' }}
-                />
-                <Text
-                  style={{
-                    fontSize: 14,
-                    fontWeight: '600',
-                    color: isDarkLanding ? '#FFFFFF' : '#0F172A',
-                  }}
-                >
-                  Google
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Sign Up link */}
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Text
-                style={{
-                  fontSize: 14,
-                  color: isDarkLanding ? 'rgba(255,255,255,0.5)' : 'rgba(15,23,42,0.55)',
-                }}
-              >
-                Don’t have an account?{' '}
-              </Text>
-              <TouchableOpacity onPress={() => setCurrentView('signup')} activeOpacity={0.7}>
-                <Text
-                  style={{
-                    fontSize: 14,
-                    fontWeight: '800',
-                    color: isDarkLanding ? '#C084FC' : '#C1265A',
-                  }}
-                >
-                  Sign Up
-                </Text>
-              </TouchableOpacity>
-            </View>
+            <AuthTextLink
+              prefix="New here? "
+              actionLabel="Create an account"
+              onPress={() => setCurrentView('signup')}
+              theme={landingTheme}
+            />
           </ScrollView>
         </KeyboardAvoidingView>
       </View>
@@ -3316,7 +3165,7 @@ const welcomeStyles = StyleSheet.create({
   primaryButton: {
     borderRadius: 16,
     overflow: 'hidden',
-    shadowColor: '#5856D6',
+    shadowColor: lightColors.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
@@ -3331,7 +3180,7 @@ const welcomeStyles = StyleSheet.create({
   primaryButtonText: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: lightColors.white,
   },
   ghostButton: {
     paddingVertical: 18,
@@ -3421,7 +3270,7 @@ const roleStyles = StyleSheet.create({
   cardTitle: {
     fontSize: 28,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: lightColors.white,
     marginBottom: 8,
   },
   cardSubtitle: {
@@ -3599,7 +3448,7 @@ const stylesWelcomeLiquid = StyleSheet.create({
     letterSpacing: 4,
     color: 'rgba(255,255,255,0.87)',
     lineHeight: 56,
-    textShadowColor: '#FF6B9D',
+    textShadowColor: lightColors.primary,
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 20,
   },
@@ -3609,7 +3458,7 @@ const stylesWelcomeLiquid = StyleSheet.create({
     letterSpacing: 4,
     color: 'rgba(0,0,0,0.87)',
     lineHeight: 56,
-    textShadowColor: '#FF6B9D',
+    textShadowColor: lightColors.primary,
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 20,
   },

@@ -7,13 +7,14 @@ import { Platform, StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import ColorText from '../../look-and-feel/ColorText';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
+import { lightColors } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
 const SECTION_TITLE_FONT = 'SpaceGrotesk_600SemiBold';
 
 // Manipulate here: brighter pink → orange, matching the workout tab header.
-const SECTION_HEADER_GRADIENT = ['#FF6B9D', '#FB923C'];
+const SECTION_HEADER_GRADIENT = [lightColors.primary, lightColors.accent];
 
 const DARK_UNDERLINE_COLORS = [
   'transparent',

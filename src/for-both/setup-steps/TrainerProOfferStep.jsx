@@ -24,6 +24,10 @@ import {
   TRAINER_PRO_MONTHLY_PRODUCT_ID,
 } from '../../trainer-pro-plan/proPlanSwitches';
 import ProLegalFooter from '../../trainer-pro-plan/ProLegalFooter';
+import { lightColors, nb, borderRadius } from '../../look-and-feel/colorPalette';
+import NbButton from '../../look-and-feel/NbButton';
+import NbCard from '../../look-and-feel/NbCard';
+import HardShadow from '../../look-and-feel/HardShadow';
 
 // ===== NAMED CONSTANTS =====
 
@@ -183,7 +187,7 @@ function FeatureList({ uiTokens, isDark }) {
 function PlanTab({ tier, active, uiTokens, onPress }) {
   const inner = (
     <View style={styles.planTabInner}>
-      <Text style={[styles.planTabText, { color: active ? '#FFFFFF' : uiTokens.textSecondary }]}>
+      <Text style={[styles.planTabText, { color: active ? lightColors.white : uiTokens.textSecondary }]}>
         {tier.tabLabel}
       </Text>
       {tier.badge ? (
@@ -296,10 +300,101 @@ function footerBackgroundColor(isDark) {
  * Trainer onboarding step 8 — FitFlow-style Pro paywall (scroll content).
  * The CTA lives in TrainerSubscriptionCtaFooter, rendered sticky by the wizard.
  */
+const DESIGN_LAW_PRO_FEATURES = [
+  { title: 'Take unlimited clients', sub: 'Free plans cap how many you can accept' },
+  { title: 'Documents and spreadsheets', sub: 'Intake forms, meal guides, programs' },
+  { title: 'Weekly reports', sub: 'Every client, built from their logs' },
+];
+
+function DesignLawProOffer({ isDark, selectedTier, onSkip, onStartTrial, trialLoading }) {
+  const uiTokens = getOnboardingUiTokens(isDark);
+  const price = selectedTier?.priceLabel || '$19 / month';
+  const trial = selectedTier?.trialLabel || TRAINER_SUBSCRIPTION_TRIAL_LABEL;
+
+  return (
+    <View style={{ gap: 14, paddingBottom: 8 }}>
+      <HardShadow>
+        <View
+          style={{
+            borderWidth: nb.borderWidth,
+            borderColor: uiTokens.cardBorder,
+            borderRadius: borderRadius.nbHero,
+            backgroundColor: uiTokens.textPrimary,
+            padding: 16,
+            gap: 4,
+          }}
+        >
+          <Text style={{ fontSize: 12, fontWeight: '900', color: uiTokens.textSecondary, letterSpacing: 1.1 }}>
+            TRAINER PLATFORM SUBSCRIPTION
+          </Text>
+          <Text style={{ fontSize: 40, fontWeight: '900', color: uiTokens.cardBg }}>{price}</Text>
+          <Text style={{ fontSize: 14, fontWeight: '600', color: uiTokens.cardBg, opacity: 0.9 }}>
+            {`${trial}. Cancel any time.`}
+          </Text>
+        </View>
+      </HardShadow>
+
+      <HardShadow>
+        <NbCard style={{ paddingVertical: 0 }}>
+          {DESIGN_LAW_PRO_FEATURES.map((row, idx) => (
+            <View
+              key={row.title}
+              style={{
+                flexDirection: 'row',
+                gap: 12,
+                paddingVertical: 14,
+                borderTopWidth: idx > 0 ? nb.borderWidth : 0,
+                borderTopColor: uiTokens.cardBorder,
+              }}
+            >
+              <View
+                style={{
+                  width: 24,
+                  height: 24,
+                  borderRadius: 6,
+                  borderWidth: nb.borderWidth,
+                  borderColor: uiTokens.cardBorder,
+                  backgroundColor: uiTokens.textPrimary,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Ionicons name="checkmark" size={14} color={uiTokens.cardBg} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 15, fontWeight: '800', color: uiTokens.textPrimary }}>{row.title}</Text>
+                <Text style={{ fontSize: 12, fontWeight: '600', color: uiTokens.textSecondary, marginTop: 2 }}>
+                  {row.sub}
+                </Text>
+              </View>
+            </View>
+          ))}
+        </NbCard>
+      </HardShadow>
+
+      <Text style={{ fontSize: 12, fontWeight: '600', color: uiTokens.textSecondary, lineHeight: 17 }}>
+        The subscription renews automatically unless it is canceled at least 24 hours before the period ends.
+        Manage it in your store account settings.
+      </Text>
+
+      <View style={{ flexDirection: 'row', gap: 10 }}>
+        <NbButton variant="plain" onPress={onSkip} style={{ flex: 1 }}>
+          Skip
+        </NbButton>
+        <NbButton variant="fill" onPress={onStartTrial} disabled={trialLoading} style={{ flex: 1 }}>
+          {trialLoading ? 'Starting…' : 'Start free trial'}
+        </NbButton>
+      </View>
+    </View>
+  );
+}
+
 export function TrainerProOfferStep({
   isDark,
   selectedPlanId,
   onSelectPlan,
+  designLaw = false,
+  onSkip,
 }) {
   const uiTokens = getOnboardingUiTokens(isDark);
   const [internalPlanId, setInternalPlanId] = useState(null);
@@ -307,10 +402,32 @@ export function TrainerProOfferStep({
   const selectPlan = onSelectPlan ?? setInternalPlanId;
 
   const { subscription, availableTiers, selectedTier } = useTrainerPaywallPlans(planId);
-  const { accessState, lastError, connected } = subscription;
+  const { accessState, lastError, connected, startFreeTrial, actionLoading } = subscription;
 
   const live = TRAINER_PLATFORM_SUBSCRIPTION_ENABLED;
   const subscribed = live && accessState?.hasFullAccess === true;
+
+  if (designLaw) {
+    return (
+      <DesignLawProOffer
+        isDark={isDark}
+        selectedTier={selectedTier}
+        onSkip={onSkip}
+        trialLoading={actionLoading}
+        onStartTrial={async () => {
+          if (!live) {
+            onSkip?.();
+            return;
+          }
+          try {
+            await startFreeTrial(selectedTier?.productId);
+          } catch (_) {
+            /* footer alert elsewhere */
+          }
+        }}
+      />
+    );
+  }
 
   return (
     <View style={styles.root}>
@@ -671,7 +788,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   planTabBadgeTextActive: {
-    color: '#FFFFFF',
+    color: lightColors.white,
   },
   priceCard: {
     borderRadius: 24,
@@ -792,7 +909,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   ctaButtonText: {
-    color: '#FFFFFF',
+    color: lightColors.white,
     fontSize: 16,
     fontWeight: '700',
   },

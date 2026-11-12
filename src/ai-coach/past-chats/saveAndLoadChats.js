@@ -251,6 +251,11 @@ function serializeMessage(msg) {
     webProvider: msg.webProvider || undefined,
     route: msg.route || undefined,
     webSources: webSources ? webSources.map((source) => serializeOneWebSource(source)) : undefined,
+    // ASK NEXT chips — without this, reopening a chat drops follow-ups.
+    followUpPrompts:
+      Array.isArray(msg.followUpPrompts) && msg.followUpPrompts.length
+        ? msg.followUpPrompts.map((prompt) => String(prompt || '').trim()).filter(Boolean)
+        : undefined,
     time: msg.time || undefined,
   });
 }
@@ -280,6 +285,9 @@ function restoredMessageFromSaved(savedMessage, index) {
     webProvider: savedMessage.webProvider || null,
     route: savedMessage.route || null,
     webSources: Array.isArray(savedMessage.webSources) ? savedMessage.webSources : [],
+    followUpPrompts: Array.isArray(savedMessage.followUpPrompts)
+      ? savedMessage.followUpPrompts.map((prompt) => String(prompt || '').trim()).filter(Boolean)
+      : undefined,
   };
 }
 

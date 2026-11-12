@@ -1,9 +1,13 @@
-// Filter chips, colors, and the rules that turn a Firestore trainer into a marketplace card.
+// Filter chips, Design Law tokens, and the rules that turn a Firestore trainer into a marketplace card.
 // Flow: normalize each trainer doc into one card shape → drop cards that miss the
 //       active filters → sort by price or by who joined most recently.
 // Used by the find-a-trainer screens, the trainer card, and the filter popup.
+//
+// vocab: Design Law = black/white/gray neo-brutalist system (3px outlines, HardShadow, fill selected)
 
 // ===== NAMED CONSTANTS =====
+
+import { lightColors } from '../../look-and-feel/colorPalette';
 
 export const SORT_OPTIONS = ['Newest', 'Price: Low', 'Price: High'];
 export const FILTER_SPECIALTIES = [
@@ -12,6 +16,7 @@ export const FILTER_SPECIALTIES = [
 ];
 export const EXPERIENCE_OPTIONS = ['Any', '1-2 years', '3-5 years', '5-8 years', '8+ years'];
 export const SESSION_TYPES = ['Remote', 'In-person', 'Both'];
+export const AVAILABILITY_OPTIONS = ['Available', 'Waitlist'];
 export const QUICK_SPECIALTIES = ['All', 'Strength', 'Weight Loss', 'Bodybuilding', 'HIIT', 'Mobility', 'Nutrition'];
 
 export const PRICE_FLOOR = 100;
@@ -37,24 +42,28 @@ const WAITLIST_AVAILABILITY = 'Waitlist';
 // Midpoint years for the stored "6_10" experience band (used only when parseInt cannot read a leading digit).
 const YEARS_FOR_SIX_TO_TEN_RANGE = 7;
 
+// Default filter sheet values. Keys must stay stable — Browse / FilterPopup / Firestore path rely on them.
 export const DEFAULT_FILTERS = {
   sort: 'Newest',
   specialties: [],
   experience: 'Any',
   availableOnly: false,
+  verifiedOnly: false,
+  availability: null,
   priceMin: '',
   priceMax: '',
   sessionType: 'Both',
 };
 
+// Accent stops for avatar / Available pill / specialty pills only — never card fills or borders.
 export const BRAND = {
-  pink: '#F06BA8',
-  purple: '#C084FC',
-  cyan: '#38BDF8',
+  pink: '#FF6B9D',
+  purple: '#A78BFA',
+  cyan: '#60A5FA',
   orange: '#FB923C',
 };
 
-/** Web --font-display / --font-sans (load in App.js via @expo-google-fonts) */
+/** System-font roles used across marketplace chrome (no Inter/SpaceGrotesk requirement in Design Law). */
 export const MP_FONT = {
   displayBold: 'SpaceGrotesk_700Bold',
   displaySemi: 'SpaceGrotesk_600SemiBold',
@@ -64,51 +73,53 @@ export const MP_FONT = {
   bodyBold: 'Inter_700Bold',
 };
 
-/** Web .glass-card / --glass-bg — baked color-mix equivalents */
-export const GLASS = {
+/** Legacy aurora tints (unused by Design Law screens). Prefer HardShadow + nb tokens. */
+export const AURORA_GLOWS = {
   dark: {
-    surface: 'rgba(255, 255, 255, 0.04)',
-    border: 'rgba(255, 255, 255, 0.08)',
-    blur: 48,
-    saturate: 1.4,
+    pink: 'rgba(255, 107, 157, 0.18)',
+    purple: 'rgba(167, 139, 250, 0.14)',
+    cyan: 'rgba(96, 165, 250, 0.12)',
   },
   light: {
-    surface: 'rgba(255, 255, 255, 0.65)',
-    border: 'rgba(20, 20, 40, 0.08)',
-    blur: 32,
-    saturate: 1.4,
+    pink: 'rgba(255, 107, 157, 0.12)',
+    purple: 'rgba(167, 139, 250, 0.1)',
+    cyan: 'rgba(96, 165, 250, 0.1)',
   },
 };
 
+/**
+ * Design Law screen tokens for marketplace (match DESIGN-SYSTEM.md).
+ * Prefer `useTheme().colors.nb*` in JSX; this object remains for older callers.
+ */
 export const THEMES = {
   light: {
-    background: '#FAFAFC',
-    foreground: '#18181F',
+    background: '#F2F2F0',
+    foreground: '#0A0A0A',
     card: '#FFFFFF',
-    muted: '#F0F0F5',
-    mutedForeground: '#6B6B7B',
-    border: '#E2E2EA',
-    glass: 'rgba(255,255,255,0.92)',
-    heroGradient: ['#F8F4FF', '#FFFFFF', '#FFFFFF'],
-    screenGradient: ['#FAFAFC', '#F5F5F8', '#FAFAFC'],
+    muted: '#E3E3DF',
+    mutedForeground: '#575757',
+    border: '#0A0A0A',
+    glass: '#FFFFFF',
+    heroGradient: ['#F2F2F0', '#FFFFFF', '#FFFFFF'],
+    screenGradient: ['#F2F2F0', '#F2F2F0', '#F2F2F0'],
   },
   dark: {
-    background: '#050508',
-    foreground: '#F5F5F7',
-    card: '#14141C',
-    muted: '#1C1C26',
-    mutedForeground: '#9B9BAA',
-    border: 'rgba(255,255,255,0.1)',
-    glass: 'rgba(20,20,28,0.88)',
-    heroGradient: ['#2A1848', '#1A1028', '#14141C'],
-    screenGradient: ['#1A0F2E', '#0C0814', '#050508'],
-    accentLine: ['#F06BA8', '#FB923C'],
+    background: '#0B0B0B',
+    foreground: '#F2F2F2',
+    card: '#161616',
+    muted: '#262626',
+    mutedForeground: '#A6A6A6',
+    border: '#F2F2F2',
+    glass: '#161616',
+    heroGradient: ['#0B0B0B', '#161616', '#161616'],
+    screenGradient: ['#0B0B0B', '#0B0B0B', '#0B0B0B'],
+    accentLine: ['#FF6B9D', '#FB923C'],
   },
 };
 
 const GRAD_KEYS = ['pink', 'orange', 'purple', 'cyan'];
 
-/** 135° avatar / accent gradients — match elevate-connect trainer-card.tsx */
+/** 135° avatar / accent gradients — rotate per card (stride of neighbors). */
 export const GRAD_GRADIENTS = {
   pink: [BRAND.pink, BRAND.orange],
   purple: [BRAND.purple, BRAND.pink],
@@ -116,22 +127,7 @@ export const GRAD_GRADIENTS = {
   orange: [BRAND.orange, BRAND.pink],
 };
 
-/** Aurora blob tints (styles.css .hero-aurora / :root .hero-glow-*) */
-export const AURORA_GLOWS = {
-  dark: {
-    pink: 'rgba(255, 107, 157, 0.28)',
-    purple: 'rgba(192, 132, 252, 0.28)',
-    cyan: 'rgba(6, 182, 212, 0.22)',
-  },
-  light: {
-    pink: 'rgba(255, 107, 157, 0.18)',
-    purple: 'rgba(192, 132, 252, 0.18)',
-    cyan: 'rgba(6, 182, 212, 0.14)',
-  },
-};
-
 // Stored experience ranges, and the year count the filter bands compare against.
-// A string that starts with a digit never reaches this map — parseInt wins first.
 const EXPERIENCE_YEAR_VALUES = {
   less_than_1: 0,
   '1_2': 2,
@@ -156,7 +152,6 @@ function finitePrice(rawPrice) {
 
 /**
  * Years of experience from a number, a leading digit, or a stored range label.
- * "8+" returns 8, because parseInt stops at the plus before the later "8+" rule runs.
  * @param {*} rawExperience
  * @returns {number}
  */
@@ -347,7 +342,12 @@ function doesTrainerMatchFilters(trainer, filters, searchText, quickSpecialty, m
   ) {
     return false;
   }
+  // availableOnly = "Hide waitlists" toggle from the filter sheet
   if (filters.availableOnly && !trainer.available) return false;
+  // availability chip = Available or Waitlist exclusive pick
+  if (filters.availability === 'Available' && !trainer.available) return false;
+  if (filters.availability === WAITLIST_AVAILABILITY && trainer.available) return false;
+  if (filters.verifiedOnly && trainer.verified !== true) return false;
   const price = getTrainerPrice(trainer) ?? trainer.price ?? 0;
   if (minPrice !== null && !Number.isNaN(minPrice) && price < minPrice) return false;
   if (maxPrice !== null && !Number.isNaN(maxPrice) && price > maxPrice) return false;
@@ -386,26 +386,6 @@ function sortTrainers(trainers, sortOption) {
 // ===== MAIN FUNCTION =====
 
 /**
- * Glass surface for the current theme.
- * @param {boolean} isDark
- * @returns {object}
- */
-export function getGlass(isDark) {
-  return isDark ? GLASS.dark : GLASS.light;
-}
-
-/**
- * Specialty pill wash — web trainer-card color-mix on brand-{grad} + purple.
- * The "2E" and "24" are hex alpha glued onto the color, not separate opacity props.
- * @param {string} grad
- * @returns {string[]}
- */
-export function specPillGradient(grad) {
-  const gradient = gradGradient(grad);
-  return [`${gradient[0]}2E`, `${BRAND.purple}24`];
-}
-
-/**
  * @param {boolean} isDark
  * @returns {object}
  */
@@ -425,7 +405,6 @@ export function trainerFirstName(name) {
 
 /**
  * Human-readable label for stored enum/snake_case values (weight_loss → Weight Loss).
- * A value that is not snake_case is returned unchanged.
  * @param {string} value
  * @returns {string}
  */
@@ -440,6 +419,18 @@ export function formatMarketplaceLabel(value) {
       .join(' ');
   }
   return labelText;
+}
+
+/**
+ * Profile "Format" copy. Hybrid becomes the Design Law phrase from the PNG.
+ * @param {string} mode
+ * @returns {string}
+ */
+export function formatSessionLabel(mode) {
+  if (mode === MODE_HYBRID || mode === SESSION_BOTH) return 'Remote and in person';
+  if (mode === SESSION_IN_PERSON) return 'In person';
+  if (mode === SESSION_REMOTE) return 'Remote';
+  return formatMarketplaceLabel(mode) || 'Remote';
 }
 
 /**
@@ -459,7 +450,18 @@ export function gradGradient(grad) {
 }
 
 /**
+ * Specialty pill wash — kept for callers that still paint soft specialty chips.
+ * @param {string} grad
+ * @returns {string[]}
+ */
+export function specPillGradient(grad) {
+  const gradient = gradGradient(grad);
+  return [gradient[0], gradient[1]];
+}
+
+/**
  * Monthly price from price, then pricing.perMonth, then rate. Null when none of those are numbers.
+ * Firebase field keys stay as-is — do not rename for branding.
  * @param {object} trainer
  * @returns {number|null}
  */
@@ -471,6 +473,25 @@ export function getTrainerPrice(trainer) {
   const monthlyPrice = trainer.pricing?.perMonth ?? trainer.rate;
   if (monthlyPrice != null && monthlyPrice !== '') return finitePrice(monthlyPrice);
   return null;
+}
+
+/**
+ * How many non-default filter knobs are active — drives the "Filter · 2" pill.
+ * @param {object} filters
+ * @returns {number}
+ */
+export function countActiveFilters(filters) {
+  if (!filters) return 0;
+  let count = 0;
+  if (Array.isArray(filters.specialties) && filters.specialties.length > 0) count += 1;
+  if (filters.experience && filters.experience !== 'Any') count += 1;
+  if (filters.sessionType && filters.sessionType !== SESSION_BOTH) count += 1;
+  if (filters.availableOnly) count += 1;
+  if (filters.verifiedOnly) count += 1;
+  if (filters.availability) count += 1;
+  if (String(filters.priceMin || '').trim()) count += 1;
+  if (String(filters.priceMax || '').trim()) count += 1;
+  return count;
 }
 
 /**
@@ -491,6 +512,14 @@ export function normalizeTrainer(raw, index = 0) {
   // Face / manual verification badge — only when explicitly verified.
   const isVerified = raw.isVerified === true || raw.verified === true;
   const trialDays = raw.trialDays ?? raw.trialPeriodDays ?? DEFAULT_TRIAL_DAYS;
+  const rawBio = String(
+    raw.bio ||
+      raw.trainerProfileBio ||
+      raw.about ||
+      raw.description ||
+      raw.trainingPhilosophy ||
+      '',
+  ).trim();
 
   return {
     id: raw.id,
@@ -504,7 +533,9 @@ export function normalizeTrainer(raw, index = 0) {
       : [DEFAULT_SPECIALTY],
     price: price ?? 0,
     years,
-    bio: trainerBio(raw),
+    bio: rawBio || DEFAULT_BIO,
+    // hasCustomBio: false when we fell back to the default — profile paints the dashed empty state.
+    hasCustomBio: Boolean(rawBio),
     verified: isVerified,
     available,
     responds: raw.responds || raw.responseTime || DEFAULT_RESPONSE_TIME,
@@ -512,6 +543,8 @@ export function normalizeTrainer(raw, index = 0) {
     grad: raw.grad || grad,
     trialDays,
     photoURL: raw.photoURL || raw.photoUrl || null,
+    rating: raw.averageRating ?? raw.rating ?? null,
+    reviewCount: raw.reviewCount ?? 0,
   };
 }
 
@@ -524,8 +557,9 @@ export function normalizeTrainer(raw, index = 0) {
  */
 export function filterTrainers(trainers, filters, { query = '', quickSpecialty = 'All' } = {}) {
   // 1. Turn the typed min/max into numbers. Blank stays null so that filter is skipped.
-  const minPrice = filters.priceMin.trim() ? Number(filters.priceMin) : null;
-  const maxPrice = filters.priceMax.trim() ? Number(filters.priceMax) : null;
+  // Blank / missing price fields skip that bound (draft + DEFAULT_FILTERS always use '').
+  const minPrice = String(filters.priceMin || '').trim() ? Number(filters.priceMin) : null;
+  const maxPrice = String(filters.priceMax || '').trim() ? Number(filters.priceMax) : null;
   const searchText = query.trim().toLowerCase();
 
   // 2. Drop any card that misses search, the quick chip, or the filter sheet (AND).

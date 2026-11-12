@@ -14,7 +14,6 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { SHELL_SAFE_AREA_EDGES, ShellBottomNavAnchor } from '../../navigation/bottomMenuSpacing';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import TopHeader from '../../for-both/loading-and-header/TopHeader';
 import BottomMenuBar from '../../navigation/BottomMenuBar';
 import MyWorkoutPlanScreen from '../../client-app/workout-plans/MyWorkoutPlanScreen';
 import PlanPdfViewer from './PlanPdfViewer';
@@ -71,6 +70,29 @@ function heroTitleFromPlan(structuredRaw, structured, generatedPlan) {
     trimmedText(structuredRaw?.planTitle ?? structured?.planTitle ?? generatedPlan?.planTitle) ||
     DEFAULT_HERO_TITLE
   );
+}
+
+/** Notes-tab fields from structured / legacy markdown keys — do not invent Firebase schema. */
+function notesFieldsFromPlan(structuredRaw, structured) {
+  return {
+    timeline:
+      trimmedText(structuredRaw?.timeline) ||
+      trimmedText(structuredRaw?.expectedTimeline) ||
+      trimmedText(structured?.timeline) ||
+      '',
+    importantNotes:
+      trimmedText(structuredRaw?.importantNotes) ||
+      trimmedText(structuredRaw?.notes) ||
+      trimmedText(structuredRaw?.generalNotes) ||
+      trimmedText(structured?.notes) ||
+      '',
+    nutritionGuidance:
+      trimmedText(structuredRaw?.nutritionGuidance) ||
+      trimmedText(structuredRaw?.nutrition) ||
+      trimmedText(structuredRaw?.nutritionNotes) ||
+      trimmedText(structured?.nutrition) ||
+      '',
+  };
 }
 
 function normalizedPlanRows(items) {
@@ -229,11 +251,11 @@ function SaveToLibraryButton({
           style={{ paddingVertical: 14, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, borderRadius: 16 }}
         >
           {savingToCollection ? (
-            <ActivityIndicator size="small" color="#FFFFFF" />
+            <ActivityIndicator size="small" color={lightColors.white} />
           ) : (
-            <Ionicons name={iconName} size={18} color="#FFFFFF" />
+            <Ionicons name={iconName} size={18} color={lightColors.white} />
           )}
-          <Text style={{ color: '#FFFFFF', fontSize: 15, fontFamily: 'SpaceGrotesk_700Bold' }}>{label}</Text>
+          <Text style={{ color: lightColors.white, fontSize: 15, fontFamily: 'SpaceGrotesk_700Bold' }}>{label}</Text>
         </LinearGradient>
       </TouchableOpacity>
     </View>
@@ -274,6 +296,7 @@ export default function WorkoutPlanView({
   onNavigate,
   onProfilePress,
   onSettingsPress,
+  onStartSession,
   setShowFullPlan,
   planSubViewBackRef,
   planSubViewActiveRef,
@@ -300,6 +323,7 @@ export default function WorkoutPlanView({
   const planViewerWeeks = weeksRemainingFromPlan(structuredRaw, structured);
   const planViewerFocus = focusFromPlan(structuredRaw, structured);
   const planHeroTitle = heroTitleFromPlan(structuredRaw, structured, generatedPlan);
+  const notesFields = notesFieldsFromPlan(structuredRaw, structured);
 
   const routeWorkoutPlan = route?.params?.workoutPlan;
   const hasRouteWorkoutPlanParam = !!(route?.params && Object.prototype.hasOwnProperty.call(route.params, 'workoutPlan'));
@@ -349,15 +373,17 @@ export default function WorkoutPlanView({
     <View style={{ flex: 1, backgroundColor: palette.background }}>
       <View style={{ flex: 1 }}>
         <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
-        <TopHeader
-          title="Weekly Plan"
-          skipTopSafeInset
-          onBack={() => handlePlanHeaderBack({ planSubViewBackRef, readOnly, onBack, setShowFullPlan })}
-          onProfilePress={onProfilePress}
-          onSettingsPress={onSettingsPress}
-          showHeaderActions
-        />
+        {/* Design Law header lives inside MyWorkoutPlanScreen — no TopHeader chrome */}
         <MyWorkoutPlanScreen
+          onBack={() => handlePlanHeaderBack({ planSubViewBackRef, readOnly, onBack, setShowFullPlan })}
+          onStartSession={(day) => {
+            if (typeof onStartSession !== 'function' || !day || day.rest) return;
+            const focusBits = String(day.focus || '').split(/\s*·\s*/).filter(Boolean);
+            onStartSession({
+              workoutName: focusBits[0] || String(day.day || day.short || 'Workout').trim() || 'Workout',
+              exercises: Array.isArray(day.exercises) ? day.exercises : [],
+            });
+          }}
           route={{
             params: {
               workoutPlan: workoutPlanRows,
@@ -366,6 +392,10 @@ export default function WorkoutPlanView({
               weeksRemaining: planViewerWeeks,
               focusSummary: planViewerFocus,
               planHeroTitle: planHeroTitle,
+              timeline: notesFields.timeline,
+              importantNotes: notesFields.importantNotes,
+              nutritionGuidance: notesFields.nutritionGuidance,
+              onViewPdf: () => setShowPdfViewer?.(true),
               subViewBackRef: planSubViewBackRef,
               onSubViewActiveChange: (active) => {
                 planSubViewActiveRef.current = !!active;

@@ -163,6 +163,7 @@ import {
   notesCollectionRef,
   trainerClientDocRef,
 } from '../trainer-app/trainee-records/traineeDatabaseLocations';
+import { lightColors } from '../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
@@ -190,7 +191,7 @@ const PERMISSION_DENIED_CODE = "permission-denied";
 // Screens/hooks may import these through clientCRMService.js, which just re-exports these bindings.
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// Converts '#FF6B9D' into '255, 107, 157' so it can be dropped into an `rgba(…, 0.2)` string —
+// Converts lightColors.primary into '255, 107, 157' so it can be dropped into an `rgba(…, 0.2)` string —
 // React Native has no color-with-opacity helper, so the channels must be split out by hand.
 // vocab: parseInt(x, 16) = read the two hex characters as a base-16 number.
 // Manipulate here: '255, 107, 157' is the brand pink used as the fallback whenever the input isn't

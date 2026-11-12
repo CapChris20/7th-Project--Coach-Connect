@@ -6,6 +6,7 @@ import React from 'react';
 import { StyleSheet, View, StatusBar } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import LoadingBarAnimation from './LoadingBarAnimation';
+import { lightColors } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
@@ -66,7 +67,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#0A0A0A',
   },
   light: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: lightColors.white,
   },
   content: {
     alignItems: 'center',

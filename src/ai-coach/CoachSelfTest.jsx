@@ -18,15 +18,17 @@ import { sendToAI } from '../ai-coach/conversation/sendMessageToCoach';
 import { shouldRouteToPerplexity } from './internet-lookup/internetLookupRules';
 import { TOOL_NAME_ALIASES } from '../ai-coach/coach-actions/carryOutAction';
 import TopHeader from '../for-both/loading-and-header/TopHeader';
+import { lightColors, darkColors } from '../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
+// Strip pass: solid nb chrome — no soft-white glass hairlines / indigo pink.
 const COLORS = {
-  bg: '#0A0A0F',
-  cardBg: '#141419',
-  textPrimary: '#FFFFFF',
-  textSecondary: 'rgba(255,255,255,0.65)',
-  pink: '#FF6B9D',
+  bg: lightColors.nbInk,
+  cardBg: darkColors.nbSurface,
+  textPrimary: lightColors.white,
+  textSecondary: darkColors.nbMuted,
+  pink: '#E25588',
   orange: '#F97316',
   green: '#10B981',
   red: '#FF6B6B',
@@ -601,7 +603,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.1)',
+    borderBottomColor: darkColors.nbBorder,
   },
   title: {
     fontSize: 20,
@@ -642,7 +644,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     gap: 8,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.1)',
+    borderBottomColor: darkColors.nbBorder,
   },
   tab: {
     paddingHorizontal: 12,
@@ -761,7 +763,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.08)',
+    borderTopColor: darkColors.nbBorder,
   },
   runButton: {
     flexDirection: 'row',

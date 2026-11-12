@@ -1,8 +1,8 @@
-// Overlay that asks the user to confirm an AI-coach tool before it runs (neobrutalist design).
-// Flow: normalize the tool call → pick the matching confirm popup → show in NbSheet over the chat.
-// Used by: AI conversation screen. Unknown tools fall back to a generic ConfirmCancelRow.
+// Design Law confirm overlay — NbSheet + tool-specific popup body (no duplicate sheet title).
+// Flow: normalize tool call → dedicated popup (or generic) → Not now / confirm runs the tool.
+// Used by: CoachConversationScreen. Visual law: screens/ai-coach-popups/*.png
 //
-// vocab: NbSheet = neobrutalist bottom sheet with thick border and rounded top
+// vocab: NbSheet = neobrutalist bottom sheet; title omitted so each popup owns badge + headline
 
 import React from 'react';
 import NbSheet from '../../look-and-feel/NbSheet';
@@ -47,7 +47,7 @@ const TOOL_POPUP_BY_NAME = {
   deleteLog: ConfirmDeletePopup,
 };
 
-// ===== HELPER FUNCTIONS =====
+// ===== HELPERS =====
 
 function titleForGenericTool(toolName) {
   const displayName = TOOL_DISPLAY_NAMES[toolName];
@@ -61,13 +61,6 @@ function accessibilityToolTitle(toolName) {
   return toolName;
 }
 
-
-/**
- * Unknown tool names get a generic title + confirm/cancel row instead of a dedicated sheet.
- * @param {string} toolName
- * @param {object} sharedProps
- * @returns {JSX.Element}
- */
 function genericConfirmBody(toolName, sharedProps) {
   const titleText = titleForGenericTool(toolName);
 
@@ -76,7 +69,11 @@ function genericConfirmBody(toolName, sharedProps) {
   }
 
   return (
-    <ToolModalBody title={titleText} reasoning={sharedProps.reasoning}>
+    <ToolModalBody
+      badge={`Coach wants to ${String(accessibilityToolTitle(toolName)).toLowerCase()}`}
+      title={titleText}
+      reasoning={sharedProps.reasoning}
+    >
       <ConfirmCancelRow
         onConfirm={handleConfirmGenericTool}
         onCancel={sharedProps.onCancel}
@@ -86,26 +83,17 @@ function genericConfirmBody(toolName, sharedProps) {
   );
 }
 
-/**
- * Each tool name maps to a dedicated confirm UI. Unknown names get the generic confirm/cancel row.
- * @param {string} toolName
- * @param {object} sharedProps
- * @returns {JSX.Element|null}
- */
 function popupBodyForTool(toolName, sharedProps) {
   const DedicatedPopup = TOOL_POPUP_BY_NAME[toolName];
   if (DedicatedPopup) return <DedicatedPopup {...sharedProps} />;
   return genericConfirmBody(toolName, sharedProps);
 }
 
-
 // ===== MAIN FUNCTION =====
 
 /**
- * NbSheet that wraps the matching confirm popup for an AI tool call.
- * While loading, backdrop taps and Android back do nothing so a double-tap cannot cancel mid-run.
- * Uses neobrutalist NbSheet component.
- * @param {{ visible: boolean, toolCall: object, onConfirm: Function, onCancel: Function, loading?: boolean }} props
+ * NbSheet wrapping the matching confirm popup. No sheet title — badge + headline live in the body.
+ * While loading, backdrop taps / Android back do nothing (no cancel mid-run).
  */
 export default function ConfirmActionPopup({
   visible,
@@ -122,17 +110,11 @@ export default function ConfirmActionPopup({
   const body = popupBodyForTool(name, sharedProps);
   if (!body) return null;
 
-  const toolTitle = accessibilityToolTitle(name);
   const canDismissWithBackdrop = !loading;
-  // Only allow dismissal when not loading
   const handleClose = canDismissWithBackdrop ? onCancel : () => {};
 
   return (
-    <NbSheet
-      visible={visible}
-      onClose={handleClose}
-      title={`Confirm ${toolTitle}`}
-    >
+    <NbSheet visible={visible} onClose={handleClose}>
       {body}
     </NbSheet>
   );

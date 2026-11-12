@@ -4,13 +4,14 @@
 
 import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
+import { lightColors } from '../look-and-feel/colorPalette';
 import logger from '../for-both/online-connection/sendCrashReport';
 
 // ===== NAMED CONSTANTS =====
 
 const UNKNOWN_ERROR_MESSAGE = 'Unknown error';
 const MUTED_ERROR_COLOR = '#666';
-const RETRY_BUTTON_COLOR = '#007AFF';
+const RETRY_BUTTON_COLOR = lightColors.primary;
 const RETRY_TEXT_COLOR = 'white';
 
 // ===== HELPER FUNCTIONS =====

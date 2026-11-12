@@ -10,7 +10,6 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { SHELL_SAFE_AREA_EDGES, ShellBottomNavAnchor } from '../../navigation/bottomMenuSpacing';
-import { LinearGradient } from 'expo-linear-gradient';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as XLSX from 'xlsx';
@@ -28,7 +27,7 @@ import AddFilePopup from '../../for-both/files-and-notes/viewers/AddFilePopup';
 import PdfViewer from '../../for-both/files-and-notes/viewers/PdfViewer';
 import SpreadsheetEditor from '../documents/SpreadsheetEditor';
 import DocumentEditor from '../documents/DocumentEditor';
-import { GRADIENT_BG_DARK, GRADIENT_BG_LIGHT } from '../home/trainerHomePieces';
+import { darkColors, lightColors } from '../../look-and-feel/colorPalette';
 import { useTrainerAppStartShell } from './TrainerOpenScreenTracker';
 import ProAccessCheck from '../../trainer-pro-plan/ProAccessCheck';
 import FreeTrialBanner from '../../trainer-pro-plan/FreeTrialBanner';
@@ -50,7 +49,7 @@ export default function TrainerMainScreen() {
       onOpenTerms={shell.openTerms}
       onOpenPrivacy={shell.openPrivacy}
     >
-      <LinearGradient colors={shell.isDark ? GRADIENT_BG_DARK : GRADIENT_BG_LIGHT} style={{ flex: 1 }}>
+      <View style={{ flex: 1, backgroundColor: shell.isDark ? darkColors.nbBackground : lightColors.nbBackground }}>
         <FreeTrialBanner />
       <SafeAreaView style={{ flex: 1 }} edges={SHELL_SAFE_AREA_EDGES}>
         <StatusBar barStyle={shell.isDark ? 'light-content' : 'dark-content'} />
@@ -103,6 +102,10 @@ export default function TrainerMainScreen() {
             onProfilePress={() => shell.openProfile()}
             onSettingsPress={() => shell.openSettings()}
             onClientAdded={shell.refreshClients}
+            onOpenPayout={() => {
+              shell.setShowClientRequests(false);
+              shell.openPayments?.();
+            }}
           />
         )}
         {!shell.showTrainerMessaging && !shell.showConversationsList && !shell.showClientRequests && shell.showClientsList && (
@@ -390,7 +393,7 @@ export default function TrainerMainScreen() {
           trainerNavChrome={shell.getTrainerEditorNavChrome()}
         />
       </SafeAreaView>
-    </LinearGradient>
+    </View>
     </ProAccessCheck>
   );
 }

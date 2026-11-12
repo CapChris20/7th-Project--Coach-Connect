@@ -9,6 +9,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState, Linking, Platform } from 'react-native';
 import { deleteField, doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../app-start/cloudConnection';
+import { lightColors } from '../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
@@ -19,7 +20,7 @@ const COLD_START_TAP_DELAY_MS = 500;
 const TOKEN_LOG_PREFIX_LENGTH = 24;
 const TEST_NOTIFICATION_DELAY_SECONDS = 1;
 const ANDROID_VIBRATION_PATTERN = [0, 250, 250, 250];
-const NOTIFICATION_LED_COLOR = '#FF6B9D';
+const NOTIFICATION_LED_COLOR = lightColors.primary;
 const CLEARED_PUSH_TOKEN_FIELDS = {
   expoPushToken: deleteField(),
   fcmToken: deleteField(),

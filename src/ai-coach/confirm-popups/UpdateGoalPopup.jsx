@@ -59,7 +59,7 @@ export default function UpdateGoalPopup({ params, reasoning, onConfirm, onCancel
   }
 
   return (
-    <ToolModalBody title={POPUP_TITLE} reasoning={reasoning}>
+    <ToolModalBody badge="Coach wants to update your goal" title={POPUP_TITLE} reasoning={reasoning}>
       <DetailRow label={GOAL_ROW_LABEL} value={goalLabel} />
       <DetailRow label={REASON_ROW_LABEL} value={changeReason} />
       <ConfirmCancelRow

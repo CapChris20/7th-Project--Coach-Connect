@@ -1,11 +1,9 @@
-// One vertical "Shorts" tile: YouTube thumb, title, channel, duration chip, optional bookmark.
-// Flow: press-in scales the card up → overlay darkens → press-out snaps back; tap opens the video.
-// Used by the exercise-video grid. Bookmark is omitted unless the parent passes onToggleSave.
-//
-// vocab: neobrutalist = thick outlines (2.5px), hard shadows (no blur), offset 4/4
-// Manipulate here: card border radius (16), press scale (1.02), animation duration (220ms)
+// Journey / horizontal video thumb — play circle, duration badge, title under the card.
+// Flow: press scales slightly → tap opens the video (parent onPress).
+// Used by: ExerciseVideosTab "Pulled from your journey" carousel.
+// Design Law: HardShadow + 3px border; black/white only (no purple rims).
 
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useMemo, useRef } from 'react';
 import {
   Animated,
   Pressable,
@@ -13,212 +11,171 @@ import {
   Text,
   View,
 } from 'react-native';
-import { useColorScheme } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
-import NbCard from '../../look-and-feel/NbCard';
-import { lightColors, darkColors, gradients } from '../../look-and-feel/colorPalette';
+import HardShadow from '../../look-and-feel/HardShadow';
+import { borderRadius, nb } from '../../look-and-feel/colorPalette';
+import { useTheme } from '../../look-and-feel/lightDarkMode';
+import HatchedThumbFill from './HatchedThumbFill';
 
 // ===== NAMED CONSTANTS =====
 
-const PRESS_ANIMATION_MS = 220;
-const SECONDS_PER_MINUTE = 60;
-const SHORTS_ASPECT_RATIO = 1.78;
-const PRESS_SCALE = 1.02;
-const PRESS_LIFT_Y = -2;
-const MIN_GRADIENT_STOPS = 2;
+const PRESS_ANIMATION_MS = 160;
+const PRESS_SCALE = 0.97;
 const YOUTUBE_THUMB_HOST = 'https://i.ytimg.com/vi';
 const FALLBACK_LABEL = '—';
-const BOOKMARK_HIT_SLOP = 10;
+// Manipulate here: journey card width / thumb aspect (taller than wide, like PNG)
+const DEFAULT_WIDTH = 132;
+const THUMB_ASPECT = 1.15;
+// Manipulate here: play circle size — mockup journey uses ~40–52
+const PLAY_SIZE = 40;
 
 // ===== HELPER FUNCTIONS =====
 
-/**
- * YouTube's standard hqdefault still. videoId is the 11-char watch id, not a full URL.
- * @param {string} videoId
- * @returns {string}
- */
+/** YouTube hqdefault still from the 11-char watch id. */
 function youtubeThumbUrl(videoId) {
   return `${YOUTUBE_THUMB_HOST}/${videoId}/hqdefault.jpg`;
 }
 
 /**
- * Under a minute shows seconds; a minute or more shows minutes. Missing time shows "Shorts".
+ * Badge text like "0:42". Missing duration → null (hide badge).
  * @param {number|undefined} seconds
- * @returns {string}
+ * @returns {string|null}
  */
-function formatShortDuration(seconds) {
-  const durationSeconds = typeof seconds === 'number' ? seconds : null;
-  if (!durationSeconds || durationSeconds <= 0) return 'Shorts';
-  if (durationSeconds < SECONDS_PER_MINUTE) {
-    return `${Math.max(1, Math.round(durationSeconds))} sec`;
-  }
-  const durationMinutes = Math.max(1, Math.round(durationSeconds / SECONDS_PER_MINUTE));
-  return `${durationMinutes} min`;
-}
-
-/**
- * A one-stop array would crash LinearGradient, so fall back to the brand gradient.
- * @param {string[]|undefined} accentGradient
- * @returns {string[]}
- */
-function rimColors(accentGradient) {
-  return accentGradient?.length >= MIN_GRADIENT_STOPS ? accentGradient : gradients.brand.colors;
+function formatDurationBadge(seconds) {
+  if (typeof seconds !== 'number' || seconds <= 0) return null;
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.round(seconds % 60);
+  return `${mins}:${String(secs).padStart(2, '0')}`;
 }
 
 // ===== MAIN FUNCTION =====
 
 /**
- * Vertical shorts card with a gradient rim, YouTube thumbnail, and optional bookmark.
+ * Compact vertical video card for the journey carousel.
  * @param {object} props
  */
 export default function ShortVideoCard({
   item,
-  width = 110,
-  accentGradient,
-  isDark: deprecatedIsDark,
+  width = DEFAULT_WIDTH,
   onPress,
-  saved = false,
-  onToggleSave,
   style,
 }) {
-  // vocab: Animated.Value = a number the native driver can tween without bouncing through JS.
-  const colorScheme = useColorScheme();
-  const colors = colorScheme === 'dark' ? darkColors : lightColors;
+  const { colors } = useTheme();
   const scale = useRef(new Animated.Value(1)).current;
-  const translateY = useRef(new Animated.Value(0)).current;
-  const [isPressed, setIsPressed] = useState(false);
-
-  const height = useMemo(() => Math.round(width * SHORTS_ASPECT_RATIO), [width]);
+  const thumbHeight = useMemo(() => Math.round(width * THUMB_ASPECT), [width]);
   const durationText = useMemo(
-    () => formatShortDuration(item?.durationSeconds),
+    () => formatDurationBadge(item?.durationSeconds),
     [item?.durationSeconds],
   );
-  const rim = rimColors(accentGradient);
 
-  const animateToPressed = (isFingerDown) => {
-    setIsPressed(isFingerDown);
-    Animated.parallel([
-      Animated.timing(scale, {
-        toValue: isFingerDown ? PRESS_SCALE : 1,
-        duration: PRESS_ANIMATION_MS,
-        useNativeDriver: true,
-      }),
-      Animated.timing(translateY, {
-        toValue: isFingerDown ? PRESS_LIFT_Y : 0,
-        duration: PRESS_ANIMATION_MS,
-        useNativeDriver: true,
-      }),
-    ]).start();
+  const animatePress = (down) => {
+    Animated.timing(scale, {
+      toValue: down ? PRESS_SCALE : 1,
+      duration: PRESS_ANIMATION_MS,
+      useNativeDriver: true,
+    }).start();
   };
 
   return (
     <Pressable
       onPress={onPress}
-      onPressIn={() => animateToPressed(true)}
-      onPressOut={() => animateToPressed(false)}
+      onPressIn={() => animatePress(true)}
+      onPressOut={() => animatePress(false)}
       style={[{ width }, style]}
+      accessibilityRole="button"
+      accessibilityLabel={item?.name || FALLBACK_LABEL}
     >
-      <Animated.View style={{ transform: [{ translateY }, { scale }] }}>
-        <NbCard style={{ height, padding: 0 }}>
-          <Image
-            source={{ uri: youtubeThumbUrl(item?.videoId) }}
-            style={styles.image}
-            contentFit="cover"
-            transition={PRESS_ANIMATION_MS}
-          />
-
-          {onToggleSave ? (
-            <Pressable
-              onPress={(event) => {
-                event?.stopPropagation?.();
-                onToggleSave();
-              }}
-              hitSlop={BOOKMARK_HIT_SLOP}
-              style={styles.bookmarkBtn}
-            >
-              <Ionicons
-                name={saved ? 'bookmark' : 'bookmark-outline'}
-                size={14}
-                color={saved ? gradients.brand.colors[0] : colors.nbSurface}
+      <Animated.View style={{ transform: [{ scale }] }}>
+        <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetSmall}>
+          <View
+            style={[
+              styles.thumb,
+              {
+                height: thumbHeight,
+                borderColor: colors.nbBorder,
+                backgroundColor: colors.nbSoft,
+              },
+            ]}
+          >
+            {/* Hatch shows through when the still is missing or still loading */}
+            <HatchedThumbFill />
+            {item?.videoId ? (
+              <Image
+                source={{ uri: youtubeThumbUrl(item.videoId) }}
+                style={styles.image}
+                contentFit="cover"
+                transition={PRESS_ANIMATION_MS}
               />
-            </Pressable>
-          ) : null}
-
-          <LinearGradient
-            colors={['rgba(0,0,0,0)', isPressed ? 'rgba(0,0,0,0.92)' : 'rgba(0,0,0,0.78)']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 0, y: 1 }}
-            style={styles.scrim}
-          />
-
-          <View style={styles.overlay}>
-            <Text style={styles.title} numberOfLines={2}>
-              {item?.name || FALLBACK_LABEL}
-            </Text>
-            <Text style={styles.channel} numberOfLines={1}>
-              {item?.channel || FALLBACK_LABEL}
-            </Text>
-            <View style={styles.durationRow}>
-              <LinearGradient
-                colors={rim}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.durationChip}
+            ) : null}
+            <View style={styles.playCenter} pointerEvents="none">
+              <View
+                style={[
+                  styles.playCircle,
+                  {
+                    backgroundColor: colors.nbFill,
+                    borderColor: colors.nbBorder,
+                  },
+                ]}
               >
-                <Text style={styles.duration} numberOfLines={1}>
-                  {durationText}
-                </Text>
-              </LinearGradient>
+                <Ionicons name="play" size={16} color={colors.nbOnFill} style={styles.playIcon} />
+              </View>
             </View>
+            {durationText ? (
+              <View style={[styles.durationBadge, { backgroundColor: colors.nbFill }]}>
+                <Text style={[styles.durationText, { color: colors.nbOnFill }]}>{durationText}</Text>
+              </View>
+            ) : null}
           </View>
-        </NbCard>
+        </HardShadow>
+        <Text style={[styles.title, { color: colors.nbInk }]} numberOfLines={2}>
+          {item?.name || FALLBACK_LABEL}
+        </Text>
       </Animated.View>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
+  thumb: {
+    width: '100%',
+    borderRadius: borderRadius.nbCard,
+    borderWidth: nb.borderWidth,
+    overflow: 'hidden',
+  },
   image: { width: '100%', height: '100%' },
-  bookmarkBtn: {
-    position: 'absolute',
-    top: 6,
-    right: 6,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+  playCenter: {
+    ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-    zIndex: 10,
   },
-  scrim: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: 96,
-    zIndex: 5,
+  playCircle: {
+    width: PLAY_SIZE,
+    height: PLAY_SIZE,
+    borderRadius: PLAY_SIZE / 2,
+    borderWidth: nb.borderWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  overlay: {
+  // Manipulate here: play triangle optical centering
+  playIcon: { marginLeft: 2 },
+  // Mockup `.du` uses radius 4 (not a pill)
+  durationBadge: {
     position: 'absolute',
-    left: 8,
     right: 8,
     bottom: 8,
-    zIndex: 8,
-    gap: 3,
-  },
-  title: { fontSize: 12, fontFamily: 'SpaceGrotesk_700Bold', color: '#FFFFFF', lineHeight: 16 },
-  channel: { fontSize: 10, fontFamily: 'Inter_500Medium', color: 'rgba(255,255,255,0.72)' },
-  durationRow: { marginTop: 2 },
-  durationChip: {
-    alignSelf: 'flex-start',
     paddingHorizontal: 7,
-    paddingVertical: 3,
-    borderRadius: 999,
+    paddingVertical: 2,
+    borderRadius: 4,
   },
-  duration: { fontSize: 9, fontFamily: 'SpaceGrotesk_700Bold', color: '#FFFFFF', letterSpacing: 0.3 },
+  durationText: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 12,
+  },
+  title: {
+    marginTop: 8,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 13,
+    lineHeight: 17,
+  },
 });

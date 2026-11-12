@@ -13,6 +13,7 @@ const {
   buildWebSearchQuery,
   stripWebSearchPrefix,
   stripFakeWebSearchClaims,
+  stripLiveSearchHonestyOpeners,
   userRequestedWebSearchTurn,
   isWebSourceQuoteFollowUp,
   isWebAnswerFollowUp,
@@ -514,11 +515,11 @@ async function handleAICoachRequest(req, res, { forceWebSearch = false } = {}) {
       if (!reply && toolCalls.length) {
         reply = 'Got it — tap Confirm in the app to save it.';
       }
+      // Always strip honesty nags / fake search claims — never show that copy.
+      reply = stripLiveSearchHonestyOpeners(reply);
       if ((userWantsWeb || webSearchFailed) && !answerFollowUp) {
         reply = stripFakeWebSearchClaims(reply);
-        if (reply && !/live search (?:wasn't|was not|isn't|is not) available/i.test(reply)) {
-          reply = `Live search wasn't available this turn — here's what I know from coaching knowledge, not cited web results. ${reply}`;
-        }
+        reply = stripLiveSearchHonestyOpeners(reply);
       }
       
       const inputTokens = Math.ceil((systemPrompt.length + JSON.stringify(normalized).length) / 4);

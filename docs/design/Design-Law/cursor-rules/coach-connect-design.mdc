@@ -1,0 +1,20 @@
+---
+description: Coach Connect new design system (neo-brutalist, black, white and gray). Apply to any UI change.
+alwaysApply: false
+globs: ["src/**/*.js", "src/**/*.jsx"]
+---
+
+# Coach Connect UI rules
+
+Read `DESIGN-SYSTEM.md` before changing any screen. Read `MAPPING.md` to find the files for a screen.
+
+- Follow `CODING_STYLE.md` (Variation 3): plain names, a numbered main function, shallow nesting. Keep behavior and data keys unchanged.
+- Colors come from the theme tokens only. Never write a hex value in a screen. Light and dark both work.
+- Black, white and gray carry the UI. Gradients are small accents only (pills, avatars, icon chips, bars, rings, slider fills, the nav). Never green. Never a solid purple border or shadow.
+- Outlines are 3px. Shadows are hard offsets with no blur (use the HardShadow wrapper so Android matches iOS).
+- Minimum touch target 44. Minimum text 12. Buttons and chips are single-line with 16px side padding.
+- Use the owner's icon art and the recolored Lottie files. Do not add generic icons when one fits.
+- Animation uses Reanimated and Lottie, and respects reduced motion.
+- Restyle the existing `Nb*` components in `src/look-and-feel` instead of creating new ones.
+- Sample names, numbers and prices in the mockups are not real data. Do not paste them into the app.
+- After a UI change, run the app on the simulator and compare to the mockup in both themes.

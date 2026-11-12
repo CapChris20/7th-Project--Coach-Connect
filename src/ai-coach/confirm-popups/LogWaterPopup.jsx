@@ -1,77 +1,161 @@
-// Confirm popup before the coach writes a water amount onto the dashboard.
-// Flow: read the ounces off the coach action → show them → confirm or cancel.
-// Used by: the coach conversation when a tool wants to log water.
+// Design Law water confirm — cup taps + today/yesterday (screens/ai-coach-popups/09).
+// Flow: convert oz ↔ cups → tap cups → confirm writes amount_oz (server key).
+// Used by: ConfirmActionPopup when tool = logWater.
 
-import React from 'react';
-import { ToolModalBody, DetailRow, ConfirmCancelRow, logDateLabel } from './sharedPopupParts';
+import React, { useMemo, useState } from 'react';
+import { Image, Pressable, Text, View, StyleSheet } from 'react-native';
+import {
+  ToolModalBody,
+  FillChipRow,
+  ConfirmCancelRow,
+  usePopupColors,
+} from './sharedPopupParts';
+import { borderRadius, nb, spacing } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
-const POPUP_TITLE = 'Log water intake?';
-const AMOUNT_ROW_LABEL = 'Amount';
-const CONFIRM_BUTTON_LABEL = 'Log water';
-const MISSING_VALUE = '—';
-const OUNCE_SUFFIX = ' oz';
-const WATER_OUNCE_KEYS = ['amount_oz', 'amountOz', 'ounces', 'amount'];
-
-// ===== HELPER FUNCTIONS =====
-
-function valueWasProvided(value) {
-  if (value === undefined) return false;
-  if (value === null) return false;
-  return true;
-}
-
-/**
- * The coach action has used more than one field name for the same amount.
- * @param {object|undefined} params
- * @returns {string|number}
- */
-function readWaterOunces(params) {
-  if (!params) return MISSING_VALUE;
-  for (let index = 0; index < WATER_OUNCE_KEYS.length; index += 1) {
-    const keyName = WATER_OUNCE_KEYS[index];
-    const candidate = params[keyName];
-    if (valueWasProvided(candidate)) return candidate;
+const BADGE = 'Coach wants to log water';
+const TITLE = 'Water today';
+const CONFIRM_LABEL = 'Log water';
+// Manipulate here: cup goal + oz per cup (Body tab uses the same 8 oz cup)
+const WATER_CUP_GOAL = 8;
+const OZ_PER_CUP = 8;
+const DAY_OPTIONS = [
+  { id: 'today', label: 'Today' },
+  { id: 'yesterday', label: 'Yesterday' },
+];
+const HANDOFF_WATER = (() => {
+  try {
+    return require('../../assets/icons/handoff/hydration.png');
+  } catch (_) {
+    return null;
   }
-  return MISSING_VALUE;
+})();
+
+// ===== HELPERS =====
+
+function readOz(params) {
+  const keys = ['amount_oz', 'amountOz', 'ounces', 'amount'];
+  for (const key of keys) {
+    const n = Number(params?.[key]);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  // Default two cups when the model forgot the amount
+  return 16;
 }
 
-/**
- * @param {string|number} waterOunces
- * @returns {string}
- */
-function formatOunceLabel(waterOunces) {
-  if (waterOunces === MISSING_VALUE) return MISSING_VALUE;
-  return `${waterOunces}${OUNCE_SUFFIX}`;
+function ozToCups(oz) {
+  return Math.max(1, Math.min(WATER_CUP_GOAL, Math.round(Number(oz) / OZ_PER_CUP) || 1));
+}
+
+function cupsToOz(cups) {
+  return Math.max(0, Math.round(Number(cups) || 0) * OZ_PER_CUP);
+}
+
+function readDay(params) {
+  const raw = String(params?.date || 'today').toLowerCase();
+  if (raw === 'yesterday') return 'yesterday';
+  return 'today';
 }
 
 // ===== MAIN FUNCTION =====
 
-/**
- * Confirm logging water intake the coach parsed from chat.
- * @param {{ params?: object, reasoning?: string, onConfirm: Function, onCancel: Function, loading?: boolean }} props
- */
 export default function LogWaterPopup({ params, reasoning, onConfirm, onCancel, loading }) {
-  // 1. Read ounces off the coach action (several field names have been used).
-  const waterOunces = readWaterOunces(params);
-  const ounceLabel = formatOunceLabel(waterOunces);
+  const colors = usePopupColors();
+  const [cups, setCups] = useState(() => ozToCups(readOz(params)));
+  const [day, setDay] = useState(() => readDay(params));
+  const amountOz = cupsToOz(cups);
 
-  // 2. Confirm writes that amount. onConfirm still gets the original params.
-  function handleConfirmLogWater() {
-    onConfirm(params);
-  }
+  const draftParams = useMemo(
+    () => ({
+      ...(params || {}),
+      amount_oz: amountOz,
+      amountOz,
+      ounces: amountOz,
+      amount: amountOz,
+      date: day === 'yesterday' ? 'yesterday' : undefined,
+    }),
+    [params, amountOz, day],
+  );
 
   return (
-    <ToolModalBody title={POPUP_TITLE} reasoning={reasoning}>
-      <DetailRow label={AMOUNT_ROW_LABEL} value={ounceLabel} />
-      <DetailRow label="Date" value={logDateLabel(params)} />
+    <ToolModalBody title={TITLE} badge={BADGE} reasoning={reasoning}>
+      <Text style={[styles.hero, { color: colors.nbInk }]}>
+        <Text style={styles.heroBig}>{cups}</Text>
+        {` of ${WATER_CUP_GOAL} cups`}
+      </Text>
+      <View style={styles.cupGrid}>
+        {Array.from({ length: WATER_CUP_GOAL }, (_, index) => {
+          const filled = index < cups;
+          return (
+            <Pressable
+              key={`cup-${index}`}
+              onPress={() => setCups(index + 1)}
+              style={[
+                styles.cup,
+                {
+                  borderColor: colors.nbBorder,
+                  backgroundColor: filled ? colors.nbFill : colors.nbSurface,
+                  shadowColor: colors.nbShadow,
+                },
+              ]}
+            >
+              {HANDOFF_WATER ? (
+                <Image
+                  source={HANDOFF_WATER}
+                  style={{
+                    width: 22,
+                    height: 22,
+                    tintColor: filled ? colors.nbOnFill : undefined,
+                  }}
+                  resizeMode="contain"
+                />
+              ) : (
+                <Text style={{ color: filled ? colors.nbOnFill : colors.nbInk, fontWeight: '900' }}>
+                  {index + 1}
+                </Text>
+              )}
+            </Pressable>
+          );
+        })}
+      </View>
+      <FillChipRow options={DAY_OPTIONS} value={day} onChange={setDay} />
       <ConfirmCancelRow
-        onConfirm={handleConfirmLogWater}
+        onConfirm={() => onConfirm(draftParams)}
         onCancel={onCancel}
         loading={loading}
-        confirmLabel={CONFIRM_BUTTON_LABEL}
+        confirmLabel={CONFIRM_LABEL}
       />
     </ToolModalBody>
   );
 }
+
+const styles = StyleSheet.create({
+  hero: {
+    fontSize: 22,
+    fontWeight: '800',
+    marginBottom: spacing.md,
+  },
+  heroBig: {
+    fontSize: 40,
+    fontWeight: '900',
+  },
+  cupGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginBottom: spacing.md,
+  },
+  cup: {
+    width: 52,
+    height: 52,
+    borderWidth: nb.borderWidth,
+    borderRadius: borderRadius.nbCard,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowOffset: { width: 3, height: 3 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 3,
+  },
+});

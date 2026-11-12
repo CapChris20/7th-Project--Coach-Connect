@@ -1,21 +1,18 @@
 // Neobrutalist session card on the home screen. Invite mode asks Pass / I'm in. Reminder mode can open the workout.
-// Flow: read the session → paint date, time, and length → show invite buttons or the workout button.
-// Used by the client home when a coach sends or confirms a session.
+// Flow: read the session → paint when column + title → show invite buttons or the workout button.
+// Used by the client home when a coach sends or confirms a session (extra invites beyond the primary Up next card).
 
 import React, { useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
-import { NbCard } from '../../look-and-feel/NbCard';
-import { NbButton } from '../../look-and-feel/NbButton';
+import NbCard from '../../look-and-feel/NbCard';
+import NbButton from '../../look-and-feel/NbButton';
 import { formatTime12, formatDateLong } from '../../helpers/sessionTimeText';
+import { nb } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
-const PINK = '#FF6B9D';
-const PURPLE = '#C084FC';
-const REMINDER_ACCENT = '#22D3EE';
 const SESSION_STATUS_DECLINED = 'declined';
 const SESSION_STATUS_ACCEPTED = 'accepted';
 const DEFAULT_DURATION_MINUTES = 60;
@@ -23,17 +20,6 @@ const INVITE_MODE = 'invite';
 const REMINDER_MODE = 'reminder';
 
 // ===== HELPER FUNCTIONS =====
-
-function glassTheme(isDark) {
-  return {
-    surface: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.92)',
-    border: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.07)',
-    text: isDark ? '#FFFFFF' : '#0F172A',
-    muted: isDark ? 'rgba(255,255,255,0.58)' : 'rgba(15,23,42,0.55)',
-    dim: isDark ? 'rgba(255,255,255,0.38)' : 'rgba(15,23,42,0.42)',
-    detailBg: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(15,23,42,0.04)',
-  };
-}
 
 function coachFirstName(coachName) {
   const coachNameText = String(coachName || 'Your coach').trim();
@@ -68,34 +54,24 @@ function acceptThisInvite(onRespond, sessionId) {
   onRespond({ sessionId, status: SESSION_STATUS_ACCEPTED });
 }
 
-function InviteActionButtons({ theme, isDark, sessionId, onRespond }) {
+function InviteActionButtons({ colors, sessionId, onRespond }) {
   return (
     <View style={styles.actions}>
       <TouchableOpacity
         activeOpacity={0.8}
         onPress={() => passOnThisInvite(onRespond, sessionId)}
-        style={[
-          styles.outlineBtn,
-          { borderColor: theme.border, backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(15,23,42,0.04)' },
-        ]}
+        style={[styles.outlineBtn, { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface }]}
         hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
       >
-        <Text style={[styles.outlineBtnText, { color: theme.muted }]}>Pass</Text>
+        <Text style={[styles.outlineBtnText, { color: colors.nbInk }]}>Pass</Text>
       </TouchableOpacity>
       <TouchableOpacity
         activeOpacity={0.92}
         onPress={() => acceptThisInvite(onRespond, sessionId)}
-        style={{ flex: 1 }}
+        style={[styles.primaryBtn, { backgroundColor: colors.nbFill, borderColor: colors.nbBorder }]}
       >
-        <LinearGradient
-          colors={[PINK, PURPLE]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.primaryBtn}
-        >
-          <Text style={styles.primaryBtnText}>I’m in</Text>
-          <Ionicons name="arrow-forward" size={18} color="#fff" />
-        </LinearGradient>
+        <Text style={[styles.primaryBtnText, { color: colors.nbOnFill }]}>I’m in</Text>
+        <Ionicons name="arrow-forward" size={18} color={colors.nbOnFill} />
       </TouchableOpacity>
     </View>
   );
@@ -112,39 +88,6 @@ function ReminderWorkoutButton({ onPressViewWorkout }) {
   );
 }
 
-function SessionActionBar({ mode, theme, isDark, sessionId, onRespond, onPressViewWorkout }) {
-  if (mode === INVITE_MODE) {
-    return (
-      <InviteActionButtons
-        theme={theme}
-        isDark={isDark}
-        sessionId={sessionId}
-        onRespond={onRespond}
-      />
-    );
-  }
-  return <ReminderWorkoutButton onPressViewWorkout={onPressViewWorkout} />;
-}
-
-function badgeColors(mode, isDark) {
-  if (isReminderMode(mode)) {
-    return {
-      backgroundColor: isDark ? 'rgba(6,182,212,0.12)' : 'rgba(6,182,212,0.1)',
-      borderColor: isDark ? 'rgba(6,182,212,0.25)' : 'rgba(6,182,212,0.2)',
-      iconName: 'checkmark-circle',
-      color: REMINDER_ACCENT,
-      label: 'UP NEXT',
-    };
-  }
-  return {
-    backgroundColor: isDark ? 'rgba(255,107,157,0.12)' : 'rgba(255,107,157,0.1)',
-    borderColor: isDark ? 'rgba(255,107,157,0.22)' : 'rgba(255,107,157,0.2)',
-    iconName: 'mail-unread-outline',
-    color: PINK,
-    label: 'NEW INVITE',
-  };
-}
-
 // ===== MAIN FUNCTION =====
 
 /**
@@ -159,111 +102,58 @@ function badgeColors(mode, isDark) {
  */
 export function UpcomingSessionCard({
   mode = INVITE_MODE,
-  isDark,
+  isDark: _isDark,
   coachName,
   session,
   onRespond,
   onPressViewWorkout,
 }) {
   const { colors } = useTheme();
-  const theme = glassTheme(isDark);
-  // vocab: useMemo = keep the first name unless coachName changes, so the card does not re-split on every paint.
   const coachFirst = useMemo(() => coachFirstName(coachName), [coachName]);
 
-  // 1. No session → hide the card.
   if (!session) return null;
 
-  // 2. Read date, time, and length. Invite asks Pass / I'm in. Reminder can open the workout.
   const durationMinutes = sessionDurationMinutes(session);
   const dateHuman = sessionDateLabel(session);
   const timeLabel = sessionTimeLabel(session);
-  const badge = badgeColors(mode, isDark);
   const isReminder = isReminderMode(mode);
+  const timeParts = String(timeLabel).split(' ');
+  const clock = timeParts[0] || '—';
+  const meridiem = timeParts[1] || '';
 
   return (
     <NbCard style={styles.card}>
-      <LinearGradient
-        colors={[`${PINK}20`, 'transparent', 'transparent']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 0.9, y: 0.85 }}
-        style={StyleSheet.absoluteFill}
-        pointerEvents="none"
-      />
-      <LinearGradient
-        colors={['transparent', 'transparent', `${PURPLE}0D`]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={StyleSheet.absoluteFill}
-        pointerEvents="none"
-      />
-
-      <View style={styles.topRow}>
-        <View
-          style={[
-            styles.badge,
-            { backgroundColor: badge.backgroundColor, borderColor: badge.borderColor },
-          ]}
-        >
-          <Ionicons name={badge.iconName} size={14} color={badge.color} />
-          <Text style={[styles.badgeText, { color: badge.color }]}>{badge.label}</Text>
+      <View style={styles.row}>
+        <View style={[styles.when, { borderRightColor: colors.nbBorder }]}>
+          <Text style={[styles.whenNum, { color: colors.nbInk }]}>{clock}</Text>
+          <Text style={[styles.whenSub, { color: colors.nbMuted }]}>
+            {`${meridiem}${meridiem ? ' · ' : ''}${durationMinutes} min`}
+          </Text>
         </View>
-        <View style={[styles.iconBubble, { borderColor: theme.border, backgroundColor: isDark ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.04)' }]}>
-          <Ionicons name="calendar" size={20} color={PURPLE} />
-        </View>
-      </View>
-
-      <Text style={[styles.kicker, { color: theme.dim }]}>SESSION WITH YOUR COACH</Text>
-
-      {isReminder ? (
-        <Text style={[styles.title, { color: theme.text }]} numberOfLines={2}>
-          <Text style={{ color: PINK, fontWeight: '900' }}>{coachFirst}</Text>
-          <Text>{` · here’s your time`}</Text>
-        </Text>
-      ) : (
-        <Text style={[styles.title, { color: theme.text }]} numberOfLines={3}>
-          <Text style={{ color: PINK, fontWeight: '900' }}>{coachFirst}</Text>
-          <Text style={{ fontWeight: '800' }}>{` invited you to a session`}</Text>
-        </Text>
-      )}
-
-      <View style={[styles.detailPanel, { backgroundColor: theme.detailBg, borderColor: theme.border }]}>
-        <View style={styles.detailLine}>
-          <Ionicons name="calendar-outline" size={18} color={PINK} style={styles.detailIcon} />
-          <Text style={[styles.detailPrimary, { color: theme.text }]} numberOfLines={2}>
+        <View style={{ flex: 1, minWidth: 0, gap: 8 }}>
+          <Text style={[styles.badge, { color: colors.nbMuted }]}>
+            {isReminder ? 'UP NEXT' : 'NEW INVITE'}
+          </Text>
+          <Text style={[styles.title, { color: colors.nbInk }]} numberOfLines={2}>
+            {isReminder
+              ? `${coachFirst} · here’s your time`
+              : `${coachFirst} invited you to a session`}
+          </Text>
+          <Text style={{ fontSize: 13, color: colors.nbMuted }} numberOfLines={2}>
             {dateHuman}
           </Text>
-        </View>
-        <View style={[styles.divider, { backgroundColor: theme.border }]} />
-        <View style={styles.timeRow}>
-          <View style={styles.timeItem}>
-            <Ionicons name="time-outline" size={18} color={PURPLE} />
-            <Text style={[styles.timeValue, { color: theme.text }]}>{timeLabel}</Text>
-          </View>
-          <View style={[styles.dot, { backgroundColor: theme.dim }]} />
-          <View style={styles.timeItem}>
-            <Ionicons name="fitness-outline" size={18} color={PINK} />
-            <Text style={[styles.timeValue, { color: theme.text }]}>{durationMinutes} min</Text>
-          </View>
+          {session.notes ? (
+            <Text style={{ fontSize: 13, color: colors.nbMuted }} numberOfLines={3}>
+              {session.notes}
+            </Text>
+          ) : null}
+          {mode === INVITE_MODE ? (
+            <InviteActionButtons colors={colors} sessionId={session.id} onRespond={onRespond} />
+          ) : (
+            <ReminderWorkoutButton onPressViewWorkout={onPressViewWorkout} />
+          )}
         </View>
       </View>
-
-      {session.notes ? (
-        <View style={[styles.noteBox, { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(15,23,42,0.03)', borderColor: theme.border }]}>
-          <Text style={[styles.noteLabel, { color: theme.muted }]}>Note from coach</Text>
-          <Text style={[styles.noteBody, { color: isDark ? 'rgba(255,255,255,0.88)' : 'rgba(15,23,42,0.85)' }]} numberOfLines={4}>
-            {session.notes}
-          </Text>
-        </View>
-      ) : null}
-
-      <SessionActionBar
-        mode={mode}
-        theme={theme}
-        isDark={isDark}
-        sessionId={session.id}
-        onRespond={onRespond}
-        onPressViewWorkout={onPressViewWorkout}
-      />
     </NbCard>
   );
 }
@@ -271,111 +161,58 @@ export function UpcomingSessionCard({
 const styles = StyleSheet.create({
   card: {
     marginBottom: 14,
+    padding: 0,
   },
-  topRow: {
+  row: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
+    gap: 12,
+    padding: 12,
   },
-  badge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    borderWidth: 1,
-  },
-  badgeText: {
-    fontSize: 10,
-    fontWeight: '900',
-    letterSpacing: 1,
-  },
-  iconBubble: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
-    borderWidth: 1,
-    alignItems: 'center',
+  when: {
+    minWidth: 92,
+    paddingRight: 12,
+    borderRightWidth: nb.borderWidth,
     justifyContent: 'center',
   },
-  kicker: {
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 1.6,
-    marginBottom: 6,
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: '800',
-    letterSpacing: -0.5,
-    lineHeight: 26,
-  },
-  detailPanel: {
-    marginTop: 14,
-    borderRadius: 18,
-    borderWidth: 1,
-    padding: 14,
-  },
-  detailLine: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-  },
-  detailIcon: { marginRight: 10, marginTop: 2 },
-  detailPrimary: {
-    flex: 1,
-    fontSize: 15,
-    fontWeight: '800',
-    lineHeight: 20,
-  },
-  divider: {
-    height: 1,
-    marginVertical: 12,
-    opacity: 0.85,
-  },
-  timeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-    gap: 12,
-  },
-  timeItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  timeValue: {
-    fontSize: 15,
-    fontWeight: '800',
-  },
-  dot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-  },
-  noteBox: {
-    marginTop: 12,
-    padding: 12,
-    borderRadius: 14,
-    borderWidth: 1,
-  },
-  noteLabel: {
+  whenNum: { fontSize: 30, fontWeight: '900', letterSpacing: -1, lineHeight: 32 },
+  whenSub: { fontSize: 13, marginTop: 4, fontWeight: '600' },
+  badge: {
     fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 0.6,
-    marginBottom: 6,
+    fontWeight: '900',
+    letterSpacing: 1.2,
     textTransform: 'uppercase',
   },
-  noteBody: {
-    fontSize: 13,
-    fontWeight: '600',
-    lineHeight: 19,
+  title: {
+    fontSize: 17,
+    fontWeight: '900',
+    letterSpacing: -0.3,
+    lineHeight: 22,
   },
   actions: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    marginTop: 16,
+    marginTop: 4,
   },
+  outlineBtn: {
+    minHeight: 44,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    borderWidth: nb.borderWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  outlineBtnText: { fontSize: 14, fontWeight: '900' },
+  primaryBtn: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 10,
+    borderWidth: nb.borderWidth,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  primaryBtnText: { fontSize: 14, fontWeight: '900' },
 });

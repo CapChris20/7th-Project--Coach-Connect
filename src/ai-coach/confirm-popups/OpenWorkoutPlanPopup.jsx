@@ -57,7 +57,11 @@ export default function OpenWorkoutPlanPopup({ params, reasoning, onConfirm, onC
   }
 
   return (
-    <ToolModalBody title={POPUP_TITLE} reasoning={reasoningText}>
+    <ToolModalBody
+      badge="Coach wants to open your plan"
+      title={POPUP_TITLE}
+      reasoning={reasoningText}
+    >
       <DetailRow label={PLAN_ROW_LABEL} value={planLabel} />
       <ConfirmCancelRow
         onConfirm={handleConfirmOpenPlan}

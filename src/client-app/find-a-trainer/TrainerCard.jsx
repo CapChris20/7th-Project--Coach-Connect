@@ -1,130 +1,97 @@
-// One trainer's card in the marketplace browse list, neobrutalist redesign.
-// Flow: pull display fields off the trainer object → avatar, name, rating, bio, price → View Profile / Message / Connect.
-// Used by: the find-a-trainer browse list. `trainer._firebase` is the raw Firestore doc for fields the list projection omits.
+// One trainer row in the Find-a-Trainer list — Design Law HardShadow card (PNG 03).
+// Flow: read display fields → avatar + name/verified + availability → specialty pills → price + View profile.
+// Used by BrowseTrainersScreen. `trainer._firebase` is the raw Firestore doc for fields the list projection omits.
 //
-// vocab: neobrutalist = thick 2.5px borders, hard 4/4 shadows (no blur), gradient reserved for primary CTA
+// vocab: HardShadow = solid offset shadow sibling (no blur); nbFill = primary black/white block
 
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import {
   gradGradient,
-  trainerFirstName,
   getTrainerPrice,
 } from './trainerFilters';
 import { trainerPhotoUri } from '../../helpers/trainerProfilePhoto';
-import NbCard from '../../look-and-feel/NbCard';
-import NbButton from '../../look-and-feel/NbButton';
+import HardShadow from '../../look-and-feel/HardShadow';
 import NbAvatar from '../../look-and-feel/NbAvatar';
-import NbPill from '../../look-and-feel/NbPill';
-import { useColorScheme } from 'react-native';
-import { lightColors, darkColors } from '../../look-and-feel/colorPalette';
+import { useTheme } from '../../look-and-feel/lightDarkMode';
+import { accentGradients, borderRadius, nb, spacing } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
-const STAR_COUNT = 5;
-const SPECIALTY_FALLBACK = 'General Fitness';
-const UNRATED_LABEL = 'New';
 const RATE_ON_REQUEST_LABEL = 'Rate on request';
-const STAR_FILLED = 'star';
-const STAR_EMPTY = 'star-outline';
-const MODE_ICON_REMOTE = 'videocam-outline';
-const MODE_ICON_IN_PERSON = 'location-outline';
-const MODE_ICON_HYBRID = 'git-network-outline';
+const AVAILABLE_LABEL = 'Available';
+const WAITLIST_LABEL = 'Waitlist';
+const MAX_SPECIALTY_PILLS = 3;
+// Manipulate here: years caption when the trainer has coaching experience on file
+const YEARS_SUFFIX = 'yrs coaching';
 
 // ===== HELPER FUNCTIONS =====
 
 /**
- * Maps a trainer-authored training mode string to an icon.
- * Substring matching (not exact equality) because this text is inconsistently capitalized.
- * @param {string} mode
- * @returns {string}
- */
-function trainingModeIcon(mode) {
-  const modeText = String(mode || '').toLowerCase();
-  if (modeText.includes('remote')) return MODE_ICON_REMOTE;
-  if (modeText.includes('person')) return MODE_ICON_IN_PERSON;
-  // Manipulate here: hybrid / unknown modes share the network icon.
-  return MODE_ICON_HYBRID;
-}
-
-
-/**
- * Caption after the stars: rating, else "New", then reviews or years if present.
- * Reviews win over years when both exist — the card has one slot for that extra bit.
- * @param {number|null} rating
- * @param {number} reviewCount
- * @param {number} years
- * @returns {string}
- */
-function ratingCaption(rating, reviewCount, years) {
-  const ratingText = rating != null ? `${Number(rating).toFixed(1)}` : UNRATED_LABEL;
-  if (reviewCount > 0) return `${ratingText} · ${reviewCount} reviews`;
-  if (years > 0) return `${ratingText} · ${years} yrs`;
-  return ratingText;
-}
-
-/**
- * Filled star when this index is at or under the rounded rating. Unrated trainers get outlines.
- * @param {number} starIndex
- * @param {number|null} rating
- * @returns {string}
- */
-function starIconName(starIndex, rating) {
-  const isFilled = rating != null && starIndex <= Math.round(rating);
-  return isFilled ? STAR_FILLED : STAR_EMPTY;
-}
-
-/**
  * Display fields with "list projection, else raw Firestore" fallbacks.
- * vocab/symbol: ?? falls back only on null/undefined, so a legitimate 0 rating or 0 years survives.
+ * vocab/symbol: ?? falls back only on null/undefined, so a legitimate 0 price survives the first check.
  * @param {object} trainer
  */
 function readTrainerCardFields(trainer) {
   const photoUri = trainer.photoURL || trainerPhotoUri(trainer._firebase);
-  // vocab: getTrainerPrice reads the billed monthly rate off the raw Firebase doc first.
   const price = getTrainerPrice(trainer._firebase) ?? trainer.price;
-  // A price of 0 is treated as "not set" rather than "free".
   const showPrice = price != null && Number(price) > 0;
-  const specialty = trainer.specialties?.[0] || SPECIALTY_FALLBACK;
   const years = trainer.years ?? 0;
-  const reviewCount = trainer.reviewCount ?? trainer._firebase?.reviewCount ?? 0;
-  // rating stays NULL (not 0) when unrated — the star row uses null to mean "New".
-  const rating = trainer.rating ?? trainer._firebase?.averageRating ?? null;
+  const specialties = Array.isArray(trainer.specialties) ? trainer.specialties : [];
   return {
-    firstName: trainerFirstName(trainer.name),
-    avatarColors: gradGradient(trainer.grad),
     photoUri,
     price,
     showPrice,
-    specialty,
     years,
-    reviewCount,
-    rating,
+    specialties: specialties.slice(0, MAX_SPECIALTY_PILLS),
+    avatarColors: gradGradient(trainer.grad) || accentGradients[0],
   };
 }
 
 /**
- * Star row + caption. Built here so the JSX below stays a list of card sections.
- * Manipulate here: star color is #FB923C (brand orange) for rated trainers
+ * Location · N yrs coaching — matches the muted subtitle under the name in PNG 03.
+ * @param {string} location
+ * @param {number} years
+ * @returns {string}
  */
-function RatingRow({ rating, reviewCount, years, mutedColor }) {
-  const starIndexes = Array.from({ length: STAR_COUNT }, (_, index) => index + 1);
-  const starColor = rating != null ? '#FB923C' : mutedColor;
-  
+function locationYearsLine(location, years) {
+  const place = String(location || '').trim() || 'Location TBD';
+  if (years > 0) return `${place} · ${years} ${YEARS_SUFFIX}`;
+  return place;
+}
+
+/**
+ * Compact verified tick — solid fill circle + check (never green).
+ */
+function VerifiedTick({ colors }) {
   return (
-    <View style={styles.ratingRow}>
-      {starIndexes.map((starIndex) => (
-        <Ionicons
-          key={starIndex}
-          name={starIconName(starIndex, rating)}
-          size={13}
-          color={starColor}
-        />
-      ))}
-      <Text style={[styles.ratingText, { color: mutedColor }]}>
-        {ratingCaption(rating, reviewCount, years)}
-      </Text>
+    <View style={[styles.verifiedTick, { backgroundColor: colors.nbFill, borderColor: colors.nbBorder }]}>
+      <Ionicons name="checkmark" size={10} color={colors.nbOnFill} />
+    </View>
+  );
+}
+
+/**
+ * Available = brand gradient pill; Waitlist = plain outlined pill (PNG 03).
+ */
+function AvailabilityBadge({ available, colors }) {
+  if (available) {
+    return (
+      <LinearGradient
+        colors={accentGradients[0]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={[styles.statusPill, { borderColor: colors.nbBorder }]}
+      >
+        <Text style={[styles.statusPillText, { color: colors.nbInk }]}>{AVAILABLE_LABEL}</Text>
+      </LinearGradient>
+    );
+  }
+  return (
+    <View style={[styles.statusPill, styles.statusPillPlain, { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface }]}>
+      <Text style={[styles.statusPillText, { color: colors.nbInk }]}>{WAITLIST_LABEL}</Text>
     </View>
   );
 }
@@ -132,214 +99,192 @@ function RatingRow({ rating, reviewCount, years, mutedColor }) {
 // ===== MAIN FUNCTION =====
 
 /**
- * Marketplace card for one trainer: photo, rating, bio, monthly price, and the three actions.
- * Neobrutalist redesign: uses NbCard, NbAvatar, NbPill, NbButton.
- * @param {{ trainer: object, t: object, isDark?: boolean, onMessage: Function, onConnect: Function, onViewProfile: Function }} props
+ * Marketplace card for one trainer — horizontal identity row, specialty pills, price footer.
+ * Tap anywhere (or View profile) opens the profile sheet via onViewProfile.
+ * @param {{ trainer: object, onViewProfile: Function, onMessage?: Function, onConnect?: Function }} props
  */
 export default function TrainerCard({
   trainer,
-  t: theme,
-  isDark = true,
-  onMessage,
-  onConnect,
   onViewProfile,
+  // BrowseTrainers still passes these; Message / Connect live on the profile sheet (PNG).
+  onMessage: _onMessage,
+  onConnect: _onConnect,
 }) {
-  const colorScheme = useColorScheme();
-  const colors = colorScheme === 'dark' ? darkColors : lightColors;
+  const { colors } = useTheme();
   const fields = readTrainerCardFields(trainer);
-  const mutedColor = colors.nbMuted;
+
+  const openProfile = () => onViewProfile?.(trainer);
 
   return (
-    <NbCard style={styles.card}>
-      <View style={styles.cardBody}>
-        {/* Avatar with availability dot */}
-        <View style={styles.photoWrap}>
+    <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard} style={styles.cardWrap}>
+      <Pressable
+        onPress={openProfile}
+        accessibilityRole="button"
+        accessibilityLabel={`View profile for ${trainer.name}`}
+        style={({ pressed }) => [
+          styles.card,
+          {
+            backgroundColor: colors.nbSurface,
+            borderColor: colors.nbBorder,
+            opacity: pressed ? 0.96 : 1,
+          },
+        ]}
+      >
+        {/* Identity row: avatar | name + meta | availability */}
+        <View style={styles.topRow}>
           <NbAvatar
             source={fields.photoUri}
             initials={trainer.initials}
-            size={72}
+            size={48}
           />
-          {trainer.available && (
-            <View style={[styles.onlineDot, { borderColor: colors.nbSurface }]}>
-              <View style={styles.onlineDotInner} />
+          <View style={styles.nameBlock}>
+            <View style={styles.nameRow}>
+              <Text style={[styles.trainerName, { color: colors.nbInk }]} numberOfLines={1}>
+                {trainer.name}
+              </Text>
+              {trainer.verified === true ? <VerifiedTick colors={colors} /> : null}
             </View>
-          )}
-        </View>
-
-        {/* Name */}
-        <Text style={[styles.trainerName, { color: colors.nbInk }]} numberOfLines={1}>
-          {trainer.name}
-        </Text>
-
-        {/* Verified badge */}
-        {trainer.verified === true && (
-          <View style={styles.verifiedRow}>
-            <Ionicons name="shield-checkmark" size={13} color="#22C55E" />
-            <Text style={styles.verifiedText}>Verified</Text>
-          </View>
-        )}
-
-        {/* Specialty pill */}
-        <View style={styles.pillWrap}>
-          <NbPill variant="energy">{fields.specialty}</NbPill>
-        </View>
-
-        {/* Rating stars */}
-        <RatingRow
-          rating={fields.rating}
-          reviewCount={fields.reviewCount}
-          years={fields.years}
-          mutedColor={mutedColor}
-        />
-
-        {/* Bio */}
-        <Text style={[styles.bio, { color: mutedColor }]} numberOfLines={3}>
-          {trainer.bio}
-        </Text>
-
-        {/* Location + mode metadata */}
-        <View style={styles.metaRow}>
-          <Ionicons name="location-outline" size={12} color={mutedColor} />
-          <Text style={[styles.metaText, { color: mutedColor }]} numberOfLines={1}>
-            {trainer.location}
-          </Text>
-          <Text style={[styles.metaDot, { color: mutedColor }]}>·</Text>
-          <Ionicons name={trainingModeIcon(trainer.mode)} size={12} color={mutedColor} />
-          <Text style={[styles.metaText, { color: mutedColor }]}>{trainer.mode}</Text>
-        </View>
-
-        {/* Price */}
-        <Text style={[styles.priceLine, { color: colors.nbInk }]}>
-          {fields.showPrice ? (
-            <>
-              <Text style={[styles.priceAmount, { color: '#FB923C' }]}>${fields.price}</Text>
-              <Text style={{ color: mutedColor, fontSize: 13, fontWeight: '600', fontFamily: 'Inter_600SemiBold' }}> /mo</Text>
-            </>
-          ) : (
-            <Text style={{ color: mutedColor, fontSize: 14, fontWeight: '600', fontFamily: 'Inter_600SemiBold' }}>
-              {RATE_ON_REQUEST_LABEL}
+            <Text style={[styles.metaLine, { color: colors.nbMuted }]} numberOfLines={1}>
+              {locationYearsLine(trainer.location, fields.years)}
             </Text>
-          )}
-        </Text>
-
-        {/* Primary CTA: View Profile */}
-        <View style={styles.ctaWrap}>
-          <NbButton variant="brand" onPress={() => onViewProfile(trainer)}>
-            View Profile
-          </NbButton>
+          </View>
+          <AvailabilityBadge available={trainer.available !== false} colors={colors} />
         </View>
 
-        {/* Secondary actions */}
-        <View style={styles.secondaryRow}>
-          <NbButton variant="plain" sm onPress={() => onMessage(trainer)}>
-            Message
-          </NbButton>
-          <NbButton variant="ink" sm onPress={() => onConnect(trainer)}>
-            Connect
-          </NbButton>
+        {/* Specialty pills — plain outlined (accent reserved for Available / avatar) */}
+        {fields.specialties.length > 0 ? (
+          <View style={styles.pillRow}>
+            {fields.specialties.map((spec) => (
+              <View
+                key={spec}
+                style={[styles.specPill, { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface }]}
+              >
+                <Text style={[styles.specPillText, { color: colors.nbInk }]} numberOfLines={1}>
+                  {spec}
+                </Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
+
+        {/* Footer: price left, View profile right */}
+        <View style={[styles.footer, { borderTopColor: colors.nbBorder }]}>
+          <Text style={[styles.priceText, { color: colors.nbInk }]} numberOfLines={1}>
+            {fields.showPrice ? (
+              <>
+                ${fields.price}
+                <Text style={[styles.priceSuffix, { color: colors.nbMuted }]}> / mo</Text>
+              </>
+            ) : (
+              RATE_ON_REQUEST_LABEL
+            )}
+          </Text>
+          <View style={styles.viewProfileRow}>
+            <Text style={[styles.viewProfileText, { color: colors.nbInk }]}>View profile</Text>
+            <Ionicons name="chevron-forward" size={16} color={colors.nbInk} />
+          </View>
         </View>
-      </View>
-    </NbCard>
+      </Pressable>
+    </HardShadow>
   );
 }
 
 const styles = StyleSheet.create({
+  cardWrap: {
+    marginBottom: spacing.md,
+  },
   card: {
-    marginBottom: 14,
+    borderWidth: nb.borderWidth,
+    borderRadius: borderRadius.nbCard,
+    padding: spacing.md,
+    gap: spacing.sm + 2,
   },
-  cardBody: { 
-    padding: 14, 
+  topRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm + 4,
+  },
+  nameBlock: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  nameRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
-  photoWrap: { 
-    marginBottom: 4, 
-    position: 'relative',
+  trainerName: {
+    flexShrink: 1,
+    fontSize: 17,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    letterSpacing: -0.2,
   },
-  onlineDot: {
-    position: 'absolute',
-    bottom: 2,
-    right: 2,
+  verifiedTick: {
     width: 16,
     height: 16,
     borderRadius: 8,
-    borderWidth: 2,
+    borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  onlineDotInner: { 
-    width: 8, 
-    height: 8, 
-    borderRadius: 4,
-    backgroundColor: '#22C55E',
+  metaLine: {
+    fontSize: 13,
+    fontFamily: 'Inter_500Medium',
+    lineHeight: 18,
   },
-  trainerName: { 
-    fontSize: 18, 
+  statusPill: {
+    borderWidth: nb.borderWidthPill,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    alignSelf: 'flex-start',
+  },
+  statusPillPlain: {},
+  statusPillText: {
+    fontSize: 12,
     fontFamily: 'SpaceGrotesk_700Bold',
-    textAlign: 'center',
   },
-  verifiedRow: {
+  pillRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
+    flexWrap: 'wrap',
+    gap: 8,
   },
-  verifiedText: {
+  specPill: {
+    borderWidth: nb.borderWidthPill,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+  },
+  specPillText: {
     fontSize: 12,
     fontFamily: 'Inter_600SemiBold',
-    color: '#22C55E',
   },
-  pillWrap: {
-    marginTop: 4,
+  footer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderTopWidth: StyleSheet.hairlineWidth * 2,
+    paddingTop: spacing.sm + 4,
+    marginTop: 2,
+    gap: spacing.sm,
   },
-  ratingRow: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    gap: 3, 
-    marginTop: 4,
-  },
-  ratingText: { 
-    fontSize: 11, 
-    fontFamily: 'Inter_500Medium',
-    marginLeft: 4,
-  },
-  bio: {
-    fontSize: 13,
-    lineHeight: 19,
-    fontFamily: 'Inter_400Regular',
-    textAlign: 'center',
-    marginTop: 6,
-    minHeight: 57,
-  },
-  metaRow: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    gap: 4, 
-    marginTop: 6, 
-    flexWrap: 'wrap', 
-    justifyContent: 'center',
-  },
-  metaText: { 
-    fontSize: 11, 
-    fontFamily: 'Inter_500Medium',
-    maxWidth: 110,
-  },
-  metaDot: { fontSize: 11 },
-  priceLine: { 
-    marginTop: 8, 
-    textAlign: 'center',
-  },
-  priceAmount: { 
-    fontSize: 24, 
+  priceText: {
+    fontSize: 16,
     fontFamily: 'SpaceGrotesk_700Bold',
+    flexShrink: 1,
   },
-  ctaWrap: { 
-    width: '100%', 
-    marginTop: 10,
+  priceSuffix: {
+    fontSize: 13,
+    fontFamily: 'Inter_600SemiBold',
   },
-  secondaryRow: { 
-    flexDirection: 'row', 
-    gap: 10, 
-    marginTop: 8,
-    width: '100%',
+  viewProfileRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  viewProfileText: {
+    fontSize: 14,
+    fontFamily: 'Inter_700Bold',
   },
 });

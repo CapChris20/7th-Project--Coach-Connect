@@ -168,11 +168,16 @@ export function SharedByTrainerSection({ items, onOpenItem, onDownloadItem, onMa
     <View style={styles.section}>
       <View style={styles.headerRow}>
         <Text style={[styles.sectionTitle, { color: colors.nbMuted }]}>SHARED BY TRAINER</Text>
-        {unreadCount > 0 && (
-          <View style={[styles.unreadBadge, { backgroundColor: colors.error }]}>
-            <Text style={styles.unreadText}>{unreadCount}</Text>
+        {unreadCount > 0 ? (
+          <View
+            style={[
+              styles.unreadBadge,
+              { backgroundColor: colors.nbFill, borderColor: colors.nbBorder },
+            ]}
+          >
+            <Text style={[styles.unreadText, { color: colors.nbOnFill }]}>{unreadCount}</Text>
           </View>
-        )}
+        ) : null}
       </View>
 
       {CATEGORIES.map((category) => {
@@ -233,11 +238,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 10,
+    borderWidth: 2.5,
+    minWidth: 28,
+    alignItems: 'center',
   },
   unreadText: {
     fontSize: 11,
     fontFamily: 'Inter_600SemiBold',
-    color: '#FFFFFF',
   },
   emptyCard: {
     padding: 24,
@@ -271,7 +278,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 10,
-    borderWidth: 2.5,
+    borderWidth: 3,
   },
   countText: {
     fontSize: 12,

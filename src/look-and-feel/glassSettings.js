@@ -1,12 +1,13 @@
-// Shared glass colors, radii, and type for dark panels.
-// Flow: screens read Liquid.colors, Liquid.radius, and the rest. This file does not compute layout.
-// Used by: glass cards and dark backgrounds.
+// Shared solid panel tokens (strip pass: was glass Liquid palette).
+// Flow: screens that still import Liquid get solid ink surfaces — no frosted rgba chrome.
+// Used by: legacy GlassCard callers and dark panels.
 
 import { Platform } from 'react-native';
+import { darkColors, lightColors } from './colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
-const GLASS_CARD_RADIUS = 28;
+const GLASS_CARD_RADIUS = 14;
 const GLASS_INNER_RADIUS = 12;
 const GLASS_GUTTER = 24;
 const GLASS_GAP = 12;
@@ -14,27 +15,27 @@ const LABEL_TRACKING = 0.5;
 
 const Liquid = {
   colors: {
-    obsidian: '#050505',
-    glassSurface: 'rgba(255,255,255,0.03)',
-    glassStrokeTop: 'rgba(255,255,255,0.15)',
-    glassStrokeBottom: 'rgba(255,255,255,0.04)',
-    textPrimary: 'rgba(255,255,255,0.92)',
-    textSecondary: 'rgba(255,255,255,0.62)',
+    obsidian: darkColors.nbBackground,
+    glassSurface: darkColors.nbSurface,
+    glassStrokeTop: darkColors.nbBorder,
+    glassStrokeBottom: darkColors.nbBorder,
+    textPrimary: darkColors.nbInk,
+    textSecondary: darkColors.nbMuted,
     scrimStrong: 'rgba(0,0,0,0.72)',
     scrimSoft: 'rgba(0,0,0,0.45)',
-    hotPink: '#FF2DCE',
-    cyan: '#00E5FF',
-    magenta: '#FF00D4',
-    darkPurple: '#240A44',
-    lightOrange: '#FFB25B',
-    accent: '#00E5FF',
-    accentAlt: '#FF2DCE',
+    hotPink: '#FF6B9D',
+    cyan: '#60A5FA',
+    magenta: '#E25588',
+    darkPurple: darkColors.nbBackground,
+    lightOrange: '#FB923C',
+    accent: '#E25588',
+    accentAlt: '#FB923C',
   },
   gradients: {
-    primary: ['#FF2DCE', '#FF00D4', '#00E5FF', '#FFB25B'],
-    primarySoft: ['rgba(255,45,206,0.70)', 'rgba(0,229,255,0.65)'],
-    aura: ['rgba(255,45,206,0)', 'rgba(255,0,212,0.30)', 'rgba(0,229,255,0.28)', 'rgba(255,178,91,0)'],
-    haloActive: ['rgba(255,45,206,0.22)', 'rgba(0,229,255,0.18)'],
+    primary: ['#FF6B9D', '#FB923C'],
+    primarySoft: ['#FF6B9D', '#FB923C'],
+    aura: [darkColors.nbSurface, darkColors.nbBackground],
+    haloActive: ['#FF6B9D', '#FB923C'],
   },
   radius: {
     card: GLASS_CARD_RADIUS,
@@ -59,6 +60,5 @@ function buildLiquidTokens() {
 
 // ===== MAIN FUNCTION =====
 
-const liquidTokens = buildLiquidTokens();
-
-export { liquidTokens as Liquid };
+export { Liquid, buildLiquidTokens };
+export default Liquid;

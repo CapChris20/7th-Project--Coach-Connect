@@ -9,7 +9,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import NbCard from '../../look-and-feel/NbCard';
 import NbButton from '../../look-and-feel/NbButton';
-import { nb } from '../../look-and-feel/colorPalette';
+import { nb, lightColors } from '../../look-and-feel/colorPalette';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
 
 // ===== NAMED CONSTANTS =====
@@ -186,7 +186,7 @@ const styles = StyleSheet.create({
     borderWidth: nb.borderWidth,
   },
   badgeText: {
-    color: '#FFFFFF',
+    color: lightColors.white,
     fontSize: 11,
     fontFamily: 'Inter_600SemiBold',
   },

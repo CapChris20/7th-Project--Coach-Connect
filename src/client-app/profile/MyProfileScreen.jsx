@@ -1,5 +1,5 @@
-// Profile screen for a client or a trainer: photo, personal rows, and account actions.
-// Flow: read the signed-in user, then save one field or a certification sheet.
+// Design Law Edit profile — identity card, Nb list rows, pink→orange accents only.
+// Flow: read the signed-in user → edit one field or certification sheet → save to Firestore.
 // Used by the client profile stack and the trainer app. userRole "Client" stays that letter.
 import React, { useMemo, useState } from 'react';
 import {
@@ -20,6 +20,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { auth, db } from '../../app-start/cloudConnection';
 import { signOut } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
@@ -36,7 +37,6 @@ import {
   certificationStatusDetail,
   certificationStatusTone,
 } from '../../for-both/online-connection/checkTrainerCertificate';
-import TopHeader from '../../for-both/loading-and-header/TopHeader';
 import BottomMenuBar from '../../navigation/BottomMenuBar';
 import { ShellBottomNavAnchor, FORM_SCROLL_PROPS, useShellBottomNavInset } from '../../navigation/bottomMenuSpacing';
 import ProfileIcon from '../../for-both/icons/ProfileIcon';
@@ -51,6 +51,7 @@ import { syncTrainerMarketplaceDoc } from '../../for-both/trainer-listing/keepTr
 import NbCard from '../../look-and-feel/NbCard';
 import NbButton from '../../look-and-feel/NbButton';
 import NbListRow from '../../look-and-feel/NbListRow';
+import HardShadow from '../../look-and-feel/HardShadow';
 import {
   Camera,
   Dumbbell,
@@ -81,6 +82,14 @@ import {
   formatDaysPerWeek,
 } from '../../helpers/showSetupAnswers';
 import { fillTraineeProfile } from '../../helpers/fillTraineeProfile';
+import {
+  lightColors,
+  darkColors,
+  nb,
+  gradients,
+  navAccentGradient,
+  spacing,
+} from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
@@ -105,35 +114,30 @@ const CERT_SUCCESS_TEXT = '#16a34a';
 const CERT_DANGER_TEXT = '#dc2626';
 const EMPTY_PROFILE_MARK = '—';
 
+// Manipulate here: accent only — pink→orange brand (no purple / no yellow)
 const PROFILE = {
-  purple: '#BE185D',
-  pink: '#C2410C',
-  violet: '#9A3412',
-  violetSoft: '#FDBA74',
-  icon: '#FDBA74',
-  borderGradient: ['#BE185D', '#C2410C'],
-  lineGradient: ['#BE185D', '#C2410C', 'transparent'],
+  accentSoft: '#FB923C',
+  icon: '#FB923C',
+  borderGradient: navAccentGradient,
+  lineGradient: [...navAccentGradient, 'transparent'],
 };
 
-const DARK = {
-  bg: '#0A0A0F',
-  card: '#13131A',
-  text: '#FFFFFF',
-  muted: 'rgba(255,255,255,0.55)',
-  border: 'rgba(255,255,255,0.1)',
-  hover: 'rgba(255,255,255,0.04)',
-  toggleOff: 'rgba(255,255,255,0.18)',
-};
-
-const LIGHT = {
-  bg: '#F4F4F7',
-  card: '#FFFFFF',
-  text: '#0A0A0F',
-  muted: 'rgba(10,10,15,0.55)',
-  border: 'rgba(10,10,15,0.08)',
-  hover: 'rgba(10,10,15,0.04)',
-  toggleOff: 'rgba(10,10,15,0.18)',
-};
+/** Design Law surface tokens for profile chrome (3px borders live on NbCard / HardShadow). */
+function profileThemeFromMode(isDark) {
+  const palette = isDark ? darkColors : lightColors;
+  return {
+    bg: palette.nbBackground,
+    card: palette.nbSurface,
+    text: palette.nbInk,
+    muted: palette.nbMuted,
+    border: palette.nbBorder,
+    shadow: palette.nbShadow,
+    fill: palette.nbFill,
+    onFill: palette.nbOnFill,
+    hover: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(10,10,15,0.04)',
+    toggleOff: isDark ? 'rgba(255,255,255,0.18)' : 'rgba(10,10,15,0.18)',
+  };
+}
 
 // ===== HELPER FUNCTIONS =====
 
@@ -217,39 +221,15 @@ function initialsFromName(name) {
     .toUpperCase();
 }
 
-/** Soft glass panel — purple/pink lives in icon tints + section lines, not card rims */
-function AccentPanel({ children, radius = 20, isDark, style }) {
-  return (
-    <View
-      style={[
-        {
-          borderRadius: radius,
-          overflow: 'hidden',
-          backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#FFFFFF',
-        },
-        style,
-      ]}
-    >
-      <LinearGradient
-        colors={[
-          isDark ? 'rgba(147,51,234,0.10)' : 'rgba(147,51,234,0.05)',
-          isDark ? 'rgba(219,39,119,0.05)' : 'rgba(219,39,119,0.03)',
-          'transparent',
-        ]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        pointerEvents="none"
-        style={[StyleSheet.absoluteFillObject, { borderRadius: radius }]}
-      />
-      <View>{children}</View>
-    </View>
-  );
+/** Design Law surface panel — NbCard chrome, no purple wash. */
+function AccentPanel({ children, style }) {
+  return <NbCard style={[{ marginBottom: 0, padding: spacing.md }, style]}>{children}</NbCard>;
 }
 
-function GradientIconWrap({ children, size = 40, radius = 20, style }) {
+function GradientIconWrap({ children, size = 40, radius = 12, style }) {
   return (
     <LinearGradient
-      colors={[hexToRgba(PROFILE.purple, 0.22), hexToRgba(PROFILE.pink, 0.14)]}
+      colors={navAccentGradient}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
       style={[
@@ -259,6 +239,8 @@ function GradientIconWrap({ children, size = 40, radius = 20, style }) {
           borderRadius: radius,
           alignItems: 'center',
           justifyContent: 'center',
+          borderWidth: nb.borderWidth,
+          borderColor: lightColors.nbInk,
         },
         style,
       ]}
@@ -268,71 +250,136 @@ function GradientIconWrap({ children, size = 40, radius = 20, style }) {
   );
 }
 
-function SectionTitle({ title, lineColors, theme }) {
+/** Design Law section label — uppercase muted, no decorative gradient rail. */
+function SectionTitle({ title, theme }) {
   return (
     <View style={styles.sectionTitleRow}>
       <Text style={[styles.sectionTitleText, { color: theme.muted }]}>{title}</Text>
-      <View style={styles.sectionTitleLineWrap}>
-        <LinearGradient colors={lineColors} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={styles.sectionTitleLine} />
-        <View style={[styles.sectionTitleDot, { backgroundColor: lineColors[0] }]} />
+    </View>
+  );
+}
+
+/**
+ * Design Law page chrome: hard-shadow back square + title.
+ */
+function ProfilePageHeader({ title, subtitle, onBack, theme, topInset = 0 }) {
+  return (
+    <View style={[styles.pageHeader, { paddingTop: topInset + spacing.sm }]}>
+      {typeof onBack === 'function' ? (
+        <TouchableOpacity
+          onPress={onBack}
+          style={[
+            styles.backSq,
+            {
+              borderColor: theme.border,
+              backgroundColor: theme.card,
+              shadowColor: theme.shadow,
+            },
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+          activeOpacity={0.85}
+        >
+          <Ionicons name="chevron-back" size={22} color={theme.text} />
+        </TouchableOpacity>
+      ) : (
+        <View style={styles.backSqSpacer} />
+      )}
+      <View style={styles.pageHeaderText}>
+        <Text style={[styles.pageTitle, { color: theme.text }]}>{title}</Text>
+        {subtitle ? <Text style={[styles.pageSubtitle, { color: theme.muted }]}>{subtitle}</Text> : null}
       </View>
     </View>
   );
 }
 
-function ProfileHero({ kicker, name, handle, headline, photoURL, uploading, onPressPhoto, onEditPress, theme, isDark }) {
-  const ring = 188;
-  const inner = 176;
+/**
+ * Visual identity hero — big pink→orange avatar ring + name (the page should feel like YOU, not a tax form).
+ * Design Law still allows gradient accents on avatars; hard border + hard shadow keep the chrome honest.
+ */
+function ProfileHero({ kicker, name, handle, headline, photoURL, uploading, onPressPhoto, theme }) {
+  // Manipulate here: avatar ring size (outer / photo)
+  const ring = 148;
+  const photo = 132;
   return (
-    <View style={styles.heroWrap}>
-      <View style={styles.heroTopRow}>
-        <Text style={[styles.heroKicker, { color: theme.muted, flex: 1 }]}>{kicker}</Text>
-        {onEditPress ? (
-          <Pressable onPress={onEditPress} style={[styles.heroEditBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(10,10,15,0.06)' }]}>
-            <Pencil size={14} color={PROFILE.violetSoft} strokeWidth={2.2} />
-            <Text style={[styles.heroEditText, { color: theme.text }]}>Edit</Text>
-          </Pressable>
-        ) : null}
-      </View>
+    <NbCard style={styles.heroCard}>
+      <Text style={[styles.heroKicker, { color: theme.muted }]}>{kicker}</Text>
       <View style={styles.heroPhotoWrap}>
         <LinearGradient
-          colors={PROFILE.borderGradient}
+          colors={navAccentGradient}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={{ width: ring, height: ring, borderRadius: ring / 2, alignItems: 'center', justifyContent: 'center' }}
+          style={[
+            styles.heroRing,
+            {
+              width: ring,
+              height: ring,
+              borderRadius: ring / 2,
+              borderColor: theme.border,
+              shadowColor: theme.shadow,
+            },
+          ]}
         >
-          <View style={[styles.heroPhotoInner, { width: inner, height: inner, borderRadius: inner / 2, backgroundColor: isDark ? '#0f0e14' : '#eee' }]}>
+          <View
+            style={[
+              styles.heroPhotoInner,
+              {
+                width: photo,
+                height: photo,
+                borderRadius: photo / 2,
+                backgroundColor: theme.card,
+              },
+            ]}
+          >
             {photoURL ? (
-              <Image source={{ uri: photoURL }} style={{ width: inner - 4, height: inner - 4, borderRadius: (inner - 4) / 2 }} />
+              <Image
+                source={{ uri: photoURL }}
+                style={{ width: photo - 4, height: photo - 4, borderRadius: (photo - 4) / 2 }}
+              />
             ) : (
-              <Text style={styles.heroInitials}>{initialsFromName(name)}</Text>
+              <Text style={[styles.heroInitials, { color: lightColors.nbInk }]}>{initialsFromName(name)}</Text>
             )}
           </View>
         </LinearGradient>
         <Pressable
           onPress={uploading ? undefined : onPressPhoto}
-          style={[styles.heroCamBtn, { opacity: uploading ? 0.65 : 1 }]}
+          style={[
+            styles.heroCamBtn,
+            {
+              opacity: uploading ? 0.65 : 1,
+              borderColor: theme.border,
+              shadowColor: theme.shadow,
+            },
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel="Change profile photo"
         >
-          {uploading ? <ActivityIndicator color="#fff" size="small" /> : <Camera size={18} color="#fff" strokeWidth={2.2} />}
+          {uploading ? (
+            <ActivityIndicator color={lightColors.nbInk} size="small" />
+          ) : (
+            <LinearGradient
+              colors={navAccentGradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={StyleSheet.absoluteFillObject}
+            />
+          )}
+          {!uploading ? <Camera size={18} color={lightColors.nbInk} strokeWidth={2.4} /> : null}
         </Pressable>
       </View>
-      <Text style={[styles.heroName, { color: theme.text }]}>{name}</Text>
-      <Text style={styles.heroHandle}>{handle}</Text>
+      <Text style={[styles.heroName, { color: theme.text }]}>{name || 'Your name'}</Text>
+      <Text style={[styles.heroHandle, { color: theme.muted }]}>{handle}</Text>
       {String(headline || '').trim() ? (
         <Text style={[styles.heroBio, { color: theme.muted }]} numberOfLines={3}>
           {headline}
         </Text>
       ) : null}
-    </View>
+    </NbCard>
   );
 }
 
-function EditPencilBtn({ isDark }) {
-  return (
-    <View style={[styles.editPencilBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(10,10,15,0.08)' }]}>
-      <Pencil size={16} color={isDark ? 'rgba(255,255,255,0.9)' : 'rgba(10,10,15,0.75)'} strokeWidth={2.2} />
-    </View>
-  );
+function EditChevron({ theme }) {
+  return <Ionicons name="chevron-forward" size={20} color={theme.muted} />;
 }
 
 /** Single grouped card for profile rows — matches app glass panels (no per-field rainbow borders). */
@@ -369,7 +416,7 @@ function ProfileRow({
             />
           </View>
         ) : LeadingIcon ? (
-          <View style={[styles.profileRowIcon, { backgroundColor: hexToRgba(PROFILE.icon, 0.12) }]}>
+          <View style={[styles.profileRowIcon, { backgroundColor: hexToRgba(PROFILE.icon, 0.14) }]}>
             <LeadingIcon size={18} color={PROFILE.icon} strokeWidth={2} />
           </View>
         ) : null}
@@ -380,7 +427,7 @@ function ProfileRow({
           </Text>
         </View>
       </View>
-      {editable ? <EditPencilBtn isDark={isDark} /> : null}
+      {editable ? <EditChevron theme={theme} /> : null}
     </View>
   );
   if (!editable || !onPress) return row;
@@ -391,12 +438,12 @@ function ProfileRow({
   );
 }
 
-function InfoField({ label, value, onPress, editable, theme, isDark, LeadingIcon }) {
+function InfoField({ label, value, onPress, editable, theme, LeadingIcon }) {
   const body = (
     <View style={styles.infoField}>
       <View style={styles.infoFieldHeader}>
         <Text style={[styles.infoLabel, { color: theme.muted, flex: 1 }]}>{label}</Text>
-        {editable ? <EditPencilBtn isDark={isDark} /> : null}
+        {editable ? <EditChevron theme={theme} /> : null}
       </View>
       <View style={styles.infoValueRow}>
         {LeadingIcon ? <LeadingIcon size={15} color={PROFILE.icon} style={{ marginRight: 6 }} /> : null}
@@ -414,12 +461,12 @@ function InfoField({ label, value, onPress, editable, theme, isDark, LeadingIcon
   );
 }
 
-function CredentialPill({ Icon, label, value, theme, isDark, style }) {
+function CredentialPill({ Icon, label, value, theme, style }) {
   return (
-    <AccentPanel radius={18} isDark={isDark} style={[{ flex: 1, minWidth: '46%' }, style]}>
+    <AccentPanel style={[{ flex: 1, minWidth: '46%' }, style]}>
       <View style={styles.credPillInner}>
-        <GradientIconWrap size={40} radius={20}>
-          <Icon size={20} color={PROFILE.violetSoft} strokeWidth={2} />
+        <GradientIconWrap size={40} radius={12}>
+          <Icon size={20} color={lightColors.nbInk} strokeWidth={2} />
         </GradientIconWrap>
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={[styles.infoLabel, { color: theme.muted }]}>{label}</Text>
@@ -432,14 +479,14 @@ function CredentialPill({ Icon, label, value, theme, isDark, style }) {
   );
 }
 
-function PhilosophyQuote({ text, onPress, theme, isDark }) {
+function PhilosophyQuote({ text, onPress, theme }) {
   const quote = text?.trim() || 'Tap to share how you coach — your voice belongs on your profile.';
   return (
     <Pressable onPress={onPress}>
-      <AccentPanel radius={22} isDark={isDark}>
+      <AccentPanel>
         <View style={styles.philosophyInner}>
           <View style={styles.philosophyEditCorner}>
-            <EditPencilBtn isDark={isDark} />
+            <EditChevron theme={theme} />
           </View>
           <Text style={[styles.philosophyQuote, { color: theme.text }]}>{`\u201C${quote}\u201D`}</Text>
         </View>
@@ -448,12 +495,12 @@ function PhilosophyQuote({ text, onPress, theme, isDark }) {
   );
 }
 
-function SessionCard({ Icon, label, title, subtitle, theme, isDark }) {
+function SessionCard({ Icon, label, title, subtitle, theme }) {
   return (
-    <AccentPanel radius={20} isDark={isDark} style={{ marginBottom: 12 }}>
+    <AccentPanel style={{ marginBottom: 12 }}>
       <View style={styles.sessionCardInner}>
-        <GradientIconWrap size={44} radius={14} style={styles.sessionIconWrap}>
-          <Icon size={22} color={PROFILE.violetSoft} strokeWidth={2} />
+        <GradientIconWrap size={44} radius={12} style={styles.sessionIconWrap}>
+          <Icon size={22} color={lightColors.nbInk} strokeWidth={2} />
         </GradientIconWrap>
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={[styles.infoLabel, { color: theme.muted }]}>{label}</Text>
@@ -465,30 +512,32 @@ function SessionCard({ Icon, label, title, subtitle, theme, isDark }) {
   );
 }
 
-function TrainerStatTile({ Icon, value, label, theme, isDark }) {
+function TrainerStatTile({ Icon, value, label, theme }) {
   return (
-    <View
-      style={[
-        styles.statTile,
-        {
-          backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#FFFFFF',
-          borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(10,10,15,0.08)',
-        },
-      ]}
-    >
-      <Icon size={16} color={PROFILE.violetSoft} strokeWidth={2} />
-      <Text style={[styles.statValue, { color: theme.text }]}>{value}</Text>
-      <Text style={[styles.statLabel, { color: theme.muted }]}>{label}</Text>
-    </View>
+    <HardShadow offset={nb.shadowOffsetSmall} radius={12} style={{ flex: 1 }}>
+      <View
+        style={[
+          styles.statTile,
+          {
+            backgroundColor: theme.card,
+            borderColor: theme.border,
+          },
+        ]}
+      >
+        <Icon size={16} color={PROFILE.icon} strokeWidth={2} />
+        <Text style={[styles.statValue, { color: theme.text }]}>{value}</Text>
+        <Text style={[styles.statLabel, { color: theme.muted }]}>{label}</Text>
+      </View>
+    </HardShadow>
   );
 }
 
-function TrainerStatsStrip({ clientCount, years, rating, theme, isDark }) {
+function TrainerStatsStrip({ clientCount, years, rating, theme }) {
   return (
     <View style={styles.statsRow}>
-      <TrainerStatTile Icon={Users} value={clientCount ?? '—'} label="Clients" theme={theme} isDark={isDark} />
-      <TrainerStatTile Icon={Calendar} value={years ?? '—'} label="Years" theme={theme} isDark={isDark} />
-      <TrainerStatTile Icon={Star} value={rating ?? 'New'} label="Rating" theme={theme} isDark={isDark} />
+      <TrainerStatTile Icon={Users} value={clientCount ?? '—'} label="Clients" theme={theme} />
+      <TrainerStatTile Icon={Calendar} value={years ?? '—'} label="Years" theme={theme} />
+      <TrainerStatTile Icon={Star} value={rating ?? 'New'} label="Rating" theme={theme} />
     </View>
   );
 }
@@ -504,40 +553,47 @@ function paymentButtonLabel(status) {
   return 'Set Up';
 }
 
-function TrainerPaymentCard({ status, onPress, theme, isDark }) {
+function TrainerPaymentCard({ status, onPress, theme }) {
   const label = paymentStatusLabel(status);
   const cta = paymentButtonLabel(status);
   return (
     <Pressable onPress={onPress} disabled={!onPress}>
-      <LinearGradient colors={['#7C2D12', '#C2410C']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.paymentCard}>
-        <View style={styles.paymentCardInner}>
-          <Wallet size={18} color="#FDBA74" strokeWidth={2} />
-          <View style={{ flex: 1, marginLeft: 10 }}>
-            <Text style={styles.paymentKicker}>PAYMENTS</Text>
-            <Text style={styles.paymentStatus}>{label}</Text>
-          </View>
-          {onPress ? (
-            <View style={styles.paymentCta}>
-              <Text style={styles.paymentCtaText}>{cta}</Text>
+      <HardShadow offset={nb.shadowOffsetCard} radius={14}>
+        <LinearGradient
+          colors={gradients.brand.colors}
+          start={gradients.brand.start}
+          end={gradients.brand.end}
+          style={[styles.paymentCard, { borderColor: theme.border }]}
+        >
+          <View style={styles.paymentCardInner}>
+            <Wallet size={18} color={lightColors.nbInk} strokeWidth={2} />
+            <View style={{ flex: 1, marginLeft: 10 }}>
+              <Text style={[styles.paymentKicker, { color: lightColors.nbInk }]}>PAYMENTS</Text>
+              <Text style={[styles.paymentStatus, { color: lightColors.nbInk }]}>{label}</Text>
             </View>
-          ) : null}
-        </View>
-      </LinearGradient>
+            {onPress ? (
+              <View style={[styles.paymentCta, { borderColor: lightColors.nbInk }]}>
+                <Text style={[styles.paymentCtaText, { color: lightColors.nbInk }]}>{cta}</Text>
+              </View>
+            ) : null}
+          </View>
+        </LinearGradient>
+      </HardShadow>
     </Pressable>
   );
 }
 
-function TrainerContactRow({ label, value, Icon, onPress, editable, theme, isDark }) {
+function TrainerContactRow({ label, value, Icon, onPress, editable, theme }) {
   const row = (
     <View style={[styles.contactRow, { borderBottomColor: theme.border }]}>
-      <Icon size={16} color={PROFILE.violetSoft} strokeWidth={2} />
+      <Icon size={16} color={PROFILE.icon} strokeWidth={2} />
       <View style={{ flex: 1, marginLeft: 10 }}>
         <Text style={[styles.infoLabel, { color: theme.muted }]}>{label}</Text>
         <Text style={[styles.contactValue, { color: theme.text }]} numberOfLines={2}>
           {value || '—'}
         </Text>
       </View>
-      {editable ? <EditPencilBtn isDark={isDark} /> : null}
+      {editable ? <EditChevron theme={theme} /> : null}
     </View>
   );
   if (!editable || !onPress) return row;
@@ -764,12 +820,16 @@ export function ViewMyMyProfileScreen({
 }) {
   const isTrainer = String(userRole || '').toLowerCase() === 'trainer';
   const { isDark: themeIsDark } = useTheme();
+  const insets = useSafeAreaInsets();
   const shellNavInset = useShellBottomNavInset(SHELL_NAV_EXTRA_INSET);
   const isDark = typeof isDarkProp === 'boolean' ? isDarkProp : themeIsDark;
-  const theme = isDark ? DARK : LIGHT;
+  const theme = profileThemeFromMode(isDark);
   const [notificationsOn, setNotificationsOn] = useState(true);
   const [photoURL, setPhotoURL] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [profileTab, setProfileTab] = useState(isTrainer ? 'trainer' : 'yours');
+  const [draftFullName, setDraftFullName] = useState('');
+  const [draftDisplayName, setDraftDisplayName] = useState('');
 
   React.useEffect(() => {
     const fromDoc = onboardingData?.photoURL || userData?.photoURL || auth?.currentUser?.photoURL;
@@ -1165,52 +1225,222 @@ function formatWeight(weightValue) {
     trainerDoc?.averageRating != null ? Number(trainerDoc.averageRating).toFixed(1) : null;
   const instagram = String(trainerDoc?.instagram || trainerDoc?.instagramHandle || '').trim();
   const website = String(trainerDoc?.website || trainerDoc?.websiteUrl || '').trim();
-  const profileKicker = isTrainer ? 'TRAINER PROFILE' : 'YOUR PROFILE';
-  const sectionLine = PROFILE.lineGradient;
+
+  React.useEffect(() => {
+    setDraftFullName(displayName || '');
+    setDraftDisplayName(String(userData?.firstName || displayName || '').trim().split(/\s+/)[0] || '');
+  }, [displayName, userData?.firstName]);
+
+  const designLawDetailRows =
+    profileTab === 'trainer' && isTrainer
+      ? [
+          {
+            key: 'location',
+            label: 'Location',
+            value: String(trainerDoc?.location || '').trim() || '—',
+          },
+          {
+            key: 'trainerProfileBio',
+            label: 'Public bio',
+            value: String(trainerDoc?.trainerProfileBio || '').trim() || '—',
+          },
+          {
+            key: 'yearsExperience',
+            label: 'Years coaching',
+            value: trainerYearsStat,
+          },
+          {
+            key: 'specialties',
+            label: 'Specialties',
+            value: formatSpecialtyList(trainerDoc?.specialties),
+          },
+        ]
+      : [
+          { key: 'weight', label: 'Weight', value: formatWeight(clientProfile?.weight) },
+          { key: 'height', label: 'Height', value: formatHeight(clientProfile?.height) },
+          { key: 'gender', label: 'Gender', value: formatGender(clientProfile?.gender) },
+          {
+            key: 'fitnessLevel',
+            label: 'Fitness level',
+            value: showSetupAnswers(clientProfile?.fitnessLevel),
+          },
+          {
+            key: 'primaryGoal',
+            label: 'Primary goal',
+            value: showSetupAnswers(clientProfile?.primaryGoal),
+          },
+          {
+            key: 'equipment',
+            label: 'Equipment',
+            value: formatEquipmentFromProfile(clientProfile),
+          },
+          {
+            key: 'daysPerWeek',
+            label: 'Training frequency',
+            value: formatDaysPerWeek(clientProfile?.daysPerWeek),
+          },
+        ];
+
+  const saveNameFields = async () => {
+    const uid = auth?.currentUser?.uid;
+    if (!uid) return;
+    const full = String(draftFullName || '').trim();
+    const parts = full.split(/\s+/).filter(Boolean);
+    const first = String(draftDisplayName || parts[0] || '').trim();
+    const last = parts.slice(1).join(' ');
+    try {
+      setSavingField(true);
+      await setDoc(
+        doc(db, USERS_COLLECTION, uid),
+        { name: full, firstName: first, lastName: last, displayName: first },
+        { merge: true },
+      );
+      await onProfileSaved?.();
+    } catch (error) {
+      Alert.alert('Save failed', error?.message || 'Please try again.');
+    } finally {
+      setSavingField(false);
+    }
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
       <View style={{ flex: 1 }}>
-        <TopHeader
-          title="Profile"
-          skipTopSafeInset
-          onBack={onBack}
-          onSettingsPress={nav.settings}
-          onProfilePress={nav.profile}
+        <ProfilePageHeader
+          title="Edit profile"
+          subtitle="Keep your details current for a tailored experience."
+          onBack={onBack || nav.home}
+          theme={theme}
+          topInset={insets.top}
         />
 
         <ScrollView
           contentContainerStyle={[styles.scrollContent, { paddingBottom: shellNavInset }]}
           {...FORM_SCROLL_PROPS}
         >
-          <Animated.View
-            style={{
-              opacity: heroAnim,
-              transform: [{ translateY: heroAnim.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }],
-            }}
-          >
-            <ProfileHero
-              kicker={profileKicker}
-              name={displayName}
-              handle={handle}
-              headline={profileHeadline}
-              photoURL={photoURL}
-              uploading={uploading}
-              onPressPhoto={pickAndUploadPhoto}
-              onEditPress={isTrainer ? () => openEdit('trainerProfileBio', 'PUBLIC BIO', trainerDoc?.trainerProfileBio || '') : undefined}
-              theme={theme}
-              isDark={isDark}
-            />
-          </Animated.View>
+          <ProfileHero
+            kicker={isTrainer && profileTab === 'trainer' ? 'TRAINER PROFILE' : 'YOUR PROFILE'}
+            name={draftFullName || displayName}
+            handle={handle}
+            headline={profileHeadline}
+            photoURL={photoURL}
+            uploading={uploading}
+            onPressPhoto={pickAndUploadPhoto}
+            theme={theme}
+          />
 
+          {/* Design Law 11: Your profile / Trainer profile tabs (trainers only) */}
           {isTrainer ? (
+            <View
+              style={[
+                styles.profileTabs,
+                { borderColor: theme.border, backgroundColor: theme.card, shadowColor: theme.shadow },
+              ]}
+            >
+              {[
+                { key: 'yours', label: 'Your profile' },
+                { key: 'trainer', label: 'Trainer profile' },
+              ].map((tab) => {
+                const selected = profileTab === tab.key;
+                return (
+                  <Pressable
+                    key={tab.key}
+                    onPress={() => setProfileTab(tab.key)}
+                    style={[
+                      styles.profileTabCell,
+                      selected ? { backgroundColor: theme.fill } : null,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.profileTabLabel,
+                        { color: selected ? theme.onFill : theme.text },
+                      ]}
+                    >
+                      {tab.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : null}
+
+          <Text style={[styles.sectionEyebrow, { color: theme.muted }]}>NAME</Text>
+          <NbCard style={styles.nameCard}>
+            <Text style={[styles.fieldLabel, { color: theme.muted, marginTop: 0 }]}>FULL NAME</Text>
+            <TextInput
+              value={draftFullName}
+              onChangeText={setDraftFullName}
+              style={[
+                styles.namedInput,
+                {
+                  color: theme.text,
+                  borderColor: theme.border,
+                  backgroundColor: theme.bg,
+                  shadowColor: theme.shadow,
+                },
+              ]}
+              placeholder="Full name"
+              placeholderTextColor={theme.muted}
+            />
+            <Text style={[styles.fieldLabel, { color: theme.muted }]}>DISPLAY NAME</Text>
+            <TextInput
+              value={draftDisplayName}
+              onChangeText={setDraftDisplayName}
+              style={[
+                styles.namedInput,
+                {
+                  color: theme.text,
+                  borderColor: theme.border,
+                  backgroundColor: theme.bg,
+                  shadowColor: theme.shadow,
+                  marginBottom: 0,
+                },
+              ]}
+              placeholder="Display name"
+              placeholderTextColor={theme.muted}
+            />
+          </NbCard>
+
+          <Text style={[styles.sectionEyebrow, { color: theme.muted }]}>DETAILS</Text>
+          <NbCard style={styles.detailCard}>
+            {designLawDetailRows.map((item, index) => (
+              <View key={item.key}>
+                {index > 0 ? (
+                  <View style={[styles.detailDivider, { backgroundColor: theme.border }]} />
+                ) : null}
+                <Pressable
+                  onPress={() => openEdit(item.key, item.label, item.value)}
+                  style={styles.detailRow}
+                >
+                  <Text style={[styles.detailLabel, { color: theme.text }]}>{item.label}</Text>
+                  <Text style={[styles.detailValue, { color: theme.muted }]} numberOfLines={1}>
+                    {item.value}
+                  </Text>
+                  <Ionicons name="chevron-forward" size={18} color={theme.muted} />
+                </Pressable>
+              </View>
+            ))}
+          </NbCard>
+
+          {/* Save stays primary; Sign out sits under it so Edit profile can leave the session
+              without bouncing back through Settings (handler already exists — wire the UI). */}
+          <View style={{ marginTop: spacing.md, marginBottom: spacing.lg, gap: spacing.sm }}>
+            <NbButton variant="fill" onPress={saveNameFields} disabled={savingField}>
+              {savingField ? 'Saving…' : 'Save changes'}
+            </NbButton>
+            <NbButton variant="ghost" onPress={handleSignOut}>
+              Sign out
+            </NbButton>
+          </View>
+
+          {isTrainer && profileTab === 'trainer' ? (
             <>
               <TrainerStatsStrip
                 clientCount={trainerClientCount ?? trainerDoc?.clientCount ?? '—'}
                 years={trainerYearsStat}
                 rating={trainerRatingStat}
                 theme={theme}
-                isDark={isDark}
               />
 
               <View style={{ marginBottom: 20 }}>
@@ -1218,12 +1448,11 @@ function formatWeight(weightValue) {
                   status={stripeStatus}
                   onPress={typeof onOpenPayments === 'function' ? onOpenPayments : undefined}
                   theme={theme}
-                  isDark={isDark}
                 />
               </View>
 
               <Animated.View style={{ opacity: personalAnim, transform: [{ translateY: personalAnim.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }] }}>
-                <SectionTitle title="PROFILE" lineColors={sectionLine} theme={theme} />
+                <SectionTitle title="PROFILE" theme={theme} />
                 <ProfileSettingsCard theme={theme} isDark={isDark}>
                   {trainerProfessionalPills.map((item) => (
                     <ProfileRow
@@ -1242,14 +1471,13 @@ function formatWeight(weightValue) {
               </Animated.View>
 
               <Animated.View style={{ opacity: trainingAnim, transform: [{ translateY: trainingAnim.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }] }}>
-                <SectionTitle title="SPECIALTIES & CERTIFICATIONS" lineColors={sectionLine} theme={theme} />
+                <SectionTitle title="SPECIALTIES & CERTIFICATIONS" theme={theme} />
                 <View style={styles.credRow}>
                   <CredentialPill
                     Icon={Medal}
                     label="CERTIFICATIONS"
                     value={formatCertifications(trainerDoc)}
                     theme={theme}
-                    isDark={isDark}
                     style={{ minWidth: '100%' }}
                   />
                   <View
@@ -1368,7 +1596,7 @@ function formatWeight(weightValue) {
                             style={{
                               width: `${Math.max(4, certProgress)}%`,
                               height: '100%',
-                              backgroundColor: PROFILE.purple,
+                              backgroundColor: PROFILE.icon,
                             }}
                           />
                         </View>
@@ -1412,7 +1640,7 @@ function formatWeight(weightValue) {
                   </View>
                 </View>
 
-                <SectionTitle title="COACHING PHILOSOPHY" lineColors={sectionLine} theme={theme} />
+                <SectionTitle title="COACHING PHILOSOPHY" theme={theme} />
                 <PhilosophyQuote
                   text={philosophyText}
                   onPress={() => openEdit('trainingPhilosophy', 'COACHING PHILOSOPHY', philosophyText || '—')}
@@ -1420,7 +1648,7 @@ function formatWeight(weightValue) {
                   isDark={isDark}
                 />
 
-                <SectionTitle title="CONTACT & SOCIAL" lineColors={sectionLine} theme={theme} />
+                <SectionTitle title="CONTACT & SOCIAL" theme={theme} />
                 <ProfileSettingsCard theme={theme} isDark={isDark}>
                   <TrainerContactRow
                     label="INSTAGRAM"
@@ -1452,7 +1680,7 @@ function formatWeight(weightValue) {
               </Animated.View>
 
               <Animated.View style={{ opacity: accountAnim, transform: [{ translateY: accountAnim.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }] }}>
-                <SectionTitle title="AVAILABILITY & SESSIONS" lineColors={sectionLine} theme={theme} />
+                <SectionTitle title="AVAILABILITY & SESSIONS" theme={theme} />
                 <SessionCard
                   Icon={Calendar}
                   label="AVAILABILITY"
@@ -1471,129 +1699,107 @@ function formatWeight(weightValue) {
                 />
               </Animated.View>
             </>
-          ) : (
-            <>
-              <Animated.View style={{ opacity: personalAnim, transform: [{ translateY: personalAnim.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }] }}>
-                <SectionTitle title="PERSONAL INFO" lineColors={sectionLine} theme={theme} />
-                <ProfileSettingsCard theme={theme} isDark={isDark}>
-                  {personalData.map((item, idx) => (
-                    <ProfileRow
-                      key={item.key}
-                      label={item.label}
-                      value={item.value}
-                      editable={!item.readOnly}
-                      onPress={item.readOnly ? undefined : () => openEdit(item.key, item.label, item.value)}
-                      theme={theme}
-                      isDark={isDark}
-                      iconColor={PROFILE.icon}
-                      LeadingIcon={item.Icon}
-                      profileIconId={item.profileIconId}
-                      onboardingData={profileDoc}
-                      showDivider={idx < personalData.length - 1}
-                    />
-                  ))}
-                </ProfileSettingsCard>
-              </Animated.View>
-
-              <Animated.View style={{ opacity: trainingAnim, transform: [{ translateY: trainingAnim.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }] }}>
-                <SectionTitle title="TRAINING PREFERENCES" lineColors={sectionLine} theme={theme} />
-                <ProfileSettingsCard theme={theme} isDark={isDark}>
-                  {trainingPreferences.map((item, idx) => (
-                    <ProfileRow
-                      key={item.key}
-                      label={item.label}
-                      value={item.value}
-                      editable
-                      onPress={() => openEdit(item.key, item.label, item.value)}
-                      theme={theme}
-                      isDark={isDark}
-                      iconColor={PROFILE.icon}
-                      LeadingIcon={item.Icon}
-                      profileIconId={item.profileIconId}
-                      onboardingData={profileDoc}
-                      showDivider={idx < trainingPreferences.length - 1}
-                    />
-                  ))}
-                </ProfileSettingsCard>
-              </Animated.View>
-            </>
-          )}
-
-          <Animated.View style={{ opacity: accountAnim, transform: [{ translateY: accountAnim.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }] }}>
-            <SectionTitle title="ACCOUNT" lineColors={sectionLine} theme={theme} />
-            <View style={[styles.accountBlock, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)' }]}>
-              <View style={styles.accountNotifyRow}>
-                <View style={[styles.accountIconCircle, { backgroundColor: hexToRgba(PROFILE.icon, 0.14) }]}>
-                  <Bell size={20} color={PROFILE.icon} strokeWidth={2} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.accountNotifyTitle, { color: theme.text }]}>Notifications</Text>
-                  <Text style={[styles.accountNotifySub, { color: theme.muted }]}>Session reminders & messages</Text>
-                </View>
-                <GradientSwitch value={notificationsOn} onValueChange={setNotificationsOn} />
-              </View>
-            </View>
-            <Pressable
-              onPress={handleSignOut}
-              accessibilityRole="button"
-              accessibilityLabel="Sign out"
-              style={({ pressed }) => [
-                styles.signOutBtn,
-                { borderTopColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)', opacity: pressed ? 0.75 : 1 },
-              ]}
-            >
-              <Text style={[styles.signOutBtnText, { color: isDark ? 'rgba(255,255,255,0.88)' : 'rgba(10,10,15,0.88)' }]}>
-                Sign out
-              </Text>
-            </Pressable>
-          </Animated.View>
+          ) : null}
         </ScrollView>
       </View>
 
-      <Modal visible={!!editKey} transparent animationType="fade" onRequestClose={closeEdit}>
-        <Pressable style={styles.editBackdrop} onPress={closeEdit} />
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.editKav}>
-          <View style={[styles.editSheet, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <View style={styles.editSheetTop}>
-              <Text style={[styles.editTitle, { color: theme.text }]}>{editLabel}</Text>
-              <TouchableOpacity onPress={closeEdit} activeOpacity={0.85} style={styles.editCloseBtn}>
-                <X size={18} color={isDark ? 'rgba(255,255,255,0.85)' : 'rgba(10,10,15,0.85)'} />
-              </TouchableOpacity>
-            </View>
-
-            <TextInput
-              value={editValue}
-              onChangeText={setEditValue}
-              placeholder={editKey === 'height' ? 'Total inches (e.g. 70)' : 'Enter value'}
-              placeholderTextColor={theme.muted}
-              keyboardType={editKey === 'height' || editKey === 'weight' || editKey === 'age' ? 'decimal-pad' : 'default'}
-              multiline={editKey === 'trainerProfileBio' || editKey === 'trainingPhilosophy'}
-              numberOfLines={editKey === 'trainingPhilosophy' ? 10 : editKey === 'trainerProfileBio' ? 5 : 1}
-              textAlignVertical={editKey === 'trainerProfileBio' || editKey === 'trainingPhilosophy' ? 'top' : 'center'}
+      {/* Design Law field editor — bottom sheet, 3px ink, Nb fill/ghost (no gradient Save) */}
+      <Modal visible={!!editKey} transparent animationType="slide" onRequestClose={closeEdit}>
+        <View style={styles.editOverlay}>
+          <Pressable style={styles.editBackdrop} onPress={closeEdit} accessibilityRole="button" accessibilityLabel="Dismiss" />
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.editKav}>
+            <View
               style={[
-                styles.editInput,
-                editKey === 'trainerProfileBio' || editKey === 'trainingPhilosophy' ? styles.editInputMultiline : null,
+                styles.editSheet,
                 {
-                  color: theme.text,
-                  borderColor: theme.border,
-                  backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(10,10,15,0.03)',
+                  backgroundColor: isDark ? darkColors.nbSurface : lightColors.nbSurface,
+                  borderColor: isDark ? darkColors.nbBorder : lightColors.nbBorder,
                 },
               ]}
-              autoFocus
-            />
+            >
+              <View style={styles.editHandleWrap}>
+                <View
+                  style={[
+                    styles.editHandle,
+                    { backgroundColor: isDark ? darkColors.nbBorder : lightColors.nbBorder },
+                  ]}
+                />
+              </View>
 
-            <View style={styles.editActions}>
-              <TouchableOpacity onPress={closeEdit} activeOpacity={0.9} style={[styles.editBtn, { borderColor: theme.border }]}>
-                <Text style={[styles.editBtnText, { color: theme.text }]}>Cancel</Text>
-              </TouchableOpacity>
-              <LinearGradient colors={PROFILE.borderGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.editBtnPrimary}>
-                <TouchableOpacity onPress={saveField} activeOpacity={0.9} style={styles.editBtnPrimaryInner} disabled={savingField}>
-                  {savingField ? <ActivityIndicator color="#fff" /> : <Text style={styles.editBtnPrimaryText}>Save</Text>}
+              <View style={styles.editSheetTop}>
+                <Text
+                  style={[
+                    styles.editTitle,
+                    { color: isDark ? darkColors.nbInk : lightColors.nbInk },
+                  ]}
+                >
+                  {editLabel}
+                </Text>
+                <TouchableOpacity
+                  onPress={closeEdit}
+                  activeOpacity={0.85}
+                  style={[
+                    styles.editCloseBtn,
+                    {
+                      borderColor: isDark ? darkColors.nbBorder : lightColors.nbBorder,
+                      backgroundColor: isDark ? darkColors.nbSurfaceChip : lightColors.nbSurfaceChip,
+                    },
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Close"
+                >
+                  <X size={18} color={isDark ? darkColors.nbInk : lightColors.nbInk} />
                 </TouchableOpacity>
-              </LinearGradient>
+              </View>
+
+              <Text
+                style={[
+                  styles.editFieldLabel,
+                  { color: isDark ? darkColors.nbMuted : lightColors.nbMuted },
+                ]}
+              >
+                {String(editLabel || 'VALUE').toUpperCase()}
+              </Text>
+              <TextInput
+                value={editValue}
+                onChangeText={setEditValue}
+                placeholder={editKey === 'height' ? 'Total inches (e.g. 70)' : 'Enter value'}
+                placeholderTextColor={isDark ? darkColors.nbMuted : lightColors.nbMuted}
+                keyboardType={
+                  editKey === 'height' || editKey === 'weight' || editKey === 'age'
+                    ? 'decimal-pad'
+                    : 'default'
+                }
+                multiline={editKey === 'trainerProfileBio' || editKey === 'trainingPhilosophy'}
+                numberOfLines={editKey === 'trainingPhilosophy' ? 10 : editKey === 'trainerProfileBio' ? 5 : 1}
+                textAlignVertical={
+                  editKey === 'trainerProfileBio' || editKey === 'trainingPhilosophy' ? 'top' : 'center'
+                }
+                style={[
+                  styles.editInput,
+                  editKey === 'trainerProfileBio' || editKey === 'trainingPhilosophy'
+                    ? styles.editInputMultiline
+                    : null,
+                  {
+                    color: isDark ? darkColors.nbInk : lightColors.nbInk,
+                    borderColor: isDark ? darkColors.nbBorder : lightColors.nbBorder,
+                    backgroundColor: isDark ? darkColors.nbSurface : lightColors.nbSurface,
+                  },
+                ]}
+                autoFocus
+              />
+
+              <View style={styles.editActions}>
+                <NbButton variant="ghost" onPress={closeEdit} style={styles.editBtnFlex}>
+                  Cancel
+                </NbButton>
+                <NbButton variant="fill" onPress={saveField} disabled={savingField} style={styles.editBtnFlex}>
+                  {savingField ? 'Saving…' : 'Save'}
+                </NbButton>
+              </View>
             </View>
-          </View>
-        </KeyboardAvoidingView>
+          </KeyboardAvoidingView>
+        </View>
       </Modal>
 
       {!embedShellBottomNav ? (
@@ -1615,73 +1821,204 @@ function formatWeight(weightValue) {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  scrollContent: { paddingHorizontal: 20, paddingTop: 4, paddingBottom: 140 },
+  scrollContent: { paddingHorizontal: spacing.md, paddingTop: 4, paddingBottom: 140 },
 
-  heroWrap: { alignItems: 'center', paddingTop: 8, paddingBottom: 28, marginBottom: 8, width: '100%' },
-  heroTopRow: { flexDirection: 'row', alignItems: 'center', width: '100%', marginBottom: 12, paddingHorizontal: 4 },
-  heroEditBtn: {
+  // Manipulate here: Design Law page header under the status bar
+  pageHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.sm,
   },
-  heroEditText: { fontSize: 13, fontWeight: '700' },
-  heroKicker: {
-    fontSize: 11,
-    fontWeight: '600',
-    letterSpacing: 2,
-    textTransform: 'uppercase',
-  },
-  heroPhotoWrap: { position: 'relative', marginBottom: 18 },
-  heroPhotoInner: { alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
-  heroInitials: { fontSize: 52, fontWeight: '600', color: '#FFF' },
-  heroCamBtn: {
-    position: 'absolute',
-    bottom: 6,
-    right: 6,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: PROFILE.purple,
+  backSq: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    borderWidth: nb.borderWidth,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.35)',
-    shadowColor: PROFILE.purple,
-    shadowOpacity: 0.4,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 6,
+    shadowOffset: { width: nb.shadowOffsetSmall, height: nb.shadowOffsetSmall },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 3,
+  },
+  backSqSpacer: { width: 44, height: 44 },
+  pageHeaderText: { flex: 1, minWidth: 0 },
+  pageTitle: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 28,
+    letterSpacing: -0.4,
+  },
+  pageSubtitle: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 13,
+    marginTop: 2,
+    lineHeight: 18,
+  },
+
+  heroCard: {
+    alignItems: 'center',
+    marginBottom: spacing.lg,
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.md,
+  },
+  heroKicker: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 11,
+    letterSpacing: 1.4,
+    marginBottom: spacing.md,
+    alignSelf: 'flex-start',
+  },
+  heroPhotoWrap: {
+    position: 'relative',
+    marginBottom: spacing.md,
+  },
+  heroRing: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: nb.borderWidth,
+    shadowOffset: { width: nb.shadowOffsetSmall, height: nb.shadowOffsetSmall },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 4,
+  },
+  heroPhotoInner: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  heroInitials: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 42,
+  },
+  heroCamBtn: {
+    position: 'absolute',
+    right: 4,
+    bottom: 4,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: nb.borderWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    shadowOffset: { width: nb.shadowOffsetSmall, height: nb.shadowOffsetSmall },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 4,
   },
   heroName: {
-    fontSize: 28,
-    fontWeight: '600',
-    letterSpacing: -0.3,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 26,
+    letterSpacing: -0.4,
     textAlign: 'center',
-    marginBottom: 6,
   },
   heroHandle: {
+    fontFamily: 'Inter_600SemiBold',
     fontSize: 14,
-    fontWeight: '500',
-    color: PROFILE.violetSoft,
+    marginTop: 4,
     textAlign: 'center',
-    marginBottom: 14,
   },
   heroBio: {
-    fontSize: 16,
-    lineHeight: 24,
+    fontFamily: 'Inter_400Regular',
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: 10,
     textAlign: 'center',
-    paddingHorizontal: 8,
-    maxWidth: 340,
+    paddingHorizontal: spacing.sm,
+  },
+
+  // Manipulate here: Design Law Edit profile tabs + named fields
+  profileTabs: {
+    flexDirection: 'row',
+    borderWidth: nb.borderWidth,
+    borderRadius: 999,
+    padding: 4,
+    marginBottom: spacing.md,
+    shadowOffset: { width: nb.shadowOffsetSmall, height: nb.shadowOffsetSmall },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 3,
+  },
+  profileTabCell: {
+    flex: 1,
+    minHeight: 40,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+  },
+  profileTabLabel: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 14,
+  },
+  sectionEyebrow: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 11,
+    letterSpacing: 1.2,
+    marginBottom: spacing.sm,
+    marginLeft: 2,
+  },
+  nameCard: {
+    marginBottom: spacing.lg,
+    padding: spacing.md,
+  },
+  fieldLabel: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 11,
+    letterSpacing: 1.2,
+    marginBottom: 8,
+    marginTop: 4,
+  },
+  namedInput: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 16,
+    borderWidth: nb.borderWidth,
+    borderRadius: 12,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 14,
+    marginBottom: spacing.md,
+    minHeight: 48,
+    shadowOffset: { width: nb.shadowOffsetSmall, height: nb.shadowOffsetSmall },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 3,
+  },
+  detailCard: {
+    paddingVertical: 0,
+    paddingHorizontal: 0,
+    marginBottom: spacing.sm,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: spacing.md,
+    minHeight: nb.minTouchTarget,
+    gap: 10,
+  },
+  detailLabel: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 15,
+    flex: 1,
+  },
+  detailValue: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 14,
+    maxWidth: '45%',
+    textAlign: 'right',
+  },
+  detailDivider: {
+    height: nb.borderWidthDivider,
+    marginHorizontal: spacing.md,
   },
 
   statsRow: { flexDirection: 'row', gap: 10, marginBottom: 18 },
   statTile: {
-    flex: 1,
-    borderRadius: 14,
-    borderWidth: 1,
+    borderRadius: 12,
+    borderWidth: nb.borderWidth,
     paddingVertical: 12,
     paddingHorizontal: 10,
     alignItems: 'center',
@@ -1690,17 +2027,18 @@ const styles = StyleSheet.create({
   statValue: { fontSize: 18, fontWeight: '800', marginTop: 4 },
   statLabel: { fontSize: 10, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' },
 
-  paymentCard: { borderRadius: 14, overflow: 'hidden' },
+  paymentCard: { borderRadius: 14, overflow: 'hidden', borderWidth: nb.borderWidth },
   paymentCardInner: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 12 },
-  paymentKicker: { fontSize: 10, fontWeight: '700', letterSpacing: 1, color: 'rgba(255,255,255,0.55)' },
-  paymentStatus: { fontSize: 13, fontWeight: '700', color: '#FED7AA', marginTop: 2 },
+  paymentKicker: { fontSize: 10, fontWeight: '700', letterSpacing: 1 },
+  paymentStatus: { fontSize: 13, fontWeight: '800', marginTop: 2 },
   paymentCta: {
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.14)',
+    borderWidth: nb.borderWidth,
+    backgroundColor: 'rgba(255,255,255,0.35)',
   },
-  paymentCtaText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800' },
+  paymentCtaText: { fontSize: 12, fontWeight: '800' },
 
   contactRow: {
     flexDirection: 'row',
@@ -1714,19 +2052,16 @@ const styles = StyleSheet.create({
   sectionTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 18,
+    marginBottom: 10,
     marginTop: 8,
-    gap: 12,
+    marginLeft: 4,
   },
   sectionTitleText: {
     fontSize: 11,
-    fontWeight: '600',
-    letterSpacing: 1.4,
+    fontWeight: '700',
+    letterSpacing: 1.2,
     textTransform: 'uppercase',
   },
-  sectionTitleLineWrap: { flex: 1, flexDirection: 'row', alignItems: 'center', height: 2 },
-  sectionTitleLine: { flex: 1, height: 2, borderRadius: 1 },
-  sectionTitleDot: { width: 6, height: 6, borderRadius: 3, marginLeft: -3 },
 
   sectionBody: { marginBottom: 28, gap: 20 },
   settingsCard: {
@@ -1828,7 +2163,7 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: lightColors.white,
     alignSelf: 'flex-start',
     shadowColor: '#000',
     shadowOpacity: 0.2,
@@ -1837,76 +2172,85 @@ const styles = StyleSheet.create({
   },
   gradSwitchThumbOn: { alignSelf: 'flex-end' },
 
-  editBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-  },
-  editKav: {
+  editOverlay: {
     flex: 1,
     justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.5)',
   },
+  editBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  editKav: {
+    width: '100%',
+  },
+  // Manipulate here: sheet top radius matches Design Law sheet (24)
   editSheet: {
-    margin: 16,
-    borderRadius: 18,
-    padding: 16,
-    borderWidth: 1,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderTopWidth: nb.borderWidth,
+    borderLeftWidth: nb.borderWidth,
+    borderRightWidth: nb.borderWidth,
+    paddingHorizontal: 16,
+    paddingBottom: 28,
+    paddingTop: 8,
+  },
+  editHandleWrap: {
+    alignItems: 'center',
+    paddingVertical: 6,
+  },
+  editHandle: {
+    width: 44,
+    height: 4,
+    borderRadius: 2,
   },
   editSheetTop: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    marginBottom: 14,
+    gap: 12,
   },
   editTitle: {
-    fontSize: 14,
+    flex: 1,
+    fontSize: 22,
     fontWeight: '900',
-    letterSpacing: 0.4,
+    letterSpacing: -0.4,
   },
   editCloseBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: nb.minTouchTarget,
+    height: nb.minTouchTarget,
+    borderRadius: 10,
+    borderWidth: nb.borderWidth,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  editFieldLabel: {
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 1.2,
+    marginBottom: 8,
+  },
   editInput: {
-    borderWidth: 1,
-    borderRadius: 14,
+    borderWidth: nb.borderWidth,
+    borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 12,
-    fontSize: 14,
+    minHeight: 48,
+    fontSize: 16,
     fontWeight: '700',
   },
   editInputMultiline: {
-    minHeight: 120,
+    minHeight: 140,
     paddingTop: 12,
   },
   editActions: {
     flexDirection: 'row',
     gap: 10,
-    marginTop: 14,
+    marginTop: 16,
   },
-  editBtn: {
+  editBtnFlex: {
     flex: 1,
-    height: 44,
-    borderRadius: 22,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
-  editBtnText: { fontSize: 13, fontWeight: '800' },
-  editBtnPrimary: {
-    flex: 1,
-    height: 44,
-    borderRadius: 22,
-    overflow: 'hidden',
-  },
-  editBtnPrimaryInner: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  editBtnPrimaryText: { fontSize: 13, fontWeight: '900', color: '#FFFFFF' },
 });
 
 export default ViewMyMyProfileScreen;

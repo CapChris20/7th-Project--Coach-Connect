@@ -1,14 +1,15 @@
-// Expanded nutrition breakdown under a food card: calorie split bar + micronutrient tiles.
-// Flow: build palette → show macro composition → list legend chips → paint micronutrient tiles (or empty state).
+// Expanded nutrition breakdown under a food card: calorie split + micronutrient tiles.
+// Flow: build palette → macro composition → legend chips → HardShadow facts panel.
 // Used by: FoodCard when the row is expanded.
-// Redesigned with neobrutalist styling and nb tokens.
+// vocab: HardShadow = solid offset shadow (no blur)
 
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Leaf, Droplets, Heart, Sparkles, Waves, Zap } from 'lucide-react-native';
 import ColorText from './ColorText';
-import { lightColors, darkColors, nb } from '../../look-and-feel/colorPalette';
+import HardShadow from '../../look-and-feel/HardShadow';
+import { nb, borderRadius, lightColors } from '../../look-and-feel/colorPalette';
 import {
   brandColors,
   gradients,
@@ -338,12 +339,15 @@ export default function NutritionFactsPanel({
         ))}
       </View>
 
-      <View
-        style={[
-          styles.panelShell,
-          { borderColor: panelPalette.panelBorder, backgroundColor: panelPalette.panelBg },
-        ]}
-      >
+      <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetCard}>
+        <View
+          style={{
+            backgroundColor: panelPalette.panelBg,
+            borderWidth: nb.borderWidth,
+            borderColor: lightColors.nbBorder,
+            borderRadius: borderRadius.nbCard,
+          }}
+        >
         <View style={styles.panelInner}>
           <View style={styles.panelHeader}>
             <View style={styles.panelHeaderText}>
@@ -369,12 +373,8 @@ export default function NutritionFactsPanel({
             </View>
           </View>
 
-          <LinearGradient
-            colors={brandColors.orangePurple}
-            start={GRADIENT_LEFT_TO_RIGHT.start}
-            end={GRADIENT_LEFT_TO_RIGHT.end}
-            style={styles.panelRule}
-          />
+          {/* Design Law — ink divider only (no purple gradient rule chrome) */}
+          <View style={[styles.panelRule, { backgroundColor: panelPalette.textMuted || lightColors.nbBorder }]} />
 
           {hasVisibleMicros ? (
             <View style={styles.microGrid}>
@@ -391,7 +391,8 @@ export default function NutritionFactsPanel({
             <EmptyMicrosMessage panelPalette={panelPalette} />
           )}
         </View>
-      </View>
+            </View>
+    </HardShadow>
     </View>
   );
 }
@@ -474,11 +475,6 @@ const styles = StyleSheet.create({
     marginTop: 3,
     fontSize: 10,
     fontFamily: fonts.medium,
-  },
-  panelShell: {
-    borderRadius: radii.chip + 6,
-    borderWidth: nb.borderWidth,
-    overflow: 'hidden',
   },
   panelInner: {
     paddingHorizontal: 14,

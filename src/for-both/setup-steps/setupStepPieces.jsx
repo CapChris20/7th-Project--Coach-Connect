@@ -1,8 +1,6 @@
-// Shared onboarding building blocks for Neobrutalist redesign.
-// Flow: components use Neobrutalist design tokens and shared components.
+// Shared onboarding building blocks — Design Law tokens + NbButton CTA wrapper.
+// Flow: getOnboardingUiTokens → SelectionCard / inputs in NewUserSetupScreen → Continue via OnboardingPrimaryButton.
 // Used by NewUserSetupScreen, AIPermissionStep, TrainerProOfferStep.
-//
-// vocab: This file now provides minimal utilities; most styling comes from Nb* components.
 
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
@@ -22,6 +20,8 @@ import {
   hexToRgba,
   pillBackgroundGradient,
 } from './setupColors';
+import { lightColors, darkColors } from '../../look-and-feel/colorPalette';
+import NbButton from '../../look-and-feel/NbButton';
 
 // Re-export legacy color utilities for any remaining old code
 export {
@@ -44,46 +44,56 @@ export {
 
 // ===== HELPER FUNCTIONS =====
 
-// Legacy token function - kept for backward compatibility with remaining old code
+// Design Law onboarding tokens — fill selected, 3px borders, bright dark shadow.
 function darkOnboardingTokens() {
   return {
-    bg: '#0A0A0F',
-    cardBg: 'rgba(255,255,255,0.04)',
-    cardBorder: 'rgba(255,255,255,0.08)',
-    cardSelectedBg: hexToRgba(ONBOARDING_PALETTE.pink, 0.12),
-    cardSelectedBorder: ONBOARDING_ACCENT,
-    textPrimary: '#FFFFFF',
-    textSecondary: 'rgba(255,255,255,0.5)',
-    textLabel: 'rgba(255,255,255,0.35)',
-    inputBg: 'rgba(255,255,255,0.05)',
-    inputBorder: 'rgba(255,255,255,0.08)',
-    toggleTrack: ONBOARDING_ACCENT,
-    dayBtnBg: 'rgba(255,255,255,0.06)',
-    progressTrack: 'rgba(255,255,255,0.08)',
-    backBtnBg: 'rgba(255,255,255,0.06)',
-    disabledBg: 'rgba(255,255,255,0.08)',
-    disabledText: 'rgba(255,255,255,0.25)',
+    bg: darkColors.nbBackground,
+    cardBg: darkColors.nbSurface,
+    cardBorder: darkColors.nbBorder,
+    cardSelectedBg: darkColors.nbFill,
+    cardSelectedBorder: darkColors.nbBorder,
+    cardSelectedText: darkColors.nbOnFill,
+    textPrimary: darkColors.nbInk,
+    textSecondary: darkColors.nbMuted,
+    textLabel: darkColors.nbMuted,
+    inputBg: darkColors.nbSurface,
+    inputBorder: darkColors.nbBorder,
+    toggleTrack: darkColors.nbFill,
+    dayBtnBg: darkColors.nbSurface,
+    progressTrack: darkColors.nbSoft,
+    backBtnBg: darkColors.nbSurface,
+    disabledBg: darkColors.nbSoft,
+    disabledText: darkColors.nbMuted,
+    shadow: darkColors.nbShadow,
+    soft: darkColors.nbSoft,
+    fill: darkColors.nbFill,
+    onFill: darkColors.nbOnFill,
   };
 }
 
 function lightOnboardingTokens() {
   return {
-    bg: '#F5F5F7',
-    cardBg: '#FFFFFF',
-    cardBorder: '#E5E7EB',
-    cardSelectedBg: hexToRgba(ONBOARDING_PALETTE.pink, 0.1),
-    cardSelectedBorder: ONBOARDING_ACCENT,
-    textPrimary: '#0A0A0F',
-    textSecondary: '#6B7280',
-    textLabel: '#9CA3AF',
-    inputBg: '#FFFFFF',
-    inputBorder: '#E5E7EB',
-    toggleTrack: ONBOARDING_ACCENT,
-    dayBtnBg: '#FFFFFF',
-    progressTrack: '#E5E7EB',
-    backBtnBg: 'rgba(0,0,0,0.05)',
-    disabledBg: '#E5E7EB',
-    disabledText: '#9CA3AF',
+    bg: lightColors.nbBackground,
+    cardBg: lightColors.nbSurface,
+    cardBorder: lightColors.nbBorder,
+    cardSelectedBg: lightColors.nbFill,
+    cardSelectedBorder: lightColors.nbBorder,
+    cardSelectedText: lightColors.nbOnFill,
+    textPrimary: lightColors.nbInk,
+    textSecondary: lightColors.nbMuted,
+    textLabel: lightColors.nbMuted,
+    inputBg: lightColors.nbSurface,
+    inputBorder: lightColors.nbBorder,
+    toggleTrack: lightColors.nbFill,
+    dayBtnBg: lightColors.nbSurface,
+    progressTrack: lightColors.nbSoft,
+    backBtnBg: lightColors.nbSurface,
+    disabledBg: lightColors.nbSoft,
+    disabledText: lightColors.nbMuted,
+    shadow: lightColors.nbShadow,
+    soft: lightColors.nbSoft,
+    fill: lightColors.nbFill,
+    onFill: lightColors.nbOnFill,
   };
 }
 
@@ -132,9 +142,8 @@ export function getOnboardingUiTokens(isDark) {
 }
 
 /**
- * Legacy OnboardingPrimaryButton - kept for backward compatibility.
- * New code should use NbButton from look-and-feel.
- * @deprecated Use NbButton instead
+ * Design Law Continue CTA — wraps NbButton so the footer keeps working.
+ * vocab: onDisabledPress = fires when the user taps while validateStep() failed (explain blockers).
  */
 export function OnboardingPrimaryButton({
   disabled = false,
@@ -144,6 +153,22 @@ export function OnboardingPrimaryButton({
   t,
   variant,
 }) {
-  // This is a thin legacy wrapper - actual onboarding uses NbButton now
-  return null;
+  // Keep pressable while “invalid” so onDisabledPress can explain blockers (NbButton
+  // would swallow taps if we passed disabled={true}).
+  return (
+    <NbButton
+      variant="fill"
+      onPress={() => {
+        if (disabled) {
+          onDisabledPress?.();
+          return;
+        }
+        onPress?.();
+      }}
+      // Design Law footer Continue fills the bar (beside the back square). Do not cap width.
+      style={{ width: '100%', opacity: disabled ? 0.45 : 1 }}
+    >
+      {label}
+    </NbButton>
+  );
 }

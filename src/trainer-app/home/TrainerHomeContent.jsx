@@ -1,6 +1,6 @@
-// Trainer home: client roster, live dashboard tabs, unread badge, and payout setup nudges.
-// Flow: load clients → pick one → subscribe to user/progress/nutrition → render tab content.
-// Used by TrainerAppStart. Shared cards live in trainerHomePieces.jsx.
+// Trainer home — Design Law layout (docs/design/Design-Law/screens/trainer-home).
+// Flow: greeting → motivation → needs you → client carousel → today tabs → tools → weekly report.
+// Data/Firebase unchanged. Chrome lives in DesignLawTrainerHomeBlocks.jsx + trainerHomePieces.jsx.
 
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import {
@@ -12,11 +12,9 @@ import {
   Alert,
   Modal,
   Share,
-  useWindowDimensions,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { doc, getDoc, onSnapshot, collection, getDocs, setDoc, serverTimestamp, query, where } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
@@ -33,7 +31,7 @@ import {
 import HoldToConfirmPopup from '../../for-both/popups/HoldToConfirmPopup';
 import SpreadsheetViewer from '../../for-both/files-and-notes/viewers/SpreadsheetViewer';
 import ShareDocumentPopup from '../documents/ShareDocumentPopup';
-import QuickActionCard from '../../for-both/home-cards/QuickActionCard';
+import { useDailyQuote } from '../../for-both/home-cards/DailyQuoteCard';
 import TrainerWeeklyReportSection from '../weekly-report/TrainerWeeklyReportSection';
 import ProgressTab from '../progress-tab/TrainerProgressTab';
 import NutritionTab from '../nutrition-tab/TrainerNutritionTab';
@@ -46,19 +44,24 @@ import {
 } from '../progress-tab/pickWeightToShow';
 import { isBenignTrainerClientFirestoreError } from '../trainee-records/calmDatabaseErrors';
 import {
-  HomeTopBanner,
-  Icon,
   TabPills,
   TrainerNotesFilesHeroAndWorkspace,
-  getClientInitials,
-  getClientRosterStats,
 } from './trainerHomePieces';
-import NbCard from '../../look-and-feel/NbCard';
-import NbButton from '../../look-and-feel/NbButton';
-import NbAvatar from '../../look-and-feel/NbAvatar';
-import NbTile from '../../look-and-feel/NbTile';
+import {
+  DesignLawTrainerClientCarousel,
+  DesignLawTrainerClientTodayLabel,
+  DesignLawTrainerHeader,
+  DesignLawTrainerMotivationCard,
+  DesignLawTrainerNeedsYou,
+  DesignLawTrainerToolsGrid,
+  trainerHomeThemeColors,
+} from './DesignLawTrainerHomeBlocks';
+import DesignLawTrainerCreateSheet, {
+  buildCustomProgramStarterRows,
+} from './DesignLawTrainerCreateSheet';
 import { PayoutSetupReminderPopup } from '../../for-both/payments/PayoutSetupReminderPopup';
 import { shouldShowPayoutSetupReminderPopup } from '../../for-both/payments/whenToAskForPayoutSetup';
+import { lightColors, nb } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
@@ -72,7 +75,7 @@ const MORNING_HOUR_END = 12;
 const AFTERNOON_HOUR_END = 17;
 // Brand pink used for loading spinners on this screen.
 // Manipulate here: one hex changes every spinner accent here.
-const ICON_ACCENT = '#FF6B9D';
+const ICON_ACCENT = lightColors.primary;
 
 // ===== HELPER FUNCTIONS =====
 
@@ -180,9 +183,15 @@ function buildDashboardClientData({
   nutritionGoals,
   notesAndFiles,
 }) {
+  // Design Law meal rows need name + meal slot + calories (not just chip strings).
   const foodNames = nutritionLogs
-    .map((logRow) => logRow.food_name || logRow.foodName || 'Food')
-    .filter(Boolean);
+    .map((logRow, index) => ({
+      id: logRow.id || `food-${index}`,
+      name: logRow.food_name || logRow.foodName || 'Food',
+      meal: logRow.meal_type || logRow.mealType || logRow.meal || 'Meal',
+      calories: logRow.calories != null ? Number(logRow.calories) : null,
+    }))
+    .filter((row) => row.name);
   const calorieGoal =
     userData.calorieTarget ??
     userData.calorie_target ??
@@ -343,8 +352,9 @@ const DashboardContent = ({
   appSessionId,
   userEmail = '',
 }) => {
-  const { width: screenW } = useWindowDimensions();
   const shellBottomPad = useShellBottomNavInset(28);
+  const dailyQuote = useDailyQuote(trainerId);
+  const themeColors = trainerHomeThemeColors(isDark);
   const [activeTab, setActiveTab] = useState('Progress');
   const [selectedClientId, setSelectedClientId] = useState(null);
   const [clientSelectOpen, setClientSelectOpen] = useState(false);
@@ -358,6 +368,7 @@ const DashboardContent = ({
   const [spreadsheetViewer, setSpreadsheetViewer] = useState({ visible: false, url: null, name: null });
   const [trainerDocuments, setTrainerDocuments] = useState([]);
   const [shareModal, setShareModal] = useState({ visible: false, documentId: null, sharedWith: [] });
+  const [showCreateSheet, setShowCreateSheet] = useState(false);
   const plusHandlerRef = useRef(() => {});
   const [clientUnreadCount, setClientUnreadCount] = useState(0);
   const [removeClientHold, setRemoveClientHold] = useState(null);
@@ -423,14 +434,48 @@ const DashboardContent = ({
   const showPayoutNudge =
     !payoutNudgeDismissed && stripeConnectStatus !== 'active' && !showPaymentPopup;
 
-  const textColor = isDark ? '#ffffff' : '#1a0a2e';
-  const mutedColor = isDark ? 'rgba(255,255,255,0.5)' : 'rgba(26,10,46,0.5)';
-  /** Wide “profile” cards (~one per viewport + peek of next), not narrow chips. */
-  const rosterCardWidth = Math.max(268, Math.min(340, Math.round((screenW - 40) * 0.9)));
-  /** Quick actions: ~2 cards visible + peek (between old 168px and full-width roster). */
-  const quickActionCardWidth = Math.max(200, Math.min(216, Math.round((screenW - 56) * 0.5)));
-
   const currentClient = clients.find((c) => c.id === selectedClientId) || clients[0];
+
+  const needsYouCount = useMemo(() => {
+    let n = 0;
+    if (showPayoutNudge) n += 1;
+    if (pendingRequestsCount > 0) n += 1;
+    if (unreadMessageCount > 0) n += 1;
+    return n;
+  }, [showPayoutNudge, pendingRequestsCount, unreadMessageCount]);
+
+  const clientsWithWeeklyReports = useMemo(
+    () => Object.values(weeklySummaryMap).filter(Boolean).length,
+    [weeklySummaryMap],
+  );
+
+  const clientDailyHints = useMemo(() => {
+    const id = currentClient?.id;
+    if (!id) return {};
+    const sleep =
+      todayDailyLog?.sleep_hours ??
+      todayDailyLog?.sleepHours ??
+      clientData?.nutrition?.sleep ??
+      null;
+    const steps =
+      todayDailyLog?.steps ??
+      todayDailyLog?.dashboard_steps ??
+      todayDailyLog?.step_count ??
+      null;
+    const hasLog =
+      !!todayDailyLog &&
+      (sleep != null || steps != null || todayDailyLog?.dashboard_weight != null);
+    return {
+      [id]: {
+        sleep: sleep != null ? sleep : null,
+        steps: steps != null ? steps : null,
+        loggedToday: hasLog,
+      },
+    };
+  }, [currentClient?.id, todayDailyLog, clientData]);
+
+  const textColor = themeColors.text;
+  const mutedColor = themeColors.textMuted;
 
   const clientTodayKey = useMemo(() => {
     if (!currentClient?.id) return getLocalDateKey();
@@ -693,7 +738,14 @@ const DashboardContent = ({
           const todayKey = clientTodayKey;
           const nutritionLogs = await getFoodLogsForDate(ownerUid, todayKey);
           const nutritionTotals = calculateMacroTotals(nutritionLogs);
-          const foodNames = nutritionLogs.map((l) => l.food_name || l.foodName || 'Food').filter(Boolean);
+          const foodNames = nutritionLogs
+            .map((l, index) => ({
+              id: l.id || `food-${index}`,
+              name: l.food_name || l.foodName || 'Food',
+              meal: l.meal_type || l.mealType || l.meal || 'Meal',
+              calories: l.calories != null ? Number(l.calories) : null,
+            }))
+            .filter((row) => row.name);
 
           if (effectCancelled) return;
 
@@ -867,13 +919,43 @@ const DashboardContent = ({
     return 'Evening';
   }, []);
 
-  const actions = [
-    { label: 'Messages', icon: 'MessageSquare', action: 'messages' },
-    { label: 'Progress Photos', imageSource: require('../../assets/icons/picture.png'), action: 'photos' },
-    { label: 'Workout Plans', imageSource: require('../../assets/ai_workouts.png'), action: 'aiPlans' },
-    { label: 'Document Maker', action: 'document' },
-    { label: 'Spreadsheet Creator', action: 'spreadsheet' },
-  ];
+  const runTrainerTool = useCallback(
+    (action) => {
+      if (action === 'messages') {
+        onMessagesPress?.(currentClient?.id);
+        return;
+      }
+      // PNG 05: Document maker and Spreadsheet creator share one “Create something” launcher.
+      if (action === 'document' || action === 'spreadsheet') {
+        setShowCreateSheet(true);
+        return;
+      }
+      if (action === 'notes') {
+        setActiveTab('Notes & Files');
+        return;
+      }
+      if (!currentClient?.id) return;
+      const payload = {
+        id: currentClient.id,
+        name: currentClient.name || currentClient.displayName || currentClient.fullName || 'Client',
+      };
+      if (action === 'aiPlans') {
+        onOpenAIWorkouts?.(payload);
+        return;
+      }
+      if (action === 'photos') {
+        onOpenPhotoGallery?.(payload);
+      }
+    },
+    [
+      currentClient,
+      onMessagesPress,
+      openDocumentEditor,
+      openSpreadsheetEditor,
+      onOpenAIWorkouts,
+      onOpenPhotoGallery,
+    ],
+  );
 
   // Test notification function for trainers
   const testTrainerNotification = async () => {
@@ -929,430 +1011,81 @@ const DashboardContent = ({
     }
   };
 
-  const sectionLabelStyle = {
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 2,
-    color: mutedColor,
-    textTransform: 'uppercase',
-    marginBottom: 6,
-    paddingHorizontal: 2, // remove hardcoded large padding if needed, but keeping it small
-  };
+  const payoutNeedsSubcopy =
+    pendingRequestsCount > 0
+      ? `${pendingRequestsCount} new request${pendingRequestsCount === 1 ? '' : 's'} ${pendingRequestsCount === 1 ? 'is' : 'are'} waiting on this.`
+      : undefined;
 
   return (
     <>
-    <View style={{ flex: 1, minHeight: 0 }}>
-    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: shellBottomPad, paddingHorizontal: 20, paddingTop: 4 }} {...FORM_SCROLL_PROPS}>
-      <HomeTopBanner isDark={isDark} timeOfDay={timeOfDay} userName={userName} textColor={textColor} userId={trainerId} />
+    <View style={{ flex: 1, minHeight: 0, backgroundColor: themeColors.solidBg }}>
+    <ScrollView
+      style={{ flex: 1 }}
+      contentContainerStyle={{
+        paddingBottom: Math.max(shellBottomPad, nb.bottomNavClearance),
+        paddingHorizontal: nb.screenGutter,
+        paddingTop: 8,
+      }}
+      {...FORM_SCROLL_PROPS}
+    >
+      <DesignLawTrainerHeader
+        themeColors={themeColors}
+        userName={userName}
+        greetingPeriod={timeOfDay}
+        onNotificationsPress={() => onClientRequestsPress?.()}
+      />
 
-      {showPayoutNudge ? (
-        <LinearGradient
-          colors={['#7C2D12', '#C2410C', '#9A3412']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={{
-            marginTop: 8,
-            marginBottom: 4,
-            borderRadius: 12,
-            maxHeight: 80,
-            overflow: 'hidden',
-          }}
-        >
-          <View
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              paddingHorizontal: 14,
-              paddingVertical: 10,
-              gap: 10,
-              minHeight: 56,
-              maxHeight: 80,
-            }}
-          >
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text
-                style={{
-                  fontSize: 10,
-                  fontWeight: '700',
-                  letterSpacing: 1.1,
-                  textTransform: 'uppercase',
-                  color: 'rgba(255,255,255,0.55)',
-                }}
-              >
-                Payments
-              </Text>
-              <Text
-                style={{
-                  marginTop: 2,
-                  fontSize: 13,
-                  fontWeight: '700',
-                  color: '#FED7AA',
-                }}
-                numberOfLines={2}
-              >
-                {stripeConnectStatus === 'pending'
-                  ? 'Payout verification in progress'
-                  : 'Complete payout setup to accept clients'}
-              </Text>
-            </View>
-            {typeof onOpenPayments === 'function' ? (
-              <TouchableOpacity
-                activeOpacity={0.88}
-                onPress={onOpenPayments}
-                style={{
-                  paddingHorizontal: 14,
-                  paddingVertical: 8,
-                  borderRadius: 999,
-                  backgroundColor: 'rgba(255,255,255,0.16)',
-                  borderWidth: 1,
-                  borderColor: 'rgba(255,255,255,0.22)',
-                }}
-              >
-                <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '800' }}>
-                  {stripeConnectStatus === 'pending' ? 'Manage' : 'Set Up'}
-                </Text>
-              </TouchableOpacity>
-            ) : null}
-            <TouchableOpacity
-              accessibilityLabel="Dismiss payment setup reminder"
-              onPress={dismissPayoutNudge}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              style={{
-                width: 28,
-                height: 28,
-                borderRadius: 14,
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: 'rgba(0,0,0,0.12)',
-              }}
-            >
-              <Ionicons name="close" size={15} color="rgba(255,255,255,0.42)" />
-            </TouchableOpacity>
-          </View>
-        </LinearGradient>
+      <DesignLawTrainerMotivationCard
+        themeColors={themeColors}
+        quoteText={dailyQuote?.q}
+        quoteAuthor={dailyQuote?.a}
+      />
+
+      <DesignLawTrainerNeedsYou
+        themeColors={themeColors}
+        needsCount={needsYouCount}
+        showPayoutBlock={showPayoutNudge}
+        stripeConnectStatus={stripeConnectStatus}
+        pendingRequestsCount={pendingRequestsCount}
+        unreadMessageCount={unreadMessageCount}
+        payoutSubcopy={payoutNeedsSubcopy}
+        onOpenPayments={() => {
+          dismissPayoutNudge();
+          if (typeof onOpenPayments === 'function') onOpenPayments();
+          else setShowPaymentPopup(true);
+        }}
+        onClientRequestsPress={onClientRequestsPress}
+        onMessagesPress={() => onMessagesPress?.(currentClient?.id)}
+      />
+
+      <DesignLawTrainerClientCarousel
+        themeColors={themeColors}
+        clients={clients}
+        selectedClientId={currentClient?.id}
+        weeklySummaryMap={weeklySummaryMap}
+        dailyHints={clientDailyHints}
+        onSelectClient={setSelectedClientId}
+        onRemoveClient={promptRemoveClientFromDashboard}
+      />
+
+      {clients.length > 0 && currentClient?.id ? (
+        <>
+          <DesignLawTrainerClientTodayLabel
+            clientName={currentClient.name || currentClient.displayName || 'Client'}
+            themeColors={themeColors}
+          />
+          <TabPills activeTab={activeTab} onTabChange={setActiveTab} isDark={isDark} />
+        </>
       ) : null}
 
-      {/* Quote pill is now inside the hero banner */}
-
-      {/* Hero stats strip */}
-      <LinearGradient
-        colors={['rgba(124,58,237,0.2)', 'rgba(236,72,153,0.1)']}
-        style={{
-          borderRadius: 20,
-          borderWidth: 1,
-          borderColor: 'rgba(167,139,250,0.35)',
-          padding: 12,
-          marginHorizontal: 0,
-          marginTop: 8,
-        }}
-      >
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 32, fontWeight: '900', color: isDark ? '#fff' : '#1a0a2e' }}>{clients.length}</Text>
-            <Text style={{ fontSize: 11, color: mutedColor }}>Active Clients</Text>
-          </View>
-          <View style={{ width: 1, height: 40, backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' }} />
-          <View style={{ flex: 1, alignItems: 'flex-end' }}>
-            <Text style={{ fontSize: 32, fontWeight: '900', color: '#C084FC' }}>{pendingRequestsCount}</Text>
-            <Text style={{ fontSize: 11, color: mutedColor }}>Pending Requests</Text>
-          </View>
-        </View>
-        <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
-          <TouchableOpacity activeOpacity={0.8} onPress={onClientsPress} style={{ flex: 1 }}>
-            <View style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', borderRadius: 12, height: 40, alignItems: 'center', justifyContent: 'center' }}>
-              <Text style={{ fontSize: 13, fontWeight: '600', color: textColor }}>All Clients</Text>
-            </View>
-          </TouchableOpacity>
-          <TouchableOpacity activeOpacity={0.8} onPress={onClientRequestsPress} style={{ flex: 1 }}>
-            <View style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', borderRadius: 12, height: 40, alignItems: 'center', justifyContent: 'center' }}>
-              <Text style={{ fontSize: 13, fontWeight: '600', color: textColor }}>Client Requests</Text>
-            </View>
-          </TouchableOpacity>
-        </View>
-      </LinearGradient>
-
-      {/* Client roster — wide profile cards (avatar, goal, stat tiles); scrolls horizontally */}
-      <View style={{ marginTop: 12 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-          <Text style={[sectionLabelStyle, { marginBottom: 0 }]}>Clients</Text>
-          {clients.length > 0 ? (
-            <View
-              style={{
-                paddingHorizontal: 8,
-                paddingVertical: 2,
-                borderRadius: 999,
-                backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-                borderWidth: 1,
-                borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(15,23,42,0.08)',
-              }}
-            >
-              <Text style={{ fontSize: 10, fontWeight: '800', color: mutedColor }}>{clients.length} active</Text>
-            </View>
-          ) : null}
-        </View>
-
-        {clients.length === 0 ? (
-          <View
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 12,
-              paddingVertical: 10,
-              paddingHorizontal: 12,
-              borderRadius: 14,
-              backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
-              borderWidth: 1,
-              borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.06)',
-            }}
-          >
-            <LinearGradient
-              colors={['#9F1239', '#C2410C']}
-              style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' }}
-            >
-              <Icon name="UserPlus" size={20} color="#FFFFFF" />
-            </LinearGradient>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={{ color: textColor, fontSize: 15, fontWeight: '800', letterSpacing: -0.2 }}>No clients yet</Text>
-              <Text style={{ color: mutedColor, fontSize: 12, marginTop: 2, lineHeight: 16 }}>
-                Approve requests from Client Requests — each client appears here.
-              </Text>
-            </View>
-          </View>
-        ) : (
-          <>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingVertical: 6, paddingRight: 4 }}>
-              {(clients || []).map((client) => {
-                const selected = client.id === currentClient?.id;
-                const stats = getClientRosterStats(client);
-                const displayName = client.name || client.displayName || 'Client';
-                const initials = getClientInitials(displayName);
-                const hasWeekly = !!weeklySummaryMap[client.id];
-
-                return (
-                  <View key={client.id} style={{ width: rosterCardWidth, marginRight: 12, position: 'relative' }}>
-                    <TouchableOpacity
-                      activeOpacity={0.88}
-                      onPress={() => setSelectedClientId(client.id)}
-                    >
-                      <NbCard style={{ padding: 16 }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
-                          <NbAvatar
-                            initials={initials}
-                            size={52}
-                          />
-                          <View style={{ flex: 1, minWidth: 0, paddingRight: 36 }}>
-                            <Text style={{ color: textColor, fontSize: 18, fontWeight: '900', letterSpacing: -0.3, fontFamily: 'SpaceGrotesk_700Bold' }} numberOfLines={1}>
-                              {displayName}
-                            </Text>
-                            <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', marginTop: 8 }}>
-                              {stats.goal ? (
-                                <View
-                                  style={{
-                                    paddingHorizontal: 10,
-                                    paddingVertical: 5,
-                                    borderRadius: 999,
-                                    backgroundColor: isDark ? 'rgba(157, 23, 57, 0.22)' : 'rgba(190, 24, 93, 0.1)',
-                                    borderWidth: 1,
-                                    borderColor: isDark ? 'rgba(234, 88, 12, 0.28)' : 'rgba(194, 65, 12, 0.22)',
-                                    marginRight: 8,
-                                    marginBottom: 4,
-                                  }}
-                                >
-                                  <Text style={{ color: isDark ? 'rgba(254, 205, 211, 0.92)' : '#9F1239', fontSize: 11, fontWeight: '800', fontFamily: 'SpaceGrotesk_700Bold' }} numberOfLines={1}>
-                                    {stats.goal}
-                                  </Text>
-                                </View>
-                              ) : null}
-                              {hasWeekly ? (
-                                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
-                                  <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: '#4ade80' }} />
-                                  <Text style={{ color: mutedColor, fontSize: 11, fontWeight: '700', marginLeft: 5 }}>Weekly ready</Text>
-                                </View>
-                              ) : (
-                                <Text style={{ color: mutedColor, fontSize: 11, fontWeight: '600', marginBottom: 4 }}>No weekly yet</Text>
-                              )}
-                            </View>
-                          </View>
-                        </View>
-
-                        <View style={{ flexDirection: 'row', marginTop: 12, gap: 10 }}>
-                          {[
-                            { key: 'age', cap: 'AGE', val: stats.age ? `${stats.age}` : '—' },
-                            { key: 'wt', cap: 'WEIGHT', val: stats.weight ? `${stats.weight} lbs` : '—' },
-                            { key: 'ht', cap: 'HEIGHT', val: stats.height || '—' },
-                          ].map((cell) => (
-                            <View
-                              key={cell.key}
-                              style={{
-                                flex: 1,
-                                alignItems: 'center',
-                              }}
-                            >
-                              <Text
-                                style={{
-                                  color: mutedColor,
-                                  fontSize: 12,
-                                  fontWeight: '700',
-                                  letterSpacing: 1.2,
-                                  fontFamily: 'SpaceGrotesk_700Bold',
-                                  textTransform: 'uppercase',
-                                }}
-                              >
-                                {cell.cap}
-                              </Text>
-                              <Text
-                                style={{
-                                  color: textColor,
-                                  fontSize: 17,
-                                  fontWeight: '800',
-                                  fontFamily: 'SpaceGrotesk_700Bold',
-                                  marginTop: 4,
-                                  letterSpacing: -0.2,
-                                }}
-                                numberOfLines={1}
-                              >
-                                {cell.val}
-                              </Text>
-                            </View>
-                          ))}
-                        </View>
-                      </NbCard>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      accessibilityLabel={`Remove ${client.name || 'client'} from roster`}
-                      accessibilityHint="Opens a confirmation step"
-                      onPress={() => promptRemoveClientFromDashboard(client)}
-                      style={{
-                        position: 'absolute',
-                        top: 10,
-                        right: 10,
-                        zIndex: 4,
-                        padding: 8,
-                        borderRadius: 14,
-                        backgroundColor: isDark ? 'rgba(15,15,22,0.92)' : 'rgba(255,255,255,0.95)',
-                        borderWidth: 1,
-                        borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(15,23,42,0.08)',
-                      }}
-                      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                    >
-                      <Ionicons
-                        name="ellipsis-horizontal"
-                        size={18}
-                        color={isDark ? 'rgba(255,255,255,0.55)' : 'rgba(15,23,42,0.5)'}
-                      />
-                    </TouchableOpacity>
-                  </View>
-                );
-              })}
-            </ScrollView>
-
-            {currentClient?.id ? (
-              <View style={{ marginTop: 8 }}>
-                <TrainerWeeklyReportSection
-                  clientId={currentClient.id}
-                  clientName={currentClient.name || currentClient.displayName || ''}
-                  isDark={isDark}
-                  onOpenWeeklyReport={onOpenWeeklyReport}
-                />
-              </View>
-            ) : null}
-          </>
-        )}
-      </View>
-
-      {/* Quick Actions */}
-      <View style={{ marginTop: 10, marginBottom: 8 }}>
-        <Text style={sectionLabelStyle}>Quick Actions</Text>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ paddingVertical: 4, paddingRight: 16 }}
-        >
-        {actions.map(({ label, action }) => {
-          const iconName =
-            action === 'messages'
-              ? 'chatbubbles-outline'
-              : action === 'photos'
-                ? 'images-outline'
-                : action === 'document'
-                  ? 'document-text-outline'
-                  : action === 'spreadsheet'
-                    ? 'grid-outline'
-                    : 'barbell-outline';
-
-          const count =
-            action === 'messages'
-              ? (typeof clientUnreadCount === 'number' ? clientUnreadCount : 0)
-              : null;
-
-          const subtitle =
-            action === 'messages'
-              ? (count > 0 ? `${count > 99 ? '99+' : count} unread` : 'No unread')
-              : action === 'photos'
-                ? 'Progress photos'
-                : action === 'document'
-                  ? 'Rich-text editor'
-                  : action === 'spreadsheet'
-                    ? 'Blank grid'
-                    : 'Plans & sessions';
-
-          const ctaLabel =
-            action === 'document' || action === 'spreadsheet' ? 'Open editor' : 'View all';
-
-          return (
-            <QuickActionCard
-              key={label}
-              isDark={isDark}
-              width={quickActionCardWidth}
-              label={label}
-              subtitle={subtitle}
-              icon={iconName}
-              ctaLabel={ctaLabel}
-              badgeCount={action === 'messages' ? count : undefined}
-              onPress={() => {
-                if (action === 'messages') {
-                  onMessagesPress(currentClient?.id);
-                  return;
-                }
-                if (action === 'document') {
-                  openDocumentEditor?.({ documentId: null });
-                  return;
-                }
-                if (action === 'spreadsheet') {
-                  openSpreadsheetEditor?.({ documentId: null, title: '', rows: null });
-                  return;
-                }
-                if (!currentClient?.id) return;
-                const payload = {
-                  id: currentClient.id,
-                  name: currentClient.name || currentClient.displayName || currentClient.fullName || 'Client',
-                };
-                if (action === 'aiPlans') {
-                  onOpenAIWorkouts?.(payload);
-                  return;
-                }
-                if (action === 'photos') {
-                  onOpenPhotoGallery?.(payload);
-                }
-              }}
-            />
-          );
-        })}
-        </ScrollView>
-      </View>
-
-      {/* Client Management Row */}
-      {/* Tab Pills */}
-      <TabPills activeTab={activeTab} onTabChange={setActiveTab} isDark={isDark} />
-
-      {/* Tab Content */}
-      {loadingClientData ? (
+      {clients.length > 0 && currentClient?.id ? (
+        loadingClientData ? (
         <View style={{ padding: 40, alignItems: 'center' }}>
           <ActivityIndicator color={ICON_ACCENT} />
           <Text style={{ color: mutedColor, fontSize: 13, marginTop: 12 }}>Loading client data...</Text>
         </View>
-      ) : (
-        <View>
+        ) : (
+        <View style={{ marginBottom: 8 }}>
           {activeTab === 'Progress' && (
             <ProgressTab
               key={currentClient?.id || 'progress'}
@@ -1419,7 +1152,25 @@ const DashboardContent = ({
             />
           )}
         </View>
-      )}
+        )
+      ) : null}
+
+      <DesignLawTrainerToolsGrid
+        themeColors={themeColors}
+        onToolPress={runTrainerTool}
+        messageBadge={clientUnreadCount}
+      />
+
+      {currentClient?.id ? (
+        <TrainerWeeklyReportSection
+          clientId={currentClient.id}
+          clientName={currentClient.name || currentClient.displayName || ''}
+          isDark={isDark}
+          clientsLogged={clientsWithWeeklyReports}
+          clientsTotal={clients.length}
+          onOpenWeeklyReport={onOpenWeeklyReport}
+        />
+      ) : null}
 
       <View style={{ height: 16 }} />
       <SpreadsheetViewer
@@ -1453,7 +1204,7 @@ const DashboardContent = ({
       }
       holdDurationMs={1200}
       pillLabel="Hold until bar fills to remove"
-      barGradient={['#8B5CF6', '#DB7093']}
+      barGradient={['#E25588', '#DB7093']}
       onHoldComplete={async () => {
         const client = removeClientHold;
         if (!client?.id || !trainerId) return;
@@ -1487,6 +1238,22 @@ const DashboardContent = ({
         stripeAccountId={paymentPopupStripeAccountId}
       />
     ) : null}
+    <DesignLawTrainerCreateSheet
+      visible={showCreateSheet}
+      onClose={() => setShowCreateSheet(false)}
+      isDark={isDark}
+      onRichText={() => openDocumentEditor?.({ documentId: null })}
+      onBlankGrid={() =>
+        openSpreadsheetEditor?.({ documentId: null, title: '', rows: null })
+      }
+      onCustomProgram={() =>
+        openSpreadsheetEditor?.({
+          documentId: null,
+          title: 'Custom program',
+          rows: buildCustomProgramStarterRows(),
+        })
+      }
+    />
     </>
   );
 };

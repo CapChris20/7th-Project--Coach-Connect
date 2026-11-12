@@ -1,11 +1,12 @@
 // Weekly report "pros & cons" block: what went well and what to improve.
-import { NbCard } from '../../look-and-feel/NbCard';// Flow: pick the top tips → if none, hide the section → otherwise paint the glass card with both lists.
+// Flow: pick the top tips → if none, hide the section → otherwise paint the glass card with both lists.
 // Used by: WeeklyReportBody after the week's food/workout stats.
+
+import NbCard from '../../look-and-feel/NbCard';
 
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
 import { GRADIENTS, useTheme } from '../weekly-report/reportColorSettings';
 import { ColorBorder } from './ColorBorder';
 import { TipRow } from './TipRow';
@@ -99,7 +100,7 @@ export function WinsAndWorkOnsSection({ week, animationKey }) {
             },
           ]}
         >
-          <BlurView intensity={BLUR_INTENSITY} tint={colors.blurTint} style={StyleSheet.absoluteFill} />
+          <View intensity={BLUR_INTENSITY} tint={colors.blurTint} style={StyleSheet.absoluteFill} />
           <LinearGradient
             colors={[`${GRADIENTS.g4[0]}18`, `${GRADIENTS.g4[1]}08`, 'transparent']}
             start={GRADIENT_START}

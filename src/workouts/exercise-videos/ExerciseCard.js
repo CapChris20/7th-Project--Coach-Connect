@@ -1,11 +1,9 @@
-// One horizontal exercise tile: YouTube thumb, title, instructor initials, difficulty or duration.
-// Flow: press-in scales the card up → press-out snaps back; tap opens the video; bookmark is optional.
-// Used by the exercise-video list. Dark vs light inner colors follow colors.background.
-//
-// vocab: neobrutalist = thick outlines (2.5px), hard shadows (no blur), offset 4/4
-// Manipulate here: card border radius (16), press scale (1.02), animation duration (220ms)
+// Results-grid video card — thumb with play + duration, title, equipment pill.
+// Flow: press scales → tap opens detail player (parent onPress).
+// Used by: ExerciseVideosTab library results (2-column grid).
+// Design Law: HardShadow + 3px border; equipment as neutral Nb-style mini tag.
 
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useMemo, useRef } from 'react';
 import {
   Animated,
   Pressable,
@@ -13,197 +11,157 @@ import {
   Text,
   View,
 } from 'react-native';
-import { useColorScheme } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
-import NbCard from '../../look-and-feel/NbCard';
-import { lightColors, darkColors, gradients } from '../../look-and-feel/colorPalette';
+import HardShadow from '../../look-and-feel/HardShadow';
+import { borderRadius, nb } from '../../look-and-feel/colorPalette';
+import { useTheme } from '../../look-and-feel/lightDarkMode';
+import HatchedThumbFill from './HatchedThumbFill';
 
 // ===== NAMED CONSTANTS =====
 
-const PRESS_ANIMATION_MS = 220;
-const PRESS_SCALE = 1.02;
-const PRESS_LIFT_Y = -2;
-const MIN_GRADIENT_STOPS = 2;
+const PRESS_ANIMATION_MS = 160;
+const PRESS_SCALE = 0.97;
 const YOUTUBE_THUMB_HOST = 'https://i.ytimg.com/vi';
 const FALLBACK_LABEL = '—';
-const FALLBACK_INITIALS = 'CC';
-const MAX_INITIAL_WORDS = 2;
-const BOOKMARK_HIT_SLOP = 10;
+const DEFAULT_IMAGE_HEIGHT = 118;
+// Manipulate here: grid play circle (mockup grid uses ~40)
+const PLAY_SIZE = 40;
 
 // ===== HELPER FUNCTIONS =====
 
-/**
- * YouTube's standard hqdefault still. videoId is the 11-char watch id, not a full URL.
- * @param {string} videoId
- * @returns {string}
- */
 function youtubeThumbUrl(videoId) {
   return `${YOUTUBE_THUMB_HOST}/${videoId}/hqdefault.jpg`;
 }
 
 /**
- * "Beginner • 12 min" — whichever pieces exist, joined with a bullet.
- * @param {object} exercise
- * @returns {string}
+ * Badge text like "0:48". Missing duration → null.
+ * @param {number|undefined} seconds
+ * @param {number|undefined} minutes
+ * @returns {string|null}
  */
-function formatExerciseMeta(exercise) {
-  const difficulty = exercise?.difficulty ? String(exercise.difficulty) : null;
-  const minutes =
-    typeof exercise?.durationMinutes === 'number' ? `${exercise.durationMinutes} min` : null;
-  return [difficulty, minutes].filter(Boolean).join(' • ');
-}
-
-/**
- * First letter of the first two words of the channel name. Empty channel → "CC".
- * @param {string|undefined} channel
- * @returns {string}
- */
-function initialsFromChannel(channel) {
-  const channelName = String(channel || '').trim();
-  if (!channelName) return FALLBACK_INITIALS;
-  const words = channelName.split(/\s+/).filter(Boolean).slice(0, MAX_INITIAL_WORDS);
-  const initials = words.map((word) => word.slice(0, 1).toUpperCase()).join('');
-  return initials || FALLBACK_INITIALS;
-}
-
-/**
- * A one-stop array would crash LinearGradient, so fall back to the brand gradient.
- * @param {string[]|undefined} accentGradient
- * @returns {string[]}
- */
-function rimColors(accentGradient) {
-  return accentGradient?.length >= MIN_GRADIENT_STOPS ? accentGradient : gradients.brand.colors;
+function formatDurationBadge(seconds, minutes) {
+  if (typeof seconds === 'number' && seconds > 0) {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.round(seconds % 60);
+    return `${mins}:${String(secs).padStart(2, '0')}`;
+  }
+  if (typeof minutes === 'number' && minutes > 0) {
+    return `${minutes}:00`;
+  }
+  return null;
 }
 
 // ===== MAIN FUNCTION =====
 
 /**
- * Exercise video card with a gradient rim, thumbnail, instructor row, and optional bookmark.
+ * Library result card with equipment tag under the title.
  * @param {object} props
  */
 export default function ExerciseCard({
   exercise,
-  colors: deprecatedColors,
-  accentGradient,
-  imageHeight = 132,
+  imageHeight = DEFAULT_IMAGE_HEIGHT,
   onPress,
-  saved = false,
-  onToggleSave,
   style,
+  // Kept so older call sites do not crash; Design Law cards ignore these.
+  colors: _deprecatedColors,
+  accentGradient: _deprecatedAccent,
+  saved: _deprecatedSaved,
+  onToggleSave: _deprecatedSave,
 }) {
-  // vocab: Animated.Value = a number the native driver can tween without bouncing through JS.
-  const colorScheme = useColorScheme();
-  const colors = colorScheme === 'dark' ? darkColors : lightColors;
+  void _deprecatedColors;
+  void _deprecatedAccent;
+  void _deprecatedSaved;
+  void _deprecatedSave;
+
+  const { colors } = useTheme();
   const scale = useRef(new Animated.Value(1)).current;
-  const translateY = useRef(new Animated.Value(0)).current;
-  const [isPressed, setIsPressed] = useState(false);
 
-  const metaText = useMemo(
-    () => formatExerciseMeta(exercise),
-    [exercise?.difficulty, exercise?.durationMinutes],
+  const durationText = useMemo(
+    () => formatDurationBadge(exercise?.durationSeconds, exercise?.durationMinutes),
+    [exercise?.durationSeconds, exercise?.durationMinutes],
   );
 
-  const animateToPressed = (isFingerDown) => {
-    setIsPressed(isFingerDown);
-    Animated.parallel([
-      Animated.timing(scale, {
-        toValue: isFingerDown ? PRESS_SCALE : 1,
-        duration: PRESS_ANIMATION_MS,
-        useNativeDriver: true,
-      }),
-      Animated.timing(translateY, {
-        toValue: isFingerDown ? PRESS_LIFT_Y : 0,
-        duration: PRESS_ANIMATION_MS,
-        useNativeDriver: true,
-      }),
-    ]).start();
+  const equipmentLabel = useMemo(() => {
+    const raw = exercise?.equipment || exercise?.equipmentHint;
+    return raw ? String(raw) : null;
+  }, [exercise?.equipment, exercise?.equipmentHint]);
+
+  const animatePress = (down) => {
+    Animated.timing(scale, {
+      toValue: down ? PRESS_SCALE : 1,
+      duration: PRESS_ANIMATION_MS,
+      useNativeDriver: true,
+    }).start();
   };
-
-  const rim = rimColors(accentGradient);
-
-  const instructorInitials = useMemo(
-    () => initialsFromChannel(exercise?.channel),
-    [exercise?.channel],
-  );
-
-  const difficulty = exercise?.difficulty ? String(exercise.difficulty) : null;
 
   return (
     <Pressable
       onPress={onPress}
-      onPressIn={() => animateToPressed(true)}
-      onPressOut={() => animateToPressed(false)}
+      onPressIn={() => animatePress(true)}
+      onPressOut={() => animatePress(false)}
       style={[styles.press, style]}
+      accessibilityRole="button"
+      accessibilityLabel={exercise?.name || FALLBACK_LABEL}
     >
-      <Animated.View style={{ transform: [{ translateY }, { scale }] }}>
-        <NbCard style={{ padding: 0, overflow: 'hidden' }}>
-          <View style={[styles.imageWrap, { height: imageHeight }]}>
-            <Image
-              source={{ uri: youtubeThumbUrl(exercise.videoId) }}
-              style={styles.image}
-              contentFit="cover"
-              transition={PRESS_ANIMATION_MS}
-            />
-            <LinearGradient
-              colors={['rgba(0,0,0,0.05)', 'rgba(0,0,0,0.45)']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 0, y: 1 }}
-              style={StyleSheet.absoluteFill}
-            />
-            {onToggleSave ? (
-              <Pressable
-                onPress={(event) => {
-                  event?.stopPropagation?.();
-                  onToggleSave();
-                }}
-                hitSlop={BOOKMARK_HIT_SLOP}
-                style={styles.saveBtn}
-              >
-                <Ionicons
-                  name={saved ? 'bookmark' : 'bookmark-outline'}
-                  size={16}
-                  color={saved ? gradients.brand.colors[0] : colors.nbSurface}
-                />
-              </Pressable>
+      <Animated.View style={{ transform: [{ scale }] }}>
+        <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetSmall}>
+          <View
+            style={[
+              styles.thumb,
+              {
+                height: imageHeight,
+                borderColor: colors.nbBorder,
+                backgroundColor: colors.nbSoft,
+              },
+            ]}
+          >
+            <HatchedThumbFill />
+            {exercise?.videoId ? (
+              <Image
+                source={{ uri: youtubeThumbUrl(exercise.videoId) }}
+                style={styles.image}
+                contentFit="cover"
+                transition={PRESS_ANIMATION_MS}
+              />
             ) : null}
-          </View>
-
-          <View style={styles.body}>
-            <Text style={[styles.title, { color: colors.nbInk }]} numberOfLines={2}>
-              {exercise?.name || FALLBACK_LABEL}
-            </Text>
-
-            <View style={styles.instructorRow}>
-              <LinearGradient colors={rim} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.avatarGrad}>
-                <View style={[styles.avatarInner, { backgroundColor: colors.nbSurface }]}>
-                  <Text style={[styles.avatarText, { color: colors.nbInk }]}>
-                    {instructorInitials}
-                  </Text>
-                </View>
-              </LinearGradient>
-              <Text style={[styles.instructor, { color: colors.nbMuted }]} numberOfLines={1}>
-                {exercise?.channel || FALLBACK_LABEL}
-              </Text>
+            <View style={styles.playCenter} pointerEvents="none">
+              <View
+                style={[
+                  styles.playCircle,
+                  {
+                    backgroundColor: colors.nbFill,
+                    borderColor: colors.nbBorder,
+                  },
+                ]}
+              >
+                <Ionicons name="play" size={16} color={colors.nbOnFill} style={styles.playIcon} />
+              </View>
             </View>
-
-            {difficulty ? (
-              <LinearGradient
-                colors={[`${rim[0]}22`, `${rim[1] ?? rim[0]}14`]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.diffChip}
-              >
-                <Text style={[styles.diffText, { color: rim[0] }]}>{difficulty}</Text>
-              </LinearGradient>
-            ) : metaText ? (
-              <Text style={[styles.meta, { color: colors.nbMuted }]} numberOfLines={1}>
-                {metaText}
-              </Text>
+            {durationText ? (
+              <View style={[styles.durationBadge, { backgroundColor: colors.nbFill }]}>
+                <Text style={[styles.durationText, { color: colors.nbOnFill }]}>{durationText}</Text>
+              </View>
             ) : null}
           </View>
-        </NbCard>
+        </HardShadow>
+
+        <Text style={[styles.title, { color: colors.nbInk }]} numberOfLines={2}>
+          {exercise?.name || FALLBACK_LABEL}
+        </Text>
+
+        {equipmentLabel ? (
+          <View
+            style={[
+              styles.equipPill,
+              { borderColor: colors.nbBorder, backgroundColor: colors.nbSoft },
+            ]}
+          >
+            <Text style={[styles.equipText, { color: colors.nbInk }]} numberOfLines={1}>
+              {equipmentLabel}
+            </Text>
+          </View>
+        ) : null}
       </Animated.View>
     </Pressable>
   );
@@ -211,43 +169,59 @@ export default function ExerciseCard({
 
 const styles = StyleSheet.create({
   press: { width: '100%' },
-  imageWrap: {
+  thumb: {
     width: '100%',
+    borderRadius: borderRadius.nbCard,
+    borderWidth: nb.borderWidth,
     overflow: 'hidden',
-    backgroundColor: 'rgba(255,255,255,0.03)',
   },
   image: { width: '100%', height: '100%' },
-  saveBtn: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+  playCenter: {
+    ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
   },
-  body: {
-    paddingHorizontal: 12,
-    paddingTop: 10,
-    paddingBottom: 12,
-    gap: 8,
+  playCircle: {
+    width: PLAY_SIZE,
+    height: PLAY_SIZE,
+    borderRadius: PLAY_SIZE / 2,
+    borderWidth: nb.borderWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  title: { fontSize: 13, fontWeight: '800', lineHeight: 18, letterSpacing: -0.2 },
-  instructorRow: { flexDirection: 'row', alignItems: 'center' },
-  avatarGrad: { width: 22, height: 22, borderRadius: 11, padding: 1, marginRight: 7 },
-  avatarInner: { flex: 1, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  avatarText: { fontSize: 9, fontWeight: '900' },
-  instructor: { flex: 1, fontSize: 11, fontWeight: '700' },
-  meta: { fontSize: 10, fontWeight: '700' },
-  diffChip: {
+  playIcon: { marginLeft: 2 },
+  // Mockup `.du` — square-ish radius 4, fill ink
+  durationBadge: {
+    position: 'absolute',
+    right: 8,
+    bottom: 8,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  durationText: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 12,
+  },
+  title: {
+    marginTop: 8,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 13,
+    lineHeight: 17,
+  },
+  // Mockup `.mini` — soft fill, radius 6, 2.5px border (not a full pill)
+  equipPill: {
     alignSelf: 'flex-start',
+    marginTop: 6,
+    height: 24,
     paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 999,
+    borderRadius: 6,
+    borderWidth: nb.borderWidthPill,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  diffText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.2 },
+  equipText: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 12,
+  },
 });

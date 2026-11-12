@@ -1,144 +1,66 @@
-// Hero disclaimer on food search: "verify before you log" plus calorie/protein/macro pills.
-// Flow: pick dark vs light colors → always-expanded card → feature pills. No collapse.
-// Used by: FoodSearchScreen idle browse state.
-// Redesigned with neobrutalist components and tokens from colorPalette.
+// Design Law search disclaimer (PNG 05/06): short note under results / idle browse.
+// Flow: theme tokens → HardShadow card → plain body copy. No feature pills, no GradientFrame.
+// Used by: FoodSearchScreen idle browse + results footer.
+//
+// vocab: HardShadow = solid offset shadow (no blur); nbSoft = muted surface wash
 
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import NbCard from '../../look-and-feel/NbCard';
-import { lightColors, darkColors } from '../../look-and-feel/colorPalette';
+import HardShadow from '../../look-and-feel/HardShadow';
+import { borderRadius, nb } from '../../look-and-feel/colorPalette';
+import { useTheme } from '../../look-and-feel/lightDarkMode';
 
 // ===== NAMED CONSTANTS =====
 
-const CYAN = '#64D2FF';
-const GRADIENT_START = { x: 0, y: 0 };
-const GRADIENT_END = { x: 0, y: 1 };
-
-// Manipulate here: the four pills under the disclaimer. Labels are also React keys.
-const FEATURES = [
-  { icon: 'flame-outline', label: 'Calories' },
-  { icon: 'barbell-outline', label: 'Protein' },
-  { icon: 'pie-chart-outline', label: 'Macros' },
-  { icon: 'restaurant-outline', label: 'Menus' },
-];
-
-// ===== HELPER FUNCTIONS =====
-
-/**
- * vocab: disclaimerColors = neobrutalist tokens for dark vs light theme
- * @param {boolean} isDark
- * @returns {object}
- */
-function disclaimerColors(isDark) {
-  const colors = isDark ? darkColors : lightColors;
-  return {
-    labelColor: colors.nbMuted,
-    headlineColor: colors.nbInk,
-    subheadColor: colors.nbMuted,
-    pillBackground: colors.nbSurfaceChip,
-    pillText: colors.nbInk,
-  };
-}
+// Manipulate here: disclaimer copy (keep short — PNG is one paragraph)
+const DISCLAIMER_COPY =
+  'Search packaged foods, restaurants, and groceries. Nutrition data comes from public databases and menus — verify serving sizes before you log.';
 
 // ===== MAIN FUNCTION =====
 
 /**
- * Hero disclaimer for food search with neobrutalist NbCard styling.
- * vocab: NbCard = card with thick border and hard shadow; always fully expanded.
- * @param {{ isDark?: boolean }} props
+ * Compact HardShadow disclaimer for food search.
+ * @param {{ isDark?: boolean }} props — isDark kept for call-site compat; theme drives paint
  */
-export default function FoodSearchAccuracyHeroCard({ isDark = true }) {
-  const colors = disclaimerColors(isDark);
+export default function FoodSearchAccuracyHeroCard({ isDark: _isDark }) {
+  const { colors } = useTheme();
 
   return (
-    <NbCard
-      style={styles.wrapper}
+    <View
       accessibilityRole="summary"
       accessibilityLabel="Nutrition data accuracy notice"
+      style={styles.wrapper}
     >
-      <View style={styles.inner}>
-        <View style={styles.headerRow}>
-          <View style={styles.headerTextCol}>
-            <Text style={[styles.label, { color: colors.labelColor }]}>NUTRITION DATA</Text>
-            <Text style={[styles.headline, { color: colors.headlineColor }]}>
-              Verify before you log
-            </Text>
-          </View>
+      <HardShadow offset={nb.shadowOffsetSmall} radius={borderRadius.nbCard}>
+        <View
+          style={[
+            styles.inner,
+            {
+              backgroundColor: colors.nbSoft,
+              borderColor: colors.nbBorder,
+            },
+          ]}
+        >
+          <Text style={[styles.body, { color: colors.nbMuted }]}>{DISCLAIMER_COPY}</Text>
         </View>
-
-        <Text style={[styles.subhead, { color: colors.subheadColor }]}>
-          Numbers come from trusted food databases and restaurant menus. Labels change often,
-          so double-check serving sizes or edit entries after logging.
-        </Text>
-
-        <View style={styles.pillsRow}>
-          {FEATURES.map(({ icon, label }) => (
-            <View key={label} style={[styles.pill, { backgroundColor: colors.pillBackground }]}>
-              <Ionicons name={icon} size={13} color={CYAN} style={styles.pillIcon} />
-              <Text style={[styles.pillText, { color: colors.pillText }]} numberOfLines={1}>
-                {label}
-              </Text>
-            </View>
-          ))}
-        </View>
-      </View>
-    </NbCard>
+      </HardShadow>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   wrapper: {
     marginBottom: 14,
-    padding: 16,
+    marginTop: 4,
   },
   inner: {
-    // NbCard provides the container
+    borderWidth: nb.borderWidth,
+    borderRadius: borderRadius.nbCard,
+    padding: 14,
   },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-  },
-  headerTextCol: {
-    flex: 1,
-    paddingRight: 8,
-  },
-  label: {
-    fontFamily: 'SpaceGrotesk_700Bold',
-    fontSize: 11,
-    letterSpacing: 1.4,
-    marginBottom: 4,
-  },
-  headline: {
-    fontFamily: 'SpaceGrotesk_700Bold',
-    fontSize: 20,
-    letterSpacing: -0.4,
-  },
-  subhead: {
-    fontFamily: 'Inter_500Medium',
-    fontSize: 14,
-    lineHeight: 20,
-    marginBottom: 14,
-  },
-  pillsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  pill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 999,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-  },
-  pillIcon: {
-    marginRight: 5,
-  },
-  pillText: {
-    fontFamily: 'SpaceGrotesk_700Bold',
-    fontSize: 12,
+  body: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 13,
+    lineHeight: 18,
   },
 });

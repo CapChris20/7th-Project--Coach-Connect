@@ -1,11 +1,12 @@
 // Trainer snapshot on the weekly report: workout adherence, red flags, and the week's note.
-import { NbCard } from '../../look-and-feel/NbCard';// Flow: read week.trainerInsights → skip the section if every piece is empty → stack the cards that have data.
+// Flow: read week.trainerInsights → skip the section if every piece is empty → stack the cards that have data.
 // Used by WeeklyReportBody under the sleep chart.
+
+import NbCard from '../../look-and-feel/NbCard';
 
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { GRADIENTS, useTheme } from '../weekly-report/reportColorSettings';
 import { ColorBorder } from './ColorBorder';
@@ -196,7 +197,7 @@ export function TrainerTipsForWeek({ week }) {
               },
             ]}
           >
-            <BlurView intensity={FLAGS_BLUR_INTENSITY} tint={colors.blurTint} style={StyleSheet.absoluteFill} />
+            <View intensity={FLAGS_BLUR_INTENSITY} tint={colors.blurTint} style={StyleSheet.absoluteFill} />
             <Text style={[styles.flagsTitle, { color: colors.textMuted }]}>{FLAGS_TITLE}</Text>
             <View style={styles.flagsGrid}>
               {redFlags.map((flag) => (

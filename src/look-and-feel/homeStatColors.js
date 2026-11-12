@@ -13,11 +13,11 @@ export const HOME_STAT_WORKOUT_GRADIENT = ['#FBBF24', '#FB7185'];
 /** Water intake — cyan → deep blue */
 export const HOME_STAT_WATER_GRADIENT = ['#22D3EE', '#1D4ED8'];
 /** Sleep — dark orange + dark purple */
-export const HOME_STAT_SLEEP_GRADIENT = ['#C2410C', '#6D28D9'];
+export const HOME_STAT_SLEEP_GRADIENT = ['#C2410C', '#BE185D'];
 /** Soreness — dark orange + dark pink */
 export const HOME_STAT_SORENESS_GRADIENT = ['#C2410C', '#DB2777'];
 /** Energy — cyan + purple */
-export const HOME_STAT_ENERGY_GRADIENT = ['#22D3EE', '#6D28D9'];
+export const HOME_STAT_ENERGY_GRADIENT = ['#22D3EE', '#BE185D'];
 /** Stress — gold + pink */
 export const HOME_STAT_STRESS_GRADIENT = ['#FBBF24', '#FB7185'];
 /** Mood — cyan → orange */

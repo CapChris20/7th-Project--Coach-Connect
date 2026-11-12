@@ -1,11 +1,6 @@
-// CoachConversationScreen.jsx (neobrutalist design)
-//
-// Main AI coach chat UI: type/attach/speak → send → show reply → confirm tools (log food, water, etc.).
-// Flow: load session + week context → sendMessage pipeline → NbCard bubbles / Confirm Action sheet →
-//       carryOutAction → refresh coach context → persist chat.
-// Used by: client AI Coach tab (and session switch / new-chat wrappers). Export: CoachConversationScreen.
-//
-// vocab: NbCard = neobrutalist card with thick border and hard shadow
+// Design Law coach conversation — black user bubbles, flat coach replies, Nb attach/delete sheets.
+// Flow: load session + week context → sendMessage → bubbles / confirm tools → carryOutAction → persist.
+// Used by: client AI Coach tab. PNG: screens/ai-coach/03–12.
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 // vocab: useState / useEffect / useRef / useMemo = React hooks for state, side effects, mutable boxes, cached derived lists
@@ -34,8 +29,11 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import LottieView from 'lottie-react-native';
 // vocab: LottieView = plays a JSON animation (empty-state cloud robot)
-import { lightColors, darkColors, spacing, borderRadius, nb, gradients } from '../../look-and-feel/colorPalette';
-import { showCoachAttachMenu } from './openPhotoMenu';
+import { lightColors, darkColors, spacing, borderRadius, nb, gradients, accentGradients } from '../../look-and-feel/colorPalette';
+import GradientFrame from '../../look-and-feel/GradientFrame';
+import NbButton from '../../look-and-feel/NbButton';
+import CoachAttachSheet from './CoachAttachSheet';
+import DeleteChatSheet from '../past-chats/DeleteChatSheet';
 import {
   pickCoachDocuments,
   pickCoachPhotoFromCamera,
@@ -496,74 +494,63 @@ function formatToolActionSummary(toolCall) {
   };
 }
 
-// Glass card under an AI reply: icon + title/detail + full-width "Confirm Action" CTA.
-// Press opens ConfirmActionPopup (or auto-runs when the parent wired onPress that way).
-function ToolActionChip({ message, onPress, palette, userMessage = '' }) {
+// Design Law “Needs your OK” card under an AI reply — Skip / Review (opens ConfirmActionPopup).
+function ToolActionChip({ message, onPress, onSkip, palette, userMessage = '' }) {
   const toolCall = resolveMessageToolCall(message, userMessage);
-  // No valid tool → render nothing (parent already gated, but double-check).
   if (!toolCall) return null;
   const summary = formatToolActionSummary(toolCall);
-  // vocab/symbol: ?. = call onPress only if the parent passed it
   const handlePress = () => onPress?.(toolCall, message.id);
 
   return (
-    <CoachGlassCard
-      heroFill
-      borderColors={AI_COACH_UI.gradient.borderWarm}
-      // Manipulate here: chip corner radius / border padding / top margin.
-      borderRadius={14}
-      padding={1.5}
-      style={{ marginTop: 10 }}
-      contentStyle={{ paddingBottom: 0 }}
+    <View
+      style={{
+        marginTop: 12,
+        borderWidth: nb.borderWidth,
+        borderColor: palette.cardBorder,
+        borderRadius: borderRadius.nbCard,
+        backgroundColor: palette.cardBg,
+        padding: 14,
+        shadowColor: palette.shadow || lightColors.nbShadow,
+        shadowOffset: { width: 4, height: 4 },
+        shadowOpacity: 1,
+        shadowRadius: 0,
+        elevation: 4,
+      }}
     >
-      {/* Top row: gradient icon tile + title/detail */}
-      <View style={{ paddingHorizontal: 14, paddingTop: 14, paddingBottom: 12, flexDirection: 'row', gap: 12 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
         <LinearGradient
-          colors={ACTION_GRAD}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
+          colors={accentGradients[0]}
+          start={{ x: 0, y: 0.5 }}
+          end={{ x: 1, y: 0.5 }}
           style={{
-            width: 40,
-            height: 40,
-            borderRadius: 12,
-            alignItems: 'center',
-            justifyContent: 'center',
+            borderRadius: 999,
+            paddingHorizontal: 10,
+            paddingVertical: 4,
+            borderWidth: 2,
+            borderColor: palette.cardBorder,
           }}
         >
-          <Ionicons name={summary.icon} size={20} color="#FFFFFF" />
+          <Text style={{ fontSize: 11, fontWeight: '900', color: lightColors.nbInk }}>Ready to log</Text>
         </LinearGradient>
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={{ fontSize: 14, fontWeight: '800', color: palette.textPrimary }} numberOfLines={2}>
-            {summary.title}
-          </Text>
-          <Text style={{ fontSize: 12, color: palette.textSecondary, marginTop: 4, lineHeight: 17 }} numberOfLines={3}>
-            {summary.detail}
-          </Text>
+        <Text style={{ fontSize: 13, fontWeight: '600', color: palette.textSecondary }}>Needs your OK</Text>
+      </View>
+      {/* Design Law PNG 03: one bold line — title: detail (colon, not em dash) */}
+      <Text style={{ fontSize: 15, fontWeight: '800', color: palette.textPrimary, marginBottom: 12 }} numberOfLines={3}>
+        {summary.detail ? `${summary.title}: ${summary.detail}` : summary.title}
+      </Text>
+      <View style={{ flexDirection: 'row', gap: 10 }}>
+        <View style={{ flex: 1 }}>
+          <NbButton variant="ghost" sm onPress={() => onSkip?.(message.id)}>
+            Skip
+          </NbButton>
+        </View>
+        <View style={{ flex: 1 }}>
+          <NbButton variant="fill" sm onPress={handlePress}>
+            Review
+          </NbButton>
         </View>
       </View>
-      {/* Bottom CTA strip — minHeight 44 keeps the tap target thumb-friendly */}
-      <TouchableOpacity
-        onPress={handlePress}
-        activeOpacity={0.88}
-        hitSlop={MIN_TOUCH_HIT_SLOP}
-        accessibilityRole="button"
-        accessibilityLabel={`${summary.title}. Confirm action.`}
-      >
-        <LinearGradient
-          colors={ACTION_GRAD}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={{
-            minHeight: 44,
-            alignItems: 'center',
-            justifyContent: 'center',
-            paddingHorizontal: 16,
-          }}
-        >
-          <Text style={{ fontSize: 14, fontWeight: '800', color: '#FFFFFF' }}>Confirm Action</Text>
-        </LinearGradient>
-      </TouchableOpacity>
-    </CoachGlassCard>
+    </View>
   );
 }
 // ─── Theme tokens (aligned with design-system.md) ────────────────────────────
@@ -589,6 +576,9 @@ const DARK = {
   msgReceivedBg: darkColors.nbSurface,
   msgReceivedBorder: darkColors.nbBorder,
   msgTimestamp: darkColors.nbMuted,
+  fill: darkColors.nbFill,
+  onFill: darkColors.nbOnFill,
+  shadow: darkColors.nbShadow,
 };
 
 const LIGHT = {
@@ -610,6 +600,9 @@ const LIGHT = {
   msgReceivedBg: lightColors.nbSurface,
   msgReceivedBorder: lightColors.nbBorder,
   msgTimestamp: lightColors.nbMuted,
+  fill: lightColors.nbFill,
+  onFill: lightColors.nbOnFill,
+  shadow: lightColors.nbShadow,
 };
 
 // Short clock string stamped on every bubble (e.g. "3:42 PM").
@@ -835,13 +828,13 @@ function FeatureCard({ palette, icon, title, color, items }) {
     <View
       style={{
         backgroundColor: palette.cardBg,
-        borderWidth: 1,
+        borderWidth: nb.borderWidth,
         borderColor: palette.cardBorder,
         // Left accent stripe = category color (analysis purple, tracking orange, etc.)
         // Manipulate here: borderLeftWidth / borderRadius / padding for card density.
-        borderLeftWidth: 3,
+        borderLeftWidth: nb.borderWidth,
         borderLeftColor: color,
-        borderRadius: 12,
+        borderRadius: borderRadius.nbCard,
         padding: 14,
       }}
     >
@@ -875,27 +868,20 @@ const COACH_WAIT_LABELS = {
 };
 
 // Shared bubble chrome for TypingIndicator (speech-bubble corner + iOS shadow / Android elevation).
-function coachLoadingBubbleStyle(t, isDark) {
+function coachLoadingBubbleStyle(palette) {
+  // Design Law waiting chrome — 3px border + hard offset shadow (not soft iOS blur).
   return {
-    // Manipulate here: corner radius / padding / shadow strength of the loading bubble.
-    borderRadius: 20,
+    borderRadius: borderRadius.nbCard,
     paddingHorizontal: 14,
-    paddingVertical: 11,
-    // Squared bottom-left = "incoming chat" shape (matches MessageBubble AI side).
-    borderBottomLeftRadius: 6,
-    backgroundColor: isDark ? AI_COACH_UI.surfaceElevated : '#FFFFFF',
-    // vocab: StyleSheet.hairlineWidth = thinnest visible border on this device
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: isDark ? 'rgba(255,255,255,0.14)' : '#E5E7EB',
-    // vocab/symbol: ...spread = merge platform-specific shadow props into this object
-    ...(Platform.OS === 'ios'
-      ? {
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: 1 },
-          shadowOpacity: isDark ? 0.22 : 0.06,
-          shadowRadius: 6,
-        }
-      : { elevation: 2 }),
+    paddingVertical: 12,
+    backgroundColor: palette.cardBg,
+    borderWidth: nb.borderWidth,
+    borderColor: palette.cardBorder,
+    shadowColor: palette.shadow || lightColors.nbShadow,
+    shadowOffset: { width: 4, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 4,
   };
 }
 
@@ -936,7 +922,7 @@ function TypingIndicator({ palette, phase = 'thinking', isDark = true }) {
 
   return (
     <View style={{ flexDirection: 'row', justifyContent: 'flex-start', marginBottom: 16 }}>
-      <View style={coachLoadingBubbleStyle(palette, isDark)}>
+      <View style={coachLoadingBubbleStyle(palette)}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           {/* Mini sparkles tile — same warm gradient as CoachReplyHeader */}
           <LinearGradient
@@ -947,11 +933,13 @@ function TypingIndicator({ palette, phase = 'thinking', isDark = true }) {
               width: 22,
               height: 22,
               borderRadius: 7,
+              borderWidth: nb.borderWidth,
+              borderColor: palette.cardBorder,
               alignItems: 'center',
               justifyContent: 'center',
             }}
           >
-            <Ionicons name={meta.icon} size={12} color="#fff" />
+            <Ionicons name={meta.icon} size={12} color={lightColors.nbInk} />
           </LinearGradient>
           <Text style={{ color: palette.textPrimary, fontSize: 14, fontWeight: '600', flexShrink: 1 }}>
             {meta.text}
@@ -977,49 +965,59 @@ function TypingIndicator({ palette, phase = 'thinking', isDark = true }) {
   );
 }
 
-// Top of every AI bubble: sparkles badge + "Coach" label + optional compact copy button.
-function CoachReplyHeader({ palette, copyText }) {
+// Design Law coach nameplate: gradient avatar chip + COACH label (Copy reply sits under the body).
+function CoachReplyHeader({ palette }) {
   return (
     <View
       style={{
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: 12,
+        gap: 8,
         marginBottom: 10,
       }}
     >
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 1 }}>
-        <LinearGradient
-          colors={AI_COACH_UI.gradient.borderWarm}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={{
-            width: 26,
-            height: 26,
-            borderRadius: 8,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <Ionicons name="sparkles" size={14} color="#fff" />
-        </LinearGradient>
-        <Text style={{ fontSize: 12, fontWeight: '700', color: palette.textSecondary, letterSpacing: 0.2 }}>
-          Coach
-        </Text>
-      </View>
-      {/* Only render copy when there is plain text to put on the clipboard */}
-      {copyText ? <CoachMessageCopyButton text={copyText} palette={palette} align="flex-end" compact /> : null}
+      <LinearGradient
+        colors={accentGradients[2]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={{
+          width: 28,
+          height: 28,
+          borderRadius: 8,
+          borderWidth: nb.borderWidth,
+          borderColor: palette.cardBorder,
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <Ionicons name="person" size={14} color={lightColors.nbInk} />
+      </LinearGradient>
+      <Text
+        style={{
+          fontSize: 12,
+          fontWeight: '900',
+          color: palette.textSecondary,
+          letterSpacing: 1.1,
+          textTransform: 'uppercase',
+        }}
+      >
+        Coach
+      </Text>
     </View>
   );
 }
 
 // Clipboard control for a bubble. compact=true = icon-only (used in headers / under user bubbles).
-function CoachMessageCopyButton({ text, palette, align = 'flex-end', compact = false }) {
-  // Flash "Copied" / green check for COPY_FEEDBACK_MS, then revert.
+function CoachMessageCopyButton({ text, palette, isDark = false, align = 'flex-end', compact = false }) {
+  // Flash "Copied" check for COPY_FEEDBACK_MS, then revert.
+  // Manipulate here: COPY_FEEDBACK_MS controls how long the success chrome sticks.
   const [copied, setCopied] = useState(false);
   // Hold the timeout id so we can clear it on remount / rapid re-taps.
   const timerRef = useRef(null);
+  // Design Law: never green chrome — brand pink for success, nb tokens for idle.
+  const successColor = AI_COACH_UI.pink;
+  const borderIdle = isDark ? darkColors.nbBorder : lightColors.nbBorder;
+  const chipIdle = isDark ? darkColors.nbSurfaceChip : lightColors.nbSurfaceChip;
 
   // On unmount: clear any pending "Copied" reset so we don't setState on a dead component.
   useEffect(() => () => {
@@ -1057,23 +1055,23 @@ function CoachMessageCopyButton({ text, palette, align = 'flex-end', compact = f
         paddingVertical: compact ? 4 : 6,
         paddingHorizontal: compact ? 2 : 10,
         borderRadius: compact ? 8 : 16,
-        // Compact mode stays transparent; full mode tints green when copied / on press.
+        // Compact mode stays transparent; full mode tints brand when copied / on press.
         backgroundColor: compact
           ? 'transparent'
           : pressed
-            ? (copied ? 'rgba(34,197,94,0.14)' : 'rgba(255,255,255,0.08)')
+            ? (copied ? 'rgba(236,72,153,0.14)' : chipIdle)
             : copied
-              ? 'rgba(34,197,94,0.1)'
-              : 'rgba(255,255,255,0.04)',
-        borderWidth: compact ? 0 : 1,
-        borderColor: copied ? 'rgba(34,197,94,0.35)' : 'rgba(255,255,255,0.1)',
+              ? 'rgba(236,72,153,0.1)'
+              : chipIdle,
+        borderWidth: compact ? 0 : nb.borderWidth,
+        borderColor: copied ? successColor : borderIdle,
         alignSelf: align,
       })}
     >
       <Ionicons
         name={copied ? 'checkmark-circle' : 'copy-outline'}
         size={compact ? 16 : 18}
-        color={copied ? AI_COACH_UI.green : palette.textSecondary}
+        color={copied ? successColor : palette.textSecondary}
       />
       {/* Compact = icon only; full = "Copy" / "Copied" label beside the icon */}
       {!compact ? (
@@ -1081,10 +1079,10 @@ function CoachMessageCopyButton({ text, palette, align = 'flex-end', compact = f
         style={{
           fontSize: 13,
           fontWeight: '800',
-          color: copied ? AI_COACH_UI.green : palette.textSecondary,
+          color: copied ? successColor : palette.textSecondary,
         }}
       >
-        {copied ? 'Copied' : 'Copy'}
+        {copied ? 'Copied' : 'Copy reply'}
       </Text>
       ) : null}
     </Pressable>
@@ -1114,6 +1112,7 @@ function MessageBubble({
   message,
   palette,
   onToolPress,
+  onSkipTool,
   isDark = true,
   lastUserText = '',
   threadMessages = null,
@@ -1185,32 +1184,41 @@ function MessageBubble({
   const mediaStyle = attachmentOnly ? { paddingHorizontal: 0, paddingVertical: 0, overflow: 'hidden' } : null;
   const copyText = coachPlainText(displayText) || displayText;
 
-  // ── User bubble (right-aligned) ──
+  // Design Law user bubble — solid fill, white/black onFill, hard shadow, sharp bottom-right.
   if (sent) {
+    const userTextColor = palette.onFill || lightColors.nbOnFill;
     return (
       <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: spacing.md + 4 }}>
         <View style={userWrapStyle}>
           <View
             style={[
               bubbleBase,
-              {
-                // Squared bottom-right = outgoing chat shape (keep for visual distinction)
-                borderBottomRightRadius: 4,
-                overflow: 'hidden',
-                backgroundColor: palette.msgReceivedBg,
-                borderWidth: nb.borderWidth,
-                borderColor: palette.msgReceivedBorder,
-              },
               mediaStyle,
+              {
+                backgroundColor: palette.fill || lightColors.nbFill,
+                borderWidth: nb.borderWidth,
+                borderColor: palette.cardBorder,
+                borderTopLeftRadius: 16,
+                borderTopRightRadius: 16,
+                borderBottomLeftRadius: 16,
+                borderBottomRightRadius: 4,
+                shadowColor: palette.shadow || lightColors.nbShadow,
+                shadowOffset: { width: 4, height: 4 },
+                shadowOpacity: 1,
+                shadowRadius: 0,
+                elevation: 4,
+              },
             ]}
           >
-            {/* box-none: children still receive presses; empty space doesn't block scroll */}
-            <View pointerEvents="box-none">{renderContent()}</View>
+            <View pointerEvents="box-none">
+              {hasText ? (
+                <CoachSelectableMessageText text={displayText} color={userTextColor} isDark={isDark} />
+              ) : (
+                renderContent()
+              )}
+            </View>
           </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: spacing.sm, marginTop: spacing.sm }}>
-            {hasText ? <CoachMessageCopyButton text={copyText} palette={palette} align="flex-end" compact /> : null}
-            <Text style={{ fontSize: 11, fontFamily: 'Inter_400Regular', color: palette.msgTimestamp }}>{message.time}</Text>
-          </View>
+          {/* Design Law PNG 03: user bubble only — no copy/time row under the fill bubble */}
         </View>
       </View>
     );
@@ -1218,62 +1226,125 @@ function MessageBubble({
 
   // Did the user ask something that would normally trigger web search?
   const askedForWeb = shouldShowWebSearchUI(lastUserText, threadMessages);
-  // Honesty badge: either "we searched" or "we couldn't search, answered from knowledge".
-  const webStatusLabel = message.searchedWeb
-    ? 'Searched the web'
-    : askedForWeb && message.route !== 'web-search'
-      ? 'Answered from coaching knowledge (live search unavailable)'
-      : null;
+  // Design Law PNG 05: only show the web chip when we actually searched.
+  // Never show “answered from knowledge / didn’t search” — that copy is banned.
+  const showWebResearchChip = Boolean(message.searchedWeb);
+  void askedForWeb;
 
   // ── Coach bubble (full width) ──
+  // PNG 03 order: body → Copy reply → Ready to log → ASK NEXT
   return (
     <View style={{ width: '100%', marginBottom: 24, alignSelf: 'stretch' }}>
-      <CoachReplyHeader palette={palette} copyText={hasText ? copyText : null} />
-      {/* Optional web-status row under the header */}
-      {webStatusLabel ? (
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 6,
-            marginBottom: 10,
-          }}
-        >
-          <Ionicons
-            name={message.searchedWeb ? 'globe-outline' : 'book-outline'}
-            size={14}
-            color={message.searchedWeb ? AI_COACH_UI.cyan : palette.textSecondary}
-          />
-          <Text style={{ fontSize: 12, fontWeight: '600', color: palette.textSecondary, flex: 1 }}>
-            {webStatusLabel}
-          </Text>
+      <CoachReplyHeader palette={palette} />
+      {showWebResearchChip ? (
+        <View style={{ alignSelf: 'flex-start', marginBottom: 10 }}>
+          <LinearGradient
+            colors={accentGradients[0]}
+            start={{ x: 0, y: 0.5 }}
+            end={{ x: 1, y: 0.5 }}
+            style={{
+              borderRadius: 999,
+              paddingHorizontal: 12,
+              paddingVertical: 6,
+              borderWidth: nb.borderWidth,
+              borderColor: palette.cardBorder,
+            }}
+          >
+            <Text style={{ fontSize: 12, fontWeight: '900', color: lightColors.nbInk }}>
+              Fitness web research
+            </Text>
+          </LinearGradient>
         </View>
       ) : null}
-      {/* Image-only coach attachment gets a framed wrapper; otherwise paint content raw */}
+      {/* Design Law coach body — flat text on canvas (not a pink gradient bubble) */}
       {attachmentOnly && firstImage?.preview ? (
         <View
           style={{
-            borderRadius: 14,
+            marginBottom: spacing.sm,
+            borderWidth: nb.borderWidth,
+            borderColor: palette.cardBorder,
+            borderRadius: borderRadius.nbCard,
             overflow: 'hidden',
-            borderWidth: 1,
-            borderColor: isDark ? AI_COACH_UI.borderHairline : palette.chipBorder,
-            marginBottom: 8,
+            backgroundColor: palette.cardBg,
           }}
         >
-          {renderContent()}
+          <View style={{ overflow: 'hidden' }}>{renderContent()}</View>
         </View>
       ) : (
-        renderContent()
+        <View style={{ marginBottom: spacing.sm }}>{renderContent()}</View>
       )}
-      {/* Citation cards when the reply used live web sources */}
       <SourceLinkCards message={message} isDark={isDark} />
-      {/* Hide the chip while the confirm modal is already open (avoids double UI) */}
-      {coachActionPromptVisible(message, lastUserText) && !toolModalVisible ? (
-        <ToolActionChip message={message} onPress={onToolPress} palette={palette} userMessage={lastUserText} />
+      {hasText ? (
+        <View style={{ marginTop: 10, alignSelf: 'flex-start' }}>
+          <CoachMessageCopyButton
+            text={copyText}
+            palette={palette}
+            isDark={isDark}
+            align="flex-start"
+            compact={false}
+          />
+        </View>
       ) : null}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 10 }}>
-        <Text style={{ fontSize: 11, color: palette.msgTimestamp, flex: 1 }}>{message.time}</Text>
-      </View>
+      {coachActionPromptVisible(message, lastUserText) && !toolModalVisible ? (
+        <ToolActionChip
+          message={message}
+          onPress={onToolPress}
+          onSkip={onSkipTool}
+          palette={palette}
+          userMessage={lastUserText}
+        />
+      ) : null}
+      {showFollowUps && Array.isArray(message.followUpPrompts) && message.followUpPrompts.length ? (
+        <View style={{ marginTop: 16 }}>
+          <Text
+            style={{
+              fontSize: 12,
+              fontWeight: '900',
+              letterSpacing: 1.1,
+              color: palette.textSecondary,
+              marginBottom: 8,
+            }}
+          >
+            ASK NEXT
+          </Text>
+          <View
+            style={{
+              borderWidth: nb.borderWidth,
+              borderColor: palette.cardBorder,
+              borderRadius: borderRadius.nbCard,
+              backgroundColor: palette.cardBg,
+              overflow: 'hidden',
+              shadowColor: palette.shadow || lightColors.nbShadow,
+              shadowOffset: { width: 4, height: 4 },
+              shadowOpacity: 1,
+              shadowRadius: 0,
+              elevation: 4,
+            }}
+          >
+            {/* Design Law PNG 03 shows two Ask Next rows */}
+            {message.followUpPrompts.slice(0, 2).map((prompt, index, arr) => (
+              <Pressable
+                key={`fu-${index}`}
+                onPress={() => onFollowUpPress?.(prompt)}
+                style={{
+                  paddingHorizontal: 14,
+                  paddingVertical: 14,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 10,
+                  borderBottomWidth: index < arr.length - 1 ? 2 : 0,
+                  borderBottomColor: palette.cardBorder,
+                }}
+              >
+                <Text style={{ flex: 1, fontSize: 14, fontWeight: '800', color: palette.textPrimary }}>
+                  {prompt}
+                </Text>
+                <Ionicons name="chevron-forward" size={18} color={palette.textSecondary} />
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -1826,6 +1897,9 @@ export default function CoachConversationScreen({
   // Sidebar starts collapsed on narrow screens; expanded on wide when docked.
   const [sidebarCollapsed, setSidebarCollapsed] = useState(!isWideLayout);
   const [historyOverlayOpen, setHistoryOverlayOpen] = useState(false);
+  // Design Law sheets — replace native ActionSheet / Alert for attach + delete
+  const [attachSheetOpen, setAttachSheetOpen] = useState(false);
+  const [deleteSheetSession, setDeleteSheetSession] = useState(null);
   // Live list of past sessions for PastChatsPanel (docked or overlay).
   const coachSessions = chatHistoryList(userId);
   // Timeout ids for staggered feature-card reveals — cleared on send finish / error.
@@ -1948,6 +2022,18 @@ export default function CoachConversationScreen({
     // messageId ties the modal back to the AI bubble so we mark the right chip confirmed.
     setPendingToolMessageId(messageId);
     setToolModalVisible(true);
+  };
+
+  // Design Law PNG 03 Skip — dismiss the Ready-to-log chip without running the tool.
+  const skipToolPrompt = (messageId) => {
+    if (!messageId) return;
+    setMessages((prev) =>
+      prev.map((message) =>
+        message.id === messageId
+          ? { ...message, toolConfirmed: true, toolCall: null, toolCalls: [] }
+          : message,
+      ),
+    );
   };
 
   // 1. Merge confirmed params → run the tool → update chat → refresh context.
@@ -2223,13 +2309,14 @@ export default function CoachConversationScreen({
     if (newAtts.length > 0) setAttachments((prev) => [...prev, ...newAtts]);
   };
 
-  // Action sheet: library / camera / document — wired by showCoachAttachMenu.
-  const openAttachMenu = () => {
-    showCoachAttachMenu({
-      onPhotoLibrary: handlePhotoLibrary,
-      onCamera: handleCamera,
-      onFile: handleFile,
-    });
+  // Design Law attach sheet (camera / library / analyze / paste).
+  const openAttachMenu = () => setAttachSheetOpen(true);
+
+  const handleAnalyzeProgressPhoto = async () => {
+    await handlePhotoLibrary();
+    if (!String(input || '').trim()) {
+      setInput('Can you analyze this progress photo and give physique feedback?');
+    }
   };
 
   // Deep-link path: open the attach menu as soon as the session is ready.
@@ -2242,26 +2329,22 @@ export default function CoachConversationScreen({
   // X on a pending thumbnail — drop that attachment before send.
   const removeAttachment = (id) => setAttachments((prev) => prev.filter((a) => a.id !== id));
 
-  // Past-chats delete: confirm → wipe Firestore session → if it was the open one, start a new chat.
+  // Past-chats delete: open Design Law sheet → wipe Firestore → blank session if it was open.
   const handleDeleteSession = (session) => {
     const sid = session?.sessionId || session?.id;
     if (!db || !userId || !sid) return;
-    Alert.alert('Delete chat?', 'This cannot be undone.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await deleteAiChatSession(userId, sid);
-            // Deleting the currently open chat → parent should navigate to a blank session.
-            if (sid === sessionId && onNewChat) onNewChat();
-          } catch (err) {
-            logger?.error?.('deleteAiChatSession failed', err);
-          }
-        },
-      },
-    ]);
+    setDeleteSheetSession(session);
+  };
+
+  const confirmDeleteSession = async (session) => {
+    const sid = session?.sessionId || session?.id;
+    if (!db || !userId || !sid) return;
+    try {
+      await deleteAiChatSession(userId, sid);
+      if (sid === sessionId && onNewChat) onNewChat();
+    } catch (err) {
+      logger?.error?.('deleteAiChatSession failed', err);
+    }
   };
 
   // Switch to another past session (parent owns navigation / remount with new sessionId).
@@ -2375,48 +2458,84 @@ export default function CoachConversationScreen({
 
       {/* Main chat column — minWidth:0 lets the flex child shrink beside the sidebar */}
       <View style={{ flex: 1, minWidth: 0 }}>
-      {/* Header: back / profile / settings; phones get a History button when sidebar is off */}
-      <TopHeader
-        isDark={isDark}
-        onBack={onBack}
-        onProfilePress={onProfilePress}
-        onSettingsPress={onSettingsPress}
-        headerRight={
-          <TouchableOpacity
-            onPress={() => refreshCoachContext()}
-            activeOpacity={0.88}
-            accessibilityLabel="Refresh coach context"
-            hitSlop={MIN_TOUCH_HIT_SLOP}
-            style={{ padding: 4 }}
-          >
-            <Ionicons name="refresh-outline" size={20} color={isDark ? '#FFFFFF' : '#0A0A0F'} />
-          </TouchableOpacity>
-        }
-        headerLeft={
-          !enableHistorySidebar ? (
-            <TouchableOpacity
-              onPress={() => setHistoryOverlayOpen(true)}
-              activeOpacity={0.88}
-              accessibilityLabel="Chat history"
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 6,
-                paddingHorizontal: 10,
-                paddingVertical: 8,
-                borderRadius: 12,
-                borderWidth: 1,
-                // Manipulate here: History chip border/bg colors for dark vs light.
-                borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(10,10,15,0.10)',
-                backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-              }}
-            >
-              <Ionicons name="time-outline" size={18} color={isDark ? '#FF6B9D' : '#BE185D'} />
-              <Text style={{ fontSize: 13, fontWeight: '700', color: isDark ? '#FFFFFF' : '#0A0A0F' }}>History</Text>
-            </TouchableOpacity>
-          ) : null
-        }
-      />
+      {/* Design Law chat header — back + “Your coach” + menu (not shell profile/settings) */}
+      <View
+        style={{
+          paddingTop: insets.top + 8,
+          paddingHorizontal: 16,
+          paddingBottom: 10,
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 12,
+          backgroundColor: palette.bg,
+        }}
+      >
+        <TouchableOpacity
+          onPress={onBack}
+          activeOpacity={0.85}
+          accessibilityLabel="Go back"
+          hitSlop={MIN_TOUCH_HIT_SLOP}
+          style={{
+            width: 44,
+            height: 44,
+            borderRadius: 12,
+            borderWidth: nb.borderWidth,
+            borderColor: palette.cardBorder,
+            backgroundColor: palette.cardBg,
+            alignItems: 'center',
+            justifyContent: 'center',
+            shadowColor: palette.shadow,
+            shadowOffset: { width: 3, height: 3 },
+            shadowOpacity: 1,
+            shadowRadius: 0,
+            elevation: 3,
+          }}
+        >
+          <Ionicons name="chevron-back" size={22} color={palette.textPrimary} />
+        </TouchableOpacity>
+        <Text
+          style={{
+            flex: 1,
+            fontSize: 22,
+            fontWeight: '900',
+            letterSpacing: -0.4,
+            color: palette.textPrimary,
+          }}
+          numberOfLines={1}
+        >
+          Your coach
+        </Text>
+        <TouchableOpacity
+          onPress={() => {
+            if (!enableHistorySidebar) setHistoryOverlayOpen(true);
+            else refreshCoachContext();
+          }}
+          activeOpacity={0.85}
+          accessibilityLabel={enableHistorySidebar ? 'Refresh coach context' : 'Past chats'}
+          hitSlop={MIN_TOUCH_HIT_SLOP}
+          style={{
+            width: 44,
+            height: 44,
+            borderRadius: 12,
+            borderWidth: nb.borderWidth,
+            borderColor: palette.cardBorder,
+            backgroundColor: palette.cardBg,
+            alignItems: 'center',
+            justifyContent: 'center',
+            shadowColor: palette.shadow,
+            shadowOffset: { width: 3, height: 3 },
+            shadowOpacity: 1,
+            shadowRadius: 0,
+            elevation: 3,
+          }}
+        >
+          <Ionicons
+            name={enableHistorySidebar ? 'refresh-outline' : 'menu'}
+            size={22}
+            color={palette.textPrimary}
+          />
+        </TouchableOpacity>
+      </View>
 
       {/* Thread + composer stack */}
       <View style={{ flex: 1 }}>
@@ -2449,6 +2568,7 @@ export default function CoachConversationScreen({
                 palette={palette}
                 isDark={isDark}
                 onToolPress={openToolModal}
+                onSkipTool={skipToolPrompt}
                 lastUserText={item.lastUserText}
                 threadMessages={item.threadMessages}
                 toolModalVisible={toolModalVisible}
@@ -2475,161 +2595,238 @@ export default function CoachConversationScreen({
             onContentSizeChange={scrollToBottom}
             ListFooterComponent={
               typing || toolExecuting ? (
-                // toolExecuting → "Applying…" phase; else use the timed coachWaitPhase.
-                <TypingIndicator palette={palette} isDark={isDark} phase={toolExecuting ? 'working' : coachWaitPhase} />
+                // Design Law wait chrome is the typing row only (no feature-card stack).
+                <TypingIndicator
+                  palette={palette}
+                  isDark={isDark}
+                  phase={toolExecuting ? 'working' : coachWaitPhase}
+                />
               ) : null
             }
             ListFooterComponentStyle={{ paddingBottom: 4 }}
           />
         )}
 
-        {/* Composer bar: optional attachment strip + attach / text / mic / send */}
+        {/* Design Law composer: 3px top border, square +, field, black send */}
         <View
           style={{
             paddingHorizontal: 16,
             paddingTop: attachments.length > 0 ? 10 : 8,
-            // composerKeyboardPad lifts the bar above the keyboard (and nav when visible).
             paddingBottom: composerKeyboardPad,
-            borderTopWidth: StyleSheet.hairlineWidth,
+            borderTopWidth: nb.borderWidth,
             borderTopColor: palette.inputBarBorder,
             backgroundColor: palette.inputBarBg,
           }}
         >
-          {/* Pending attachments — horizontal thumbnails with a remove "X" */}
           {attachments.length > 0 ? (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              style={{ flexGrow: 0, marginBottom: 10 }}
-              contentContainerStyle={{ gap: 10, alignItems: 'center' }}
-            >
-              {attachments.map((att) => (
-                <View key={att.id} style={{ position: 'relative' }}>
-                  {att.preview ? (
-                    <Image
-                      source={{ uri: att.preview }}
-                      style={{
-                        // Manipulate here: pending attachment thumbnail size.
-                        width: 72,
-                        height: 72,
-                        borderRadius: 12,
-                        borderWidth: 1,
-                        borderColor: palette.chipBorder,
-                      }}
-                      resizeMode="cover"
-                    />
-                  ) : (
-                    // Non-image (PDF/doc) — document icon tile instead of a preview.
-                    <View
-                      style={{
-                        width: 72,
-                        height: 72,
-                        borderRadius: 12,
-                        backgroundColor: palette.chipBg,
-                        borderWidth: 1,
-                        borderColor: palette.chipBorder,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}
-                    >
-                      <Ionicons name="document-outline" size={22} color={palette.textSecondary} />
-                    </View>
-                  )}
-                  <TouchableOpacity
-                    onPress={() => removeAttachment(att.id)}
-                    {...a11yButton('Remove attachment')}
-                    hitSlop={MIN_TOUCH_HIT_SLOP}
-                    style={{
-                      position: 'absolute',
-                      top: -6,
-                      right: -6,
-                      width: 22,
-                      height: 22,
-                      borderRadius: 11,
-                      backgroundColor: palette.textSecondary,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <Ionicons name="close" size={13} color={palette.bg} />
-                  </TouchableOpacity>
+            <View style={{ marginBottom: 12 }}>
+              {/* Design Law PNG 09: READY TO SEND + count pill + large thumbs */}
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginBottom: 10,
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 12,
+                    fontWeight: '900',
+                    letterSpacing: 1.1,
+                    color: palette.textSecondary,
+                  }}
+                >
+                  READY TO SEND
+                </Text>
+                <View
+                  style={{
+                    borderWidth: nb.borderWidth,
+                    borderColor: palette.cardBorder,
+                    borderRadius: 999,
+                    paddingHorizontal: 10,
+                    paddingVertical: 4,
+                    backgroundColor: palette.cardBg,
+                  }}
+                >
+                  <Text style={{ fontSize: 11, fontWeight: '900', color: palette.textPrimary }}>
+                    {attachments.length} PHOTO{attachments.length === 1 ? '' : 'S'}
+                  </Text>
                 </View>
-              ))}
-            </ScrollView>
+              </View>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                style={{ flexGrow: 0 }}
+                contentContainerStyle={{ gap: 12, alignItems: 'center' }}
+              >
+                {attachments.map((att, index) => {
+                  const label =
+                    index === 0 ? 'Side' : index === 1 ? 'Front' : `Photo ${index + 1}`;
+                  return (
+                    <View key={att.id} style={{ position: 'relative' }}>
+                      {att.preview ? (
+                        <Image
+                          source={{ uri: att.preview }}
+                          style={{
+                            width: 112,
+                            height: 140,
+                            borderRadius: 12,
+                            borderWidth: nb.borderWidth,
+                            borderColor: palette.cardBorder,
+                          }}
+                          resizeMode="cover"
+                        />
+                      ) : (
+                        <View
+                          style={{
+                            width: 112,
+                            height: 140,
+                            borderRadius: 12,
+                            backgroundColor: palette.chipBg,
+                            borderWidth: nb.borderWidth,
+                            borderColor: palette.cardBorder,
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <Ionicons name="document-outline" size={22} color={palette.textSecondary} />
+                        </View>
+                      )}
+                      <View
+                        style={{
+                          position: 'absolute',
+                          left: 8,
+                          bottom: 8,
+                          backgroundColor: palette.fill,
+                          borderRadius: 8,
+                          borderWidth: 2,
+                          borderColor: palette.cardBorder,
+                          paddingHorizontal: 8,
+                          paddingVertical: 2,
+                        }}
+                      >
+                        <Text style={{ fontSize: 11, fontWeight: '900', color: palette.onFill }}>
+                          {label}
+                        </Text>
+                      </View>
+                      <TouchableOpacity
+                        onPress={() => removeAttachment(att.id)}
+                        {...a11yButton('Remove attachment')}
+                        hitSlop={MIN_TOUCH_HIT_SLOP}
+                        style={{
+                          position: 'absolute',
+                          top: -6,
+                          right: -6,
+                          width: 28,
+                          height: 28,
+                          borderRadius: 14,
+                          backgroundColor: palette.fill,
+                          borderWidth: nb.borderWidth,
+                          borderColor: palette.cardBorder,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <Ionicons name="close" size={14} color={palette.onFill} />
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })}
+              </ScrollView>
+              <Text
+                style={{
+                  marginTop: 10,
+                  fontSize: 12,
+                  fontWeight: '600',
+                  color: palette.textSecondary,
+                  lineHeight: 17,
+                }}
+              >
+                Photos are sent with your message. Remove any you do not want to share.
+              </Text>
+            </View>
           ) : null}
 
-          {/* Input row: + attach | TextInput | mic | gradient send */}
           <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 10 }}>
             <TouchableOpacity
               onPress={openAttachMenu}
-              {...a11yButton('Add attachment', 'Attach a photo or document')}
+              {...a11yButton('Add attachment', 'Attach a photo or paste text')}
               hitSlop={MIN_TOUCH_HIT_SLOP}
-              style={{ padding: 4, marginBottom: 4 }}
-            >
-              <Ionicons
-                name="add-circle-outline"
-                size={26}
-                color={isDark ? AI_COACH_UI.composer.iconAttach : AI_COACH_UI.composer.iconAttachLight}
-              />
-            </TouchableOpacity>
-            <TextInput
-              ref={composerInputRef}
-              // Shared props (returnKeyType, etc.) live in keyboardBehavior.js.
-              {...COACH_COMPOSER_TEXT_INPUT_PROPS}
               style={{
-                flex: 1,
-                minWidth: 0,
-                // Manipulate here: composer min/max height while multiline grows.
-                minHeight: 40,
-                maxHeight: 120,
-                fontSize: 15,
-                color: palette.textPrimary,
-                paddingVertical: 10,
-                paddingHorizontal: 14,
-                backgroundColor: palette.inputBg,
-                borderRadius: 20,
-                borderWidth: 1,
-                borderColor: palette.inputBorder,
+                width: 44,
+                height: 44,
+                borderRadius: 12,
+                borderWidth: nb.borderWidth,
+                borderColor: palette.cardBorder,
+                backgroundColor: palette.cardBg,
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: 2,
+                shadowColor: palette.shadow,
+                shadowOffset: { width: 3, height: 3 },
+                shadowOpacity: 1,
+                shadowRadius: 0,
+                elevation: 3,
               }}
-              value={input}
-              onChangeText={setInput}
-              // Long-press opens PasteTextPopup for large pasted blocks.
-              onLongPress={openPasteSheet}
-              placeholder="Ask your coach..."
-              placeholderTextColor={palette.textMuted}
-              accessibilityLabel="Message input"
-              accessibilityHint="Type a question for your AI coach"
-              multiline
-              // Keep focus on Enter so multiline doesn't dismiss the keyboard.
-              blurOnSubmit={false}
-            />
-            {/* Mic — only rendered when voice input actually exists (see _voiceStub). */}
+            >
+              <Ionicons name="add" size={24} color={palette.textPrimary} />
+            </TouchableOpacity>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <TextInput
+                ref={composerInputRef}
+                {...COACH_COMPOSER_TEXT_INPUT_PROPS}
+                style={{
+                  minHeight: 44,
+                  maxHeight: 120,
+                  fontSize: 15,
+                  fontFamily: 'Inter_400Regular',
+                  color: palette.textPrimary,
+                  paddingVertical: 10,
+                  paddingHorizontal: 14,
+                  borderWidth: nb.borderWidth,
+                  borderColor: palette.inputBorder,
+                  borderRadius: borderRadius.nbInput,
+                  backgroundColor: palette.inputBg,
+                }}
+                value={input}
+                onChangeText={setInput}
+                onLongPress={openPasteSheet}
+                placeholder={
+                  attachments.length > 0 ? 'Add a note, or just send' : 'Ask your coach anything'
+                }
+                placeholderTextColor={palette.textMuted}
+                accessibilityLabel="Message input"
+                accessibilityHint="Type a question for your AI coach"
+                multiline
+                blurOnSubmit={false}
+              />
+            </View>
             {COACH_VOICE_INPUT_AVAILABLE ? (
             <TouchableOpacity
               onPress={toggleListen}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               style={{
-                width: 40,
-                height: 40,
-                borderRadius: 20,
+                width: 44,
+                height: 44,
+                borderRadius: 12,
                 alignItems: 'center',
                 justifyContent: 'center',
                 marginBottom: 2,
-                backgroundColor: listening
-                  ? (isDark ? AI_COACH_UI.composer.micActiveBg : AI_COACH_UI.composer.micActiveBgLight)
-                  : 'transparent',
+                borderWidth: nb.borderWidth,
+                borderColor: palette.cardBorder,
+                backgroundColor: listening ? palette.fill : palette.cardBg,
               }}
               accessibilityLabel={listening ? 'Stop voice input' : 'Start voice input'}
             >
               <Ionicons
                 name={listening ? 'mic' : 'mic-outline'}
                 size={22}
-                color={isDark ? AI_COACH_UI.composer.iconMic : AI_COACH_UI.composer.iconMicLight}
+                color={listening ? palette.onFill : palette.textPrimary}
               />
             </TouchableOpacity>
             ) : null}
-            {/* Send — disabled (faded) until canSend; gradient matches theme */}
             <TouchableOpacity
               onPress={() => sendMessage(input, attachments)}
               disabled={!canSend}
@@ -2637,34 +2834,52 @@ export default function CoachConversationScreen({
               {...a11yButton('Send message', 'Sends your message to the AI coach')}
               accessibilityState={{ disabled: !canSend }}
               hitSlop={MIN_TOUCH_HIT_SLOP}
-              style={{ marginBottom: 2, opacity: canSend ? 1 : 0.45 }}
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: 12,
+                marginBottom: 2,
+                opacity: canSend ? 1 : 0.45,
+                backgroundColor: palette.fill,
+                borderWidth: nb.borderWidth,
+                borderColor: palette.cardBorder,
+                alignItems: 'center',
+                justifyContent: 'center',
+                shadowColor: palette.shadow,
+                shadowOffset: { width: 3, height: 3 },
+                shadowOpacity: 1,
+                shadowRadius: 0,
+                elevation: 3,
+              }}
             >
-              <LinearGradient
-                colors={isDark ? COMPOSER_SEND_GRAD : COMPOSER_SEND_GRAD_LIGHT}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: 22,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Ionicons name="arrow-up" size={20} color="#FFFFFF" />
-              </LinearGradient>
+              <Ionicons name="arrow-forward" size={20} color={palette.onFill} />
             </TouchableOpacity>
           </View>
         </View>
       </View>
 
-      {/* Long-press paste sheet — commits text into the composer via typingBox */}
       <PasteTextPopup
         visible={pasteSheetVisible}
         onClose={closePasteSheet}
         onConfirm={commitText}
         palette={palette}
         isDark={isDark}
+      />
+
+      <CoachAttachSheet
+        visible={attachSheetOpen}
+        onClose={() => setAttachSheetOpen(false)}
+        onCamera={handleCamera}
+        onLibrary={handlePhotoLibrary}
+        onAnalyze={handleAnalyzeProgressPhoto}
+        onPaste={openPasteSheet}
+      />
+
+      <DeleteChatSheet
+        visible={!!deleteSheetSession}
+        session={deleteSheetSession}
+        onClose={() => setDeleteSheetSession(null)}
+        onConfirm={confirmDeleteSession}
       />
 
       {/* Tool confirm modal — edit params then Confirm, or cancel (blocked while executing) */}

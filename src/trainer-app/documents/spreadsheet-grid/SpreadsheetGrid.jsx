@@ -12,7 +12,7 @@ import {
   StyleSheet,
   Platform,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { nb } from '../../../look-and-feel/colorPalette';
 import {
   ROWS,
   COLS,
@@ -38,25 +38,13 @@ const CELL_BATCH_PERIOD_MS = 16;
 // ===== HELPER FUNCTIONS =====
 
 /**
- * Selected headers get the brand gradient. Idle headers stay a cheap flat View so a 200-row
- * sheet does not mount 26 LinearGradients that never animate.
+ * Selected column/row headers use nb fill; idle headers stay chip surface.
  * @param {object} props
  */
-function GradientHeader({ active, children, theme, style }) {
-  if (active) {
-    return (
-      <LinearGradient
-        colors={theme.sheetGradient}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={[styles.headerCell, style]}
-      >
-        {children}
-      </LinearGradient>
-    );
-  }
+function SheetHeaderCell({ active, children, theme, style }) {
+  const backgroundColor = active ? theme.accent : theme.gridHeaderBg;
   return (
-    <View style={[styles.headerCell, { backgroundColor: theme.gridHeaderBg }, style]}>
+    <View style={[styles.headerCell, { backgroundColor }, style]}>
       {children}
     </View>
   );
@@ -152,24 +140,30 @@ function ColumnLetterHeaders({
         delayLongPress={HEADER_LONG_PRESS_MS}
         style={{ width: columnWidth, height: HEADER_H }}
       >
-        <GradientHeader
+        <SheetHeaderCell
           active={colActive}
           theme={theme}
-          style={{ width: columnWidth, height: HEADER_H, borderRightColor: theme.gridLine }}
+          style={{ width: columnWidth, height: HEADER_H, borderRightColor: theme.border }}
         >
-          <Text style={{ fontSize: 12, fontWeight: '800', color: colActive ? '#fff' : theme.textMuted }}>
+          <Text
+            style={{
+              fontSize: 12,
+              fontWeight: '800',
+              color: colActive ? theme.textOnAccent : theme.textMuted,
+            }}
+          >
             {colLabel(columnIndex)}
           </Text>
-        </GradientHeader>
+        </SheetHeaderCell>
       </TouchableOpacity>,
     );
   }
   return (
-    <View style={[styles.colHeaderRow, { height: HEADER_H, borderBottomColor: theme.gridLine }]}>
+    <View style={[styles.colHeaderRow, { height: HEADER_H, borderBottomColor: theme.border }]}>
       <View
         style={[
           styles.corner,
-          { width: HEADER_W, height: HEADER_H, backgroundColor: theme.cornerBg, borderRightColor: theme.gridLine },
+          { width: HEADER_W, height: HEADER_H, backgroundColor: theme.cornerBg, borderRightColor: theme.border },
         ]}
       />
       {letters}
@@ -364,11 +358,11 @@ const SpreadsheetGrid = memo(
 export default SpreadsheetGrid;
 
 const styles = StyleSheet.create({
-  colHeaderRow: { flexDirection: 'row', borderBottomWidth: 1 },
-  corner: { borderRightWidth: 1 },
+  colHeaderRow: { flexDirection: 'row', borderBottomWidth: nb.borderWidth },
+  corner: { borderRightWidth: nb.borderWidth },
   headerCell: {
     alignItems: 'center',
     justifyContent: 'center',
-    borderRightWidth: 1,
+    borderRightWidth: nb.borderWidth,
   },
 });

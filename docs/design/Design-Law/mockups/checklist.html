@@ -1,0 +1,142 @@
+<meta charset="utf-8">
+<title>Coach Connect Redesign Checklist</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: one progress header, filter tabs, then one bordered card per area of the app. Black, white and gray; gradients only on pills and the progress fill. */
+:root{--bg:#F2F2F0;--sf:#FFFFFF;--soft:#E3E3DF;--ink:#0A0A0A;--mut:#4F4F4F;--bd:#0A0A0A;--sh:#0A0A0A;--on:#FFFFFF}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0B0B0B;--sf:#161616;--soft:#262626;--ink:#F2F2F2;--mut:#A8A8A8;--bd:#F2F2F2;--sh:#8A8A8A;--on:#0A0A0A;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0B0B0B;--sf:#161616;--soft:#262626;--ink:#F2F2F2;--mut:#A8A8A8;--bd:#F2F2F2;--sh:#8A8A8A;--on:#0A0A0A;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:28px 64px;overflow-x:hidden}
+.wrap{max-width:860px;margin:0 auto;display:flex;flex-direction:column;gap:28px}
+h1{font-size:clamp(32px,6vw,52px);line-height:1;letter-spacing:-1.6px;margin:0;font-weight:900}
+.lead{margin:10px 0 0;color:var(--mut);font-size:16px;line-height:1.5;max-width:60ch}
+.hero{display:grid;grid-template-columns:1fr;gap:18px}
+.prog{background:var(--sf);border:3px solid var(--bd);box-shadow:6px 6px 0 var(--sh);border-radius:6px 22px 6px 6px;padding:16px;display:flex;flex-direction:column;gap:12px}
+.prog .n{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.prog .n b{font-size:46px;line-height:1;letter-spacing:-1.5px;font-variant-numeric:tabular-nums}
+.prog .n span{color:var(--mut);font-weight:700}
+.bar{height:18px;border:3px solid var(--bd);border-radius:9px;background:var(--soft);overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,#60A5FA,#818CF8);border-right:3px solid var(--bd);transition:width .5s cubic-bezier(.2,.8,.2,1)}
+.tabs{display:inline-flex;border:3px solid var(--bd);border-radius:10px;overflow:hidden;background:var(--sf);align-self:flex-start;max-width:100%}
+.tabs button{min-height:44px;padding:0 18px;border:0;background:transparent;color:var(--ink);font:800 14px inherit;font-family:inherit;cursor:pointer;white-space:nowrap}
+.tabs button+button{border-left:3px solid var(--bd)}
+.tabs button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+.area{background:var(--sf);border:3px solid var(--bd);box-shadow:5px 5px 0 var(--sh);border-radius:8px}
+.area:nth-of-type(3n+1){border-radius:8px 24px 8px 8px}
+.area:nth-of-type(3n+2){border-radius:8px}
+.area:nth-of-type(3n){border-radius:8px 8px 8px 24px}
+.ah{display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:3px solid var(--bd);flex-wrap:wrap}
+.ah h2{margin:0;font-size:20px;letter-spacing:-.4px;flex:1;min-width:0}
+.ah .c{font-size:13px;font-weight:900;color:var(--mut);font-variant-numeric:tabular-nums}
+.it{display:flex;gap:12px;align-items:flex-start;padding:10px 16px;border-top:2px solid var(--bd);min-height:64px}
+.ah+.it{border-top:0}
+.cb{width:44px;height:44px;flex:none;border:3px solid var(--bd);border-radius:10px;background:var(--bg);display:grid;place-items:center;cursor:pointer;padding:0;color:var(--on)}
+.cb svg{width:20px;height:20px;opacity:0}
+.cb[aria-checked="true"]{background:var(--ink)}
+.cb[aria-checked="true"] svg{opacity:1}
+.cb:focus-visible,.tabs button:focus-visible,a:focus-visible{outline:3px solid var(--ink);outline-offset:3px}
+.tx{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;padding-top:2px}
+.tx b{font-size:16px;line-height:1.25}
+.tx span{font-size:14px;color:var(--mut);line-height:1.4}
+.tx a{color:var(--ink);font-weight:800;font-size:14px;text-underline-offset:3px;text-decoration-thickness:2px;display:inline-flex;min-height:28px;align-items:center}
+.pill{flex:none;display:inline-flex;align-items:center;height:26px;padding:0 10px;border:2.5px solid var(--bd);border-radius:999px;font-size:12px;font-weight:900;color:#0A0A0A;white-space:nowrap;margin-top:4px}
+.g1{background:linear-gradient(135deg,#7DD3FC,#A78BFA)}.g2{background:linear-gradient(135deg,#FDE047,#FB923C)}.g3{background:linear-gradient(135deg,#FDA4AF,#FB7185)}.n{}
+.pill.t{background:var(--soft);color:var(--ink)}
+.dec{background:var(--ink);color:var(--bg);border:3px solid var(--bd);border-radius:8px;padding:16px;display:flex;flex-direction:column;gap:8px}
+.dec h2{margin:0;font-size:20px}.dec p{margin:0;line-height:1.5;font-size:15px}
+.empty{padding:16px;color:var(--mut)}
+.note{color:var(--mut);font-size:14px;line-height:1.5}
+@media (max-width:480px){.it{gap:10px}.pill{display:none}}
+@media (prefers-reduced-motion:reduce){.bar i{transition:none}}
+</style>
+<div class="wrap">
+  <header><h1>What is done and what is left</h1><p class="lead">Every area of the app, checked against the code in your repo. Done items link to their artifact. Tick anything yourself; your ticks stay in this browser only.</p></header>
+  <section class="hero">
+    <div class="prog" aria-live="polite"><div class="n"><b id="pct">0%</b><span id="cnt"></span></div><div class="bar"><i id="fill"></i></div></div>
+    <div class="tabs" role="group" aria-label="Filter"><button data-f="all" aria-pressed="true">All</button><button data-f="left" aria-pressed="false">Left</button><button data-f="done" aria-pressed="false">Done</button></div>
+  </section>
+  <div id="areas" style="display:flex;flex-direction:column;gap:28px"></div>
+  <section class="dec"><h2>Two decisions that are yours</h2><p><b>Trainer navigation bar.</b> I used the same five slots as the client bar. Tell me if the trainer bar has different tabs.</p><p><b>Branch claude/cool-planck-5qbxar.</b> It holds three commits made without being asked (kit tokens, a hook extraction, a new home layout). Nothing here builds on them, and the repo was not touched in this session.</p></section>
+  <p class="note">Not covered by any item: testing on a real phone, and the React Native build of these designs. The mockups are web pages and do not prove anything runs on a device.</p>
+</div>
+<script>
+const A='https://claude.ai/artifact/';
+const DATA=[
+ {t:'Finished artifacts',items:[
+  ['Redesign, 35 screens','Earlier session. New structure and neutral system.','done',A+'RFzGhLCTfgbW6Bi8wp7cYm'],
+  ['Trainer marketplace, 13 screens','Top matches, map, pinned price, connect sheet.','done',A+'Rb4sRo84fNC9tmXDcHTtCC'],
+  ['Trainer setup, 5 screens','Specialties, credentials, rates, invite code, go live.','done',A+'Y3NBEn7tuKHKidhiEe5QBi'],
+  ['Welcome, sign up, sign in, reset password, 6 screens','Built from the real fields and error messages.','done',A+'953rhucJV6tYmLJ1b2fGxP'],
+  ['Client onboarding, 8 screens','All nine real steps in three chapters.','done',A+'3WqJR4w8LoX7YRYwtA9pmE'],
+  ['Client dashboard, 9 screens','One scrolling dashboard: welcome card, trainer and next session, your week, number cards, nutrition, workout log, check-in. Replaces the tabbed home.','done',A+'YNqdWeYaPdXMkKs95aYmxS'],
+  ['Navigation bar, new look','Home, Workout, raised + button, Files or AI Coach, Nutrition. The + sheet contents are my guess.','done',A+'YNqdWeYaPdXMkKs95aYmxS'],
+  ['AI coach, 8 screens','Home, reply, web answer with sources, photo and paste sheets, history drawer, delete.','done',A+'7iwCfRSsTBbHZna2mTNnk9'],
+  ['Workouts, 12 screens','Plan, notes, videos, session mode with rest timer, new plan (AI or trainer), building, saved plans, trainer builder, exercise library, edit exercise.','done',A+'4TiqSzAvhMGaLtzxgkU16H'],
+  ['Loading and errors, 11 screens','Startup, dashboard and list loading, certificate check, offline, server unreachable, not found, form errors, session ended, crash, sign out.','done',A+'RUc3CcX8vu7MMZ9GBZi2iE'],
+  ['Trainees and records, 9 screens','Clients roster (filled and empty), client record tabs, nutrition (filled and empty), weekly report (ready and not ready), remove client, client removed.','done',A+'91KSGCs9XFm1QSRV8er14B'],
+  ['Files and notes, 9 screens','Files, add, note with file, viewer, delete, client files, document editor, share, file errors.','done',A+'GdMY6NbwNbba7fCocG1WSp'],
+  ['Scheduling, 8 screens','Calendar, month, list, new session, details, delete, client sessions, request.','done',A+'BRcVMsPRBAKwFdfwy3aRo5'],
+  ['Trainer setup part 2, 11 screens','Availability, almost done, face verification, payouts, Pro offer, setup complete.','done',A+'1J6XFwu3EoJ4oeuUcUdjUi'],
+  ['Inbox and money, 10 screens','Trainer and client inboxes, chat, attach, blocked chat, notifications, Pro banner, offer, upgrade, expired.','done',A+'MiRPaVpP9wH5pRFvWKvBPp'],
+  ['Progress, 8 screens','Weight and body fat charts, photos, viewer, compare, weekly report, report options, spreadsheet, edit cell.','done',A+'ArwYbvTE6Bq9m6F9kfBxrz'],
+  ['Settings and profile, 15 screens','Settings (client and trainer), coaching payment, profile, password, FAQ, contact, bug report, terms, privacy, delete account, blocked users, report, remove trainer.','done',A+'GsHyifEV6sp9HdFPNk5cbY'],
+  ['Nutrition, 11 screens','Daily log (empty and filled), food basket search, no matches, barcode scan and not found, nutrition facts, edit serving, quick add, targets, settings, reset.','done',A+'Xt9uVdikL32NbQcGCRmUtN'],
+  ['Empty vs with-data gallery, 4 pairs','Client dashboard, trainer home, workout plan and AI coach home, empty and filled side by side.','done',A+'GTeySwdqBNjGKYYU785Psa'],
+  ['Trainer home, 8 screens','Welcome card, needs-you, client carousel with four tabs, tools, weekly report, requests, money, payout and create sheets.','done',A+'24Eg1VDksjStyLrHp9EVkj'],
+  ['AI coach popups, all 15','Meal, mood, sleep, steps, water, energy, workout rating, edit workout, open plan, rest day, goal, food targets, book, message trainer, delete.','done',A+'VY2ZjYCSGiju4dj2qKsntU']]},
+ {t:'Trainer setup gaps',items:[
+  ['Availability and session format','Available now or waitlist, remote, in-person or both. Best times is my addition.','done',A+'1J6XFwu3EoJ4oeuUcUdjUi'],
+  ['"Almost done" step','Name, city, marketplace blurb with live preview, and face verification with camera permission, capture and submitted states.','done',A+'1J6XFwu3EoJ4oeuUcUdjUi'],
+  ['Payout setup','Stripe connect, verified, retry and skip warning.','done',A+'1J6XFwu3EoJ4oeuUcUdjUi'],
+  ['Coach Connect Pro offer in setup','Skippable last step, then a setup-complete summary.','done',A+'1J6XFwu3EoJ4oeuUcUdjUi']]},
+ {t:'Trainer app',items:[
+  ['Trainer home and Today timeline','','done',A+'24Eg1VDksjStyLrHp9EVkj'],['New requests','Approve or decline invite-code requests.','done',A+'24Eg1VDksjStyLrHp9EVkj'],['My trainees list','Roster with search, filters, requests, empty state, load more.','done',A+'91KSGCs9XFm1QSRV8er14B'],
+  ['Trainee detail and records','Four tabs, notes, nutrition, weekly report, remove client.','done',A+'91KSGCs9XFm1QSRV8er14B'],['Trainee progress tab','','done',A+'24Eg1VDksjStyLrHp9EVkj'],['Trainee nutrition tab','','done',A+'24Eg1VDksjStyLrHp9EVkj'],
+  ['Scheduling','Week strip, month, list, new session, details, delete, client confirm and request.','done',A+'BRcVMsPRBAKwFdfwy3aRo5'],['Workout plans: create, exercise rows, videos, view','','done',A+'4TiqSzAvhMGaLtzxgkU16H'],
+  ['Earnings','','done',A+'24Eg1VDksjStyLrHp9EVkj'],['Documents and page styles','Document editor with page styles and share are done. The spreadsheet editor is not.','todo'],['Weekly report (trainer side)','Ready and not-ready, priorities, sign-off.','done',A+'91KSGCs9XFm1QSRV8er14B'],['Trainer navigation dock','Same five slots as the client bar.','done',A+'24Eg1VDksjStyLrHp9EVkj'],
+  ['Trainer AI coach','Prompts such as spotting clients who have not logged this week.','todo']]},
+ {t:'Client app',items:[
+  ['Workout plans: view, create, exercise videos','','done',A+'4TiqSzAvhMGaLtzxgkU16H'],['Session mode with rest timer','','done',A+'4TiqSzAvhMGaLtzxgkU16H'],
+  ['Meals: daily log, food search, barcode, food details, quick add','Food basket search, with the empty first day next to the filled one.','done',A+'Xt9uVdikL32NbQcGCRmUtN'],['Nutrition targets and settings','Calorie and macro sliders, foods you love and skip, reset confirm.','done',A+'Xt9uVdikL32NbQcGCRmUtN'],
+  ['Files and notes','Files from coach and from you, add, viewer, delete, client files.','done',A+'GdMY6NbwNbba7fCocG1WSp'],['Profile','Client and trainer profile in one screen with tabs.','done',A+'GsHyifEV6sp9HdFPNk5cbY'],['Client navigation dock','','done',A+'YNqdWeYaPdXMkKs95aYmxS'],
+  ['Find a trainer filter popup','Marketplace screens exist; the filter sheet may need a pass.','todo']]},
+ {t:'Shared screens',items:[
+  ['Messages inbox and chat','Trainer and client inboxes, chat, attach, blocked chat.','done',A+'MiRPaVpP9wH5pRFvWKvBPp'],['Notifications','Grouped, swipe to clear, empty state.','done',A+'MiRPaVpP9wH5pRFvWKvBPp'],['Payments','Client coaching payment and trainer payout rows are done. Pro purchase screens are not.','todo'],
+  ['Progress photo gallery','Grid by month, viewer, drag before-and-after, empty state.','done',A+'ArwYbvTE6Bq9m6F9kfBxrz'],['Weekly report','Filled and empty, with options sheet.','done',A+'ArwYbvTE6Bq9m6F9kfBxrz'],['Spreadsheet viewer','Pinned first column, week tabs, edit cell.','done',A+'ArwYbvTE6Bq9m6F9kfBxrz'],
+  ['Settings home','Client and trainer versions.','done',A+'GsHyifEV6sp9HdFPNk5cbY'],['Settings: Help and FAQ, Contact support, Bug report','','done',A+'GsHyifEV6sp9HdFPNk5cbY'],['Settings: Privacy policy and Terms','Terms plus privacy and data rights.','done',A+'GsHyifEV6sp9HdFPNk5cbY'],
+  ['Block, report, and blocked users','','done',A+'GsHyifEV6sp9HdFPNk5cbY'],['Document viewer and add-file popup','','done',A+'GdMY6NbwNbba7fCocG1WSp']]},
+ {t:'Pro plan',items:[
+  ['Free trial banner','Three states.','done',A+'MiRPaVpP9wH5pRFvWKvBPp'],['Pro upgrade offer and upgrade screen','','done',A+'MiRPaVpP9wH5pRFvWKvBPp'],['Pro expired screen','','done',A+'MiRPaVpP9wH5pRFvWKvBPp'],['Pro legal footer','Inside the upgrade screen. Wording is placeholder.','done',A+'MiRPaVpP9wH5pRFvWKvBPp']]},
+ {t:'Popups and system states',items:[
+  ['Remove trainer popup','','done',A+'GsHyifEV6sp9HdFPNk5cbY'],['Delete account and sign out','Delete with press and hold, and a sign out confirm.','done',A+'RUc3CcX8vu7MMZ9GBZi2iE'],['Loading states','Startup, skeletons, list and button loaders, certificate check.','done',A+'RUc3CcX8vu7MMZ9GBZi2iE'],
+  ['Empty states','Dashboard, trainer home, plan, coach, meals, photos, report, messages, notifications, files, schedule.','done',A+'GTeySwdqBNjGKYYU785Psa'],['Error and offline states','Offline, server unreachable, not found, form errors, failed saves, session ended.','done',A+'RUc3CcX8vu7MMZ9GBZi2iE'],['Crash report screen','','done',A+'RUc3CcX8vu7MMZ9GBZi2iE']]},
+ {t:'Old structure, to redo in the new system',items:[
+  ['Original 43 screens','Reference only so far.','todo'],['Scheduler','','todo']]}
+];
+const KEY='cc-checklist-v1';let saved={};
+try{saved=JSON.parse(localStorage.getItem(KEY)||'{}')}catch(e){}
+let F='all';
+const CHECK='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.6" stroke-linecap="square"><path d="M4 12.5l5 5L20 6.5"/></svg>';
+const isDone=(k,s)=>k in saved?saved[k]:s==='done';
+function render(){
+ const root=document.getElementById('areas');root.innerHTML='';let total=0,done=0;
+ DATA.forEach((a,ai)=>{
+  const items=a.items.map((x,i)=>({k:ai+':'+i,n:x[0],d:x[1],s:x[2],l:x[3]})).map(x=>({...x,on:isDone(x.k,x.s)}));
+  total+=items.length;const dn=items.filter(x=>x.on).length;done+=dn;
+  const shown=items.filter(x=>F==='all'||(F==='done'?x.on:!x.on));
+  if(!shown.length)return;
+  const sec=document.createElement('section');sec.className='area';
+  sec.innerHTML='<div class="ah"><h2>'+a.t+'</h2><span class="c">'+dn+' of '+items.length+' done</span></div>';
+  shown.forEach(x=>{
+   const r=document.createElement('div');r.className='it';
+   r.innerHTML='<button class="cb" role="checkbox" aria-checked="'+x.on+'" aria-label="'+x.n+'">'+CHECK+'</button><div class="tx"><b>'+x.n+'</b>'+(x.d?'<span>'+x.d+'</span>':'')+(x.l?'<a href="'+x.l+'" target="_blank" rel="noopener">Open artifact</a>':'')+'</div><span class="pill '+(x.on?(x.l?'g1':'g2'):'t')+'">'+(x.on?'Done':'Left')+'</span>';
+   r.querySelector('.cb').addEventListener('click',()=>{saved[x.k]=!x.on;try{localStorage.setItem(KEY,JSON.stringify(saved))}catch(e){}render()});
+   sec.appendChild(r)});
+  root.appendChild(sec)});
+ if(!root.children.length){root.innerHTML='<div class="area empty">Nothing here.</div>'}
+ const p=Math.round(done/total*100);document.getElementById('pct').textContent=p+'%';document.getElementById('cnt').textContent=done+' of '+total+' items done';document.getElementById('fill').style.width=p+'%';
+}
+document.querySelectorAll('.tabs button').forEach(b=>b.addEventListener('click',()=>{F=b.dataset.f;document.querySelectorAll('.tabs button').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));render()}));
+render();
+</script>

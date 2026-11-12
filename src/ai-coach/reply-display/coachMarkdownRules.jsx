@@ -1,27 +1,21 @@
-// Custom markdown render rules for coach replies — currently just tables.
-// Flow: count the table's columns from its header row → give the table a
-// fixed width (columns × min column width) → wrap it in a horizontal
-// ScrollView so full-sentence cells scroll sideways on a phone instead of
-// crushing into narrow slivers or cutting text off.
-// Used by CoachReplyText and InternetAnswerReply (both markdown bubbles).
+// Custom markdown rules for Design Law coach replies.
+// Flow: square black bullets (PNG 03) + horizontally scrollable tables.
+// Used by CoachReplyText and InternetAnswerReply.
 
 import React from 'react';
 import { ScrollView, View } from 'react-native';
+import { lightColors, darkColors, nb } from '../../look-and-feel/colorPalette';
 
-// Manipulate here: minimum width per table column. Wider = more scrolling
-// but easier-to-read sentences; narrower = more of the table fits at once.
+// ===== NAMED CONSTANTS =====
+
+// Manipulate here: table column min width (wider = more sideways scroll, easier sentences)
 const TABLE_COLUMN_MIN_WIDTH = 168;
-// Fallback when the header row can't be read (malformed markdown table).
 const DEFAULT_TABLE_COLUMN_COUNT = 2;
+// Design Law checklist marker — solid square, not a • glyph
+const BULLET_SQUARE = 8;
 
-// ===== HELPER FUNCTIONS =====
+// ===== HELPERS =====
 
-/**
- * Column count = number of cells in the first header row.
- * vocab: the markdown AST nests table → thead → tr → th, one th per column.
- * @param {object} tableNode markdown-it AST node for the table
- * @returns {number}
- */
 function countTableColumns(tableNode) {
   const headerSection = tableNode?.children?.[0];
   const headerRow = headerSection?.children?.[0];
@@ -30,18 +24,36 @@ function countTableColumns(tableNode) {
   return DEFAULT_TABLE_COLUMN_COUNT;
 }
 
-// ===== MAIN FUNCTION =====
+function inkForTheme(isDark) {
+  return isDark ? darkColors.nbInk : lightColors.nbInk;
+}
+
+// ===== MAIN =====
 
 /**
- * Render rules to hand to react-native-markdown-display's `rules` prop.
- * Only `table` is overridden; every other node keeps the library default.
- * @returns {object}
+ * @param {{ isDark?: boolean }} [options]
+ * @returns {object} rules for react-native-markdown-display
  */
-export function buildCoachMarkdownRules() {
+export function buildCoachMarkdownRules({ isDark = false } = {}) {
+  const ink = inkForTheme(isDark);
+
   return {
-    // vocab: (node, children, parent, styles) is the library's rule signature;
-    // styles._VIEW_SAFE_table is our themed table style with text-only
-    // properties stripped (it lands on a View, not a Text).
+    // PNG 03: solid black square before each bullet line
+    // Manipulate here: marginTop aligns the square with the first text line (PNG 03)
+    bullet_list_icon: (node) => (
+      <View
+        key={node.key}
+        style={{
+          width: BULLET_SQUARE,
+          height: BULLET_SQUARE,
+          backgroundColor: ink,
+          marginTop: 7,
+          marginRight: 12,
+          borderRadius: 1,
+        }}
+      />
+    ),
+
     table: (node, children, parent, styles) => {
       const columnCount = countTableColumns(node);
       const tableWidth = columnCount * TABLE_COLUMN_MIN_WIDTH;
@@ -52,7 +64,16 @@ export function buildCoachMarkdownRules() {
           showsHorizontalScrollIndicator={false}
           style={{ marginBottom: 12 }}
         >
-          <View style={[styles._VIEW_SAFE_table, { width: tableWidth, marginBottom: 0 }]}>
+          <View
+            style={[
+              styles._VIEW_SAFE_table,
+              {
+                width: tableWidth,
+                marginBottom: 0,
+                borderWidth: nb.borderWidth,
+              },
+            ]}
+          >
             {children}
           </View>
         </ScrollView>

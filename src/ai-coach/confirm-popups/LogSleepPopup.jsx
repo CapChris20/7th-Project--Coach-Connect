@@ -1,96 +1,97 @@
-// Confirm popup before the coach writes sleep hours onto the dashboard.
-// Flow: read the hours and the date → show them → confirm or cancel.
-// Used by: the coach conversation when a tool wants to log sleep.
+// Design Law sleep confirm — big hours + slider + quality chips (screens/ai-coach-popups/05).
+// Flow: prefill hours/quality → drag slider / retap quality → Log sleep.
+// Used by: ConfirmActionPopup when tool = logSleep.
 
-import React from 'react';
-import { ToolModalBody, DetailRow, ConfirmCancelRow } from './sharedPopupParts';
+import React, { useMemo, useState } from 'react';
+import { Text, View } from 'react-native';
+import {
+  ToolModalBody,
+  BigValueBlock,
+  PopupSlider,
+  FillChipRow,
+  ConfirmCancelRow,
+  usePopupColors,
+} from './sharedPopupParts';
+import { accentGradients, spacing } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
-const POPUP_TITLE = 'Log sleep on dashboard?';
-const SLEEP_ROW_LABEL = 'Sleep';
-const DATE_ROW_LABEL = 'Date';
-const CONFIRM_BUTTON_LABEL = 'Log sleep';
-const MISSING_HOURS_LABEL = '—';
-const DEFAULT_SLEEP_DATE = 'Today';
-const DEFAULT_REASONING = 'This updates your sleep on the home dashboard for today.';
+const BADGE = 'Coach wants to log sleep';
+const TITLE = 'Last night';
+const CONFIRM_LABEL = 'Log sleep';
+// Manipulate here: sleep slider range (hours)
+const SLEEP_MIN = 4;
+const SLEEP_MAX = 12;
+const QUALITY_OPTIONS = [
+  { id: 'poor', label: 'Poor' },
+  { id: 'fair', label: 'Fair' },
+  { id: 'good', label: 'Good' },
+];
 
-// ===== HELPER FUNCTIONS =====
+// ===== HELPERS =====
 
-function valueWasProvided(value) {
-  if (value === undefined) return false;
-  if (value === null) return false;
-  return true;
+function readHours(params) {
+  const raw = params?.hours ?? params?.sleepHours;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return 8;
+  return Math.min(SLEEP_MAX, Math.max(SLEEP_MIN, Math.round(n)));
 }
 
-/**
- * @param {object|undefined} params
- * @returns {number}
- */
-function readSleepHoursNumber(params) {
-  if (!params) return 0;
-  if (valueWasProvided(params.hours)) return Number(params.hours);
-  if (valueWasProvided(params.sleepHours)) return Number(params.sleepHours);
-  return 0;
-}
-
-/**
- * @param {number} sleepHours
- * @returns {string}
- */
-function formatSleepHoursLabel(sleepHours) {
-  const hoursAreFinite = Number.isFinite(sleepHours);
-  if (!hoursAreFinite) return MISSING_HOURS_LABEL;
-  return `${sleepHours} hours`;
-}
-
-function readSleepDateLabel(params) {
-  if (!params || !params.date) return DEFAULT_SLEEP_DATE;
-  return params.date;
-}
-
-/**
- * @param {object|undefined} params
- * @returns {{ hoursLabel: string, sleepDate: string }}
- */
-function readSleepDetails(params) {
-  const sleepHours = readSleepHoursNumber(params);
-  const hoursLabel = formatSleepHoursLabel(sleepHours);
-  const sleepDate = readSleepDateLabel(params);
-  return { hoursLabel, sleepDate };
-}
-
-function reasoningTextOrDefault(reasoning) {
-  if (reasoning) return reasoning;
-  return DEFAULT_REASONING;
+function readQuality(params) {
+  const raw = String(params?.quality || params?.sleepQuality || 'good').toLowerCase();
+  if (QUALITY_OPTIONS.some((opt) => opt.id === raw)) return raw;
+  return 'good';
 }
 
 // ===== MAIN FUNCTION =====
 
-/**
- * Confirm logging sleep hours for a day on the dashboard.
- * vocab: hours use an explicit null check so 0 hours is not treated as missing.
- * @param {{ params?: object, reasoning?: string, onConfirm: Function, onCancel: Function, loading?: boolean }} props
- */
 export default function LogSleepPopup({ params, reasoning, onConfirm, onCancel, loading }) {
-  // 1. Read sleep hours and which day.
-  const sleepDetails = readSleepDetails(params);
-  const reasoningText = reasoningTextOrDefault(reasoning);
+  const colors = usePopupColors();
+  const [hours, setHours] = useState(() => readHours(params));
+  const [quality, setQuality] = useState(() => readQuality(params));
 
-  // 2. Confirm writes those hours. onConfirm still gets the original params.
-  function handleConfirmLogSleep() {
-    onConfirm(params);
-  }
+  const draftParams = useMemo(
+    () => ({
+      ...(params || {}),
+      hours,
+      sleepHours: hours,
+      quality,
+    }),
+    [params, hours, quality],
+  );
 
   return (
-    <ToolModalBody title={POPUP_TITLE} reasoning={reasoningText}>
-      <DetailRow label={SLEEP_ROW_LABEL} value={sleepDetails.hoursLabel} />
-      <DetailRow label={DATE_ROW_LABEL} value={sleepDetails.sleepDate} />
+    <ToolModalBody title={TITLE} badge={BADGE} reasoning={reasoning}>
+      <BigValueBlock valueLabel={`${hours} hrs`}>
+        <PopupSlider
+          value={hours}
+          min={SLEEP_MIN}
+          max={SLEEP_MAX}
+          onChange={setHours}
+          colors={accentGradients[4]}
+        />
+        <View
+          style={{
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            marginTop: spacing.xs,
+            marginBottom: spacing.sm,
+          }}
+        >
+          <Text style={{ fontSize: 11, fontWeight: '800', color: colors.nbMuted }}>
+            {SLEEP_MIN} HRS
+          </Text>
+          <Text style={{ fontSize: 11, fontWeight: '800', color: colors.nbMuted }}>
+            {SLEEP_MAX} HRS
+          </Text>
+        </View>
+      </BigValueBlock>
+      <FillChipRow options={QUALITY_OPTIONS} value={quality} onChange={setQuality} />
       <ConfirmCancelRow
-        onConfirm={handleConfirmLogSleep}
+        onConfirm={() => onConfirm(draftParams)}
         onCancel={onCancel}
         loading={loading}
-        confirmLabel={CONFIRM_BUTTON_LABEL}
+        confirmLabel={CONFIRM_LABEL}
       />
     </ToolModalBody>
   );

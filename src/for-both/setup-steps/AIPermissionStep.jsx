@@ -1,55 +1,46 @@
-// Onboarding step: ask whether to turn on optional AI tools (coach, generator, tracking, tips).
-// Flow: show the lottie + feature list → Yes enables AI → No skips. This choice does not spend the monthly switch allowance.
-// Used by: NewUserSetupScreen as one of the setup steps.
+// Design Law AI opt-in step — hero Lottie, feature list, Turn on / Not now.
+// Flow: show features → Turn on sets aiEnabled true → Not now skips. Does not spend monthly switch allowance.
+// Used by NewUserSetupScreen client step 9. PNG: client-onboarding 13/14.
 
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { View, Text, StyleSheet, Image } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import LottieView from 'lottie-react-native';
-import { useColorScheme } from 'react-native';
-import { lightColors, darkColors, gradients, spacing } from '../../look-and-feel/colorPalette';
-import NbHero from '../../look-and-feel/NbHero';
+import { useTheme } from '../../look-and-feel/lightDarkMode';
+import { accentGradients, borderRadius, nb, spacing } from '../../look-and-feel/colorPalette';
 import NbButton from '../../look-and-feel/NbButton';
 import NbCard from '../../look-and-feel/NbCard';
-import NbListRow from '../../look-and-feel/NbListRow';
-import NbSwitch from '../../look-and-feel/NbSwitch';
+import HardShadow from '../../look-and-feel/HardShadow';
 
 // ===== NAMED CONSTANTS =====
 
-const AI_LOTTIE = require('../../assets/animations/legacy/Artificial intelligence digital technology (1).json');
+const AI_LOTTIE = require('../../assets/animations/handoff/robot.json');
 
 const AI_FEATURES = [
   {
-    icon: 'chatbubble',
-    title: 'AI fitness coach',
-    description: 'Chat any time for personalized coaching',
+    title: 'Ask the coach anything',
+    description: 'Training, food and recovery questions',
+    icon: require('../../assets/icons/handoff/people.png'),
+    gradient: accentGradients[2],
   },
   {
-    icon: 'flash',
-    title: 'Workout generator',
-    description: 'Plans built for you automatically',
+    title: 'Plan changes you approve',
+    description: 'Nothing changes until you tap apply',
+    icon: require('../../assets/icons/handoff/workout.png'),
+    gradient: accentGradients[0],
   },
   {
-    icon: 'locate',
-    title: 'Smart progress tracking',
-    description: 'Insights from your logs',
-  },
-  {
-    icon: 'sparkles',
-    title: 'Form and recovery tips',
-    description: 'Daily suggestions to optimize training',
+    title: 'Your answers personalize it',
+    description: 'Sent to the AI provider to tailor replies',
+    icon: require('../../assets/icons/handoff/week.png'),
+    gradient: accentGradients[4],
   },
 ];
-
-// ===== HELPER FUNCTIONS =====
-
-// No helper functions needed — using Neobrutalist components
 
 // ===== MAIN FUNCTION =====
 
 /**
  * Optional AI opt-in step during onboarding.
- * Redesigned with Neobrutalist components per docs/design/DESIGN.md.
  * @param {object} props
  */
 export function AIPermissionStep({
@@ -58,83 +49,129 @@ export function AIPermissionStep({
   totalSteps,
   onEnableAI,
   onSkipAI,
+  // Design Law footer owns Not now / Turn on when true (side-by-side in bnav).
+  hideActions = false,
 }) {
-  const colorScheme = useColorScheme();
-  const colors = colorScheme === 'dark' ? darkColors : lightColors;
-
+  const { colors } = useTheme();
   const features = useMemo(() => AI_FEATURES, []);
-  const [enabled, setEnabled] = React.useState(true);
 
   return (
     <View style={{ width: '100%' }}>
-      {/* Lottie animation in a soft gradient frame */}
-      <View style={styles.animationContainer}>
-        <LottieView source={AI_LOTTIE} autoPlay loop style={styles.lottie} />
-      </View>
+      <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbHero} style={{ marginBottom: spacing.md }}>
+        <View
+          style={[
+            styles.heroFrame,
+            {
+              borderColor: colors.nbBorder,
+              backgroundColor: colors.nbSurface,
+            },
+          ]}
+        >
+          <LottieView source={AI_LOTTIE} autoPlay loop style={styles.lottie} />
+        </View>
+      </HardShadow>
 
-      <NbHero
-        title="AI-powered features"
-        subtitle="Optional. You can change this in settings."
-      />
+      <Text style={[styles.title, { color: colors.nbInk }]}>Turn on AI features?</Text>
 
-      <Text
-        style={[
-          styles.help,
-          { color: colors.nbMuted, marginBottom: spacing.lg },
-        ]}
-      >
-        All optional. You can change this in settings.
-      </Text>
-
-      {/* Feature list using NbListRow with switches */}
-      <NbCard style={{ marginBottom: spacing.lg }}>
+      <NbCard style={{ marginBottom: spacing.md, paddingHorizontal: 4 }}>
         {features.map((feature, index) => (
           <View key={feature.title}>
-            <NbListRow
-              title={feature.title}
-              subtitle={feature.description}
-              right={
-                <NbSwitch
-                  value={enabled}
-                  onValueChange={setEnabled}
-                />
-              }
-            />
-            {index < features.length - 1 && <View style={{ height: 1, backgroundColor: colors.nbBorder }} />}
+            <View style={styles.featureRow}>
+              <View style={[styles.iconChip, { borderColor: colors.nbBorder }]}>
+                <LinearGradient
+                  colors={feature.gradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.iconChipFill}
+                >
+                  <Image source={feature.icon} style={{ width: 26, height: 26 }} resizeMode="contain" />
+                </LinearGradient>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.featureTitle, { color: colors.nbInk }]}>{feature.title}</Text>
+                <Text style={[styles.featureSub, { color: colors.nbMuted }]}>{feature.description}</Text>
+              </View>
+            </View>
+            {index < features.length - 1 ? (
+              <View style={{ height: 2, backgroundColor: colors.nbBorder, marginHorizontal: 10 }} />
+            ) : null}
           </View>
         ))}
       </NbCard>
 
-      <View style={[styles.buttonContainer, { gap: spacing.sm }]}>
-        <NbButton variant="brand" onPress={onEnableAI} style={{ width: '100%' }}>
-          Enable AI
-        </NbButton>
-        <NbButton variant="plain" onPress={onSkipAI} style={{ width: '100%' }}>
-          No, skip
-        </NbButton>
-      </View>
+      <Text style={[styles.help, { color: colors.nbMuted }]}>
+        Replies are suggestions, not medical advice. You can switch this off any time in Settings.
+      </Text>
+
+      {hideActions ? null : (
+        <View style={[styles.buttonContainer, { flexDirection: 'row', gap: spacing.sm }]}>
+          <NbButton variant="ghost" onPress={onSkipAI} style={{ flex: 1 }}>
+            Not now
+          </NbButton>
+          <NbButton variant="fill" onPress={onEnableAI} style={{ flex: 1 }}>
+            Turn on
+          </NbButton>
+        </View>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  animationContainer: {
+  heroFrame: {
     height: 180,
-    justifyContent: 'center',
+    borderWidth: nb.borderWidth,
+    borderRadius: borderRadius.nbHero,
+    overflow: 'hidden',
     alignItems: 'center',
-    marginBottom: spacing.md,
+    justifyContent: 'center',
   },
   lottie: {
     width: '100%',
     height: '100%',
   },
+  title: {
+    fontSize: 26,
+    fontWeight: '900',
+    letterSpacing: -0.6,
+    marginBottom: spacing.md,
+  },
+  featureRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 10,
+  },
+  iconChip: {
+    width: 44,
+    height: 44,
+    borderRadius: borderRadius.nbIconChip,
+    borderWidth: nb.borderWidth,
+    overflow: 'hidden',
+  },
+  iconChipFill: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  featureTitle: {
+    fontSize: 15,
+    fontWeight: '900',
+    marginBottom: 2,
+  },
+  featureSub: {
+    fontSize: 13,
+    fontWeight: '500',
+    lineHeight: 18,
+  },
   help: {
-    fontFamily: 'Inter_400Regular',
     fontSize: 13,
     lineHeight: 20,
-    textAlign: 'center',
+    fontWeight: '500',
+    marginBottom: spacing.md,
   },
   buttonContainer: {
-    marginTop: spacing.md,
+    marginTop: spacing.sm,
   },
 });

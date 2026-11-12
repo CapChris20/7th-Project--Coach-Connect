@@ -10,11 +10,11 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { formatTrialCountdown } from './proAccessRules';
 import { useSubscription } from './ProPlanSetup';
-import { gradients, nb, borderRadius } from '../look-and-feel/colorPalette';
+import { gradients, nb, borderRadius, lightColors } from '../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
-const BANNER_ICON_COLOR = '#0A0A0F';
+const BANNER_ICON_COLOR = lightColors.nbInk;
 const SPARKLES_ICON_NAME = 'sparkles';
 const SPARKLES_ICON_SIZE = 16;
 const FREE_TRIAL_ACCESS = 'free_trial';
@@ -113,12 +113,12 @@ const styles = StyleSheet.create({
     gap: 8,
     borderRadius: borderRadius.nbChip,
     borderWidth: nb.borderWidth,
-    borderColor: '#0A0A0F',
+    borderColor: lightColors.nbInk,
     paddingVertical: 10,
     paddingHorizontal: 14,
   },
   text: { 
-    color: '#0A0A0F', 
+    color: lightColors.nbInk, 
     fontFamily: 'SpaceGrotesk_700Bold',
     fontWeight: '700', 
     fontSize: 13, 

@@ -151,7 +151,7 @@ function WRMetricIcon({ metricKey, size = 36, imageSize = 20 }) {
         style={{
           flex: 1,
           borderRadius: innerRadius,
-          backgroundColor: themeColors.isDark ? 'rgba(12,10,20,0.98)' : '#FFFFFF',
+          backgroundColor: themeColors.isDark ? 'rgba(12,10,20,0.98)' : lightColors.white,
           alignItems: 'center',
           justifyContent: 'center'
         }}>
@@ -164,17 +164,17 @@ function WRMetricIcon({ metricKey, size = 36, imageSize = 20 }) {
 
 /** Legacy export — prefer getWRTheme(isDark). */
 export const WR_COLORS = {
-  bg: '#0A0A0F',
+  bg: lightColors.nbInk,
   card: '#1A1A2E',
   badge: '#1C1C2E',
   border: 'rgba(255,255,255,0.08)',
-  textPrimary: '#FFFFFF',
+  textPrimary: lightColors.white,
   textSecondary: 'rgba(255,255,255,0.60)',
   textLabel: 'rgba(255,255,255,0.45)',
   metricLabel: 'rgba(255,255,255,0.50)',
-  pink: '#FF6B9D',
+  pink: lightColors.primary,
   cyan: '#06B6D4',
-  purple: '#C084FC',
+  purple: '#E25588',
   orange: '#F97316'
 };
 
@@ -202,9 +202,9 @@ export function getWRTheme(isDark = true) {
       coachNoteBorder: palette.nbBorder,
       tagWorkoutBg: palette.nbSurfaceChip,
       tagRecoveryBg: palette.nbSurfaceChip,
-      pink: '#FF6B9D',
+      pink: lightColors.primary,
       cyan: '#06B6D4',
-      purple: '#C084FC',
+      purple: '#E25588',
       orange: '#F97316',
       statBar: WR_STAT_BAR,
       brandGradient: WR_BRAND_GRADIENT,
@@ -239,7 +239,7 @@ export function getWRTheme(isDark = true) {
     tagRecoveryBg: palette.nbSurfaceChip,
     pink: '#DB2777',
     cyan: '#0891B2',
-    purple: '#7C3AED',
+    purple: '#BE185D',
     orange: '#EA580C',
     statBar: WR_STAT_BAR,
     brandGradient: WR_BRAND_GRADIENT,
@@ -2072,5 +2072,5 @@ const styles = StyleSheet.create({
     color: WR_COLORS.textSecondary
   },
   openButton: { borderRadius: borderRadius.nbChip, paddingVertical: 14, alignItems: 'center' },
-  openButtonText: { fontSize: 15, fontWeight: '700', color: '#0A0A0F' }
+  openButtonText: { fontSize: 15, fontWeight: '700', color: lightColors.nbInk }
 });

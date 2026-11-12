@@ -1,97 +1,79 @@
-// Confirm popup before the coach writes a mood onto the dashboard.
-// Flow: read the mood and optional notes → show them → confirm or cancel.
-// Used by: the coach conversation when a tool wants to log mood.
+// Design Law mood confirm — fill chips + optional note (screens/ai-coach-popups/03).
+// Flow: pre-select mood from tool params → user can retap chips / edit note → Log mood.
+// Used by: ConfirmActionPopup when tool = logMood.
 
-import React from 'react';
-import { ToolModalBody, DetailRow, ConfirmCancelRow } from './sharedPopupParts';
+import React, { useMemo, useState } from 'react';
+import {
+  ToolModalBody,
+  FieldLabel,
+  PopupTextField,
+  FillChipRow,
+  ConfirmCancelRow,
+} from './sharedPopupParts';
 
 // ===== NAMED CONSTANTS =====
 
-const POPUP_TITLE = 'Log mood on dashboard?';
-const MOOD_ROW_LABEL = 'Mood';
-const NOTES_ROW_LABEL = 'Notes';
-const CONFIRM_BUTTON_LABEL = 'Log mood';
-const MISSING_VALUE = '—';
+const BADGE = 'Coach wants to log your mood';
+const TITLE = 'How are you feeling?';
+const NOTE_LABEL = 'NOTE (OPTIONAL)';
+const CONFIRM_LABEL = 'Log mood';
 
-// What the user actually sees for each mood: emoji + capitalized word.
-// Before this the popup showed only the raw lowercase word (or "—" when the
-// model forgot the field) — no emoji, which read as a broken/empty popup.
-// Manipulate here: swap any emoji or label wording.
-const MOOD_DISPLAY = {
-  happy: { emoji: '😊', label: 'Happy' },
-  okay: { emoji: '😐', label: 'Okay' },
-  stressed: { emoji: '😖', label: 'Stressed' },
-  tired: { emoji: '😴', label: 'Tired' },
-  anxious: { emoji: '😰', label: 'Anxious' },
-};
+// Manipulate here: mood ids must match what carryOutAction / server accept
+const MOOD_OPTIONS = [
+  { id: 'happy', label: 'Happy' },
+  { id: 'okay', label: 'Okay' },
+  { id: 'tired', label: 'Tired' },
+  { id: 'stressed', label: 'Stressed' },
+  { id: 'anxious', label: 'Anxious' },
+];
 
-// ===== HELPER FUNCTIONS =====
+// ===== HELPERS =====
 
-function valueWasProvided(value) {
-  if (value === undefined) return false;
-  if (value === null) return false;
-  return true;
+function readInitialMood(params) {
+  const raw = params?.mood ?? params?.feeling;
+  if (raw == null || raw === '') return 'okay';
+  const id = String(raw).toLowerCase().trim();
+  if (MOOD_OPTIONS.some((opt) => opt.id === id)) return id;
+  return 'okay';
 }
 
-/**
- * @param {object|undefined} params
- * @returns {string}
- */
-function readMoodLabel(params) {
-  if (!params) return MISSING_VALUE;
-  const rawMood = valueWasProvided(params.mood)
-    ? params.mood
-    : valueWasProvided(params.feeling)
-      ? params.feeling
-      : null;
-  if (rawMood == null) return MISSING_VALUE;
-  // Known mood → "😊 Happy". Unknown text still shows as-is so nothing is hidden.
-  const display = MOOD_DISPLAY[String(rawMood).toLowerCase().trim()];
-  return display ? `${display.emoji} ${display.label}` : String(rawMood);
-}
-
-/**
- * Notes have shown up as `notes` or `note` on different tool payloads.
- * @param {object|undefined} params
- * @returns {string|undefined}
- */
-function readOptionalNotes(params) {
-  if (!params) return undefined;
-  if (params.notes) return String(params.notes);
-  if (params.note) return String(params.note);
-  return undefined;
-}
-
-function NotesRow({ notesText }) {
-  if (!notesText) return null;
-  return <DetailRow label={NOTES_ROW_LABEL} value={notesText} />;
+function readInitialNote(params) {
+  if (params?.notes) return String(params.notes);
+  if (params?.note) return String(params.note);
+  return '';
 }
 
 // ===== MAIN FUNCTION =====
 
-/**
- * Confirm writing today's mood onto the home dashboard.
- * @param {{ params?: object, reasoning?: string, onConfirm: Function, onCancel: Function, loading?: boolean }} props
- */
 export default function LogMoodPopup({ params, reasoning, onConfirm, onCancel, loading }) {
-  // 1. Read mood and optional notes.
-  const moodLabel = readMoodLabel(params);
-  const notesText = readOptionalNotes(params);
+  const [mood, setMood] = useState(() => readInitialMood(params));
+  const [note, setNote] = useState(() => readInitialNote(params));
 
-  // 2. Confirm writes the mood. onConfirm still gets the original params.
-  function handleConfirmLogMood() {
-    onConfirm(params);
-  }
+  const draftParams = useMemo(
+    () => ({
+      ...(params || {}),
+      mood,
+      notes: note.trim() ? note.trim() : undefined,
+      note: note.trim() ? note.trim() : undefined,
+    }),
+    [params, mood, note],
+  );
 
   return (
-    <ToolModalBody title={POPUP_TITLE} reasoning={reasoning}>
-      <DetailRow label={MOOD_ROW_LABEL} value={moodLabel} />
-      <NotesRow notesText={notesText} />
+    <ToolModalBody title={TITLE} badge={BADGE} reasoning={reasoning}>
+      <FillChipRow options={MOOD_OPTIONS} value={mood} onChange={setMood} />
+      <FieldLabel label={NOTE_LABEL} />
+      <PopupTextField
+        value={note}
+        onChangeText={setNote}
+        placeholder="Optional note…"
+        multiline
+      />
       <ConfirmCancelRow
-        onConfirm={handleConfirmLogMood}
+        onConfirm={() => onConfirm(draftParams)}
         onCancel={onCancel}
         loading={loading}
-        confirmLabel={CONFIRM_BUTTON_LABEL}
+        confirmLabel={CONFIRM_LABEL}
       />
     </ToolModalBody>
   );

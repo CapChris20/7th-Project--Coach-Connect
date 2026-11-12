@@ -32,6 +32,7 @@ import {
 import NbCard from '../../look-and-feel/NbCard';
 import NbAvatar from '../../look-and-feel/NbAvatar';
 import NbButton from '../../look-and-feel/NbButton';
+import { lightColors } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
@@ -40,13 +41,13 @@ const SHELL_NAV_INSET_FALLBACK = 24;
 // Full-screen background wash behind the roster (dark plum → light lavender).
 // Manipulate here: change these two stops to re-tint the whole Clients screen.
 const GRADIENT_BG_DARK = ['#0A0618', '#120A24'];
-const GRADIENT_BG_LIGHT = ['#F5F3FF', '#FFFFFF'];
+const GRADIENT_BG_LIGHT = ['#F2F2F0', lightColors.white];
 
-const CLIENT_LIST_DELETE_GRADIENT = ['#BE185D', '#C2410C'];
+const CLIENT_LIST_DELETE_GRADIENT = [lightColors.primaryDark, '#C2410C'];
 const ROSTER_LIST_AVATAR_GRADIENT = ['#9F1239', '#C2410C'];
-const ROSTER_LIST_RIM_GRADIENT = ['#BE185D', '#C2410C'];
+const ROSTER_LIST_RIM_GRADIENT = [lightColors.primaryDark, '#C2410C'];
 const SWIPE_DELETE_WIDTH = 88;
-const DELETE_ICON_PINK = '#FF6B9D';
+const DELETE_ICON_PINK = lightColors.primary;
 
 // ===== HELPER FUNCTIONS =====
 
@@ -82,14 +83,14 @@ const ClientsListScreen = ({
   const [removeBusy, setRemoveBusy] = useState(false);
   const swipeRefs = useRef(new Map());
 
-  const textColor = isDark ? '#FFFFFF' : '#0A0A0F';
+  const textColor = isDark ? lightColors.white : lightColors.nbInk;
   const titleColor = textColor;
   const emptyColor = isDark ? 'rgba(255,255,255,0.55)' : 'rgba(10,10,15,0.55)';
   const mutedColor = emptyColor;
   const innerCardBg = isDark ? '#0f0f16' : '#FAFAFC';
   const modalOverlay = 'rgba(0,0,0,0.55)';
-  const modalCardBg = isDark ? '#141419' : '#FFFFFF';
-  const modalText = isDark ? '#FFFFFF' : '#0A0A0F';
+  const modalCardBg = isDark ? '#141419' : lightColors.white;
+  const modalText = isDark ? lightColors.white : lightColors.nbInk;
   const modalMuted = isDark ? 'rgba(255,255,255,0.65)' : 'rgba(10,10,15,0.65)';
 
   const openRemoveSheet = useCallback((client) => {
@@ -148,7 +149,7 @@ const ClientsListScreen = ({
           onPress={() => openRemoveSheet(client)}
           style={{
             flex: 1,
-            backgroundColor: '#BE185D',
+            backgroundColor: lightColors.primaryDark,
             borderTopRightRadius: 14,
             borderBottomRightRadius: 14,
             alignItems: 'center',
@@ -156,8 +157,8 @@ const ClientsListScreen = ({
             paddingHorizontal: 6,
           }}
         >
-          <Ionicons name="trash-outline" size={24} color="#FFFFFF" />
-          <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '800', marginTop: 4 }}>Remove</Text>
+          <Ionicons name="trash-outline" size={24} color={lightColors.white} />
+          <Text style={{ color: lightColors.white, fontSize: 11, fontWeight: '800', marginTop: 4 }}>Remove</Text>
         </TouchableOpacity>
       </View>
     ),
@@ -203,9 +204,9 @@ const ClientsListScreen = ({
               }}
             >
               {removeBusy ? (
-                <ActivityIndicator color="#FFFFFF" />
+                <ActivityIndicator color={lightColors.white} />
               ) : (
-                <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '800' }}>Remove</Text>
+                <Text style={{ color: lightColors.white, fontSize: 15, fontWeight: '800' }}>Remove</Text>
               )}
             </TouchableOpacity>
           </View>
@@ -246,7 +247,7 @@ const ClientsListScreen = ({
         />
         <View style={{ paddingHorizontal: 22, paddingVertical: 28, alignItems: 'center' }}>
           <LinearGradient colors={ROSTER_LIST_AVATAR_GRADIENT} style={{ width: 56, height: 56, borderRadius: 18, alignItems: 'center', justifyContent: 'center' }}>
-            <Ionicons name="people-outline" size={28} color="#FFFFFF" />
+            <Ionicons name="people-outline" size={28} color={lightColors.white} />
           </LinearGradient>
           <Text style={{ color: titleColor, fontSize: 20, fontWeight: '900', textAlign: 'center', marginTop: 18, letterSpacing: -0.3 }}>
             No clients yet
@@ -266,7 +267,7 @@ const ClientsListScreen = ({
                 end={{ x: 1, y: 0 }}
                 style={{ paddingVertical: 14, paddingHorizontal: 22, alignItems: 'center' }}
               >
-                <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '800' }}>View client requests</Text>
+                <Text style={{ color: lightColors.white, fontSize: 14, fontWeight: '800' }}>View client requests</Text>
               </LinearGradient>
             </TouchableOpacity>
           ) : null}
@@ -449,7 +450,7 @@ const ClientsListScreen = ({
           }}
         >
           {loadingMore ? (
-            <ActivityIndicator size="small" color={isDark ? '#F472B6' : '#BE185D'} />
+            <ActivityIndicator size="small" color={isDark ? '#F472B6' : lightColors.primaryDark} />
           ) : (
             <Text style={{ color: mutedColor, fontSize: 14, fontWeight: '700' }}>Load more clients</Text>
           )}

@@ -9,9 +9,10 @@ function resolveAiCoachDailyLimit(userProfile = {}) {
       userProfile?.subscription ||
       'free',
   ).toLowerCase();
-  if (tier.includes('premium') || tier.includes('pro') || tier.includes('coach')) return 100;
-  if (tier.includes('plus') || tier.includes('standard') || tier.includes('basic')) return 50;
-  return 30;
+  // Manipulate here: daily AI Coach message caps by subscription tier
+  if (tier.includes('premium') || tier.includes('pro') || tier.includes('coach')) return 400;
+  if (tier.includes('plus') || tier.includes('standard') || tier.includes('basic')) return 200;
+  return 100;
 }
 
 /**

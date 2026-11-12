@@ -1,21 +1,30 @@
-// Markdown colors for a coach reply (neobrutalist theme), plus the check for whether a message should use that layout.
-// Flow: pick light or dark nb tokens → build the markdown style map → turn [Source] notes into pill links.
+// Design Law markdown styles for coach replies (screens/ai-coach/03).
+// Flow: nb tokens → bold sans headline + ink body + hard square bullets → citation pills.
 // Used by: CoachReplyText and InternetAnswerReply.
 //
-// vocab: nbInk/nbMuted = neobrutalist text color tokens
+// vocab: nbInk = primary text; never soft “muted wall of text” for the whole reply
 
 import { Platform } from 'react-native';
-import { lightColors, darkColors } from '../../look-and-feel/colorPalette';
+import { lightColors, darkColors, nb } from '../../look-and-feel/colorPalette';
 import { preprocessWebSearchLayout } from './splitInternetAnswer';
 
 // ===== NAMED CONSTANTS =====
 
-// Manipulate here: 24 is the body line height shared by paragraphs, lists, and bullets.
-const COACH_REPLY_LINE_HEIGHT = 24;
+// Manipulate here: body size / line height (PNG 03: ~15 / ~1.45)
+const COACH_REPLY_FONT_SIZE = 15;
+const COACH_REPLY_LINE_HEIGHT = 22;
+// Design Law uses heavy grotesque — not Georgia/serif
+const HEADING_FONT_FAMILY = Platform.select({
+  ios: 'System',
+  android: 'sans-serif-medium',
+  default: 'System',
+});
+const BODY_FONT_FAMILY = Platform.select({
+  ios: 'System',
+  android: 'sans-serif',
+  default: 'System',
+});
 
-const HEADING_FONT_FAMILY = Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' });
-
-// A bracketed source name, 2 to 41 letters, becomes a coachcite link the reply view draws as a pill.
 const CITATION_NAME_PATTERN = /\s\[([A-Za-z][A-Za-z0-9 .&'\u2019\-]{1,40})\]/g;
 const CITATION_LINK_REPLACEMENT = ' [$1](coachcite://$1)';
 
@@ -24,153 +33,147 @@ const BULLET_LINE_PATTERN = /^[-*•]\s+/m;
 
 const FOOD_SEARCH_ROUTE = 'food-search';
 const WEB_SEARCH_ROUTE = 'web-search';
-
 const USER_ROLE = 'user';
 
-// ===== HELPER FUNCTIONS =====
+// ===== HELPERS =====
 
-/**
- * Neobrutalist color palette for coach replies.
- * Uses design system tokens for consistent theming.
- * @param {boolean} isDark
- * @returns {object}
- */
 function coachReplyColorPalette(isDark) {
   const colors = isDark ? darkColors : lightColors;
   return {
     text: colors.nbInk,
     muted: colors.nbMuted,
     heading: colors.nbInk,
-    bullet: '#FF6B9D', // brand gradient start
-    link: '#6B3AD9', // ink gradient start
+    // Design Law PNG 03: solid black square bullets — not brand pink dots
+    bullet: colors.nbInk,
+    link: colors.nbInk,
     rule: colors.nbBorder,
-    // Tables: use nb border tokens
     tableBorder: colors.nbBorder,
-    tableHeaderBg: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
+    tableHeaderBg: isDark ? darkColors.nbSurfaceChip : lightColors.nbSurfaceChip,
   };
 }
 
-/**
- * @param {object} palette
- * @returns {object}
- */
 function paragraphStyleFromPalette(palette) {
   return {
-    color: palette.muted,
-    fontSize: 15,
+    color: palette.text,
+    fontSize: COACH_REPLY_FONT_SIZE,
+    fontFamily: BODY_FONT_FAMILY,
+    // Manipulate here: body weight — PNG reads medium, not heavy wall
+    fontWeight: '400',
     lineHeight: COACH_REPLY_LINE_HEIGHT,
     marginTop: 0,
-    marginBottom: 10,
+    marginBottom: 12,
   };
 }
 
-/**
- * @param {object} palette
- * @param {number} fontSize
- * @param {number} marginTop
- * @param {number} marginBottom
- * @returns {object}
- */
 function headingStyleFromPalette(palette, fontSize, marginTop, marginBottom) {
   return {
     color: palette.heading,
     fontSize,
-    fontWeight: '700',
+    fontWeight: '900',
     fontFamily: HEADING_FONT_FAMILY,
+    letterSpacing: -0.4,
     marginTop,
     marginBottom,
   };
 }
 
 function replyHasFormattedMarkup(replyText) {
-  const hasBold = BOLD_MARKDOWN_PATTERN.test(replyText);
-  const hasBullets = BULLET_LINE_PATTERN.test(replyText);
-  return hasBold || hasBullets;
+  return BOLD_MARKDOWN_PATTERN.test(replyText) || BULLET_LINE_PATTERN.test(replyText);
 }
 
-// ===== MAIN FUNCTION =====
+// ===== MAIN =====
 
 export { preprocessWebSearchLayout };
 
 /**
- * Style map for the markdown renderer. Keys are the renderer’s names (body, heading1, and so on).
+ * Style map for react-native-markdown-display — Design Law coach typography.
  * @param {boolean} isDark
- * @returns {object}
  */
 export function buildCoachMarkdownStyles(isDark) {
   const palette = coachReplyColorPalette(isDark);
   const paragraphStyle = paragraphStyleFromPalette(palette);
 
   return {
-    body: { color: palette.text, fontSize: 15, lineHeight: COACH_REPLY_LINE_HEIGHT },
-    paragraph: paragraphStyle,
-    heading1: headingStyleFromPalette(palette, 18, 14, 8),
-    heading2: headingStyleFromPalette(palette, 16, 16, 8),
-    heading3: headingStyleFromPalette(palette, 15, 12, 6),
-    strong: { color: palette.heading, fontWeight: '700' },
-    em: { color: palette.muted, fontStyle: 'italic' },
-    bullet_list: { marginBottom: 10, marginTop: 4 },
-    ordered_list: { marginBottom: 10, marginTop: 4 },
-    list_item: paragraphStyle,
-    bullet_list_icon: {
-      color: palette.bullet,
-      fontSize: 15,
+    body: {
+      color: palette.text,
+      fontSize: COACH_REPLY_FONT_SIZE,
+      fontFamily: BODY_FONT_FAMILY,
+      fontWeight: '400',
       lineHeight: COACH_REPLY_LINE_HEIGHT,
+    },
+    paragraph: paragraphStyle,
+    // Lead / section titles — heavy, sans, ink (PNG 03 headline ~20–22)
+    heading1: headingStyleFromPalette(palette, 22, 2, 10),
+    heading2: headingStyleFromPalette(palette, 18, 16, 8),
+    heading3: headingStyleFromPalette(palette, 16, 12, 6),
+    // Bold lead + **Label:** in bullets — PNG 03 punch
+    strong: {
+      color: palette.heading,
+      fontWeight: '900',
+      fontFamily: HEADING_FONT_FAMILY,
+    },
+    em: { color: palette.text, fontStyle: 'italic', fontWeight: '500' },
+    bullet_list: { marginBottom: 14, marginTop: 4 },
+    ordered_list: { marginBottom: 14, marginTop: 4 },
+    list_item: {
+      ...paragraphStyle,
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      marginBottom: 10,
+    },
+    // Hidden — custom square bullet rule paints the marker
+    bullet_list_icon: {
+      color: 'transparent',
+      fontSize: 1,
+      width: 0,
+      height: 0,
+      marginLeft: 0,
+      marginRight: 0,
+    },
+    ordered_list_icon: {
+      color: palette.text,
+      fontSize: COACH_REPLY_FONT_SIZE,
+      fontWeight: '900',
+      lineHeight: COACH_REPLY_LINE_HEIGHT,
+      marginRight: 10,
     },
     link: {
       color: palette.link,
       fontSize: 14,
-      fontWeight: '600',
+      fontWeight: '800',
       textDecorationLine: 'underline',
     },
     hr: {
       backgroundColor: palette.rule,
-      height: 1,
-      marginVertical: 12,
+      height: nb.borderWidth,
+      marginVertical: 14,
     },
-    // Markdown tables: themed frame + wrapped sentence cells. The horizontal
-    // scrolling itself lives in coachMarkdownRules.jsx (custom table rule);
-    // these keys only paint. th/td flex:1 keeps columns equal inside the
-    // fixed-width table that rule creates.
-    // Manipulate here: cell padding and header tint.
     table: {
-      borderWidth: 1,
+      borderWidth: nb.borderWidth,
       borderColor: palette.tableBorder,
-      borderRadius: 8,
+      borderRadius: 10,
       marginBottom: 12,
       overflow: 'hidden',
     },
     thead: { backgroundColor: palette.tableHeaderBg },
     tbody: {},
     tr: {
-      borderBottomWidth: 1,
+      borderBottomWidth: nb.borderWidth,
       borderColor: palette.tableBorder,
       flexDirection: 'row',
     },
-    th: { flex: 1, padding: 8 },
-    td: { flex: 1, padding: 8 },
+    th: { flex: 1, padding: 10 },
+    td: { flex: 1, padding: 10 },
   };
 }
 
-/**
- * Turn inline [Source Name] notes into markdown links the reply view styles as pills.
- * @param {string} markdown
- * @returns {string}
- */
 export function preprocessCoachCitations(markdown) {
-  const markdownString = String(markdown || '');
-  return markdownString.replace(CITATION_NAME_PATTERN, CITATION_LINK_REPLACEMENT);
+  return String(markdown || '').replace(CITATION_NAME_PATTERN, CITATION_LINK_REPLACEMENT);
 }
 
-/**
- * True when this coach message should use the formatted layout instead of plain text.
- * @param {{ role?: string, searchedWeb?: boolean, route?: string, text?: string }} message
- * @returns {boolean}
- */
 export function coachReplyUsesFormattedLayout(message) {
   if (!message || message.role === USER_ROLE) return false;
   if (message.searchedWeb === true) return true;
   if (message.route === FOOD_SEARCH_ROUTE || message.route === WEB_SEARCH_ROUTE) return true;
-  const replyText = String(message.text || '');
-  return replyHasFormattedMarkup(replyText);
+  return replyHasFormattedMarkup(String(message.text || ''));
 }

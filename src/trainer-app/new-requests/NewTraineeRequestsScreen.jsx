@@ -1,49 +1,59 @@
-// Trainer inbox of "a client wants to work with you" cards (not the Messages tab).
-// Flow: load pending cards → tap a row → TrainerListingPopup to accept or reject → refresh the list.
-// Used by the trainer shell. Cards keep the keys from pendingRequestCount / getTrainerPendingRequests.
+// Trainer inbox of “a client wants to work with you” — Design Law screen 11/12 (trainer-home).
+// Flow: pendingRequestCount → expand card → vitals from message payload or users/{clientUid} → accept/reject.
+// Used by trainer shell (TrainerMainScreen). Firebase projectId stays anatrox-auth (cloudConnection only).
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  FlatList,
+  ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  Platform,
+  Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { SHELL_SAFE_AREA_EDGES, FORM_SCROLL_PROPS, useShellBottomNavInset } from '../../navigation/bottomMenuSpacing';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
-import { auth } from '../../app-start/cloudConnection';
-import TopHeader from '../../for-both/loading-and-header/TopHeader';
+import { auth, db } from '../../app-start/cloudConnection';
+import { doc, getDoc } from 'firebase/firestore';
 import { pendingRequestCount } from './pendingRequestCount';
 import TrainerListingPopup from '../home/TrainerListingPopup';
-import { clientRequestTypeLabel } from '../../ai-coach/coach-actions/alertTrainer';
 import NbCard from '../../look-and-feel/NbCard';
 import NbAvatar from '../../look-and-feel/NbAvatar';
 import NbButton from '../../look-and-feel/NbButton';
+import NbSegmented from '../../look-and-feel/NbSegmented';
+import HardShadow from '../../look-and-feel/HardShadow';
+import { gradients, nb, borderRadius } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
-const GRADIENT_AVATAR = ['#7c3aed', '#ec4899'];
-const EMPTY_ACCENT_GRADIENT = ['#fb7185', '#a78bfa'];
-const EMPTY_ICON_GRADIENT = ['#7C3AED', '#EC4899'];
 const UNKNOWN_INITIAL = '?';
 const INITIALS_MAX_CHARS = 2;
+// Manipulate here: scroll clearance above shell bottom nav
 const LIST_BOTTOM_INSET = 32;
-const CLIENT_NAME_FALLBACK = 'No goals';
-const EXPERIENCE_FALLBACK = '—';
+const SEGMENT_DETAILS = 'details';
+const SEGMENT_MESSAGE = 'message';
+const SEGMENT_ITEMS = [
+  { id: SEGMENT_DETAILS, label: 'Request details' },
+  { id: SEGMENT_MESSAGE, label: 'Message' },
+];
+
+// Design Law kv labels → message doc fields (loadPendingTraineeRequests / alertTrainer metadata).
+const VITAL_LABELS = ['Age', 'Weight', 'Height'];
+
+const DETAIL_FIELD_SPECS = [
+  { label: 'Age', keys: ['clientAge', 'age'] },
+  { label: 'Weight', keys: ['clientWeight', 'weight'] },
+  { label: 'Height', keys: ['clientHeight', 'height'] },
+  { label: 'Equipment', keys: ['clientEquipment'] },
+  { label: 'Injuries', keys: ['clientLimitations', 'clientInjuries', 'injuries'] },
+];
 
 // ===== HELPER FUNCTIONS =====
 
-/**
- * First letters of the given name, uppercased, max two characters. "?" when the name is missing.
- * @param {string} clientName
- * @returns {string}
- */
 function clientInitials(clientName) {
   return (clientName || UNKNOWN_INITIAL)
     .split(' ')
@@ -53,178 +63,435 @@ function clientInitials(clientName) {
     .substring(0, INITIALS_MAX_CHARS);
 }
 
-/**
- * Card keys callers read: clientName, requestTitle, requestType, message, clientGoals, clientExperienceLevel.
- * Prefer the typed message; otherwise show goals · experience so a blank request still has a preview.
- * @param {object} requestItem
- * @returns {string}
- */
-function requestPreviewText(requestItem) {
-  if (requestItem.message) return requestItem.message;
-  const goals = requestItem.clientGoals || CLIENT_NAME_FALLBACK;
-  const experience = requestItem.clientExperienceLevel || EXPERIENCE_FALLBACK;
-  return `${goals} · ${experience}`;
+/** vocab: snake_case onboarding values → Title Case for display chips */
+function formatDisplayValue(value) {
+  if (value == null || value === '') return '';
+  if (typeof value !== 'string') return String(value);
+  return value
+    .split('_')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
 }
 
-function requestTypeLine(requestItem) {
-  return requestItem.requestTitle || clientRequestTypeLabel(requestItem.requestType);
-}
-
-function inboxPalette(isDark) {
-  if (isDark) {
-    return {
-      screenBackground: '#0a0a1a',
-      textColor: '#ffffff',
-      mutedColor: 'rgba(255,255,255,0.55)',
-      cardBackground: 'rgba(255,255,255,0.06)',
-      nameColor: '#fff',
-      typeColor: '#C084FC',
-      previewColor: 'rgba(255,255,255,0.6)',
-      loadingColor: 'rgba(255,255,255,0.6)',
-      emptyCardBackground: 'rgba(12,12,18,0.96)',
-      emptyCardBorder: 'rgba(255,255,255,0.1)',
-    };
+function firstDefinedField(item, keys) {
+  for (const key of keys) {
+    const raw = item[key];
+    if (raw != null && raw !== '') return raw;
   }
-  return {
-    screenBackground: '#f5f3ff',
-    textColor: '#1a0a2e',
-    mutedColor: 'rgba(26,10,46,0.55)',
-    cardBackground: 'rgba(0,0,0,0.04)',
-    nameColor: '#1e293b',
-    typeColor: '#7c3aed',
-    previewColor: '#64748b',
-    loadingColor: '#64748b',
-    emptyCardBackground: 'rgba(255,255,255,0.98)',
-    emptyCardBorder: 'rgba(15,23,42,0.1)',
-  };
+  return null;
+}
+
+/** Experience · times · place — only segments that exist on the request object (never invented). */
+function requestSubtitleLine(item) {
+  const parts = [];
+  const experience = formatDisplayValue(item.clientExperienceLevel);
+  if (experience) parts.push(experience);
+  const times = firstDefinedField(item, ['clientPreferredTimes', 'preferredTimes', 'trainingTimes']);
+  if (times) parts.push(formatDisplayValue(String(times)));
+  const place = firstDefinedField(item, ['clientTrainingLocation', 'trainingLocation', 'workoutLocation']);
+  if (place) parts.push(formatDisplayValue(String(place)));
+  return parts.length ? parts.join(' · ') : '—';
+}
+
+function buildDetailRows(item) {
+  const rows = [];
+  for (const spec of DETAIL_FIELD_SPECS) {
+    const raw = firstDefinedField(item, spec.keys);
+    if (raw == null || raw === '') continue;
+    let value;
+    if (spec.label === 'Height') {
+      value = formatHeightForKv(raw);
+    } else if (spec.label === 'Weight') {
+      value = formatWeightForKv(raw);
+    } else {
+      value = formatDisplayValue(String(raw));
+    }
+    if (value) rows.push({ label: spec.label, value });
+  }
+  return rows;
+}
+
+/** True when Age, Weight, or Height is still missing on the merged request object. */
+function requestMissingAnyVital(item) {
+  if (!item) return false;
+  for (const label of VITAL_LABELS) {
+    const spec = DETAIL_FIELD_SPECS.find((row) => row.label === label);
+    if (!spec) continue;
+    if (firstDefinedField(item, spec.keys) == null) return true;
+  }
+  return false;
 }
 
 /**
- * One pending-request row. `item.id` is the list key the parent FlatList already uses.
- * @param {object} props
+ * vocab: Firestore Timestamp exposes toDate(); strings and numbers are also accepted.
+ * Manipulate here: max plausible age for birthDate-derived values.
  */
-function RequestCard({ item, palette, onPress }) {
+function ageFromBirthDate(birthDate) {
+  if (birthDate == null || birthDate === '') return null;
+  let dateValue;
+  if (typeof birthDate?.toDate === 'function') dateValue = birthDate.toDate();
+  else if (birthDate instanceof Date) dateValue = birthDate;
+  else if (typeof birthDate === 'number') dateValue = new Date(birthDate);
+  else if (typeof birthDate === 'string') dateValue = new Date(birthDate);
+  else return null;
+  if (Number.isNaN(dateValue.getTime())) return null;
+  const today = new Date();
+  let years = today.getFullYear() - dateValue.getFullYear();
+  const monthDelta = today.getMonth() - dateValue.getMonth();
+  if (monthDelta < 0 || (monthDelta === 0 && today.getDate() < dateValue.getDate())) years -= 1;
+  if (!Number.isFinite(years) || years < 1 || years > 120) return null;
+  return years;
+}
+
+function formatWeightForKv(raw) {
+  if (raw == null || raw === '') return '';
+  if (typeof raw === 'number' && Number.isFinite(raw)) return `${raw} lbs`;
+  const text = String(raw).trim();
+  return text ? formatDisplayValue(text) : '';
+}
+
+/** Map users/{id}.height objects, strings, or inch totals — never invent a value. */
+function formatHeightForKv(raw) {
+  if (raw == null || raw === '') return '';
+  if (typeof raw === 'object' && raw !== null && !Array.isArray(raw) && raw.feet != null) {
+    const inch = Number(raw.inches) || 0;
+    return `${raw.feet}'${inch}"`;
+  }
+  const totalInches = typeof raw === 'number' ? raw : Number(String(raw).replace(/[^0-9.]/g, ''));
+  if (Number.isFinite(totalInches) && totalInches >= 36 && totalInches <= 96) {
+    const total = Math.round(totalInches);
+    return `${Math.floor(total / 12)}'${total % 12}"`;
+  }
+  const text = typeof raw === 'string' ? raw.trim() : '';
+  return text ? formatDisplayValue(text) : '';
+}
+
+/**
+ * Only copy fields that exist on the Firestore user doc — used to enrich the request card.
+ * @param {object} userData
+ * @returns {object}
+ */
+function vitalsOverlayFromUserDoc(userData) {
+  const overlay = {};
+  if (!userData || typeof userData !== 'object') return overlay;
+
+  const ageRaw = userData.age;
+  if (ageRaw != null && ageRaw !== '') overlay.age = ageRaw;
+  else {
+    const derived = ageFromBirthDate(userData.birthDate);
+    if (derived != null) overlay.age = derived;
+  }
+
+  if (userData.weight != null && userData.weight !== '') overlay.weight = userData.weight;
+  if (userData.height != null && userData.height !== '') overlay.height = userData.height;
+  return overlay;
+}
+
+function mergeRequestWithProfileOverlay(item, overlayByUid) {
+  if (!item?.clientUid) return item;
+  const overlay = overlayByUid[item.clientUid];
+  if (!overlay || !Object.keys(overlay).length) return item;
+  return { ...item, ...overlay };
+}
+
+function waitingPillLabel(count) {
+  return `${count} waiting`;
+}
+
+// ===== SUBCOMPONENTS =====
+
+function DesignLawBackButton({ onPress, colors }) {
   return (
-    <TouchableOpacity
-      activeOpacity={0.85}
-      onPress={() => onPress(item)}
-      style={{ marginBottom: 12 }}
+    <HardShadow offset={nb.shadowOffsetSmall} radius={borderRadius.nbIconChip}>
+      <Pressable
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel="Back"
+        style={({ pressed }) => [
+          styles.backSquare,
+          {
+            borderColor: colors.nbBorder,
+            backgroundColor: colors.nbSurface,
+            opacity: pressed ? 0.92 : 1,
+          },
+        ]}
+      >
+        <Ionicons name="chevron-back" size={22} color={colors.nbInk} />
+      </Pressable>
+    </HardShadow>
+  );
+}
+
+function WaitingPill({ count, colors }) {
+  if (count < 1) return null;
+  return (
+    <LinearGradient
+      colors={gradients.brand.colors}
+      start={gradients.brand.start}
+      end={gradients.brand.end}
+      style={[styles.waitingPill, { borderColor: colors.nbBorder }]}
     >
-      <NbCard style={{ padding: 16 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-          <NbAvatar initials={clientInitials(item.clientName)} size={48} />
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ color: palette.nameColor, fontSize: 16, fontWeight: '700', fontFamily: 'SpaceGrotesk_700Bold' }}>
-              {item.clientName}
-            </Text>
-            <Text style={{ color: palette.typeColor, fontSize: 11, fontWeight: '800', fontFamily: 'SpaceGrotesk_700Bold', letterSpacing: 0.6, textTransform: 'uppercase', marginTop: 2 }}>
-              {requestTypeLine(item)}
-            </Text>
-            <Text style={{ color: palette.previewColor, fontSize: 13, fontFamily: 'Inter_400Regular', marginTop: 4 }} numberOfLines={2}>
-              {requestPreviewText(item)}
-            </Text>
-          </View>
-          <Ionicons name="chevron-forward" size={20} color={palette.mutedColor} />
-        </View>
-      </NbCard>
-    </TouchableOpacity>
+      <Text style={[styles.waitingPillText, { color: colors.nbInk }]}>{waitingPillLabel(count)}</Text>
+    </LinearGradient>
   );
 }
 
-function LoadingRequests({ palette }) {
+function RequestsHeader({ colors, requestCount, onBack }) {
   return (
-    <View style={styles.center}>
-      <ActivityIndicator size="large" color="#7c3aed" />
-      <Text style={[styles.loadingText, { color: palette.loadingColor }]}>Loading requests...</Text>
+    <View style={styles.headerRow}>
+      <DesignLawBackButton onPress={onBack} colors={colors} />
+      <Text style={[styles.headerTitle, { color: colors.nbInk }]} numberOfLines={1}>
+        New requests
+      </Text>
+      <WaitingPill count={requestCount} colors={colors} />
     </View>
   );
 }
 
-function RequestsError({ error, palette, onRetry }) {
+function PayoutNudgeCard({ colors, onOpenPayout }) {
+  if (!onOpenPayout) return null;
   return (
-    <View style={styles.center}>
-      <Text style={[styles.errorText, { color: '#ef4444' }]}>{error}</Text>
-      <TouchableOpacity onPress={onRetry} style={styles.retryButton}>
-        <Text style={styles.retryText}>Retry</Text>
-      </TouchableOpacity>
-    </View>
-  );
-}
-
-function EmptyInboxCard({ palette }) {
-  return (
-    <View style={styles.emptyWrap}>
-      <NbCard style={{ padding: 26, alignItems: 'center' }}>
-        <LinearGradient colors={EMPTY_ICON_GRADIENT} style={styles.emptyIconGrad}>
-          <Ionicons name="mail-open-outline" size={30} color="#FFFFFF" />
-        </LinearGradient>
-        <Text style={{ color: palette.mutedColor, fontSize: 10, fontWeight: '800', fontFamily: 'SpaceGrotesk_700Bold', letterSpacing: 1.4, marginBottom: 6, textTransform: 'uppercase' }}>INBOX</Text>
-        <Text style={{ color: palette.textColor, fontSize: 20, fontWeight: '900', fontFamily: 'SpaceGrotesk_700Bold', marginBottom: 10, textAlign: 'center', letterSpacing: -0.35 }}>
-          You are all caught up
+    <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard} style={styles.blockGap}>
+      <NbCard noShadow style={styles.payoutCard}>
+        <Text style={[styles.payoutCopy, { color: colors.nbInk }]} numberOfLines={3}>
+          Complete payout setup to accept clients
         </Text>
-        <Text style={{ color: palette.mutedColor, fontSize: 14, fontFamily: 'Inter_500Medium', textAlign: 'center', lineHeight: 21, maxWidth: 320 }}>
-          Connection requests, workout plan asks, and other client requests from the app show up here — not in Messages. Open a row to acknowledge or accept.
-        </Text>
+        <NbButton variant="fill" sm onPress={onOpenPayout} style={styles.payoutBtn}>
+          Set up
+        </NbButton>
       </NbCard>
-    </View>
+    </HardShadow>
   );
 }
 
-function RequestsListBody({ loading, error, requests, palette, listBottomPad, refresh, onSelectRequest }) {
-  if (loading) return <LoadingRequests palette={palette} />;
-  if (error) return <RequestsError error={error} palette={palette} onRetry={refresh} />;
-  if (requests.length === 0) return <EmptyInboxCard palette={palette} />;
-  return (
-    <FlatList
-      data={requests}
-      renderItem={({ item }) => (
-        <RequestCard item={item} palette={palette} onPress={onSelectRequest} />
-      )}
-      keyExtractor={(item) => item.id}
-      contentContainerStyle={[styles.listContent, { paddingBottom: listBottomPad }]}
-      {...FORM_SCROLL_PROPS}
-    />
-  );
-}
-
-function RequestsScreenChrome({ embedInLayout, palette, screenHeader, children }) {
-  const containerStyle = [styles.container, { backgroundColor: palette.screenBackground }];
-  if (embedInLayout) {
+function DetailKvRows({ rows, colors }) {
+  if (!rows.length) {
     return (
-      <View style={[containerStyle, { flex: 1 }]}>
-        {screenHeader}
-        {children}
-      </View>
+      <Text style={[styles.emptyDetailsHint, { color: colors.nbMuted }]}>
+        No vitals on this request yet — check the message tab.
+      </Text>
     );
   }
   return (
-    <SafeAreaView style={containerStyle} edges={SHELL_SAFE_AREA_EDGES}>
-      {screenHeader}
-      {children}
-    </SafeAreaView>
+    <View>
+      {rows.map((row, index) => (
+        <View
+          key={row.label}
+          style={[
+            styles.kvRow,
+            index < rows.length - 1 && {
+              borderBottomWidth: nb.borderWidthDivider,
+              borderBottomColor: colors.nbBorder,
+            },
+          ]}
+        >
+          <Text style={[styles.kvLabel, { color: colors.nbMuted }]}>{row.label}</Text>
+          <Text style={[styles.kvValue, { color: colors.nbInk }]} numberOfLines={2}>
+            {row.value}
+          </Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function ExpandedRequestCard({
+  item,
+  colors,
+  segment,
+  onSegmentChange,
+  onReject,
+  onAccept,
+}) {
+  const detailRows = useMemo(() => buildDetailRows(item), [item]);
+  const goalLabel = formatDisplayValue(item.clientGoals);
+
+  return (
+    <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard} style={styles.blockGap}>
+      <NbCard noShadow style={styles.expandedCard}>
+        <View style={styles.expandedHead}>
+          <NbAvatar initials={clientInitials(item.clientName)} size={48} />
+          <View style={styles.expandedHeadText}>
+            <Text style={[styles.requestName, { color: colors.nbInk }]} numberOfLines={1}>
+              {item.clientName}
+            </Text>
+            <Text style={[styles.requestSubtitle, { color: colors.nbMuted }]} numberOfLines={2}>
+              {requestSubtitleLine(item)}
+            </Text>
+          </View>
+          {goalLabel ? (
+            <LinearGradient
+              colors={gradients.brand.colors}
+              start={gradients.brand.start}
+              end={gradients.brand.end}
+              style={[styles.goalPill, { borderColor: colors.nbBorder }]}
+            >
+              <Text style={[styles.goalPillText, { color: colors.nbInk }]} numberOfLines={1}>
+                {goalLabel}
+              </Text>
+            </LinearGradient>
+          ) : null}
+        </View>
+
+        <NbSegmented
+          segments={SEGMENT_ITEMS}
+          selected={segment}
+          onSelect={onSegmentChange}
+          style={styles.segmented}
+        />
+
+        {segment === SEGMENT_DETAILS ? (
+          <DetailKvRows rows={detailRows} colors={colors} />
+        ) : (
+          <View
+            style={[
+              styles.messageNote,
+              { borderColor: colors.nbBorder, backgroundColor: colors.nbSurfaceChip },
+            ]}
+          >
+            <Text style={[styles.messageBody, { color: colors.nbInk }]}>
+              {item.message?.trim() ? item.message : 'No message provided.'}
+            </Text>
+          </View>
+        )}
+
+        <View style={styles.actionRow}>
+          <NbButton variant="ghost" onPress={onReject} style={styles.actionReject}>
+            Reject
+          </NbButton>
+          <NbButton variant="fill" onPress={onAccept} style={styles.actionAccept}>
+            Accept client
+          </NbButton>
+        </View>
+      </NbCard>
+    </HardShadow>
+  );
+}
+
+function CollapsedRequestCard({ item, colors, onPress }) {
+  return (
+    <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard} style={styles.blockGap}>
+      <Pressable
+        onPress={onPress}
+        accessibilityRole="button"
+        style={({ pressed }) => [{ opacity: pressed ? 0.9 : 1 }]}
+      >
+        <NbCard noShadow style={styles.collapsedCard}>
+          <NbAvatar initials={clientInitials(item.clientName)} size={44} />
+          <View style={styles.collapsedText}>
+            <Text style={[styles.requestName, { color: colors.nbInk }]} numberOfLines={1}>
+              {item.clientName}
+            </Text>
+            <Text style={[styles.requestSubtitle, { color: colors.nbMuted }]} numberOfLines={2}>
+              {requestSubtitleLine(item)}
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.nbInk} />
+        </NbCard>
+      </Pressable>
+    </HardShadow>
+  );
+}
+
+function LoadingRequests({ colors }) {
+  return (
+    <View style={styles.center}>
+      <ActivityIndicator size="large" color={colors.nbInk} />
+      <Text style={[styles.loadingText, { color: colors.nbMuted }]}>Loading requests…</Text>
+    </View>
+  );
+}
+
+function RequestsError({ error, colors, onRetry }) {
+  return (
+    <View style={styles.center}>
+      <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>
+      <NbButton variant="fill" onPress={onRetry}>
+        Retry
+      </NbButton>
+    </View>
+  );
+}
+
+function EmptyInboxCard({ colors }) {
+  return (
+    <View style={styles.emptyWrap}>
+      <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard}>
+        <NbCard noShadow style={styles.emptyCard}>
+          <Text style={[styles.emptyTitle, { color: colors.nbInk }]}>You are all caught up</Text>
+          <Text style={[styles.emptySub, { color: colors.nbMuted }]}>
+            Connection requests and other client asks show up here — not in Messages. New requests also surface on
+            trainer home.
+          </Text>
+        </NbCard>
+      </HardShadow>
+    </View>
   );
 }
 
 // ===== MAIN FUNCTION =====
 
 /**
- * Trainer pending-request inbox. Accept/reject lives in TrainerListingPopup.
+ * Trainer pending-request inbox (Design Law). Accept/reject logic stays in TrainerListingPopup.
  * @param {object} props
+ * @param {Function} [props.onOpenPayout] — when set, show payout nudge card (parent decides if payout incomplete)
  */
 export default function NewTraineeRequestsScreen({
   onClose,
-  onProfilePress,
-  onSettingsPress,
   onClientAdded,
   embedInLayout,
+  onOpenPayout,
 }) {
-  const { isDark } = useTheme();
+  const { colors } = useTheme();
   const listBottomPad = useShellBottomNavInset(LIST_BOTTOM_INSET);
   const trainerUid = auth.currentUser?.uid;
   const { requests, loading, error, refresh } = pendingRequestCount(trainerUid);
   const [selectedRequest, setSelectedRequest] = useState(null);
+  const [expandedId, setExpandedId] = useState(null);
+  const [segmentByRequestId, setSegmentByRequestId] = useState({});
+  /** Cached vitals from users/{clientUid} — only keys that exist on the profile doc. */
+  const [vitalsByClientUid, setVitalsByClientUid] = useState({});
+  const vitalsFetchStartedRef = useRef(new Set());
 
-  const palette = inboxPalette(isDark);
+  useEffect(() => {
+    if (!requests.length) {
+      setExpandedId(null);
+      return;
+    }
+    setExpandedId((prev) => (prev && requests.some((r) => r.id === prev) ? prev : requests[0].id));
+  }, [requests]);
+
+  // When the expanded request lacks vitals, one-shot read users/{clientUid} (loadPendingTraineeRequests.clientUid).
+  useEffect(() => {
+    if (!expandedId || !db) return undefined;
+    const item = requests.find((row) => row.id === expandedId);
+    if (!item?.clientUid) return undefined;
+
+    const merged = mergeRequestWithProfileOverlay(item, vitalsByClientUid);
+    if (!requestMissingAnyVital(merged)) return undefined;
+    if (vitalsFetchStartedRef.current.has(item.clientUid)) return undefined;
+
+    vitalsFetchStartedRef.current.add(item.clientUid);
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const snap = await getDoc(doc(db, 'users', item.clientUid));
+        if (cancelled) return;
+        if (!snap.exists()) return;
+        const overlay = vitalsOverlayFromUserDoc(snap.data());
+        if (!Object.keys(overlay).length) return;
+        setVitalsByClientUid((prev) => ({ ...prev, [item.clientUid]: overlay }));
+      } catch (fetchError) {
+        vitalsFetchStartedRef.current.delete(item.clientUid);
+        if (__DEV__) console.warn('NewTraineeRequestsScreen vitals fetch:', fetchError?.message || fetchError);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [expandedId, requests, vitalsByClientUid]);
 
   const syncListWithParent = useCallback(async () => {
     setSelectedRequest(null);
@@ -236,28 +503,64 @@ export default function NewTraineeRequestsScreen({
     await syncListWithParent();
   };
 
-  const screenHeader = (
-    <TopHeader
-      title="Client Requests"
-      isDark={isDark}
-      skipTopSafeInset
-      onBack={onClose}
-      onProfilePress={onProfilePress}
-      onSettingsPress={onSettingsPress}
-    />
+  const getSegment = useCallback(
+    (requestId) => segmentByRequestId[requestId] || SEGMENT_DETAILS,
+    [segmentByRequestId],
   );
 
-  return (
-    <RequestsScreenChrome embedInLayout={embedInLayout} palette={palette} screenHeader={screenHeader}>
-      <RequestsListBody
-        loading={loading}
-        error={error}
-        requests={requests}
-        palette={palette}
-        listBottomPad={listBottomPad}
-        refresh={refresh}
-        onSelectRequest={setSelectedRequest}
-      />
+  const setSegmentFor = useCallback((requestId, segment) => {
+    setSegmentByRequestId((prev) => ({ ...prev, [requestId]: segment }));
+  }, []);
+
+  const openListingPopup = useCallback((request) => {
+    setSelectedRequest(request);
+  }, []);
+
+  const shellStyle = [styles.container, { backgroundColor: colors.nbBackground }];
+
+  const body = (
+    <>
+      <RequestsHeader colors={colors} requestCount={requests.length} onBack={onClose} />
+      {loading ? (
+        <LoadingRequests colors={colors} />
+      ) : error ? (
+        <RequestsError error={error} colors={colors} onRetry={refresh} />
+      ) : requests.length === 0 ? (
+        <EmptyInboxCard colors={colors} />
+      ) : (
+        <ScrollView
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: listBottomPad }]}
+          showsVerticalScrollIndicator={false}
+          {...FORM_SCROLL_PROPS}
+        >
+          <PayoutNudgeCard colors={colors} onOpenPayout={onOpenPayout} />
+          {requests.map((item) => {
+            const isExpanded = item.id === expandedId;
+            const displayItem = mergeRequestWithProfileOverlay(item, vitalsByClientUid);
+            if (isExpanded) {
+              return (
+                <ExpandedRequestCard
+                  key={item.id}
+                  item={displayItem}
+                  colors={colors}
+                  segment={getSegment(item.id)}
+                  onSegmentChange={(seg) => setSegmentFor(item.id, seg)}
+                  onReject={() => openListingPopup(item)}
+                  onAccept={() => openListingPopup(item)}
+                />
+              );
+            }
+            return (
+              <CollapsedRequestCard
+                key={item.id}
+                item={displayItem}
+                colors={colors}
+                onPress={() => setExpandedId(item.id)}
+              />
+            );
+          })}
+        </ScrollView>
+      )}
       <TrainerListingPopup
         visible={!!selectedRequest}
         clientRequest={selectedRequest}
@@ -266,90 +569,215 @@ export default function NewTraineeRequestsScreen({
         onClientAdded={handleClientAdded}
         onRequestRejected={syncListWithParent}
       />
-    </RequestsScreenChrome>
+    </>
+  );
+
+  if (embedInLayout) {
+    return <View style={[shellStyle, { flex: 1 }]}>{body}</View>;
+  }
+
+  return (
+    <SafeAreaView style={shellStyle} edges={SHELL_SAFE_AREA_EDGES}>
+      {body}
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { paddingHorizontal: 16, paddingVertical: 12 },
-  backButton: { padding: 8 },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#fff',
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: nb.screenGutter,
+    paddingTop: 8,
+    paddingBottom: nb.blockGap,
   },
-  backCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+  backSquare: {
+    width: nb.minTouchTarget,
+    height: nb.minTouchTarget,
+    borderRadius: borderRadius.nbIconChip,
+    borderWidth: nb.borderWidth,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  spacer: {
-    width: 36,
+  headerTitle: {
+    flex: 1,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 28,
+    fontWeight: '700',
+    letterSpacing: -0.4,
   },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
-  loadingText: { marginTop: 12, fontSize: 14 },
-  errorText: { fontSize: 14, textAlign: 'center', marginBottom: 16 },
-  retryButton: { paddingHorizontal: 24, paddingVertical: 12, backgroundColor: '#7c3aed', borderRadius: 12 },
-  retryText: { color: '#fff', fontWeight: '600' },
-  emptyWrap: {
+  waitingPill: {
+    borderWidth: nb.borderWidthPill,
+    borderRadius: borderRadius.round,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    minHeight: 32,
+    justifyContent: 'center',
+  },
+  waitingPillText: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  scrollContent: {
+    paddingHorizontal: nb.screenGutter,
+  },
+  blockGap: {
+    marginBottom: nb.blockGap,
+  },
+  payoutCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: nb.cardPadding,
+  },
+  payoutCopy: {
+    flex: 1,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 15,
+    fontWeight: '700',
+    lineHeight: 20,
+  },
+  payoutBtn: {
+    flexShrink: 0,
+  },
+  expandedCard: {
+    padding: nb.cardPadding,
+    gap: 12,
+  },
+  expandedHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  expandedHeadText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  goalPill: {
+    maxWidth: 132,
+    borderWidth: nb.borderWidthPill,
+    borderRadius: borderRadius.round,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  goalPillText: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  requestName: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 17,
+    fontWeight: '700',
+  },
+  requestSubtitle: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 13,
+    marginTop: 2,
+    lineHeight: 18,
+  },
+  segmented: {
+    marginTop: 4,
+  },
+  kvRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: nb.minTouchTarget,
+    paddingVertical: 8,
+    gap: 12,
+  },
+  kvLabel: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 14,
+  },
+  kvValue: {
+    flex: 1,
+    textAlign: 'right',
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  emptyDetailsHint: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 14,
+    lineHeight: 20,
+    paddingVertical: 8,
+  },
+  messageNote: {
+    borderWidth: nb.borderWidth,
+    borderRadius: borderRadius.nbChip,
+    padding: 12,
+    minHeight: 72,
+  },
+  messageBody: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 4,
+  },
+  actionReject: {
+    flex: 1,
+  },
+  actionAccept: {
+    flex: 1.4,
+  },
+  collapsedCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    minHeight: 64,
+  },
+  collapsedText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  center: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 24,
+    padding: nb.screenGutter,
+    gap: 12,
   },
-  emptyCardShell: {
-    width: '100%',
-    maxWidth: 400,
-    borderRadius: 20,
-    overflow: 'hidden',
-    borderWidth: 1,
+  loadingText: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 14,
   },
-  emptyTopAccent: {
-    height: 4,
-    width: '100%',
+  errorText: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 8,
   },
-  emptyInner: {
-    paddingHorizontal: 22,
-    paddingVertical: 26,
-    alignItems: 'center',
-    borderTopWidth: 0,
-  },
-  emptyIconGrad: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    alignItems: 'center',
+  emptyWrap: {
+    flex: 1,
     justifyContent: 'center',
-    marginBottom: 16,
+    paddingHorizontal: nb.screenGutter,
   },
-  emptyKicker: {
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 1.4,
-    marginBottom: 6,
-  },
-  emptyTitle: { fontSize: 20, fontWeight: '900', marginBottom: 10, textAlign: 'center', letterSpacing: -0.35 },
-  emptySubtext: { fontSize: 14, fontWeight: '500', textAlign: 'center', lineHeight: 21, maxWidth: 320 },
-  listContent: { padding: 16 },
-  requestCard: {
-    flexDirection: 'row',
+  emptyCard: {
+    padding: 24,
     alignItems: 'center',
-    padding: 16,
-    borderRadius: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
   },
-  avatar: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
-  avatarText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
-  requestContent: { flex: 1, marginLeft: 12, minWidth: 0 },
-  requestName: { fontSize: 16, fontWeight: '600', marginBottom: 2 },
-  requestType: { fontSize: 11, fontWeight: '800', letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 4 },
-  requestPreview: { fontSize: 13 },
-  chevron: { fontSize: 20, color: 'rgba(255,255,255,0.5)', marginLeft: 8 },
+  emptyTitle: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 20,
+    fontWeight: '800',
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+  emptySub: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 21,
+  },
 });

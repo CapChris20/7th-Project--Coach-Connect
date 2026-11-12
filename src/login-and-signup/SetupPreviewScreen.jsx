@@ -9,7 +9,7 @@ import { TRAINER_PLATFORM_SUBSCRIPTION_ENABLED } from '../trainer-pro-plan/proPl
 import { ProPlanSetup } from '../trainer-pro-plan/ProPlanSetup';
 import NewUserSetupScreen from './NewUserSetupScreen';
 import { useTheme } from '../look-and-feel/lightDarkMode';
-import { nb, gradients } from '../look-and-feel/colorPalette';
+import { nb, gradients, lightColors } from '../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
@@ -121,7 +121,7 @@ export default function SetupPreviewScreen({ onClose }) {
               <Text style={[
                 styles.stepChipText,
                 { color: colors.nbMuted },
-                step === stepNumber && { color: '#FFFFFF' }
+                step === stepNumber && { color: lightColors.white }
               ]}>
                 {stepNumber}
               </Text>
@@ -166,7 +166,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   closeBtn: {
-    color: '#FF6B9D',
+    color: lightColors.primary,
     fontSize: 15,
     fontWeight: '700',
   },

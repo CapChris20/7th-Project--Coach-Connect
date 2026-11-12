@@ -4,6 +4,7 @@
 
 import { pickBestTips } from './pickBestTips';
 import { writeTrainerTips } from './writeTrainerTips';
+import { lightColors } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
@@ -295,7 +296,7 @@ function buildOverviewHighlights(stats, days, report) {
       icon: 'checkmark-circle',
       label: 'Check-ins',
       value: `${stats.checkInDays}/${DAYS_IN_WEEK}`,
-      gradient: ['#BE185D', '#C2410C'],
+      gradient: [lightColors.primaryDark, '#C2410C'],
     },
   ];
 
@@ -320,7 +321,7 @@ function buildOverviewHighlights(stats, days, report) {
       icon: 'moon',
       label: sleepLabel,
       value: sleepValue,
-      gradient: ['#6D28D9', '#4C1D95'],
+      gradient: ['#BE185D', '#4C1D95'],
     });
   }
 
@@ -340,7 +341,7 @@ function buildOverviewHighlights(stats, days, report) {
       icon: 'flash',
       label: 'Avg energy',
       value: `${round1(avgEnergy)}/${ENERGY_SCALE_MAX}`,
-      gradient: ['#DB2777', '#BE185D'],
+      gradient: ['#DB2777', lightColors.primaryDark],
     });
   }
 

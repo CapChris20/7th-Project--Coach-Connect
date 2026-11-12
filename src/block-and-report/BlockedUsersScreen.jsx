@@ -6,7 +6,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  FlatList,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -16,16 +16,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { getAuth } from 'firebase/auth';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../look-and-feel/lightDarkMode';
-import TopHeader from '../for-both/loading-and-header/TopHeader';
+import NbPageHeader from '../look-and-feel/NbPageHeader';
+import NbCard from '../look-and-feel/NbCard';
 import { SHELL_SAFE_AREA_EDGES } from '../navigation/bottomMenuSpacing';
 import { listMyBlocks, unblockUser } from './blockUser';
+import { nb, spacing } from '../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
-const ACCENT = '#BE185D';
 const EMPTY_ICON_SIZE = 36;
-const EMPTY_ICON_DARK = 'rgba(255,255,255,0.35)';
-const EMPTY_ICON_LIGHT = 'rgba(10,10,15,0.35)';
 
 // ===== HELPER FUNCTIONS =====
 
@@ -44,13 +43,13 @@ function BlockedUserRow({ item, colors, busyId, onUnblock }) {
   const showsStoredId = Boolean(item.displayName);
 
   return (
-    <View style={[styles.row, { backgroundColor: colors.surface }]}>
+    <View style={styles.row}>
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={[styles.name, { color: colors.text }]} numberOfLines={1}>
+        <Text style={[styles.name, { color: colors.nbInk }]} numberOfLines={1}>
           {label}
         </Text>
         {showsStoredId ? (
-          <Text style={[styles.sub, { color: colors.textSecondary }]} numberOfLines={1}>
+          <Text style={[styles.sub, { color: colors.nbMuted }]} numberOfLines={1}>
             {item.blockedUid || item.id}
           </Text>
         ) : null}
@@ -58,67 +57,71 @@ function BlockedUserRow({ item, colors, busyId, onUnblock }) {
       <TouchableOpacity
         onPress={() => onUnblock(item.id, item.displayName)}
         disabled={isUnblocking}
-        style={styles.unblockBtn}
+        style={[
+          styles.unblockBtn,
+          {
+            borderColor: colors.nbBorder,
+            backgroundColor: colors.nbSurface,
+            shadowColor: colors.nbShadow,
+          },
+        ]}
         accessibilityRole="button"
         accessibilityLabel={`Unblock ${label}`}
+        activeOpacity={0.85}
       >
         {isUnblocking ? (
-          <ActivityIndicator size="small" color={ACCENT} />
+          <ActivityIndicator size="small" color={colors.nbInk} />
         ) : (
-          <Text style={styles.unblockText}>Unblock</Text>
+          <Text style={[styles.unblockText, { color: colors.nbInk }]}>Unblock</Text>
         )}
       </TouchableOpacity>
     </View>
   );
 }
 
-function BlockedUsersBody({ colors, isDark, isLoading, rows, busyId, onUnblock }) {
+function BlockedUsersBody({ colors, isLoading, rows, busyId, onUnblock }) {
   if (isLoading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator color={ACCENT} />
+        <ActivityIndicator color={colors.nbInk} />
       </View>
     );
   }
 
   if (rows.length === 0) {
-    const emptyIconColor = isDark ? EMPTY_ICON_DARK : EMPTY_ICON_LIGHT;
     return (
       <View style={styles.center}>
-        <Ionicons name="shield-checkmark-outline" size={EMPTY_ICON_SIZE} color={emptyIconColor} />
-        <Text style={[styles.empty, { color: colors.textSecondary }]}>
-          No blocked users. When you block someone from chat or a trainer profile, they show up
-          here.
+        <Ionicons name="shield-checkmark-outline" size={EMPTY_ICON_SIZE} color={colors.nbMuted} />
+        <Text style={[styles.empty, { color: colors.nbMuted }]}>
+          No blocked users. When you block someone from chat or a trainer profile, they show up here.
         </Text>
       </View>
     );
   }
 
   return (
-    <FlatList
-      data={rows}
-      keyExtractor={(item) => item.id}
-      contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
-      ItemSeparatorComponent={() => (
-        <View style={[styles.sep, { backgroundColor: colors.border }]} />
-      )}
-      renderItem={({ item }) => (
-        <BlockedUserRow item={item} colors={colors} busyId={busyId} onUnblock={onUnblock} />
-      )}
-    />
+    <ScrollView contentContainerStyle={styles.listPad} showsVerticalScrollIndicator={false}>
+      <NbCard style={styles.listCard}>
+        {rows.map((item, index) => (
+          <View key={item.id}>
+            {index > 0 ? <View style={[styles.sep, { backgroundColor: colors.nbBorder }]} /> : null}
+            <BlockedUserRow item={item} colors={colors} busyId={busyId} onUnblock={onUnblock} />
+          </View>
+        ))}
+      </NbCard>
+    </ScrollView>
   );
 }
 
-function BlockedUsersLayout({ colors, isDark, isLoading, rows, busyId, onClose, onUnblock }) {
+function BlockedUsersLayout({ colors, isLoading, rows, busyId, onClose, onUnblock }) {
   return (
     <SafeAreaView
-      style={[styles.root, { backgroundColor: colors.background }]}
+      style={[styles.root, { backgroundColor: colors.nbBackground }]}
       edges={SHELL_SAFE_AREA_EDGES}
     >
-      <TopHeader title="Blocked users" skipTopSafeInset onBack={onClose} />
+      <NbPageHeader title="Blocked users" onBack={onClose} />
       <BlockedUsersBody
         colors={colors}
-        isDark={isDark}
         isLoading={isLoading}
         rows={rows}
         busyId={busyId}
@@ -135,7 +138,7 @@ function BlockedUsersLayout({ colors, isDark, isLoading, rows, busyId, onClose, 
  * @param {{ onClose: Function }} props
  */
 export default function BlockedUsersScreen({ onClose }) {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   const uid = getAuth()?.currentUser?.uid || null;
   const [rows, setRows] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -187,7 +190,6 @@ export default function BlockedUsersScreen({ onClose }) {
   return (
     <BlockedUsersLayout
       colors={colors}
-      isDark={isDark}
       isLoading={isLoading}
       rows={rows}
       busyId={busyId}
@@ -199,6 +201,8 @@ export default function BlockedUsersScreen({ onClose }) {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  listPad: { paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: 40 },
+  listCard: { paddingVertical: spacing.xs, paddingHorizontal: 0 },
   center: {
     flex: 1,
     alignItems: 'center',
@@ -206,26 +210,37 @@ const styles = StyleSheet.create({
     paddingHorizontal: 28,
     gap: 12,
   },
-  empty: { fontSize: 14, lineHeight: 20, textAlign: 'center' },
+  empty: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
+  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 14,
-    paddingHorizontal: 14,
-    borderRadius: 12,
+    paddingHorizontal: spacing.md,
     gap: 12,
+    minHeight: nb.minTouchTarget,
   },
-  name: { fontSize: 16, fontWeight: '700' },
-  sub: { fontSize: 12, marginTop: 2 },
+  name: { fontFamily: 'SpaceGrotesk_700Bold', fontSize: 16 },
+  sub: { fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 2 },
+  // Manipulate here: Unblock chip border / hard shadow
   unblockBtn: {
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 8,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(190,24,93,0.45)',
+    borderRadius: 12,
+    borderWidth: nb.borderWidth,
     minWidth: 84,
+    minHeight: 40,
     alignItems: 'center',
+    justifyContent: 'center',
+    shadowOffset: { width: nb.shadowOffsetSmall, height: nb.shadowOffsetSmall },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 3,
   },
-  unblockText: { color: '#BE185D', fontWeight: '700', fontSize: 13 },
-  sep: { height: StyleSheet.hairlineWidth, marginVertical: 8 },
+  unblockText: { fontFamily: 'SpaceGrotesk_700Bold', fontSize: 13 },
+  sep: { height: nb.borderWidthDivider, marginHorizontal: spacing.md },
 });

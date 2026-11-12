@@ -14,14 +14,14 @@ import {
   Animated,
   PanResponder,
 } from 'react-native';
+import { nb, borderRadius, spacing } from '../../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
 const PAN_CAPTURE_SLOP_DY = 4;
 const DISMISS_DRAG_THRESHOLD_DY = 80;
-const DEFAULT_SHEET_BACKGROUND = '#fff';
-const DEFAULT_HANDLE_COLOR = '#ccc';
-const ITEM_MIN_HEIGHT = 44;
+const SHEET_SCRIM_OPACITY = 0.5;
+const ITEM_MIN_HEIGHT = nb.minTouchTarget;
 const ITEM_ACTIVE_OPACITY = 0.7;
 
 // ===== HELPER FUNCTIONS =====
@@ -74,37 +74,41 @@ export default function SlideUpMenu({ visible, onClose, title, children, theme }
 
   if (!visible) return null;
 
+  const sheetBg = theme?.headerBg;
+  const sheetBorder = theme?.border;
+  const handleColor = theme?.border;
+
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        <View style={styles.backdropInner} />
-      </Pressable>
-      <Animated.View
-        {...panResponder.panHandlers}
-        style={[
-          styles.sheet,
-          {
-            backgroundColor: theme?.headerBg || DEFAULT_SHEET_BACKGROUND,
-            borderTopColor: theme?.border,
-            transform: [{ translateY: dragOffset }],
-          },
-        ]}
-      >
-        <View style={styles.handleRow}>
-          <View style={[styles.handle, { backgroundColor: theme?.divider || DEFAULT_HANDLE_COLOR }]} />
-        </View>
-        {title ? (
-          <Text style={[styles.title, { color: theme?.text }]}>{title}</Text>
-        ) : null}
-        <ScrollView
-          style={styles.scroll}
-          contentContainerStyle={styles.scrollContent}
-          bounces={false}
-          showsVerticalScrollIndicator={false}
+      <View style={styles.overlay}>
+        <Pressable style={styles.backdrop} onPress={onClose} accessibilityRole="button" />
+        <Animated.View
+          {...panResponder.panHandlers}
+          style={[
+            styles.sheet,
+            {
+              backgroundColor: sheetBg,
+              borderColor: sheetBorder,
+              transform: [{ translateY: dragOffset }],
+            },
+          ]}
         >
-          {children}
-        </ScrollView>
-      </Animated.View>
+          <View style={styles.handleRow}>
+            <View style={[styles.handle, { backgroundColor: handleColor }]} />
+          </View>
+          {title ? (
+            <Text style={[styles.title, { color: theme?.text }]}>{title}</Text>
+          ) : null}
+          <ScrollView
+            style={styles.scroll}
+            contentContainerStyle={styles.scrollContent}
+            bounces={false}
+            showsVerticalScrollIndicator={false}
+          >
+            {children}
+          </ScrollView>
+        </Animated.View>
+      </View>
     </Modal>
   );
 }
@@ -118,9 +122,21 @@ export function SheetMenuItem({ icon, label, shortcut, onPress, theme }) {
     <TouchableOpacity
       onPress={onPress}
       activeOpacity={ITEM_ACTIVE_OPACITY}
-      style={[styles.item, { minHeight: ITEM_MIN_HEIGHT }]}
+      style={[styles.item, { minHeight: ITEM_MIN_HEIGHT, borderBottomColor: theme?.divider }]}
     >
-      {icon ? <View style={[styles.iconWrap, { backgroundColor: theme?.inputBg }]}>{icon}</View> : null}
+      {icon ? (
+        <View
+          style={[
+            styles.iconWrap,
+            {
+              backgroundColor: theme?.headerBg,
+              borderColor: theme?.border,
+            },
+          ]}
+        >
+          {icon}
+        </View>
+      ) : null}
       <Text style={[styles.itemLabel, { color: theme?.text, flex: 1 }]}>{label}</Text>
       {shortcut ? <Text style={[styles.shortcut, { color: theme?.textMuted }]}>{shortcut}</Text> : null}
     </TouchableOpacity>
@@ -128,37 +144,51 @@ export function SheetMenuItem({ icon, label, shortcut, onPress, theme }) {
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
+  overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: `rgba(0,0,0,${SHEET_SCRIM_OPACITY})`,
     justifyContent: 'flex-end',
   },
-  backdropInner: { flex: 1 },
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
   sheet: {
     maxHeight: '80%',
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopWidth: nb.borderWidth,
+    borderLeftWidth: nb.borderWidth,
+    borderRightWidth: nb.borderWidth,
+    borderTopLeftRadius: borderRadius.nbSheet,
+    borderTopRightRadius: borderRadius.nbSheet,
+    paddingBottom: spacing.lg,
   },
-  handleRow: { alignItems: 'center', paddingTop: 10 },
-  handle: { width: 40, height: 5, borderRadius: 3 },
-  title: { fontSize: 15, fontWeight: '700', paddingHorizontal: 20, paddingTop: 12, paddingBottom: 8 },
+  handleRow: { alignItems: 'center', paddingTop: spacing.sm + 4, paddingBottom: spacing.sm },
+  handle: { width: 40, height: 4, borderRadius: 2 },
+  title: {
+    fontSize: 20,
+    fontWeight: '900',
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.md,
+    textAlign: 'center',
+  },
   scroll: { maxHeight: 480 },
-  scrollContent: { paddingBottom: 28 },
+  scrollContent: { paddingBottom: spacing.lg + 4 },
   item: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
-    paddingHorizontal: 20,
+    paddingHorizontal: spacing.lg,
     paddingVertical: 12,
+    borderBottomWidth: nb.borderWidthDivider,
   },
   iconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
+    width: nb.minTouchTarget,
+    height: nb.minTouchTarget,
+    borderRadius: borderRadius.nbIconChip,
+    borderWidth: nb.borderWidth,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  itemLabel: { fontSize: 15 },
-  shortcut: { fontSize: 12 },
+  itemLabel: { fontSize: 15, fontWeight: '600' },
+  shortcut: { fontSize: 12, fontWeight: '600' },
 });

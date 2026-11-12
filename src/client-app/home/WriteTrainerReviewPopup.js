@@ -24,6 +24,7 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 import { db } from '../../app-start/cloudConnection';
+import { lightColors, darkColors } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
@@ -186,7 +187,7 @@ function SubmitReviewButton({ submitting, submitLabel, rating, onPress }) {
         width: '100%',
         height: 50,
         borderRadius: 12,
-        backgroundColor: '#FF6B9D',
+        backgroundColor: lightColors.primary,
         alignItems: 'center',
         justifyContent: 'center',
         marginTop: 20,
@@ -270,9 +271,9 @@ function WriteTrainerReviewSheet({
             numberOfLines={5}
             maxLength={MAX_REVIEW_CHARS}
             style={{
-              backgroundColor: 'rgba(255,255,255,0.05)',
+              backgroundColor: darkColors.nbSurfaceChip,
               borderWidth: 1,
-              borderColor: 'rgba(255,255,255,0.1)',
+              borderColor: darkColors.nbBorder,
               borderRadius: 10,
               padding: 14,
               fontSize: 14,

@@ -7,18 +7,19 @@ import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
-import { NbCard } from '../../look-and-feel/NbCard';
-import { NbButton } from '../../look-and-feel/NbButton';
+import NbCard from '../../look-and-feel/NbCard';
+import NbButton from '../../look-and-feel/NbButton';
+import { lightColors } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
 /** Dark purple → dark orange (matches Today card & Training Agenda). */
-const BORDER_GRADIENT = ['#6D28D9', '#C2410C'];
+const BORDER_GRADIENT = ['#BE185D', '#C2410C'];
 const CTA_GRADIENT = BORDER_GRADIENT;
 const BG_GRADIENT_DARK = ['#12081f', '#08050f'];
-const BG_GRADIENT_LIGHT = ['#F3F0FA', '#FFFFFF'];
+const BG_GRADIENT_LIGHT = ['#F3F0FA', lightColors.white];
 const ACCENT_ORANGE = '#C2410C';
-const ACCENT_PURPLE = '#9333EA';
+const ACCENT_PURPLE = '#BE185D';
 const DEFAULT_ICON = 'flash-outline';
 const DEFAULT_CTA_LABEL = 'View all';
 const DEFAULT_WIDTH = 216;
@@ -37,11 +38,11 @@ const GRADIENT_RIGHT = { x: 1, y: 0 };
  */
 function quickActionColors(isDark) {
   return {
-    innerBackground: isDark ? '#0A0812' : '#FFFFFF',
-    headlineColor: isDark ? '#FFFFFF' : '#0A0A0F',
+    innerBackground: isDark ? '#0A0812' : lightColors.white,
+    headlineColor: isDark ? lightColors.white : lightColors.nbInk,
     subColor: isDark ? 'rgba(255,255,255,0.62)' : 'rgba(10,10,15,0.52)',
     iconInnerBackground: isDark ? 'rgba(14,12,22,0.98)' : 'rgba(255,255,255,0.98)',
-    iconColor: isDark ? '#FED7AA' : '#6D28D9',
+    iconColor: isDark ? '#FED7AA' : '#BE185D',
     backgroundGradient: isDark ? BG_GRADIENT_DARK : BG_GRADIENT_LIGHT,
     hairline: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(10,10,15,0.10)',
   };
@@ -110,7 +111,7 @@ export default function QuickActionCard({
 
           <View style={styles.iconWrap}>
             <View style={[styles.iconRing, { borderColor: colors.nbBorder, backgroundColor: colors.nbSurfaceChip }]}>
-              <Ionicons name={icon} size={26} color={COLORS.pink} />
+              <Ionicons name={icon} size={26} color={colors.nbInk} />
             </View>
           </View>
 
@@ -122,7 +123,7 @@ export default function QuickActionCard({
           </Text>
 
           <View style={styles.ctaWrap}>
-            <NbButton variant="brand" size="sm" onPress={onPress}>
+            <NbButton variant="brand" sm onPress={onPress}>
               {ctaLabel}
             </NbButton>
           </View>

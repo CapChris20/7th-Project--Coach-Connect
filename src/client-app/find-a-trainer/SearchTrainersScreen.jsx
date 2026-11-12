@@ -1,9 +1,11 @@
 // Find-a-Trainer marketplace: page trainers from Firestore, filter them, then request a connection.
 // Flow: load a page → enrich photos/names from users → browse / profile → confirm → optional intro → send.
-// Used by the client shell. Filters and paging stay here; BrowseTrainersScreen only paints the list.
+// Used by the client shell. Filters and paging stay here; BrowseTrainersScreen paints the list chrome.
+//
+// vocab: SHELL_SAFE_AREA_EDGES = left/right only — Browse/Profile headers own the status-bar inset
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { View, StyleSheet, Alert } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   collection,
@@ -19,7 +21,6 @@ import {
 } from 'firebase/firestore';
 import { db, storage } from '../../app-start/cloudConnection';
 import { trainerPhotoUri, resolveTrainerPhotoWithStorageFallback } from '../../helpers/trainerProfilePhoto';
-import TopHeader from '../../for-both/loading-and-header/TopHeader';
 import BottomMenuBar from '../../navigation/BottomMenuBar';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
 import ConfirmRequestPopup from './ConfirmRequestPopup';
@@ -27,13 +28,11 @@ import RequestIntroPopup from './RequestIntroPopup';
 import BrowseTrainersScreen from './BrowseTrainersScreen';
 import FilterPopup from './FilterPopup';
 import { TrainerProfileSheet } from './TrainerProfilePopup';
-import { showTrainerRequestSentAlert } from './sendConnectionRequest';
 import { useShellBottomNavInset, SHELL_SAFE_AREA_EDGES, ShellBottomNavAnchor } from '../../navigation/bottomMenuSpacing';
 import {
   DEFAULT_FILTERS,
   filterTrainers,
   normalizeTrainer,
-  getTheme,
 } from './trainerFilters';
 
 // ===== NAMED CONSTANTS =====
@@ -201,6 +200,8 @@ function trainerDisplayName(trainer) {
 }
 
 function SearchTrainersScreenLayout({
+  clearFilters,
+  closeOutcomeSheet,
   closeProfile,
   closeRequestConfirm,
   closeRequestIntro,
@@ -210,23 +211,24 @@ function SearchTrainersScreenLayout({
   filters,
   filtersOpen,
   headerBackHandler,
-  headerTitle,
   isDark,
   listBottomPad,
   loadMoreTrainers,
   loading,
   loadingMore,
+  normalized,
   onHomePress,
   onMessagesPress,
   onNutritionPress,
   onPlusPress,
   onProfilePress,
-  onSettingsPress,
   onVoicePress,
   onWorkoutPress,
   openConnectFlow,
   openMessageFlow,
   openProfile,
+  outcomeTrainer,
+  outcomeVariant,
   profileOpen,
   profileShellInset,
   profileTrainer,
@@ -235,6 +237,7 @@ function SearchTrainersScreenLayout({
   requestIntroDraft,
   requestIntroTrainer,
   requesting,
+  retryFailedRequest,
   search,
   setFilters,
   setFiltersOpen,
@@ -243,88 +246,95 @@ function SearchTrainersScreenLayout({
   setSearch,
   showBottomNav,
   showHeader,
-  theme,
+  showRemoteTrainers,
   visibleCount,
   visibleTrainers,
 }) {
+  const { colors } = useTheme();
+
   return (
-    <SafeAreaView style={[styles.shell, { backgroundColor: theme.background }]} edges={SHELL_SAFE_AREA_EDGES}>
-      {showHeader !== false ? (
-        <View style={styles.headerWrap}>
-          <TopHeader
-            title={headerTitle}
-            isDark={isDark}
-            skipTopSafeInset
-            onBack={headerBackHandler}
-            onProfilePress={onProfilePress}
-            onSettingsPress={onSettingsPress}
-          />
-        </View>
-      ) : null}
-
+    <SafeAreaView style={[styles.shell, { backgroundColor: colors.nbBackground }]} edges={SHELL_SAFE_AREA_EDGES}>
       <View style={styles.body}>
-      {profileOpen && profileTrainer ? (
-        <TrainerProfileSheet
-          embedded
-          trainer={profileTrainer}
-          visible
-          onClose={closeProfile}
-          onMessage={(trainer) => openMessageFlow(trainer)}
-          onConnect={(trainer) => openConnectFlow(trainer)}
-          isDark={isDark}
-          requesting={requesting}
-          shellBottomInset={profileShellInset}
-        />
-      ) : (
-        <BrowseTrainersScreen
-          trainers={visibleTrainers}
-          loading={loading}
-          loadingMore={loadingMore}
-          hasMore={visibleCount < filtered.length}
-          onLoadMore={loadMoreTrainers}
-          isDark={isDark}
+        {profileOpen && profileTrainer ? (
+          <TrainerProfileSheet
+            embedded
+            trainer={profileTrainer}
+            visible
+            onClose={closeProfile}
+            onMessage={(trainer) => openMessageFlow(trainer)}
+            onConnect={(trainer) => openConnectFlow(trainer)}
+            isDark={isDark}
+            requesting={requesting}
+            shellBottomInset={profileShellInset}
+          />
+        ) : (
+          <BrowseTrainersScreen
+            trainers={visibleTrainers}
+            loading={loading}
+            loadingMore={loadingMore}
+            hasMore={visibleCount < filtered.length}
+            onLoadMore={loadMoreTrainers}
+            isDark={isDark}
+            filters={filters}
+            search={search}
+            onSearchChange={setSearch}
+            quickSpecialty={quickSpecialty}
+            onQuickSpecialtyChange={setQuickSpecialty}
+            onViewProfile={openProfile}
+            onMessage={openMessageFlow}
+            onConnect={openConnectFlow}
+            onOpenFilters={() => setFiltersOpen(true)}
+            onClearFilters={clearFilters}
+            onShowRemote={showRemoteTrainers}
+            onBack={showHeader !== false ? headerBackHandler : undefined}
+            listBottomPad={listBottomPad}
+          />
+        )}
+
+        <FilterPopup
+          visible={filtersOpen}
           filters={filters}
+          onClose={() => setFiltersOpen(false)}
+          onApply={setFilters}
+          trainers={normalized}
           search={search}
-          onSearchChange={setSearch}
           quickSpecialty={quickSpecialty}
-          onQuickSpecialtyChange={setQuickSpecialty}
-          onViewProfile={openProfile}
-          onMessage={openMessageFlow}
-          onConnect={openConnectFlow}
-          onOpenFilters={() => setFiltersOpen(true)}
-          listBottomPad={listBottomPad}
         />
-      )}
 
-      <FilterPopup
-        visible={filtersOpen}
-        filters={filters}
-        onClose={() => setFiltersOpen(false)}
-        onApply={setFilters}
-        isDark={isDark}
-      />
+        <RequestIntroPopup
+          visible={!!requestIntroTrainer}
+          trainerName={trainerDisplayName(requestIntroTrainer)}
+          messageDraft={requestIntroDraft}
+          onChangeMessage={setRequestIntroDraft}
+          onSkip={completeFromIntro}
+          onSendMessage={completeFromIntro}
+          onClose={closeRequestIntro}
+          busy={requesting}
+        />
 
-      <RequestIntroPopup
-        visible={!!requestIntroTrainer}
-        trainerName={trainerDisplayName(requestIntroTrainer)}
-        messageDraft={requestIntroDraft}
-        onChangeMessage={setRequestIntroDraft}
-        onSkip={completeFromIntro}
-        onSendMessage={completeFromIntro}
-        onClose={closeRequestIntro}
-        isDark={isDark}
-        busy={requesting}
-      />
+        <ConfirmRequestPopup
+          visible={!!requestConfirmTrainer}
+          trainer={firebaseTrainer(requestConfirmTrainer)}
+          onCancel={closeRequestConfirm}
+          onConfirm={confirmSendRequest}
+          busy={requesting}
+          variant="confirm"
+        />
 
-      <ConfirmRequestPopup
-        visible={!!requestConfirmTrainer}
-        trainer={firebaseTrainer(requestConfirmTrainer)}
-        onCancel={closeRequestConfirm}
-        onConfirm={confirmSendRequest}
-        isDark={isDark}
-        busy={requesting}
-      />
-
+        {/* Design Law sent / error sheets (PNG 19–22) — replaces Alert chrome */}
+        <ConfirmRequestPopup
+          visible={!!outcomeTrainer && !!outcomeVariant}
+          trainer={firebaseTrainer(outcomeTrainer)}
+          variant={outcomeVariant || 'sent'}
+          onCancel={closeOutcomeSheet}
+          onGotIt={closeOutcomeSheet}
+          onRetry={retryFailedRequest}
+          onMessage={() => {
+            const trainer = outcomeTrainer;
+            closeOutcomeSheet();
+            if (trainer) openMessageFlow(trainer);
+          }}
+        />
       </View>
 
       {showBottomNav !== false ? (
@@ -354,7 +364,7 @@ function SearchTrainersScreenLayout({
 const SearchTrainersScreen = ({
   onClose,
   onBack,
-  title = 'Find a Trainer',
+  title: _title = 'Find a Trainer',
   showHeader = true,
   showBottomNav = true,
   /** When false, this screen skips its own nav but parent shell still shows BottomMenuBar. */
@@ -363,7 +373,7 @@ const SearchTrainersScreen = ({
   onRequestTrainer,
   onSelectTrainer,
   onProfilePress,
-  onSettingsPress,
+  onSettingsPress: _onSettingsPress,
   isDark: isDarkProp,
   onHomePress,
   onPlusPress,
@@ -375,12 +385,13 @@ const SearchTrainersScreen = ({
   const headerBack = onBack ?? onClose;
   const { isDark: appIsDark } = useTheme();
   const isDark = typeof isDarkProp === 'boolean' ? isDarkProp : appIsDark;
-  const theme = getTheme(isDark);
   const shellNavInset = useShellBottomNavInset(SHELL_NAV_INSET_FALLBACK);
   const profileShellInset =
     showBottomNav !== false || reserveShellBottomNav ? shellNavInset : 0;
   const listBottomPad =
-    showBottomNav !== false || reserveShellBottomNav ? shellNavInset : Math.max(LIST_PAD_WHEN_NO_NAV, LIST_PAD_NO_NAV_EXTRA);
+    showBottomNav !== false || reserveShellBottomNav
+      ? shellNavInset
+      : Math.max(LIST_PAD_WHEN_NO_NAV, LIST_PAD_NO_NAV_EXTRA);
   const [trainers, setTrainers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
@@ -393,6 +404,9 @@ const SearchTrainersScreen = ({
   const [requestConfirmTrainer, setRequestConfirmTrainer] = useState(null);
   const [requestIntroTrainer, setRequestIntroTrainer] = useState(null);
   const [requestIntroDraft, setRequestIntroDraft] = useState('');
+  // Design Law outcome sheet: 'sent' | 'error' | null
+  const [outcomeVariant, setOutcomeVariant] = useState(null);
+  const [outcomeTrainer, setOutcomeTrainer] = useState(null);
   const [visibleCount, setVisibleCount] = useState(MARKETPLACE_PAGE_SIZE);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMoreFromFirestore, setHasMoreFromFirestore] = useState(true);
@@ -525,6 +539,13 @@ const SearchTrainersScreen = ({
     setRequestConfirmTrainer(null);
   };
 
+  const closeOutcomeSheet = () => {
+    const wasSent = outcomeVariant === 'sent';
+    setOutcomeVariant(null);
+    setOutcomeTrainer(null);
+    if (wasSent) closeProfile();
+  };
+
   const runRequest = async (trainer) => {
     const raw = firebaseTrainer(trainer);
     if (!raw) return;
@@ -534,21 +555,30 @@ const SearchTrainersScreen = ({
       setRequesting(true);
       try {
         const customIntro = String(requestIntroDraft || '').trim();
+        // Firebase request payload key stays `clientIntro` — do not rename for branding.
         await onRequestTrainer(raw, { clientIntro: customIntro || undefined });
         setRequestConfirmTrainer(null);
         setRequestIntroTrainer(null);
         setRequestIntroDraft('');
-        showTrainerRequestSentAlert(raw, () => closeProfile());
+        setOutcomeTrainer(trainer);
+        setOutcomeVariant('sent');
       } catch (error) {
         console.error('Trainer request failed:', error);
-        Alert.alert('Request failed', error?.message || 'Please try again.');
+        setRequestConfirmTrainer(null);
+        setRequestIntroTrainer(null);
+        setOutcomeTrainer(trainer);
+        setOutcomeVariant('error');
       } finally {
         setRequesting(false);
       }
       return;
     }
 
-    // 2. No request handler — fall back to select or view-profile.
+    // 2. No request handler — Design Law unable-to-connect sheet (PNG 21/22).
+    setRequestConfirmTrainer(null);
+    setRequestIntroTrainer(null);
+    setOutcomeTrainer(trainer);
+    setOutcomeVariant('error');
     if (onSelectTrainer) onSelectTrainer(raw);
     else if (onViewProfile) onViewProfile(raw);
   };
@@ -562,12 +592,29 @@ const SearchTrainersScreen = ({
     if (introTrainer) runRequest(introTrainer);
   };
 
-  const profileTitle =
-    profileTrainer?.name || profileTrainer?.displayName || 'Trainer profile';
-  const headerTitle = profileOpen ? profileTitle : title;
+  const retryFailedRequest = () => {
+    const trainer = outcomeTrainer;
+    setOutcomeVariant(null);
+    setOutcomeTrainer(null);
+    if (trainer) runRequest(trainer);
+  };
+
+  const clearFilters = () => {
+    setFilters({ ...DEFAULT_FILTERS });
+    setQuickSpecialty(DEFAULT_QUICK_SPECIALTY);
+    setSearch('');
+  };
+
+  const showRemoteTrainers = () => {
+    setFilters({ ...DEFAULT_FILTERS, sessionType: 'Remote' });
+    setQuickSpecialty(DEFAULT_QUICK_SPECIALTY);
+  };
+
   const headerBackHandler = profileOpen ? closeProfile : headerBack;
 
   const screenLayout = {
+    clearFilters,
+    closeOutcomeSheet,
     closeProfile,
     closeRequestConfirm,
     closeRequestIntro,
@@ -577,23 +624,24 @@ const SearchTrainersScreen = ({
     filters,
     filtersOpen,
     headerBackHandler,
-    headerTitle,
     isDark,
     listBottomPad,
     loadMoreTrainers,
     loading,
     loadingMore,
+    normalized,
     onHomePress,
     onMessagesPress,
     onNutritionPress,
     onPlusPress,
     onProfilePress,
-    onSettingsPress,
     onVoicePress,
     onWorkoutPress,
     openConnectFlow,
     openMessageFlow,
     openProfile,
+    outcomeTrainer,
+    outcomeVariant,
     profileOpen,
     profileShellInset,
     profileTrainer,
@@ -602,6 +650,7 @@ const SearchTrainersScreen = ({
     requestIntroDraft,
     requestIntroTrainer,
     requesting,
+    retryFailedRequest,
     search,
     setFilters,
     setFiltersOpen,
@@ -610,7 +659,7 @@ const SearchTrainersScreen = ({
     setSearch,
     showBottomNav,
     showHeader,
-    theme,
+    showRemoteTrainers,
     visibleCount,
     visibleTrainers,
   };
@@ -619,7 +668,6 @@ const SearchTrainersScreen = ({
 
 const styles = StyleSheet.create({
   shell: { flex: 1 },
-  headerWrap: {},
   body: { flex: 1, position: 'relative' },
 });
 

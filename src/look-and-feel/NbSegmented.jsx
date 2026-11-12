@@ -1,103 +1,76 @@
-// Neobrutalist segmented control — multiple segments with one selected
-// Flow: renders segments in a row, applies ink gradient to selected segment
-// Where used: toggles, mode switches, binary or ternary choices
-//
-// vocab: segmented control = iOS-style segment picker with one active at a time
+// Design Law segmented control — HardShadow track, one selected cell, solid fill (not a gradient).
+// Flow: row of equal segments → tap → onSelect(id). Used by Plan|Notes|Videos, Add food tabs, New plan.
+// vocab: segmented = mutually exclusive tabs in one outlined track
+// Manipulate here: segment height (44), border (nb.borderWidth), shadow offset
 
 import React from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 
-import { LinearGradient } from 'expo-linear-gradient';
-import { borderRadius, nb, gradients } from './colorPalette';
+import { borderRadius, nb } from './colorPalette';
 import { useTheme } from './lightDarkMode';
+import HardShadow from './HardShadow';
 
 /**
- * Segmented control with neobrutalist styling.
- * Selected segment gets ink gradient, unselected are plain surface.
- * 
  * @param {object} props
- * @param {Array<{id: string, label: string}>} props.segments - segment data
- * @param {string} props.selected - selected segment id
- * @param {Function} props.onSelect - (id) => void
- * @param {object} [props.style] - additional container styles
+ * @param {Array<{id: string, label: string}>} props.segments
+ * @param {string} props.selected
+ * @param {Function} props.onSelect
+ * @param {object} [props.style]
  */
 export default function NbSegmented({ segments, selected, onSelect, style }) {
   const { colors } = useTheme();
-  
+
   return (
-    <View
-      style={[
-        styles.container,
-        {
-          backgroundColor: colors.nbSurface,
-          borderColor: colors.nbBorder,
-        },
-        style,
-      ]}
-    >
-      {segments.map((segment, index) => {
-        const isSelected = selected === segment.id;
-        const isFirst = index === 0;
-        const isLast = index === segments.length - 1;
-        
-        const segmentContent = (
-          <View
-            style={[
-              styles.segment,
-              isFirst && styles.firstSegment,
-              isLast && styles.lastSegment,
-              !isFirst && {
-                borderLeftWidth: nb.borderWidth,
-                borderLeftColor: colors.nbBorder,
-              },
-            ]}
-          >
-            <Text
-              style={[
-                styles.text,
-                { color: isSelected ? '#FFFFFF' : colors.nbInk },
-              ]}
-              numberOfLines={1}
+    <HardShadow offset={nb.shadowOffsetSmall} radius={borderRadius.nbChip} style={style}>
+      <View
+        style={[
+          styles.container,
+          {
+            backgroundColor: colors.nbSurface,
+            borderColor: colors.nbBorder,
+          },
+        ]}
+      >
+        {segments.map((segment, index) => {
+          const isSelected = selected === segment.id;
+          const isFirst = index === 0;
+          const isLast = index === segments.length - 1;
+
+          return (
+            <Pressable
+              key={segment.id}
+              onPress={() => onSelect(segment.id)}
+              style={styles.pressable}
+              accessibilityRole="button"
+              accessibilityState={{ selected: isSelected }}
             >
-              {segment.label}
-            </Text>
-          </View>
-        );
-        
-        return (
-          <Pressable
-            key={segment.id}
-            onPress={() => onSelect(segment.id)}
-            style={styles.pressable}
-          >
-            {isSelected ? (
-              <LinearGradient
-                colors={gradients.ink.colors}
-                start={gradients.ink.start}
-                end={gradients.ink.end}
+              <View
                 style={[
                   styles.segment,
                   isFirst && styles.firstSegment,
                   isLast && styles.lastSegment,
+                  !isFirst && {
+                    borderLeftWidth: nb.borderWidth,
+                    borderLeftColor: colors.nbBorder,
+                  },
+                  isSelected && { backgroundColor: colors.nbFill },
                 ]}
               >
                 <Text
                   style={[
                     styles.text,
-                    { color: '#FFFFFF' },
+                    { color: isSelected ? colors.nbOnFill : colors.nbInk },
                   ]}
                   numberOfLines={1}
                 >
                   {segment.label}
                 </Text>
-              </LinearGradient>
-            ) : (
-              segmentContent
-            )}
-          </Pressable>
-        );
-      })}
-    </View>
+              </View>
+            </Pressable>
+          );
+        })}
+      </View>
+    </HardShadow>
   );
 }
 
@@ -107,12 +80,13 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.nbChip,
     borderWidth: nb.borderWidth,
     overflow: 'hidden',
+    minHeight: nb.minTouchTarget,
   },
   pressable: {
     flex: 1,
   },
   segment: {
-    height: 40,
+    minHeight: nb.minTouchTarget,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 12,
@@ -126,7 +100,7 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: borderRadius.nbChip - nb.borderWidth,
   },
   text: {
-    fontFamily: 'SpaceGrotesk_700Bold',
     fontSize: 14,
+    fontWeight: '800',
   },
 });

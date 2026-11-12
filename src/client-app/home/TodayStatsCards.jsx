@@ -11,12 +11,37 @@ import { Ionicons } from '@expo/vector-icons';
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 import NbCard from '../../look-and-feel/NbCard';
 import NbButton from '../../look-and-feel/NbButton';
-import { lightColors, darkColors, gradients } from '../../look-and-feel/colorPalette';
+import GradientFrame from '../../look-and-feel/GradientFrame';
+import { lightColors, darkColors, gradients, borderRadius } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
-/** Dark pink → dark orange — trainer card shell and CTAs */
+/** Dark pink → dark orange — trainer card shell and CTAs (hex only — safe at module init). */
 export const TRAINER_BORDER_GRADIENT = ['#BE185D', '#C2410C'];
+
+/**
+ * Gradient rim around a home card (trainer section, empty-trainer CTA).
+ * vocab: GradientFrame = cool border ring + hard ink shadow — used by TrainingHomeScreenLayout.
+ * @param {{ isDark?: boolean, children?: import('react').ReactNode, style?: object, borderColors?: string[] }} props
+ */
+export function ColorBorderShell({
+  isDark = false,
+  children,
+  style,
+  borderColors = TRAINER_BORDER_GRADIENT,
+}) {
+  const fill = isDark ? darkColors.nbSurface : lightColors.nbSurface;
+  return (
+    <GradientFrame
+      colors={borderColors}
+      fill={fill}
+      radius={borderRadius.nbHero}
+      style={style}
+    >
+      <View style={{ padding: 14 }}>{children}</View>
+    </GradientFrame>
+  );
+}
 
 const RING_SIZE = 102;
 const STROKE = 8;
@@ -54,13 +79,13 @@ function CaloriesHeroCard({ current, goal, progress, onPress, onPressLogFood }) 
   const caloriesRemaining = Math.max(0, caloriesGoal - caloriesEaten);
   const clampedProgress = clamp01(progress);
 
-  const hairline = isDark ? 'rgba(255,255,255,0.10)' : 'rgba(15,23,42,0.10)';
-  const trackStroke = isDark ? 'rgba(255,255,255,0.2)' : 'rgba(15,23,42,0.12)';
+  const hairline = isDark ? darkColors.nbBorder : lightColors.nbBorder;
+  const trackStroke = isDark ? darkColors.nbMuted : lightColors.nbMuted;
   // vocab: toString(36) = base-36 id so two rings on screen do not share one SVG gradient id.
   const gradId = useRef(`calRing_${Math.random().toString(36).slice(2, 9)}`).current;
   const innerDiscR = Math.max(RING_RADIUS - STROKE * 0.9, 6);
-  const innerFill = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.04)';
-  const innerStroke = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.06)';
+  const innerFill = isDark ? darkColors.nbSurfaceChip : lightColors.nbSurfaceChip;
+  const innerStroke = isDark ? darkColors.nbBorder : lightColors.nbBorder;
 
   const progressAnim = useRef(new Animated.Value(0)).current;
   // vocab: useEffect = run the ring animation after paint when progress changes.
@@ -150,7 +175,7 @@ function CaloriesHeroCard({ current, goal, progress, onPress, onPressLogFood }) 
             style={[
               cardStyles.metricsCard,
               { 
-                backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(15,23,42,0.04)',
+                backgroundColor: isDark ? darkColors.nbSurfaceChip : lightColors.nbSurfaceChip,
                 borderColor: colors.nbBorder,
               },
             ]}
@@ -172,7 +197,7 @@ function CaloriesHeroCard({ current, goal, progress, onPress, onPressLogFood }) 
 
           {typeof onPress === 'function' ? (
             <TouchableOpacity onPress={onPress} activeOpacity={0.75} style={cardStyles.nutritionTouch}>
-              <View style={[cardStyles.nutritionRow, { borderColor: colors.nbBorder, backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(15,23,42,0.03)' }]}>
+              <View style={[cardStyles.nutritionRow, { borderColor: colors.nbBorder, backgroundColor: isDark ? darkColors.nbSurfaceChip : lightColors.nbSurfaceChip }]}>
                 <View style={cardStyles.nutritionRowInner}>
                   <View style={cardStyles.nutritionRowLeft}>
                     <Ionicons name="nutrition-outline" size={20} color={gradients.brand.colors[0]} />

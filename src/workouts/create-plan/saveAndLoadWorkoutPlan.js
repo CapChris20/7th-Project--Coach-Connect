@@ -2,8 +2,8 @@
 // Flow: read/write current plan → templates → start/complete active workout → history / saved plans.
 // Used by: CreateWorkoutPlanScreen, ClientAppStart, home loader, exercise-library saved plans.
 // Key exports: getCurrentWorkoutPlan, setCurrentWorkoutPlan, createWorkoutTemplate,
-//   fetchWorkoutTemplates, getWorkoutTemplate, startWorkout, getActiveWorkout,
-//   subscribeToActiveWorkout, and the history / saved-plan helpers below.
+//   fetchWorkoutTemplates, getWorkoutTemplate, startWorkout, startWorkoutFromExercises,
+//   getActiveWorkout, subscribeToActiveWorkout, and the history / saved-plan helpers below.
 
 import { db } from '../../app-start/cloudConnection';
 import {
@@ -252,6 +252,76 @@ function normalizeTemplateExercise(exercise) {
   };
 }
 
+/**
+ * Plan-day / session exercise → activeWorkouts exercise shape (name kept for UI).
+ * Parses "3 × 8" combined sets strings and rest like "90s" / "1:30".
+ * @param {object} exercise
+ * @returns {object}
+ */
+function normalizeSessionExercise(exercise) {
+  // Combined "3 x 8" / "3×10" lives on sets in some plan rows — split when present.
+  let setsRaw = exercise?.sets;
+  let repsRaw = exercise?.reps;
+  const combined = String(setsRaw ?? '');
+  if (/[×x]/i.test(combined)) {
+    const parts = combined.split(/[×x]/i);
+    setsRaw = (parts[0] || '').trim();
+    if (repsRaw == null || repsRaw === '') repsRaw = (parts[1] || '').trim();
+  }
+
+  const sets = parseInt(setsRaw, 10) || DEFAULT_TEMPLATE_SETS;
+  const reps = parseInt(repsRaw, 10) || DEFAULT_TEMPLATE_REPS;
+  const restSeconds = parseRestSeconds(
+    exercise?.restSeconds ?? exercise?.rest ?? exercise?.restPeriod,
+  );
+  const weightNum = parseFloat(exercise?.weight);
+  const cue = String(
+    exercise?.cue || exercise?.notes || exercise?.formCues || exercise?.cues || '',
+  ).trim();
+
+  return {
+    exerciseId: exercise?.exerciseId || null,
+    name: String(exercise?.name || exercise?.exerciseName || 'Exercise').trim() || 'Exercise',
+    sets,
+    reps,
+    restSeconds,
+    // Manipulate here: 0 weight = bodyweight / unset — steppers still start at 0
+    weight: Number.isFinite(weightNum) ? weightNum : 0,
+    cue,
+  };
+}
+
+/**
+ * Turn rest copy ("90", "90s", "1:30", "1m 30s") into seconds.
+ * @param {unknown} raw
+ * @returns {number}
+ */
+function parseRestSeconds(raw) {
+  if (raw == null || raw === '') return DEFAULT_REST_SECONDS;
+  if (typeof raw === 'number' && Number.isFinite(raw)) {
+    return Math.max(0, Math.round(raw));
+  }
+  const text = String(raw).trim().toLowerCase().replace(/\s*rest\s*$/i, '').trim();
+  if (!text) return DEFAULT_REST_SECONDS;
+
+  // vocab: m:ss clock form used in some plan rows
+  const clock = text.match(/^(\d+)\s*:\s*(\d+)$/);
+  if (clock) {
+    return parseInt(clock[1], 10) * 60 + parseInt(clock[2], 10);
+  }
+
+  const minutes = text.match(/(\d+)\s*m(?:in(?:ute)?s?)?/);
+  const seconds = text.match(/(\d+)\s*s(?:ec(?:ond)?s?)?/);
+  if (minutes || seconds) {
+    const m = minutes ? parseInt(minutes[1], 10) : 0;
+    const s = seconds ? parseInt(seconds[1], 10) : 0;
+    return m * 60 + s || DEFAULT_REST_SECONDS;
+  }
+
+  const plain = parseInt(text, 10);
+  return Number.isFinite(plain) ? plain : DEFAULT_REST_SECONDS;
+}
+
 // ===== MAIN FUNCTION =====
 
 /**
@@ -444,6 +514,63 @@ export async function startWorkout(userId, workoutId) {
     };
   } catch (error) {
     console.error('Error starting workout:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Start (or resume) an active workout from a plan-day exercise list.
+ * Same `activeWorkouts` collection as startWorkout — no new collection names.
+ * If a session is already active, returns it (resume) instead of failing.
+ * @param {string} userId
+ * @param {string} workoutName
+ * @param {Array} exercises
+ * @returns {Promise<{success: boolean, id?: string, activeWorkout?: object, resumed?: boolean, error?: string}>}
+ */
+export async function startWorkoutFromExercises(userId, workoutName, exercises) {
+  if (!userId || !db) {
+    return { success: false, error: 'Missing required fields' };
+  }
+  const list = Array.isArray(exercises) ? exercises : [];
+  if (list.length === 0) {
+    return { success: false, error: 'No exercises to start' };
+  }
+
+  try {
+    // 1. Resume an in-progress session rather than blocking the client on the plan CTA.
+    const alreadyActive = await getActiveWorkout(userId);
+    if (alreadyActive) {
+      return {
+        success: true,
+        id: alreadyActive.id,
+        activeWorkout: alreadyActive,
+        resumed: true,
+      };
+    }
+
+    // 2. Normalize plan-day rows into the shape session UI + completeWorkout expect.
+    const normalized = list.map(normalizeSessionExercise);
+    const activeWorkoutData = {
+      userId,
+      // vocab: workoutId = template id when from startWorkout; plan-day sessions use a local tag
+      workoutId: 'plan-day',
+      workoutName: String(workoutName || 'Workout').trim() || 'Workout',
+      startedAt: serverTimestamp(),
+      currentExerciseIndex: 0,
+      completedSets: normalized.map(() => []),
+      exercises: normalized,
+      source: 'plan-day',
+    };
+
+    const docRef = await addDoc(collection(db, ACTIVE_WORKOUTS_COLLECTION), activeWorkoutData);
+    return {
+      success: true,
+      id: docRef.id,
+      activeWorkout: { id: docRef.id, ...activeWorkoutData },
+      resumed: false,
+    };
+  } catch (error) {
+    console.error('Error starting workout from exercises:', error);
     return { success: false, error: error.message };
   }
 }

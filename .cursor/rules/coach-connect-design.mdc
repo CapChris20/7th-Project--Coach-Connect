@@ -1,0 +1,31 @@
+---
+description: Coach Connect Design Law — screens PNGs + DESIGN-SYSTEM. Anything that does not match is wrong.
+alwaysApply: true
+globs: ["src/**/*.js", "src/**/*.jsx", "src/**/*.ts", "src/**/*.tsx"]
+---
+
+# Coach Connect Design Law (Chris + Shane)
+
+**Authoritative folder:** `docs/design/Design-Law/`
+
+When redesigning or restyling UI, this folder beats every other design doc, old chrome, or invented layout.
+
+## Priority (do not reorder)
+
+1. **`docs/design/Design-Law/screens/<flow>/*.png`** — visual law (light + dark). Match these.
+2. **`docs/design/Design-Law/DESIGN-SYSTEM.md`** — tokens, shapes, type, Nb components, motion.
+3. **`docs/design/Design-Law/mockups/*.html`** — interactive structure reference.
+4. **`docs/design/Design-Law/MAPPING.md`** — which repo files to change for each flow.
+
+Read `docs/design/Design-Law/THIS-IS-DESIGN-LAW.md` if unsure.
+
+## Rules
+
+- Follow `CODING_STYLE.md` (Variation 3). Keep behavior and data keys unchanged. Firebase projectId stays `anatrox-auth`.
+- Colors from theme / Design-Law tokens only. No random hex in screens.
+- Black, white, gray carry the UI. Gradients are small accents only. Never green. Never solid purple borders/shadows.
+- Outlines 3px. Hard offset shadows (HardShadow). Min touch 44. Min text 12.
+- Use owner icon art and recolored Lottie from Design-Law / `src/assets/*/handoff`.
+- Restyle existing `Nb*` in `src/look-and-feel` instead of inventing parallel chrome.
+- After a UI change: compare the running screen to the matching PNG in `screens/` for both themes.
+- If it is not in Design Law screens / system, it is not the design. Do not ship “close enough.”

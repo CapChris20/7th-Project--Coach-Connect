@@ -1,6 +1,6 @@
-// Read-only viewer for an uploaded CSV or XLSX attachment.
-// Flow: parent passes a url (or inline rows) → fetch and parse → scrollable table.
-// Used by client and trainer Notes & Files. Trainer editing lives in SpreadsheetEditor.
+// Design Law spreadsheet viewer — NbPageHeader + HardShadow table (no green spinner).
+// Flow: parent passes url or inline rows → fetch/parse → scrollable table → copy / share CSV.
+// Used by client and trainer Notes & Files. Firebase storage URLs unchanged.
 
 import React, { useState, useEffect, useMemo } from 'react';
 import {
@@ -9,16 +9,19 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView,
   ActivityIndicator,
   ScrollView,
-  Platform,
   Dimensions,
   Alert,
   Share,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import NbPageHeader from '../../../look-and-feel/NbPageHeader';
+import NbButton from '../../../look-and-feel/NbButton';
+import HardShadow from '../../../look-and-feel/HardShadow';
+import { useTheme } from '../../../look-and-feel/lightDarkMode';
+import { borderRadius, nb, spacing } from '../../../look-and-feel/colorPalette';
 import XLSX from '../../../spreadsheet-support/spreadsheetReader';
 
 // ===== NAMED CONSTANTS =====
@@ -194,20 +197,6 @@ function sortedSpreadsheetRows(rows, sortCol, sortAsc) {
   return [header, ...sorted];
 }
 
-function viewerColors(isDark) {
-  return {
-    pageBackground: isDark ? '#0A0A0A' : '#F9FAFB',
-    textColor: isDark ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.75)',
-    titleColor: isDark ? '#fff' : '#1a1040',
-    mutedColor: isDark ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.5)',
-    errorColor: isDark ? 'rgba(255,255,255,0.8)' : '#1a1040',
-    headerBackground: 'rgba(255,255,255,0.08)',
-    tableBackground: 'rgba(255,255,255,0.04)',
-    borderColor: 'rgba(255,255,255,0.08)',
-    rowAlt: 'rgba(255,255,255,0.02)',
-  };
-}
-
 function applyFetchedSpreadsheet(data, hasInlineRows, inlineRows, rowsProp, setters) {
   let raw = Array.isArray(data) && data.length ? data : [];
   if (!raw.length && hasInlineRows) {
@@ -239,7 +228,16 @@ function applyFetchFailure(error, hasInlineRows, inlineRows, setters) {
  * Hooks stay in this order: rows, loading, error, sort column, sort direction, then the load effect.
  * @param {object} props
  */
-export default function SpreadsheetViewer({ visible, url, name, rows: rowsProp = null, isDark = true, onClose }) {
+export default function SpreadsheetViewer({
+  visible,
+  url,
+  name,
+  rows: rowsProp = null,
+  isDark: _isDarkIgnored = true,
+  onClose,
+}) {
+  const { colors: theme } = useTheme();
+  const insets = useSafeAreaInsets();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -322,142 +320,140 @@ export default function SpreadsheetViewer({ visible, url, name, rows: rowsProp =
     setSortAsc(true);
   };
 
-  const colors = viewerColors(isDark);
   const colCount = (displayRows[0] || []).length || 1;
   const tableWidth = Math.max(SCREEN_WIDTH - TABLE_SIDE_INSET, colCount * MIN_CELL_WIDTH);
 
   return (
     <Modal visible={visible} animationType="slide" transparent={false} onRequestClose={onClose}>
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.pageBackground }]}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={onClose} style={styles.backBtn} hitSlop={12}>
-            <Ionicons name="arrow-back" size={24} color={colors.titleColor} />
-          </TouchableOpacity>
-          <Text style={[styles.title, { color: colors.titleColor }]} numberOfLines={1}>
-            {name || DEFAULT_SHEET_TITLE}
-          </Text>
-          <View style={{ flexDirection: 'row', gap: 4 }}>
-            <TouchableOpacity onPress={handleCopy} style={styles.backBtn} hitSlop={8} accessibilityLabel="Copy CSV">
-              <Ionicons name="copy-outline" size={22} color={colors.titleColor} />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={handleShareCsv} style={styles.backBtn} hitSlop={8} accessibilityLabel="Share CSV">
-              <Ionicons name="share-outline" size={22} color={colors.titleColor} />
-            </TouchableOpacity>
-          </View>
-        </View>
+      <View style={[styles.container, { backgroundColor: theme.nbBackground }]}>
+        <NbPageHeader title={name || DEFAULT_SHEET_TITLE} subtitle="Spreadsheet" onBack={onClose} />
 
         {!loading && !error && displayRows.length > 0 ? (
-          <Text style={{ paddingHorizontal: 16, paddingBottom: 8, color: colors.textColor, fontSize: 12 }}>
+          <Text style={{ paddingHorizontal: nb.screenGutter, paddingBottom: 8, color: theme.nbMuted, fontSize: 12, fontWeight: '600' }}>
             Viewing in-app · tap a header cell to sort · copy or share as CSV
           </Text>
         ) : null}
 
         <View style={styles.content}>
-          {loading && (
+          {loading ? (
             <View style={styles.loadingBlock}>
-              <ActivityIndicator size="large" color="#10B981" />
-              <Text style={[styles.loadingText, { color: colors.mutedColor }]}>
-                Loading…
-              </Text>
+              <ActivityIndicator size="large" color={theme.nbInk} />
+              <Text style={[styles.loadingText, { color: theme.nbMuted }]}>Loading…</Text>
             </View>
-          )}
-          {error && (
+          ) : null}
+          {error ? (
             <View style={styles.errorBlock}>
-              <Text style={[styles.errorText, { color: colors.errorColor }]}>{error}</Text>
+              <Text style={[styles.errorText, { color: theme.nbInk }]}>{error}</Text>
             </View>
-          )}
-          {!loading && !error && displayRows.length > 0 && (
-            <ScrollView
-              style={styles.scroll}
-              contentContainerStyle={styles.scrollContent}
-              horizontal
-              showsHorizontalScrollIndicator={true}
-            >
-              <ScrollView
-                style={styles.scrollVertical}
-                contentContainerStyle={[styles.scrollContentVertical, { width: tableWidth }]}
-                showsVerticalScrollIndicator={true}
+          ) : null}
+          {!loading && !error && displayRows.length > 0 ? (
+            <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard} style={{ flex: 1 }}>
+              <View
+                style={[
+                  styles.tableShell,
+                  { backgroundColor: theme.nbSurface, borderColor: theme.nbBorder },
+                ]}
               >
-                <View style={[styles.table, { backgroundColor: colors.tableBackground, borderColor: colors.borderColor }]}>
-                  {displayRows.map((row, rIndex) => (
-                    <View
-                      key={rIndex}
-                      style={[
-                        styles.row,
-                        rIndex === 0 && { backgroundColor: colors.headerBackground },
-                        rIndex > 0 && rIndex % 2 === 0 && { backgroundColor: colors.rowAlt },
-                      ]}
-                    >
-                      {(Array.isArray(row) ? row : [row]).map((cell, cIndex) => (
-                        <TouchableOpacity
-                          key={cIndex}
-                          disabled={rIndex !== 0}
-                          onPress={() => handleHeaderSort(cIndex)}
-                          style={[styles.cell, { borderColor: colors.borderColor }]}
+                <ScrollView
+                  style={styles.scroll}
+                  contentContainerStyle={styles.scrollContent}
+                  horizontal
+                  showsHorizontalScrollIndicator
+                >
+                  <ScrollView
+                    style={styles.scrollVertical}
+                    contentContainerStyle={[styles.scrollContentVertical, { width: tableWidth }]}
+                    showsVerticalScrollIndicator
+                  >
+                    <View style={[styles.table, { borderColor: theme.nbBorder }]}>
+                      {displayRows.map((row, rIndex) => (
+                        <View
+                          key={rIndex}
+                          style={[
+                            styles.row,
+                            { borderBottomColor: theme.nbBorder },
+                            rIndex === 0 && { backgroundColor: theme.nbSoft },
+                            rIndex > 0 && rIndex % 2 === 0 && { backgroundColor: theme.nbSoft },
+                          ]}
                         >
-                          <Text
-                            style={[
-                              styles.cellText,
-                              { color: rIndex === 0 ? colors.titleColor : colors.textColor },
-                              rIndex === 0 && styles.headerText,
-                            ]}
-                            numberOfLines={2}
-                          >
-                            {cell != null && String(cell).trim() !== '' ? String(cell) : ''}
-                            {rIndex === 0 && sortCol === cIndex ? (sortAsc ? ' ▲' : ' ▼') : ''}
-                          </Text>
-                        </TouchableOpacity>
+                          {(Array.isArray(row) ? row : [row]).map((cell, cIndex) => (
+                            <TouchableOpacity
+                              key={cIndex}
+                              disabled={rIndex !== 0}
+                              onPress={() => handleHeaderSort(cIndex)}
+                              style={[styles.cell, { borderColor: theme.nbBorder }]}
+                            >
+                              <Text
+                                style={[
+                                  styles.cellText,
+                                  { color: rIndex === 0 ? theme.nbInk : theme.nbMuted },
+                                  rIndex === 0 && styles.headerText,
+                                ]}
+                                numberOfLines={2}
+                              >
+                                {cell != null && String(cell).trim() !== '' ? String(cell) : ''}
+                                {rIndex === 0 && sortCol === cIndex ? (sortAsc ? ' ▲' : ' ▼') : ''}
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
                       ))}
                     </View>
-                  ))}
-                </View>
-              </ScrollView>
-            </ScrollView>
-          )}
+                  </ScrollView>
+                </ScrollView>
+              </View>
+            </HardShadow>
+          ) : null}
         </View>
-      </SafeAreaView>
+
+        {!loading && !error && displayRows.length > 0 ? (
+          <View
+            style={[
+              styles.actions,
+              {
+                borderTopColor: theme.nbBorder,
+                paddingBottom: Math.max(insets.bottom, spacing.md),
+              },
+            ]}
+          >
+            <NbButton variant="plain" onPress={handleCopy} style={styles.half}>
+              Copy CSV
+            </NbButton>
+            <NbButton variant="plain" onPress={handleShareCsv} style={styles.half}>
+              Share
+            </NbButton>
+          </View>
+        ) : null}
+      </View>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.08)',
-  },
-  backBtn: { padding: 4 },
-  title: {
-    flex: 1,
-    textAlign: 'center',
-    fontSize: 17,
-    fontWeight: '700',
-    marginHorizontal: 8,
-  },
-  content: { flex: 1, padding: 16 },
+  content: { flex: 1, padding: nb.screenGutter },
   loadingBlock: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
-  loadingText: { fontSize: 15 },
+  loadingText: { fontSize: 15, fontWeight: '600' },
   errorBlock: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
-  errorText: { fontSize: 15, textAlign: 'center' },
+  errorText: { fontSize: 15, textAlign: 'center', fontWeight: '600' },
   scroll: { flex: 1 },
   scrollContent: { flexGrow: 1 },
   scrollVertical: { flex: 1 },
   scrollContentVertical: { paddingBottom: 24 },
+  tableShell: {
+    flex: 1,
+    borderRadius: borderRadius.nbCard,
+    borderWidth: nb.borderWidth,
+    overflow: 'hidden',
+  },
   table: {
-    borderWidth: 1,
-    borderRadius: 12,
+    borderWidth: 0,
     overflow: 'hidden',
     alignSelf: 'flex-start',
   },
   row: {
     flexDirection: 'row',
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(255,255,255,0.08)',
   },
   cell: {
     minWidth: MIN_CELL_WIDTH,
@@ -465,6 +461,14 @@ const styles = StyleSheet.create({
     padding: CELL_PADDING,
     borderRightWidth: StyleSheet.hairlineWidth,
   },
-  cellText: { fontSize: 12 },
-  headerText: { fontWeight: '700' },
+  cellText: { fontSize: 12, fontWeight: '500' },
+  headerText: { fontWeight: '800' },
+  actions: {
+    flexDirection: 'row',
+    gap: 10,
+    paddingHorizontal: nb.screenGutter,
+    paddingVertical: spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  half: { flex: 1 },
 });

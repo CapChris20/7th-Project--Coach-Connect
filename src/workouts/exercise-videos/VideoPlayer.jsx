@@ -16,7 +16,8 @@ import {
 import YoutubePlayer from 'react-native-youtube-iframe';
 import { Ionicons } from '@expo/vector-icons';
 import NbButton from '../../look-and-feel/NbButton';
-import { lightColors, darkColors, gradients } from '../../look-and-feel/colorPalette';
+import { lightColors, darkColors } from '../../look-and-feel/colorPalette';
+import { useTheme } from '../../look-and-feel/lightDarkMode';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -56,6 +57,7 @@ function inlinePlayerSize(width, height) {
  * @param {{ videoId: string, height?: number, width?: number, play?: boolean }} props
  */
 export function YouTubeIframeExercisePlayer({ videoId, height, width, play = true }) {
+  const { colors } = useTheme();
   const { playerWidth, playerHeight } = inlinePlayerSize(width, height);
   const [playerReady, setPlayerReady] = useState(false);
 
@@ -66,7 +68,7 @@ export function YouTubeIframeExercisePlayer({ videoId, height, width, play = tru
   if (!videoId) {
     return (
       <View style={[styles.emptyPlayer, { width: playerWidth, height: playerHeight }]}>
-        <Text style={styles.emptyPlayerText}>Video unavailable</Text>
+        <Text style={[styles.emptyPlayerText, { color: colors.nbOnFill }]}>Video unavailable</Text>
       </View>
     );
   }
@@ -75,7 +77,8 @@ export function YouTubeIframeExercisePlayer({ videoId, height, width, play = tru
     <View style={[styles.playerShell, { width: playerWidth, height: playerHeight }]}>
       {!playerReady ? (
         <View style={styles.loadingOverlay} pointerEvents="none">
-          <ActivityIndicator size="large" color={gradients.brand.colors[0]} />
+          {/* Ink spinner — never brand pink/purple on Design Law surfaces */}
+          <ActivityIndicator size="large" color={colors.nbOnFill} />
         </View>
       ) : null}
       <YoutubePlayer
@@ -139,7 +142,7 @@ export function VideoPlayer({ visible, videoId, title, onClose }) {
           {visible && videoId ? (
             <YouTubeIframeExercisePlayer videoId={videoId} height={modalPlayerHeight} width={SCREEN_WIDTH - MODAL_SIDE_INSET} play />
           ) : (
-            <Text style={[styles.emptyPlayerText, { color: gradients.brand.colors[0] }]}>Video not available</Text>
+            <Text style={[styles.emptyPlayerText, { color: colors.nbMuted }]}>Video not available</Text>
           )}
         </View>
 

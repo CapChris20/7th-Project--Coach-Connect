@@ -1,63 +1,70 @@
-// Full-screen modal that loads a PDF URL in a WebView.
-// Flow: parent sets visible + url → show title bar → WebView loads → spinner hides on load or error.
-// Used by the files-and-notes viewers. Missing url returns null so an empty modal never mounts.
+// Design Law full-screen PDF viewer (PNG 09–12).
+// Flow: parent sets visible + url → NbPageHeader chrome → WebView → Download / Share / Delete actions.
+// Used by FilesScreen and Notes & Files openers. Missing url returns null so an empty modal never mounts.
+// vocab: HardShadow = solid offset; shell SafeArea is L/R only so NbPageHeader owns top inset
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Modal, View, Text, TouchableOpacity, StyleSheet, SafeAreaView, ActivityIndicator, Platform } from 'react-native';
+import {
+  Modal,
+  View,
+  Text,
+  StyleSheet,
+  ActivityIndicator,
+  Platform,
+} from 'react-native';
 import { WebView } from 'react-native-webview';
-import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import NbPageHeader from '../../../look-and-feel/NbPageHeader';
+import NbButton from '../../../look-and-feel/NbButton';
+import HardShadow from '../../../look-and-feel/HardShadow';
+import { useTheme } from '../../../look-and-feel/lightDarkMode';
+import { borderRadius, nb, spacing } from '../../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
 const DEFAULT_DOCUMENT_NAME = 'Document';
 const TITLE_MAX_LENGTH = 40;
 const TITLE_TRIM_LENGTH = 37;
-const CLOSE_HIT_SLOP = { top: 14, bottom: 14, left: 14, right: 14 };
 const WEBVIEW_ORIGIN_WHITELIST = ['*'];
 
 // ===== HELPER FUNCTIONS =====
 
-/**
- * Long file names get an ellipsis so the header stays one line.
- * @param {string|undefined} name
- * @returns {string}
- */
 function shortenDocumentTitle(name) {
   const rawTitle = String(name || DEFAULT_DOCUMENT_NAME);
   if (rawTitle.length > TITLE_MAX_LENGTH) return `${rawTitle.slice(0, TITLE_TRIM_LENGTH)}…`;
   return rawTitle;
 }
 
-function viewerColors(isDark) {
-  return {
-    background: isDark ? '#020617' : '#F8FAFC',
-    textColor: isDark ? '#F8FAFC' : '#0F172A',
-    muted: isDark ? 'rgba(226,232,240,0.72)' : 'rgba(51,65,85,0.72)',
-  };
-}
-
-function headerGradient(isDark) {
-  return isDark
-    ? ['rgba(2,6,23,0.96)', 'rgba(2,6,23,0.70)']
-    : ['rgba(248,250,252,0.98)', 'rgba(248,250,252,0.75)'];
-}
-
-function loadingCardGradient(isDark) {
-  return isDark
-    ? ['rgba(15,23,42,0.96)', 'rgba(2,6,23,0.88)']
-    : ['rgba(255,255,255,0.96)', 'rgba(241,245,249,0.92)'];
-}
-
 // ===== MAIN FUNCTION =====
 
 /**
- * Full-screen PDF preview. Reloading `visible`/`url` puts the spinner back until the WebView finishes.
- * @param {{ visible: boolean, url?: string, name?: string, isDark?: boolean, onClose: Function }} props
+ * Full-screen PDF preview with Design Law header + action row.
+ * @param {{
+ *   visible: boolean,
+ *   url?: string,
+ *   name?: string,
+ *   subtitle?: string,
+ *   isDark?: boolean,
+ *   onClose: Function,
+ *   onDownload?: Function,
+ *   onShare?: Function,
+ *   onDelete?: Function,
+ * }} props
  */
-export default function PdfViewer({ visible, url, name, isDark = true, onClose }) {
+export default function PdfViewer({
+  visible,
+  url,
+  name,
+  subtitle = 'PDF',
+  isDark: _isDarkIgnored = true,
+  onClose,
+  onDownload,
+  onShare,
+  onDelete,
+}) {
   if (!url) return null;
-  const { background, textColor, muted } = viewerColors(isDark);
+  const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -68,138 +75,100 @@ export default function PdfViewer({ visible, url, name, isDark = true, onClose }
 
   return (
     <Modal visible={visible} animationType="slide" transparent={false} onRequestClose={onClose}>
-      <SafeAreaView style={[styles.container, { backgroundColor: background }]}>
-        <LinearGradient
-          colors={headerGradient(isDark)}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 0, y: 1 }}
-          style={styles.header}
-        >
-          <TouchableOpacity onPress={onClose} hitSlop={CLOSE_HIT_SLOP} style={styles.headerBtn}>
-            <Ionicons name="close" size={22} color={textColor} />
-          </TouchableOpacity>
-          <View style={styles.headerCenter}>
-            <Text style={[styles.title, { color: textColor }]} numberOfLines={1}>
-              {title}
-            </Text>
-            <Text style={[styles.subtitle, { color: muted }]} numberOfLines={1}>
-              PDF
-            </Text>
-          </View>
-          <View style={styles.headerBtn} />
-        </LinearGradient>
-        <View style={[styles.webviewWrapper, { backgroundColor: background }]}>
-          <WebView
-            source={{ uri: url }}
-            style={styles.webview}
-            onLoadEnd={() => setIsLoading(false)}
-            onError={() => setIsLoading(false)}
-            originWhitelist={WEBVIEW_ORIGIN_WHITELIST}
-            mixedContentMode="always"
-          />
-          {isLoading && (
-            <View style={styles.loadingOverlay}>
-              <LinearGradient
-                colors={loadingCardGradient(isDark)}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={[styles.loadingCard, { borderColor: isDark ? 'rgba(148,163,184,0.35)' : 'rgba(2,6,23,0.10)' }]}
-              >
-                <View style={[styles.loadingIconCircle, { borderColor: isDark ? 'rgba(148,163,184,0.45)' : 'rgba(2,6,23,0.12)' }]}>
-                  <Text style={[styles.loadingIconText, { color: textColor }]}>PDF</Text>
+      <View style={[styles.container, { backgroundColor: colors.nbBackground }]}>
+        <NbPageHeader title={title} subtitle={subtitle} onBack={onClose} />
+
+        <View style={styles.previewWrap}>
+          <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard} style={styles.previewShadow}>
+            <View
+              style={[
+                styles.previewCard,
+                { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder },
+              ]}
+            >
+              <WebView
+                source={{ uri: url }}
+                style={styles.webview}
+                onLoadEnd={() => setIsLoading(false)}
+                onError={() => setIsLoading(false)}
+                originWhitelist={WEBVIEW_ORIGIN_WHITELIST}
+                mixedContentMode="always"
+              />
+              {isLoading ? (
+                <View style={[styles.loadingOverlay, { backgroundColor: colors.nbSurface }]}>
+                  <ActivityIndicator size="large" color={colors.nbInk} />
+                  <Text style={[styles.loadingTitle, { color: colors.nbInk }]}>Loading preview</Text>
+                  <Text style={[styles.loadingSubtitle, { color: colors.nbMuted }]}>
+                    If this takes too long, try again on Wi‑Fi.
+                  </Text>
                 </View>
-                <Text style={[styles.loadingTitle, { color: textColor }]}>Loading preview</Text>
-                <Text style={[styles.loadingSubtitle, { color: muted }]}>If this takes too long, try again on Wi‑Fi.</Text>
-                <ActivityIndicator style={{ marginTop: 12 }} size="small" color={isDark ? '#A855F7' : '#7C3AED'} />
-              </LinearGradient>
+              ) : null}
             </View>
-          )}
+          </HardShadow>
         </View>
-      </SafeAreaView>
+
+        <View
+          style={[
+            styles.actions,
+            {
+              borderTopColor: colors.nbBorder,
+              paddingBottom: Math.max(insets.bottom, spacing.md),
+            },
+          ]}
+        >
+          <View style={styles.actionRow}>
+            {typeof onDownload === 'function' ? (
+              <NbButton variant="plain" onPress={onDownload} style={styles.half}>
+                Download
+              </NbButton>
+            ) : null}
+            {typeof onShare === 'function' ? (
+              <NbButton variant="plain" onPress={onShare} style={styles.half}>
+                Share
+              </NbButton>
+            ) : null}
+          </View>
+          {typeof onDelete === 'function' ? (
+            <NbButton variant="plain" onPress={onDelete}>
+              Delete from my files
+            </NbButton>
+          ) : null}
+        </View>
+      </View>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  container: { flex: 1 },
+  previewWrap: {
     flex: 1,
+    paddingHorizontal: nb.screenGutter,
+    paddingTop: spacing.sm,
   },
-  header: {
-    paddingTop: Platform.OS === 'android' ? 24 : 8,
-    paddingBottom: 10,
-    paddingHorizontal: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  headerBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(148,163,184,0.10)',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(148,163,184,0.24)',
-  },
-  headerCenter: {
+  previewShadow: { flex: 1 },
+  previewCard: {
     flex: 1,
-    paddingHorizontal: 10,
-    alignItems: 'center',
+    borderRadius: borderRadius.nbCard,
+    borderWidth: nb.borderWidth,
+    overflow: 'hidden',
   },
-  title: {
-    fontSize: 15,
-    fontWeight: '800',
-    letterSpacing: -0.2,
-  },
-  subtitle: {
-    fontSize: 11,
-    fontWeight: '700',
-    marginTop: 2,
-    letterSpacing: 0.2,
-    textTransform: 'uppercase',
-  },
-  webviewWrapper: {
-    flex: 1,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(148,163,184,0.22)',
-  },
-  webview: {
-    flex: 1,
-  },
+  webview: { flex: 1 },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
+    padding: 24,
+    gap: 8,
   },
-  loadingCard: {
-    width: '72%',
-    maxWidth: 320,
-    borderRadius: 18,
-    paddingVertical: 18,
-    paddingHorizontal: 16,
-    borderWidth: StyleSheet.hairlineWidth,
-    alignItems: 'center',
+  loadingTitle: { fontSize: 16, fontWeight: '800', marginTop: 8 },
+  loadingSubtitle: { fontSize: 13, textAlign: 'center', fontWeight: '500' },
+  actions: {
+    paddingHorizontal: nb.screenGutter,
+    paddingTop: spacing.md,
+    gap: 10,
+    borderTopWidth: Platform.OS === 'ios' ? StyleSheet.hairlineWidth : 1,
   },
-  loadingIconCircle: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 10,
-  },
-  loadingIconText: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  loadingTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  loadingSubtitle: {
-    fontSize: 13,
-    textAlign: 'center',
-  },
+  actionRow: { flexDirection: 'row', gap: 10 },
+  half: { flex: 1 },
 });

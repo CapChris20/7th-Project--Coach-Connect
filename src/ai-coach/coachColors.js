@@ -1,82 +1,96 @@
-// Colors for the coach chat. Dark glass is the default. The light set is the small override.
-// Flow: build dark tokens → build light overrides → screens import AI_COACH_UI or AI_COACH_LIGHT.
-// Used by the coach conversation and the coach home cards.
+// AI Coach visual aliases on top of the shared palette — no parallel palette.
+// Flow: map coach UI roles → colorPalette gradients / nb tokens → screens import AI_COACH_UI.
+// Used by coach home, conversation, and sidebar-adjacent chrome.
+//
+// Contract: docs/design/DESIGN.md — keep cool gradients; Nb structure; no purple glow; no flat solid fills.
+
+import { lightColors, darkColors, gradients } from '../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
-// Manipulate here: chip colors label quick-action categories on the coach home row.
+// Manipulate here: chip accents for quick-action categories — cool multi-stop pairs only.
 const AI_COACH_CHIP_COLORS = {
-  food: '#F97316',
-  workout: '#C084FC',
-  sleep: '#06B6D4',
-  steps: '#34D399',
-  energy: '#FBBF24',
-  kcal: '#FB923C',
-  program: '#A78BFA',
-  muted: '#94A3B8',
+  food: gradients.brand.colors[1],
+  // Strip: ink purple (#E25588) off chrome — brand / energy only.
+  workout: gradients.brand.colors[1],
+  sleep: gradients.sleep.colors[1],
+  steps: gradients.energy.colors[1],
+  energy: gradients.energy.colors[0],
+  kcal: gradients.brand.colors[0],
+  program: gradients.energy.colors[0],
+  muted: lightColors.nbMuted,
 };
 
-// Manipulate here: gradient pairs for borders, CTAs, and the composer send pill.
+// Manipulate here: coach gradients — all aliases of colorPalette.gradients (plus soft washes).
 const AI_COACH_GRADIENTS = {
-  borderWarm: ['#BE185D', '#C2410C'],
-  borderWarmSubtle: ['rgba(157,23,77,0.42)', 'rgba(154,52,18,0.36)'],
-  borderBrand: ['#6D28D9', '#C2410C'],
-  ctaWarm: ['#BE185D', '#C2410C'],
-  ctaCool: ['#C084FC', '#FF6B9D'],
-  borderCyanPink: ['#06B6D4', '#FF6B9D'],
-  userBubble: ['rgba(255,255,255,0.10)', 'rgba(255,255,255,0.06)'],
-  borderPinkPurple: ['#FF6B9D', '#C084FC'],
-  heroBorder: ['#BE185D', '#C2410C', '#BE185D'],
-  categoryOrb: ['#BE185D', '#C2410C'],
-  composerSend: ['#BE185D', '#C2410C'],
-  composerSendLight: ['#DB2777', '#EA580C'],
+  borderWarm: gradients.brand.colors,
+  borderWarmSubtle: [
+    'rgba(255,107,157,0.42)',
+    'rgba(251,146,60,0.36)',
+  ],
+  borderBrand: gradients.brand.colors,
+  ctaWarm: gradients.brand.colors,
+  ctaCool: gradients.water.colors,
+  borderCyanPink: [gradients.water.colors[0], gradients.brand.colors[0]],
+  // Soft wash for coach bubbles (not glass blur).
+  userBubble: gradients.soft.colors,
+  borderPinkPurple: gradients.brand.colors,
+  heroBorder: [...gradients.brand.colors, gradients.brand.colors[0]],
+  categoryOrb: gradients.brand.colors,
+  composerSend: gradients.brand.colors,
+  composerSendLight: gradients.brand.colors,
+  coachBubbleWash: gradients.soft.colors,
 };
 
 const AI_COACH_COMPOSER_ICONS = {
-  iconAttach: '#BE185D',
-  iconMic: '#C2410C',
-  iconAttachLight: '#DB2777',
-  iconMicLight: '#EA580C',
-  micActiveBg: 'rgba(190,24,93,0.22)',
-  micActiveBgLight: 'rgba(219,39,119,0.16)',
+  iconAttach: gradients.brand.colors[0],
+  iconMic: gradients.brand.colors[1],
+  iconAttachLight: gradients.brand.colors[0],
+  iconMicLight: gradients.brand.colors[1],
+  micActiveBg: 'rgba(255,107,157,0.22)',
+  micActiveBgLight: 'rgba(255,107,157,0.16)',
 };
 
+/** Dark coach chrome — nb surfaces, no glass hairlines, no purple glow. */
 const AI_COACH_UI = {
-  bg: '#0A0A0F',
-  bgRoot: '#000000',
-  surface: '#0A0A0F',
-  surfaceElevated: '#141419',
-  heroInner: ['#1a0a2e', '#0f0a1a'],
-  glass: 'rgba(255,255,255,0.05)',
-  glassStrong: 'rgba(255,255,255,0.08)',
-  borderHairline: 'rgba(255,255,255,0.08)',
-  borderGlassTop: 'rgba(255,255,255,0.15)',
-  textPrimary: '#FFFFFF',
-  textSecondary: 'rgba(255,255,255,0.60)',
-  textMuted: 'rgba(255,255,255,0.45)',
-  textLabel: 'rgba(255,255,255,0.45)',
-  pink: '#FF6B9D',
-  purple: '#C084FC',
-  cyan: '#06B6D4',
-  orange: '#F97316',
-  green: '#34D399',
-  yellow: '#FBBF24',
+  bg: darkColors.nbBackground,
+  bgRoot: darkColors.nbBackground,
+  surface: darkColors.nbSurface,
+  surfaceElevated: darkColors.nbSurfaceChip,
+  heroInner: [darkColors.nbSurfaceChip, darkColors.nbBackground],
+  surfaceChip: darkColors.nbSurfaceChip,
+  surfaceStrong: darkColors.nbSurface,
+  // Legacy aliases (strip: no glass naming in new code).
+  glass: darkColors.nbSurfaceChip,
+  glassStrong: darkColors.nbSurface,
+  borderHairline: darkColors.nbBorder,
+  borderGlassTop: darkColors.nbBorder,
+  textPrimary: darkColors.nbInk,
+  textSecondary: darkColors.nbMuted,
+  textMuted: darkColors.nbMuted,
+  textLabel: darkColors.nbMuted,
+  pink: gradients.brand.colors[0],
+  // analysis chip — brand pink, not ink purple
+  purple: gradients.brand.colors[0],
+  cyan: gradients.water.colors[0],
+  orange: gradients.brand.colors[1],
+  green: gradients.energy.colors[1],
+  yellow: gradients.energy.colors[0],
   chip: AI_COACH_CHIP_COLORS,
   gradient: AI_COACH_GRADIENTS,
   composer: AI_COACH_COMPOSER_ICONS,
 };
 
+/** Light overrides for screens that merge onto AI_COACH_UI. */
 const AI_COACH_LIGHT = {
-  bg: '#F2F2F7',
-  surface: '#FFFFFF',
-  textPrimary: '#0A0A0F',
-  textSecondary: 'rgba(10,10,15,0.58)',
-  textMuted: 'rgba(10,10,15,0.45)',
-  borderHairline: 'rgba(0,0,0,0.08)',
-  glass: 'rgba(0,0,0,0.04)',
+  bg: lightColors.nbBackground,
+  surface: lightColors.nbSurface,
+  textPrimary: lightColors.nbInk,
+  textSecondary: lightColors.nbMuted,
+  textMuted: lightColors.nbMuted,
+  borderHairline: lightColors.nbBorder,
+  glass: lightColors.nbSurfaceChip,
 };
-
-// ===== HELPER FUNCTIONS =====
 
 // ===== MAIN FUNCTION =====
 

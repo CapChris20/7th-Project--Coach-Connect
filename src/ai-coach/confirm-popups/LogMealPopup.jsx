@@ -1,150 +1,83 @@
-// Confirm popup before the coach logs a meal.
-// Flow: read the food name, calories, and protein → show the meal type when it exists → confirm or cancel.
-// Used by: the coach conversation when a tool wants to log food.
+// Design Law meal confirm — editable food, meal chips, macro cards (screens/ai-coach-popups/01).
+// Flow: prefill from tool → user can fix food / meal type → Log meal.
+// Used by: ConfirmActionPopup when tool = logNutrition.
 
-import React from 'react';
-import { ToolModalBody, DetailRow, ConfirmCancelRow } from './sharedPopupParts';
+import React, { useMemo, useState } from 'react';
+import {
+  ToolModalBody,
+  FieldLabel,
+  PopupTextField,
+  FillChipRow,
+  MacroStatCards,
+  ConfirmCancelRow,
+} from './sharedPopupParts';
 
 // ===== NAMED CONSTANTS =====
 
-const POPUP_TITLE = 'Log this meal?';
-const FOOD_ROW_LABEL = 'Food';
-const CALORIES_ROW_LABEL = 'Calories';
-const PROTEIN_ROW_LABEL = 'Protein';
-const CARBS_ROW_LABEL = 'Carbs';
-const FAT_ROW_LABEL = 'Fat';
-const MEAL_ROW_LABEL = 'Meal';
-const CONFIRM_BUTTON_LABEL = 'Log';
-const DEFAULT_FOOD_NAME = 'Food item';
-const MISSING_VALUE = '—';
-const FOOD_NAME_KEYS = ['name', 'food', 'foodName'];
+const BADGE = 'Coach wants to log a meal';
+const FOOD_LABEL = 'FOOD';
+const CONFIRM_LABEL = 'Log meal';
+const MEAL_OPTIONS = [
+  { id: 'breakfast', label: 'Breakfast' },
+  { id: 'lunch', label: 'Lunch' },
+  { id: 'dinner', label: 'Dinner' },
+  { id: 'snack', label: 'Snack' },
+];
 
-// ===== HELPER FUNCTIONS =====
-
-/**
- * @param {object|undefined} params
- * @param {string[]} keyNames
- * @returns {string|undefined}
- */
-function readOptionalString(params, keyNames) {
-  if (!params) return undefined;
-  for (let index = 0; index < keyNames.length; index += 1) {
-    const keyName = keyNames[index];
-    const candidate = params[keyName];
-    if (candidate) return String(candidate);
-  }
-  return undefined;
-}
-
-/**
- * @param {object|undefined} params
- * @returns {string}
- */
-function readFoodName(params) {
-  const fromParams = readOptionalString(params, FOOD_NAME_KEYS);
-  if (fromParams) return fromParams;
-  return DEFAULT_FOOD_NAME;
-}
+// ===== HELPERS =====
 
 function valueWasProvided(value) {
-  if (value === undefined) return false;
-  if (value === null) return false;
-  return true;
+  return value !== undefined && value !== null;
 }
 
-/**
- * vocab: a missing calorie is not the same as 0. 0 stays on the card.
- * @param {object|undefined} params
- * @returns {string|number}
- */
-function readCalorieLabel(params) {
-  if (!params) return MISSING_VALUE;
-  // Show the unit — a bare "410" on a confirm card does not read as kcal.
-  if (valueWasProvided(params.cals)) return `${params.cals} kcal`;
-  if (valueWasProvided(params.calories)) return `${params.calories} kcal`;
-  return MISSING_VALUE;
-}
-
-/**
- * One macro row value ("45g"), or "—" when the model did not send it.
- * Carbs/fat used to be executed but never shown, so the user confirmed a
- * meal without seeing two of the numbers being saved.
- * @param {object|undefined} params
- * @param {string[]} keyNames
- * @returns {string}
- */
-function readMacroLabel(params, keyNames) {
-  if (!params) return MISSING_VALUE;
-  for (let index = 0; index < keyNames.length; index += 1) {
-    const candidate = params[keyNames[index]];
-    if (valueWasProvided(candidate)) return `${candidate}g`;
-  }
-  return MISSING_VALUE;
-}
-
-/**
- * @param {object|undefined} params
- * @returns {string}
- */
-function readProteinLabel(params) {
-  if (!params) return MISSING_VALUE;
-  if (!valueWasProvided(params.protein)) return MISSING_VALUE;
-  return `${params.protein}g`;
+function readFoodName(params) {
+  return String(params?.name || params?.food || params?.foodName || 'Food item');
 }
 
 function readMealType(params) {
-  if (!params) return undefined;
-  return params.mealType;
+  const raw = String(params?.mealType || params?.meal || 'breakfast').toLowerCase();
+  if (MEAL_OPTIONS.some((opt) => opt.id === raw)) return raw;
+  return 'breakfast';
 }
 
-/**
- * @param {object|undefined} params
- * @returns {{ foodName: string, calorieLabel: string|number, proteinLabel: string, mealType: string|undefined }}
- */
-function readMealDetails(params) {
-  return {
-    foodName: readFoodName(params),
-    calorieLabel: readCalorieLabel(params),
-    proteinLabel: readProteinLabel(params),
-    carbsLabel: readMacroLabel(params, ['carbs']),
-    fatLabel: readMacroLabel(params, ['fat', 'fats']),
-    mealType: readMealType(params),
-  };
-}
-
-function MealTypeRow({ mealType }) {
-  if (!mealType) return null;
-  return <DetailRow label={MEAL_ROW_LABEL} value={mealType} />;
+function macroGrams(params, keys) {
+  for (const key of keys) {
+    if (valueWasProvided(params?.[key])) return `${params[key]} g`;
+  }
+  return '—';
 }
 
 // ===== MAIN FUNCTION =====
 
-/**
- * Confirm logging a meal the coach parsed from the conversation.
- * @param {{ params?: object, reasoning?: string, onConfirm: Function, onCancel: Function, loading?: boolean }} props
- */
 export default function LogMealPopup({ params, reasoning, onConfirm, onCancel, loading }) {
-  // 1. Read food name, calories, protein, and meal (Breakfast / Lunch / …).
-  const mealDetails = readMealDetails(params);
+  const [foodName, setFoodName] = useState(() => readFoodName(params));
+  const [mealType, setMealType] = useState(() => readMealType(params));
 
-  // 2. Confirm logs that food. onConfirm still gets the original params.
-  function handleConfirmLogMeal() {
-    onConfirm(params);
-  }
+  const protein = macroGrams(params, ['protein']);
+  const carbs = macroGrams(params, ['carbs']);
+  const fats = macroGrams(params, ['fat', 'fats']);
+
+  const draftParams = useMemo(
+    () => ({
+      ...(params || {}),
+      name: foodName.trim() || readFoodName(params),
+      food: foodName.trim() || readFoodName(params),
+      mealType,
+    }),
+    [params, foodName, mealType],
+  );
 
   return (
-    <ToolModalBody title={POPUP_TITLE} reasoning={reasoning}>
-      <DetailRow label={FOOD_ROW_LABEL} value={mealDetails.foodName} />
-      <DetailRow label={CALORIES_ROW_LABEL} value={mealDetails.calorieLabel} />
-      <DetailRow label={PROTEIN_ROW_LABEL} value={mealDetails.proteinLabel} />
-      <DetailRow label={CARBS_ROW_LABEL} value={mealDetails.carbsLabel} />
-      <DetailRow label={FAT_ROW_LABEL} value={mealDetails.fatLabel} />
-      <MealTypeRow mealType={mealDetails.mealType} />
+    <ToolModalBody title={foodName || 'Meal'} badge={BADGE} reasoning={reasoning}>
+      <FieldLabel label={FOOD_LABEL} />
+      <PopupTextField value={foodName} onChangeText={setFoodName} placeholder="Food name" />
+      <FillChipRow options={MEAL_OPTIONS} value={mealType} onChange={setMealType} />
+      <MacroStatCards protein={protein} carbs={carbs} fats={fats} />
       <ConfirmCancelRow
-        onConfirm={handleConfirmLogMeal}
+        onConfirm={() => onConfirm(draftParams)}
         onCancel={onCancel}
         loading={loading}
-        confirmLabel={CONFIRM_BUTTON_LABEL}
+        confirmLabel={CONFIRM_LABEL}
       />
     </ToolModalBody>
   );

@@ -26,6 +26,7 @@ import WeeklyReportScreen from '../../for-both/weekly-report/WeeklyReportScreen'
 import MyProgressPhotosScreen from '../../for-both/photo-gallery/MyProgressPhotosScreen';
 import SavedWorkoutsScreen from '../../for-both/workout-plans/SavedWorkoutsScreen';
 import CreateWorkoutPlanScreen from '../../workouts/create-plan/CreateWorkoutPlanScreen';
+import DesignLawWorkoutSessionScreen from '../../workouts/session/DesignLawWorkoutSessionScreen';
 import CoachHomeScreen from '../../ai-coach/home-screen/CoachHomeScreen';
 import CoachConversationScreen from '../../ai-coach/conversation/CoachConversationScreen';
 import ClientBottomMenu from './ClientBottomMenu';
@@ -353,6 +354,7 @@ export function ClientWorkoutPlanScreen() {
         onBack={shell.rootGoBack}
         onProfilePress={shell.openProfile}
         onSettingsPress={shell.openSettings}
+        onStartSession={shell.openWorkoutSession}
       />
       {shell.addNotesFilesModalEl}
     </>,
@@ -552,8 +554,28 @@ export function ClientMyWorkoutPlanScreen() {
       readOnly
       hideBottomNav
       onBack={shell.rootGoBack}
+      onStartSession={shell.openWorkoutSession}
     />,
     shell,
+  );
+}
+
+/**
+ * Design Law session mode (log set + rest). hideBottomNav — focused workout chrome.
+ * Route params: workoutName, exercises[].
+ * @param {{ route?: object, navigation?: object }} props
+ * @returns {import('react').ReactElement}
+ */
+export function ClientWorkoutSessionScreen({ route, navigation }) {
+  const shell = useClientAppStartShell();
+  return withNav(
+    <DesignLawWorkoutSessionScreen
+      route={route}
+      navigation={navigation}
+      onClose={shell.rootGoBack}
+    />,
+    shell,
+    { hideBottomNav: true },
   );
 }
 

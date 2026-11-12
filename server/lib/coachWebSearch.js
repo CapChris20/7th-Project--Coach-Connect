@@ -734,7 +734,7 @@ const NO_WEB_SEARCH_HONESTY_APPEND = `
 WEB SEARCH STATUS (THIS TURN):
 You do NOT have live web search results in this prompt. You MUST NOT say you checked the web, googled it, pulled it up, searched online, or describe "what you're seeing from research" as if you browsed.
 Never say "let me check" / "fair enough let me pull that up" and then answer as if you searched.
-If they asked to verify online, be honest: you are answering from built-in coaching knowledge, not a live search. Say that plainly in one short sentence, then answer the FITNESS QUESTION (training days, protein, etc.).
+Just answer the FITNESS QUESTION as a coach (training days, protein, etc.). Do NOT apologize, and do NOT mention live search, coaching knowledge disclaimers, or "I didn't search the web".
 FORBIDDEN: defining "research", "sources", "citations", or "direct quotes"; APA/MLA lessons; "Here's a clear breakdown of **direct quotes…**".
 If you cannot verify with sources this turn, do not invent citations or pretend you have links.`;
 
@@ -759,7 +759,7 @@ const WEB_SEARCH_FAILED_APPEND = `
 
 WEB SEARCH FAILED THIS TURN:
 Live search did not complete. You MUST NOT say you searched, googled, ran a live search, or describe current web research.
-Open with ONE short sentence that live search was not available, then answer the user's FITNESS question from general coaching knowledge only.
+Answer the user's FITNESS question directly as a coach. Do NOT open with (or mention) live search being unavailable, coaching-knowledge disclaimers, or "I didn't search the web".
 FORBIDDEN topic titles: "research", "direct quotes", "how to cite", "sources".
 Do NOT cite studies, links, or "what research says" as if you browsed. No fake sources. No rigid "Here's a clear breakdown / What it is / Key findings" template.`;
 
@@ -772,6 +772,20 @@ const FAKE_WEB_SEARCH_OPENERS = [
   /^here(?:'s| is) what (?:the )?(?:current )?(?:research|web) says[^.!?]*[.!?]\s*/i,
 ];
 
+// Openers we used to force — strip them so old + new replies don't nag the user.
+const LIVE_SEARCH_HONESTY_OPENERS = [
+  /^live search (?:wasn't|was not|isn't|is not) available[^.!?]*[.!?]\s*/i,
+  /^here(?:'s| is) what i know from (?:coaching|fitness) knowledge[^.!?]*[.!?]\s*/i,
+  /^based on (?:my )?(?:general )?(?:coaching|fitness) knowledge[^.!?]*[.!?]\s*/i,
+  /^i(?:'m| am) answering from (?:built-in )?(?:coaching|fitness) knowledge[^.!?]*[.!?]\s*/i,
+  /^answering from (?:built-in )?(?:coaching|fitness) knowledge[^.!?]*[.!?]\s*/i,
+  /^i (?:did not|didn't) (?:run a )?live search[^.!?]*[.!?]\s*/i,
+  /^i (?:did not|didn't) search the web[^.!?]*[.!?]\s*/i,
+  /^i (?:could not|couldn't) (?:search|look (?:that )?up) (?:online|the web)[^.!?]*[.!?]\s*/i,
+  /^no live (?:web )?search (?:this turn|available)[^.!?]*[.!?]\s*/i,
+  /^note:?\s*(?:i )?(?:did not|didn't) search[^.!?]*[.!?]\s*/i,
+];
+
 function stripFakeWebSearchClaims(text) {
   let t = String(text || '').trim();
   if (!t) return t;
@@ -779,6 +793,20 @@ function stripFakeWebSearchClaims(text) {
     t = t.replace(re, '');
   }
   return t.trim();
+}
+
+function stripLiveSearchHonestyOpeners(text) {
+  let t = String(text || '').trim();
+  if (!t) return t;
+  for (const re of LIVE_SEARCH_HONESTY_OPENERS) {
+    t = t.replace(re, '');
+  }
+  // Also strip our old injected prefix if it appears mid-string after a prior strip.
+  t = t.replace(
+    /\s*Live search wasn't available this turn — here's what I know from coaching knowledge, not cited web results\.\s*/gi,
+    ' ',
+  );
+  return t.replace(/\s{2,}/g, ' ').trim();
 }
 
 function userRequestedWebSearchTurn({ webMode, lastUserMsg, messages, hasImages }) {
@@ -803,6 +831,7 @@ module.exports = {
   resolveCoachWebSearchGate,
   WEB_SEARCH_FAILED_APPEND,
   stripFakeWebSearchClaims,
+  stripLiveSearchHonestyOpeners,
   userRequestedWebSearchTurn,
   WEB_SEARCH_SYSTEM_APPEND,
   WEB_SOURCE_QUOTE_SYSTEM_APPEND,

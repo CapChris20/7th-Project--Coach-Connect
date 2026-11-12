@@ -1,10 +1,13 @@
-// Saved workout-plan library for a client (trainer or client viewer).
-// Flow: load plans from Firestore → normalize → search/filter → show cards or empty state.
-// Used by trainer client tabs and the client workout library. Layout paints; the export wires data.
+// Design Law saved plans library (workouts PNG 17/18) — trainer Tools → Workout plans + client library.
+// Flow: load plans from Firestore → normalize → search/filter → list rows or empty state.
+// Layout paints; default export wires data. Delete confirm = NbSheet (PNG 18).
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
-import { useTheme } from "../../look-and-feel/lightDarkMode";
-import { NbCard } from "../../look-and-feel/NbCard";
-import { NbButton } from "../../look-and-feel/NbButton";import {
+import { useTheme } from '../../look-and-feel/lightDarkMode';
+import NbButton from '../../look-and-feel/NbButton';
+import HardShadow from '../../look-and-feel/HardShadow';
+import NbPill from '../../look-and-feel/NbPill';
+import NbSheet from '../../look-and-feel/NbSheet';
+import {
   View,
   Text,
   ScrollView,
@@ -12,24 +15,17 @@ import { NbButton } from "../../look-and-feel/NbButton";import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
-  Platform,
   TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { SHELL_SAFE_AREA_EDGES, useShellBottomNavInset } from '../../navigation/bottomMenuSpacing';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useTheme } from '../../look-and-feel/lightDarkMode';
 import TopHeader from '../../for-both/loading-and-header/TopHeader';
+import { borderRadius, gradients, nb, spacing } from '../../look-and-feel/colorPalette';
 import { db } from '../../app-start/cloudConnection';
 import {
-  collection,
   doc,
-  getDoc,
-  getDocs,
-  query,
-  where,
-  orderBy,
   setDoc,
   deleteDoc,
 } from 'firebase/firestore';
@@ -37,42 +33,31 @@ import { fetchClientWorkoutPlansForLibrary } from '../../workouts/exercise-video
 
 // ===== NAMED CONSTANTS =====
 
-const FOCUS_COLORS = {
-  pink:   { start: '#FF6B9D', end: '#C084FC' },
-  purple: { start: '#C084FC', end: '#7C3AED' },
-  cyan:   { start: '#06B6D4', end: '#3B82F6' },
-  orange: { start: '#F97316', end: '#FF6B9D' },
-  green:  { start: '#10B981', end: '#06B6D4' },
-  gray:   { start: '#6B7280', end: '#1F2937' },
-};
+/** Map theme nb tokens → legacy `theme.*` keys used by list chrome. */
+function nbTheme(colors) {
+  return {
+    bg: colors.nbBackground,
+    surface: colors.nbSurface,
+    card: colors.nbSurface,
+    border: colors.nbBorder,
+    text: colors.nbInk,
+    textMuted: colors.nbMuted,
+    textSecondary: colors.nbMuted,
+    fill: colors.nbFill,
+    onFill: colors.nbOnFill,
+    soft: colors.nbSoft,
+  };
+}
 
-const THEME = {
-  dark: {
-    bg: '#0A0A0F',
-    surface: '#13131A',
-    card: 'rgba(255,255,255,0.04)',
-    border: 'rgba(255,255,255,0.08)',
-    text: '#FFFFFF',
-    textMuted: 'rgba(255,255,255,0.55)',
-    textSecondary: 'rgba(255,255,255,0.35)',
-  },
-  light: {
-    bg: '#F9FAFB',
-    surface: '#FFFFFF',
-    card: 'rgba(0,0,0,0.02)',
-    border: 'rgba(0,0,0,0.08)',
-    text: '#0A0A0F',
-    textMuted: 'rgba(0,0,0,0.55)',
-    textSecondary: 'rgba(0,0,0,0.35)',
-  },
-};
+// Icon-chip gradient rotation (Design Law — small accents only)
+const ICON_GRADS = [
+  gradients.brand?.colors || ['#FF6B9D', '#FB923C'],
+  gradients.energy?.colors || ['#FBBF24', '#EF4444'],
+  gradients.water?.colors || ['#60A5FA', '#818CF8'],
+  ['#A78BFA', '#E879F9'],
+  ['#FDBA74', '#C4B5FD'],
+];
 
-/** design-system.md — card rims & CTAs (dark pink → dark orange), not cyan/purple rainbow */
-const WARM_BORDER_GRADIENT = ['#BE185D', '#C2410C'];
-const WARM_CTA_GRADIENT = ['#BE185D', '#C2410C'];
-const WARM_ACCENT = '#FF6B9D';
-
-const EMPTY_CHECK_COLORS = ['#FF6B9D', '#F97316', '#BE185D', '#C2410C'];
 const DAYS_PER_WEEK_DEFAULT = 4;
 const EXERCISES_PER_DAY_FALLBACK = 6;
 const MIN_EXERCISE_COUNT_FALLBACK = 8;
@@ -314,362 +299,74 @@ function normalizePlan(item) {
 }
 
 // ============================================================================
-// LIBRARY HERO — matches client library screenshots
+// LIBRARY HEADER — PNG 17 title row
 // ============================================================================
-function LibraryHeroSummary({ isDark, totalPlans }) {
-  const theme = THEME[isDark ? 'dark' : 'light'];
-  const innerBg = isDark ? '#121218' : '#FFFFFF';
+function LibraryHeroSummary({ theme, totalPlans }) {
+  return (
+    <View style={styles.libraryHeroPlain}>
+      <Text style={[styles.libraryHeroTitle, { color: theme.text }]}>Saved plans</Text>
+      <Text style={[styles.libraryHeroKicker, { color: theme.textMuted }]}>
+        {totalPlans} plan{totalPlans === 1 ? '' : 's'}
+      </Text>
+    </View>
+  );
+}
+
+/** Active / Trainer pills — Design Law soft or brand gradient, never green. */
+function StatusBadge({ status }) {
+  if (status === 'active') {
+    return <NbPill variant="brand">Active</NbPill>;
+  }
+  const label =
+    status === 'completed' ? 'Done' : status === 'paused' ? 'Paused' : String(status || 'Plan');
+  return <NbPill variant="plain">{label}</NbPill>;
+}
+
+/**
+ * One list row inside the Saved plans card (PNG 17).
+ * vocab: iconGrad = small accent only — never on the whole row.
+ */
+function HistoryPlanCard({ plan, theme, onPress, onOptions, index = 0 }) {
+  const grad = ICON_GRADS[index % ICON_GRADS.length];
+  const isManual = plan._raw?.source === 'manualBuilder' || plan._raw?.planKind === 'manual';
+  const meta = isManual
+    ? `Custom · ${plan.createdAt || '—'}`
+    : `Built by AI · ${plan.createdAt || '—'}`;
 
   return (
-    <LinearGradient
-      colors={WARM_BORDER_GRADIENT}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-      style={styles.libraryHeroBorder}
-    >
-      <View style={[styles.libraryHeroInner, { backgroundColor: innerBg }]}>
-        <Text style={[styles.libraryHeroTitle, { color: theme.text }]}>
-          Your Workout{' '}
-          <Text style={{ fontWeight: '900', color: '#BE185D' }}>Lib</Text>
-          <Text style={{ fontWeight: '900', color: '#C2410C' }}>rary</Text>
+    <TouchableOpacity onPress={onPress} activeOpacity={0.88} style={styles.planRow}>
+      <LinearGradient
+        colors={grad}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={[styles.planIconChip, { borderColor: theme.border }]}
+      >
+        <Ionicons name="barbell-outline" size={22} color="#0A0A0A" />
+      </LinearGradient>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={[styles.historyCardTitle, { color: theme.text }]} numberOfLines={1}>
+          {plan.name}
         </Text>
-        <Text style={[styles.libraryHeroKicker, { color: theme.textMuted }]}>SAVED PLANS</Text>
-        <LinearGradient
-          colors={WARM_BORDER_GRADIENT}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={styles.libraryHeroAccentLine}
-        />
-        <Text style={[styles.libraryHeroCount, { color: WARM_ACCENT }]}>{totalPlans}</Text>
-        <Text style={[styles.libraryHeroFooter, { color: theme.textSecondary }]}>PLANS CRAFTED WITH COACH CONNECT</Text>
+        <Text style={[styles.historyCardCreated, { color: theme.textMuted }]} numberOfLines={1}>
+          {meta}
+        </Text>
       </View>
-    </LinearGradient>
+      {plan.status === 'active' ? <StatusBadge status="active" /> : null}
+      {isManual && plan.status !== 'active' ? <NbPill variant="plain">Trainer</NbPill> : null}
+      {onOptions ? (
+        <TouchableOpacity onPress={onOptions} hitSlop={10} style={styles.historyCardIconHit}>
+          <Ionicons name="ellipsis-horizontal" size={20} color={theme.textMuted} />
+        </TouchableOpacity>
+      ) : null}
+    </TouchableOpacity>
   );
 }
 
 // ============================================================================
-// METRIC CARD
-// ============================================================================
-const MetricCard = ({ icon, iconLib, label, value, isDark }) => {
-  const theme = THEME[isDark ? 'dark' : 'light'];
-  const IconComp = iconLib === 'mci' ? MaterialCommunityIcons : Ionicons;
-  return (
-    <View style={[styles.metricCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-      <IconComp name={icon} size={14} color={theme.textMuted} />
-      <Text style={[styles.metricValue, { color: theme.text }]}>{value}</Text>
-      <Text style={[styles.metricLabel, { color: theme.textMuted }]}>{label}</Text>
-    </View>
-  );
-};
-
-// ============================================================================
-// PROGRESS RING (visual-only — no SVG dependency)
-// ============================================================================
-const ProgressRing = ({ progress, isDark }) => {
-  const theme = THEME[isDark ? 'dark' : 'light'];
-  const pct = Math.round(progress);
-  return (
-    <View style={{ width: 72, height: 72, borderRadius: 36, borderWidth: 4, borderColor: 'rgba(255,107,157,0.25)', justifyContent: 'center', alignItems: 'center' }}>
-      <View style={{ width: 58, height: 58, borderRadius: 29, borderWidth: 3, borderColor: '#FF6B9D', justifyContent: 'center', alignItems: 'center', backgroundColor: isDark ? 'rgba(255,107,157,0.06)' : 'rgba(255,107,157,0.04)' }}>
-        <Text style={{ fontSize: 16, fontWeight: '900', color: theme.text }}>{pct}%</Text>
-      </View>
-    </View>
-  );
-};
-
-// ============================================================================
-// FEATURED PLAN CARD
-// ============================================================================
-const FeaturedPlanCard = ({ plan, isDark, onContinue, onViewDetails, onOptions }) => {
-  const theme  = THEME[isDark ? 'dark' : 'light'];
-  const colors = FOCUS_COLORS[plan.focusColor] || FOCUS_COLORS.pink;
-  const progress  = plan.totalWeeks > 0 ? Math.round((plan.weeksCompleted / plan.totalWeeks) * 100) : 0;
-
-  return (
-    <LinearGradient
-      colors={WARM_BORDER_GRADIENT}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-      style={[styles.featuredBorder]}
-    >
-      <View style={[styles.featuredCard, { backgroundColor: theme.surface }]}>
-        <View style={styles.featuredContent}>
-          {/* Badges row */}
-          <View style={styles.featuredBadges}>
-            <LinearGradient
-              colors={WARM_CTA_GRADIENT}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.focusBadge}
-            >
-              <Ionicons name="sparkles" size={11} color="#FFF" />
-              <Text style={styles.focusLabel}>{plan.focus}</Text>
-            </LinearGradient>
-            <StatusBadge status={plan.status} />
-            {onOptions && (
-              <TouchableOpacity onPress={onOptions} hitSlop={10} style={{ marginLeft: 'auto' }}>
-                <Ionicons name="ellipsis-horizontal" size={18} color={theme.textMuted} />
-              </TouchableOpacity>
-            )}
-          </View>
-
-          {/* Title + progress row */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 12 }}>
-            <View style={{ flex: 1, paddingRight: 14 }}>
-              <Text style={[styles.featuredTitle, { color: theme.text }]} numberOfLines={2}>
-                {plan.name}
-              </Text>
-              <Text style={[styles.featuredSubtitle, { color: theme.textMuted }]}>
-                {plan.createdAt ? `${plan.createdAt} · ` : ''}Week {plan.weeksCompleted} of {plan.totalWeeks}
-              </Text>
-            </View>
-            <View style={{ alignItems: 'center' }}>
-              <ProgressRing progress={progress} isDark={isDark} />
-            </View>
-          </View>
-
-          {/* Compact metrics row */}
-          <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
-            {[
-              { icon: 'calendar-outline', val: `${plan.totalWeeks} wks` },
-              { icon: 'barbell-outline', val: `${plan.daysPerWeek} days/wk` },
-              { icon: 'time-outline', val: `${plan.sessionMinutes}m/session` },
-            ].map((m) => (
-              <View key={m.icon} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, borderWidth: 2.5, borderColor: theme.border, backgroundColor: theme.card }}>
-                <Ionicons name={m.icon} size={13} color={theme.textMuted} />
-                <Text style={{ fontSize: 12, fontWeight: '700', color: theme.textMuted }}>{m.val}</Text>
-              </View>
-            ))}
-          </View>
-
-          {/* Week dots */}
-          <View style={{ marginTop: 14 }}>
-            <Text style={{ fontSize: 10, fontWeight: '800', letterSpacing: 1, color: theme.textMuted, marginBottom: 8 }}>THIS WEEK</Text>
-            <View style={styles.weekDots}>
-              {plan.trainingDays.map((isTraining, i) => (
-                <View
-                  key={i}
-                  style={[
-                    styles.weekDot,
-                    {
-                      backgroundColor: isTraining ? '#BE185D' : 'transparent',
-                      borderColor: isTraining ? '#BE185D' : theme.border,
-                    },
-                  ]}
-                >
-                  <Text style={[styles.weekDayLabel, { color: isTraining ? '#FFF' : theme.textMuted }]}>
-                    {WEEKDAY_SHORT_LABELS[i]}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          </View>
-
-          {/* Single CTA */}
-          <View style={{ marginTop: 16 }}>
-            <LinearGradient
-              colors={WARM_CTA_GRADIENT}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.primaryButtonGradient}
-            >
-              <TouchableOpacity style={styles.primaryButton} onPress={onContinue} activeOpacity={0.8}>
-                <MaterialCommunityIcons name="play-circle" size={16} color="#FFF" />
-                <Text style={styles.primaryButtonLabel}>Continue Today</Text>
-                <Ionicons name="chevron-forward" size={14} color="#FFF" />
-              </TouchableOpacity>
-            </LinearGradient>
-          </View>
-        </View>
-      </View>
-    </LinearGradient>
-  );
-};
-
-// ============================================================================
-// STATUS BADGE (shared)
-// ============================================================================
-const STATUS_STYLES = {
-  active:    { bg: 'rgba(34,197,94,0.2)',   border: '#22c55e',  text: '#22c55e'  },
-  completed: { bg: 'rgba(6,182,212,0.2)',   border: '#06B6D4',  text: '#06B6D4'  },
-  paused:    { bg: 'rgba(245,158,11,0.2)',  border: '#F59E0B',  text: '#F59E0B'  },
-};
-
-const StatusBadge = ({ status }) => {
-  const statusStyle = STATUS_STYLES[status] || STATUS_STYLES.paused;
-  return (
-    <View style={[styles.statusBadge, { backgroundColor: statusStyle.bg, borderColor: statusStyle.border }]}>
-      <Text style={[styles.statusLabel, { color: statusStyle.text }]}>{status?.toUpperCase()}</Text>
-    </View>
-  );
-};
-
-// ============================================================================
-// PLAN CARD — history / library list
-// ============================================================================
-const STAT_PILL_ICONS = ['calendar-outline', 'repeat-outline', 'barbell-outline'];
-
-const HistoryPlanCard = ({ plan, isDark, onPress, onOptions }) => {
-  const theme = THEME[isDark ? 'dark' : 'light'];
-  const muscles = plan.muscleTags || [];
-  const maxShow = 4;
-  const focusLabel = String(plan.focus || 'Training').trim();
-  const focusLower = focusLabel.toLowerCase();
-  const muscleList = muscles.filter((m) => String(m).trim().toLowerCase() !== focusLower);
-  const shown = muscleList.slice(0, maxShow);
-  const extra = Math.max(0, muscleList.length - maxShow);
-  const statLine = [
-    `${plan.totalWeeks} weeks`,
-    `${plan.daysPerWeek} days/wk`,
-    `${plan.exerciseCount ?? '—'} exercises`,
-  ];
-
-  return (
-    <View
-      style={[
-        styles.historyCard,
-        {
-          backgroundColor: theme.surface,
-          borderWidth: 2.5,
-          borderColor: theme.border,
-        },
-      ]}
-    >
-        <View style={styles.historyCardTop}>
-          <View style={{ flex: 1, paddingRight: 10 }}>
-            <Text style={[styles.historyCardTitle, { color: theme.text }]} numberOfLines={2}>
-              {plan.name}
-            </Text>
-          </View>
-          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 4 }}>
-            {onOptions ? (
-              <TouchableOpacity onPress={onOptions} hitSlop={10} style={styles.historyCardIconHit}>
-                <Ionicons name="ellipsis-horizontal" size={20} color={theme.textMuted} />
-              </TouchableOpacity>
-            ) : null}
-            <TouchableOpacity
-              onPress={onPress}
-              accessibilityLabel="Quick open plan"
-              style={[
-                styles.historyIconBtn,
-                {
-                  backgroundColor: isDark ? 'rgba(255,107,157,0.18)' : 'rgba(255,107,157,0.12)',
-                  borderColor: 'rgba(255,107,157,0.45)',
-                },
-              ]}
-            >
-              <Ionicons name="barbell" size={20} color="#FF6B9D" />
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        <Text style={[styles.historyCardCreated, { color: theme.textMuted }]}>
-          CREATED {plan.createdUpper || plan.createdAt || '—'}
-        </Text>
-
-        <View style={styles.historyStatRow}>
-          {statLine.map((text, idx) => (
-            <View
-              key={text}
-              style={[
-                styles.historyStatPillInner,
-                {
-                  flex: 1,
-                  backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(10,10,15,0.03)',
-                  borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(190,24,93,0.15)',
-                },
-              ]}
-            >
-              <Ionicons name={STAT_PILL_ICONS[idx] || 'ellipse-outline'} size={15} color={WARM_ACCENT} />
-              <Text style={[styles.historyStatText, { color: theme.text }]} numberOfLines={1}>
-                {text}
-              </Text>
-            </View>
-          ))}
-        </View>
-
-        <View
-          style={[
-            styles.historyDivider,
-            { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(10,10,15,0.08)' },
-          ]}
-        />
-
-        <View style={styles.historyMuscleRow}>
-          <View
-            style={[
-              styles.historyFocusChipInner,
-              {
-                backgroundColor: isDark ? 'rgba(190,24,93,0.14)' : 'rgba(255,107,157,0.1)',
-                borderWidth: 2.5,
-                borderColor: isDark ? 'rgba(190,24,93,0.35)' : 'rgba(190,24,93,0.22)',
-              },
-            ]}
-          >
-            <Ionicons name="sparkles" size={14} color={WARM_ACCENT} />
-            <Text style={[styles.historyFocusChipText, { color: theme.text }]} numberOfLines={1}>
-              {focusLabel}
-            </Text>
-          </View>
-          {shown.map((m) => (
-            <View
-              key={m}
-              style={[
-                styles.historyMuscleChipInner,
-                {
-                  backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(10,10,15,0.03)',
-                  borderColor: theme.border,
-                },
-              ]}
-            >
-              <View style={[styles.historyMuscleDot, { backgroundColor: WARM_ACCENT }]} />
-              <Text style={[styles.historyMuscleText, { color: isDark ? 'rgba(255,255,255,0.82)' : 'rgba(10,10,15,0.75)' }]} numberOfLines={1}>
-                {m}
-              </Text>
-            </View>
-          ))}
-          {extra > 0 ? (
-            <View
-              style={[
-                styles.historyMoreChip,
-                {
-                  borderColor: isDark ? 'rgba(255,255,255,0.14)' : 'rgba(10,10,15,0.12)',
-                  backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-                },
-              ]}
-            >
-              <Text style={[styles.historyMuscleText, { color: theme.text }]}>+{extra}</Text>
-            </View>
-          ) : null}
-        </View>
-
-        <LinearGradient
-          colors={WARM_CTA_GRADIENT}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={styles.historyOpenBtnGrad}
-        >
-          <TouchableOpacity
-            style={styles.historyOpenBtnTouch}
-            onPress={onPress}
-            activeOpacity={0.88}
-            accessibilityRole="button"
-            accessibilityLabel="Open workout plan"
-          >
-            <Ionicons name="document-text-outline" size={21} color="#FFFFFF" />
-            <Text style={styles.historyOpenBtnLabel}>Open workout plan</Text>
-            <Ionicons name="chevron-forward" size={22} color="#FFFFFF" />
-          </TouchableOpacity>
-        </LinearGradient>
-    </View>
-  );
-};
-
-// ============================================================================
-// EMPTY STATES — gradient hero (matches session / marketplace polish)
+// EMPTY — dashed Design Law card
 // ============================================================================
 function PlansLibraryEmptyHero({
-  isDark,
+  theme,
   clientName,
   clientId,
   viewerRole,
@@ -678,176 +375,85 @@ function PlansLibraryEmptyHero({
   message,
   compact,
 }) {
-  const theme = THEME[isDark ? 'dark' : 'light'];
-  const innerBg = isDark ? '#0A0A0F' : '#F8F9FC';
-  const labelColor = isDark ? 'rgba(255,255,255,0.45)' : 'rgba(10,10,15,0.45)';
-  /** Clients build their own plans from the generator CTA. */
   const showCta =
     !compact && viewerRole === 'client' && typeof onGenerateWorkout === 'function' && !!clientId;
   const showTrainerCustom =
     !compact && viewerRole === 'trainer' && typeof onBuildCustom === 'function' && !!clientId;
 
-  if (compact) {
-    return (
-      <View style={[styles.emptyFilterCard, { borderColor: theme.border, backgroundColor: theme.card }]}>
-        <LinearGradient
-          colors={WARM_CTA_GRADIENT}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={styles.emptyFilterIcon}
-        >
-          <Ionicons name="layers-outline" size={26} color="#FFFFFF" />
-        </LinearGradient>
-        <Text style={[styles.emptyFilterTitle, { color: theme.text }]}>{message || 'Nothing here yet'}</Text>
-        <Text style={[styles.emptyFilterSub, { color: theme.textMuted }]}>Try a different search or add a new plan.</Text>
-      </View>
-    );
-  }
-
-  const bullets =
-    viewerRole === 'trainer'
-      ? [
-          'Saved plans land here with progress, focus tags, and week layout.',
-          'Use Custom builder for exercise-by-exercise plans, or generate AI blocks from the client dashboard.',
-          'Assign, pause, or remove plans anytime from the ··· menu on a card.',
-        ]
-      : [
-          'Saved plans land here with progress, focus tags, and week layout.',
-          'Use Build a plan to draft a block in the generator—it syncs to this library.',
-          'Your coach can also add plans; you will see them here when they do.',
-        ];
-
   return (
-    <View style={styles.emptyHeroOuter}>
-      <View
-        style={[
-          styles.emptyHeroInner,
-          {
-            backgroundColor: innerBg,
-            borderWidth: 2.5,
-            borderColor: theme.border,
-            borderBottomWidth: 4,
-            borderBottomColor: '#f59e0b',
-            ...Platform.select({
-              ios: {
-                shadowColor: '#000',
-                shadowOffset: { width: 0, height: 5 },
-                shadowOpacity: isDark ? 0.35 : 0.12,
-                shadowRadius: 12,
-              },
-              android: { elevation: 5 },
-            }),
-          },
-        ]}
-      >
-          <View
-            style={[StyleSheet.absoluteFill, { backgroundColor: isDark ? 'rgba(255,255,255,0.02)' : 'transparent' }]}
-            pointerEvents="none"
-          />
-          <View style={styles.emptyHeroContent}>
-            <Text style={[styles.emptyHeroKicker, { color: labelColor }]}>WORKOUT LIBRARY</Text>
-            <Text style={[styles.emptyHeroTitle, { color: theme.text }]}>No plans yet</Text>
-            <Text style={[styles.emptyHeroSub, { color: theme.textMuted }]}>
-              {viewerRole === 'trainer'
-                ? `${clientName} does not have any saved workout plans here yet. Open Workout Plans from Quick Actions on their dashboard to generate one—it will appear in this library.`
-                : 'You do not have any saved workout plans yet. Tap Build a plan to draft one in the generator, or wait for your coach to add one.'}
-            </Text>
-            <View style={styles.emptyHeroBullets}>
-              {bullets.map((line, i) => (
-                <View key={line} style={styles.emptyHeroRow}>
-                  <Ionicons name="checkmark-circle" size={18} color={EMPTY_CHECK_COLORS[i % EMPTY_CHECK_COLORS.length]} />
-                  <Text style={[styles.emptyHeroBullet, { color: theme.text }]}>{line}</Text>
-                </View>
-              ))}
-            </View>
-            {showTrainerCustom ? (
-              <LinearGradient
-                colors={WARM_CTA_GRADIENT}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={[styles.emptyHeroCtaGrad, { marginTop: 8 }]}
-              >
-                <TouchableOpacity
-                  style={styles.emptyHeroCtaTouch}
-                  activeOpacity={0.88}
-                  onPress={() => onBuildCustom({ id: clientId, name: clientName })}
-                  accessibilityRole="button"
-                  accessibilityLabel="Build custom workout plan"
-                >
-                  <Ionicons name="construct-outline" size={20} color="#FFFFFF" />
-                  <Text style={styles.emptyHeroCtaText}>Build custom plan</Text>
-                  <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
-                </TouchableOpacity>
-              </LinearGradient>
-            ) : null}
-            {showCta ? (
-              <LinearGradient
-                colors={WARM_CTA_GRADIENT}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={[styles.emptyHeroCtaGrad, { marginTop: showTrainerCustom ? 12 : 8 }]}
-              >
-                <TouchableOpacity
-                  style={styles.emptyHeroCtaTouch}
-                  activeOpacity={0.88}
-                  onPress={() => onGenerateWorkout({ id: clientId, name: clientName })}
-                  accessibilityRole="button"
-                  accessibilityLabel="Build workout plan"
-                >
-                  <Ionicons name="barbell-outline" size={20} color="#FFFFFF" />
-                  <Text style={styles.emptyHeroCtaText}>Build a plan</Text>
-                  <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
-                </TouchableOpacity>
-              </LinearGradient>
-            ) : null}
-          </View>
+    <View
+      style={[
+        styles.emptyFilterCard,
+        {
+          borderColor: theme.border,
+          backgroundColor: theme.surface,
+          borderStyle: 'dashed',
+          borderWidth: nb.borderWidth,
+        },
+      ]}
+    >
+      <View style={[styles.emptyFilterIcon, { backgroundColor: theme.soft, borderColor: theme.border }]}>
+        <Ionicons name="layers-outline" size={26} color={theme.text} />
       </View>
+      <Text style={[styles.emptyFilterTitle, { color: theme.text }]}>
+        {compact ? message || 'Nothing here yet' : 'No plans yet'}
+      </Text>
+      <Text style={[styles.emptyFilterSub, { color: theme.textMuted }]}>
+        {compact
+          ? 'Try a different search or add a new plan.'
+          : viewerRole === 'trainer'
+            ? `${clientName} has no saved plans yet. Build a custom plan or generate with AI.`
+            : 'Tap Build a plan to draft one, or wait for your coach to add one.'}
+      </Text>
+      {showTrainerCustom ? (
+        <View style={{ marginTop: 12, width: '100%' }}>
+          <NbButton variant="fill" onPress={() => onBuildCustom({ id: clientId, name: clientName })}>
+            Build custom plan
+          </NbButton>
+        </View>
+      ) : null}
+      {showCta ? (
+        <View style={{ marginTop: 10, width: '100%' }}>
+          <NbButton variant="fill" onPress={() => onGenerateWorkout({ id: clientId, name: clientName })}>
+            Build a plan
+          </NbButton>
+        </View>
+      ) : null}
     </View>
   );
 }
 
-// ============================================================================
-// TRAINER — compact builder card (bottom of library)
-// ============================================================================
-function TrainerBuilderFooterCard({ isDark, clientName, onGenerateWorkout, onBuildCustom, theme, clientId }) {
+/** Trainer footer — Build custom / AI plan as NbButtons (PNG-adjacent Tools actions). */
+function TrainerBuilderFooterCard({ clientName, onGenerateWorkout, onBuildCustom, theme, clientId }) {
   if (!clientId) return null;
-  const innerBg = isDark ? '#121218' : '#FFFFFF';
 
   return (
     <View style={styles.trainerBuilderFooterWrap}>
-      <LinearGradient colors={WARM_BORDER_GRADIENT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.trainerBuilderFooterBorder}>
-        <View style={[styles.trainerBuilderFooterInner, { backgroundColor: innerBg }]}>
-          <View style={styles.trainerBuilderFooterTop}>
-            <View style={[styles.trainerBuilderFooterIcon, { backgroundColor: isDark ? 'rgba(255,107,157,0.18)' : 'rgba(255,107,157,0.12)' }]}>
-              <Ionicons name="barbell-outline" size={20} color="#FF6B9D" />
-            </View>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={[styles.trainerBuilderFooterTitle, { color: theme.text }]}>Workout Plan Builder</Text>
-              <Text style={[styles.trainerBuilderFooterSub, { color: theme.textMuted }]} numberOfLines={1}>
-                Build for {clientName}
-              </Text>
-            </View>
-          </View>
-          <View style={styles.trainerBuilderFooterActions}>
-            <TouchableOpacity
-              activeOpacity={0.88}
-              onPress={() => onGenerateWorkout?.({ id: clientId, name: clientName })}
-              style={[styles.trainerBuilderFooterBtn, { backgroundColor: isDark ? 'rgba(255,107,157,0.22)' : 'rgba(255,107,157,0.14)' }]}
-            >
-              <Ionicons name="sparkles-outline" size={15} color="#FF6B9D" />
-              <Text style={[styles.trainerBuilderFooterBtnText, { color: theme.text }]}>AI plan</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              activeOpacity={0.88}
-              onPress={() => onBuildCustom?.({ id: clientId, name: clientName })}
-              style={[styles.trainerBuilderFooterBtn, { backgroundColor: isDark ? 'rgba(249,115,22,0.18)' : 'rgba(249,115,22,0.12)' }]}
-            >
-              <Ionicons name="construct-outline" size={15} color="#F97316" />
-              <Text style={[styles.trainerBuilderFooterBtnText, { color: theme.text }]}>Custom</Text>
-            </TouchableOpacity>
+      <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetCard}>
+        <View
+          style={[
+            styles.trainerBuilderFooterInner,
+            {
+              backgroundColor: theme.surface,
+              borderColor: theme.border,
+              borderWidth: nb.borderWidth,
+            },
+          ]}
+        >
+          <Text style={[styles.trainerBuilderFooterTitle, { color: theme.text }]}>Build for {clientName}</Text>
+          <Text style={[styles.trainerBuilderFooterSub, { color: theme.textMuted }]}>
+            Custom builder or AI plan
+          </Text>
+          <View style={{ gap: 10, marginTop: 12 }}>
+            <NbButton variant="fill" onPress={() => onBuildCustom?.({ id: clientId, name: clientName })}>
+              Build custom plan
+            </NbButton>
+            <NbButton variant="ghost" onPress={() => onGenerateWorkout?.({ id: clientId, name: clientName })}>
+              Generate AI plan
+            </NbButton>
           </View>
         </View>
-      </LinearGradient>
+      </HardShadow>
     </View>
   );
 }
@@ -865,7 +471,6 @@ function SavedWorkoutsScreenLayout({
   error,
   reload,
   hasPlans,
-  isDark,
   clientName,
   clientId,
   viewerRole,
@@ -909,7 +514,7 @@ function SavedWorkoutsScreenLayout({
       >
         {loading && (
           <View style={styles.centeredFeedback}>
-            <ActivityIndicator size="large" color="#FF6B9D" />
+            <ActivityIndicator size="large" color={theme.fill} />
             <Text style={[styles.feedbackText, { color: theme.textMuted }]}>Loading plans…</Text>
           </View>
         )}
@@ -921,29 +526,28 @@ function SavedWorkoutsScreenLayout({
                 styles.loadErrorInner,
                 {
                   backgroundColor: theme.surface,
-                  borderWidth: 2.5,
+                  borderWidth: nb.borderWidth,
                   borderColor: theme.border,
-                  borderLeftWidth: 4,
-                  borderLeftColor: '#ef4444',
                 },
               ]}
             >
-              <Ionicons name="cloud-offline-outline" size={32} color="#FB923C" />
+              <Ionicons name="cloud-offline-outline" size={32} color={theme.text} />
               <Text style={[styles.loadErrorTitle, { color: theme.text }]}>Could not load plans</Text>
               <Text style={[styles.loadErrorText, { color: theme.textMuted }]}>{error}</Text>
-              <TouchableOpacity onPress={reload} activeOpacity={0.88} style={styles.loadErrorRetry}>
-                <LinearGradient colors={WARM_CTA_GRADIENT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.retryGrad}>
-                  <Text style={styles.retryGradLabel}>Retry</Text>
-                </LinearGradient>
-              </TouchableOpacity>
+              <View style={{ marginTop: 12, width: '100%' }}>
+                <NbButton variant="fill" onPress={reload}>
+                  Retry
+                </NbButton>
+              </View>
             </View>
           </View>
         )}
 
         {!loading && !error && !hasPlans && (
           <View style={{ paddingHorizontal: 16 }}>
+            <LibraryHeroSummary theme={theme} totalPlans={0} />
             <PlansLibraryEmptyHero
-              isDark={isDark}
+              theme={theme}
               clientName={clientName}
               clientId={clientId}
               viewerRole={viewerRole}
@@ -956,53 +560,72 @@ function SavedWorkoutsScreenLayout({
         {!loading && !error && hasPlans && (
           <>
             <View style={{ paddingHorizontal: 16, marginTop: 8 }}>
-              <LibraryHeroSummary isDark={isDark} totalPlans={plans.length} />
+              <LibraryHeroSummary theme={theme} totalPlans={plans.length} />
             </View>
 
             <View style={{ paddingHorizontal: 16, marginTop: 16 }}>
-              <LinearGradient
-                colors={WARM_BORDER_GRADIENT}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.librarySearchBorder}
+              <View
+                style={[
+                  styles.librarySearchInner,
+                  {
+                    backgroundColor: theme.surface,
+                    borderColor: theme.border,
+                    borderWidth: nb.borderWidth,
+                    borderRadius: borderRadius.nbInput,
+                  },
+                ]}
               >
-                <View style={[styles.librarySearchInner, { backgroundColor: theme.surface }]}>
-                  <Ionicons name="search-outline" size={22} color={theme.textMuted} />
-                  <TextInput
-                    value={libraryQuery}
-                    onChangeText={setLibraryQuery}
-                    placeholder="Search plans or muscle groups"
-                    placeholderTextColor={theme.textMuted}
-                    style={[styles.librarySearchInput, { color: theme.text }]}
-                    autoCorrect={false}
-                    autoCapitalize="none"
-                  />
-                </View>
-              </LinearGradient>
+                <Ionicons name="search-outline" size={22} color={theme.textMuted} />
+                <TextInput
+                  value={libraryQuery}
+                  onChangeText={setLibraryQuery}
+                  placeholder="Search your plans"
+                  placeholderTextColor={theme.textMuted}
+                  style={[styles.librarySearchInput, { color: theme.text }]}
+                  autoCorrect={false}
+                  autoCapitalize="none"
+                />
+              </View>
             </View>
 
-            <View style={[styles.plansSection, { marginTop: 6 }]}>
+            <View style={[styles.plansSection, { marginTop: 12, paddingHorizontal: 16 }]}>
               {plansFilteredBySearch.length === 0 ? (
                 <PlansLibraryEmptyHero
                   compact
-                  isDark={isDark}
+                  theme={theme}
                   clientName={clientName}
                   clientId={clientId}
                   viewerRole={viewerRole}
                   message={libraryQuery.trim() ? 'No matching plans' : 'No plans yet'}
                 />
               ) : (
-                <View style={styles.plansList}>
-                  {plansFilteredBySearch.map((plan) => (
-                    <HistoryPlanCard
-                      key={plan.id}
-                      plan={plan}
-                      isDark={isDark}
-                      onPress={() => handleView(plan)}
-                      onOptions={viewerRole === 'trainer' ? () => showPlanOptions(plan) : null}
-                    />
-                  ))}
-                </View>
+                <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetCard}>
+                  <View
+                    style={[
+                      styles.plansListCard,
+                      {
+                        backgroundColor: theme.surface,
+                        borderColor: theme.border,
+                        borderWidth: nb.borderWidth,
+                      },
+                    ]}
+                  >
+                    {plansFilteredBySearch.map((plan, index) => (
+                      <View key={plan.id}>
+                        {index > 0 ? (
+                          <View style={[styles.planRowDivider, { backgroundColor: theme.border }]} />
+                        ) : null}
+                        <HistoryPlanCard
+                          plan={plan}
+                          theme={theme}
+                          index={index}
+                          onPress={() => handleView(plan)}
+                          onOptions={viewerRole === 'trainer' ? () => showPlanOptions(plan) : null}
+                        />
+                      </View>
+                    ))}
+                  </View>
+                </HardShadow>
               )}
             </View>
           </>
@@ -1010,7 +633,6 @@ function SavedWorkoutsScreenLayout({
 
         {isTrainerView && trainerId && clientId ? (
           <TrainerBuilderFooterCard
-            isDark={isDark}
             theme={theme}
             clientId={clientId}
             clientName={clientName}
@@ -1038,14 +660,16 @@ export default function SavedWorkoutsScreen({
   trainerId,
   viewerRole = 'trainer',
 }) {
-  const { isDark } = useTheme();
-  const theme = THEME[isDark ? 'dark' : 'light'];
+  const { colors } = useTheme();
+  const theme = useMemo(() => nbTheme(colors), [colors]);
   const shellBottomPad = useShellBottomNavInset(SHELL_BOTTOM_PAD_EXTRA);
 
   const clientId   = clientProp?.id   || route?.params?.clientId;
   const clientName = clientProp?.name || route?.params?.clientName || 'Client';
 
   const [libraryQuery, setLibraryQuery] = useState('');
+  // vocab: planPendingDelete = plan waiting on PNG 18 NbSheet confirm (null = sheet closed)
+  const [planPendingDelete, setPlanPendingDelete] = useState(null);
   const { plans: rawPlans, loading, error, reload } = useClientWorkoutPlans(clientId, trainerId);
 
   // Normalize all Firestore docs into UI-friendly shape
@@ -1109,25 +733,18 @@ export default function SavedWorkoutsScreen({
   const confirmDeletePlan = useCallback(async (plan) => {
     try {
       await deletePlanDocuments(plan);
+      setPlanPendingDelete(null);
       reload();
     } catch (error) {
       Alert.alert('Error', error?.message || 'Could not delete plan.');
     }
   }, [deletePlanDocuments, reload]);
 
+  // PNG 18: open Design Law delete sheet instead of native Alert
   const handleDeletePlan = useCallback((plan) => {
     if (!db || !clientId || !plan?.id) return;
-    Alert.alert('Delete plan', 'Are you sure you want to delete this workout plan?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: () => {
-          void confirmDeletePlan(plan);
-        },
-      },
-    ]);
-  }, [clientId, confirmDeletePlan]);
+    setPlanPendingDelete(plan);
+  }, [clientId]);
 
   const showPlanOptions = useCallback((plan) => {
     if (viewerRole !== 'trainer') return;
@@ -1141,6 +758,12 @@ export default function SavedWorkoutsScreen({
       { text: 'Cancel', style: 'cancel' },
     ]);
   }, [viewerRole, handleToggleAssigned, handleDeletePlan]);
+
+  const deleteSheetMeta = planPendingDelete
+    ? `${planPendingDelete.name || 'Plan'}${
+        planPendingDelete.focus ? ` · ${planPendingDelete.focus}` : ''
+      }`
+    : '';
 
   const handleBack = () => (onBack ? onBack() : navigation?.goBack());
   const handleView = (plan) => {
@@ -1157,6 +780,7 @@ export default function SavedWorkoutsScreen({
   const isTrainerView = viewerRole === 'trainer';
 
   return (
+    <>
     <SavedWorkoutsScreenLayout
       theme={theme}
       embedInLayout={embedInLayout}
@@ -1168,7 +792,6 @@ export default function SavedWorkoutsScreen({
       error={error}
       reload={reload}
       hasPlans={hasPlans}
-      isDark={isDark}
       clientName={clientName}
       clientId={clientId}
       viewerRole={viewerRole}
@@ -1183,6 +806,71 @@ export default function SavedWorkoutsScreen({
       isTrainerView={isTrainerView}
       trainerId={trainerId}
     />
+
+    {/* PNG 18 delete confirm sheet */}
+    <NbSheet
+      visible={!!planPendingDelete}
+      onClose={() => setPlanPendingDelete(null)}
+      title="Delete plan"
+    >
+      <View style={{ paddingHorizontal: spacing.md, paddingBottom: spacing.lg, gap: 14 }}>
+        <View
+          style={{
+            alignSelf: 'flex-start',
+            paddingHorizontal: 10,
+            paddingVertical: 4,
+            borderRadius: 999,
+            borderWidth: nb.borderWidth,
+            borderColor: colors.nbBorder,
+            backgroundColor: colors.nbSurfaceChip,
+          }}
+        >
+          <Text style={{ fontSize: 11, fontWeight: '900', color: colors.nbInk }}>
+            Cannot be undone
+          </Text>
+        </View>
+        <Text style={{ fontSize: 15, fontWeight: '600', color: colors.nbMuted, lineHeight: 22 }}>
+          Are you sure you want to delete this workout plan?
+        </Text>
+        {planPendingDelete ? (
+          <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetSmall}>
+            <View
+              style={{
+                borderWidth: nb.borderWidth,
+                borderColor: colors.nbBorder,
+                borderRadius: borderRadius.nbCard,
+                backgroundColor: colors.nbSurface,
+                padding: 14,
+              }}
+            >
+              <Text style={{ fontSize: 16, fontWeight: '900', color: colors.nbInk }}>
+                {planPendingDelete.name || 'Plan'}
+              </Text>
+              {deleteSheetMeta ? (
+                <Text style={{ fontSize: 13, fontWeight: '600', color: colors.nbMuted, marginTop: 4 }}>
+                  {deleteSheetMeta}
+                </Text>
+              ) : null}
+            </View>
+          </HardShadow>
+        ) : null}
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
+          <NbButton variant="plain" onPress={() => setPlanPendingDelete(null)} style={{ flex: 1 }}>
+            Keep it
+          </NbButton>
+          <NbButton
+            variant="fill"
+            onPress={() => {
+              if (planPendingDelete) void confirmDeletePlan(planPendingDelete);
+            }}
+            style={{ flex: 1 }}
+          >
+            Delete plan
+          </NbButton>
+        </View>
+      </View>
+    </NbSheet>
+    </>
   );
 }
 
@@ -1191,9 +879,30 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   scrollContent: { paddingBottom: 0 },
 
+  libraryHeroPlain: { marginBottom: 4 },
+  planRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    minHeight: nb.minTouchTarget,
+  },
+  planIconChip: {
+    width: 44,
+    height: 44,
+    borderRadius: borderRadius.nbIconChip || 12,
+    borderWidth: nb.borderWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  plansListCard: {
+    borderRadius: borderRadius.nbCard,
+    overflow: 'hidden',
+  },
+  planRowDivider: { height: nb.borderWidthDivider, width: '100%' },
   trainerBuilderFooterWrap: { paddingHorizontal: 16, marginTop: 20 },
-  trainerBuilderFooterBorder: { borderRadius: 14, padding: 1.5 },
-  trainerBuilderFooterInner: { borderRadius: 12.5, padding: 12, gap: 10 },
+  trainerBuilderFooterInner: { borderRadius: borderRadius.nbCard, padding: 14 },
   trainerBuilderFooterTop: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   trainerBuilderFooterIcon: {
     width: 36,
@@ -1219,8 +928,8 @@ const styles = StyleSheet.create({
 
   libraryHeroBorder: { borderRadius: 20, padding: 2 },
   libraryHeroInner: { borderRadius: 18, paddingHorizontal: 20, paddingVertical: 22, alignItems: 'center' },
-  libraryHeroTitle: { fontSize: 22, fontWeight: '800', textAlign: 'center', lineHeight: 28 },
-  libraryHeroKicker: { fontSize: 12, fontWeight: '800', letterSpacing: 2.2, marginTop: 12 },
+  libraryHeroTitle: { fontSize: 25, fontWeight: '900', letterSpacing: -0.6, lineHeight: 30 },
+  libraryHeroKicker: { fontSize: 13, fontWeight: '600', marginTop: 4 },
   libraryHeroAccentLine: { width: 56, height: 3, borderRadius: 2, marginTop: 10 },
   libraryHeroCount: { fontSize: 56, fontWeight: '900', color: '#FF6B9D', marginTop: 14, letterSpacing: -2 },
   libraryHeroFooter: { fontSize: 11, fontWeight: '800', letterSpacing: 1.4, marginTop: 10, textAlign: 'center' },
@@ -1432,7 +1141,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 8,
   },
-  emptyFilterIcon: { width: 56, height: 56, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  emptyFilterIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: nb.borderWidth,
+    marginBottom: 12,
+  },
   emptyFilterTitle: { fontSize: 17, fontWeight: '800', marginTop: 14, textAlign: 'center' },
   emptyFilterSub: { fontSize: 13, marginTop: 6, textAlign: 'center', lineHeight: 18 },
 

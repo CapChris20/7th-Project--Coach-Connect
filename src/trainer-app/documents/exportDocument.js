@@ -28,7 +28,7 @@ const TURNDOWN_OPTIONS = { headingStyle: 'atx', codeBlockStyle: 'fenced' };
 // Manipulate here: this <style> block IS the PDF/HTML look. Colors and copy must stay identical.
 const DOCUMENT_EXPORT_STYLE = `body{font-family:Georgia,serif;max-width:780px;margin:40px auto;padding:0 16px;line-height:1.6;color:#111}
 h1,h2,h3{font-family:'Helvetica Neue',Arial,sans-serif}
-blockquote{border-left:3px solid #9333ea;padding-left:12px;color:#555;font-style:italic}
+blockquote{border-left:3px solid #0A0A0A;padding-left:12px;color:#575757;font-style:italic}
 pre{background:#f4f4f5;padding:12px;border-radius:6px;overflow:auto}
 code{background:#f4f4f5;padding:2px 4px;border-radius:3px}
 table{border-collapse:collapse;width:100%} table td,table th{border:1px solid #ddd;padding:6px 8px}

@@ -97,11 +97,11 @@ function DayCell({ cell, columnIndex, selectedDate, sessionDays, accent, textCol
           style={[StyleSheet.absoluteFill, { borderRadius: borderRadius.nbChip }]}
         />
       ) : null}
-      <Text style={[styles.dayText, { color: isSelected ? '#0A0A0F' : textColor }]}>
+      <Text style={[styles.dayText, { color: isSelected ? lightColors.nbInk : textColor }]}>
         {cell.getDate()}
       </Text>
       {hasSession ? (
-        <View style={[styles.dot, { backgroundColor: isSelected ? '#0A0A0F' : accent }]} />
+        <View style={[styles.dot, { backgroundColor: isSelected ? lightColors.nbInk : accent }]} />
       ) : (
         <View style={styles.dotSpacer} />
       )}

@@ -13,9 +13,9 @@ import { lightColors, darkColors, nb, borderRadius, gradients } from '../../look
 
 // ===== NAMED CONSTANTS =====
 
-const BORDER_GRADIENT = ['#9333EA', '#DB2777'];
+const BORDER_GRADIENT = ['#BE185D', '#DB2777'];
 const BG_GRADIENT_DARK = ['#12081f', '#08050f'];
-const BG_GRADIENT_LIGHT = ['#F3F0FA', '#FFFFFF'];
+const BG_GRADIENT_LIGHT = ['#F3F0FA', lightColors.white];
 const CLIENT_NAME_DEFAULT = 'Client';
 const DEFAULT_DURATION_MIN = 60;
 const STATUS_ACCEPTED = 'accepted';
@@ -77,26 +77,26 @@ function sessionCardPalette(isDark) {
   if (isDark) {
     return {
       innerBackground: '#0A0812',
-      headlineColor: '#FFFFFF',
+      headlineColor: lightColors.white,
       subColor: 'rgba(255,255,255,0.58)',
       kickerColor: 'rgba(233,213,255,0.72)',
       detailBackground: 'rgba(255,255,255,0.04)',
       detailBorder: 'rgba(255,255,255,0.08)',
       iconInnerBackground: 'rgba(14,12,22,0.98)',
-      iconColor: '#E9D5FF',
+      iconColor: '#F3E4EA',
       backgroundGradient: BG_GRADIENT_DARK,
       chevronColor: 'rgba(255,255,255,0.35)',
     };
   }
   return {
-    innerBackground: '#FFFFFF',
-    headlineColor: '#0A0A0F',
+    innerBackground: lightColors.white,
+    headlineColor: lightColors.nbInk,
     subColor: 'rgba(15,23,42,0.55)',
     kickerColor: 'rgba(109,40,217,0.75)',
     detailBackground: 'rgba(15,23,42,0.04)',
     detailBorder: 'rgba(15,23,42,0.08)',
     iconInnerBackground: 'rgba(255,255,255,0.98)',
-    iconColor: '#7C3AED',
+    iconColor: '#BE185D',
     backgroundGradient: BG_GRADIENT_LIGHT,
     chevronColor: 'rgba(15,23,42,0.35)',
   };
@@ -143,7 +143,7 @@ function SessionDateTimeRow({ showDate, dateChip, time, durationMin, palette }) 
         </View>
         <View style={[styles.dot, { backgroundColor: palette.subColor }]} />
         <View style={styles.detailItem}>
-          <Ionicons name="fitness-outline" size={16} color="#9333EA" />
+          <Ionicons name="fitness-outline" size={16} color="#BE185D" />
           <Text style={[styles.detailValue, { color: palette.headlineColor }]}>{durationMin} min</Text>
         </View>
       </View>
@@ -252,14 +252,14 @@ const styles = StyleSheet.create({
     padding: 2,
   },
   shadowDark: {
-    shadowColor: '#7C3AED',
+    shadowColor: '#BE185D',
     shadowOffset: { width: 0, height: 5 },
     shadowOpacity: 0.2,
     shadowRadius: 12,
     elevation: 6,
   },
   shadowLight: {
-    shadowColor: '#A855F7',
+    shadowColor: '#E07A32',
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.16,
     shadowRadius: 10,

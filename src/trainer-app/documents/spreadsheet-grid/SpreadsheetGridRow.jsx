@@ -6,7 +6,7 @@
 
 import React, { memo } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Platform } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { nb } from '../../../look-and-feel/colorPalette';
 import { COLS, DEFAULT_ROW_HEIGHT, HEADER_W, keyOf } from './spreadsheetConstants';
 import { lookupDisplay } from './prepareCellText';
 
@@ -26,26 +26,11 @@ const REGULAR_WEIGHT = '400';
 
 // ===== HELPER FUNCTIONS =====
 
-/**
- * Selected headers get the brand gradient. Idle ones stay a flat View so we do not mount
- * a LinearGradient on every row number of a 200-row sheet.
- * @param {object} props
- */
-function GradientHeader({ active, children, theme, style }) {
-  if (active) {
-    return (
-      <LinearGradient
-        colors={theme.sheetGradient}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={[styles.headerCell, style]}
-      >
-        {children}
-      </LinearGradient>
-    );
-  }
+/** Selected row headers use nb fill; idle headers use chip surface. */
+function SheetHeaderCell({ active, children, theme, style }) {
+  const backgroundColor = active ? theme.accent : theme.gridHeaderBg;
   return (
-    <View style={[styles.headerCell, { backgroundColor: theme.gridHeaderBg }, style]}>
+    <View style={[styles.headerCell, { backgroundColor }, style]}>
       {children}
     </View>
   );
@@ -119,15 +104,21 @@ function GridRowHeader({ rowIndex, rowHeight, rowActive, theme, onRowHeaderPress
       delayLongPress={HEADER_LONG_PRESS_MS}
       style={{ width: HEADER_W, height: rowHeight }}
     >
-      <GradientHeader
+      <SheetHeaderCell
         active={rowActive}
         theme={theme}
-        style={{ width: HEADER_W, height: rowHeight, borderRightColor: theme.gridLine }}
+        style={{ width: HEADER_W, height: rowHeight, borderRightColor: theme.border }}
       >
-        <Text style={{ fontSize: 12, fontWeight: '800', color: rowActive ? '#fff' : theme.textMuted }}>
+        <Text
+          style={{
+            fontSize: 12,
+            fontWeight: '800',
+            color: rowActive ? theme.textOnAccent : theme.textMuted,
+          }}
+        >
           {rowIndex + 1}
         </Text>
-      </GradientHeader>
+      </SheetHeaderCell>
     </TouchableOpacity>
   );
 }
@@ -395,7 +386,7 @@ const styles = StyleSheet.create({
   headerCell: {
     alignItems: 'center',
     justifyContent: 'center',
-    borderRightWidth: 1,
+    borderRightWidth: nb.borderWidth,
   },
   row: { flexDirection: 'row', borderBottomWidth: 1 },
   // Only right + bottom borders per cell. Drawing all four would double every interior gridline.

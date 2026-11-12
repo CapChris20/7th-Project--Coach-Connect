@@ -1,8 +1,9 @@
-// Client marketplace: search, specialty chips, and a scrollable list of trainer cards.
-// Flow: loading spinner → welcome hero + search + chips → cards, with an empty state when nothing matches.
-// Used by Find a Trainer. Filters and paging stay in the parent; this screen only paints the list.
+// Client marketplace list — Design Law header, HardShadow search, specialty chips, trainer cards (PNG 03 / 09).
+// Flow: header (back + title + filter) → search → specialty chips → count/sort row → HardShadow TrainerCards.
+// Used by SearchTrainersScreen. Filters and paging stay in the parent; this screen paints the list chrome.
 //
-// vocab: neobrutalist = thick borders, hard shadows, gradient only for primary moment per screen
+// vocab: useShellTopPad = status-bar safe top inset so titles never sit under the Dynamic Island
+// vocab: HardShadow = solid offset shadow (no blur); nbFill = selected chip fill
 
 import React from 'react';
 import {
@@ -13,164 +14,229 @@ import {
   StyleSheet,
   ActivityIndicator,
   Pressable,
+  ScrollView,
 } from 'react-native';
-import { useColorScheme } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import TrainerCard from './TrainerCard';
-import { FORM_SCROLL_PROPS } from '../../navigation/bottomMenuSpacing';
-import { BRAND, QUICK_SPECIALTIES, getTheme } from './trainerFilters';
-import NbHero from '../../look-and-feel/NbHero';
-import NbCard from '../../look-and-feel/NbCard';
-import NbChipRow from '../../look-and-feel/NbChipRow';
+import { FORM_SCROLL_PROPS, useShellTopPad } from '../../navigation/bottomMenuSpacing';
+import { QUICK_SPECIALTIES, countActiveFilters, DEFAULT_FILTERS } from './trainerFilters';
+import HardShadow from '../../look-and-feel/HardShadow';
 import NbButton from '../../look-and-feel/NbButton';
-import { lightColors, darkColors } from '../../look-and-feel/colorPalette';
+import { useTheme } from '../../look-and-feel/lightDarkMode';
+import { borderRadius, nb, spacing } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
-/** Matches ClientAppStart AI Coach `HeroWelcomeCard` / home hero banner shell (static border). */
-const HERO_BORDER_DARK = ['#FF6B9D', '#E879C8', '#C084FC', '#A855F7', '#FF6B9D'];
-const HERO_BORDER_LIGHT = ['#BE185D', '#C2410C'];
-const TITLE_GRADIENT = ['#FF6B9D', '#C084FC'];
 const DEFAULT_LIST_BOTTOM_PAD = 100;
 const DEFAULT_QUICK_SPECIALTY = 'All';
-const LIGHT_SCREEN_GRADIENT = ['#FAFAFC', '#F5F5F8', '#FAFAFC'];
 const END_REACHED_THRESHOLD = 0.35;
+const TITLE = 'Find a Trainer';
+const SEARCH_PLACEHOLDER = 'Search trainers, cities…';
+const EMPTY_TITLE = 'No coaches match';
+const EMPTY_SUBTITLE = 'Try fewer filters or a wider price range. Remote trainers work from anywhere.';
 
 // ===== HELPER FUNCTIONS =====
 
-function screenGradientColors(isDark, theme) {
-  if (isDark) return theme.screenGradient || ['#1A0F2E', '#0C0814', '#050508'];
-  return LIGHT_SCREEN_GRADIENT;
+function trainerCountLabel(count) {
+  return `${count} TRAINER${count === 1 ? '' : 'S'}`;
 }
 
-function trainerCountLabel(count) {
-  const suffix = count === 1 ? '' : 's';
-  return `${count} trainer${suffix}`;
+function filterChipLabel(activeCount) {
+  if (activeCount > 0) return `Filter · ${activeCount}`;
+  return 'Filter';
 }
 
 /**
- * Welcome hero using NbHero component.
- * One gradient moment per screen: the hero title.
+ * 44×44 outlined square with HardShadow — back chevron or filter lines (PNG 03 header).
  */
-function WelcomeHero() {
+function HeaderSquare({ onPress, accessibilityLabel, children, colors }) {
   return (
-    <NbHero 
-      title="Find a Trainer"
-      subtitle="Browse coaches by specialty and price"
-      style={styles.hero}
-    />
+    <HardShadow offset={nb.shadowOffsetSmall} radius={borderRadius.nbIconChip}>
+      <Pressable
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel}
+        style={({ pressed }) => [
+          styles.headerSq,
+          {
+            borderColor: colors.nbBorder,
+            backgroundColor: colors.nbSurface,
+            opacity: pressed ? 0.9 : 1,
+          },
+        ]}
+      >
+        {children}
+      </Pressable>
+    </HardShadow>
   );
 }
 
 /**
- * Search bar with filter button using NbCard.
- * Manipulate here: search input styling, filter button
+ * Back + title + filter square. Owns status-bar clearance via useShellTopPad.
  */
-function SearchAndFilterBar({ colors, search, onSearchChange, onOpenFilters }) {
+function MarketplaceHeader({ onBack, onOpenFilters, colors, topPad }) {
   return (
-    <NbCard style={styles.searchCard} noShadow>
-      <View style={styles.searchRow}>
+    <View style={[styles.headerRow, { paddingTop: topPad }]}>
+      {typeof onBack === 'function' ? (
+        <HeaderSquare onPress={onBack} accessibilityLabel="Go back" colors={colors}>
+          <Ionicons name="chevron-back" size={22} color={colors.nbInk} />
+        </HeaderSquare>
+      ) : (
+        <View style={styles.headerSqSpacer} />
+      )}
+      <Text style={[styles.headerTitle, { color: colors.nbInk }]} numberOfLines={1}>
+        {TITLE}
+      </Text>
+      <HeaderSquare onPress={onOpenFilters} accessibilityLabel="Open filters" colors={colors}>
+        <Ionicons name="options-outline" size={20} color={colors.nbInk} />
+      </HeaderSquare>
+    </View>
+  );
+}
+
+/**
+ * HardShadow search field — thick border, no nested Filter button (filter lives in the header square).
+ */
+function SearchBar({ colors, search, onSearchChange }) {
+  return (
+    <HardShadow offset={nb.shadowOffsetSmall} radius={borderRadius.nbInput} style={styles.searchWrap}>
+      <View
+        style={[
+          styles.searchInner,
+          { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder },
+        ]}
+      >
         <Ionicons name="search" size={18} color={colors.nbMuted} />
         <TextInput
           value={search}
           onChangeText={onSearchChange}
-          placeholder="Search trainers, cities…"
+          placeholder={SEARCH_PLACEHOLDER}
           placeholderTextColor={colors.nbMuted}
           style={[styles.searchInput, { color: colors.nbInk }]}
+          returnKeyType="search"
+          autoCorrect={false}
+          autoCapitalize="none"
         />
-        <NbButton variant="brand" sm onPress={onOpenFilters}>
-          Filter
-        </NbButton>
       </View>
-    </NbCard>
+    </HardShadow>
   );
 }
 
 /**
- * Horizontal scrolling specialty filter chips using NbChipRow.
+ * Horizontal specialty quick chips — selected = solid nbFill (not gradient).
  */
-function QuickSpecialtyChips({ quickSpecialty, onQuickSpecialtyChange }) {
-  const chipItems = QUICK_SPECIALTIES.map((spec) => ({
-    id: spec,
-    label: spec,
-  }));
-
+function QuickSpecialtyChips({ quickSpecialty, onQuickSpecialtyChange, colors }) {
   return (
-    <NbChipRow
-      items={chipItems}
-      selected={quickSpecialty}
-      onSelect={onQuickSpecialtyChange}
-      style={styles.chipRow}
-    />
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.chipScroll}
+    >
+      {QUICK_SPECIALTIES.map((spec) => {
+        const selected = quickSpecialty === spec;
+        return (
+          <Pressable
+            key={spec}
+            onPress={() => onQuickSpecialtyChange?.(spec)}
+            accessibilityRole="button"
+            accessibilityState={{ selected }}
+            style={[
+              styles.chip,
+              {
+                borderColor: colors.nbBorder,
+                backgroundColor: selected ? colors.nbFill : colors.nbSurface,
+              },
+            ]}
+          >
+            <Text
+              style={[
+                styles.chipText,
+                { color: selected ? colors.nbOnFill : colors.nbInk },
+              ]}
+              numberOfLines={1}
+            >
+              {spec}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </ScrollView>
   );
 }
 
 /**
- * List header: hero, search, specialty chips, and result count.
+ * "N TRAINERS" + Newest + Filter · N pills (PNG 03 count row).
  */
-function TrainerListHeader({
+function ResultsHeader({
   colors,
-  search,
-  onSearchChange,
-  onOpenFilters,
-  quickSpecialty,
-  onQuickSpecialtyChange,
   trainerCount,
   sortLabel,
+  activeFilterCount,
+  onOpenFilters,
 }) {
   return (
-    <>
-      <WelcomeHero />
-      <SearchAndFilterBar
-        colors={colors}
-        search={search}
-        onSearchChange={onSearchChange}
-        onOpenFilters={onOpenFilters}
-      />
-      <QuickSpecialtyChips
-        quickSpecialty={quickSpecialty}
-        onQuickSpecialtyChange={onQuickSpecialtyChange}
-      />
-      <View style={styles.listHeader}>
-        <Text style={[styles.listCount, { color: colors.nbInk }]}>
-          {trainerCountLabel(trainerCount)}
-        </Text>
-        <Pressable onPress={() => onOpenFilters?.()} style={styles.sortRow} hitSlop={8}>
-          <Text style={[styles.sortLabel, { color: colors.nbMuted }]}>{sortLabel}</Text>
-          <Ionicons name="chevron-down" size={14} color={colors.nbMuted} style={{ marginLeft: 2 }} />
+    <View style={styles.resultsRow}>
+      <Text style={[styles.resultsCount, { color: colors.nbMuted }]}>
+        {trainerCountLabel(trainerCount)}
+      </Text>
+      <View style={styles.resultsPills}>
+        <Pressable
+          onPress={onOpenFilters}
+          style={[styles.miniPill, { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface }]}
+        >
+          <Text style={[styles.miniPillText, { color: colors.nbInk }]} numberOfLines={1}>
+            {sortLabel || 'Newest'}
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={onOpenFilters}
+          style={[styles.miniPill, { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface }]}
+        >
+          <Text style={[styles.miniPillText, { color: colors.nbInk }]} numberOfLines={1}>
+            {filterChipLabel(activeFilterCount)}
+          </Text>
         </Pressable>
       </View>
-    </>
+    </View>
   );
 }
 
 /**
- * Empty state when no trainers match the current filters.
+ * Empty state — dashed HardShadow box + Clear filters / Show remote (PNG 09).
  */
-function EmptyTrainerResults({ colors }) {
+function EmptyTrainerResults({ colors, onClearFilters, onShowRemote }) {
   return (
-    <NbCard style={styles.emptyCard}>
-      <View style={styles.emptyContent}>
-        <Ionicons name="search-outline" size={40} color={colors.nbMuted} style={{ marginBottom: 12 }} />
-        <Text style={[styles.emptyTitle, { color: colors.nbInk }]}>
-          No trainers match your filters
-        </Text>
-        <Text style={[styles.emptySubtitle, { color: colors.nbMuted }]}>
-          Try adjusting specialty or price range
-        </Text>
+    <View
+      style={[
+        styles.emptyCard,
+        {
+          borderColor: colors.nbBorder,
+          backgroundColor: colors.nbSurface,
+        },
+      ]}
+    >
+      <View style={[styles.emptyIcon, { borderColor: colors.nbBorder, backgroundColor: colors.nbSoft || colors.nbSurfaceChip }]}>
+        <Ionicons name="search-outline" size={22} color={colors.nbInk} />
       </View>
-    </NbCard>
+      <Text style={[styles.emptyTitle, { color: colors.nbInk }]}>{EMPTY_TITLE}</Text>
+      <Text style={[styles.emptySubtitle, { color: colors.nbMuted }]}>{EMPTY_SUBTITLE}</Text>
+      <NbButton variant="fill" onPress={onClearFilters}>
+        Clear filters
+      </NbButton>
+      {typeof onShowRemote === 'function' ? (
+        <NbButton variant="plain" onPress={onShowRemote}>
+          Show remote trainers
+        </NbButton>
+      ) : null}
+    </View>
   );
 }
 
-/**
- * Loading spinner shown while initial trainer data loads.
- */
 function MarketplaceLoading({ colors }) {
   return (
     <View style={[styles.flex, { backgroundColor: colors.nbBackground }]}>
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#FF6B9D" />
+        <ActivityIndicator size="large" color={colors.nbInk} />
       </View>
     </View>
   );
@@ -180,7 +246,6 @@ function MarketplaceLoading({ colors }) {
 
 /**
  * Find-a-trainer marketplace list. Parent owns filters, search text, and paging.
- * Neobrutalist redesign: uses Nb components, simpler layout.
  * @param {object} props
  */
 export function BrowseTrainersScreen({
@@ -189,22 +254,23 @@ export function BrowseTrainersScreen({
   loadingMore = false,
   hasMore = false,
   onLoadMore,
-  isDark = true,
-  filters,
+  filters = DEFAULT_FILTERS,
   search,
   onSearchChange,
   quickSpecialty = DEFAULT_QUICK_SPECIALTY,
   onQuickSpecialtyChange,
   onViewProfile,
-  onMessage,
-  onConnect,
   onOpenFilters,
+  onBack,
+  onClearFilters,
+  onShowRemote,
   /** Bottom clearance for floating shell BottomMenuBar (defaults to legacy fixed pad). */
   listBottomPad = DEFAULT_LIST_BOTTOM_PAD,
 }) {
-  const colorScheme = useColorScheme();
-  const colors = colorScheme === 'dark' ? darkColors : lightColors;
-  const theme = getTheme(isDark);
+  const { colors } = useTheme();
+  // Manipulate here: extra gap under status bar after the safe inset
+  const topPad = useShellTopPad(spacing.sm);
+  const activeFilterCount = countActiveFilters(filters);
 
   if (loading) {
     return <MarketplaceLoading colors={colors} />;
@@ -214,6 +280,30 @@ export function BrowseTrainersScreen({
     if (loading || loadingMore || !hasMore) return;
     onLoadMore?.();
   };
+
+  const listHeader = (
+    <>
+      <MarketplaceHeader
+        onBack={onBack}
+        onOpenFilters={onOpenFilters}
+        colors={colors}
+        topPad={topPad}
+      />
+      <SearchBar colors={colors} search={search} onSearchChange={onSearchChange} />
+      <QuickSpecialtyChips
+        quickSpecialty={quickSpecialty}
+        onQuickSpecialtyChange={onQuickSpecialtyChange}
+        colors={colors}
+      />
+      <ResultsHeader
+        colors={colors}
+        trainerCount={trainers.length}
+        sortLabel={filters?.sort}
+        activeFilterCount={activeFilterCount}
+        onOpenFilters={onOpenFilters}
+      />
+    </>
+  );
 
   return (
     <View style={[styles.flex, { backgroundColor: colors.nbBackground }]}>
@@ -227,33 +317,23 @@ export function BrowseTrainersScreen({
         windowSize={8}
         onEndReached={handleEndReached}
         onEndReachedThreshold={END_REACHED_THRESHOLD}
-        ListHeaderComponent={
-          <TrainerListHeader
-            colors={colors}
-            search={search}
-            onSearchChange={onSearchChange}
-            onOpenFilters={onOpenFilters}
-            quickSpecialty={quickSpecialty}
-            onQuickSpecialtyChange={onQuickSpecialtyChange}
-            trainerCount={trainers.length}
-            sortLabel={filters.sort}
-          />
+        ListHeaderComponent={listHeader}
+        ListEmptyComponent={
+          !loading ? (
+            <EmptyTrainerResults
+              colors={colors}
+              onClearFilters={onClearFilters || onOpenFilters}
+              onShowRemote={onShowRemote}
+            />
+          ) : null
         }
-        ListEmptyComponent={!loading ? <EmptyTrainerResults colors={colors} /> : null}
         renderItem={({ item: trainer }) => (
-          <TrainerCard
-            trainer={trainer}
-            t={theme}
-            isDark={isDark}
-            onMessage={onMessage}
-            onConnect={onConnect}
-            onViewProfile={onViewProfile}
-          />
+          <TrainerCard trainer={trainer} onViewProfile={onViewProfile} />
         )}
         ListFooterComponent={
           loadingMore ? (
             <View style={styles.footerLoader}>
-              <ActivityIndicator size="small" color="#FF6B9D" />
+              <ActivityIndicator size="small" color={colors.nbInk} />
             </View>
           ) : null
         }
@@ -267,80 +347,133 @@ export default BrowseTrainersScreen;
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  listScroll: { 
-    paddingHorizontal: 20, 
-    paddingBottom: 100, 
-    gap: 16, 
-    paddingTop: 16,
+  listScroll: {
+    paddingHorizontal: nb.screenGutter,
+    gap: 0,
   },
-  footerLoader: { 
-    paddingVertical: 16, 
+  footerLoader: {
+    paddingVertical: spacing.md,
     alignItems: 'center',
   },
-  centered: { 
-    flex: 1, 
-    alignItems: 'center', 
+  centered: {
+    flex: 1,
+    alignItems: 'center',
     justifyContent: 'center',
   },
-  hero: {
-    marginBottom: 16,
-  },
-  searchCard: {
-    marginBottom: 12,
-    padding: 0,
-  },
-  searchRow: {
+  headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: spacing.sm,
+    paddingBottom: spacing.sm,
+  },
+  headerSq: {
+    width: 44,
+    height: 44,
+    borderRadius: borderRadius.nbIconChip,
+    borderWidth: nb.borderWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerSqSpacer: { width: 44, height: 44 },
+  headerTitle: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: 22,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    letterSpacing: -0.3,
+  },
+  searchWrap: {
+    marginBottom: spacing.sm + 4,
+  },
+  searchInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    minHeight: nb.minTouchTarget,
+    borderWidth: nb.borderWidth,
+    borderRadius: borderRadius.nbInput,
     paddingHorizontal: 14,
-    paddingVertical: 8,
   },
-  searchInput: { 
-    flex: 1, 
-    fontSize: 14, 
+  searchInput: {
+    flex: 1,
+    fontSize: 15,
     fontFamily: 'Inter_500Medium',
-    paddingVertical: 8,
+    paddingVertical: 10,
   },
-  chipRow: {
-    paddingVertical: 8,
+  chipScroll: {
+    gap: 8,
+    paddingBottom: spacing.sm + 4,
+    paddingRight: spacing.md,
   },
-  listHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  chip: {
+    borderWidth: nb.borderWidth,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    minHeight: 36,
     alignItems: 'center',
-    marginTop: 12,
-    marginBottom: 8,
+    justifyContent: 'center',
   },
-  listCount: { 
-    fontSize: 18, 
+  chipText: {
+    fontSize: 14,
     fontFamily: 'SpaceGrotesk_700Bold',
   },
-  sortRow: { 
-    flexDirection: 'row', 
+  resultsRow: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm + 2,
+    gap: spacing.sm,
   },
-  sortLabel: {
+  resultsCount: {
+    fontSize: 12,
+    fontFamily: 'Inter_700Bold',
+    letterSpacing: 0.6,
+  },
+  resultsPills: {
+    flexDirection: 'row',
+    gap: 8,
+    flexShrink: 1,
+  },
+  miniPill: {
+    borderWidth: nb.borderWidthPill,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    minHeight: 32,
+    justifyContent: 'center',
+  },
+  miniPillText: {
     fontSize: 13,
-    fontFamily: 'Inter_600SemiBold',
+    fontFamily: 'Inter_700Bold',
   },
   emptyCard: {
-    marginTop: 24,
-  },
-  emptyContent: {
-    padding: 32,
+    marginTop: spacing.lg,
+    borderWidth: nb.borderWidth,
+    borderStyle: 'dashed',
+    borderRadius: borderRadius.nbCard,
+    padding: spacing.xl,
     alignItems: 'center',
+    gap: spacing.sm + 4,
+  },
+  emptyIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    borderWidth: nb.borderWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
   },
   emptyTitle: {
-    fontSize: 16,
+    fontSize: 20,
     fontFamily: 'SpaceGrotesk_700Bold',
     textAlign: 'center',
   },
   emptySubtitle: {
-    marginTop: 8,
-    fontSize: 13,
+    fontSize: 14,
     fontFamily: 'Inter_400Regular',
     textAlign: 'center',
     lineHeight: 20,
+    marginBottom: spacing.sm,
   },
 });

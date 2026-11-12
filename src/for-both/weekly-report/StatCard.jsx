@@ -1,11 +1,12 @@
 // One metric tile on the weekly report (sleep, water, steps, food log, workout, energy, mood).
-import { NbCard } from '../../look-and-feel/NbCard';// Flow: map the icon to a metric → paint glass + gradient → value + optional vs-last-week trend.
+// Flow: map the icon to a metric → paint glass + gradient → value + optional vs-last-week trend.
 // Used by the weekly report stats grid for both trainer and client.
+
+import NbCard from '../../look-and-feel/NbCard';
 
 import React from 'react';
 import { Text, StyleSheet, Pressable, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
 import { useTheme } from '../weekly-report/reportColorSettings';
 import { TREND_NEGATIVE, TREND_POSITIVE } from '../weekly-report/reportColors';
 import { StatIcon } from './StatIcon';
@@ -80,7 +81,7 @@ export function StatCard({ label, value, suffix, trend, icon, gradient, testID, 
           },
         ]}
       >
-        <BlurView intensity={BLUR_INTENSITY} tint={colors.blurTint} style={StyleSheet.absoluteFill} />
+        <View intensity={BLUR_INTENSITY} tint={colors.blurTint} style={StyleSheet.absoluteFill} />
         <LinearGradient
           colors={gradientColors(gradient)}
           start={{ x: 0, y: 0 }}

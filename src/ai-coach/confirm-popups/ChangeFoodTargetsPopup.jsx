@@ -143,7 +143,11 @@ function mergeCoachParamsWithSavedTargets(savedTargets, params) {
 function ChangeFoodTargetsLayout({ reasoning, resolved, params, onConfirm, onCancel, loading }) {
   const handleConfirmSave = () => onConfirm(resolved.mergedParams);
   return (
-    <ToolModalBody title="Update nutrition targets?" reasoning={reasoning}>
+    <ToolModalBody
+      badge="Coach wants to change food targets"
+      title="Update nutrition targets?"
+      reasoning={reasoning}
+    >
       <DetailRow label="Daily calories" value={`${resolved.dailyCalories} kcal`} />
       <DetailRow label="Protein" value={`${resolved.proteinGrams}g`} />
       <DetailRow label="Carbs" value={`${resolved.carbGrams}g`} />

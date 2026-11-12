@@ -50,7 +50,11 @@ export default function BookSessionPopup({ params, reasoning, onConfirm, onCance
   const handleConfirmBook = () => onConfirm(params);
 
   return (
-    <ToolModalBody title="Book session?" reasoning={reasoning}>
+    <ToolModalBody
+      badge="Coach wants to book a session"
+      title="Book session?"
+      reasoning={reasoning}
+    >
       {/* Combined phrase wins when present; otherwise the split date/time rows. */}
       {displayFields.combinedWhen ? (
         <DetailRow label="When" value={displayFields.combinedWhen} />

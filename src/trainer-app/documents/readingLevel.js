@@ -144,22 +144,58 @@ export function computeStats(text) {
 }
 
 /**
- * Badge colors per grade. `text` flips with theme so it stays legible on either background;
- * `bg` is a low-alpha tint that works on both, which is why it doesn't need a dark variant.
+ * Badge colors per letter grade — black/white/gray only (Design Law: never green).
  * @param {string} grade
  * @param {boolean} [isDark=true]
  * @returns {{ text: string, bg: string }}
  */
 export function gradeColor(grade, isDark = true) {
+  // Manipulate here: letter-grade tint strength (alpha). Ink stays theme-aware; no green.
   switch (grade) {
-    case "A": return gradeTheme(isDark, '#34d399', '#059669', 'rgba(16,185,129,0.12)');
-    case "B": return gradeTheme(isDark, '#34d399', '#059669', 'rgba(16,185,129,0.12)');
-    case "C": return gradeTheme(isDark, '#fbbf24', '#d97706', 'rgba(245,158,11,0.12)');
-    case "D": return gradeTheme(isDark, '#fb923c', '#ea580c', 'rgba(249,115,22,0.12)');
-    case "F": return gradeTheme(isDark, '#fb7185', '#e11d48', 'rgba(244,63,94,0.12)');
-    // Unknown grade → neutral grey, so a new grade letter never renders as an invisible color.
-    default:  return gradeTheme(isDark, '#9ca3af', '#6b7280', 'rgba(107,114,128,0.12)');
+    case "A":
+    case "B":
+      return gradeTheme(isDark, '#F2F2F2', '#0A0A0A', isDark ? 'rgba(242,242,242,0.12)' : 'rgba(10,10,10,0.08)');
+    case "C":
+      return gradeTheme(isDark, '#A6A6A6', '#575757', isDark ? 'rgba(166,166,166,0.16)' : 'rgba(87,87,87,0.10)');
+    case "D":
+    case "F":
+      return gradeTheme(isDark, '#FB7185', '#E11D48', 'rgba(244,63,94,0.12)');
+    default:
+      return gradeTheme(isDark, '#9ca3af', '#6b7280', 'rgba(107,114,128,0.12)');
   }
+}
+
+// Flesch–Kincaid Grade Level constants (published formula — do not retune).
+const FK_SENTENCE_WEIGHT = 0.39;
+const FK_SYLLABLE_WEIGHT = 11.8;
+const FK_OFFSET = 15.59;
+const SCHOOL_GRADE_MIN = 1;
+const SCHOOL_GRADE_MAX = 16;
+
+/**
+ * Approximate US school grade from Flesch–Kincaid (Design Law “Reading level: Grade N”).
+ * @param {{ avgWordsPerSentence?: number, syllablesPerWord?: number, words?: number }} stats
+ * @returns {number}
+ */
+export function schoolGradeFromStats(stats) {
+  const words = Number(stats?.words || 0);
+  if (words <= 0) return 7;
+  const avgWords = Number(stats?.avgWordsPerSentence || 0);
+  const syllables = Number(stats?.syllablesPerWord || 0);
+  const raw = FK_SENTENCE_WEIGHT * avgWords + FK_SYLLABLE_WEIGHT * syllables - FK_OFFSET;
+  return Math.max(SCHOOL_GRADE_MIN, Math.min(SCHOOL_GRADE_MAX, Math.round(raw)));
+}
+
+/**
+ * One-line coach tip under the school-grade label.
+ * @param {number} schoolGrade
+ * @returns {string}
+ */
+export function readingEaseCopy(schoolGrade) {
+  // Manipulate here: copy thresholds for the reading-level card
+  if (schoolGrade <= 8) return 'Easy for most clients to follow.';
+  if (schoolGrade <= 10) return 'A bit dense — shorten sentences if you can.';
+  return 'Hard to skim — simplify for clients.';
 }
 
 /**

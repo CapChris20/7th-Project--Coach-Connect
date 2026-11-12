@@ -1,384 +1,365 @@
-// Trainer dashboard Nutrition tab: rings for macros plus the foods the client logged today.
-// Flow: nothing logged → empty state. Otherwise calories bar, then nutrient rings, micros, food chips.
-// Used on the trainer's client view. Nutrient field names (protein, carbs, caloriesGoal, …) stay as the client writes them.
+// Design Law Nutrition tab (trainer-home PNG 03/04): calorie ring + macro bars + meal rows.
+// Flow: always paint the Design Law shell — empty days show 0s + “No meals logged yet” slots.
+// Used by TrainerHomeContent. Food keys stay as the client nutrition log writes them.
+//
+// vocab: NbProgressBar = hard-border track with gradient fill (accent only)
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import Svg, { Circle, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
-import {
-  ColorText,
-  PremiumTabEmptyState,
-  SCREEN_WIDTH,
-  LOTTIE_FOOD_AROUND_CITY,
-  PINK,
-  ORANGE,
-} from '../home/trainerHomePieces';
-import { gradientForNutrientLabel } from '../../nutrition/nutritionColors';
+import Svg, { Circle } from 'react-native-svg';
+import { lightColors, darkColors } from '../../look-and-feel/colorPalette';
+import NbCard from '../../look-and-feel/NbCard';
+import NbIconChip from '../../look-and-feel/NbIconChip';
+import NbProgressBar from '../../look-and-feel/NbProgressBar';
 
 // ===== NAMED CONSTANTS =====
 
-const NUT_TRACK = {
-  dark: 'rgba(255,255,255,0.12)',
-  light: 'rgba(0,0,0,0.08)',
-};
+const ICON_PROTEIN = require('../../assets/icons/handoff/protein.png');
+const ICON_CARBS = require('../../assets/icons/handoff/carbs.png');
+const ICON_FATS = require('../../assets/icons/handoff/fats.png');
 
-const RING_STROKE_WIDTH = 7;
-const RING_SIZE_NARROW = 84;
-const RING_SIZE_WIDE = 92;
-const NARROW_SCREEN_WIDTH = 380;
-const MIN_VISIBLE_RING_PCT = 4;
+const RING_SIZE = 96;
+const RING_STROKE = 8;
+const RING_RADIUS = 40;
+const CALORIES_GOAL_DEFAULT = 2000;
 const PROTEIN_GOAL_DEFAULT_G = 150;
 const CARBS_GOAL_DEFAULT_G = 250;
 const FAT_GOAL_DEFAULT_G = 70;
-const FIBER_GOAL_G = 25;
-const SUGAR_GOAL_G = 50;
-const SODIUM_GOAL_MG = 2300;
-const POTASSIUM_GOAL_MG = 3500;
-const CALORIES_GOAL_DEFAULT = 2000;
-const GRAMS_ROUND_AT = 100;
-const GRAMS_TENTHS_AT = 10;
+// Design Law empty day shows the four meal slots, each “No meals logged yet”.
+const EMPTY_MEAL_SLOTS = ['Breakfast', 'Lunch', 'Snack', 'Dinner'];
 
-// ===== HELPER FUNCTIONS =====
+// ===== HELPERS =====
 
-/**
- * Grams show one decimal under 100. Milligrams are always whole numbers.
- * @param {*} value
- * @param {string} [unit]
- * @returns {string}
- */
-function formatNutrientValue(value, unit = 'g') {
-  const amount = Number(value) || 0;
-  if (unit === 'mg') return `${Math.round(amount)}mg`;
-  if (amount >= GRAMS_ROUND_AT) return `${Math.round(amount)}g`;
-  if (amount >= GRAMS_TENTHS_AT) return `${Math.round(amount * 10) / 10}g`;
-  return `${Math.round(amount * 10) / 10}g`;
+function normalizeFoodRows(foods) {
+  if (!Array.isArray(foods)) return [];
+  return foods.map((item, index) => {
+    if (typeof item === 'string') {
+      return { id: `food-${index}`, name: item, meal: 'Meal', calories: null };
+    }
+    return {
+      id: item.id || `food-${index}`,
+      name: item.name || item.food_name || item.foodName || 'Food',
+      meal: capitalizeMeal(item.meal || item.meal_type || item.mealType || 'Meal'),
+      calories:
+        item.calories != null && Number.isFinite(Number(item.calories))
+          ? Math.round(Number(item.calories))
+          : null,
+    };
+  });
 }
 
-/**
- * @param {*} goal
- * @param {string} unit
- * @returns {string}
- */
-function formatGoalLabel(goal, unit) {
-  if (unit === 'mg') return `${Math.round(goal)}mg`;
-  return `${Math.round(goal)}g`;
+function capitalizeMeal(raw) {
+  const text = String(raw || 'Meal');
+  if (!text) return 'Meal';
+  return text.charAt(0).toUpperCase() + text.slice(1).toLowerCase();
 }
 
-function TrainerMacroRing({ value, goal, label, unit = 'g', isDark }) {
-  const numericValue = Number(value) || 0;
-  const numericGoal = Number(goal) > 0 ? Number(goal) : 1;
-  const pct = Math.min((numericValue / numericGoal) * 100, 100);
-  const displayPct = numericValue > 0 ? Math.max(pct, MIN_VISIBLE_RING_PCT) : 0;
-
-  const size = SCREEN_WIDTH < NARROW_SCREEN_WIDTH ? RING_SIZE_NARROW : RING_SIZE_WIDE;
-  const stroke = RING_STROKE_WIDTH;
-  const center = size / 2;
-  const radius = (size - stroke) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const offset = circumference - (displayPct / 100) * circumference;
-  const gradientColors = gradientForNutrientLabel(label);
-  const gradId = `trainerNut-${String(label).replace(/\s+/g, '-')}`;
-  const trackColor = isDark ? NUT_TRACK.dark : NUT_TRACK.light;
-  const textColor = isDark ? '#FFFFFF' : '#1a0a2e';
-  const mutedColor = isDark ? 'rgba(255,255,255,0.58)' : 'rgba(26,10,46,0.55)';
+function CalorieRing({ calories, goal, isDark }) {
+  const ink = isDark ? darkColors.nbInk : lightColors.nbInk;
+  const muted = isDark ? darkColors.nbMuted : lightColors.nbMuted;
+  const track = isDark ? 'rgba(255,255,255,0.16)' : 'rgba(10,10,10,0.12)';
+  const pct = goal > 0 ? Math.min(calories / goal, 1) : 0;
+  const circumference = 2 * Math.PI * RING_RADIUS;
+  const offset = circumference - pct * circumference;
+  const center = RING_SIZE / 2;
 
   return (
-    <View style={styles.ringCard}>
-      <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-        <View style={{ transform: [{ rotate: '-90deg' }] }}>
-          <Svg width={size} height={size}>
-            <Defs>
-              <SvgGradient id={gradId} x1="0%" y1="0%" x2="100%" y2="100%">
-                <Stop offset="0%" stopColor={gradientColors[0]} stopOpacity={1} />
-                <Stop offset="100%" stopColor={gradientColors[1]} stopOpacity={1} />
-              </SvgGradient>
-            </Defs>
-            <Circle cx={center} cy={center} r={radius} stroke={trackColor} strokeWidth={stroke} fill="none" />
-            {numericValue > 0 ? (
-              <Circle
-                cx={center}
-                cy={center}
-                r={radius}
-                stroke={`url(#${gradId})`}
-                strokeWidth={stroke}
-                fill="none"
-                strokeDasharray={circumference}
-                strokeDashoffset={offset}
-                strokeLinecap="round"
-              />
-            ) : null}
-          </Svg>
-        </View>
-        <View style={[StyleSheet.absoluteFill, styles.ringCenter]}>
-          <Text style={[styles.ringValue, { color: textColor }]} numberOfLines={1}>
-            {formatNutrientValue(numericValue, unit)}
-          </Text>
-          {numericGoal > 0 ? (
-            <Text style={[styles.ringPct, { color: mutedColor }]}>{Math.round(pct)}%</Text>
-          ) : null}
-        </View>
+    <View style={styles.ringWrap}>
+      <View style={{ transform: [{ rotate: '-90deg' }] }}>
+        <Svg width={RING_SIZE} height={RING_SIZE}>
+          <Circle
+            cx={center}
+            cy={center}
+            r={RING_RADIUS}
+            stroke={track}
+            strokeWidth={RING_STROKE}
+            fill="none"
+          />
+          <Circle
+            cx={center}
+            cy={center}
+            r={RING_RADIUS}
+            stroke={ink}
+            strokeWidth={RING_STROKE}
+            fill="none"
+            strokeDasharray={`${circumference} ${circumference}`}
+            strokeDashoffset={offset}
+            strokeLinecap="butt"
+          />
+        </Svg>
       </View>
-      <Text style={[styles.ringLabel, { color: mutedColor }]} numberOfLines={1}>
-        {label}
-      </Text>
-      {numericGoal > 0 ? (
-        <Text style={[styles.ringGoal, { color: textColor }]} numberOfLines={1}>
-          of {formatGoalLabel(numericGoal, unit)}
+      <View style={styles.ringCenter}>
+        <Text style={[styles.ringNum, { color: ink }]} numberOfLines={1}>
+          {Math.round(calories).toLocaleString()}
+        </Text>
+        <Text style={[styles.ringOf, { color: muted }]} numberOfLines={1}>
+          of {Math.round(goal).toLocaleString()}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+function MacroBarRow({ icon, label, value, goal, barIndex, isDark }) {
+  const ink = isDark ? darkColors.nbInk : lightColors.nbInk;
+  const muted = isDark ? darkColors.nbMuted : lightColors.nbMuted;
+  const pct = goal > 0 ? Math.min(value / goal, 1) : 0;
+  return (
+    <View style={styles.macRow}>
+      <View style={styles.macTop}>
+        <View style={styles.macLabelRow}>
+          <NbIconChip source={icon} index={barIndex} size={28} />
+          <Text style={[styles.macLabel, { color: ink }]} numberOfLines={1}>
+            {label}
+          </Text>
+        </View>
+        <Text style={[styles.macVal, { color: muted }]} numberOfLines={1}>
+          {Math.round(value)} / {Math.round(goal)} g
+        </Text>
+      </View>
+      <NbProgressBar progress={pct} index={barIndex} />
+    </View>
+  );
+}
+
+function MealRow({ food, iconIndex, isDark, isLast }) {
+  const ink = isDark ? darkColors.nbInk : lightColors.nbInk;
+  const muted = isDark ? darkColors.nbMuted : lightColors.nbMuted;
+  const icon =
+    iconIndex % 3 === 0 ? ICON_PROTEIN : iconIndex % 3 === 1 ? ICON_CARBS : ICON_FATS;
+  return (
+    <View
+      style={[
+        styles.mealRow,
+        !isLast
+          ? {
+              borderBottomWidth: 2,
+              borderBottomColor: isDark ? darkColors.nbBorder : lightColors.nbBorder,
+            }
+          : null,
+      ]}
+    >
+      <NbIconChip source={icon} index={iconIndex} size={40} />
+      <View style={styles.grow}>
+        <Text style={[styles.mealTitle, { color: ink }]} numberOfLines={2}>
+          {food.name}
+        </Text>
+        <Text style={[styles.mealSub, { color: muted }]} numberOfLines={1}>
+          {food.meal}
+        </Text>
+      </View>
+      {food.calories != null ? (
+        <Text style={[styles.mealCals, { color: ink }]} numberOfLines={1}>
+          {food.calories}
         </Text>
       ) : null}
     </View>
   );
 }
 
-/**
- * Empty rings stay off the dashboard so a 0g day does not look like missing data.
- * @param {object} nutrition
- * @returns {object[]}
- */
-function ringsFromNutrition(nutrition) {
-  const rings = [];
-  pushRingIfLogged(rings, nutrition?.protein, nutrition?.proteinGoal || PROTEIN_GOAL_DEFAULT_G, 'Protein', 'g');
-  pushRingIfLogged(rings, nutrition?.carbs, nutrition?.carbsGoal || CARBS_GOAL_DEFAULT_G, 'Carbs', 'g');
-  pushRingIfLogged(rings, nutrition?.fat, nutrition?.fatGoal || FAT_GOAL_DEFAULT_G, 'Fat', 'g');
-  pushRingIfLogged(rings, nutrition?.fiber, FIBER_GOAL_G, 'Fiber', 'g');
-  pushRingIfLogged(rings, nutrition?.sugar, SUGAR_GOAL_G, 'Sugar', 'g');
-  pushRingIfLogged(rings, nutrition?.sodium, SODIUM_GOAL_MG, 'Sodium', 'mg');
-  pushRingIfLogged(rings, nutrition?.potassium, POTASSIUM_GOAL_MG, 'Potassium', 'mg');
-  return rings;
-}
-
-/**
- * @param {object[]} rings
- * @param {*} value
- * @param {*} goal
- * @param {string} label
- * @param {string} unit
- */
-function pushRingIfLogged(rings, value, goal, label, unit) {
-  if (!(value > 0)) return;
-  rings.push({ value, goal, label, unit });
-}
-
-/**
- * @param {object} clientData
- * @returns {boolean}
- */
-function hasAnyNutritionLogged(clientData) {
-  const nutrition = clientData?.nutrition;
-  const hasCalories = nutrition?.calories > 0;
-  const hasMacros = nutrition?.protein > 0 || nutrition?.carbs > 0 || nutrition?.fat > 0;
-  const hasAdditionalNutrients =
-    nutrition?.fiber > 0 ||
-    nutrition?.sugar > 0 ||
-    nutrition?.sodium > 0 ||
-    nutrition?.potassium > 0;
-  return hasCalories || hasMacros || hasAdditionalNutrients;
-}
-
-function CaloriesCard({ nutrition, caloriesGoal, caloriePct, mutedColor, isDark }) {
+function EmptyMealSlot({ label, isDark, isLast }) {
+  const muted = isDark ? darkColors.nbMuted : lightColors.nbMuted;
   return (
-    <NbCard style={{ padding: 18 }}>
-      <Text style={styles.sectionLabel}>Daily Calories</Text>
-      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 6, marginBottom: 10 }}>
-        <ColorText colors={[PINK, ORANGE]} style={{ fontSize: 36, fontWeight: '900', lineHeight: 40 }}>
-          {(nutrition.calories || 0).toLocaleString()}
-        </ColorText>
-        <Text style={{ color: mutedColor, fontSize: 13, fontWeight: '600', marginBottom: 4 }}>kcal</Text>
-        {caloriesGoal > 0 ? (
-          <Text style={{ color: mutedColor, fontSize: 12, marginBottom: 4, marginLeft: 4 }}>
-            / {caloriesGoal.toLocaleString()} goal
-          </Text>
-        ) : null}
+    <View
+      style={[
+        styles.mealRow,
+        !isLast
+          ? {
+              borderBottomWidth: 2,
+              borderBottomColor: isDark ? darkColors.nbBorder : lightColors.nbBorder,
+            }
+          : null,
+      ]}
+    >
+      <View style={styles.grow}>
+        <Text style={[styles.mealTitle, { color: muted }]} numberOfLines={1}>
+          {label}
+        </Text>
+        <Text style={[styles.mealSub, { color: muted }]} numberOfLines={1}>
+          No meals logged yet
+        </Text>
       </View>
-      <View
-        style={{
-          height: 4,
-          borderRadius: 2,
-          backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
-          overflow: 'hidden',
-        }}
-      >
-        <LinearGradient
-          colors={[PINK, ORANGE]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={{ height: '100%', width: `${caloriePct}%`, borderRadius: 2 }}
-        />
-      </View>
-    </NbCard>
+    </View>
   );
 }
 
-function NutrientRingsCard({ rings, mutedColor, isDark }) {
+// ===== MAIN =====
+
+const NutritionTab = ({ isDark, clientData }) => {
+  const nutrition = clientData?.nutrition || {};
+  const foods = useMemo(() => normalizeFoodRows(nutrition.foods), [nutrition.foods]);
+
+  const calories = Number(nutrition.calories) || 0;
+  const caloriesGoal = Number(nutrition.caloriesGoal) || CALORIES_GOAL_DEFAULT;
+  const protein = Number(nutrition.protein) || 0;
+  const carbs = Number(nutrition.carbs) || 0;
+  const fat = Number(nutrition.fat) || 0;
+  const proteinGoal = Number(nutrition.proteinGoal) || PROTEIN_GOAL_DEFAULT_G;
+  const carbsGoal = Number(nutrition.carbsGoal) || CARBS_GOAL_DEFAULT_G;
+  const fatGoal = Number(nutrition.fatGoal) || FAT_GOAL_DEFAULT_G;
+
+  const mealsPresent = new Set(foods.map((f) => f.meal));
+  // Empty day → all four slots. Partial day → only missing named slots still shown.
+  const emptySlots =
+    foods.length === 0
+      ? EMPTY_MEAL_SLOTS
+      : EMPTY_MEAL_SLOTS.filter((meal) => !mealsPresent.has(meal)).slice(0, 1);
+
   return (
-    <NbCard style={{ padding: 16 }}>
-      <Text style={[styles.sectionLabel, { color: mutedColor }]}>Macros & Nutrients</Text>
-      <View style={styles.ringGrid}>
-        {rings.map((nutrient) => (
-          <View key={nutrient.label} style={styles.ringCell}>
-            <TrainerMacroRing
-              value={nutrient.value}
-              goal={nutrient.goal}
-              label={nutrient.label}
-              unit={nutrient.unit}
+    <View style={styles.root}>
+      <NbCard style={styles.summaryCard}>
+        <View style={styles.summaryRow}>
+          <CalorieRing calories={calories} goal={caloriesGoal} isDark={isDark} />
+          <View style={styles.macCol}>
+            <MacroBarRow
+              icon={ICON_PROTEIN}
+              label="Protein"
+              value={protein}
+              goal={proteinGoal}
+              barIndex={8}
+              isDark={isDark}
+            />
+            <MacroBarRow
+              icon={ICON_CARBS}
+              label="Carbs"
+              value={carbs}
+              goal={carbsGoal}
+              barIndex={0}
+              isDark={isDark}
+            />
+            <MacroBarRow
+              icon={ICON_FATS}
+              label="Fats"
+              value={fat}
+              goal={fatGoal}
+              barIndex={3}
               isDark={isDark}
             />
           </View>
+        </View>
+      </NbCard>
+
+      <NbCard style={styles.listCard}>
+        {foods.map((food, index) => (
+          <MealRow
+            key={food.id}
+            food={food}
+            iconIndex={index}
+            isDark={isDark}
+            isLast={index === foods.length - 1 && emptySlots.length === 0}
+          />
         ))}
-      </View>
-    </NbCard>
-  );
-}
-
-function MicrosCard({ micros, mutedColor, textColor, isDark }) {
-  return (
-    <NbCard style={{ padding: 16 }}>
-      <Text style={[styles.sectionLabel, { color: mutedColor }]}>Micronutrients</Text>
-      <View style={{ gap: 8 }}>
-        {(micros || []).map((micro, i) => (
-          <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Text style={{ color: mutedColor, fontSize: 13 }}>{micro.name}</Text>
-            <Text style={{ color: textColor, fontSize: 13, fontWeight: '700' }}>{micro.value}</Text>
-          </View>
+        {emptySlots.map((label, index) => (
+          <EmptyMealSlot
+            key={`empty-${label}`}
+            label={label}
+            isDark={isDark}
+            isLast={index === emptySlots.length - 1}
+          />
         ))}
-      </View>
-    </NbCard>
-  );
-}
-
-function FoodsCard({ foods, chipBg, textColor, isDark, mutedColor }) {
-  return (
-    <NbCard style={{ padding: 16 }}>
-      <Text style={[styles.sectionLabel, { color: mutedColor }]}>Foods Logged Today</Text>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-        {(foods || []).map((food, i) => (
-          <View key={i} style={{ backgroundColor: chipBg, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12 }}>
-            <Text style={{ color: textColor, fontSize: 12, fontWeight: '500' }}>{food}</Text>
-          </View>
-        ))}
-      </View>
-    </NbCard>
-  );
-}
-
-// ===== MAIN FUNCTION =====
-
-const NutritionTab = ({ isDark, clientData }) => {
-  const mutedColor = isDark ? 'rgba(255,255,255,0.5)' : 'rgba(26,10,46,0.5)';
-  const textColor = isDark ? '#ffffff' : '#1a0a2e';
-  const chipBg = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(124,58,237,0.1)';
-
-  const hasMicros = clientData?.nutrition?.micros?.length > 0;
-  const hasFoods = clientData?.nutrition?.foods?.length > 0;
-
-  if (!hasAnyNutritionLogged(clientData)) {
-    return (
-      <PremiumTabEmptyState
-        isDark={isDark}
-        lottieSource={LOTTIE_FOOD_AROUND_CITY}
-        title="No nutrition logged yet"
-        subtitle="When your client tracks meals in the app, their daily intake shows up here automatically."
-        hints={[
-          'Calorie totals for the day',
-          'Protein, carbs & fat breakdown',
-          'Fiber, sodium & more when logged',
-        ]}
-      />
-    );
-  }
-
-  const allNutrients = ringsFromNutrition(clientData?.nutrition);
-  const caloriesGoal = clientData?.nutrition?.caloriesGoal || CALORIES_GOAL_DEFAULT;
-  const caloriePct = Math.min(Math.round(((clientData.nutrition.calories || 0) / caloriesGoal) * 100), 100);
-
-  return (
-    <View style={{ gap: 12 }}>
-      <CaloriesCard
-        nutrition={clientData.nutrition}
-        caloriesGoal={caloriesGoal}
-        caloriePct={caloriePct}
-        mutedColor={mutedColor}
-        isDark={isDark}
-      />
-
-      {allNutrients.length > 0 ? (
-        <NutrientRingsCard rings={allNutrients} mutedColor={mutedColor} isDark={isDark} />
-      ) : null}
-
-      {hasMicros ? (
-        <MicrosCard
-          micros={clientData?.nutrition?.micros}
-          mutedColor={mutedColor}
-          textColor={textColor}
-          isDark={isDark}
-        />
-      ) : null}
-
-      {hasFoods ? (
-        <FoodsCard
-          foods={clientData?.nutrition?.foods}
-          chipBg={chipBg}
-          textColor={textColor}
-          isDark={isDark}
-          mutedColor={mutedColor}
-        />
-      ) : null}
+      </NbCard>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  sectionLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 1.4,
-    textTransform: 'uppercase',
-    marginBottom: 12,
-    color: 'rgba(255,255,255,0.5)',
+  root: {
+    gap: 16,
+    paddingTop: 4,
   },
-  ringGrid: {
+  summaryCard: {
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+  },
+  summaryRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    rowGap: 14,
-  },
-  ringCell: {
-    width: SCREEN_WIDTH < 380 ? '31%' : '32%',
-    minWidth: 100,
     alignItems: 'center',
+    gap: 14,
   },
-  ringCard: {
-    alignItems: 'center',
-    width: '100%',
-  },
-  ringCenter: {
+  ringWrap: {
+    width: RING_SIZE,
+    height: RING_SIZE,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 4,
   },
-  ringValue: {
-    fontSize: 15,
-    fontWeight: '800',
-    letterSpacing: -0.2,
+  ringCenter: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
   },
-  ringPct: {
-    fontSize: 10,
-    fontWeight: '600',
-    marginTop: 2,
+  ringNum: {
+    fontSize: 18,
+    fontWeight: '900',
+    letterSpacing: -0.6,
+    fontVariant: ['tabular-nums'],
   },
-  ringLabel: {
+  ringOf: {
     fontSize: 12,
-    fontWeight: '700',
-    marginTop: 8,
-    textAlign: 'center',
-  },
-  ringGoal: {
-    fontSize: 10,
     fontWeight: '600',
     marginTop: 2,
-    opacity: 0.82,
-    textAlign: 'center',
+  },
+  macCol: {
+    flex: 1,
+    minWidth: 0,
+    gap: 9,
+  },
+  macRow: {
+    gap: 6,
+  },
+  macTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  macLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  macLabel: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  macVal: {
+    fontSize: 13,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
+  },
+  listCard: {
+    paddingVertical: 4,
+    paddingHorizontal: 12,
+  },
+  mealRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    minHeight: 56,
+    paddingVertical: 10,
+  },
+  grow: {
+    flex: 1,
+    minWidth: 0,
+  },
+  mealTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    lineHeight: 20,
+  },
+  mealSub: {
+    fontSize: 13,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  mealCals: {
+    fontSize: 17,
+    fontWeight: '900',
+    letterSpacing: -0.4,
+    fontVariant: ['tabular-nums'],
+    marginLeft: 8,
   },
 });
 

@@ -5,6 +5,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { nb, borderRadius } from '../../look-and-feel/colorPalette';
 import { EditorGradientBorder, EditorGradientIcon } from './editorAccent';
 
 // ===== NAMED CONSTANTS =====
@@ -12,7 +13,6 @@ import { EditorGradientBorder, EditorGradientIcon } from './editorAccent';
 const VARIANT_PRIMARY = 'primary';
 const VARIANT_SECONDARY = 'secondary';
 const DISABLED_OPACITY = 0.45;
-const PRIMARY_ACCENT_FILL_SUFFIX = '18';
 
 /** Shown in UI only — never saved as the file title. */
 export const EDITOR_NAME_PLACEHOLDER = 'Untitled document';
@@ -51,16 +51,17 @@ function titleInputSharedProps({
   };
 }
 
+/** Primary = nb fill; secondary = surface ghost with nb outline. */
 function actionButtonColors(theme, isPrimary) {
   if (isPrimary) {
     return {
-      backgroundColor: `${theme.accent}${PRIMARY_ACCENT_FILL_SUFFIX}`,
-      borderColor: theme.accent,
-      contentColor: theme.accent,
+      backgroundColor: theme.accent,
+      borderColor: theme.border,
+      contentColor: theme.textOnAccent,
     };
   }
   return {
-    backgroundColor: theme.inputBg,
+    backgroundColor: theme.headerBg,
     borderColor: theme.border,
     contentColor: theme.text,
   };
@@ -68,7 +69,7 @@ function actionButtonColors(theme, isPrimary) {
 
 function iconButtonColors(theme) {
   return {
-    backgroundColor: theme.inputBg,
+    backgroundColor: theme.headerBg,
     borderColor: theme.border,
   };
 }
@@ -213,7 +214,7 @@ const titleStyles = StyleSheet.create({
     fontWeight: '600',
     paddingVertical: 6,
     paddingHorizontal: 0,
-    borderBottomWidth: 2,
+    borderBottomWidth: nb.borderWidthDivider,
   },
   input: {
     flex: 1,
@@ -227,7 +228,7 @@ const titleStyles = StyleSheet.create({
 
 const styles = StyleSheet.create({
   bar: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: nb.borderWidth,
     paddingHorizontal: 10,
     paddingBottom: 8,
     paddingTop: 2,
@@ -244,16 +245,16 @@ const styles = StyleSheet.create({
     gap: 5,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 999,
-    borderWidth: 1,
-    minHeight: 36,
+    borderRadius: borderRadius.nbButton,
+    borderWidth: nb.borderWidth,
+    minHeight: nb.minTouchTarget,
   },
-  label: { fontSize: 13, fontWeight: '700' },
+  label: { fontSize: 13, fontWeight: '800' },
   iconBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 999,
-    borderWidth: 1,
+    width: nb.minTouchTarget,
+    height: nb.minTouchTarget,
+    borderRadius: borderRadius.nbButton,
+    borderWidth: nb.borderWidth,
     alignItems: 'center',
     justifyContent: 'center',
   },

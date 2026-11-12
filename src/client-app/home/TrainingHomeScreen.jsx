@@ -1,6 +1,9 @@
-// Client training home: today's metrics, trainer card, session invites, and quick actions.
-// Flow: TrainingHomeScreenLayout paints the page; the export at the bottom loads Firestore and clocks.
-// Used by the client shell. Metric cards write users/{uid}/dailyLogs for today.
+// Client dashboard — structure locked to docs/design/mockups/client-home.html.
+// Flow: layout paints welcome → up next → trainer row → week → numbers → nutrition → workouts → check-in;
+//       the export loads Firestore sessions/metrics and passes handlers into that layout.
+// Used by the client shell. Metric cards still write users/{uid}/dailyLogs for today.
+//
+// vocab: nb = neo-brutalist tokens (3px ink border, hard offset shadow, fill hero) — not GradientFrame chrome
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
@@ -15,7 +18,6 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import LottieView from 'lottie-react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -49,17 +51,32 @@ import { useTheme } from '../../look-and-feel/lightDarkMode';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FORM_SCROLL_PROPS, useShellBottomNavInset } from '../../navigation/bottomMenuSpacing';
 import { UpcomingSessionCard } from '../../for-both/home-cards/UpcomingSessionCard';
-import MyTrainerCard from './MyTrainerCard';
-import TodayStatsCards, { ColorBorderShell, TRAINER_BORDER_GRADIENT } from './TodayStatsCards';
-import QuickActionCard from '../../for-both/home-cards/QuickActionCard';
-import {
-  HOME_STAT_WORKOUT_GRADIENT,
-  HOME_STAT_WATER_GRADIENT,
-  HOME_STAT_SORENESS_GRADIENT,
-  HOME_STAT_SLEEP_GRADIENT,
-  GradientOutlineText,
-} from '../../look-and-feel/homeStatColors';
 import { WORKOUT_DAY_EXAMPLES_SHORT } from '../../helpers/workoutDayNames';
+import { formatTime12 } from '../../helpers/sessionTimeText';
+import NbCard from '../../look-and-feel/NbCard';
+import HardShadow from '../../look-and-feel/HardShadow';
+import NbRing from '../../look-and-feel/NbRing';
+import { lightColors, darkColors, accentGradients, navAccentGradient, nb } from '../../look-and-feel/colorPalette';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useDailyQuote } from '../../for-both/home-cards/DailyQuoteCard';
+import {
+  DesignLawCheckInCard,
+  DesignLawGoToGrid,
+  DesignLawLogSheet,
+  DesignLawNumberTiles,
+  DesignLawNutritionCard,
+  DesignLawReviewSheet,
+  DesignLawTrainerSheet,
+  DesignLawWorkoutCard,
+  HANDOFF_PROGRESS,
+  HANDOFF_SCHEDULE,
+  HANDOFF_WORKOUT,
+} from './DesignLawHomeBlocks';
+import WriteTrainerReviewPopup from './WriteTrainerReviewPopup';
+import FindTrainerBanner from '../../for-both/home-cards/FindTrainerBanner';
+
+// Recolored handoff lifter — yellow circles swapped to coral/pink (owner: no yellow).
+const HANDOFF_LIFTER_LOTTIE = require('../../assets/animations/handoff/zlifter-noyellow.json');
 
 // ===== NAMED CONSTANTS =====
 
@@ -84,24 +101,9 @@ const SHELL_NAV_PAD_EMBEDDED = 40;
 const SHELL_NAV_PAD_STANDALONE = 24;
 const BADGE_COUNT_CAP = 99;
 
-const BENTO_VALUE_GRADIENT = {
-  dashboard_sleep: HOME_STAT_WORKOUT_GRADIENT,
-  dashboard_water: HOME_STAT_WATER_GRADIENT,
-  dashboard_steps: HOME_STAT_SORENESS_GRADIENT,
-  dashboard_weight: HOME_STAT_SLEEP_GRADIENT,
-};
-
-/** Same purple → orange stripe as hero / training agenda cards. */
-const BENTO_TOP_STRIPE = ['#6D28D9', '#C2410C'];
-
-const bentoGradientValueStyle = (fontSize) => ({
-  fontSize,
-  fontWeight: '800',
-  lineHeight: Math.round(fontSize * 1.18),
-  textAlign: 'center',
-});
-
-const bentoValueFillColor = (isDark) => (isDark ? '#FFFFFF' : '#1A1040');
+// Manipulate here: weekday labels for the mockup .wkd strip (Mon→Sun).
+const WEEKDAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+const METRIC_TILE_WIDTH = 148;
 
 const MOOD_EMPTY_LOTTIE = require('../../for-both/assets/Happy SUN.json');
 
@@ -116,38 +118,54 @@ const formatHMS = (milliseconds) => {
   return `${padTwoDigits(hours)}:${padTwoDigits(minutes)}:${padTwoDigits(seconds)}`;
 };
 
+// Design Law motivation is a short punch line — clamp long dailyQuotes to a first clause.
+// Manipulate here: MAX_MOTIVATION_CHARS = how long the hero line can run before we cut.
+const MAX_MOTIVATION_CHARS = 42;
+function shortMotivationLine(raw) {
+  const text = String(raw || '').trim() || 'Keep showing up.';
+  if (text.length <= MAX_MOTIVATION_CHARS) return text;
+  const clause = text.split(/(?<=[.!?])\s+|;\s+| — | - /)[0]?.trim() || text;
+  if (clause.length <= MAX_MOTIVATION_CHARS) return clause.endsWith('.') ? clause : `${clause}.`;
+  return `${text.slice(0, MAX_MOTIVATION_CHARS - 1).trim()}…`;
+}
+
+// Handoff B/W/gray surfaces (docs/design/DESIGN.md).
 const DARK = {
-  bg: ['#0a0a1a', '#1a0825', '#0d1117'],
-  solidBg: '#0d0d1f',
-  cardBg: 'rgba(255,255,255,0.05)',
-  cardBorder: 'rgba(255,255,255,0.08)',
-  text: '#ffffff',
-  textMuted: 'rgba(255,255,255,0.5)',
-  textDimmed: 'rgba(255,255,255,0.35)',
-  textSubtle: 'rgba(255,255,255,0.3)',
-  inputBg: 'rgba(255,255,255,0.06)',
-  inputBorder: 'rgba(255,255,255,0.10)',
-  iconColor: 'rgba(255,255,255,0.6)',
-  pillBg: 'rgba(255,255,255,0.05)',
-  pillBorder: 'rgba(255,255,255,0.12)',
-  pillText: 'rgba(255,255,255,0.7)',
+  bg: [darkColors.nbBackground, darkColors.nbBackground],
+  solidBg: darkColors.nbBackground,
+  cardBg: darkColors.nbSurface,
+  cardBorder: darkColors.nbBorder,
+  text: darkColors.nbInk,
+  textMuted: darkColors.nbMuted,
+  textDimmed: darkColors.nbMuted,
+  textSubtle: darkColors.nbMuted,
+  inputBg: darkColors.nbSurfaceChip,
+  inputBorder: darkColors.nbBorder,
+  iconColor: darkColors.nbMuted,
+  pillBg: darkColors.nbSurfaceChip,
+  pillBorder: darkColors.nbBorder,
+  pillText: darkColors.nbInk,
+  fill: darkColors.nbFill,
+  onFill: darkColors.nbOnFill,
 };
 
 const LIGHT = {
-  bg: ['#f5f3ff', '#ede9fe', '#e9e5ff'],
-  solidBg: '#f8f6ff',
-  cardBg: 'rgba(255,255,255,0.7)',
-  cardBorder: 'rgba(0,0,0,0.06)',
-  text: '#1a1040',
-  textMuted: 'rgba(30,16,64,0.5)',
-  textDimmed: 'rgba(30,16,64,0.35)',
-  textSubtle: 'rgba(30,16,64,0.3)',
-  inputBg: 'rgba(255,255,255,0.8)',
-  inputBorder: 'rgba(0,0,0,0.08)',
-  iconColor: 'rgba(30,16,64,0.6)',
-  pillBg: 'rgba(255,255,255,0.5)',
-  pillBorder: 'rgba(0,0,0,0.08)',
-  pillText: 'rgba(30,16,64,0.7)',
+  bg: [lightColors.nbBackground, lightColors.nbBackground],
+  solidBg: lightColors.nbBackground,
+  cardBg: lightColors.nbSurface,
+  cardBorder: lightColors.nbBorder,
+  text: lightColors.nbInk,
+  textMuted: lightColors.nbMuted,
+  textDimmed: lightColors.nbMuted,
+  textSubtle: lightColors.nbMuted,
+  inputBg: lightColors.nbSurfaceChip,
+  inputBorder: lightColors.nbBorder,
+  iconColor: lightColors.nbMuted,
+  pillBg: lightColors.nbSurfaceChip,
+  pillBorder: lightColors.nbBorder,
+  pillText: lightColors.nbInk,
+  fill: lightColors.nbFill,
+  onFill: lightColors.nbOnFill,
 };
 
 const TAG_MAP = {
@@ -311,8 +329,8 @@ function bentoValueFontSize(isStepsCard, numericLength, isTall) {
 
 function moodEmojiBackground(isActive, isDark) {
   if (!isActive) return 'transparent';
-  if (isDark) return 'rgba(255,107,157,0.2)';
-  return 'rgba(255,107,157,0.12)';
+  if (isDark) return darkColors.nbSurfaceChip;
+  return lightColors.nbSurfaceChip;
 }
 
 function dashboardBannerColors(bannerType, isDark) {
@@ -330,13 +348,13 @@ function dashboardBannerColors(bannerType, isDark) {
   }
   if (isDark) {
     return {
-      borderColor: 'rgba(255,255,255,0.10)',
-      backgroundColor: 'rgba(255,255,255,0.04)',
+      borderColor: darkColors.nbBorder,
+      backgroundColor: darkColors.nbSurfaceChip,
     };
   }
   return {
-    borderColor: 'rgba(0,0,0,0.08)',
-    backgroundColor: 'rgba(255,255,255,0.65)',
+    borderColor: lightColors.nbBorder,
+    backgroundColor: lightColors.nbSurface,
   };
 }
 
@@ -541,7 +559,6 @@ const WorkoutLogCard = ({ icon, gradientFrom, gradientTo, isDark, onAfterSave, s
       subtitle={showForm ? 'Log exercises, sets, and weight for today.' : undefined}
       gradientFrom={gradientFrom}
       gradientTo={gradientTo}
-      topBorderColors={['#FF6B9D', '#C084FC', '#FF6B9D']}
       statusBadge={statusBadge}
       showNotified={showNotified}
       hasSavedValue={hasSavedValue}
@@ -678,12 +695,23 @@ const WorkoutLogCard = ({ icon, gradientFrom, gradientTo, isDark, onAfterSave, s
             <Text style={{ fontSize: 14, color: themeColors.pillText }}>Add Exercise</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={save} activeOpacity={0.85}>
-            <LinearGradient
-              colors={[gradientFrom, gradientTo]}
-              style={[data.saveBtn, { minHeight: 56, paddingVertical: 16, borderRadius: 16, alignItems: 'center', justifyContent: 'center' }]}
+            <View
+              style={[
+                data.saveBtn,
+                {
+                  minHeight: 50,
+                  paddingVertical: 14,
+                  borderRadius: 10,
+                  borderWidth: nb.borderWidth,
+                  borderColor: themeColors.cardBorder,
+                  backgroundColor: themeColors.fill,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                },
+              ]}
             >
-              <Text style={[data.saveBtnText, { fontSize: 16 }]}>Save workout</Text>
-            </LinearGradient>
+              <Text style={[data.saveBtnText, { fontSize: 16, color: themeColors.onFill }]}>Save workout</Text>
+            </View>
           </TouchableOpacity>
         </View>
       ) : (
@@ -713,7 +741,7 @@ const WorkoutLogCard = ({ icon, gradientFrom, gradientTo, isDark, onAfterSave, s
           </View>
           <View style={logCompleted.actionRow}>
             <TouchableOpacity onPress={() => setIsEditing(true)} activeOpacity={0.85} style={logCompleted.textBtn}>
-              <Text style={[logCompleted.textBtnLabel, { color: '#FF6B9D' }]}>Edit</Text>
+              <Text style={[logCompleted.textBtnLabel, { color: lightColors.primary }]}>Edit</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={() => setIsEditing(true)} activeOpacity={0.85} style={logCompleted.textBtn}>
               <Text style={[logCompleted.textBtnLabel, { color: '#64D2FF' }]}>Add more</Text>
@@ -788,36 +816,44 @@ const logCompleted = StyleSheet.create({
   textBtnLabel: { fontSize: 14, fontWeight: '800' },
 });
 
+// Icon accents stay ink — colorful chrome was the old dashboard look.
 const CARD_ACCENT = {
-  dashboard_sleep: '#64D2FF',
-  dashboard_workouts: '#AF52DE',
-  dashboard_water: '#64D2FF',
-  dashboard_weight: '#FF9F0A',
-  dashboard_bodyfat: '#FF9F0A',
-  dashboard_steps: '#10B981',
-  dashboard_soreness: '#FF2D55',
-  dashboard_energy: '#FF9F0A',
-  dashboard_stress: '#AF52DE',
-  dashboard_mood: '#64D2FF',
-  dashboard_workout_rating: '#FF9F0A',
-  dashboard_notes: '#8A8A8A',
+  dashboard_sleep: lightColors.nbInk,
+  dashboard_workouts: lightColors.nbInk,
+  dashboard_water: lightColors.nbInk,
+  dashboard_weight: lightColors.nbInk,
+  dashboard_bodyfat: lightColors.nbInk,
+  dashboard_steps: lightColors.nbInk,
+  dashboard_soreness: lightColors.nbInk,
+  dashboard_energy: lightColors.nbInk,
+  dashboard_stress: lightColors.nbInk,
+  dashboard_mood: lightColors.nbInk,
+  dashboard_workout_rating: lightColors.nbInk,
+  dashboard_notes: lightColors.nbInk,
 };
 
-const shellIconRender = (icon, isDark, accent) =>
-  React.isValidElement(icon)
-    ? React.cloneElement(icon, {
-        color: isDark ? 'rgba(255,255,255,0.95)' : (accent || 'rgba(30,16,64,0.85)'),
-        size: Math.max(Number(icon.props?.size) || 0, MIN_SHELL_ICON_PX),
-      })
-    : icon;
+const shellIconRender = (icon, isDark, accent) => {
+  if (!React.isValidElement(icon)) return icon;
+  // Handoff NbIconChip already owns its look — do not force Ionicons color/size onto it.
+  if (icon.props?.source != null || icon.type === NbIconChip) return icon;
+  return React.cloneElement(icon, {
+    color: isDark ? themeInkOnDark() : (accent || lightColors.nbInk),
+    size: Math.max(Number(icon.props?.size) || 0, MIN_SHELL_ICON_PX),
+  });
+};
+
+function themeInkOnDark() {
+  return darkColors.nbInk;
+}
 
 const CardShell = ({
   icon,
   title,
   subtitle: headerSubtitle,
-  gradientFrom,
-  gradientTo,
-  topBorderColors,
+  // Kept so callers do not break — chrome is solid ink now, not gradient rims.
+  gradientFrom: _gradientFrom,
+  gradientTo: _gradientTo,
+  topBorderColors: _topBorderColors,
   statusBadge,
   showNotified,
   hasSavedValue,
@@ -828,8 +864,7 @@ const CardShell = ({
 }) => {
   const themeColors = isDark ? DARK : LIGHT;
   const notifiedOpacity = useRef(new Animated.Value(0)).current;
-  const accent = accentColor != null ? accentColor : gradientFrom;
-  const topColors = topBorderColors || [gradientFrom, gradientTo, gradientFrom];
+  const accent = accentColor || themeColors.text;
 
   useEffect(() => {
     if (showNotified) {
@@ -841,108 +876,70 @@ const CardShell = ({
     }
   }, [showNotified]);
 
-  const cardBg = isDark ? '#13131A' : '#FFFFFF';
-  const borderCol = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(10,10,15,0.1)';
-
+  // Mockup .card — 3px ink border + hard shadow via NbCard (not GradientFrame).
   return (
-    <View
-      style={[
-        shell.outer,
-        Platform.OS === 'ios' && {
-          shadowColor: '#000000',
-          shadowRadius: 14,
-          shadowOpacity: isDark ? 0.35 : 0.12,
-          shadowOffset: { width: 0, height: 6 },
-        },
-      ]}
-    >
-      <View style={shell.clip}>
-        <LinearGradient
-          colors={topColors}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={shell.topBar}
-        />
-        <View style={[shell.body, { backgroundColor: cardBg, borderColor: borderCol }]}>
-          <View
-            style={[shell.innerWash, { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.6)' }]}
-            pointerEvents="none"
-          />
-          {rightAction ? <View style={shell.rightAction}>{rightAction}</View> : null}
-          {statusBadge ? (
-            <View style={[shell.badge, { backgroundColor: themeColors.pillBg, borderColor: themeColors.pillBorder }]}>
-              <Ionicons name="checkmark-circle" size={14} color="#10B981" style={shell.badgeIcon} />
-              <Text style={[shell.badgeText, { color: themeColors.pillText }]}>{statusBadge}</Text>
-            </View>
-          ) : null}
-
-          <View style={shell.headerRow}>
-            <View
-              style={[
-                shell.iconCircle,
-                {
-                  backgroundColor: isDark ? `${accent}2E` : `${accent}18`,
-                  borderColor: isDark ? `${accent}55` : `${accent}30`,
-                },
-              ]}
-            >
-              {shellIconRender(icon, isDark, accent)}
-            </View>
-            <View style={shell.headerTextCol}>
-              <Text style={[shell.title, { color: themeColors.text }]}>{title}</Text>
-              {headerSubtitle ? (
-                <Text style={[shell.headerSubtitle, { color: themeColors.textMuted }]}>{headerSubtitle}</Text>
-              ) : null}
-            </View>
+    <NbCard style={shell.outer}>
+      <View style={shell.body}>
+        {rightAction ? <View style={shell.rightAction}>{rightAction}</View> : null}
+        {statusBadge ? (
+          <View style={[shell.badge, { backgroundColor: themeColors.pillBg, borderColor: themeColors.pillBorder }]}>
+            <Ionicons name="checkmark-circle" size={14} color={themeColors.text} style={shell.badgeIcon} />
+            <Text style={[shell.badgeText, { color: themeColors.pillText }]}>{statusBadge}</Text>
           </View>
+        ) : null}
 
-          <View style={shell.childrenWrap}>{children}</View>
-
-          {showNotified ? (
-            <Animated.View style={[shell.notified, { opacity: notifiedOpacity }]}>
-              <Ionicons name="checkmark-circle" size={14} color="#22c55e" />
-              <Text style={shell.notifiedText}>Trainer notified</Text>
-            </Animated.View>
-          ) : !hasSavedValue ? (
-            <Text style={[shell.subtleNote, { color: themeColors.textSubtle }]}>✓ Trainer notified when entered</Text>
-          ) : null}
+        <View style={shell.headerRow}>
+          <View
+            style={[
+              shell.iconSquare,
+              {
+                backgroundColor: themeColors.cardBg,
+                borderColor: themeColors.cardBorder,
+              },
+            ]}
+          >
+            {shellIconRender(icon, isDark, accent)}
+          </View>
+          <View style={shell.headerTextCol}>
+            <Text style={[shell.title, { color: themeColors.text }]}>{title}</Text>
+            {headerSubtitle ? (
+              <Text style={[shell.headerSubtitle, { color: themeColors.textMuted }]}>{headerSubtitle}</Text>
+            ) : null}
+          </View>
         </View>
+
+        <View style={shell.childrenWrap}>{children}</View>
+
+        {showNotified ? (
+          <Animated.View style={[shell.notified, { opacity: notifiedOpacity }]}>
+            <Ionicons name="checkmark-circle" size={14} color={themeColors.text} />
+            <Text style={[shell.notifiedText, { color: themeColors.text }]}>Trainer notified</Text>
+          </Animated.View>
+        ) : !hasSavedValue ? (
+          <Text style={[shell.subtleNote, { color: themeColors.textSubtle }]}>✓ Trainer notified when entered</Text>
+        ) : null}
       </View>
-    </View>
+    </NbCard>
   );
 };
 
 const shell = StyleSheet.create({
   outer: {
     marginBottom: 16,
-    elevation: 5,
-  },
-  clip: {
-    borderRadius: 20,
-    overflow: 'hidden',
-  },
-  topBar: {
-    height: 3,
-    width: '100%',
+    padding: 0,
   },
   body: {
-    borderWidth: 1,
-    borderTopWidth: 0,
-    paddingHorizontal: 20,
-    paddingTop: 18,
-    paddingBottom: 18,
+    paddingHorizontal: 14,
+    paddingTop: 14,
+    paddingBottom: 14,
     position: 'relative',
-  },
-  innerWash: {
-    ...StyleSheet.absoluteFillObject,
-    opacity: 0.85,
   },
   badge: {
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'flex-start',
-    borderRadius: 999,
-    borderWidth: 1,
+    borderRadius: 6,
+    borderWidth: nb.borderWidthPill,
     paddingHorizontal: 10,
     paddingVertical: 5,
     marginBottom: 12,
@@ -950,12 +947,13 @@ const shell = StyleSheet.create({
   },
   badgeIcon: { marginRight: 0 },
   badgeText: { fontSize: 11, fontWeight: '800' },
-  headerRow: { flexDirection: 'row', alignItems: 'center', gap: 14, zIndex: 1 },
-  iconCircle: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    borderWidth: 1,
+  headerRow: { flexDirection: 'row', alignItems: 'center', gap: 12, zIndex: 1 },
+  // vocab: .ib in the mockup = square icon chip with 3px border (not a soft circle)
+  iconSquare: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    borderWidth: nb.borderWidth,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
@@ -963,10 +961,10 @@ const shell = StyleSheet.create({
   headerTextCol: { flex: 1, minWidth: 0 },
   title: { fontSize: 16, fontWeight: '900', letterSpacing: -0.3 },
   headerSubtitle: { fontSize: 13, fontWeight: '500', marginTop: 4, lineHeight: 18 },
-  childrenWrap: { marginTop: 16, zIndex: 1 },
+  childrenWrap: { marginTop: 12, zIndex: 1 },
   rightAction: { position: 'absolute', top: 14, right: 14, zIndex: 3 },
   notified: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12, zIndex: 1 },
-  notifiedText: { fontSize: 12, fontWeight: '700', color: '#22c55e' },
+  notifiedText: { fontSize: 12, fontWeight: '700' },
   subtleNote: { fontSize: 11, marginTop: 10, fontWeight: '600', zIndex: 1 },
 });
 
@@ -1029,105 +1027,89 @@ const DataCard = ({
     return savedValue ? `Updated ${getTimeSince()}` : `Updated ${getTimeSince()}`;
   })();
 
+  // Mockup .vt tile — fixed-width horizontal card, left-aligned label + big number.
   if (variant === 'bentoMetric') {
-    const isTall = bentoHeight >= 120;
-    const isStepsCard = String(storageKey || '').trim() === 'dashboard_steps';
-    const numericLen = String(savedValue ?? '0').replace(/\D/g, '').length;
-    const valueFontSize = bentoValueFontSize(isStepsCard, numericLen, isTall);
-    const valueGradient = BENTO_VALUE_GRADIENT[storageKey];
-    const valueFill = bentoValueFillColor(isDark);
-    const valueStyle = bentoGradientValueStyle(valueFontSize);
-    const outlineStroke = Math.max(1, Math.round(valueFontSize * 0.04));
-    const saveGradient = valueGradient ?? BENTO_TOP_STRIPE;
-    const cardBg = isDark ? '#13131A' : '#FFFFFF';
-    const cardBorder = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(10,10,15,0.1)';
-
+    const chipIndex = String(storageKey || '').includes('water')
+      ? 3
+      : String(storageKey || '').includes('weight')
+        ? 1
+        : String(storageKey || '').includes('steps')
+          ? 4
+          : 0;
     return (
-      <View style={[bentoMetric.outer, { height: bentoHeight }]}>
-        <View style={bentoMetric.clip}>
-          <LinearGradient
-            colors={BENTO_TOP_STRIPE}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={bentoMetric.topBar}
-          />
-          <View
-            style={[
-              bentoMetric.card,
-              {
-                flex: 1,
-                backgroundColor: cardBg,
-                borderColor: cardBorder,
-              },
-            ]}
-          >
-            <Text style={[bentoMetric.label, { color: themeColors.textMuted }]}>{(bentoLabel || title || '').toUpperCase()}</Text>
+      <HardShadow offset={nb.shadowOffsetSmall} radius={10} style={[bentoMetric.outer, { width: METRIC_TILE_WIDTH, minHeight: bentoHeight }]}>
+        <View
+          style={[
+            bentoMetric.card,
+            {
+              backgroundColor: themeColors.cardBg,
+              borderColor: themeColors.cardBorder,
+              minHeight: bentoHeight,
+            },
+          ]}
+        >
+          {React.isValidElement(icon) ? (
+            <View style={{ marginBottom: 8 }}>{shellIconRender(icon, isDark, themeColors.text)}</View>
+          ) : (
+            <View
+              style={[
+                bentoMetric.chipFallback,
+                { borderColor: themeColors.cardBorder, backgroundColor: accentGradients[chipIndex % accentGradients.length][0] },
+              ]}
+            />
+          )}
+          <Text style={[bentoMetric.label, { color: themeColors.textMuted }]}>{(bentoLabel || title || '').toUpperCase()}</Text>
 
-            {showInput ? (
-              <View style={bentoMetric.inputArea}>
-                <TextInput
-                  style={[
-                    bentoMetric.input,
-                    {
-                      backgroundColor: themeColors.inputBg,
-                      borderColor: error ? 'rgba(239,68,68,0.6)' : themeColors.inputBorder,
-                      color: themeColors.text,
-                    },
-                  ]}
-                  value={value}
-                  onChangeText={(v) => {
-                    setValue(v);
-                    setError(false);
-                  }}
-                  placeholder={placeholder}
-                  placeholderTextColor={themeColors.textMuted}
-                  keyboardType={textMode ? 'default' : 'numeric'}
-                  returnKeyType="done"
-                  onSubmitEditing={handleSave}
-                />
-                <TouchableOpacity onPress={handleSave} activeOpacity={0.85} hitSlop={6}>
-                  <LinearGradient colors={saveGradient} style={bentoMetric.saveBtn}>
-                    <Text style={data.saveBtnText}>Save</Text>
-                  </LinearGradient>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <TouchableOpacity
-                onPress={() => {
-                  setIsEditing(true);
-                  setValue(savedValue || '');
+          {showInput ? (
+            <View style={bentoMetric.inputArea}>
+              <TextInput
+                style={[
+                  bentoMetric.input,
+                  {
+                    backgroundColor: themeColors.inputBg,
+                    borderColor: error ? themeColors.text : themeColors.inputBorder,
+                    color: themeColors.text,
+                  },
+                ]}
+                value={value}
+                onChangeText={(v) => {
+                  setValue(v);
+                  setError(false);
                 }}
-                activeOpacity={0.85}
-                style={bentoMetric.contentTouchable}
-              >
-                <View style={bentoMetric.valueStack}>
-                  {valueGradient ? (
-                    <GradientOutlineText
-                      style={valueStyle}
-                      colors={valueGradient}
-                      fillColor={valueFill}
-                      stroke={outlineStroke}
-                    >
-                      {`${savedValue ?? 0}`}
-                    </GradientOutlineText>
-                  ) : (
-                    <Text style={[bentoMetric.valueText, valueStyle, { color: valueFill }]}>
-                      {`${savedValue ?? 0}`}
-                    </Text>
-                  )}
-                  <Text style={[bentoMetric.subtitle, { color: themeColors.textMuted }]}>{subtitleText}</Text>
+                placeholder={placeholder}
+                placeholderTextColor={themeColors.textMuted}
+                keyboardType={textMode ? 'default' : 'numeric'}
+                returnKeyType="done"
+                onSubmitEditing={handleSave}
+              />
+              <TouchableOpacity onPress={handleSave} activeOpacity={0.85} hitSlop={6}>
+                <View style={[bentoMetric.saveBtn, { backgroundColor: themeColors.fill, borderColor: themeColors.cardBorder }]}>
+                  <Text style={[data.saveBtnText, { color: themeColors.onFill }]}>Save</Text>
                 </View>
               </TouchableOpacity>
-            )}
-
-            {showNotified ? (
-              <View style={bentoMetric.notified}>
-                <Ionicons name="checkmark" size={14} color="#22c55e" />
-              </View>
-            ) : null}
-          </View>
+            </View>
+          ) : (
+            <TouchableOpacity
+              onPress={() => {
+                setIsEditing(true);
+                setValue(savedValue || '');
+              }}
+              activeOpacity={0.85}
+              style={bentoMetric.contentTouchable}
+            >
+              <Text style={[bentoMetric.valueText, { color: themeColors.text }]}>
+                {`${savedValue ?? '—'}`}
+                {unit ? (
+                  <Text style={[bentoMetric.unitInline, { color: themeColors.textMuted }]}>{` ${String(unit).replace('/day', '')}`}</Text>
+                ) : null}
+              </Text>
+              <Text style={[bentoMetric.subtitle, { color: themeColors.textMuted }]}>
+                {savedValue ? 'Tap to edit' : subtitleText}
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
-      </View>
+      </HardShadow>
     );
   }
 
@@ -1147,9 +1129,9 @@ const DataCard = ({
             keyboardType={textMode ? 'default' : 'numeric'} returnKeyType="done" onSubmitEditing={handleSave}
           />
           <TouchableOpacity onPress={handleSave} activeOpacity={0.85}>
-            <LinearGradient colors={[gradientFrom, gradientTo]} style={data.saveBtn}>
-              <Text style={data.saveBtnText}>Save</Text>
-            </LinearGradient>
+            <View style={[data.saveBtn, { backgroundColor: themeColors.fill, borderWidth: nb.borderWidth, borderColor: themeColors.cardBorder, borderRadius: 10 }]}>
+              <Text style={[data.saveBtnText, { color: themeColors.onFill }]}>Save</Text>
+            </View>
           </TouchableOpacity>
         </View>
       ) : (
@@ -1191,91 +1173,73 @@ const data = StyleSheet.create({
 const bentoMetric = StyleSheet.create({
   outer: {
     marginBottom: 0,
-  },
-  clip: {
-    flex: 1,
-    borderRadius: 20,
-    overflow: 'hidden',
-  },
-  topBar: {
-    height: 3,
-    width: '100%',
+    marginRight: 12,
   },
   card: {
-    flex: 1,
-    borderWidth: 1,
-    borderTopWidth: 0,
-    paddingHorizontal: 14,
+    width: '100%',
+    paddingHorizontal: 12,
     paddingTop: 12,
     paddingBottom: 12,
+    borderWidth: nb.borderWidth,
+    borderRadius: 10,
     overflow: 'hidden',
+    alignItems: 'flex-start',
+  },
+  chipFallback: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    borderWidth: nb.borderWidth,
   },
   label: {
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 0.6,
-    marginBottom: 10,
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 1.2,
+    marginBottom: 8,
     lineHeight: 14,
-    zIndex: 1,
   },
   inputArea: {
-    flex: 1,
-    justifyContent: 'flex-start',
-    alignItems: 'stretch',
-    gap: 10,
-    paddingTop: 2,
+    width: '100%',
+    gap: 8,
   },
   input: {
     width: '100%',
     height: 40,
-    borderRadius: 16,
-    borderWidth: 1,
-    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: nb.borderWidth,
+    paddingHorizontal: 10,
     fontSize: 14,
-    textAlign: 'center',
+    textAlign: 'left',
   },
   saveBtn: {
-    borderRadius: 16,
-    paddingHorizontal: 22,
+    borderRadius: 10,
+    borderWidth: nb.borderWidth,
+    paddingHorizontal: 16,
     paddingVertical: 8,
-    alignSelf: 'center',
+    alignSelf: 'stretch',
+    alignItems: 'center',
   },
   contentTouchable: {
-    flex: 1,
-    minHeight: 0,
     width: '100%',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingTop: 2,
-  },
-  valueStack: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: '100%',
-    flexShrink: 1,
+    alignItems: 'flex-start',
   },
   valueText: {
+    fontSize: 30,
+    fontWeight: '900',
+    letterSpacing: -1,
+    lineHeight: 34,
+  },
+  unitInline: {
+    fontSize: 13,
     fontWeight: '800',
-    textAlign: 'center',
+    letterSpacing: 0,
   },
   subtitle: {
     marginTop: 8,
-    fontSize: 12,
+    fontSize: 13,
     lineHeight: 16,
-    textAlign: 'center',
-  },
-  notified: {
-    position: 'absolute',
-    right: 10,
-    top: 10,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: 'rgba(34,197,94,0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(34,197,94,0.25)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    fontWeight: '800',
+    textDecorationLine: 'underline',
   },
 });
 
@@ -1352,7 +1316,7 @@ const RatingCard = ({
           <Text style={[rating.loggedTag, { color: '#10B981' }]}>RATING LOGGED ✓</Text>
           <Text style={[rating.summaryBig, { color: themeColors.text }]}>
             You rated:{' '}
-            <Text style={{ color: '#FF6B9D' }}>{savedValue}</Text> out of {maxRating}
+            <Text style={{ color: themeColors.text }}>{savedValue}</Text> out of {maxRating}
           </Text>
           <Text style={[rating.interpret, { color: themeColors.textMuted }]}>{line}</Text>
           <TouchableOpacity onPress={() => setEditing(true)} hitSlop={8} style={{ alignSelf: 'flex-start', paddingVertical: 4 }}>
@@ -1367,9 +1331,9 @@ const RatingCard = ({
               return (
                 <TouchableOpacity key={n} onPress={() => handlePick(n)} activeOpacity={0.88}>
                   {isActive ? (
-                    <LinearGradient colors={['#FF6B9D', '#C084FC']} style={rating.pillActive}>
-                      <Text style={[rating.pillTextActive]}>{n}</Text>
-                    </LinearGradient>
+                    <View style={[rating.pillActive, { backgroundColor: themeColors.fill, borderColor: themeColors.cardBorder }]}>
+                      <Text style={[rating.pillTextActive, { color: themeColors.onFill }]}>{n}</Text>
+                    </View>
                   ) : (
                     <View style={[rating.pillIdle, { backgroundColor: themeColors.inputBg, borderColor: themeColors.inputBorder }]}>
                       <Text style={[rating.pillTextIdle, { color: themeColors.textMuted }]}>{n}</Text>
@@ -1392,9 +1356,10 @@ const rating = StyleSheet.create({
   subtitle: { fontSize: 12, marginTop: 2 },
   pillScroll: { flexDirection: 'row', gap: 8, alignItems: 'center', paddingVertical: 4 },
   pillActive: {
-    minWidth: 52,
-    height: 52,
-    borderRadius: 26,
+    minWidth: 44,
+    height: 44,
+    borderRadius: 10,
+    borderWidth: nb.borderWidth,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 6,
@@ -1402,13 +1367,13 @@ const rating = StyleSheet.create({
   pillIdle: {
     minWidth: 44,
     height: 44,
-    borderRadius: 22,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
+    borderWidth: nb.borderWidth,
     paddingHorizontal: 6,
   },
-  pillTextActive: { fontSize: 18, fontWeight: '900', color: '#FFFFFF' },
+  pillTextActive: { fontSize: 18, fontWeight: '900' },
   pillTextIdle: { fontSize: 14, fontWeight: '800' },
   pillArea: { flexDirection: 'row', gap: 10, marginTop: 10, alignItems: 'center' },
   pill: {
@@ -1461,7 +1426,7 @@ const MoodCard = ({ icon, title, subtitle, storageKey, gradientFrom, gradientTo,
           </Text>
           <Text style={[rating.interpret, { color: themeColors.textMuted }]}>Nice! Keep checking in — it helps your coach support you.</Text>
           <TouchableOpacity onPress={() => setEditing(true)} hitSlop={8}>
-            <Text style={{ color: '#FF6B9D', fontWeight: '800', fontSize: 14 }}>Edit mood</Text>
+            <Text style={{ color: lightColors.primary, fontWeight: '800', fontSize: 14 }}>Edit mood</Text>
           </TouchableOpacity>
         </View>
       ) : (
@@ -1484,7 +1449,7 @@ const MoodCard = ({ icon, title, subtitle, storageKey, gradientFrom, gradientTo,
                     mood.emojiBtn,
                     isActive && mood.emojiBtnActive,
                     {
-                      borderColor: isActive ? '#FF6B9D' : 'transparent',
+                      borderColor: isActive ? lightColors.primary : 'transparent',
                       backgroundColor: moodEmojiBackground(isActive, isDark),
                     },
                   ]}
@@ -1560,9 +1525,9 @@ const ToggleCard = ({ icon, title, subtitle, storageKey, gradientFrom, gradientT
                 return (
                   <TouchableOpacity key={opt} onPress={() => handleToggle(q.key, opt)} activeOpacity={0.85}>
                     {isActive ? (
-                      <LinearGradient colors={[gradientFrom, gradientTo]} style={toggle.btn}>
-                        <Text style={[toggle.btnText, { color: 'white' }]}>{opt}</Text>
-                      </LinearGradient>
+                      <View style={[toggle.btn, { backgroundColor: themeColors.fill, borderWidth: nb.borderWidth, borderColor: themeColors.cardBorder }]}>
+                        <Text style={[toggle.btnText, { color: themeColors.onFill }]}>{opt}</Text>
+                      </View>
                     ) : (
                       <View style={[toggle.btn, { backgroundColor: themeColors.pillBg, borderWidth: 1, borderColor: themeColors.pillBorder }]}>
                         <Text style={[toggle.btnText, { color: themeColors.pillText }]}>{opt}</Text>
@@ -1610,7 +1575,6 @@ const NotesCard = ({ icon, title, placeholder, storageKey, gradientFrom, gradien
       subtitle={showInput ? 'Only your coach reads this note.' : undefined}
       gradientFrom={gradientFrom}
       gradientTo={gradientTo}
-      topBorderColors={['#FF6B9D', '#F97316', '#FF6B9D']}
       showNotified={showNotified}
       hasSavedValue={!!savedValue}
       isDark={isDark}
@@ -1619,10 +1583,10 @@ const NotesCard = ({ icon, title, placeholder, storageKey, gradientFrom, gradien
         <TouchableOpacity
           onPress={startEdit}
           activeOpacity={0.85}
-          style={notes.pencilBtn}
+          style={[notes.pencilBtn, { borderColor: themeColors.cardBorder, backgroundColor: themeColors.cardBg }]}
           hitSlop={10}
         >
-          <Ionicons name="pencil-outline" size={16} color="rgba(255,255,255,0.7)" />
+          <Ionicons name="pencil-outline" size={16} color={themeColors.text} />
         </TouchableOpacity>
       }
     >
@@ -1634,25 +1598,36 @@ const NotesCard = ({ icon, title, placeholder, storageKey, gradientFrom, gradien
             placeholderTextColor={themeColors.textMuted} multiline numberOfLines={4} textAlignVertical="top"
           />
           <TouchableOpacity onPress={handleSave} activeOpacity={0.85}>
-            <LinearGradient colors={[gradientFrom, gradientTo]}
-              style={[data.saveBtn, { marginTop: 6, alignSelf: 'flex-start' }]}>
-              <Text style={data.saveBtnText}>Save</Text>
-            </LinearGradient>
+            <View
+              style={[
+                data.saveBtn,
+                {
+                  marginTop: 6,
+                  alignSelf: 'flex-start',
+                  backgroundColor: themeColors.fill,
+                  borderWidth: nb.borderWidth,
+                  borderColor: themeColors.cardBorder,
+                  borderRadius: 10,
+                },
+              ]}
+            >
+              <Text style={[data.saveBtnText, { color: themeColors.onFill }]}>Save</Text>
+            </View>
           </TouchableOpacity>
         </View>
       ) : (
         <TouchableOpacity onPress={startEdit} activeOpacity={0.85} style={{ marginTop: 4 }}>
           {savedValue ? (
             <>
-              <Text style={{ color: '#10B981', fontWeight: '900', fontSize: 12, letterSpacing: 0.4, marginBottom: 8 }}>
+              <Text style={{ color: themeColors.text, fontWeight: '900', fontSize: 12, letterSpacing: 0.4, marginBottom: 8 }}>
                 NOTE SAVED ✓
               </Text>
               <Text style={[notes.savedNoteText, { color: themeColors.text }]}>{savedValue}</Text>
               <Text style={[data.timeSince, { color: themeColors.textDimmed }]}>Updated {getTimeSince()}</Text>
-              <Text style={{ color: '#64D2FF', fontWeight: '800', fontSize: 13, marginTop: 10 }}>Tap to edit</Text>
+              <Text style={{ color: themeColors.text, fontWeight: '800', fontSize: 13, marginTop: 10, textDecorationLine: 'underline' }}>Tap to edit</Text>
             </>
           ) : (
-            <Text style={notes.noNoteText}>Tap to add a note for your trainer</Text>
+            <Text style={[notes.noNoteText, { color: themeColors.textMuted }]}>Tap to add a note for your trainer</Text>
           )}
         </TouchableOpacity>
       )}
@@ -1667,13 +1642,13 @@ const notes = StyleSheet.create({
     height: 34,
     borderRadius: 17,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.10)',
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderColor: darkColors.nbBorder,
+    backgroundColor: darkColors.nbSurfaceChip,
     alignItems: 'center',
     justifyContent: 'center',
   },
   savedNoteText: { fontSize: 14, lineHeight: 22, fontWeight: '600' },
-  noNoteText: { fontSize: 13, fontStyle: 'italic', marginTop: 2, color: 'rgba(255,255,255,0.45)', lineHeight: 18 },
+  noNoteText: { fontSize: 13, fontStyle: 'italic', marginTop: 2, color: darkColors.nbMuted, lineHeight: 18 },
 });
 
 function TrainingHomeScreenLayout({
@@ -1719,17 +1694,148 @@ function TrainingHomeScreenLayout({
   onMetricsChange,
   handleWorkoutAfterSave,
   workoutLogState,
+  todayCalories,
+  calorieGoal,
+  proteinG,
+  carbsG,
+  fatsG,
+  proteinGoal,
+  carbsGoal,
+  fatsGoal,
+  waterOz,
+  sleepHoursValue,
+  onPressCalories,
+  onOpenNotesFiles,
+  notesFilesCount,
+  notesFilesNewCount,
+  recentWorkouts,
+  localClock,
 }) {
   const themeColors = isDark ? DARK : LIGHT;
-  const icon = (name) => <Ionicons name={name} size={18} color={themeColors.iconColor} />;
+  const firstName = String(currentUser?.displayName || '').trim().split(' ')[0] || 'Client';
+  const userInitials = String(firstName).slice(0, 2).toUpperCase() || 'YO';
+  const hour = (localClock instanceof Date ? localClock : new Date()).getHours();
+  const dayPart = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+  const dailyQuote = useDailyQuote(currentUser?.uid);
+
+  // Design Law sheets — log metric / trainer actions / review (screens 5–7)
+  const [logMetricKey, setLogMetricKey] = useState(null);
+  const [trainerSheetOpen, setTrainerSheetOpen] = useState(false);
+  const [reviewSheetOpen, setReviewSheetOpen] = useState(false);
+  const [legacyReviewOpen, setLegacyReviewOpen] = useState(false);
+  const [noteDraft, setNoteDraft] = useState('');
+  const noteHydrated = useRef(false);
+
+  // Check-in + secondary metrics still use the same dailyLogs keys as the old cards
+  const sorenessState = useCardState('dashboard_soreness', onMetricsChange ? (v) => onMetricsChange({ soreness: v }) : undefined);
+  const energyState = useCardState('dashboard_energy', onMetricsChange ? (v) => onMetricsChange({ energyLevel: v }) : undefined);
+  const stressState = useCardState('dashboard_stress', onMetricsChange ? (v) => onMetricsChange({ stressLevel: v }) : undefined);
+  const moodState = useCardState('dashboard_mood');
+  const workoutRatingState = useCardState('dashboard_workout_rating');
+  const notesState = useCardState('dashboard_notes');
+  const weightState = useCardState('dashboard_weight');
+  const stepsState = useCardState('dashboard_steps');
+  const sleepState = useCardState(
+    'dashboard_sleep',
+    onMetricsChange
+      ? (val) => {
+          const hours = parseFloat(val);
+          if (!Number.isNaN(hours)) onMetricsChange({ sleepHours: hours });
+        }
+      : undefined,
+  );
+  const waterState = useCardState(
+    'dashboard_water',
+    onMetricsChange
+      ? (val) => {
+          const ounces = parseFloat(val);
+          if (!Number.isNaN(ounces)) onMetricsChange({ waterIntake: ounces });
+        }
+      : undefined,
+  );
+
+  const saveCheckInField = (storageKey, value) => {
+    if (storageKey === 'dashboard_soreness') sorenessState.save(value);
+    else if (storageKey === 'dashboard_energy') energyState.save(value);
+    else if (storageKey === 'dashboard_stress') stressState.save(value);
+    else if (storageKey === 'dashboard_mood') moodState.save(value);
+    else if (storageKey === 'dashboard_workout_rating') workoutRatingState.save(value);
+  };
+
+  // Hydrate note draft once from storage/Firestore so typing does not re-save every keystroke
+  useEffect(() => {
+    if (noteHydrated.current) return;
+    if (notesState.savedValue == null) return;
+    setNoteDraft(String(notesState.savedValue));
+    noteHydrated.current = true;
+  }, [notesState.savedValue]);
+
+  // Up-next: invite first, else next accepted reminder (mockup "Up next" card).
+  const upNextInvite = dashboardPendingSessions[0] || null;
+  const upNextReminder = dashboardReminderSessions[0] || null;
+  const upNextSession = upNextInvite || upNextReminder;
+  const upNextIsInvite = !!upNextInvite;
+
+  // Your week — count completedWorkouts whose local date falls in this calendar week (Mon–Sun).
+  const weekInfo = (() => {
+    const now = localClock instanceof Date ? localClock : new Date();
+    const dow = (now.getDay() + 6) % 7; // Mon=0
+    const start = new Date(now);
+    start.setHours(0, 0, 0, 0);
+    start.setDate(start.getDate() - dow);
+    const end = new Date(start);
+    end.setDate(start.getDate() + 6);
+    const startKey = getLocalDateKey(start);
+    const endKey = getLocalDateKey(end);
+    const doneDays = new Set();
+    (recentWorkouts || []).forEach((w) => {
+      const raw = w.dateKey || w.localDate || w.completedAt?.toDate?.() || w.completedAt;
+      let key = null;
+      if (typeof raw === 'string' && raw.length >= 10) key = raw.slice(0, 10);
+      else if (raw instanceof Date) key = getLocalDateKey(raw);
+      else if (raw) {
+        try { key = getLocalDateKey(new Date(raw)); } catch (_) {}
+      }
+      if (key && key >= startKey && key <= endKey) {
+        const d = new Date(`${key}T12:00:00`);
+        doneDays.add((d.getDay() + 6) % 7);
+      }
+    });
+    const sessionsDone = doneDays.size;
+    const sessionsGoal = 4;
+    const monthShort = start.toLocaleString(undefined, { month: 'short' });
+    const rangeLabel = `${monthShort} ${start.getDate()} to ${end.getDate()}`;
+    return { sessionsDone, sessionsGoal, doneDays, rangeLabel, pct: Math.min(1, sessionsDone / sessionsGoal) };
+  })();
+
+  const trainerInitials = String(trainerName || 'TR')
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((p) => p[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+
+  const sessionWhenParts = (session) => {
+    const label = formatTime12(session?.time) || '—';
+    const parts = String(label).split(' ');
+    const clock = parts[0] || '—';
+    const meridiem = parts[1] || '';
+    const mins = session?.durationMin || session?.duration || 60;
+    return { clock, sub: `${meridiem}${meridiem ? ' · ' : ''}${mins} min` };
+  };
+
+  // Layout law: docs/design/Design-Law/screens/client-home
   return (
-    <LinearGradient colors={themeColors.bg} style={{ flex: 1 }}>
+    <View style={{ flex: 1, backgroundColor: themeColors.solidBg }}>
       <ScrollView
         ref={scrollRef}
         contentContainerStyle={[
           screen.scroll,
-          embedInLayout && { paddingTop: 16 },
-          { paddingBottom: shellBottomPad },
+          // TopHeader owns status-bar inset — keep .hi tight under the profile/settings strip
+          embedInLayout ? { paddingTop: 8 } : { paddingTop: 20 },
+          { paddingBottom: Math.max(shellBottomPad, nb.bottomNavClearance), paddingHorizontal: nb.screenGutter },
         ]}
         {...FORM_SCROLL_PROPS}
       >
@@ -1741,533 +1847,407 @@ function TrainingHomeScreenLayout({
           mutedColor={themeColors.textMuted}
         />
 
-
-        <View style={{ marginTop: 4, marginBottom: 20 }}>
+        {/* .hi — avatar + greeting + weekly-report square */}
+        <View style={dash.hi}>
           <LinearGradient
-            colors={['#BE185D', '#C2410C']}
+            colors={navAccentGradient}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
-            style={{ borderRadius: 24, padding: 2 }}
+            style={[dash.av, { borderColor: themeColors.cardBorder }]}
           >
-            <View style={{ borderRadius: 22, padding: 18, backgroundColor: isDark ? '#0A0A0F' : '#FFFFFF', overflow: 'hidden' }}>
-              {/* Two-column: text left, icon right */}
-              <View style={{ flexDirection: 'row', minHeight: 150 }}>
-                <View style={{ flex: 1.3, paddingRight: 12, justifyContent: 'space-between' }}>
-                  <View>
-                    <Text style={{ fontSize: 10, fontWeight: '900', letterSpacing: 1.2, textTransform: 'uppercase', color: isDark ? 'rgba(255,255,255,0.4)' : 'rgba(10,10,15,0.45)' }}>
-                      YOUR DASHBOARD
-                    </Text>
-                    <View style={{ width: 36, height: 2, borderRadius: 1, backgroundColor: '#FF6B9D', marginTop: 6 }} />
-                  </View>
-
-                  <Text style={{ fontSize: 26, fontWeight: '900', color: isDark ? '#FFFFFF' : '#0A0A0F', marginTop: 10 }}>
-                    {'Welcome back, '}
-                    <Text style={{ color: '#FF6B9D' }}>{String(currentUser?.displayName || '').trim().split(' ')[0] || 'Client'}</Text>
-                  </Text>
-
-                  <Text style={{ fontSize: 12, fontWeight: '600', color: isDark ? 'rgba(255,255,255,0.5)' : 'rgba(10,10,15,0.5)', marginTop: 6, lineHeight: 17 }}>
-                    Log a metric, complete a session — build momentum today.
-                  </Text>
-                </View>
-
-                {/* Right icon circle */}
-                <View style={{ flex: 0.7, justifyContent: 'center', alignItems: 'center' }}>
-                  <View style={{ width: 100, height: 100, borderRadius: 50, borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)', backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)', justifyContent: 'center', alignItems: 'center' }}>
-                    <Ionicons name="pulse" size={48} color="#FF6B9D" />
-                  </View>
-                </View>
-              </View>
-
-              {/* Bottom row: Week in Review + Timer */}
-              <View style={{ flexDirection: 'row', gap: 8, marginTop: 16 }}>
-                {typeof onOpenWeeklyReport === 'function' && (
-                  <TouchableOpacity
-                    activeOpacity={0.85}
-                    onPress={() => onOpenWeeklyReport()}
-                    style={{
-                      flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8,
-                      paddingVertical: 10, paddingHorizontal: 12, borderRadius: 14,
-                      backgroundColor: isDark ? 'rgba(255,107,157,0.10)' : 'rgba(255,107,157,0.08)',
-                      borderWidth: 1, borderColor: isDark ? 'rgba(255,107,157,0.20)' : 'rgba(255,107,157,0.15)',
-                    }}
-                  >
-                    <LinearGradient
-                      colors={['#FF6B9D', '#C084FC']}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={{ width: 28, height: 28, borderRadius: 8, justifyContent: 'center', alignItems: 'center' }}
-                    >
-                      <Ionicons name="stats-chart" size={14} color="#FFFFFF" />
-                    </LinearGradient>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 12, fontWeight: '800', color: isDark ? '#FFFFFF' : '#0A0A0F' }}>
-                        Week in Review
-                      </Text>
-                      {weeklyReportCard.weekRangeLabel ? (
-                        <Text style={{ fontSize: 10, fontWeight: '600', color: isDark ? 'rgba(255,255,255,0.4)' : 'rgba(10,10,15,0.4)', marginTop: 1 }} numberOfLines={1}>
-                          {weeklyReportCard.weekRangeLabel}
-                        </Text>
-                      ) : null}
-                    </View>
-                    {weeklyReportCardLoading ? (
-                      <ActivityIndicator size="small" color="#FF6B9D" />
-                    ) : (
-                      <Ionicons name="chevron-forward" size={14} color={isDark ? 'rgba(255,255,255,0.35)' : 'rgba(10,10,15,0.3)'} />
-                    )}
-                  </TouchableOpacity>
-                )}
-
-                <View
-                  style={{
-                    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-                    paddingVertical: 10, paddingHorizontal: 12, borderRadius: 14, borderWidth: 1,
-                    borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
-                    backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
-                  }}
-                >
-                  <Ionicons name="time-outline" size={14} color={isDark ? 'rgba(255,255,255,0.45)' : 'rgba(10,10,15,0.45)'} />
-                  <Text style={{ fontSize: 12, fontWeight: '800', color: isDark ? 'rgba(255,255,255,0.65)' : 'rgba(10,10,15,0.65)' }}>
-                    {formatHMS(untilResetMs)}
-                  </Text>
-                </View>
-              </View>
-            </View>
+            <Text style={[dash.avText, { color: lightColors.nbInk }]}>{userInitials}</Text>
           </LinearGradient>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={{ fontSize: 13, color: themeColors.textMuted }}>
+              {`${(localClock instanceof Date ? localClock : new Date()).toLocaleDateString(undefined, { weekday: 'long' })} ${dayPart}`}
+            </Text>
+            <Text style={{ fontSize: 19, fontWeight: '900', letterSpacing: -0.3, color: themeColors.text }}>
+              {`${greeting}, ${firstName}`}
+            </Text>
+          </View>
+          {typeof onOpenWeeklyReport === 'function' ? (
+            <TouchableOpacity
+              onPress={() => onOpenWeeklyReport()}
+              accessibilityLabel="Notifications and week in review"
+              style={[dash.sq, { borderColor: themeColors.cardBorder, backgroundColor: themeColors.cardBg }]}
+            >
+              {weeklyReportCardLoading ? (
+                <ActivityIndicator size="small" color={themeColors.text} />
+              ) : (
+                <Ionicons name="notifications-outline" size={22} color={themeColors.text} />
+              )}
+            </TouchableOpacity>
+          ) : null}
         </View>
 
-        {(dashboardPendingSessions.length > 0 || dashboardReminderSessions.length > 0) && (
-          <View style={{ marginTop: 14 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 14, gap: 10 }}>
-              <View
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 14,
-                  borderWidth: 1,
-                  borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)',
-                  backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.9)',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Ionicons name="calendar" size={22} color="#C084FC" />
+        {/* .welcome — Design Law poster: short punch line + quiet reset + lifter */}
+        <HardShadow offset={nb.shadowOffsetHero} radius={10} style={{ marginBottom: nb.blockGap }}>
+          <View style={[dash.welcome, { backgroundColor: themeColors.fill, borderColor: themeColors.cardBorder }]}>
+            <View style={{ flex: 1, paddingRight: 6, justifyContent: 'center' }}>
+              <Text style={[dash.eybOnFill, { color: themeColors.onFill }]}>Daily motivation</Text>
+              <Text style={[dash.welcomeQuote, { color: themeColors.onFill }]} numberOfLines={2}>
+                {shortMotivationLine(dailyQuote.q)}
+              </Text>
+              {dailyQuote.a ? (
+                <Text style={[dash.welcomeAuthor, { color: themeColors.onFill }]} numberOfLines={1}>
+                  {`— ${dailyQuote.a}`}
+                </Text>
+              ) : null}
+              <Text style={[dash.welcomeSub, { color: themeColors.onFill }]}>
+                {weekInfo.sessionsDone > 0
+                  ? `Session ${weekInfo.sessionsDone} of ${weekInfo.sessionsGoal} this week`
+                  : `Resets in ${formatHMS(untilResetMs)}`}
+              </Text>
+            </View>
+            <LottieView source={HANDOFF_LIFTER_LOTTIE} autoPlay loop style={{ width: 118, height: 118 }} />
+          </View>
+        </HardShadow>
+
+        {/* Up next */}
+        <View style={dash.eybRow}>
+          <Text style={[dash.eyb, { color: themeColors.textMuted }]}>Up next</Text>
+          {upNextSession ? (
+            <View style={[dash.pill, { backgroundColor: accentGradients[7][0], borderColor: themeColors.cardBorder }]}>
+              <Text style={[dash.pillText, { color: lightColors.nbInk }]}>
+                {String(upNextSession.date || '') === getLocalDateKey() ? 'Today' : 'Soon'}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+
+        {upNextSession ? (
+          <HardShadow offset={nb.shadowOffsetCard} radius={10} style={{ marginBottom: nb.blockGap }}>
+            <View style={[dash.upNextCard, { backgroundColor: themeColors.cardBg, borderColor: themeColors.cardBorder }]}>
+              <View style={[dash.when, { borderRightColor: themeColors.cardBorder }]}>
+                <Text style={[dash.whenNum, { color: themeColors.text }]}>{sessionWhenParts(upNextSession).clock}</Text>
+                <Text style={[dash.whenSub, { color: themeColors.textMuted }]}>{sessionWhenParts(upNextSession).sub}</Text>
               </View>
-              <View style={{ flex: 1 }}>
-                <Text
-                  style={{
-                    fontSize: 11,
-                    fontWeight: '800',
-                    letterSpacing: 1.4,
-                    color: isDark ? 'rgba(255,255,255,0.55)' : 'rgba(17, 24, 39, 0.55)',
-                    textTransform: 'uppercase',
-                  }}
-                >
-                  From your coach
-                </Text>
-                <Text
-                  style={{
-                    marginTop: 2,
-                    fontSize: 16,
-                    fontWeight: '800',
-                    color: isDark ? '#fff' : '#0F172A',
-                    letterSpacing: -0.3,
-                  }}
-                >
-                  {dashboardPendingSessions.length > 0 ? 'Session invites' : 'Your session'}
-                </Text>
-                <Text
-                  style={{
-                    marginTop: 2,
-                    fontSize: 12,
-                    fontWeight: '600',
-                    color: isDark ? 'rgba(255,255,255,0.45)' : 'rgba(15,23,42,0.55)',
-                  }}
-                >
-                  {dashboardPendingSessions.length > 0
-                    ? 'Lock in a time or pass — your call.'
-                    : 'Here’s when you’re meeting next.'}
-                </Text>
+              <View style={{ flex: 1, minWidth: 0, gap: 10 }}>
+                <View>
+                  <Text style={{ fontSize: 17, fontWeight: '900', color: themeColors.text }} numberOfLines={2}>
+                    {upNextSession.title || upNextSession.workoutName || (upNextIsInvite ? 'Session invite' : 'Training session')}
+                  </Text>
+                  <Text style={{ fontSize: 13, color: themeColors.textMuted, marginTop: 2 }} numberOfLines={2}>
+                    {upNextSession.notes || `With ${trainerName}`}
+                  </Text>
+                </View>
+                {upNextIsInvite ? (
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <TouchableOpacity
+                      style={[dash.btnGhost, { flex: 1, borderColor: themeColors.cardBorder, backgroundColor: themeColors.cardBg }]}
+                      onPress={() => respondToDashboardSession?.({ sessionId: upNextSession.id, status: 'declined' })}
+                    >
+                      <Text style={[dash.btnGhostText, { color: themeColors.text }]}>Pass</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[dash.btnFill, { flex: 1, borderColor: themeColors.cardBorder, backgroundColor: themeColors.fill }]}
+                      onPress={() => respondToDashboardSession?.({ sessionId: upNextSession.id, status: 'accepted' })}
+                    >
+                      <Text style={[dash.btnFillText, { color: themeColors.onFill }]}>I&apos;m in</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <TouchableOpacity
+                      style={[dash.btnGhost, { flex: 1, borderColor: themeColors.cardBorder, backgroundColor: themeColors.cardBg }]}
+                      onPress={onPressMessage}
+                    >
+                      <Text style={[dash.btnGhostText, { color: themeColors.text }]}>Message</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[dash.btnFill, { flex: 1, borderColor: themeColors.cardBorder, backgroundColor: themeColors.fill }]}
+                      onPress={handleViewProfile}
+                    >
+                      <Text style={[dash.btnFillText, { color: themeColors.onFill }]}>Reschedule</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
               </View>
             </View>
-
-            {dashboardPendingSessions.length > 0
-              ? dashboardPendingSessions.map((s) => (
-                  <UpcomingSessionCard
-                    key={s.id}
-                    mode="invite"
-                    isDark={isDark}
-                    coachName={trainerName}
-                    session={s}
-                    onRespond={respondToDashboardSession}
-                  />
-                ))
-              : dashboardReminderSessions.map((s) => (
-                  <UpcomingSessionCard
-                    key={s.id}
-                    mode="reminder"
-                    isDark={isDark}
-                    coachName={trainerName}
-                    session={s}
-                  />
-                ))}
-          </View>
-        )}
-
-        {/* Nutrition / calories card removed from Dashboard per request */}
-
-        {/* Trainer card */}
-        {trainer ? (
-          <View style={trainerSectionStyles.section}>
-            <ColorBorderShell isDark={isDark} borderColors={TRAINER_BORDER_GRADIENT}>
-              <View style={trainerSectionStyles.inner}>
-                <View style={trainerSectionStyles.headerRow}>
-                  <View
-                    style={[
-                      trainerSectionStyles.headerIcon,
-                      {
-                        borderColor: isDark ? 'rgba(190,24,93,0.28)' : 'rgba(190,24,93,0.22)',
-                        backgroundColor: isDark ? 'rgba(194,65,12,0.14)' : 'rgba(194,65,12,0.08)',
-                      },
-                    ]}
-                  >
-                    <Ionicons name="person-circle-outline" size={22} color="#BE185D" />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text
-                      style={[
-                        trainerSectionStyles.eyebrow,
-                        { color: isDark ? 'rgba(255,255,255,0.55)' : 'rgba(17, 24, 39, 0.55)' },
-                      ]}
-                    >
-                      YOUR TRAINER
-                    </Text>
-                    <Text
-                      style={[
-                        trainerSectionStyles.headerTitle,
-                        { color: isDark ? '#FFFFFF' : '#0F172A' },
-                      ]}
-                    >
-                      Your trainer card
-                    </Text>
-                    <Text
-                      style={[
-                        trainerSectionStyles.headerSubtitle,
-                        { color: isDark ? 'rgba(255,255,255,0.5)' : 'rgba(15,23,42,0.55)' },
-                      ]}
-                    >
-                      Message, view profile, manage coaching, or remove your trainer from here.
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={trainerSectionStyles.cardSlot}>
-                  <MyTrainerCard
-                    isDark={isDark}
-                    accent="orange"
-                    trainer={{
-                      name: trainerName,
-                      specialty: trainerTitle || trainerSpecialties.join(' · ') || 'Certified Trainer',
-                      location: trainerLocation || 'Remote',
-                      avatarUrl: trainer?.photoURL || trainer?.avatarUrl,
-                      rating: typeof trainer?.rating === 'number' ? trainer.rating : undefined,
-                      clients: trainerClientCount(trainer),
-                      experienceYears: typeof trainer?.experienceYears === 'number' ? trainer.experienceYears : undefined,
-                    }}
-                    onPressCard={onPressMessage}
-                    onPressSecondaryCTA={handleViewProfile}
-                    onPressCTA={onPressMessage}
-                    ctaLabel="Message"
-                    secondaryCtaLabel="View Profile"
-                    onPressPayment={showCoachingPaymentOnCard ? handleOpenPayment : undefined}
-                    onPressRemove={typeof onOpenRemoveTrainer === 'function' ? onOpenRemoveTrainer : undefined}
-                    paymentButtonLabel={coachingPaymentButtonLabel}
-                    paymentButtonShortLabel={coachingPaymentShortLabel}
-                    paymentRateLabel={coachingRateLabel ? `${coachingRateLabel}/mo` : trainerPricingLine || null}
-                    paymentStatusLabel={coachingPaymentStatusLabel}
-                    paymentStatusTone={coachingPaymentStatusTone}
-                  />
-                </View>
-              </View>
-            </ColorBorderShell>
-          </View>
+          </HardShadow>
         ) : (
-          <TouchableOpacity
-            style={emptyTrainerStyles.touchWrap}
-            onPress={typeof onPressFindTrainer === 'function' ? onPressFindTrainer : onPressMessage}
-            activeOpacity={0.92}
-          >
-            <ColorBorderShell isDark={isDark} borderColors={TRAINER_BORDER_GRADIENT}>
-              <View style={emptyTrainerStyles.content}>
-                <View style={emptyTrainerStyles.row}>
-                  <View
-                    style={[
-                      emptyTrainerStyles.iconCircle,
-                      {
-                        backgroundColor: isDark ? 'rgba(255,107,157,0.18)' : 'rgba(255,107,157,0.12)',
-                        borderColor: isDark ? 'rgba(255,107,157,0.38)' : 'rgba(255,107,157,0.28)',
-                      },
-                    ]}
-                  >
-                    <Ionicons name="person-add-outline" size={24} color="#FF6B9D" />
-                  </View>
-                  <View style={emptyTrainerStyles.textCol}>
-                    <Text style={[emptyTrainerStyles.title, { color: themeColors.text }]}>No trainer yet</Text>
-                    <Text style={[emptyTrainerStyles.subtitle, { color: themeColors.textMuted }]}>
-                      Find a certified coach to guide your journey
-                    </Text>
-                  </View>
-                </View>
-                <LinearGradient
-                  colors={['#BE185D', '#C2410C']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={emptyTrainerStyles.ctaGradient}
-                >
-                  <View style={emptyTrainerStyles.ctaInner}>
-                    <Ionicons name="search" size={18} color="#FFFFFF" />
-                    <Text style={emptyTrainerStyles.ctaText}>Find a Trainer</Text>
-                    <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
-                  </View>
-                </LinearGradient>
-              </View>
-            </ColorBorderShell>
-          </TouchableOpacity>
+          <NbCard style={{ marginBottom: nb.blockGap }}>
+            <Text style={{ fontSize: 15, fontWeight: '700', color: themeColors.text }}>Nothing scheduled</Text>
+            <Text style={{ fontSize: 13, color: themeColors.textMuted, marginTop: 4 }}>
+              When your coach books a session, it shows up here.
+            </Text>
+          </NbCard>
         )}
 
-        <View style={{ marginTop: 18, marginBottom: 20 }}>
-          <Text
-            style={{
-              fontSize: 11,
-              fontWeight: '700',
-              letterSpacing: 2,
-              color: themeColors.textMuted,
-              textTransform: 'uppercase',
-              marginBottom: 10,
-              paddingHorizontal: 2,
-            }}
+        {/* Extra invites beyond the first stay as list cards */}
+        {dashboardPendingSessions.slice(1).map((s) => (
+          <UpcomingSessionCard
+            key={s.id}
+            mode="invite"
+            isDark={isDark}
+            coachName={trainerName}
+            session={s}
+            onRespond={respondToDashboardSession}
+          />
+        ))}
+
+        {/* Trainer — single Design Law row → sheet (no Profile/Pay/Remove pills) */}
+        {trainer ? (
+          <TouchableOpacity
+            activeOpacity={0.9}
+            onPress={() => setTrainerSheetOpen(true)}
+            style={[dash.trainerRow, { backgroundColor: themeColors.cardBg, borderColor: themeColors.cardBorder, marginBottom: nb.blockGap }]}
           >
-            Quick Actions
-          </Text>
-          <ScrollView
-            horizontal
-            nestedScrollEnabled
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ paddingVertical: 2, paddingRight: 12 }}
-          >
-            {[
-              {
-                label: 'Messages',
-                onPress: onPressMessage,
-                icon: 'chatbubbles-outline',
-                subtitle: cappedBadgeLabel(unreadMessageCount, 'unread', 'No unread'),
-                badgeCount: Number(unreadMessageCount) || 0,
-              },
-              {
-                label: 'Progress Photos',
-                onPress: () => onOpenPhotoGallery?.({ id: trainerClientId, name: trainerClientName }),
-                icon: 'images-outline',
-                subtitle: cappedBadgeLabel(photoGalleryBadgeCount, 'new', 'Progress photos'),
-              },
-              {
-                label: 'Workout Plans',
-                onPress: () => onOpenAIWorkouts?.({ id: trainerClientId, name: trainerClientName }),
-                icon: 'barbell-outline',
-                subtitle: cappedBadgeLabel(aiWorkoutsBadgeCount, 'new', 'Plans & sessions'),
-              },
-            ].map((item) => (
-              <QuickActionCard
-                key={item.label}
-                isDark={isDark}
-                width={220}
-                label={item.label}
-                subtitle={item.subtitle}
-                icon={item.icon}
-                ctaLabel="View all"
-                badgeCount={item.label === 'Messages' ? item.badgeCount : undefined}
-                onPress={item.onPress || (() => {})}
-              />
-            ))}
-          </ScrollView>
+            <LinearGradient
+              colors={navAccentGradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={[dash.av, { borderColor: themeColors.cardBorder }]}
+            >
+              <Text style={[dash.avText, { color: lightColors.nbInk }]}>{trainerInitials}</Text>
+            </LinearGradient>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={{ fontSize: 16, fontWeight: '900', color: themeColors.text }} numberOfLines={1}>
+                {`Your trainer · ${trainerName}`}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={themeColors.text} />
+          </TouchableOpacity>
+        ) : (
+          // PNG 01 marketplace entry — Design Law fill banner (replaces the thin “No trainer yet” row)
+          <FindTrainerBanner
+            onPress={typeof onPressFindTrainer === 'function' ? onPressFindTrainer : onPressMessage}
+            outerStyle={{ marginBottom: nb.blockGap, paddingHorizontal: 0 }}
+            hideInvite
+          />
+        )}
+
+        {/* Your week — ring + M–S strip (Design Law proportions) */}
+        <View style={dash.eybRow}>
+          <Text style={[dash.eyb, { color: themeColors.textMuted }]}>Your week</Text>
+          <Text style={{ fontSize: 13, color: themeColors.textMuted }}>{weekInfo.rangeLabel}</Text>
         </View>
-
-        {/* Bento metrics grid */}
-        <View style={screen.bentoGrid}>
-          {/* Row 1 */}
-          <View style={screen.bentoRow1}>
-            <View style={{ flex: 1.2 }}>
-              <DataCard
-                variant="bentoMetric"
-                bentoHeight={135}
-                bentoLabel="Sleep"
-                icon={icon('moon-outline')}
-                title="Sleep Data"
-                unit="hrs/day"
-                placeholder="Enter hours"
-                storageKey="dashboard_sleep"
-                gradientFrom="#FBBF24"
-                gradientTo="#FB7185"
-                min={0}
-                max={24}
-                defaultExample="8hr/day"
-                statusFn={sleepStatus}
-                isDark={isDark}
-                onAfterSave={(val) => {
-                  if (!onMetricsChange) return;
-                  const hours = parseFloat(val);
-                  if (!Number.isNaN(hours)) {
-                    onMetricsChange({ sleepHours: hours });
-                  }
-                }}
+        <HardShadow offset={nb.shadowOffsetCard} radius={10} style={{ marginBottom: nb.blockGap }}>
+          <View style={[dash.weekCard, { backgroundColor: themeColors.cardBg, borderColor: themeColors.cardBorder }]}>
+            <View style={dash.ringWrap}>
+              <NbRing
+                progress={weekInfo.pct}
+                size={112}
+                strokeWidth={16}
+                value={`${weekInfo.sessionsDone}`}
+                label={`of ${weekInfo.sessionsGoal}`}
               />
             </View>
-            <View style={{ flex: 0.8 }}>
-              <DataCard
-                variant="bentoMetric"
-                bentoHeight={135}
-                bentoLabel="Water"
-                icon={icon('water-outline')}
-                title="Water Intake"
-                unit="oz"
-                placeholder="Enter oz"
-                storageKey="dashboard_water"
-                gradientFrom="#22D3EE"
-                gradientTo="#1D4ED8"
-                min={0}
-                max={300}
-                defaultExample="80oz"
-                statusFn={waterStatus}
-                isDark={isDark}
-                onAfterSave={(val) => {
-                  if (!onMetricsChange) return;
-                  const ounces = parseFloat(val);
-                  if (!Number.isNaN(ounces)) {
-                    onMetricsChange({ waterIntake: ounces });
-                  }
-                }}
-              />
+            <View style={{ flex: 1, minWidth: 0, gap: 12, paddingVertical: 2 }}>
+              <Text style={{ fontSize: 18, fontWeight: '900', color: themeColors.text }}>Sessions done</Text>
+              <View style={dash.wkd}>
+                {WEEKDAY_LABELS.map((label, idx) => {
+                  const done = weekInfo.doneDays.has(idx);
+                  const isToday = ((localClock instanceof Date ? localClock : new Date()).getDay() + 6) % 7 === idx;
+                  return (
+                    <View
+                      key={`${label}-${idx}`}
+                      style={[
+                        dash.wkdCell,
+                        {
+                          borderColor: themeColors.cardBorder,
+                          backgroundColor: done ? themeColors.fill : themeColors.pillBg,
+                          borderStyle: isToday && !done ? 'dashed' : 'solid',
+                        },
+                      ]}
+                    >
+                      <Text style={{ fontSize: 12, fontWeight: '900', color: done ? themeColors.onFill : themeColors.text }}>{label}</Text>
+                    </View>
+                  );
+                })}
+              </View>
+              <View style={{ gap: 3 }}>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: themeColors.textMuted }}>
+                  {typeof sleepHoursValue === 'number'
+                    ? `Sleep averaging ${sleepHoursValue} h`
+                    : 'Sleep updates from Today\'s numbers'}
+                </Text>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: themeColors.textMuted }}>
+                  {`Water ${Math.round((waterOz || 0) / 8)} of 8 cups today`}
+                </Text>
+              </View>
             </View>
           </View>
+        </HardShadow>
 
-          {/* Row 2 */}
-          <View style={screen.bentoRow2}>
-            <View style={{ flex: 1 }}>
-              <DataCard
-                variant="bentoMetric"
-                bentoHeight={140}
-                bentoLabel="Weight"
-                icon={icon('scale-outline')}
-                title="Current Weight"
-                unit="lbs"
-                placeholder="Enter lbs"
-                storageKey="dashboard_weight"
-                gradientFrom="#6D28D9"
-                gradientTo="#C2410C"
-                min={0}
-                max={999}
-                defaultExample="165 lbs"
-                isDark={isDark}
-              />
-            </View>
-            <View style={{ flex: 1 }}>
-              <DataCard
-                variant="bentoMetric"
-                bentoHeight={140}
-                bentoLabel="Steps"
-                icon={icon('footsteps-outline')}
-                title="Daily Steps"
-                unit="steps"
-                placeholder="Enter steps"
-                storageKey="dashboard_steps"
-                gradientFrom="#C2410C"
-                gradientTo="#DB2777"
-                min={0}
-                max={99999}
-                defaultExample="8,432 steps"
-                isDark={isDark}
-              />
-            </View>
-          </View>
-
-          {/* Row 3 */}
-          <View style={screen.bentoRow3}>
-            <WorkoutLogCard
-              icon={icon('barbell-outline')}
-              gradientFrom="#F97316"
-              gradientTo="#FF6B9D"
-              isDark={isDark}
-              onAfterSave={handleWorkoutAfterSave}
-              state={workoutLogState}
-            />
-          </View>
+        {/* Today's numbers — Design Law tiles → log sheet */}
+        <View style={dash.eybRow}>
+          <Text style={[dash.eyb, { color: themeColors.textMuted }]}>Today&apos;s numbers</Text>
+          <Text style={{ fontSize: 13, color: themeColors.textMuted }}>Tap to log</Text>
         </View>
-
-        <RatingCard
-          icon={icon('flame-outline')}
-          title="Muscle Soreness"
-          subtitle="Rate how sore you are (1–8)."
-          storageKey="dashboard_soreness"
-          gradientFrom="#F97316"
-          gradientTo="#C084FC"
-          isDark={isDark}
-          maxRating={8}
-          topBorderColors={['#EF4444', '#F97316', '#FB7185']}
-          interpretFn={(n) => sorenessInterpret(n)}
-          onAfterSave={onMetricsChange ? (v) => onMetricsChange({ soreness: v }) : undefined}
+        <DesignLawNumberTiles
+          themeColors={themeColors}
+          sleepHours={
+            typeof sleepHoursValue === 'number'
+              ? sleepHoursValue
+              : sleepState.savedValue
+                ? parseFloat(sleepState.savedValue)
+                : null
+          }
+          waterOz={waterOz || (waterState.savedValue ? parseFloat(waterState.savedValue) : 0)}
+          weightLb={weightState.savedValue ? parseFloat(weightState.savedValue) : null}
+          steps={stepsState.savedValue ? parseInt(stepsState.savedValue, 10) : null}
+          onOpenLog={(key) => setLogMetricKey(key)}
         />
 
-        <RatingCard
-          icon={icon('flash-outline')}
-          title="Energy Level"
-          subtitle="Rate your energy today (1–8)."
-          storageKey="dashboard_energy"
-          gradientFrom="#C084FC"
-          gradientTo="#F97316"
-          isDark={isDark}
-          maxRating={8}
-          topBorderColors={['#FF9F0A', '#FBBF24', '#F97316']}
-          interpretFn={(n) => energyInterpret(n)}
-          onAfterSave={onMetricsChange ? (v) => onMetricsChange({ energyLevel: v }) : undefined}
+        {/* Nutrition today — ring + macro bars */}
+        <View style={dash.eybRow}>
+          <Text style={[dash.eyb, { color: themeColors.textMuted }]}>Nutrition today</Text>
+          <TouchableOpacity onPress={typeof onPressCalories === 'function' ? onPressCalories : undefined}>
+            <Text style={{ fontSize: 13, fontWeight: '800', color: themeColors.text, textDecorationLine: 'underline' }}>Log a meal</Text>
+          </TouchableOpacity>
+        </View>
+        <DesignLawNutritionCard
+          themeColors={themeColors}
+          todayCalories={todayCalories}
+          calorieGoal={calorieGoal || DEFAULT_CALORIE_GOAL}
+          proteinG={proteinG}
+          carbsG={carbsG}
+          fatsG={fatsG}
+          proteinGoal={proteinGoal || 154}
+          carbsGoal={carbsGoal || 205}
+          fatsGoal={fatsGoal || 68}
+          onOpenNutrition={typeof onPressCalories === 'function' ? onPressCalories : undefined}
         />
 
-        <RatingCard
-          icon={icon('pulse-outline')}
-          title="Stress Level"
-          subtitle="How stressed are you? (1–8)"
-          storageKey="dashboard_stress"
-          gradientFrom="#FF6B9D"
-          gradientTo="#06B6D4"
-          isDark={isDark}
-          maxRating={8}
-          topBorderColors={['#C084FC', '#FF6B9D', '#A855F7']}
-          interpretFn={(n) => stressInterpret(n)}
-          onAfterSave={onMetricsChange ? (v) => onMetricsChange({ stressLevel: v }) : undefined}
+        {/* Workouts today — set chips */}
+        <View style={dash.eybRow}>
+          <Text style={[dash.eyb, { color: themeColors.textMuted }]}>Workouts today</Text>
+        </View>
+        <DesignLawWorkoutCard themeColors={themeColors} state={workoutLogState} />
+
+        {/* Daily check-in — sliders + mood chips (not 1–8 boxes) */}
+        <View style={[dash.eybRow, { marginTop: 8 }]}>
+          <Text style={[dash.eyb, { color: themeColors.textMuted }]}>Daily check-in</Text>
+        </View>
+        <DesignLawCheckInCard
+          themeColors={themeColors}
+          trainerFirstName={String(trainerName || '').split(' ')[0] || ''}
+          values={{
+            soreness: sorenessState.savedValue,
+            energy: energyState.savedValue,
+            stress: stressState.savedValue,
+            mood: moodState.savedValue,
+            workout: workoutRatingState.savedValue,
+          }}
+          onSave={saveCheckInField}
+          noteValue={noteDraft}
+          onNoteChange={setNoteDraft}
+          onNoteBlur={() => {
+            if (String(noteDraft) !== String(notesState.savedValue || '')) {
+              notesState.save(String(noteDraft || ''));
+            }
+          }}
         />
 
-        <MoodCard icon={icon('happy-outline')} title="Mood Check-in" subtitle="How are you feeling?"
-          storageKey="dashboard_mood" gradientFrom="#06B6D4" gradientTo="#F97316" isDark={isDark} />
-
-        <RatingCard
-          icon={icon('star-outline')}
-          title="Post-Workout Rating"
-          subtitle="How was today's session? (1–10)"
-          storageKey="dashboard_workout_rating"
-          gradientFrom="#FF6B9D"
-          gradientTo="#C084FC"
-          isDark={isDark}
-          maxRating={10}
-          topBorderColors={['#FF6B9D', '#F97316', '#FF6B9D']}
-          interpretFn={(n, max) => workoutRatingInterpret(n, max)}
+        {/* Go to — 2×2 tiles + notes/files row */}
+        <View style={[dash.eybRow, { marginTop: 8 }]}>
+          <Text style={[dash.eyb, { color: themeColors.textMuted }]}>Go to</Text>
+        </View>
+        <DesignLawGoToGrid
+          themeColors={themeColors}
+          items={[
+            {
+              label: 'Workouts',
+              sub: cappedBadgeLabel(aiWorkoutsBadgeCount, 'new', 'Plans'),
+              icon: HANDOFF_WORKOUT,
+              onPress: () => onOpenAIWorkouts?.({ id: trainerClientId, name: trainerClientName }),
+            },
+            {
+              label: 'Progress',
+              sub: cappedBadgeLabel(photoGalleryBadgeCount, 'new', 'Photos'),
+              icon: HANDOFF_PROGRESS,
+              onPress: () => onOpenPhotoGallery?.({ id: trainerClientId, name: trainerClientName }),
+            },
+            {
+              label: 'History',
+              sub: weeklyReportCard?.weekRangeLabel || 'Week in review',
+              icon: HANDOFF_SCHEDULE,
+              onPress: typeof onOpenWeeklyReport === 'function' ? () => onOpenWeeklyReport() : undefined,
+            },
+            {
+              label: 'Analytics',
+              sub: 'Open report',
+              icon: HANDOFF_PROGRESS,
+              onPress: typeof onOpenWeeklyReport === 'function' ? () => onOpenWeeklyReport() : undefined,
+            },
+          ]}
+          notesFilesItem={
+            typeof onOpenNotesFiles === 'function'
+              ? {
+                  label: 'Your notes and files',
+                  sub:
+                    notesFilesNewCount > 0
+                      ? cappedBadgeLabel(notesFilesNewCount, 'new', `${notesFilesCount || 0} files`)
+                      : `${notesFilesCount || 0} files`,
+                  onPress: () => onOpenNotesFiles(),
+                }
+              : null
+          }
         />
-
-        <NotesCard icon={icon('pencil-outline')} title="Notes to Trainer"
-          placeholder="How did you feel today? Any pain or wins?"
-          storageKey="dashboard_notes" gradientFrom="#FF6B9D" gradientTo="#F97316" isDark={isDark} />
-
       </ScrollView>
-    </LinearGradient>
+
+      <DesignLawLogSheet
+        visible={!!logMetricKey}
+        metricKey={logMetricKey}
+        themeColors={themeColors}
+        waterOz={waterOz || (waterState.savedValue ? parseFloat(waterState.savedValue) : 0)}
+        sleepHours={
+          typeof sleepHoursValue === 'number'
+            ? sleepHoursValue
+            : sleepState.savedValue
+              ? parseFloat(sleepState.savedValue)
+              : null
+        }
+        weightLb={weightState.savedValue ? parseFloat(weightState.savedValue) : null}
+        steps={stepsState.savedValue ? parseInt(stepsState.savedValue, 10) : null}
+        onClose={() => setLogMetricKey(null)}
+        onSaveWaterOz={(oz) => waterState.save(String(oz))}
+        onSaveSleep={(hrs) => sleepState.save(String(hrs))}
+        onSaveWeight={(lb) => weightState.save(String(lb))}
+        onSaveSteps={(n) => stepsState.save(String(n))}
+      />
+
+      <DesignLawTrainerSheet
+        visible={trainerSheetOpen}
+        onClose={() => setTrainerSheetOpen(false)}
+        trainerName={trainerName}
+        trainerInitials={trainerInitials}
+        themeColors={themeColors}
+        showPayment={!!showCoachingPaymentOnCard}
+        onMessage={onPressMessage}
+        onProfile={handleViewProfile}
+        onNotesFiles={typeof onOpenNotesFiles === 'function' ? () => onOpenNotesFiles() : undefined}
+        onPayment={handleOpenPayment}
+        onReview={() => setReviewSheetOpen(true)}
+      />
+
+      <DesignLawReviewSheet
+        visible={reviewSheetOpen}
+        onClose={() => setReviewSheetOpen(false)}
+        themeColors={themeColors}
+        trainerName={trainerName}
+        onSubmit={() => {
+          // Design Law sheet for look; Firestore write uses the existing review popup
+          setReviewSheetOpen(false);
+          setLegacyReviewOpen(true);
+        }}
+      />
+
+      {legacyReviewOpen && trainer ? (
+        <WriteTrainerReviewPopup
+          visible={legacyReviewOpen}
+          onClose={() => setLegacyReviewOpen(false)}
+          trainerName={trainerName}
+          trainerId={trainer?.id || trainer?.uid || trainer?.userId}
+          clientId={currentUser?.uid}
+          clientFirstName={firstName}
+          existingReview={null}
+        />
+      ) : null}
+    </View>
   );
 }
-
 
 // ===== MAIN FUNCTION =====
 
@@ -2289,6 +2269,10 @@ export const TrainingHomeScreen = ({
   onOpenWeeklyReport,
   /** Opens Nutrition from the calories card (optional). */
   onPressCalories,
+  /** Opens Notes & Files overlay from Home Go-to row. */
+  onOpenNotesFiles,
+  notesFilesCount = 0,
+  notesFilesNewCount = 0,
   trainerClientId,
   trainerClientName,
   photoGalleryBadgeCount = 0,
@@ -2296,6 +2280,12 @@ export const TrainingHomeScreen = ({
   unreadMessageCount = 0,
   todayCalories = 0,
   calorieGoal = DEFAULT_CALORIE_GOAL,
+  proteinG,
+  carbsG,
+  fatsG,
+  proteinGoal,
+  carbsGoal,
+  fatsGoal,
   waterOz = 0,
   sleepHoursValue = null,
 }) => {
@@ -2706,6 +2696,22 @@ export const TrainingHomeScreen = ({
     onMetricsChange,
     handleWorkoutAfterSave,
     workoutLogState,
+    todayCalories,
+    calorieGoal,
+    proteinG,
+    carbsG,
+    fatsG,
+    proteinGoal,
+    carbsGoal,
+    fatsGoal,
+    waterOz,
+    sleepHoursValue,
+    onPressCalories,
+    onOpenNotesFiles,
+    notesFilesCount,
+    notesFilesNewCount,
+    recentWorkouts,
+    localClock,
   };
   return <TrainingHomeScreenLayout {...screenLayout} />;
 };
@@ -2714,11 +2720,146 @@ const screen = StyleSheet.create({
   backButton: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 },
   backLabel: { fontSize: 16, fontWeight: '600' },
   scroll: { paddingHorizontal: 16, paddingTop: 20, paddingBottom: 44 },
+});
 
-  bentoGrid: { gap: 12 },
-  bentoRow1: { flexDirection: 'row', gap: 10, alignItems: 'stretch' },
-  bentoRow2: { flexDirection: 'row', gap: 10, alignItems: 'stretch' },
-  bentoRow3: { marginTop: 12 },
+// Mockup layout primitives for the dashboard (.hi / .welcome / .eyb / .vt / .wkd).
+const dash = StyleSheet.create({
+  hi: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 48, marginBottom: 12 },
+  av: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: nb.borderWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avText: { fontSize: 15, fontWeight: '900' },
+  sq: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    borderWidth: nb.borderWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  welcome: {
+    borderWidth: nb.borderWidth,
+    borderTopLeftRadius: 6,
+    borderTopRightRadius: 26,
+    borderBottomRightRadius: 6,
+    borderBottomLeftRadius: 6,
+    padding: nb.cardPadding,
+    minHeight: 150,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    overflow: 'hidden',
+  },
+  eybOnFill: { fontSize: 12, fontWeight: '900', letterSpacing: 1.3, textTransform: 'uppercase', opacity: 0.72 },
+  welcomeQuote: { fontSize: 30, fontWeight: '900', letterSpacing: -1, marginTop: 8, marginBottom: 4, lineHeight: 34 },
+  welcomeAuthor: { fontSize: 11, fontWeight: '700', opacity: 0.55, marginBottom: 10 },
+  welcomeSub: { fontSize: 13, fontWeight: '600', opacity: 0.75, lineHeight: 18 },
+  eybRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  eyb: { fontSize: 12, fontWeight: '900', letterSpacing: 1.3, textTransform: 'uppercase' },
+  pill: {
+    height: 26,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    borderWidth: nb.borderWidthPill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pillText: { fontSize: 12, fontWeight: '900' },
+  upNextCard: {
+    borderWidth: nb.borderWidth,
+    borderRadius: 10,
+    padding: 12,
+    flexDirection: 'row',
+    gap: 12,
+    alignItems: 'stretch',
+  },
+  when: {
+    minWidth: 92,
+    paddingRight: 12,
+    borderRightWidth: nb.borderWidth,
+    justifyContent: 'center',
+  },
+  whenNum: { fontSize: 30, fontWeight: '900', letterSpacing: -1, lineHeight: 32 },
+  whenSub: { fontSize: 13, marginTop: 4, fontWeight: '600' },
+  btnGhost: {
+    minHeight: 44,
+    borderWidth: nb.borderWidth,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  btnGhostText: { fontSize: 13, fontWeight: '900' },
+  btnFill: {
+    minHeight: 44,
+    borderWidth: nb.borderWidth,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  btnFillText: { fontSize: 13, fontWeight: '900' },
+  trainerRow: {
+    minHeight: 60,
+    borderWidth: nb.borderWidth,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  miniChip: {
+    minHeight: 36,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    borderWidth: nb.borderWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  weekCard: {
+    borderWidth: nb.borderWidth,
+    borderTopLeftRadius: 10,
+    borderTopRightRadius: 10,
+    borderBottomRightRadius: 26,
+    borderBottomLeftRadius: 10,
+    paddingVertical: 18,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    gap: 14,
+    alignItems: 'center',
+    minHeight: 148,
+  },
+  ringWrap: { width: 112, height: 112, alignItems: 'center', justifyContent: 'center' },
+  ringTrack: {
+    width: 112,
+    height: 112,
+    borderRadius: 56,
+    borderWidth: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ringNum: { fontSize: 24, fontWeight: '900', letterSpacing: -0.5 },
+  wkd: { flexDirection: 'row', gap: 6 },
+  wkdCell: {
+    flex: 1,
+    height: 36,
+    borderWidth: nb.borderWidth,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  barTrack: {
+    height: 16,
+    borderWidth: nb.borderWidth,
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
 });
 
 const heroStyles = StyleSheet.create({
@@ -2729,7 +2870,7 @@ const heroStyles = StyleSheet.create({
     borderRadius: 24,
     padding: 16,
     borderWidth: 1,
-    borderColor: 'rgba(192,132,252,0.2)',
+    borderColor: 'rgba(226,85,136,0.25)',
   },
   heroContent: {
     flexDirection: 'row',
@@ -2756,7 +2897,7 @@ const heroStyles = StyleSheet.create({
   statsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    backgroundColor: darkColors.nbSurfaceChip,
     borderRadius: 16,
     padding: 14,
   },
@@ -2785,13 +2926,13 @@ const trainerCardStyles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 26,
-    backgroundColor: 'rgba(192,132,252,0.2)',
+    backgroundColor: 'rgba(226,85,136,0.15)',
     borderWidth: 1.5,
-    borderColor: 'rgba(192,132,252,0.4)',
+    borderColor: 'rgba(226,85,136,0.35)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarInitials: { fontSize: 18, fontWeight: '800', color: '#C084FC' },
+  avatarInitials: { fontSize: 18, fontWeight: '800', color: lightColors.nbInk },
   trainerName: { fontSize: 15, fontWeight: '700', marginBottom: 2 },
   certLine: { fontSize: 11, color: '#64D2FF', marginBottom: 2 },
   specialtyLine: { fontSize: 11 },
@@ -2802,8 +2943,8 @@ const trainerCardStyles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.10)',
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderColor: darkColors.nbBorder,
+    backgroundColor: darkColors.nbSurfaceChip,
   },
   removeBtnText: { fontSize: 11, fontWeight: '700' },
 });
@@ -2892,7 +3033,7 @@ const emptyTrainerStyles = StyleSheet.create({
   ctaGradient: {
     borderRadius: 14,
     overflow: 'hidden',
-    shadowColor: '#BE185D',
+    shadowColor: lightColors.primaryDark,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.38,
     shadowRadius: 10,
@@ -2910,7 +3051,7 @@ const emptyTrainerStyles = StyleSheet.create({
   ctaText: {
     fontSize: 15,
     fontWeight: '900',
-    color: '#FFFFFF',
+    color: lightColors.white,
     letterSpacing: 0.3,
   },
 });

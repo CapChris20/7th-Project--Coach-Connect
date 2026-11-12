@@ -1,29 +1,19 @@
-// Neobrutalist bottom navigation bar
-// Flow: renders bottom tab bar with icons, labels, and gradient active state
-// Where used: main app navigation in trainer and client apps
-//
-// vocab: bottom nav = iOS-style bottom tab bar
+// Design Law bottom nav primitive — flat surface, 3px top, active fill block.
+// Flow: map tabs → active gets fill block + bold label. Live shell uses BottomMenuBar.js (same chrome).
+// Where used: previews / future shared nav; BottomMenuBar is the production dock.
 
 import React from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
-
-import { LinearGradient } from 'expo-linear-gradient';
-import { nb, gradients, spacing } from './colorPalette';
+import { nb, spacing } from './colorPalette';
 import { useTheme } from './lightDarkMode';
+import HardShadow from './HardShadow';
 
 /**
- * Bottom navigation bar with neobrutalist styling.
- * Active tab gets brand gradient.
- * 
- * @param {object} props
- * @param {Array<{id: string, icon: React.ReactNode, activeIcon: React.ReactNode, label: string}>} props.tabs - tab data
- * @param {string} props.active - active tab id
- * @param {Function} props.onSelect - (id) => void
- * @param {object} [props.style] - additional container styles
+ * @param {{ tabs: Array<{id: string, icon: React.ReactNode, label: string}>, active: string, onSelect: (id: string) => void, style?: object }} props
  */
 export default function NbBottomNav({ tabs, active, onSelect, style }) {
   const { colors } = useTheme();
-  
+
   return (
     <View
       style={[
@@ -37,16 +27,17 @@ export default function NbBottomNav({ tabs, active, onSelect, style }) {
     >
       {tabs.map((tab) => {
         const isActive = active === tab.id;
-        
         return (
-          <Pressable
-            key={tab.id}
-            onPress={() => onSelect(tab.id)}
-            style={styles.tab}
-          >
-            <View style={styles.iconContainer}>
-              {isActive ? tab.activeIcon : tab.icon}
-            </View>
+          <Pressable key={tab.id} onPress={() => onSelect(tab.id)} style={styles.tab}>
+            {isActive ? (
+              <HardShadow offset={nb.shadowOffsetSmall} radius={10}>
+                <View style={[styles.activeBlock, { backgroundColor: colors.nbFill }]}>
+                  {tab.icon}
+                </View>
+              </HardShadow>
+            ) : (
+              <View style={styles.iconContainer}>{tab.icon}</View>
+            )}
             <Text
               style={[
                 styles.label,
@@ -76,13 +67,23 @@ const styles = StyleSheet.create({
   },
   iconContainer: {
     marginBottom: 4,
+    height: 40,
+    justifyContent: 'center',
+  },
+  activeBlock: {
+    width: 48,
+    height: 40,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
   },
   label: {
-    fontFamily: 'Inter_500Medium',
-    fontSize: 11,
+    fontSize: 12,
+    fontWeight: '700',
     textAlign: 'center',
   },
   activeLabel: {
-    fontFamily: 'SpaceGrotesk_700Bold',
+    fontWeight: '800',
   },
 });

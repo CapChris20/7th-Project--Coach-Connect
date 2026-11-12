@@ -6,6 +6,7 @@ import React from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Liquid } from './glassSettings';
+import { lightColors } from './colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
@@ -115,7 +116,7 @@ const styles = StyleSheet.create({
   text: {
     flex: 1,
     textAlign: 'center',
-    color: '#FFFFFF',
+    color: lightColors.white,
     fontWeight: '700',
     letterSpacing: 0.2,
     fontSize: 16,

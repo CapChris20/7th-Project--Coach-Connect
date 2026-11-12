@@ -13,11 +13,12 @@ import {
   BRAND_ICON_GRADIENT_START,
   BRAND_ICON_GRADIENT_END,
 } from '../../look-and-feel/brandColors';
+import { lightColors } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
 // Mask must be opaque. MaskedView uses the drawn pixels as the shape, not this as a tint.
-const MASK_COLOR = '#FFFFFF';
+const MASK_COLOR = lightColors.white;
 const DEFAULT_ICON_SIZE = 36;
 
 // Our friendly names → Ionicons glyph names (outline reads better on the frosted bar).

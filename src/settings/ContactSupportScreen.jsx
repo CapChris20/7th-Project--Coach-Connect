@@ -1,21 +1,21 @@
-// Contact Support: in-app ticket form plus a mailto fallback when Cloud Run cannot send email.
+// Design Law Contact support: Nb page header, NbCards, ticket form + mailto fallback.
 // Flow: fade in → POST /api/support/contact with the Firebase ID token → open Mail as a backup.
 // Used from Settings. The API path and the "firestore" delivery flag stay as the server already returns them.
 
 import React, { useMemo, useRef, useState } from 'react';
-import { Animated, View, Text, StyleSheet, ScrollView, StatusBar, Alert, Pressable, TextInput, ActivityIndicator } from 'react-native';
+import { Animated, View, Text, StyleSheet, ScrollView, StatusBar, Alert, Pressable, TextInput } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../look-and-feel/lightDarkMode';
 import { getSupportEmail } from './supportContact';
 import { openSupportMailto, offerSupportMailtoFallback } from './emailSupport';
 import { getApiBase } from '../for-both/online-connection/whereToConnect';
 import { getAuth } from 'firebase/auth';
-import TopHeader from '../for-both/loading-and-header/TopHeader';
+import NbPageHeader from '../look-and-feel/NbPageHeader';
 import { SHELL_SAFE_AREA_EDGES, FORM_SCROLL_PROPS, useShellBottomNavInset } from '../navigation/bottomMenuSpacing';
 import { Ionicons } from '@expo/vector-icons';
 import NbCard from '../look-and-feel/NbCard';
 import NbButton from '../look-and-feel/NbButton';
-import { nb, gradients, spacing } from '../look-and-feel/colorPalette';
+import { nb, spacing } from '../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
@@ -28,13 +28,6 @@ const MAIL_SUBJECT_DEFAULT = 'Coach Connect support';
 const DELIVERY_FIRESTORE = 'firestore';
 
 // ===== HELPER FUNCTIONS =====
-
-// Simple wrapper - no longer using gradients, just NbCard
-function GradientCard({ children }) {
-  return children;
-}
-
-const NUTRITION_GRADIENT = gradients.brand.colors;
 
 function openSupportMail() {
   openSupportMailto({ subject: MAIL_SUBJECT_DEFAULT });
@@ -228,15 +221,15 @@ function buildSupportStyles(scrollBottomPad, colors) {
   });
 }
 
-function SupportHero({ styles: cardStyles }) {
+function SupportHero({ styles: cardStyles, colors }) {
   return (
-    <GradientCard borderColors={NUTRITION_GRADIENT} style={cardStyles.heroOuter} innerStyle={cardStyles.heroInner}>
-      <GradientCard borderColors={NUTRITION_GRADIENT} style={cardStyles.heroIconOuter} innerStyle={cardStyles.heroIconInner}>
-        <Ionicons name="headset-outline" size={34} color="#FFFFFF" />
-      </GradientCard>
-      <Text style={cardStyles.heroTitle}>Contact Support</Text>
+    <NbCard style={cardStyles.heroCard}>
+      <View style={[cardStyles.heroIcon, { backgroundColor: colors.nbSurfaceChip }]}>
+        <Ionicons name="headset-outline" size={34} color={colors.nbInk} />
+      </View>
+      <Text style={cardStyles.heroTitle}>Contact support</Text>
       <Text style={cardStyles.heroSub}>We’re here to help.</Text>
-    </GradientCard>
+    </NbCard>
   );
 }
 
@@ -244,24 +237,23 @@ function SectionHeader({ title, styles: cardStyles }) {
   return (
     <View style={cardStyles.sectionHeaderRow}>
       <Text style={cardStyles.sectionHeader}>{title}</Text>
-      <View style={cardStyles.sectionUnderline} />
     </View>
   );
 }
 
 function BulletCard({ title, lines, styles: cardStyles }) {
   return (
-    <GradientCard borderColors={NUTRITION_GRADIENT} style={cardStyles.cardOuter} innerStyle={cardStyles.cardInner}>
+    <NbCard style={cardStyles.card}>
       <Text style={cardStyles.cardTitle}>{title}</Text>
       {lines.map((line, index) => (
         <Text
           key={line}
           style={[cardStyles.bullet, index === lines.length - 1 ? { marginBottom: 0 } : null]}
         >
-          - {line}
+          • {line}
         </Text>
       ))}
-    </GradientCard>
+    </NbCard>
   );
 }
 
@@ -346,8 +338,8 @@ export default function ContactSupportScreen({ onClose, embedShellBottomNav = fa
 
   return (
     <SafeAreaView style={styles.container} edges={SHELL_SAFE_AREA_EDGES}>
-      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.background} />
-      <TopHeader title="Contact support" skipTopSafeInset onBack={onClose} />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.nbBackground} />
+      <NbPageHeader title="Contact support" onBack={onClose} />
 
       <ScrollView
         style={{ flex: 1 }}
@@ -380,14 +372,16 @@ export default function ContactSupportScreen({ onClose, embedShellBottomNav = fa
           <BulletCard title="Before you email" lines={checklist.before} styles={styles} />
           <BulletCard title="In your email, please include" lines={checklist.include} styles={styles} />
 
-          <GradientCard borderColors={NUTRITION_GRADIENT} style={styles.cardOuter} innerStyle={styles.cardInner}>
+          <NbCard style={styles.card}>
             <Text style={styles.cardTitle}>What we can’t do</Text>
-            <Text style={styles.body}>We can’t diagnose conditions, prescribe treatment, or replace your doctor or dietitian.</Text>
-          </GradientCard>
+            <Text style={styles.body}>
+              We can’t diagnose conditions, prescribe treatment, or replace your doctor or dietitian.
+            </Text>
+          </NbCard>
 
           <SectionHeader title="Email us" styles={styles} />
 
-          <GradientCard borderColors={NUTRITION_GRADIENT} style={styles.cardOuter} innerStyle={styles.cardInner}>
+          <NbCard style={styles.card}>
             <Text style={styles.formTitle}>Email us</Text>
             <Text style={styles.formSub}>
               Send a message right here. If delivery fails, you can still email us.
@@ -398,7 +392,7 @@ export default function ContactSupportScreen({ onClose, embedShellBottomNav = fa
               value={subject}
               onChangeText={setSubject}
               placeholder="Subject (required)"
-              placeholderTextColor={getCardTokens(isDark).text3}
+              placeholderTextColor={colors.nbMuted}
               style={styles.input}
               autoCapitalize="sentences"
               editable={!submitting}
@@ -409,7 +403,7 @@ export default function ContactSupportScreen({ onClose, embedShellBottomNav = fa
               value={message}
               onChangeText={setMessage}
               placeholder="Message (required)"
-              placeholderTextColor={getCardTokens(isDark).text3}
+              placeholderTextColor={colors.nbMuted}
               style={[styles.input, styles.inputMultiline]}
               multiline
               editable={!submitting}
@@ -419,7 +413,7 @@ export default function ContactSupportScreen({ onClose, embedShellBottomNav = fa
             </Text>
 
             <View style={styles.buttonWrap}>
-              <NbButton variant="brand" onPress={submit} disabled={submitting}>
+              <NbButton variant="fill" onPress={submit} disabled={submitting}>
                 {submitting ? 'Sending…' : 'Send message'}
               </NbButton>
             </View>
@@ -434,11 +428,11 @@ export default function ContactSupportScreen({ onClose, embedShellBottomNav = fa
             ) : (
               <Text style={styles.helper}>No support email is configured for this build.</Text>
             )}
-          </GradientCard>
+          </NbCard>
 
-          <View style={styles.footer}>
+          <NbCard style={styles.footer}>
             <Text style={styles.footerText}>{footerCopy}</Text>
-          </View>
+          </NbCard>
         </Animated.View>
       </ScrollView>
     </SafeAreaView>

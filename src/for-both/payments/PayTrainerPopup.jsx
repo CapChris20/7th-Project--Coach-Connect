@@ -16,8 +16,8 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
-import { NbButton } from '../../look-and-feel/NbButton';
-import { NbCard } from '../../look-and-feel/NbCard';
+import NbButton from '../../look-and-feel/NbButton';
+import NbCard from '../../look-and-feel/NbCard';
 import { NbSheet } from '../../look-and-feel/NbSheet';
 import { postCoachingCharge } from './chargeCard';
 import {
@@ -30,6 +30,7 @@ import {
   platformFeeFromAmount,
   formatPaymentDollars,
 } from './howPaymentsWorkText';
+import { lightColors } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
@@ -134,14 +135,14 @@ function PayTrainerPopup({ trainerId, trainerName, onClose, onSuccess }) {
   // Always use a light Stripe field — iOS CardField text colors are unreliable on dark fills.
   const stripeCardStyle = useMemo(
     () => ({
-      backgroundColor: '#FFFFFF',
+      backgroundColor: lightColors.white,
       textColor: '#111111',
       placeholderColor: '#8E8E93',
       borderWidth: 0,
       borderRadius: 12,
       fontSize: 16,
-      cursorColor: '#BE185D',
-      textErrorColor: '#FF3B30',
+      cursorColor: lightColors.primaryDark,
+      textErrorColor: lightColors.error,
     }),
     [],
   );
@@ -461,7 +462,7 @@ function makeStyles(colors, isDark) {
       color: colors.textSecondary,
     },
     quickBtnTextActive: {
-      color: isDark ? '#FF6B9D' : '#BE185D',
+      color: isDark ? lightColors.primary : lightColors.primaryDark,
     },
     feeOneLiner: {
       fontSize: 12,
@@ -472,7 +473,7 @@ function makeStyles(colors, isDark) {
       marginTop: 2,
     },
     stripeLightPanel: {
-      backgroundColor: '#FFFFFF',
+      backgroundColor: lightColors.white,
       borderRadius: 14,
       paddingHorizontal: 12,
       paddingVertical: Platform.OS === 'ios' ? 10 : 6,
@@ -498,7 +499,7 @@ function makeStyles(colors, isDark) {
     readyText: {
       fontSize: 13,
       fontWeight: '700',
-      color: '#30D158',
+      color: lightColors.success,
       textTransform: 'capitalize',
     },
     cardFallback: {

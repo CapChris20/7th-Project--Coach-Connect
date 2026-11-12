@@ -25,10 +25,11 @@ const TRAILING_DASH_PATTERN = /[-–—]\s*$/;
 const TRAILING_NUMBER_PATTERN = /\s+\d+$/;
 const DATE_LABEL_OPTIONS = { month: 'short', day: 'numeric' };
 const GROUP_KEY_TODAY = 'today';
-const GROUP_KEY_WEEK = 'week';
+const GROUP_KEY_WEEK = 'yesterday';
 const GROUP_KEY_EARLIER = 'earlier';
 const GROUP_LABEL_TODAY = 'Today';
-const GROUP_LABEL_WEEK = 'This Week';
+// Design Law past-chats drawer labels: Today / Yesterday / Earlier
+const GROUP_LABEL_WEEK = 'Yesterday';
 const GROUP_LABEL_EARLIER = 'Earlier';
 
 // ===== MAIN FUNCTION =====
@@ -78,7 +79,8 @@ export function formatSessionDisplayTitle(title) {
 export function groupSessionsForSidebar(sessions) {
   const now = new Date();
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const startOfWeek = startOfToday - THIS_WEEK_LOOKBACK_DAYS * MILLISECONDS_PER_DAY;
+  // Middle bucket = calendar yesterday only (Design Law), not a rolling 7-day week
+  const startOfWeek = startOfToday - MILLISECONDS_PER_DAY;
   const todayGroup = { key: GROUP_KEY_TODAY, label: GROUP_LABEL_TODAY, items: [] };
   const weekGroup = { key: GROUP_KEY_WEEK, label: GROUP_LABEL_WEEK, items: [] };
   const earlierGroup = { key: GROUP_KEY_EARLIER, label: GROUP_LABEL_EARLIER, items: [] };

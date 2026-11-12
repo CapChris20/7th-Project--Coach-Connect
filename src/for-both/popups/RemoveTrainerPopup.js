@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { collection, serverTimestamp } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../../app-start/cloudConnection';
+import { lightColors } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
@@ -193,7 +194,7 @@ export default function RemoveTrainerPopup({
                   height: step === stepNumber ? 8 : 6,
                   borderRadius: 4,
                   backgroundColor:
-                    step === stepNumber ? '#FF6B9D' : 'rgba(255,255,255,0.2)',
+                    step === stepNumber ? lightColors.primary : 'rgba(255,255,255,0.2)',
                 }}
               />
             ))}
@@ -242,14 +243,14 @@ export default function RemoveTrainerPopup({
                           ? 'rgba(255,107,157,0.15)'
                           : 'rgba(255,255,255,0.05)',
                         borderWidth: 1,
-                        borderColor: selected ? '#FF6B9D' : 'rgba(255,255,255,0.12)',
+                        borderColor: selected ? lightColors.primary : 'rgba(255,255,255,0.12)',
                         justifyContent: 'center',
                       }}
                     >
                       <Text
                         style={{
                           fontSize: 13,
-                          color: selected ? '#FF6B9D' : 'rgba(255,255,255,0.5)',
+                          color: selected ? lightColors.primary : 'rgba(255,255,255,0.5)',
                         }}
                       >
                         {reasonLabel}
@@ -284,7 +285,7 @@ export default function RemoveTrainerPopup({
                   width: '100%',
                   height: 50,
                   borderRadius: 12,
-                  backgroundColor: '#FF6B9D',
+                  backgroundColor: lightColors.primary,
                   alignItems: 'center',
                   justifyContent: 'center',
                   opacity: selectedReasons.length === 0 ? 0.4 : 1,
@@ -419,7 +420,7 @@ export default function RemoveTrainerPopup({
                   width: '100%',
                   height: 50,
                   borderRadius: 12,
-                  backgroundColor: '#FF6B9D',
+                  backgroundColor: lightColors.primary,
                   alignItems: 'center',
                   justifyContent: 'center',
                   marginTop: 10,
@@ -461,7 +462,7 @@ export default function RemoveTrainerPopup({
                   borderRadius: 14,
                   backgroundColor: 'rgba(255,107,157,0.15)',
                   borderWidth: 1,
-                  borderColor: '#FF6B9D',
+                  borderColor: lightColors.primary,
                   overflow: 'hidden',
                   position: 'relative',
                 }}
@@ -507,7 +508,7 @@ export default function RemoveTrainerPopup({
                 <Text
                   style={{
                     fontSize: 13,
-                    color: '#FF6B9D',
+                    color: lightColors.primary,
                     marginTop: 12,
                   }}
                 >

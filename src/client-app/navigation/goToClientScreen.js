@@ -201,6 +201,10 @@ export function goToClientScreen({ refetchNutritionData } = {}) {
   const openPhotoGallery = useCallback(() => rootNavigate(CLIENT_ROUTES.PhotoGallery), []);
   const openAIWorkouts = useCallback(() => rootNavigate(CLIENT_ROUTES.AIWorkouts), []);
   const openPlanViewer = useCallback(() => rootNavigate(CLIENT_ROUTES.PlanViewer), []);
+  // vocab: session payload = { workoutName, exercises[] } from a plan day
+  const openWorkoutSession = useCallback((payload = {}) => {
+    rootNavigate(CLIENT_ROUTES.WorkoutSession, payload);
+  }, []);
   const openAIChatHome = useCallback(() => {
     popStackToMainTabs();
     dismissMainOverlays();
@@ -214,9 +218,11 @@ export function goToClientScreen({ refetchNutritionData } = {}) {
     setMainTab(CLIENT_MAIN_TABS.ai);
   }, [popStackToMainTabs, dismissMainOverlays]);
 
+  // Home tab already IS the mockup client-home — no separate Dashboard overlay.
   const openMyDashboardBilling = useCallback(() => {
     popStackToMainTabs();
-    setShowMyDashboard(true);
+    setShowMyDashboard(false);
+    setMainTab(CLIENT_MAIN_TABS.home);
   }, [popStackToMainTabs]);
 
   const openCoachingPayment = useCallback(() => {
@@ -378,6 +384,7 @@ export function goToClientScreen({ refetchNutritionData } = {}) {
     openPhotoGallery,
     openAIWorkouts,
     openPlanViewer,
+    openWorkoutSession,
     openAIChatHome,
     openAIChatSession,
     handleOpenConversations,

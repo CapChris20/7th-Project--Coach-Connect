@@ -6,7 +6,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Modal, View, Text, TouchableOpacity, TextInput, Keyboard, Platform, ActivityIndicator, Alert, ScrollView, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
+import { nb } from '../../look-and-feel/colorPalette';
 import * as Clipboard from 'expo-clipboard';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
@@ -571,37 +571,41 @@ function ToolBtn({
   theme,
   disabled
 }) {
-  const inner = <View style={[styles.toolBtn, disabled ? {
-    opacity: 0.35
-  } : null]}>
-      {children}
-    </View>;
-  if (active) {
-    return <TouchableOpacity onPress={onPress} disabled={disabled} accessibilityLabel={label} activeOpacity={0.75}>
-        <LinearGradient colors={theme.sheetGradient} start={{
-        x: 0,
-        y: 0
-      }} end={{
-        x: 1,
-        y: 1
-      }} style={[styles.toolBtn, styles.toolBtnActive]}>
-          {children}
-        </LinearGradient>
-      </TouchableOpacity>;
-  }
-  return <TouchableOpacity onPress={onPress} disabled={disabled} accessibilityLabel={label} activeOpacity={0.75}>
-      {inner}
-    </TouchableOpacity>;
+  const hitOpacity = disabled ? 0.35 : 1;
+  const btnStyle = [
+    styles.toolBtn,
+    active
+      ? {
+          backgroundColor: theme.sheetTabActiveBg,
+          borderWidth: nb.borderWidth,
+          borderColor: theme.chromeBorder,
+        }
+      : null,
+    { opacity: hitOpacity },
+  ];
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityLabel={label}
+      activeOpacity={0.75}
+    >
+      <View style={btnStyle}>{children}</View>
+    </TouchableOpacity>
+  );
 }
 function StatChip({
   label,
   val,
-  onPress
+  onPress,
+  theme,
 }) {
-  return <TouchableOpacity onPress={onPress} style={styles.statChip} activeOpacity={0.8}>
-      <Text style={styles.statLabel}>{label}</Text>
-      <Text style={styles.statVal}>{val}</Text>
-    </TouchableOpacity>;
+  return (
+    <TouchableOpacity onPress={onPress} style={styles.statChip} activeOpacity={0.8}>
+      <Text style={[styles.statLabel, { color: theme.textMuted }]}>{label}</Text>
+      <Text style={[styles.statVal, { color: theme.sheetTabActiveText }]}>{val}</Text>
+    </TouchableOpacity>
+  );
 }
 function Divider({
   theme
@@ -1666,17 +1670,15 @@ export default function SpreadsheetEditor({
               c: COLS - 1
             }
           })} onRowHeaderLongPress={() => setOpenSheet('more')} />}
-            {stats && !keyboardVisible ? <LinearGradient colors={theme.sheetGradient} start={{
-            x: 0,
-            y: 0
-          }} end={{
-            x: 1,
-            y: 1
-          }} style={styles.statsChip}>
-                {stats.hasNums ? <StatChip label="Sum" val={formatNumberNice(stats.sum)} onPress={() => Clipboard.setStringAsync(String(stats.sum)).then(() => showToast('Copied'))} /> : null}
-                {stats.avg !== null ? <StatChip label="Avg" val={formatNumberNice(stats.avg)} onPress={() => Clipboard.setStringAsync(String(stats.avg)).then(() => showToast('Copied'))} /> : null}
-                <StatChip label="Count" val={String(stats.count)} onPress={() => Clipboard.setStringAsync(String(stats.count)).then(() => showToast('Copied'))} />
-              </LinearGradient> : null}
+            {stats && !keyboardVisible ? <View style={[styles.statsChip, {
+            backgroundColor: theme.sheetTabActiveBg,
+            borderWidth: nb.borderWidth,
+            borderColor: theme.chromeBorder,
+          }]}>
+                {stats.hasNums ? <StatChip theme={theme} label="Sum" val={formatNumberNice(stats.sum)} onPress={() => Clipboard.setStringAsync(String(stats.sum)).then(() => showToast('Copied'))} /> : null}
+                {stats.avg !== null ? <StatChip theme={theme} label="Avg" val={formatNumberNice(stats.avg)} onPress={() => Clipboard.setStringAsync(String(stats.avg)).then(() => showToast('Copied'))} /> : null}
+                <StatChip theme={theme} label="Count" val={String(stats.count)} onPress={() => Clipboard.setStringAsync(String(stats.count)).then(() => showToast('Copied'))} />
+              </View> : null}
           </View>
           </View>
 
@@ -1700,16 +1702,16 @@ export default function SpreadsheetEditor({
               {sheets.map(s => {
             const isActive = s.id === activeId;
             return <TouchableOpacity key={s.id} onPress={() => setActiveId(s.id)} onLongPress={() => promptRenameSheet(s)} delayLongPress={400}>
-                    {isActive ? <LinearGradient colors={theme.sheetGradient} start={{
-                x: 0,
-                y: 0
-              }} end={{
-                x: 1,
-                y: 1
-              }} style={styles.sheetTabActive}>
-                        <Text style={styles.sheetTabActiveText}>{s.name}</Text>
-                      </LinearGradient> : <View style={[styles.sheetTab, {
-                backgroundColor: theme.inputBg
+                    {isActive ? <View style={[styles.sheetTabActive, {
+                backgroundColor: theme.sheetTabActiveBg,
+                borderWidth: nb.borderWidth,
+                borderColor: theme.chromeBorder,
+              }]}>
+                        <Text style={[styles.sheetTabActiveText, { color: theme.sheetTabActiveText }]}>{s.name}</Text>
+                      </View> : <View style={[styles.sheetTab, {
+                backgroundColor: theme.inputBg,
+                borderWidth: nb.borderWidth,
+                borderColor: theme.chromeBorder,
               }]}>
                         <Text style={{
                   color: theme.textMuted,
@@ -1827,19 +1829,15 @@ export default function SpreadsheetEditor({
               color: theme.text
             }}>Replace</Text>
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => doReplace(true)}>
-                  <LinearGradient colors={theme.sheetGradient} start={{
-              x: 0,
-              y: 0
-            }} end={{
-              x: 1,
-              y: 1
-            }} style={styles.findBtnPrimary}>
+                <TouchableOpacity onPress={() => doReplace(true)} style={[styles.findBtnPrimary, {
+              backgroundColor: theme.sheetTabActiveBg,
+              borderWidth: nb.borderWidth,
+              borderColor: theme.chromeBorder,
+            }]}>
                     <Text style={{
-                color: '#fff',
+                color: theme.sheetTabActiveText,
                 fontWeight: '700'
               }}>Replace all</Text>
-                  </LinearGradient>
                 </TouchableOpacity>
               </View>
             </View> : null}
@@ -1876,24 +1874,20 @@ export default function SpreadsheetEditor({
               queueSave();
             }
             setRenameSheetId(null);
-          }}>
-                  <LinearGradient colors={theme.sheetGradient} start={{
-              x: 0,
-              y: 0
-            }} end={{
-              x: 1,
-              y: 1
-            }} style={styles.findBtnPrimary}>
+          }} style={[styles.findBtnPrimary, {
+              backgroundColor: theme.sheetTabActiveBg,
+              borderWidth: nb.borderWidth,
+              borderColor: theme.chromeBorder,
+            }]}>
                     <Text style={{
-                color: '#fff',
+                color: theme.sheetTabActiveText,
                 fontWeight: '700'
               }}>Rename</Text>
-                  </LinearGradient>
                 </TouchableOpacity>
               </View>
             </View> : null}
 
-          <ShareDocumentPopup visible={showShare} onClose={() => setShowShare(false)} trainerId={trainerId} documentId={docId} initialSharedWith={sharedWith} isDark={isSheetDark} onSaved={() => {
+          <ShareDocumentPopup visible={showShare} onClose={() => setShowShare(false)} trainerId={trainerId} documentId={docId} documentTitle={title || DEFAULT_SAVE_TITLE_SPREADSHEET} initialSharedWith={sharedWith} isDark={isSheetDark} onSaved={() => {
         onSaved?.();
         if (trainerId && docId) {
           getTrainerDocument(trainerId, docId).then(d => {
@@ -1917,7 +1911,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingTop: 8,
     paddingBottom: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth
+    borderBottomWidth: nb.borderWidth
   },
   metaRow: {
     flexDirection: 'row',
@@ -1938,7 +1932,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center'
   },
   toolbar: {
-    borderBottomWidth: StyleSheet.hairlineWidth
+    borderBottomWidth: nb.borderWidth
   },
   toolbarRow: {
     paddingHorizontal: 8,
@@ -1965,7 +1959,7 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: nb.borderWidth,
     minHeight: TOUCH_MIN + 8
   },
   refPill: {
@@ -1973,14 +1967,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 8,
     borderRadius: 8,
-    borderWidth: 1,
+    borderWidth: nb.borderWidth,
     alignItems: 'center'
   },
   formulaInput: {
     flex: 1,
     minHeight: TOUCH_MIN,
     fontSize: 14,
-    borderWidth: 1,
+    borderWidth: nb.borderWidth,
     borderRadius: 8,
     paddingHorizontal: 12,
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : undefined
@@ -2004,11 +1998,9 @@ const styles = StyleSheet.create({
     paddingVertical: 2
   },
   statLabel: {
-    color: 'rgba(255,255,255,0.8)',
     fontSize: 11
   },
   statVal: {
-    color: '#fff',
     fontSize: 11,
     fontWeight: '700',
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : undefined
@@ -2017,7 +2009,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     height: TOUCH_MIN,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: nb.borderWidth,
     paddingHorizontal: 8,
     gap: 6
   },
@@ -2039,7 +2031,6 @@ const styles = StyleSheet.create({
     borderRadius: 999
   },
   sheetTabActiveText: {
-    color: '#fff',
     fontSize: 12,
     fontWeight: '700'
   },
@@ -2071,7 +2062,7 @@ const styles = StyleSheet.create({
     left: 16,
     right: 16,
     borderRadius: 16,
-    borderWidth: 1,
+    borderWidth: nb.borderWidth,
     padding: 16,
     zIndex: 100
   },
@@ -2083,7 +2074,7 @@ const styles = StyleSheet.create({
   },
   findInput: {
     height: TOUCH_MIN,
-    borderWidth: 1,
+    borderWidth: nb.borderWidth,
     borderRadius: 10,
     paddingHorizontal: 12,
     marginBottom: 8,
@@ -2099,7 +2090,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 999,
-    borderWidth: 1
+    borderWidth: nb.borderWidth
   },
   findBtnPrimary: {
     paddingHorizontal: 14,

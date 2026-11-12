@@ -1,6 +1,6 @@
-// Manual workout plan builder: name/type/duration → per-day exercises → assign clients → save draft.
+// Design Law manual plan builder (PNG 19–24): schedule → days → exercises → review/assign.
 // Flow: edit steps → build setDetails → saveManualPlanDraft → hand plan id back to parent.
-// Used by the trainer workout-plans entry. Persistence helpers live in manualPlanToWorkoutPlan.js.
+// Used by trainer Tools → Workout plans → Build custom. Persistence: manualPlanToWorkoutPlan.js.
 
 import React, { useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import {
@@ -17,14 +17,13 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
-import { lightColors, darkColors, gradients, nb, borderRadius } from '../../look-and-feel/colorPalette';
-import NbCard from '../../look-and-feel/NbCard';
+import { nb, borderRadius } from '../../look-and-feel/colorPalette';
 import NbButton from '../../look-and-feel/NbButton';
+import HardShadow from '../../look-and-feel/HardShadow';
 import TopHeader from '../../for-both/loading-and-header/TopHeader';
 import { SHELL_SAFE_AREA_EDGES, FORM_SCROLL_PROPS, useEmbeddedScrollBottomPad } from '../../navigation/bottomMenuSpacing';
 import {
@@ -67,95 +66,58 @@ function buildSetDetailRowsForExercise(ex) {
   }));
 }
 
-const GRAD_BORDER = ['#FF6B9D', '#C084FC', '#06B6D4'];
-const GRAD_CTA = ['#FF6B9D', '#C084FC'];
-const GRAD_CTA_ALT = ['#06B6D4', '#C084FC'];
-
+// Manipulate here: plan type / duration chip lists (labels only — Firestore keys unchanged)
 const PLAN_TYPES = ['Upper Body', 'Lower Body', 'Full Body', 'Push/Pull/Legs', 'Custom'];
 const DURATIONS = ['1 week', '2 weeks', '4 weeks', '8 weeks', '12 weeks', 'Ongoing'];
 const REST_PRESETS = REST_PRESET_VALUES;
 
-function getBuilderPalette(isDark) {
-  const accents = {
-    pink: '#FF6B9D',
-    orange: '#F97316',
-    cyan: '#06B6D4',
-    purple: '#C084FC',
-    green: '#10B981',
-  };
-  if (isDark) {
-    return {
-      ...accents,
-      bg: '#0A0A0F',
-      surface: '#13131A',
-      cardBg: '#0E0C16',
-      textPrimary: '#FFFFFF',
-      textSecondary: 'rgba(255,255,255,0.68)',
-      textTertiary: 'rgba(255,255,255,0.42)',
-      border: 'rgba(255,255,255,0.1)',
-      borderSubtle: 'rgba(255,255,255,0.08)',
-      borderStrong: 'rgba(255,255,255,0.14)',
-      stripBg: 'rgba(255,255,255,0.035)',
-      stripBorder: 'rgba(255,255,255,0.07)',
-      stepDotBg: 'rgba(255,255,255,0.08)',
-      stepDotBorder: 'rgba(255,255,255,0.12)',
-      stepConnector: 'rgba(255,255,255,0.1)',
-      stepLabelDone: 'rgba(255,255,255,0.72)',
-      topGlow: ['rgba(255,107,157,0.14)', 'rgba(192,132,252,0.06)', 'transparent'],
-      cardGlow: ['rgba(255,107,157,0.06)', 'transparent'],
-      setupFieldBg: 'rgba(0,0,0,0.25)',
-      pillBg: 'rgba(255,255,255,0.04)',
-      pillBorder: 'rgba(255,255,255,0.14)',
-      exIconBg: 'rgba(255,255,255,0.05)',
-      clientChipOffBg: 'rgba(255,255,255,0.03)',
-      clientChipOffBorder: 'rgba(255,255,255,0.1)',
-      modalHandle: 'rgba(255,255,255,0.2)',
-      modalCloseBg: 'rgba(255,255,255,0.06)',
-      divider: 'rgba(255,255,255,0.1)',
-      stepActionsBorder: 'rgba(255,255,255,0.08)',
-      topBarBorder: 'rgba(255,255,255,0.08)',
-      secondaryBtnBg: 'rgba(255,107,157,0.08)',
-      secondaryBtnBorder: 'rgba(255,107,157,0.55)',
-      shadowPink: '#FF6B9D',
-      suggestRowBorder: 'rgba(255,255,255,0.06)',
-      stepperBg: 'rgba(255,255,255,0.04)',
-    };
-  }
+/**
+ * Design Law palette for the builder — nb tokens only (no pink/glass dual theme).
+ * vocab: colors from useTheme() → remapped to the old `c.*` names so step JSX keeps compiling.
+ */
+function getBuilderPalette(colors) {
   return {
-    ...accents,
-    bg: '#F2F2F7',
-    surface: '#FFFFFF',
-    cardBg: '#FFFFFF',
-    textPrimary: '#1C1C1E',
-    textSecondary: '#48484A',
-    textTertiary: '#8E8E93',
-    border: 'rgba(0,0,0,0.1)',
-    borderSubtle: 'rgba(0,0,0,0.06)',
-    borderStrong: 'rgba(0,0,0,0.12)',
-    stripBg: '#FFFFFF',
-    stripBorder: 'rgba(0,0,0,0.08)',
-    stepDotBg: '#F2F2F7',
-    stepDotBorder: 'rgba(0,0,0,0.1)',
-    stepConnector: 'rgba(0,0,0,0.08)',
-    stepLabelDone: '#48484A',
-    topGlow: ['rgba(255,107,157,0.1)', 'rgba(192,132,252,0.05)', 'transparent'],
-    cardGlow: ['rgba(255,107,157,0.05)', 'transparent'],
-    setupFieldBg: '#F9F9FB',
-    pillBg: '#F2F2F7',
-    pillBorder: 'rgba(0,0,0,0.1)',
-    exIconBg: 'rgba(0,0,0,0.04)',
-    clientChipOffBg: '#FFFFFF',
-    clientChipOffBorder: 'rgba(0,0,0,0.1)',
-    modalHandle: 'rgba(0,0,0,0.15)',
-    modalCloseBg: 'rgba(0,0,0,0.05)',
-    divider: 'rgba(0,0,0,0.08)',
-    stepActionsBorder: 'rgba(0,0,0,0.08)',
-    topBarBorder: 'rgba(0,0,0,0.08)',
-    secondaryBtnBg: 'rgba(255,107,157,0.1)',
-    secondaryBtnBorder: 'rgba(255,107,157,0.45)',
-    shadowPink: 'rgba(255,107,157,0.4)',
-    suggestRowBorder: 'rgba(0,0,0,0.06)',
-    stepperBg: '#F2F2F7',
+    // Legacy accent aliases → ink (call sites still say pink/cyan; never paint purple borders)
+    pink: colors.nbInk,
+    orange: colors.nbInk,
+    cyan: colors.nbMuted,
+    purple: colors.nbInk,
+    green: colors.nbInk,
+    bg: colors.nbBackground,
+    surface: colors.nbSurface,
+    cardBg: colors.nbSurface,
+    textPrimary: colors.nbInk,
+    textSecondary: colors.nbMuted,
+    textTertiary: colors.nbMuted,
+    border: colors.nbBorder,
+    borderSubtle: colors.nbBorder,
+    borderStrong: colors.nbBorder,
+    stripBg: colors.nbSurface,
+    stripBorder: colors.nbBorder,
+    stepDotBg: colors.nbSoft,
+    stepDotBorder: colors.nbBorder,
+    stepConnector: colors.nbSoft,
+    stepLabelDone: colors.nbMuted,
+    setupFieldBg: colors.nbSurface,
+    pillBg: colors.nbSurface,
+    pillBorder: colors.nbBorder,
+    exIconBg: colors.nbSoft,
+    clientChipOffBg: colors.nbSurface,
+    clientChipOffBorder: colors.nbBorder,
+    modalHandle: colors.nbBorder,
+    modalCloseBg: colors.nbSoft,
+    divider: colors.nbBorder,
+    stepActionsBorder: colors.nbBorder,
+    topBarBorder: colors.nbBorder,
+    secondaryBtnBg: colors.nbSurface,
+    secondaryBtnBorder: colors.nbBorder,
+    shadowPink: colors.nbShadow,
+    suggestRowBorder: colors.nbBorder,
+    stepperBg: colors.nbSoft,
+    fill: colors.nbFill,
+    onFill: colors.nbOnFill,
+    soft: colors.nbSoft,
+    shadow: colors.nbShadow,
   };
 }
 
@@ -173,13 +135,15 @@ function SectionHeader({ title, subtitle }) {
     <View style={styles.sectionHeader}>
       <Text style={styles.sectionTitle}>{title}</Text>
       {subtitle ? <Text style={styles.sectionSubtitle}>{subtitle}</Text> : null}
-      <LinearGradient colors={GRAD_BORDER} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={styles.sectionUnderline} />
+      {/* Design Law: solid ink underline — not a pink→cyan gradient bar */}
+      <View style={styles.sectionUnderline} />
     </View>
   );
 }
 
+/** Progress capsules (PNG 19) — fill = done/active, soft = upcoming. */
 function PlanStepStrip({ step }) {
-  const { styles } = useBuilderTheme();
+  const { c, styles } = useBuilderTheme();
   if (step >= 5) return null;
   const items = [
     { id: 1, label: 'Setup' },
@@ -187,65 +151,58 @@ function PlanStepStrip({ step }) {
     { id: 3, label: 'Moves' },
     { id: 4, label: 'Review' },
   ];
+  const total = items.length;
   return (
     <View style={styles.stepStripShell}>
-    <View style={styles.stepStripWrap}>
-      <View style={styles.stepStripTrack}>
-        {items.map(({ id }, idx) => {
-          const active = step === id;
-          const done = step > id;
-          const isLast = idx === items.length - 1;
+      <View style={styles.stepCapsulesRow}>
+        {items.map(({ id }) => {
+          const filled = step >= id;
           return (
-            <React.Fragment key={id}>
-              {active ? (
-                <LinearGradient colors={GRAD_CTA} style={styles.stepDotGrad}>
-                  <Text style={styles.stepDotText}>{id}</Text>
-                </LinearGradient>
-              ) : (
-                <View style={[styles.stepDot, done && styles.stepDotDone]}>
-                  {done ? (
-                    <Ionicons name="checkmark" size={14} color="#FFF" />
-                  ) : (
-                    <Text style={styles.stepDotTextMuted}>{id}</Text>
-                  )}
-                </View>
-              )}
-              {!isLast ? (
-                <View style={[styles.stepConnector, step > id && styles.stepConnectorDone]} />
-              ) : null}
-            </React.Fragment>
-          );
-        })}
-      </View>
-      <View style={styles.stepStripLabels}>
-        {items.map(({ id, label }) => {
-          const active = step === id;
-          const done = step > id;
-          return (
-            <Text
+            <View
               key={id}
-              style={[styles.stepStripLabel, active && styles.stepStripLabelActive, done && styles.stepStripLabelDone]}
-              numberOfLines={1}
-            >
-              {label}
-            </Text>
+              style={[
+                styles.stepCapsule,
+                {
+                  flex: 1,
+                  backgroundColor: filled ? c.fill : c.soft,
+                  borderColor: c.border,
+                },
+              ]}
+            />
           );
         })}
       </View>
-    </View>
+      <Text style={[styles.stepStripMeta, { color: c.textTertiary }]}>
+        {`STEP ${Math.min(step, total)} OF ${total} · ${items[Math.min(step, total) - 1]?.label || ''}`.toUpperCase()}
+      </Text>
     </View>
   );
 }
 
-function GradientCard({ children, borderColors = GRAD_BORDER, style, innerStyle }) {
+/** Hard-shadow surface card — replaces old GradientCard pink rim. */
+function DesignCard({ children, style, innerStyle }) {
   const { c, styles } = useBuilderTheme();
   return (
-    <LinearGradient colors={borderColors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.gradBorder, style]}>
-      <View style={[styles.gradInner, innerStyle]}>
-        <LinearGradient colors={c.cardGlow} style={styles.gradInnerGlow} pointerEvents="none" />
+    <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetCard} style={style}>
+      <View
+        style={[
+          styles.gradInner,
+          { backgroundColor: c.cardBg, borderColor: c.border, borderWidth: nb.borderWidth },
+          innerStyle,
+        ]}
+      >
         {children}
       </View>
-    </LinearGradient>
+    </HardShadow>
+  );
+}
+
+// Keep the old name so step JSX still compiles after the chrome swap.
+function GradientCard({ children, style, innerStyle }) {
+  return (
+    <DesignCard style={style} innerStyle={innerStyle}>
+      {children}
+    </DesignCard>
   );
 }
 
@@ -255,66 +212,63 @@ function FieldLabel({ children, tight }) {
 }
 
 function FormField({ children, style, compact }) {
-  const { styles } = useBuilderTheme();
-  return (
-    <GradientCard
-      borderColors={['rgba(255,107,157,0.55)', 'rgba(192,132,252,0.35)']}
-      style={[{ marginTop: 0 }, style]}
-      innerStyle={[styles.fieldInner, compact && styles.fieldInnerCompact]}
-    >
-      {children}
-    </GradientCard>
-  );
-}
-
-function PrimaryButton({ label, onPress, disabled, loading, compact, icon }) {
-  const { styles } = useBuilderTheme();
-  return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled || loading}
-      style={({ pressed }) => [{ flex: compact ? 0 : 1, opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}
-    >
-      <LinearGradient colors={GRAD_CTA} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={[styles.primaryGrad, compact && styles.primaryGradCompact]}>
-        {loading ? (
-          <ActivityIndicator color="#FFF" />
-        ) : (
-          <View style={styles.primaryInner}>
-            {icon ? <Ionicons name={icon} size={18} color="#FFF" /> : null}
-            <Text style={styles.primaryLabel}>{label}</Text>
-          </View>
-        )}
-      </LinearGradient>
-    </Pressable>
-  );
-}
-
-function SecondaryButton({ label, onPress, compact, icon }) {
   const { c, styles } = useBuilderTheme();
   return (
-    <TouchableOpacity onPress={onPress} style={[styles.secondaryBtn, compact && styles.secondaryBtnCompact]} activeOpacity={0.85}>
-      {icon ? <Ionicons name={icon} size={16} color={c.pink} /> : null}
-      <Text style={styles.secondaryLabel}>{label}</Text>
-    </TouchableOpacity>
+    <View
+      style={[
+        styles.formFieldShell,
+        {
+          borderColor: c.border,
+          backgroundColor: c.surface,
+          marginTop: 0,
+        },
+        style,
+      ]}
+    >
+      <View style={[styles.fieldInner, compact && styles.fieldInnerCompact]}>{children}</View>
+    </View>
   );
 }
 
-function Pill({ label, active, onPress }) {
-  const { styles } = useBuilderTheme();
-  if (active) {
-    return (
-      <Pressable onPress={onPress}>
-        <LinearGradient colors={['rgba(255,107,157,0.9)', 'rgba(192,132,252,0.85)']} style={styles.pillGradBorder}>
-          <View style={styles.pillGradInner}>
-            <Text style={styles.pillTextActive}>{label}</Text>
-          </View>
-        </LinearGradient>
-      </Pressable>
-    );
-  }
+function PrimaryButton({ label, onPress, disabled, loading, compact }) {
   return (
-    <TouchableOpacity onPress={onPress} style={styles.pill} activeOpacity={0.85}>
-      <Text style={styles.pillText}>{label}</Text>
+    <View style={{ flex: compact ? 0 : 1, minWidth: compact ? undefined : 0 }}>
+      <NbButton variant="fill" onPress={onPress} disabled={disabled || loading}>
+        {loading ? 'Saving…' : label}
+      </NbButton>
+    </View>
+  );
+}
+
+function SecondaryButton({ label, onPress, compact }) {
+  return (
+    <View style={{ flex: compact ? 0 : 1, minWidth: compact ? 120 : 0 }}>
+      <NbButton variant="ghost" onPress={onPress}>
+        {label}
+      </NbButton>
+    </View>
+  );
+}
+
+/** Selected = fill+onFill; idle = surface+border (PNG day/type chips). */
+function Pill({ label, active, onPress }) {
+  const { c, styles } = useBuilderTheme();
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.88}
+      style={[
+        styles.pill,
+        {
+          backgroundColor: active ? c.fill : c.surface,
+          borderColor: c.border,
+          borderWidth: nb.borderWidth,
+        },
+      ]}
+    >
+      <Text style={[styles.pillText, { color: active ? c.onFill : c.textPrimary }, active && styles.pillTextActive]}>
+        {label}
+      </Text>
     </TouchableOpacity>
   );
 }
@@ -322,21 +276,20 @@ function Pill({ label, active, onPress }) {
 function EmptyExerciseState({ onAdd }) {
   const { c, styles } = useBuilderTheme();
   return (
-    <GradientCard borderColors={GRAD_CTA_ALT} style={{ marginTop: 8 }}>
+    <DesignCard style={{ marginTop: 8 }}>
       <View style={styles.emptyExWrap}>
-        <View style={styles.emptyExIcon}>
-          <Ionicons name="barbell-outline" size={28} color={c.cyan} />
+        <View style={[styles.emptyExIcon, { backgroundColor: c.soft, borderColor: c.border }]}>
+          <Ionicons name="barbell-outline" size={28} color={c.textPrimary} />
         </View>
         <Text style={styles.emptyExTitle}>No exercises yet</Text>
         <Text style={styles.emptyExSub}>Search the library or type a custom movement.</Text>
-        <TouchableOpacity onPress={onAdd} activeOpacity={0.88} style={{ marginTop: 14, width: '100%' }}>
-          <LinearGradient colors={GRAD_CTA_ALT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.emptyExBtn}>
-            <Ionicons name="add" size={18} color="#FFF" />
-            <Text style={styles.emptyExBtnText}>Add first exercise</Text>
-          </LinearGradient>
-        </TouchableOpacity>
+        <View style={{ marginTop: 14, width: '100%' }}>
+          <NbButton variant="fill" onPress={onAdd}>
+            Add first exercise
+          </NbButton>
+        </View>
       </View>
-    </GradientCard>
+    </DesignCard>
   );
 }
 
@@ -409,9 +362,10 @@ export default function ManualWorkoutPlanBuilderScreen({
   onSettingsPress,
   embedInLayout = false,
 }) {
-  const { isDark } = useTheme();
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const palette = useMemo(() => getBuilderPalette(isDark), [isDark]);
+  // vocab: palette = remapped nb tokens under old `c.*` keys for this screen's StyleSheet
+  const palette = useMemo(() => getBuilderPalette(colors), [colors]);
   const styles = useMemo(() => createBuilderStyles(palette), [palette]);
   const themeValue = useMemo(() => ({ c: palette, styles }), [palette, styles]);
   const scrollBottomPad = useEmbeddedScrollBottomPad(EMBEDDED_SCROLL_PAD);
@@ -830,7 +784,7 @@ export default function ManualWorkoutPlanBuilderScreen({
     if (step === 1) {
       return (
         <View style={[styles.stepActionsWrap, styles.stepActionsTight, { marginBottom: scrollBottomPad }]}>
-          <PrimaryButton label="Continue" onPress={goNext} />
+          <PrimaryButton label="Add exercises" onPress={goNext} />
         </View>
       );
     }
@@ -839,7 +793,7 @@ export default function ManualWorkoutPlanBuilderScreen({
         <View style={[styles.stepActionsWrap, { marginBottom: scrollBottomPad }]}>
           <View style={styles.footerRow}>
             <SecondaryButton label="Back" onPress={goBack} compact />
-            <PrimaryButton label="Continue" onPress={goNext} />
+            <PrimaryButton label="Add exercises" onPress={goNext} />
           </View>
         </View>
       );
@@ -878,11 +832,10 @@ export default function ManualWorkoutPlanBuilderScreen({
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={80}
       >
-        <LinearGradient colors={palette.topGlow} style={styles.topGlow} pointerEvents="none" />
         {renderCoachHeader()}
-        <View style={styles.stepHeading}>
+        <View style={[styles.stepHeading, { borderBottomColor: palette.topBarBorder }]}>
           <Text style={styles.topTitle} numberOfLines={1}>
-            {stepTitle}
+            {step === 1 ? 'Build a plan' : stepTitle}
           </Text>
           {stepSubtitle && step < 5 ? (
             <Text style={styles.topSubtitle} numberOfLines={1}>
@@ -899,17 +852,8 @@ export default function ManualWorkoutPlanBuilderScreen({
         >
           {step === 1 && (
             <>
-              <SectionHeader title="Plan details" subtitle="Basics only — exercises come in the next steps" />
-              <GradientCard borderColors={GRAD_CTA_ALT} style={styles.setupHeroCard} innerStyle={styles.setupHeroInner}>
-                <View style={styles.tipRow}>
-                  <View style={styles.tipIcon}>
-                    <Ionicons name="sparkles-outline" size={18} color={palette.cyan} />
-                  </View>
-                  <Text style={styles.tipText}>
-                    You’ll add training days next, then stack exercises with sets, reps, and rest — like building a real session.
-                  </Text>
-                </View>
-                <View style={styles.setupDivider} />
+              <SectionHeader title="Plan details" subtitle="Name your plan and set the schedule shell" />
+              <GradientCard style={styles.setupHeroCard} innerStyle={styles.setupHeroInner}>
                 <FieldLabel tight>Plan name *</FieldLabel>
                 <View style={styles.setupField}>
                   <TextInput
@@ -953,9 +897,14 @@ export default function ManualWorkoutPlanBuilderScreen({
               {workoutDays.map((d) => (
                 <GradientCard key={d.id} style={{ marginBottom: 12 }}>
                   <View style={styles.dayCardRow}>
-                    <LinearGradient colors={GRAD_CTA} style={styles.dayNumBadge}>
-                      <Text style={styles.dayNumText}>{d.dayNumber}</Text>
-                    </LinearGradient>
+                    <View
+                      style={[
+                        styles.dayNumBadge,
+                        { backgroundColor: palette.fill, borderColor: palette.border, borderWidth: nb.borderWidth },
+                      ]}
+                    >
+                      <Text style={[styles.dayNumText, { color: palette.onFill }]}>{d.dayNumber}</Text>
+                    </View>
                     <View style={{ flex: 1, minWidth: 0 }}>
                       <TextInput
                         style={styles.dayNameInput}
@@ -967,26 +916,27 @@ export default function ManualWorkoutPlanBuilderScreen({
                         placeholderTextColor={palette.textTertiary}
                       />
                     </View>
-                    <TouchableOpacity onPress={() => removeDay(d.id)} hitSlop={10} style={styles.dayRemove}>
-                      <Ionicons name="trash-outline" size={20} color={palette.pink} />
+                    <TouchableOpacity
+                      onPress={() => removeDay(d.id)}
+                      hitSlop={10}
+                      style={[styles.dayRemove, { backgroundColor: palette.soft, borderColor: palette.border }]}
+                    >
+                      <Ionicons name="trash-outline" size={20} color={palette.textPrimary} />
                     </TouchableOpacity>
                   </View>
                   <View style={styles.dayMetaRow}>
-                    <Ionicons name="barbell-outline" size={14} color={palette.cyan} />
+                    <Ionicons name="barbell-outline" size={14} color={palette.textSecondary} />
                     <Text style={styles.dayMetaText}>
                       {(d.exercises || []).length} exercise{(d.exercises || []).length !== 1 ? 's' : ''} · added in next step
                     </Text>
                   </View>
                 </GradientCard>
               ))}
-              <TouchableOpacity onPress={addDay} activeOpacity={0.88} style={{ marginTop: 4 }}>
-                <LinearGradient colors={['rgba(255,107,157,0.35)', 'rgba(6,182,212,0.25)']} style={styles.addDayBorder}>
-                  <View style={styles.addDayInner}>
-                    <Ionicons name="add-circle-outline" size={20} color={palette.pink} />
-                    <Text style={styles.addDayText}>Add workout day</Text>
-                  </View>
-                </LinearGradient>
-              </TouchableOpacity>
+              <View style={{ marginTop: 8 }}>
+                <NbButton variant="ghost" onPress={addDay}>
+                  Add workout day
+                </NbButton>
+              </View>
             </>
           )}
 
@@ -1006,11 +956,16 @@ export default function ManualWorkoutPlanBuilderScreen({
                 (workoutDays[dayIndex]?.exercises || []).map((ex, idx) => {
                   const setRows = buildSetDetailRowsForExercise(ex);
                   return (
-                  <GradientCard key={ex.id} borderColors={GRAD_BORDER} style={{ marginBottom: 10 }}>
+                  <GradientCard key={ex.id} style={{ marginBottom: 10 }}>
                     <View style={styles.exHeader}>
-                      <LinearGradient colors={GRAD_CTA} style={styles.numBadge}>
-                        <Text style={styles.numBadgeText}>{idx + 1}</Text>
-                      </LinearGradient>
+                      <View
+                        style={[
+                          styles.numBadge,
+                          { backgroundColor: palette.fill, borderColor: palette.border, borderWidth: nb.borderWidth },
+                        ]}
+                      >
+                        <Text style={[styles.numBadgeText, { color: palette.onFill }]}>{idx + 1}</Text>
+                      </View>
                       <View style={{ flex: 1, minWidth: 0 }}>
                         <Text style={styles.exName} numberOfLines={2}>
                           {ex.exerciseName}
@@ -1027,10 +982,10 @@ export default function ManualWorkoutPlanBuilderScreen({
                           <Ionicons name="chevron-down" size={18} color={palette.textSecondary} />
                         </TouchableOpacity>
                         <TouchableOpacity onPress={() => openEditModal(ex)} style={styles.exIconBtn}>
-                          <Ionicons name="create-outline" size={18} color={palette.pink} />
+                          <Ionicons name="create-outline" size={18} color={palette.textPrimary} />
                         </TouchableOpacity>
                         <TouchableOpacity onPress={() => removeExercise(ex.id)} style={styles.exIconBtn}>
-                          <Ionicons name="trash-outline" size={18} color={palette.pink} />
+                          <Ionicons name="trash-outline" size={18} color={palette.textPrimary} />
                         </TouchableOpacity>
                       </View>
                     </View>
@@ -1044,8 +999,8 @@ export default function ManualWorkoutPlanBuilderScreen({
                           justifyContent: 'space-between',
                           paddingVertical: 8,
                           paddingHorizontal: 4,
-                          borderTopWidth: StyleSheet.hairlineWidth,
-                          borderTopColor: palette.border || 'rgba(255,255,255,0.08)',
+                          borderTopWidth: nb.borderWidthDivider,
+                          borderTopColor: palette.border,
                         }}
                         activeOpacity={0.75}
                       >
@@ -1053,7 +1008,7 @@ export default function ManualWorkoutPlanBuilderScreen({
                           Set {row.setNumber}: {row.reps} reps
                           {row.weight ? ` @ ${row.weight}` : ''} · Rest {formatRest(row.restSeconds)}
                         </Text>
-                        <Ionicons name="pencil" size={16} color={palette.pink} />
+                        <Ionicons name="pencil" size={16} color={palette.textPrimary} />
                       </TouchableOpacity>
                     ))}
                     {!!ex.notes ? <Text style={styles.exNotes}>{ex.notes}</Text> : null}
@@ -1062,17 +1017,13 @@ export default function ManualWorkoutPlanBuilderScreen({
                 })
               )}
               <View style={styles.exActionRow}>
-                <TouchableOpacity onPress={openAddModal} activeOpacity={0.88} style={{ flex: 1 }}>
-                  <LinearGradient colors={GRAD_CTA} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.inlineCta}>
-                    <Ionicons name="add" size={18} color="#FFF" />
-                    <Text style={styles.inlineCtaText}>Add exercise</Text>
-                  </LinearGradient>
-                </TouchableOpacity>
+                <NbButton variant="fill" onPress={openAddModal}>
+                  Add exercise
+                </NbButton>
                 {dayIndex > 0 ? (
-                  <TouchableOpacity onPress={copyFromFirstDay} style={styles.copyDayBtn} activeOpacity={0.85}>
-                    <Ionicons name="copy-outline" size={16} color={palette.cyan} />
-                    <Text style={styles.copyDayText}>Copy day 1</Text>
-                  </TouchableOpacity>
+                  <NbButton variant="ghost" onPress={copyFromFirstDay}>
+                    Copy day 1
+                  </NbButton>
                 ) : null}
               </View>
             </>
@@ -1081,7 +1032,7 @@ export default function ManualWorkoutPlanBuilderScreen({
           {step === 4 && (
             <>
               <SectionHeader title="Plan summary" subtitle="Double-check before saving" />
-              <GradientCard borderColors={['#FF6B9D', '#F97316']} style={{ marginBottom: 16 }}>
+              <GradientCard style={{ marginBottom: 16 }}>
                 <Text style={styles.summaryName}>{planName || 'Untitled plan'}</Text>
                 <Text style={styles.summaryMeta}>
                   {duration} · {planType}
@@ -1092,20 +1043,20 @@ export default function ManualWorkoutPlanBuilderScreen({
                     setStep(1);
                     setDayIndex(0);
                   }}
-                  style={styles.summaryEdit}
+                  style={[styles.summaryEdit, { backgroundColor: palette.soft, borderColor: palette.border }]}
                   activeOpacity={0.85}
                 >
-                  <Ionicons name="pencil" size={14} color={palette.pink} />
-                  <Text style={styles.summaryEditText}>Edit plan</Text>
+                  <Ionicons name="pencil" size={14} color={palette.textPrimary} />
+                  <Text style={[styles.summaryEditText, { color: palette.textPrimary }]}>Edit plan</Text>
                 </TouchableOpacity>
               </GradientCard>
               {workoutDays.map((d) => (
                 <View key={d.id} style={{ marginBottom: 14 }}>
-                  <Text style={styles.subHead}>
+                  <Text style={[styles.subHead, { color: palette.textTertiary }]}>
                     {String(d.dayName).toUpperCase()} · {(d.exercises || []).length} exercises
                   </Text>
                   {(d.exercises || []).map((ex, i) => (
-                    <GradientCard key={ex.id} style={{ marginBottom: 8 }} borderColors={GRAD_BORDER}>
+                    <GradientCard key={ex.id} style={{ marginBottom: 8 }}>
                       <Text style={styles.exTitle}>
                         {i + 1}. {ex.exerciseName}
                       </Text>
@@ -1121,23 +1072,29 @@ export default function ManualWorkoutPlanBuilderScreen({
                 <Text style={styles.caption}>No linked clients yet. You can still save for later.</Text>
               ) : (
                 <View style={styles.clientGrid}>
-                  {clients.map((c) => {
-                    const on = assignedClients.includes(c.id);
+                  {clients.map((clientRow) => {
+                    const on = assignedClients.includes(clientRow.id);
                     return (
-                      <TouchableOpacity key={c.id} onPress={() => toggleClient(c.id)} activeOpacity={0.88}>
-                        {on ? (
-                          <LinearGradient colors={GRAD_CTA} style={styles.clientChipBorder}>
-                            <View style={styles.clientChipInnerOn}>
-                              <Ionicons name="checkmark-circle" size={18} color={c.pink} />
-                              <Text style={styles.clientChipTextOn}>{c.name || c.displayName || c.id}</Text>
-                            </View>
-                          </LinearGradient>
-                        ) : (
-                          <View style={styles.clientChipOff}>
-                            <Ionicons name="ellipse-outline" size={18} color={c.textTertiary} />
-                            <Text style={styles.clientChipTextOff}>{c.name || c.displayName || c.id}</Text>
-                          </View>
-                        )}
+                      <TouchableOpacity key={clientRow.id} onPress={() => toggleClient(clientRow.id)} activeOpacity={0.88}>
+                        <View
+                          style={[
+                            on ? styles.clientChipInnerOn : styles.clientChipOff,
+                            {
+                              backgroundColor: on ? palette.fill : palette.surface,
+                              borderColor: palette.border,
+                              borderWidth: nb.borderWidth,
+                            },
+                          ]}
+                        >
+                          <Ionicons
+                            name={on ? 'checkmark-circle' : 'ellipse-outline'}
+                            size={18}
+                            color={on ? palette.onFill : palette.textTertiary}
+                          />
+                          <Text style={[on ? styles.clientChipTextOn : styles.clientChipTextOff, { color: on ? palette.onFill : palette.textSecondary }]}>
+                            {clientRow.name || clientRow.displayName || clientRow.id}
+                          </Text>
+                        </View>
                       </TouchableOpacity>
                     );
                   })}
@@ -1148,9 +1105,14 @@ export default function ManualWorkoutPlanBuilderScreen({
 
           {step === 5 && (
             <View style={styles.doneWrap}>
-              <LinearGradient colors={GRAD_CTA} style={styles.doneIconRing}>
-                <Ionicons name="checkmark" size={40} color="#FFF" />
-              </LinearGradient>
+              <View
+                style={[
+                  styles.doneIconRing,
+                  { backgroundColor: palette.fill, borderColor: palette.border, borderWidth: nb.borderWidth },
+                ]}
+              >
+                <Ionicons name="checkmark" size={40} color={palette.onFill} />
+              </View>
               <Text style={styles.h2}>Plan saved</Text>
               <Text style={[styles.caption, styles.doneCaption]}>
                 Assigned clients will see it in their workout library. Edit anytime from Custom plans.
@@ -1164,12 +1126,27 @@ export default function ManualWorkoutPlanBuilderScreen({
 
       <Modal visible={modalOpen} animationType="slide" transparent onRequestClose={() => setModalOpen(false)}>
         <View style={styles.modalBackdrop}>
-          <LinearGradient colors={GRAD_BORDER} style={styles.modalSheetBorder}>
+          {/* Design Law sheet — grabber + 3px top border (PNG 21/23), no pink rim */}
+          <View
+            style={[
+              styles.modalSheetBorder,
+              {
+                backgroundColor: palette.surface,
+                borderColor: palette.border,
+                borderTopWidth: nb.borderWidth,
+                borderLeftWidth: nb.borderWidth,
+                borderRightWidth: nb.borderWidth,
+              },
+            ]}
+          >
             <View style={styles.modalCard}>
-            <View style={styles.modalHandle} />
+            <View style={[styles.modalHandle, { backgroundColor: palette.modalHandle }]} />
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{editExerciseId ? 'Edit exercise' : 'Add exercise'}</Text>
-              <TouchableOpacity onPress={() => { setModalOpen(false); resetModal(); }} style={styles.modalClose}>
+              <Text style={styles.modalTitle}>{editExerciseId ? 'Edit exercise' : 'Exercise library'}</Text>
+              <TouchableOpacity
+                onPress={() => { setModalOpen(false); resetModal(); }}
+                style={[styles.modalClose, { borderColor: palette.border, borderWidth: nb.borderWidth }]}
+              >
                 <Ionicons name="close" size={22} color={palette.textPrimary} />
               </TouchableOpacity>
             </View>
@@ -1322,10 +1299,13 @@ export default function ManualWorkoutPlanBuilderScreen({
             </ScrollView>
             <View style={styles.modalFooter}>
               <SecondaryButton label="Cancel" onPress={() => { setModalOpen(false); resetModal(); }} compact />
-              <PrimaryButton label={editExerciseId ? 'Save' : 'Add'} onPress={confirmModal} icon="checkmark" />
+              <PrimaryButton
+                label={editExerciseId ? 'Save exercise' : 'Add'}
+                onPress={confirmModal}
+              />
             </View>
             </View>
-          </LinearGradient>
+          </View>
         </View>
       </Modal>
 
@@ -1387,104 +1367,68 @@ function createBuilderStyles(c) {
   safe: { flex: 1 },
   scroll: { flex: 1 },
   scrollPad: { paddingHorizontal: 18, paddingTop: 8, flexGrow: 0 },
-  topGlow: { position: 'absolute', top: 0, left: 0, right: 0, height: 140, zIndex: 0 },
   stepHeading: {
-    paddingHorizontal: 18,
+    paddingHorizontal: 16,
     paddingTop: 4,
     paddingBottom: 10,
     zIndex: 1,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: nb.borderWidthDivider,
     borderBottomColor: c.topBarBorder,
   },
-  topTitle: { color: c.textPrimary, fontSize: 18, fontWeight: '800', letterSpacing: -0.3 },
-  topSubtitle: { color: c.textTertiary, fontSize: 12, fontWeight: '600', marginTop: 2 },
+  topTitle: { color: c.textPrimary, fontSize: 25, fontWeight: '900', letterSpacing: -0.6 },
+  topSubtitle: { color: c.textTertiary, fontSize: 13, fontWeight: '600', marginTop: 2 },
+  // Manipulate here: capsule height / gap for step progress (PNG 19)
   stepStripShell: {
-    marginHorizontal: 18,
+    marginHorizontal: 16,
     marginBottom: 14,
-    paddingVertical: 14,
-    paddingHorizontal: 10,
-    borderRadius: 18,
-    backgroundColor: c.stripBg,
-    borderWidth: 1,
-    borderColor: c.stripBorder,
+    paddingVertical: 10,
     zIndex: 1,
   },
-  stepStripWrap: {
-    paddingHorizontal: 4,
-    paddingBottom: 0,
+  stepCapsulesRow: { flexDirection: 'row', gap: 8 },
+  stepCapsule: {
+    height: 10,
+    borderRadius: 999,
+    borderWidth: nb.borderWidth,
   },
-  stepStripTrack: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8 },
-  stepStripLabels: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: 4,
+  stepStripMeta: {
     marginTop: 10,
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 1.3,
   },
-  stepDotGrad: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stepDot: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: c.stepDotBg,
-    borderWidth: 1,
-    borderColor: c.stepDotBorder,
-  },
-  stepDotDone: { backgroundColor: 'rgba(16,185,129,0.25)', borderColor: 'rgba(16,185,129,0.5)' },
-  stepDotText: { color: '#FFF', fontSize: 12, fontWeight: '800' },
-  stepDotTextMuted: { color: c.textTertiary, fontSize: 12, fontWeight: '700' },
-  stepConnector: {
-    flex: 1,
-    height: 2,
-    marginHorizontal: 6,
-    backgroundColor: c.stepConnector,
-    borderRadius: 1,
-    minWidth: 12,
-  },
-  stepConnectorDone: { backgroundColor: 'rgba(192,132,252,0.55)' },
-  stepStripLabel: { flex: 1, textAlign: 'center', fontSize: 10, fontWeight: '700', color: c.textTertiary },
-  stepStripLabelActive: { color: c.textPrimary },
-  stepStripLabelDone: { color: c.stepLabelDone },
   sectionHeader: { marginTop: 8, marginBottom: 14 },
   sectionTitle: {
-    fontSize: 11,
-    fontWeight: '800',
+    fontSize: 12,
+    fontWeight: '900',
     color: c.textTertiary,
     textTransform: 'uppercase',
-    letterSpacing: 1.6,
+    letterSpacing: 1.3,
     marginBottom: 4,
   },
-  sectionSubtitle: { fontSize: 13, color: c.textSecondary, fontWeight: '500', marginBottom: 8 },
-  sectionUnderline: { height: 3, borderRadius: 2, width: 72 },
+  sectionSubtitle: { fontSize: 15, color: c.textSecondary, fontWeight: '500', marginBottom: 8 },
+  sectionUnderline: { height: 3, borderRadius: 2, width: 72, backgroundColor: c.fill },
   label: {
-    fontSize: 11,
-    fontWeight: '800',
+    fontSize: 12,
+    fontWeight: '900',
     color: c.textTertiary,
     textTransform: 'uppercase',
-    letterSpacing: 1.2,
+    letterSpacing: 1.3,
     marginBottom: 8,
     marginTop: 14,
   },
   labelTight: { marginTop: 10, marginBottom: 6 },
+  formFieldShell: {
+    borderRadius: borderRadius.nbInput || 8,
+    borderWidth: nb.borderWidth,
+    overflow: 'hidden',
+  },
   fieldInner: { padding: 12 },
   fieldInnerCompact: { padding: 10 },
   setupHeroCard: { marginBottom: 4 },
   setupHeroInner: { padding: 18, overflow: 'hidden' },
-  setupDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: c.divider,
-    marginVertical: 16,
-  },
   setupField: {
-    borderRadius: 12,
-    borderWidth: 1,
+    borderRadius: 8,
+    borderWidth: nb.borderWidth,
     borderColor: c.border,
     backgroundColor: c.setupFieldBg,
     paddingHorizontal: 14,
@@ -1535,86 +1479,25 @@ function createBuilderStyles(c) {
     paddingVertical: 10,
     paddingHorizontal: 14,
     borderRadius: 999,
-    borderWidth: 1,
-    borderColor: c.pillBorder,
-    backgroundColor: c.pillBg,
+    minHeight: nb.minTouchTarget,
+    justifyContent: 'center',
   },
-  pillGradBorder: { borderRadius: 999, padding: 1.5 },
-  pillGradInner: {
-    borderRadius: 999,
-    paddingVertical: 9,
-    paddingHorizontal: 13,
-    backgroundColor: c.cardBg,
-  },
-  pillText: { color: c.textSecondary, fontSize: 13, fontWeight: '600' },
-  pillTextActive: { color: c.textPrimary, fontSize: 13, fontWeight: '800' },
-  gradBorder: { borderRadius: 18, padding: 1.5, marginTop: 0 },
+  pillText: { fontSize: 13, fontWeight: '700' },
+  pillTextActive: { fontWeight: '900' },
   gradInner: {
-    borderRadius: 16,
+    borderRadius: borderRadius.nbCard,
     backgroundColor: c.cardBg,
-    padding: 16,
+    padding: 14,
     overflow: 'hidden',
   },
-  gradInnerGlow: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 72,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-  },
-  tipRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
-  tipIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: 'rgba(6,182,212,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tipText: { flex: 1, color: c.textSecondary, fontSize: 14, lineHeight: 20, fontWeight: '500' },
-  primaryGrad: {
-    borderRadius: 16,
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 54,
-    shadowColor: c.shadowPink,
-    shadowOpacity: 0.45,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 6,
-  },
-  primaryGradCompact: { minHeight: 48, paddingVertical: 12 },
-  primaryInner: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  primaryLabel: { color: '#FFF', fontSize: 15, fontWeight: '800' },
-  secondaryBtn: {
-    borderRadius: 14,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    borderWidth: 1.5,
-    borderColor: c.secondaryBtnBorder,
-    backgroundColor: c.secondaryBtnBg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: 6,
-    minHeight: 52,
-    alignSelf: 'stretch',
-  },
-  secondaryBtnCompact: { minHeight: 48, paddingVertical: 12, flex: 0.36 },
-  secondaryLabel: { color: c.pink, fontSize: 14, fontWeight: '800' },
   footerRow: { flexDirection: 'row', alignItems: 'stretch', gap: 10 },
   footerCol: { gap: 10 },
   caption: { color: c.textSecondary, fontSize: 14, lineHeight: 20, marginTop: 4 },
   h2: { color: c.textPrimary, fontSize: 24, fontWeight: '900', marginTop: 16, letterSpacing: -0.5 },
   subHead: {
-    color: c.pink,
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 1.4,
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 1.3,
     marginBottom: 8,
     textTransform: 'uppercase',
   },
@@ -1626,7 +1509,7 @@ function createBuilderStyles(c) {
     alignItems: 'center',
     justifyContent: 'center',
   },
-  dayNumText: { color: '#FFF', fontWeight: '900', fontSize: 15 },
+  dayNumText: { fontWeight: '900', fontSize: 15 },
   dayNameInput: {
     fontSize: 17,
     fontWeight: '700',
@@ -1634,26 +1517,15 @@ function createBuilderStyles(c) {
     paddingVertical: 4,
   },
   dayRemove: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,107,157,0.1)',
+    borderWidth: nb.borderWidth,
   },
   dayMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12 },
   dayMetaText: { color: c.textTertiary, fontSize: 12, fontWeight: '600' },
-  addDayBorder: { borderRadius: 14, padding: 1.5, marginTop: 8 },
-  addDayInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 14,
-    borderRadius: 12.5,
-    backgroundColor: c.cardBg,
-  },
-  addDayText: { color: c.pink, fontSize: 14, fontWeight: '800' },
   exHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
   numBadge: {
     width: 30,
@@ -1662,64 +1534,33 @@ function createBuilderStyles(c) {
     alignItems: 'center',
     justifyContent: 'center',
   },
-  numBadgeText: { color: '#FFF', fontWeight: '900', fontSize: 13 },
+  numBadgeText: { fontWeight: '900', fontSize: 13 },
   exName: { color: c.textPrimary, fontSize: 16, fontWeight: '800', letterSpacing: -0.2 },
   exTitle: { color: c.textPrimary, fontSize: 15, fontWeight: '800' },
   exMeta: { color: c.textSecondary, fontSize: 13, marginTop: 4, fontWeight: '500' },
   exNotes: { color: c.textTertiary, fontSize: 12, fontStyle: 'italic', marginTop: 10, lineHeight: 17 },
   exActions: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   exIconBtn: {
-    width: 34,
-    height: 34,
+    width: 44,
+    height: 44,
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: c.exIconBg,
   },
   exActionRow: { marginTop: 14, gap: 10 },
-  inlineCta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 14,
-    borderRadius: 14,
-  },
-  inlineCtaText: { color: '#FFF', fontSize: 15, fontWeight: '800' },
-  copyDayBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(6,182,212,0.35)',
-    backgroundColor: 'rgba(6,182,212,0.08)',
-  },
-  copyDayText: { color: c.cyan, fontSize: 13, fontWeight: '700' },
   emptyExWrap: { alignItems: 'center', paddingVertical: 8 },
   emptyExIcon: {
     width: 56,
     height: 56,
-    borderRadius: 16,
-    backgroundColor: 'rgba(6,182,212,0.12)',
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 12,
+    borderWidth: nb.borderWidth,
   },
   emptyExTitle: { color: c.textPrimary, fontSize: 17, fontWeight: '800' },
   emptyExSub: { color: c.textSecondary, fontSize: 13, textAlign: 'center', marginTop: 6, lineHeight: 18 },
-  emptyExBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 12,
-  },
-  emptyExBtnText: { color: '#FFF', fontWeight: '800', fontSize: 14 },
   summaryName: { color: c.textPrimary, fontSize: 22, fontWeight: '900', letterSpacing: -0.4 },
   summaryMeta: { color: c.textSecondary, fontSize: 14, marginTop: 6, fontWeight: '600' },
   summaryDesc: { color: c.textTertiary, fontSize: 13, marginTop: 10, lineHeight: 19 },
@@ -1732,33 +1573,28 @@ function createBuilderStyles(c) {
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 10,
-    backgroundColor: 'rgba(255,107,157,0.12)',
+    borderWidth: nb.borderWidth,
   },
-  summaryEditText: { color: c.pink, fontSize: 13, fontWeight: '800' },
+  summaryEditText: { fontSize: 13, fontWeight: '800' },
   clientGrid: { gap: 10, marginBottom: 8 },
-  clientChipBorder: { borderRadius: 14, padding: 1.5 },
   clientChipInnerOn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
     paddingVertical: 14,
     paddingHorizontal: 14,
-    borderRadius: 12.5,
-    backgroundColor: c.cardBg,
+    borderRadius: borderRadius.nbCard,
   },
-  clientChipTextOn: { color: c.textPrimary, fontSize: 15, fontWeight: '700', flex: 1 },
+  clientChipTextOn: { fontSize: 15, fontWeight: '700', flex: 1 },
   clientChipOff: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
     paddingVertical: 14,
     paddingHorizontal: 14,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: c.clientChipOffBorder,
-    backgroundColor: c.clientChipOffBg,
+    borderRadius: borderRadius.nbCard,
   },
-  clientChipTextOff: { color: c.textSecondary, fontSize: 15, fontWeight: '600', flex: 1 },
+  clientChipTextOff: { fontSize: 15, fontWeight: '600', flex: 1 },
   doneWrap: { alignItems: 'center', paddingTop: 48, paddingBottom: 24 },
   doneIconRing: {
     width: 80,
@@ -1773,19 +1609,19 @@ function createBuilderStyles(c) {
   row: { flexDirection: 'row', gap: 8, marginTop: 8, flexWrap: 'wrap' },
   modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.65)',
+    backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'flex-end',
   },
   modalSheetBorder: {
-    borderTopLeftRadius: 22,
-    borderTopRightRadius: 22,
-    paddingTop: 1.5,
+    borderTopLeftRadius: borderRadius.nbSheet || 24,
+    borderTopRightRadius: borderRadius.nbSheet || 24,
     maxHeight: '92%',
+    overflow: 'hidden',
   },
   modalCard: {
     backgroundColor: c.surface,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    borderTopLeftRadius: borderRadius.nbSheet || 24,
+    borderTopRightRadius: borderRadius.nbSheet || 24,
     paddingHorizontal: 18,
     paddingBottom: 18,
     maxHeight: '100%',
@@ -1794,7 +1630,6 @@ function createBuilderStyles(c) {
     width: 40,
     height: 4,
     borderRadius: 2,
-    backgroundColor: c.modalHandle,
     alignSelf: 'center',
     marginTop: 10,
     marginBottom: 8,
@@ -1807,8 +1642,8 @@ function createBuilderStyles(c) {
   },
   modalTitle: { color: c.textPrimary, fontSize: 20, fontWeight: '900', letterSpacing: -0.3 },
   modalClose: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1819,22 +1654,27 @@ function createBuilderStyles(c) {
     alignItems: 'stretch',
     gap: 10,
     paddingTop: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: nb.borderWidthDivider,
     borderTopColor: c.divider,
     marginTop: 8,
   },
   searchRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   searchInput: { flex: 1, fontSize: 16, color: c.textPrimary, fontWeight: '600', paddingVertical: 2 },
   suggestList: {
-    borderRadius: 14,
+    borderRadius: borderRadius.nbCard,
     overflow: 'hidden',
     marginBottom: 8,
-    borderWidth: 1,
-    borderColor: c.borderSubtle,
+    borderWidth: nb.borderWidth,
+    borderColor: c.border,
     backgroundColor: c.surface,
   },
-  suggestRow: { paddingVertical: 12, paddingHorizontal: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: c.suggestRowBorder },
-  suggestRowActive: { backgroundColor: 'rgba(255,107,157,0.12)' },
+  suggestRow: {
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderBottomWidth: nb.borderWidthDivider,
+    borderBottomColor: c.suggestRowBorder,
+  },
+  suggestRowActive: { backgroundColor: c.soft },
   suggestMuscles: { color: c.textTertiary, fontSize: 12, marginTop: 3, fontWeight: '500' },
   stepper: {
     flexDirection: 'row',
@@ -1843,15 +1683,17 @@ function createBuilderStyles(c) {
     gap: 20,
     marginVertical: 10,
     paddingVertical: 8,
-    borderRadius: 14,
+    borderRadius: borderRadius.nbCard,
+    borderWidth: nb.borderWidth,
+    borderColor: c.border,
     backgroundColor: c.stepperBg,
   },
   stepBtn: {
     width: 44,
     height: 44,
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: c.stepDotBorder,
+    borderWidth: nb.borderWidth,
+    borderColor: c.border,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: c.surface,

@@ -1,89 +1,90 @@
-// Confirm popup before the coach writes an energy rating onto the dashboard.
-// Flow: read the rating and optional notes → show them as a score out of 10 → confirm or cancel.
-// Used by: the coach conversation when a tool wants to log energy.
+// Design Law energy confirm — 1–8 slider with named ends (screens/ai-coach-popups energy).
+// Flow: prefill rating → drag → optional note → Log energy.
+// Used by: ConfirmActionPopup when tool = rateEnergy.
 
-import React from 'react';
-import { ToolModalBody, DetailRow, ConfirmCancelRow } from './sharedPopupParts';
+import React, { useMemo, useState } from 'react';
+import { Text, View } from 'react-native';
+import {
+  ToolModalBody,
+  BigValueBlock,
+  PopupSlider,
+  FieldLabel,
+  PopupTextField,
+  ConfirmCancelRow,
+  usePopupColors,
+} from './sharedPopupParts';
+import { accentGradients, spacing } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
-const POPUP_TITLE = 'Log energy level?';
-const ENERGY_ROW_LABEL = 'Energy';
-const NOTES_ROW_LABEL = 'Notes';
-const CONFIRM_BUTTON_LABEL = 'Log energy';
-const MISSING_VALUE = '—';
-const ENERGY_SCALE_MAX = 10;
+const BADGE = 'Coach wants to log energy';
+const TITLE = 'Energy right now';
+const CONFIRM_LABEL = 'Log energy';
+const NOTE_LABEL = 'NOTE (OPTIONAL)';
+// Manipulate here: Design Law energy scale is 1–8 (not 1–10)
+const ENERGY_MIN = 1;
+const ENERGY_MAX = 8;
 
-// ===== HELPER FUNCTIONS =====
+// ===== HELPERS =====
 
-function valueWasProvided(value) {
-  if (value === undefined) return false;
-  if (value === null) return false;
-  return true;
+function readEnergy(params) {
+  const raw = params?.rating ?? params?.energy;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return 5;
+  return Math.min(ENERGY_MAX, Math.max(ENERGY_MIN, Math.round(n)));
 }
 
-/**
- * @param {object|undefined} params
- * @returns {string|number}
- */
-function readEnergyRating(params) {
-  if (!params) return MISSING_VALUE;
-  if (valueWasProvided(params.rating)) return params.rating;
-  if (valueWasProvided(params.energy)) return params.energy;
-  return MISSING_VALUE;
-}
-
-/**
- * @param {object|undefined} params
- * @returns {string|undefined}
- */
-function readOptionalNotes(params) {
-  if (!params) return undefined;
-  if (params.notes) return String(params.notes);
-  if (params.note) return String(params.note);
-  return undefined;
-}
-
-/**
- * @param {string|number} energyRating
- * @returns {string}
- */
-function formatEnergyScoreLabel(energyRating) {
-  if (energyRating === MISSING_VALUE) return MISSING_VALUE;
-  return `${energyRating}/${ENERGY_SCALE_MAX}`;
-}
-
-function NotesRow({ notesText }) {
-  if (!notesText) return null;
-  return <DetailRow label={NOTES_ROW_LABEL} value={notesText} />;
+function readNote(params) {
+  return String(params?.notes || params?.note || '');
 }
 
 // ===== MAIN FUNCTION =====
 
-/**
- * Confirm logging an energy score on the dashboard.
- * @param {{ params?: object, reasoning?: string, onConfirm: Function, onCancel: Function, loading?: boolean }} props
- */
 export default function RateEnergyPopup({ params, reasoning, onConfirm, onCancel, loading }) {
-  // 1. Read the energy rating and optional notes.
-  const energyRating = readEnergyRating(params);
-  const notesText = readOptionalNotes(params);
-  const energyLabel = formatEnergyScoreLabel(energyRating);
+  const colors = usePopupColors();
+  const [rating, setRating] = useState(() => readEnergy(params));
+  const [note, setNote] = useState(() => readNote(params));
 
-  // 2. Confirm logs energy. onConfirm still gets the original params.
-  function handleConfirmLogEnergy() {
-    onConfirm(params);
-  }
+  const draftParams = useMemo(
+    () => ({
+      ...(params || {}),
+      rating,
+      energy: rating,
+      notes: note.trim() || undefined,
+      note: note.trim() || undefined,
+    }),
+    [params, rating, note],
+  );
 
   return (
-    <ToolModalBody title={POPUP_TITLE} reasoning={reasoning}>
-      <DetailRow label={ENERGY_ROW_LABEL} value={energyLabel} />
-      <NotesRow notesText={notesText} />
+    <ToolModalBody title={TITLE} badge={BADGE} reasoning={reasoning}>
+      <BigValueBlock valueLabel={`${rating} / ${ENERGY_MAX}`}>
+        <PopupSlider
+          value={rating}
+          min={ENERGY_MIN}
+          max={ENERGY_MAX}
+          onChange={setRating}
+          colors={accentGradients[1]}
+        />
+        <View
+          style={{
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            marginTop: spacing.xs,
+            marginBottom: spacing.sm,
+          }}
+        >
+          <Text style={{ fontSize: 11, fontWeight: '800', color: colors.nbMuted }}>DRAINED</Text>
+          <Text style={{ fontSize: 11, fontWeight: '800', color: colors.nbMuted }}>WIRED</Text>
+        </View>
+      </BigValueBlock>
+      <FieldLabel label={NOTE_LABEL} />
+      <PopupTextField value={note} onChangeText={setNote} placeholder="Optional note…" multiline />
       <ConfirmCancelRow
-        onConfirm={handleConfirmLogEnergy}
+        onConfirm={() => onConfirm(draftParams)}
         onCancel={onCancel}
         loading={loading}
-        confirmLabel={CONFIRM_BUTTON_LABEL}
+        confirmLabel={CONFIRM_LABEL}
       />
     </ToolModalBody>
   );

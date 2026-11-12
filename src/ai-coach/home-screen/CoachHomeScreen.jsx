@@ -1,9 +1,7 @@
-// Coach home (neobrutalist design): greeting, hourly prompts, and the box that starts a chat.
-// Flow: load today's logs → build this hour's prompts → show NbCards → open a chat with text or a photo.
+// Design Law coach home — fill hero → one-tap / try asking → composer.
+// Flow: load today's logs → hourly suggestions → tap row/hero/composer → open a chat (text or photo).
 // Used as: AI Coach tab. Past chats open from the header.
-//
-// vocab: NbCard = neobrutalist card with thick border and hard shadow
-// vocab: NbButton = neobrutalist button for primary actions
+// PNG law: screens/ai-coach/01–02.
 
 import React, { useState, useEffect, useRef } from 'react';
 import {
@@ -26,7 +24,6 @@ import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import LottieView from 'lottie-react-native';
-import { showCoachAttachMenu } from '../conversation/openPhotoMenu';
 import {
   pickCoachDocuments,
   pickCoachPhotoFromCamera,
@@ -35,6 +32,7 @@ import {
 import { doc, onSnapshot } from 'firebase/firestore';
 import { deleteAiChatSession } from '../past-chats/saveAndLoadChats';
 import PastChatsPanel from '../past-chats/PastChatsPanel';
+import DeleteChatSheet from '../past-chats/DeleteChatSheet';
 import { chatHistoryList } from '../past-chats/chatHistoryList';
 import { db } from '../../app-start/cloudConnection';
 import BottomMenuBar from '../../navigation/BottomMenuBar';
@@ -42,12 +40,12 @@ import { ShellBottomNavAnchor } from '../../navigation/bottomMenuSpacing';
 import TopHeader from '../../for-both/loading-and-header/TopHeader';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
 import { lightColors, darkColors, spacing, borderRadius, nb, gradients } from '../../look-and-feel/colorPalette';
-import NbCard from '../../look-and-feel/NbCard';
 import { useCoachSpeech, COACH_VOICE_INPUT_AVAILABLE } from '../conversation/_voiceStub';
 import { keyboardBehavior, COACH_COMPOSER_TEXT_INPUT_PROPS } from '../conversation/keyboardBehavior';
+import CoachAttachSheet from '../conversation/CoachAttachSheet';
+import PasteTextPopup from '../conversation/PasteTextPopup';
+import DesignLawCoachHomeBody from './DesignLawCoachHomeBody';
 import { AI_COACH_UI } from '../coachColors';
-import ColorText from '../../look-and-feel/ColorText';
-import { HERO_TITLE_TEXT_GRADIENT } from '../../look-and-feel/brandColors';
 import {
   buildHourlyCanHelpWith,
   buildHourlyCoachActions,
@@ -89,12 +87,8 @@ const TOP_TOPIC_LIMIT = 3;
 const USERS_COLLECTION = 'users';
 const DAILY_TRACKING_COLLECTION = 'daily_tracking';
 const DAILY_LOGS_COLLECTION = 'dailyLogs';
-const CARD_BORDER = AI_COACH_UI.gradient.borderWarm;
-const BORDER_SUBTLE = ['rgba(157,23,77,0.42)', 'rgba(154,52,18,0.36)'];
-const CTA_GRADIENT = AI_COACH_UI.gradient.ctaWarm;
 const COMPOSER_SEND_GRAD = AI_COACH_UI.gradient.composerSend;
 const COMPOSER_SEND_GRAD_LIGHT = AI_COACH_UI.gradient.composerSendLight;
-const HERO_INNER = AI_COACH_UI.heroInner;
 
 // Action shortcuts — generic openers (Log / Web / My Data / Photo).
 const COACH_ACTIONS = [
@@ -169,41 +163,41 @@ function rimForPrompt(text) {
   return HOME_STAT_SORENESS_GRADIENT;
 }
 
-// ─── Theme tokens ─────────────────────────────────────────────────────────────
+// ─── Theme tokens (nb surfaces + cool gradients — see docs/design/DESIGN.md) ──
 const DARK = {
-  bg: '#000000',
-  secondaryBg: '#0A0A0F',
-  glassBg: 'rgba(255,255,255,0.06)',
-  border: 'rgba(255,255,255,0.1)',
-  textPrimary: '#FFFFFF',
-  textSecondary: '#B0B0B0',
-  textMuted: 'rgba(255,255,255,0.45)',
-  sidebarBg: '#0C0C14',
-  sidebarBorder: AI_COACH_UI.borderHairline,
-  divider: 'rgba(255,255,255,0.05)',
-  headerBg: '#000000',
-  inputBarBg: 'rgba(0,0,0,0.92)',
-  accent: AI_COACH_UI.cyan,
-  chipBg: AI_COACH_UI.glass,
-  chipBorder: AI_COACH_UI.borderHairline,
+  bg: darkColors.nbBackground,
+  secondaryBg: darkColors.nbSurface,
+  surfaceChip: darkColors.nbSurfaceChip,
+  border: darkColors.nbBorder,
+  textPrimary: darkColors.nbInk,
+  textSecondary: darkColors.nbMuted,
+  textMuted: darkColors.nbMuted,
+  sidebarBg: darkColors.nbBackground,
+  sidebarBorder: darkColors.nbBorder,
+  divider: darkColors.nbBorder,
+  headerBg: darkColors.nbBackground,
+  inputBarBg: darkColors.nbBackground,
+  accent: gradients.brand.colors[0],
+  chipBg: darkColors.nbSurfaceChip,
+  chipBorder: darkColors.nbBorder,
 };
 
 const LIGHT = {
-  bg: '#FFFFFF',
-  secondaryBg: '#F9F9FB',
-  glassBg: 'rgba(0,0,0,0.04)',
-  border: 'rgba(0,0,0,0.1)',
-  textPrimary: '#0A0A0F',
-  textSecondary: '#666666',
-  textMuted: 'rgba(0,0,0,0.4)',
-  sidebarBg: '#FFFFFF',
-  sidebarBorder: 'rgba(0,0,0,0.1)',
-  divider: 'rgba(0,0,0,0.06)',
-  headerBg: '#FFFFFF',
-  inputBarBg: 'rgba(255,255,255,0.94)',
-  accent: AI_COACH_UI.cyan,
-  chipBg: 'rgba(0,0,0,0.04)',
-  chipBorder: 'rgba(0,0,0,0.08)',
+  bg: lightColors.nbBackground,
+  secondaryBg: lightColors.nbSurface,
+  surfaceChip: lightColors.nbSurfaceChip,
+  border: lightColors.nbBorder,
+  textPrimary: lightColors.nbInk,
+  textSecondary: lightColors.nbMuted,
+  textMuted: lightColors.nbMuted,
+  sidebarBg: lightColors.nbBackground,
+  sidebarBorder: lightColors.nbBorder,
+  divider: lightColors.nbBorder,
+  headerBg: lightColors.nbBackground,
+  inputBarBg: lightColors.nbBackground,
+  accent: gradients.brand.colors[0],
+  chipBg: lightColors.nbSurfaceChip,
+  chipBorder: lightColors.nbBorder,
 };
 
 // Fallback phrases only used when we have zero contextual signals.
@@ -372,8 +366,8 @@ function buildDynamicSuggestions({ userData, sessions }) {
 
 function pagerDotColor(isActive, isDark, activeColor) {
   if (isActive) return activeColor;
-  if (isDark) return 'rgba(255,255,255,0.18)';
-  return 'rgba(0,0,0,0.12)';
+  if (isDark) return darkColors.nbBorder;
+  return lightColors.nbBorder;
 }
 
 function pagerDotWidth(isActive) {
@@ -437,8 +431,8 @@ function emptyMetricsSnap() {
 }
 
 function ChatHistoryHeaderButton({ isDark, onPress, compact = false }) {
-  const hairline = isDark ? 'rgba(255,255,255,0.10)' : 'rgba(10,10,15,0.10)';
-  const iconColor = isDark ? '#FF6B9D' : '#BE185D';
+  const hairline = isDark ? darkColors.nbBorder : lightColors.nbBorder;
+  const iconColor = isDark ? lightColors.primary : lightColors.primaryDark;
 
   if (compact) {
     return (
@@ -457,11 +451,11 @@ function ChatHistoryHeaderButton({ isDark, onPress, compact = false }) {
           borderRadius: 12,
           borderWidth: 1,
           borderColor: hairline,
-          backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+          backgroundColor: isDark ? darkColors.nbSurfaceChip : lightColors.nbSurfaceChip,
         }}
       >
         <Ionicons name="time-outline" size={18} color={iconColor} />
-        <Text style={{ fontSize: 13, fontWeight: '700', color: isDark ? '#FFFFFF' : '#0A0A0F' }}>History</Text>
+        <Text style={{ fontSize: 13, fontWeight: '700', color: isDark ? lightColors.white : lightColors.nbInk }}>History</Text>
       </TouchableOpacity>
     );
   }
@@ -486,7 +480,7 @@ function ChatHistoryHeaderButton({ isDark, onPress, compact = false }) {
           borderRadius: 16,
           borderWidth: 1,
           borderColor: hairline,
-          backgroundColor: isDark ? '#1a0a2e' : '#FFFFFF',
+          backgroundColor: isDark ? '#1a0a2e' : lightColors.white,
           ...(Platform.OS === 'ios' && isDark
             ? { shadowColor: '#000000', shadowOpacity: 0.18, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } }
             : null),
@@ -500,17 +494,17 @@ function ChatHistoryHeaderButton({ isDark, onPress, compact = false }) {
               borderRadius: 11,
               alignItems: 'center',
               justifyContent: 'center',
-              backgroundColor: isDark ? 'rgba(255,107,157,0.20)' : 'rgba(190,24,93,0.12)',
+              backgroundColor: isDark ? darkColors.nbSurfaceChip : lightColors.nbSurfaceChip,
             }}
           >
-            <Ionicons name="list-outline" size={20} color={isDark ? '#FF6B9D' : '#BE185D'} />
+            <Ionicons name="list-outline" size={20} color={isDark ? lightColors.primary : lightColors.primaryDark} />
           </View>
           <Text
             style={{
               fontSize: 14,
               fontWeight: '800',
               letterSpacing: 0.15,
-              color: isDark ? '#FFFFFF' : '#0A0A0F',
+              color: isDark ? lightColors.white : lightColors.nbInk,
             }}
           >
             Chat History
@@ -616,7 +610,7 @@ const CanHelpWithCarousel = ({ items, isDark, t, onPress }) => {
           fontWeight: '800',
           letterSpacing: 1.1,
           textTransform: 'uppercase',
-          color: isDark ? 'rgba(255,255,255,0.42)' : 'rgba(10,10,15,0.42)',
+          color: isDark ? darkColors.nbMuted : lightColors.nbMuted,
           marginBottom: 10,
         }}
       >
@@ -713,271 +707,247 @@ const CanHelpWithCarousel = ({ items, isDark, t, onPress }) => {
   );
 };
 
-const SPOTLIGHT_PINK = AI_COACH_UI.pink;
+// Design Law try-asking icon accents only (small chips). Cards stay surface + fill.
+// Manipulate here: rotate accentGradients indices for variety without green.
+const TRY_ASKING_CHROME = [
+  {
+    icon: ['#FF6B9D', '#FB923C'],
+    subtitle: 'Built from your goals',
+  },
+  {
+    icon: ['#60A5FA', '#818CF8'],
+    subtitle: 'Calories and macros',
+  },
+  {
+    icon: ['#A78BFA', '#E879F9'],
+    subtitle: "This week's trends",
+  },
+];
 
-/** Single card that auto-rotates through suggestions with fade/slide. */
-const SpotlightSuggestion = ({ suggestions, isDark, t, onPress }) => {
-  const items = (suggestions || []).filter(Boolean).slice(0, 8);
-  const [index, setIndex] = useState(0);
-  const fadeAnim = useRef(new Animated.Value(1)).current;
-  const slideAnim = useRef(new Animated.Value(0)).current;
+// Short display title for a long prompt (mock opts use title + subtitle, not the full sentence).
+function tryAskingTitle(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return 'Ask your coach';
+  const firstChunk = raw.split(/[?.!]/)[0].trim() || raw;
+  if (firstChunk.length <= 36) return firstChunk;
+  return `${firstChunk.slice(0, 34)}…`;
+}
 
-  useEffect(() => {
-    setIndex(0);
-    fadeAnim.setValue(1);
-    slideAnim.setValue(0);
-  }, [items.join('|')]);
-
-  useEffect(() => {
-    if (items.length <= 1) return undefined;
-    const interval = setInterval(() => {
-      Animated.parallel([
-        Animated.timing(fadeAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
-        Animated.timing(slideAnim, { toValue: -10, duration: 200, useNativeDriver: true }),
-      ]).start(({ finished }) => {
-        if (!finished) return;
-        setIndex((i) => (i + 1) % items.length);
-        slideAnim.setValue(10);
-        Animated.parallel([
-          Animated.timing(fadeAnim, { toValue: 1, duration: 260, useNativeDriver: true }),
-          Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, speed: 16, bounciness: 4 }),
-        ]).start();
-      });
-    }, SPOTLIGHT_ROTATE_MS);
-    return () => clearInterval(interval);
-  }, [items.length, fadeAnim, slideAnim]);
-
+/**
+ * Design Law “Or try asking” — surface cards, 3px border, hard shadow, accent icon chip.
+ */
+const TryAskingList = ({ suggestions, isDark, t, onPress }) => {
+  const items = (suggestions || []).filter(Boolean).slice(0, 3);
   if (!items.length) return null;
-
-  const text = items[index];
-  const iconName = iconForPrompt(text);
-  const iconRim = rimForPrompt(text);
+  const ink = isDark ? darkColors.nbInk : lightColors.nbInk;
+  const surface = isDark ? darkColors.nbSurface : lightColors.nbSurface;
+  const border = isDark ? darkColors.nbBorder : lightColors.nbBorder;
+  const shadow = isDark ? darkColors.nbShadow : lightColors.nbShadow;
 
   return (
-    <View style={{ width: '100%', marginTop: 20 }}>
+    <View style={{ width: '100%', marginTop: spacing.lg }}>
       <Text
         style={{
-          fontSize: 11,
-          fontWeight: '800',
+          fontSize: 12,
+          fontFamily: 'SpaceGrotesk_700Bold',
           letterSpacing: 1.1,
           textTransform: 'uppercase',
-          color: isDark ? 'rgba(255,255,255,0.42)' : 'rgba(10,10,15,0.42)',
-          marginBottom: 10,
+          color: t.textMuted,
+          marginBottom: spacing.sm + 2,
         }}
       >
-        Try asking
+        Or try asking
       </Text>
-
-      <Pressable
-        onPress={() => {
-          void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-          onPress(text);
-        }}
-        accessibilityRole="button"
-        accessibilityLabel={`Start chat: ${text}`}
-        style={({ pressed }) => [{ opacity: pressed ? 0.9 : 1 }]}
-      >
-        <NbCard>
-          <View
-            style={{
-              paddingVertical: 16,
-              paddingHorizontal: 16,
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 14,
-              minHeight: 88,
-            }}
-          >
-            {/* Simple icon circle, no gradient */}
-            <View
-              style={{
-                width: 44,
-                height: 44,
-                borderRadius: 22,
-                borderWidth: 2,
-                borderColor: isDark ? darkColors.nbBorder : lightColors.nbBorder,
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: isDark ? darkColors.nbSurfaceChip : lightColors.nbSurfaceChip,
+      <View style={{ gap: spacing.sm + 2 }}>
+        {items.map((text, rowIndex) => {
+          const chrome = TRY_ASKING_CHROME[rowIndex % TRY_ASKING_CHROME.length];
+          const iconName = iconForPrompt(text);
+          return (
+            <Pressable
+              key={`ask-${rowIndex}`}
+              onPress={() => {
+                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+                onPress(text);
               }}
+              accessibilityRole="button"
+              accessibilityLabel={`Start chat: ${text}`}
+              style={({ pressed }) => [
+                {
+                  opacity: pressed ? 0.92 : 1,
+                  transform: [{ translateX: pressed ? 2 : 0 }, { translateY: pressed ? 2 : 0 }],
+                  backgroundColor: surface,
+                  borderWidth: nb.borderWidth,
+                  borderColor: border,
+                  borderRadius: borderRadius.nbCard,
+                  paddingVertical: spacing.md,
+                  paddingHorizontal: spacing.md,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: spacing.sm + 4,
+                  minHeight: 72,
+                  shadowColor: shadow,
+                  shadowOffset: { width: nb.shadowOffsetCard, height: nb.shadowOffsetCard },
+                  shadowOpacity: 1,
+                  shadowRadius: 0,
+                  elevation: 4,
+                },
+              ]}
             >
-              <Ionicons name={iconName} size={22} color={isDark ? darkColors.nbInk : lightColors.nbInk} />
-            </View>
-            <Animated.View
-              style={{
-                flex: 1,
-                opacity: fadeAnim,
-                transform: [{ translateY: slideAnim }],
-              }}
-            >
-              <Text
+              <LinearGradient
+                colors={chrome.icon}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
                 style={{
-                  fontSize: 15,
-                  fontFamily: 'SpaceGrotesk_700Bold',
-                  lineHeight: 21,
-                  color: t.textPrimary,
-                  letterSpacing: -0.2,
+                  width: 40,
+                  height: 40,
+                  borderRadius: 10,
+                  borderWidth: nb.borderWidth,
+                  borderColor: border,
+                  alignItems: 'center',
+                  justifyContent: 'center',
                 }}
-                numberOfLines={3}
               >
-                {text}
-              </Text>
-            </Animated.View>
-            {/* Brand gradient chevron for the primary action */}
-            <LinearGradient
-              colors={gradients.brand.colors}
-              start={gradients.brand.start}
-              end={gradients.brand.end}
-              style={{
-                width: 40,
-                height: 40,
-                borderRadius: 20,
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Ionicons name="chevron-forward" size={20} color="#0A0A0F" />
-            </LinearGradient>
-          </View>
-        </NbCard>
-      </Pressable>
-
-      {items.length > 1 ? (
-        <View style={{ flexDirection: 'row', gap: 5, marginTop: 12, paddingLeft: 2 }}>
-          {items.map((_, dotIndex) => (
-            <View
-              key={`dot-${dotIndex}`}
-              style={{
-                width: pagerDotWidth(dotIndex === index),
-                height: 5,
-                borderRadius: 999,
-                backgroundColor: pagerDotColor(dotIndex === index, isDark, SPOTLIGHT_PINK),
-              }}
-            />
-          ))}
-        </View>
-      ) : null}
+                <Ionicons name={iconName} size={20} color={lightColors.nbInk} />
+              </LinearGradient>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text
+                  style={{
+                    fontSize: 15,
+                    fontFamily: 'SpaceGrotesk_700Bold',
+                    color: ink,
+                    letterSpacing: -0.2,
+                  }}
+                  numberOfLines={2}
+                >
+                  {tryAskingTitle(text)}
+                </Text>
+                <Text
+                  style={{
+                    fontSize: 12,
+                    fontFamily: 'Inter_400Regular',
+                    color: t.textMuted,
+                    marginTop: 3,
+                  }}
+                  numberOfLines={1}
+                >
+                  {chrome.subtitle}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={t.textMuted} />
+            </Pressable>
+          );
+        })}
+      </View>
     </View>
   );
 };
 
-const AnimatedLinearGradient = Animated.createAnimatedComponent(LinearGradient);
-
-const HeroWelcomeCard = ({
-  t,
-  isDark,
-  userName,
-  borderAnim,
-}) => {
-  const safeName = String(userName || 'there').trim() || 'there';
-  const cardInnerBg = isDark ? AI_COACH_UI.surface : '#FFFFFF';
-  const borderColors = isDark ? CARD_BORDER : ['#BE185D', '#C2410C'];
-
-  const borderTranslateX = borderAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [-SW, 0],
-  });
+/**
+ * Design Law hero — black/white fill block (not pink gradient). PNG: “What should we work on?”
+ */
+const HeroWelcomeCard = ({ userName, onStartChat, colors }) => {
+  const fill = colors?.nbFill || lightColors.nbFill;
+  const onFill = colors?.nbOnFill || lightColors.nbOnFill;
+  const border = colors?.nbBorder || lightColors.nbBorder;
+  const shadow = colors?.nbShadow || lightColors.nbShadow;
+  const mutedOnFill = onFill;
 
   return (
-    <View style={{ width: '100%', borderRadius: 28, overflow: 'hidden' }}>
-      {/* Animated border line only (no rotating card / no gradient background fill) */}
-      <View style={{ padding: 2, borderRadius: 28, overflow: 'hidden' }}>
-        <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-          <AnimatedLinearGradient
-            colors={borderColors}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
+    <Pressable
+      onPress={() => {
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+        onStartChat?.({});
+      }}
+      accessibilityRole="button"
+      accessibilityLabel="Start chatting with your coach"
+      style={({ pressed }) => [
+        {
+          width: '100%',
+          opacity: pressed ? 0.94 : 1,
+          transform: [{ translateX: pressed ? 2 : 0 }, { translateY: pressed ? 2 : 0 }],
+        },
+      ]}
+    >
+      <View
+        style={{
+          backgroundColor: fill,
+          borderWidth: nb.borderWidth,
+          borderColor: border,
+          borderRadius: borderRadius.nbHero,
+          paddingHorizontal: spacing.md + 2,
+          paddingTop: spacing.md + 4,
+          paddingBottom: spacing.md + 4,
+          minHeight: 148,
+          flexDirection: 'row',
+          alignItems: 'center',
+          shadowColor: shadow,
+          shadowOffset: { width: nb.shadowOffsetHero, height: nb.shadowOffsetHero },
+          shadowOpacity: 1,
+          shadowRadius: 0,
+          elevation: 5,
+        }}
+      >
+        <View style={{ flex: 1, paddingRight: spacing.sm }}>
+          <Text
             style={{
-              width: SW * 2,
-              height: '100%',
-              transform: [{ translateX: borderTranslateX }],
+              fontSize: 11,
+              fontFamily: 'SpaceGrotesk_700Bold',
+              letterSpacing: 1.2,
+              textTransform: 'uppercase',
+              color: mutedOnFill,
+              opacity: 0.7,
             }}
-          />
+          >
+            Fitness only
+          </Text>
+          <Text
+            style={{
+              marginTop: 6,
+              fontSize: 26,
+              fontFamily: 'SpaceGrotesk_700Bold',
+              color: onFill,
+              letterSpacing: -0.5,
+            }}
+          >
+            What should we work on?
+          </Text>
+          <Text
+            style={{
+              marginTop: 6,
+              fontSize: 13,
+              fontFamily: 'Inter_500Medium',
+              color: onFill,
+              opacity: 0.82,
+              lineHeight: 18,
+            }}
+          >
+            I can see your logs, your plan and your goals.
+          </Text>
         </View>
-
-        <View
+        <LinearGradient
+          colors={['#FF6B9D', '#FB923C']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
           style={{
-            borderRadius: 24,
-            backgroundColor: cardInnerBg,
-            paddingHorizontal: 18,
-            paddingTop: 22,
-            paddingBottom: 18,
+            width: 72,
+            height: 72,
+            borderRadius: 36,
+            borderWidth: nb.borderWidth,
+            borderColor: border,
             alignItems: 'center',
-            borderWidth: 1,
-            borderColor: isDark ? AI_COACH_UI.borderHairline : 'rgba(0,0,0,0.06)',
+            justifyContent: 'center',
             overflow: 'hidden',
           }}
         >
-          {isDark ? (
-            <LinearGradient
-              colors={HERO_INNER}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 0, y: 1 }}
-              style={StyleSheet.absoluteFillObject}
-            />
-          ) : null}
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center' }}>
-            <Text style={{ fontSize: 26, fontWeight: '900', color: t.textPrimary, textAlign: 'center' }}>
-              {getAuroraHeroGreetingPhrase()},{' '}
-            </Text>
-            <ColorText
-              colors={HERO_TITLE_TEXT_GRADIENT}
-              style={{ fontSize: 26, fontWeight: '900' }}
-            >
-              {safeName}!
-            </ColorText>
-          </View>
-
-          <View style={{ alignItems: 'center', marginTop: 12 }}>
-            <Text
-              style={{
-                fontSize: 16,
-                letterSpacing: 3,
-                fontWeight: '800',
-                color: isDark ? 'rgba(255,255,255,0.65)' : 'rgba(0,0,0,0.55)',
-              }}
-            >
-              WELCOME TO
-            </Text>
-            <LinearGradient
-              colors={CTA_GRADIENT}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={{ width: 86, height: 4, borderRadius: 999, marginTop: 10 }}
-            />
-          </View>
-
-          <ColorText
-            colors={HERO_TITLE_TEXT_GRADIENT}
-            style={{
-              marginTop: 14,
-              fontSize: 44,
-              fontWeight: '900',
-              textAlign: 'center',
-              letterSpacing: 0.4,
-              lineHeight: 48,
-            }}
-            numberOfLines={1}
-          >
-            AI Coach
-          </ColorText>
-
-          <Text
-            style={{
-              marginTop: 10,
-              fontSize: 13,
-              fontWeight: '700',
-              letterSpacing: 2,
-              textTransform: 'uppercase',
-              color: isDark ? 'rgba(255,255,255,0.42)' : 'rgba(0,0,0,0.45)',
-              textAlign: 'center',
-            }}
-          >
-            YOUR TRAINING & NUTRITION GETS BETTER WITH CC
-          </Text>
-        </View>
+          <LottieView
+            source={require('../../assets/animations/handoff/zcoach.json')}
+            autoPlay
+            loop
+            style={{ width: 64, height: 64 }}
+          />
+        </LinearGradient>
       </View>
-    </View>
+    </Pressable>
   );
 };
 
@@ -1024,8 +994,6 @@ function CoachHomeScreenLayout({
   screenOpacity,
   headerOpacity,
   isDark,
-  onProfilePress,
-  onSettingsPress,
   setSidebarOpen,
   onOpenTestSuite,
   insets,
@@ -1033,15 +1001,14 @@ function CoachHomeScreenLayout({
   listBottomPad,
   idleGroupOpacity,
   idleGroupTranslateY,
-  userName,
-  pillBorderAnim,
-  lottieOpacity,
-  lottieScale,
-  canHelpItems,
   handleStartChat,
-  coachActions,
-  handleActionPress,
   suggestions,
+  dailyMetrics,
+  nutritionToday,
+  userData,
+  latestSession,
+  onContinueSession,
+  onPhotoPress,
   inputOpacity,
   inputTranslateY,
   attachments,
@@ -1058,6 +1025,9 @@ function CoachHomeScreenLayout({
   sessions,
   onSessionPress,
   handleDeleteSession,
+  deleteSheetSession,
+  setDeleteSheetSession,
+  confirmDeleteSession,
   onStartChat,
   hideBottomNav,
   onHomePress,
@@ -1066,20 +1036,77 @@ function CoachHomeScreenLayout({
   onNutritionPress,
   onWorkoutPress,
   onMessagesPress,
+  onProfilePress,
+  onSettingsPress,
+  attachSheetOpen,
+  setAttachSheetOpen,
+  pasteOpen,
+  setPasteOpen,
+  onPasteConfirm,
+  onAttachCamera,
+  onAttachLibrary,
+  onAttachAnalyze,
 }) {
-  const micBackground = listeningMicBackground(listening, isDark);
+  void listeningMicBackground(listening, isDark);
+
+  const headerColors = isDark ? darkColors : lightColors;
+  const squareHeaderBtn = {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    borderWidth: nb.borderWidth,
+    borderColor: headerColors.nbBorder,
+    backgroundColor: headerColors.nbSurface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: headerColors.nbShadow,
+    shadowOffset: { width: 3, height: 3 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 3,
+  };
 
   return (
     <Animated.View style={{ flex: 1, backgroundColor: t.bg, opacity: screenOpacity }}>
-      <Animated.View style={{ opacity: headerOpacity, zIndex: 30 }}>
-        <TopHeader
-          isDark={isDark}
-          onProfilePress={onProfilePress}
-          onSettingsPress={onSettingsPress}
-          headerLeft={
-            <ChatHistoryHeaderButton compact isDark={isDark} onPress={() => setSidebarOpen(true)} />
-          }
-        />
+      {/* Same shell chrome as Home tab — profile + settings chips above the page title. */}
+      <TopHeader
+        appearanceIsDark={isDark}
+        onProfilePress={onProfilePress}
+        onSettingsPress={onSettingsPress}
+      />
+      <Animated.View
+        style={{
+          opacity: headerOpacity,
+          zIndex: 30,
+          // TopHeader already owns the status-bar inset — only pad the title row.
+          paddingTop: 8,
+          paddingHorizontal: 16,
+          paddingBottom: 8,
+          backgroundColor: headerColors.nbBackground,
+        }}
+      >
+        {/* Design Law PNG 01 header: “Ask your coach” + hamburger (past chats) */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <Text
+            style={{
+              flex: 1,
+              fontSize: 28,
+              fontWeight: '900',
+              letterSpacing: -0.6,
+              color: headerColors.nbInk,
+            }}
+            numberOfLines={1}
+          >
+            Ask your coach
+          </Text>
+          <TouchableOpacity
+            onPress={() => setSidebarOpen(true)}
+            style={squareHeaderBtn}
+            accessibilityLabel="Past chats"
+          >
+            <Ionicons name="menu" size={22} color={headerColors.nbInk} />
+          </TouchableOpacity>
+        </View>
         <CoachTestSuiteButton onOpenTestSuite={onOpenTestSuite} insets={insets} isDark={isDark} />
       </Animated.View>
 
@@ -1099,17 +1126,15 @@ function CoachHomeScreenLayout({
             keyboardVisible={keyboardVisible}
             idleGroupOpacity={idleGroupOpacity}
             idleGroupTranslateY={idleGroupTranslateY}
-            t={t}
             isDark={isDark}
-            userName={userName}
-            pillBorderAnim={pillBorderAnim}
-            lottieOpacity={lottieOpacity}
-            lottieScale={lottieScale}
-            canHelpItems={canHelpItems}
             handleStartChat={handleStartChat}
-            coachActions={coachActions}
-            handleActionPress={handleActionPress}
             suggestions={suggestions}
+            dailyMetrics={dailyMetrics}
+            nutritionToday={nutritionToday}
+            userData={userData}
+            latestSession={latestSession}
+            onContinueSession={onContinueSession}
+            onPhotoPress={onPhotoPress}
           />
         </ScrollView>
 
@@ -1127,7 +1152,6 @@ function CoachHomeScreenLayout({
           handleSend={handleSend}
           toggleListen={toggleListen}
           listening={listening}
-          micBackground={micBackground}
           canSend={canSend}
         />
       </View>
@@ -1147,6 +1171,31 @@ function CoachHomeScreenLayout({
         insets={insets}
       />
 
+      <DeleteChatSheet
+        visible={!!deleteSheetSession}
+        session={deleteSheetSession}
+        onClose={() => setDeleteSheetSession?.(null)}
+        onConfirm={confirmDeleteSession}
+      />
+
+      <CoachAttachSheet
+        visible={attachSheetOpen}
+        onClose={() => setAttachSheetOpen(false)}
+        onCamera={onAttachCamera}
+        onLibrary={onAttachLibrary}
+        onAnalyze={onAttachAnalyze}
+        onPaste={() => setPasteOpen(true)}
+      />
+
+      <PasteTextPopup
+        visible={pasteOpen}
+        onClose={() => setPasteOpen(false)}
+        onConfirm={(draft) => {
+          setPasteOpen(false);
+          onPasteConfirm?.(draft);
+        }}
+      />
+
       <CoachHomeBottomNav
         hideBottomNav={hideBottomNav}
         keyboardVisible={keyboardVisible}
@@ -1164,7 +1213,7 @@ function CoachHomeScreenLayout({
 
 function CoachTestSuiteButton({ onOpenTestSuite, insets, isDark }) {
   if (!onOpenTestSuite) return null;
-  const buttonBackground = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)';
+  const buttonBackground = isDark ? darkColors.nbSurfaceChip : lightColors.nbSurfaceChip;
   return (
     <View
       pointerEvents="box-none"
@@ -1201,122 +1250,50 @@ function lottieShadow(isDark) {
 }
 
 function sectionLabelColor(isDark) {
-  if (isDark) return 'rgba(255,255,255,0.42)';
-  return 'rgba(10,10,15,0.42)';
+  if (isDark) return darkColors.nbMuted;
+  return lightColors.nbMuted;
 }
 
 function IdleCoachHome({
   keyboardVisible,
   idleGroupOpacity,
   idleGroupTranslateY,
-  t,
   isDark,
-  userName,
-  pillBorderAnim,
-  lottieOpacity,
-  lottieScale,
-  canHelpItems,
   handleStartChat,
-  coachActions,
-  handleActionPress,
   suggestions,
+  dailyMetrics,
+  nutritionToday,
+  userData,
+  latestSession,
+  onContinueSession,
+  onPhotoPress,
 }) {
   if (keyboardVisible) return null;
-  const shadow = lottieShadow(isDark);
+
+  // Design Law PNG 01 — full home body (sees today / one-tap / photo-web / pickup / try asking).
   return (
     <Animated.View
       style={{
         flexGrow: 1,
-        alignItems: 'center',
-        justifyContent: 'center',
-        paddingTop: 20,
-        paddingBottom: 10,
+        alignItems: 'stretch',
+        justifyContent: 'flex-start',
+        paddingTop: spacing.md,
+        paddingBottom: spacing.sm,
         opacity: idleGroupOpacity,
         transform: [{ translateY: idleGroupTranslateY }],
       }}
     >
-      <HeroWelcomeCard
-        t={t}
+      <DesignLawCoachHomeBody
         isDark={isDark}
-        userName={userName}
-        borderAnim={pillBorderAnim}
+        suggestions={suggestions}
+        dailyMetrics={dailyMetrics}
+        nutritionToday={nutritionToday}
+        userData={userData}
+        latestSession={latestSession}
+        onStartChat={handleStartChat}
+        onContinueSession={onContinueSession}
+        onPhotoPress={onPhotoPress}
       />
-
-      <Animated.View
-        style={{
-          width: '100%',
-          height: Math.min(420, Math.floor(SH * 0.62)),
-          marginTop: 10,
-          opacity: lottieOpacity,
-          transform: [{ scale: lottieScale }],
-          alignItems: 'center',
-          justifyContent: 'center',
-          shadowColor: '#000',
-          shadowOpacity: shadow.shadowOpacity,
-          shadowRadius: shadow.shadowRadius,
-          shadowOffset: { width: 0, height: 10 },
-          elevation: shadow.elevation,
-        }}
-      >
-        <LottieView
-          source={require('../../assets/animations/legacy/Cloud robotics abstract.json')}
-          autoPlay
-          loop
-          style={{ width: '100%', height: '100%' }}
-        />
-      </Animated.View>
-
-      <View style={{ width: '100%', marginTop: 8 }}>
-        <CanHelpWithCarousel
-          items={canHelpItems}
-          isDark={isDark}
-          t={t}
-          onPress={handleStartChat}
-        />
-
-        <View
-          style={{
-            width: '100%',
-            marginTop: 24,
-            borderRadius: 18,
-            paddingVertical: 16,
-            paddingHorizontal: 8,
-            backgroundColor: t.glassBg,
-            borderWidth: 1,
-            borderColor: t.border,
-          }}
-        >
-          <Text
-            style={{
-              fontSize: 11,
-              fontWeight: '800',
-              letterSpacing: 1.1,
-              textTransform: 'uppercase',
-              color: sectionLabelColor(isDark),
-              marginBottom: 14,
-              textAlign: 'center',
-            }}
-          >
-            What do you need?
-          </Text>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 4 }}>
-            {coachActions.map((action) => (
-              <CoachActionOrb
-                key={action.id}
-                action={action}
-                isDark={isDark}
-                onPress={handleActionPress}
-              />
-            ))}
-          </View>
-          <SpotlightSuggestion
-            suggestions={suggestions}
-            isDark={isDark}
-            t={t}
-            onPress={handleStartChat}
-          />
-        </View>
-      </View>
     </Animated.View>
   );
 }
@@ -1391,7 +1368,7 @@ function ComposerAttachments({ attachments, t, removeAttachment }) {
               justifyContent: 'center',
             }}
           >
-            <Ionicons name="close" size={13} color="#FFFFFF" />
+            <Ionicons name="close" size={13} color={lightColors.white} />
           </TouchableOpacity>
         </View>
       ))}
@@ -1417,11 +1394,25 @@ function ComposerBar({
   handleSend,
   toggleListen,
   listening,
-  micBackground,
   canSend,
 }) {
   const colors = isDark ? darkColors : lightColors;
-  
+  // Design Law PNG 01 composer: square + · bordered field · black → send (no gradient “Send”).
+  const squareBtn = {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    borderWidth: nb.borderWidth,
+    borderColor: colors.nbBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: colors.nbShadow,
+    shadowOffset: { width: 3, height: 3 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 3,
+  };
+
   return (
     <Animated.View
       style={{
@@ -1437,89 +1428,76 @@ function ComposerBar({
     >
       <ComposerAttachments attachments={attachments} t={t} removeAttachment={removeAttachment} />
 
-      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: spacing.sm + 2 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm + 2 }}>
         <TouchableOpacity
           onPress={openAttachMenu}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          style={{ padding: 4, marginBottom: 4 }}
+          accessibilityLabel="Attach"
+          style={[squareBtn, { backgroundColor: colors.nbSurface }]}
         >
-          <Ionicons name="add-circle-outline" size={26} color={colors.nbInk} />
+          <Ionicons name="add" size={26} color={colors.nbInk} />
         </TouchableOpacity>
-        <TextInput
-          {...COACH_COMPOSER_TEXT_INPUT_PROPS}
+        <View
           style={{
             flex: 1,
             minWidth: 0,
-            minHeight: 40,
-            maxHeight: 100,
-            fontSize: 15,
-            fontFamily: 'Inter_400Regular',
-            color: colors.nbInk,
-            paddingVertical: 10,
-            paddingHorizontal: 14,
+            minHeight: 48,
+            borderWidth: nb.borderWidth,
+            borderColor: colors.nbBorder,
+            borderRadius: borderRadius.nbInput || 12,
             backgroundColor: colors.nbSurface,
-            borderRadius: borderRadius.nbCard,
-            borderWidth: nb.borderWidth,
-            borderColor: colors.nbBorder,
-          }}
-          value={inputText}
-          onChangeText={setInputText}
-          onSubmitEditing={handleSend}
-          placeholder="Ask your coach..."
-          placeholderTextColor={colors.nbMuted}
-          returnKeyType="send"
-          blurOnSubmit={false}
-          accessibilityLabel="Message input"
-        />
-        {/* Mic — only rendered when voice input actually exists (see _voiceStub). */}
-        {COACH_VOICE_INPUT_AVAILABLE ? (
-        <TouchableOpacity
-          onPress={toggleListen}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          style={{
-            width: 40,
-            height: 40,
-            borderRadius: 20,
-            alignItems: 'center',
             justifyContent: 'center',
-            marginBottom: 2,
-            backgroundColor: micBackground,
-            borderWidth: nb.borderWidth,
-            borderColor: colors.nbBorder,
+            shadowColor: colors.nbShadow,
+            shadowOffset: { width: 3, height: 3 },
+            shadowOpacity: 1,
+            shadowRadius: 0,
+            elevation: 3,
           }}
-          accessibilityLabel={micAccessibilityLabel(listening)}
         >
-          <Ionicons
-            name={micIconName(listening)}
-            size={22}
-            color={colors.nbInk}
+          <TextInput
+            {...COACH_COMPOSER_TEXT_INPUT_PROPS}
+            style={{
+              minHeight: 48,
+              maxHeight: 100,
+              fontSize: 15,
+              fontFamily: 'Inter_400Regular',
+              color: colors.nbInk,
+              paddingVertical: 12,
+              paddingHorizontal: 14,
+            }}
+            value={inputText}
+            onChangeText={setInputText}
+            onSubmitEditing={handleSend}
+            placeholder="Ask your coach anything"
+            placeholderTextColor={colors.nbMuted}
+            returnKeyType="send"
+            blurOnSubmit={false}
+            accessibilityLabel="Message input"
           />
-        </TouchableOpacity>
+        </View>
+        {COACH_VOICE_INPUT_AVAILABLE ? (
+          <TouchableOpacity
+            onPress={toggleListen}
+            accessibilityLabel={micAccessibilityLabel(listening)}
+            style={[squareBtn, { backgroundColor: colors.nbSurface }]}
+          >
+            <Ionicons name={micIconName(listening)} size={22} color={colors.nbInk} />
+          </TouchableOpacity>
         ) : null}
         <TouchableOpacity
           onPress={handleSend}
           disabled={!canSend}
           activeOpacity={0.85}
-          style={{ marginBottom: 2, opacity: sendButtonOpacity(canSend) }}
+          style={[
+            squareBtn,
+            {
+              backgroundColor: colors.nbFill,
+              opacity: sendButtonOpacity(canSend),
+            },
+          ]}
           accessibilityRole="button"
           accessibilityLabel="Send message"
         >
-          <LinearGradient
-            colors={gradients.brand.colors}
-            start={gradients.brand.start}
-            end={gradients.brand.end}
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: 22,
-              alignItems: 'center',
-              justifyContent: 'center',
-              borderWidth: nb.borderWidth,
-              borderColor: colors.nbBorder,
-            }}
-          >
-            <Ionicons name="arrow-up" size={20} color="#0A0A0F" />
-          </LinearGradient>
+          <Ionicons name="arrow-forward" size={22} color={colors.nbOnFill} />
         </TouchableOpacity>
       </View>
     </Animated.View>
@@ -1626,24 +1604,26 @@ export default function CoachHomeScreen({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleDeleteSession = async (session) => {
+  const [deleteSheetSession, setDeleteSheetSession] = useState(null);
+  const [attachSheetOpen, setAttachSheetOpen] = useState(false);
+  const [pasteOpen, setPasteOpen] = useState(false);
+
+  const latestSession = Array.isArray(sessions) && sessions.length ? sessions[0] : null;
+
+  const handleDeleteSession = (session) => {
     const sessionId = session?.sessionId || session?.id;
     if (!db || !userId || !sessionId) return;
+    setDeleteSheetSession(session);
+  };
 
-    Alert.alert('Delete chat?', 'This cannot be undone.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await deleteAiChatSession(userId, sessionId);
-          } catch (deleteError) {
-            console.error('Failed to delete ai chat:', deleteError);
-          }
-        },
-      },
-    ]);
+  const confirmDeleteSession = async (session) => {
+    const sessionId = session?.sessionId || session?.id;
+    if (!db || !userId || !sessionId) return;
+    try {
+      await deleteAiChatSession(userId, sessionId);
+    } catch (deleteError) {
+      console.error('Failed to delete ai chat:', deleteError);
+    }
   };
 
   useEffect(() => {
@@ -1767,12 +1747,19 @@ export default function CoachHomeScreen({
     handleStartChat(action.starter);
   };
 
-  const openAttachMenu = () => {
-    showCoachAttachMenu({
-      onPhotoLibrary: handlePhotoLibrary,
-      onCamera: handleCamera,
-      onFile: handleFile,
+  // Design Law: home + opens NbSheet attach (same 4 rows as conversation), not system ActionSheet.
+  const openAttachMenu = () => setAttachSheetOpen(true);
+
+  const handleAnalyze = () => {
+    handleStartChat({
+      prefill: 'Can you analyze a progress photo for physique feedback?',
     });
+  };
+
+  const handlePasteConfirm = (draft) => {
+    const text = String(draft || '').trim();
+    if (!text) return;
+    setInputText((prev) => (prev ? `${prev}\n${text}` : text));
   };
 
   const removeAttachment = (id) => setAttachments((previous) => previous.filter((attachment) => attachment.id !== id));
@@ -1808,8 +1795,6 @@ export default function CoachHomeScreen({
       screenOpacity={screenOpacity}
       headerOpacity={headerOpacity}
       isDark={isDark}
-      onProfilePress={onProfilePress}
-      onSettingsPress={onSettingsPress}
       setSidebarOpen={setSidebarOpen}
       onOpenTestSuite={onOpenTestSuite}
       insets={insets}
@@ -1817,15 +1802,16 @@ export default function CoachHomeScreen({
       listBottomPad={listBottomPad}
       idleGroupOpacity={idleGroupOpacity}
       idleGroupTranslateY={idleGroupTranslateY}
-      userName={userName}
-      pillBorderAnim={pillBorderAnim}
-      lottieOpacity={lottieOpacity}
-      lottieScale={lottieScale}
-      canHelpItems={canHelpItems}
       handleStartChat={handleStartChat}
-      coachActions={coachActions}
-      handleActionPress={handleActionPress}
       suggestions={suggestions}
+      dailyMetrics={dailyMetrics}
+      nutritionToday={nutritionToday}
+      userData={userData}
+      latestSession={latestSession}
+      onContinueSession={(session) => onSessionPress?.(session)}
+      onPhotoPress={() => {
+        setAttachSheetOpen(true);
+      }}
       inputOpacity={inputOpacity}
       inputTranslateY={inputTranslateY}
       attachments={attachments}
@@ -1842,6 +1828,9 @@ export default function CoachHomeScreen({
       sessions={sessions}
       onSessionPress={onSessionPress}
       handleDeleteSession={handleDeleteSession}
+      deleteSheetSession={deleteSheetSession}
+      setDeleteSheetSession={setDeleteSheetSession}
+      confirmDeleteSession={confirmDeleteSession}
       onStartChat={onStartChat}
       hideBottomNav={hideBottomNav}
       onHomePress={onHomePress}
@@ -1850,6 +1839,16 @@ export default function CoachHomeScreen({
       onNutritionPress={onNutritionPress}
       onWorkoutPress={onWorkoutPress}
       onMessagesPress={onMessagesPress}
+      onProfilePress={onProfilePress}
+      onSettingsPress={onSettingsPress}
+      attachSheetOpen={attachSheetOpen}
+      setAttachSheetOpen={setAttachSheetOpen}
+      pasteOpen={pasteOpen}
+      setPasteOpen={setPasteOpen}
+      onPasteConfirm={handlePasteConfirm}
+      onAttachCamera={handleCamera}
+      onAttachLibrary={handlePhotoLibrary}
+      onAttachAnalyze={handleAnalyze}
     />
   );
 }

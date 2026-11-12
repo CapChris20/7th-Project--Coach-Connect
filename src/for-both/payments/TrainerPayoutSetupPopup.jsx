@@ -14,6 +14,7 @@ import {
   Platform,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
+import { lightColors } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
@@ -26,11 +27,11 @@ const STRIPE_CONNECT_RETURN_PATH =
 const DEFAULT_TITLE = 'Connect with Stripe';
 const CLOSE_LABEL = 'Close';
 const OPENING_STRIPE_HINT = 'Opening Stripe form…';
-const DARK_BACKGROUND = '#0A0A0F';
+const DARK_BACKGROUND = lightColors.nbInk;
 const LIGHT_BACKGROUND = '#F9FAFB';
-const DARK_TEXT_COLOR = '#FFFFFF';
+const DARK_TEXT_COLOR = lightColors.white;
 const LIGHT_TEXT_COLOR = '#020617';
-const SPINNER_COLOR = '#FF6B9D';
+const SPINNER_COLOR = lightColors.primary;
 const DARK_HINT_COLOR = 'rgba(148,163,184,1)';
 const LIGHT_HINT_COLOR = '#64748B';
 const CLOSE_SIDE_SPACER_WIDTH = 60;

@@ -50,7 +50,8 @@ function stopAndRun(event, action) {
   action();
 }
 
-function NewBadge() {
+function NewBadge({ borderColor }) {
+  // Design Law: brand gradient accent OK on NEW pill — always pair with nbBorder outline
   return (
     <LinearGradient
       colors={gradients.brand.colors}
@@ -64,9 +65,11 @@ function NewBadge() {
         paddingHorizontal: 8,
         paddingVertical: 4,
         zIndex: 5,
+        borderWidth: 2.5,
+        borderColor: borderColor || lightColors.nbBorder,
       }}
     >
-      <Text style={{ fontSize: 10, fontFamily: 'Inter_600SemiBold', color: '#0A0A0F', letterSpacing: 0.1, textTransform: 'uppercase' }}>NEW</Text>
+      <Text style={{ fontSize: 10, fontFamily: 'Inter_600SemiBold', color: lightColors.nbInk, letterSpacing: 0.1, textTransform: 'uppercase' }}>NEW</Text>
     </LinearGradient>
   );
 }
@@ -97,7 +100,7 @@ function FileThumbnail({ fileType, thumb, colors, meta }) {
         backgroundColor: colors.nbSurfaceChip,
         alignItems: 'center',
         justifyContent: 'center',
-        borderWidth: 2.5,
+        borderWidth: 3,
         borderColor: colors.nbBorder,
       }}
     >
@@ -128,7 +131,7 @@ function ActionIconButton({ onPress, icon, colors }) {
         alignItems: 'center',
         justifyContent: 'center',
         backgroundColor: colors.nbSurfaceChip,
-        borderWidth: 2.5,
+        borderWidth: 3,
         borderColor: colors.nbBorder,
       }}
     >
@@ -205,7 +208,7 @@ export function FileCard({
       onPress={onOpen}
     >
       <NbCard style={{ padding: 12, position: 'relative' }}>
-        {isNew && <NewBadge />}
+        {isNew ? <NewBadge borderColor={colors.nbBorder} /> : null}
 
         <FileThumbnail fileType={fileType} thumb={thumb} colors={colors} meta={meta} />
 

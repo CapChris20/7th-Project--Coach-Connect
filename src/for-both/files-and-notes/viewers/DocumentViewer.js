@@ -1,23 +1,28 @@
-// Read-only full-screen modal for a trainer's text or rich-text document.
-// Flow: modal opens → load users/{trainerId}/documents/{documentId} → show HTML or plain text → share or close.
-// Used when someone taps a document in Files.
+// Design Law full-screen reader for a trainer text / rich-text document.
+// Flow: modal opens → load users/{trainerId}/documents/{documentId} → show HTML or plain text → share.
+// Used when someone taps a document in Files. Firebase keys unchanged (trainerId, documentId, bodyHtml).
+// vocab: NbPageHeader owns status-bar inset; HardShadow wraps the reading card
 
 import React, { useState, useEffect } from 'react';
 import {
   Modal,
   View,
   Text,
-  TouchableOpacity,
-  SafeAreaView,
   ActivityIndicator,
   ScrollView,
   Platform,
   Share,
   Alert,
+  StyleSheet,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { WebView } from 'react-native-webview';
 import { getTrainerDocument } from '../../files-and-notes/saveNotesAndFiles';
+import NbPageHeader from '../../../look-and-feel/NbPageHeader';
+import NbButton from '../../../look-and-feel/NbButton';
+import HardShadow from '../../../look-and-feel/HardShadow';
+import { useTheme } from '../../../look-and-feel/lightDarkMode';
+import { borderRadius, nb, spacing } from '../../../look-and-feel/colorPalette';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // ===== NAMED CONSTANTS =====
 
@@ -43,68 +48,73 @@ function formatDocumentCreatedDate(date) {
 }
 
 function documentShareUrl(trainerId, documentId) {
-  // iOS share sheet uses the message text. Android also gets a deep link.
   if (Platform.OS === 'ios') return undefined;
   return `coachconnect://document/${trainerId}/${documentId}`;
 }
 
-// Wraps the stored HTML in the dark page styles. The outer ScrollView scrolls; the WebView does not.
-function buildDocumentHtml(bodyHtml) {
-  return `<!doctype html><html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\n<style>\n  html,body{margin:0;padding:0;background:#0A0A0F;color:rgba(255,255,255,0.9);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;}\n  .wrap{padding:16px;}\n  h1{font-size:28px;line-height:34px;margin:0 0 12px;font-weight:800;font-family:Georgia,serif;color:#fff;}\n  h2{font-size:20px;line-height:26px;margin:18px 0 10px;font-weight:800;color:#fff;}\n  h3{font-size:16px;line-height:22px;margin:16px 0 8px;font-weight:800;color:#fff;}\n  p,li{font-size:15px;line-height:24px;margin:0 0 10px;color:rgba(255,255,255,0.82);}\n  ul,ol{padding-left:20px;margin:8px 0 14px;}\n  blockquote{margin:14px 0;padding:12px 12px 12px 14px;border-left:3px solid #FF6B9D;background:rgba(255,255,255,0.03);border-radius:12px;color:rgba(255,255,255,0.72);font-style:italic;}\n  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:rgba(255,255,255,0.06);padding:2px 6px;border-radius:8px;font-size:13px;}\n  a{color:#06B6D4;text-decoration:none;}\n  img{max-width:100%;border-radius:12px;border:1px solid rgba(255,255,255,0.08);}\n  pre{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:12px;overflow:auto;}\n</style></head><body><div class=\"wrap\">${bodyHtml}</div></body></html>`;
+/** Theme-aware HTML shell — black/white/gray only (no pink quote border). */
+function buildDocumentHtml(bodyHtml, isDark) {
+  const bg = isDark ? '#0A0A0F' : '#FFFFFF';
+  const ink = isDark ? 'rgba(255,255,255,0.92)' : '#0A0A0F';
+  const muted = isDark ? 'rgba(255,255,255,0.72)' : 'rgba(10,10,15,0.65)';
+  const border = isDark ? 'rgba(255,255,255,0.2)' : '#0A0A0F';
+  const soft = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(10,10,15,0.04)';
+  return `<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  html,body{margin:0;padding:0;background:${bg};color:${ink};font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;}
+  .wrap{padding:16px;}
+  h1{font-size:28px;line-height:34px;margin:0 0 12px;font-weight:800;color:${ink};}
+  h2{font-size:20px;line-height:26px;margin:18px 0 10px;font-weight:800;color:${ink};}
+  h3{font-size:16px;line-height:22px;margin:16px 0 8px;font-weight:800;color:${ink};}
+  p,li{font-size:15px;line-height:24px;margin:0 0 10px;color:${muted};}
+  ul,ol{padding-left:20px;margin:8px 0 14px;}
+  blockquote{margin:14px 0;padding:12px 12px 12px 14px;border-left:3px solid ${border};background:${soft};border-radius:10px;color:${muted};font-style:italic;}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:${soft};padding:2px 6px;border-radius:8px;font-size:13px;}
+  a{color:${ink};text-decoration:underline;}
+  img{max-width:100%;border-radius:12px;border:3px solid ${border};}
+  pre{background:${soft};border:1px solid ${border};border-radius:12px;padding:12px;overflow:auto;}
+</style></head><body><div class="wrap">${bodyHtml}</div></body></html>`;
 }
 
-function documentBodyView(bodyHtml, body) {
+function DocumentBody({ bodyHtml, body, colors, isDark }) {
   if (bodyHtml) {
     return (
-      <View style={{ borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' }}>
+      <View
+        style={{
+          borderRadius: borderRadius.nbCard,
+          overflow: 'hidden',
+          borderWidth: nb.borderWidth,
+          borderColor: colors.nbBorder,
+        }}
+      >
         <WebView
           originWhitelist={['*']}
-          style={{ height: 520, backgroundColor: '#0A0A0F' }}
+          style={{ height: 520, backgroundColor: colors.nbSurface }}
           scrollEnabled={false}
-          source={{ html: buildDocumentHtml(bodyHtml) }}
+          source={{ html: buildDocumentHtml(bodyHtml, isDark) }}
         />
       </View>
     );
   }
   const plainBody = body || 'No content.';
   return (
-    <Text style={{ fontSize: 16, lineHeight: 26, color: 'rgba(255,255,255,0.85)' }} selectable>
+    <Text style={{ fontSize: 16, lineHeight: 26, color: colors.nbInk, fontWeight: '500' }} selectable>
       {plainBody}
     </Text>
   );
 }
 
 async function shareDocument({ trainerName, title, body, trainerId, documentId }) {
-  const result = await Share.share({
+  await Share.share({
     message: `Check out this document from ${trainerName || 'your trainer'}: ${title}\n\n${body}`,
     url: documentShareUrl(trainerId, documentId),
   });
-
-  // These branches are intentionally empty. They record share vs dismiss without extra UI.
-  if (result.action === Share.sharedAction) {
-    if (result.activityType) {
-      // user picked a specific app (e.g. Messages)
-    } else {
-      // shared successfully
-    }
-  } else if (result.action === Share.dismissedAction) {
-    // user closed share sheet
-  }
 }
 
 // ===== MAIN FUNCTION =====
 
 /**
  * Full-screen reader for one trainer document.
- * @param {object} props
- * @param {boolean} props.visible
- * @param {string} props.trainerId
- * @param {string} props.documentId
- * @param {string} [props.title]
- * @param {string} [props.trainerName]
- * @param {Date|string|number} [props.createdAt]
- * @param {boolean} [props.isDark]
- * @param {Function} props.onClose
  */
 export default function DocumentViewer({
   visible,
@@ -113,17 +123,17 @@ export default function DocumentViewer({
   title: titleProp,
   trainerName,
   createdAt,
-  isDark: _isDark = true,
+  isDark: _isDarkIgnored = true,
   onClose,
 }) {
+  const { colors, isDark } = useTheme();
+  const insets = useSafeAreaInsets();
   const [body, setBody] = useState('');
   const [bodyHtml, setBodyHtml] = useState('');
   const [title, setTitle] = useState(titleProp || '');
   const [isLoadingDocument, setIsLoadingDocument] = useState(true);
   const [errorMessage, setErrorMessage] = useState(null);
 
-  // Closing clears the last document so the next open does not flash it.
-  // vocab: useEffect cleanup sets isCancelled so a slow fetch cannot write after close.
   useEffect(() => {
     if (!visible) {
       setBody('');
@@ -170,10 +180,9 @@ export default function DocumentViewer({
   }, [visible, trainerId, documentId, titleProp]);
 
   const handleShare = async () => {
-    // 1. Hand the title and body to the OS share sheet.
     try {
       await shareDocument({ trainerName, title, body, trainerId, documentId });
-    } catch (error) {
+    } catch {
       Alert.alert('Share failed', 'Could not share document.');
     }
   };
@@ -184,67 +193,74 @@ export default function DocumentViewer({
 
   return (
     <Modal visible={visible} animationType="slide" transparent={false} onRequestClose={onClose}>
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#0A0A0F' }}>
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            paddingHorizontal: 16,
-            height: 56,
-            borderBottomWidth: 1,
-            borderBottomColor: 'rgba(255,255,255,0.07)',
-          }}
-        >
-          <TouchableOpacity onPress={onClose} style={{ padding: 4 }} hitSlop={12}>
-            <Ionicons name="chevron-back" size={24} color={'#fff'} />
-          </TouchableOpacity>
-          <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#fff', flex: 1, textAlign: 'center' }} numberOfLines={1}>
-            {headingTitle}
-          </Text>
-          <TouchableOpacity onPress={handleShare} style={{ padding: 4 }} hitSlop={12}>
-            <Ionicons name="share-outline" size={22} color="rgba(255,255,255,0.5)" />
-          </TouchableOpacity>
-        </View>
+      <View style={[styles.container, { backgroundColor: colors.nbBackground }]}>
+        <NbPageHeader title={headingTitle} subtitle="Document" onBack={onClose} />
 
-        {isLoadingDocument && (
-          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
-            <ActivityIndicator size="large" color="#FF6B9D" />
-            <Text style={{ fontSize: 15, color: 'rgba(255,255,255,0.6)' }}>
-              Loading…
-            </Text>
+        {isLoadingDocument ? (
+          <View style={styles.center}>
+            <ActivityIndicator size="large" color={colors.nbInk} />
+            <Text style={[styles.hint, { color: colors.nbMuted }]}>Loading…</Text>
           </View>
-        )}
-        {errorMessage && (
-          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-            <Text style={{ fontSize: 15, textAlign: 'center', color: 'rgba(255,255,255,0.8)' }}>{errorMessage}</Text>
+        ) : null}
+
+        {errorMessage ? (
+          <View style={styles.center}>
+            <Text style={[styles.error, { color: colors.nbInk }]}>{errorMessage}</Text>
           </View>
-        )}
-        {!isLoadingDocument && !errorMessage && (
+        ) : null}
+
+        {!isLoadingDocument && !errorMessage ? (
           <ScrollView
-            style={{ flex: 1, paddingHorizontal: 24, paddingTop: 20 }}
-            contentContainerStyle={{ paddingBottom: 20 }}
-            showsVerticalScrollIndicator={true}
+            style={styles.scroll}
+            contentContainerStyle={{
+              paddingHorizontal: nb.screenGutter,
+              paddingBottom: 24 + insets.bottom,
+            }}
+            showsVerticalScrollIndicator
           >
-            <Text style={{ fontSize: 22, fontWeight: 'bold', color: '#fff', marginBottom: 12 }} selectable>
-              {headingTitle}
-            </Text>
-            <View
-              style={{
-                height: 1,
-                backgroundColor: 'rgba(255,255,255,0.06)',
-                marginVertical: 12,
-              }}
-            />
-            {documentBodyView(bodyHtml, body)}
-            <View style={{ marginTop: 24, alignItems: 'center' }}>
-              <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)' }}>
-                Shared by {trainerCreditName} on {createdDateLabel}
-              </Text>
+            <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard}>
+              <View
+                style={[
+                  styles.card,
+                  { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder },
+                ]}
+              >
+                <Text style={[styles.heading, { color: colors.nbInk }]} selectable>
+                  {headingTitle}
+                </Text>
+                <View style={[styles.divider, { backgroundColor: colors.nbBorder }]} />
+                <DocumentBody bodyHtml={bodyHtml} body={body} colors={colors} isDark={isDark} />
+                <Text style={[styles.credit, { color: colors.nbMuted }]}>
+                  Shared by {trainerCreditName} on {createdDateLabel}
+                </Text>
+              </View>
+            </HardShadow>
+
+            <View style={{ marginTop: spacing.md }}>
+              <NbButton variant="plain" onPress={handleShare}>
+                Share
+              </NbButton>
             </View>
           </ScrollView>
-        )}
-      </SafeAreaView>
+        ) : null}
+      </View>
     </Modal>
   );
 }
+
+const styles = StyleSheet.create({
+  container: { flex: 1 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 24 },
+  hint: { fontSize: 15, fontWeight: '600' },
+  error: { fontSize: 15, textAlign: 'center', fontWeight: '600' },
+  scroll: { flex: 1 },
+  card: {
+    borderRadius: borderRadius.nbCard,
+    borderWidth: nb.borderWidth,
+    padding: 16,
+    gap: 12,
+  },
+  heading: { fontSize: 22, fontWeight: '900' },
+  divider: { height: nb.borderWidthDivider, opacity: 0.35 },
+  credit: { fontSize: 12, fontWeight: '600', textAlign: 'center', marginTop: 8 },
+});

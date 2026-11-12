@@ -4,6 +4,7 @@
 
 import React, { memo } from 'react';
 import { View, Text, TextInput, StyleSheet, Platform } from 'react-native';
+import { nb, borderRadius } from '../../../look-and-feel/colorPalette';
 import { colLabel } from './spreadsheetConstants';
 
 // ===== NAMED CONSTANTS =====
@@ -153,24 +154,23 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingHorizontal: 12,
     paddingVertical: 6,
-    // vocab: StyleSheet.hairlineWidth = the thinnest visible line on this device.
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    minHeight: 44,
+    borderBottomWidth: nb.borderWidth,
+    minHeight: nb.minTouchTarget,
   },
   refPill: {
     minWidth: 52,
     paddingHorizontal: 10,
     paddingVertical: 8,
-    borderRadius: 8,
-    borderWidth: 1,
+    borderRadius: borderRadius.nbInput,
+    borderWidth: nb.borderWidth,
     alignItems: 'center',
   },
   formulaInput: {
     flex: 1,
-    minHeight: 44,
+    minHeight: nb.minTouchTarget,
     fontSize: 14,
-    borderWidth: 1,
-    borderRadius: 8,
+    borderWidth: nb.borderWidth,
+    borderRadius: borderRadius.nbInput,
     paddingHorizontal: 12,
     // Monospace on iOS so formulas line up. undefined on Android because 'Menlo' is missing there.
     fontFamily: Platform.OS === PLATFORM_IOS ? MONOSPACE_FONT_IOS : undefined,

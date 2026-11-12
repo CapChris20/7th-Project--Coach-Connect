@@ -20,5 +20,10 @@ export { default as NbProgressSteps } from './NbProgressSteps';
 export { default as NbRing } from './NbRing';
 export { default as NbBottomNav } from './NbBottomNav';
 export { default as NbScreen } from './NbScreen';
+export { default as NbSlider } from './NbSlider';
+export { default as NbProgressBar } from './NbProgressBar';
+export { default as NbIconChip } from './NbIconChip';
+export { default as HardShadow } from './HardShadow';
+export { default as GradientFrame } from './GradientFrame';
 
 export { default as NbComponentsPreview } from './NbComponentsPreview';

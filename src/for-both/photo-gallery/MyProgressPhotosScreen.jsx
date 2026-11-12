@@ -1,4 +1,4 @@
-// Progress photo gallery for one client: grid, filters, fullscreen, upload.
+// Progress photo gallery — grid + Design Law fullscreen viewer (progress PNG 07/08).
 // Flow: listen to users/{clientId}/progressPhotos → filter/sort → tap to open → client can add a photo.
 // Used by the client gallery tab and the trainer viewing a client's photos.
 
@@ -13,6 +13,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  ScrollView,
   Share,
   StyleSheet,
   Text,
@@ -24,9 +25,12 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useTheme } from "../../look-and-feel/lightDarkMode";
-import { NbCard } from "../../look-and-feel/NbCard";
-import { NbButton } from "../../look-and-feel/NbButton";import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { useTheme } from '../../look-and-feel/lightDarkMode';
+import NbCard from '../../look-and-feel/NbCard';
+import NbButton from '../../look-and-feel/NbButton';
+import HardShadow from '../../look-and-feel/HardShadow';
+import { borderRadius, gradients, nb } from '../../look-and-feel/colorPalette';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import AnimatedRe, {
   useSharedValue,
   useAnimatedStyle,
@@ -47,14 +51,11 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
-import { useTheme } from '../../look-and-feel/lightDarkMode';
 import TopHeader from '../loading-and-header/TopHeader';
 import { BOTTOM_NAV_BAR_HEIGHT, SHELL_SAFE_AREA_EDGES } from '../../navigation/bottomMenuSpacing';
 
 // ===== NAMED CONSTANTS =====
 
-const GRADIENT_PRIMARY = ['#C1265A', '#D84315'];
-const GRADIENT_CARD_BORDER = ['#C1265A', '#663399'];
 const TABLET_MIN_WIDTH = 768;
 const GRID_BOTTOM_EXTRA = 24;
 const USERS_COLLECTION = 'users';
@@ -182,6 +183,21 @@ function formatPhotoDateLine(dateObj) {
   return dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+/** Short header date (Design Law progress 07/08). */
+function formatPhotoShortDate(dateObj) {
+  return dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function bodyPartDisplayName(photo) {
+  const id = photoBodyPart(photo);
+  const match = findFilterLabel(id);
+  if (match && match !== 'All') return match;
+  if (id && id !== 'other') {
+    return id.replace(/_/g, ' ').replace(/\b\w/g, (ch) => ch.toUpperCase());
+  }
+  return 'Photo';
+}
+
 function findSortLabel(sortId) {
   for (const option of SORT_OPTIONS) {
     if (option.id === sortId) return option.label.replace(/^By /, '');
@@ -196,34 +212,19 @@ function findFilterLabel(filterId) {
   return 'All';
 }
 
-function getTheme(isDark) {
-  if (isDark) {
-    return {
-      bg: '#0A0A0F',
-      cardBg: '#141419',
-      text: '#FFFFFF',
-      muted: 'rgba(255,255,255,0.65)',
-      chipBg: 'rgba(255,255,255,0.06)',
-      chipBorder: 'rgba(255,255,255,0.12)',
-      overlay: 'rgba(0,0,0,0.94)',
-      overlayBar: 'rgba(10,10,15,0.88)',
-      navBtnBg: 'rgba(255,255,255,0.12)',
-      shadow: 'rgba(193,38,90,0.3)',
-      menuBg: '#1A1A22',
-    };
-  }
+/** Map app nb tokens to the local theme object this screen already expects. */
+function galleryThemeFromColors(colors, isDark) {
   return {
-    bg: '#FFFFFF',
-    cardBg: '#F5F5F5',
-    text: '#0A0A0F',
-    muted: 'rgba(10,10,15,0.65)',
-    chipBg: 'rgba(0,0,0,0.04)',
-    chipBorder: 'rgba(10,10,15,0.1)',
-    overlay: 'rgba(10,10,15,0.92)',
-    overlayBar: 'rgba(245,245,247,0.95)',
-    navBtnBg: 'rgba(0,0,0,0.08)',
-    shadow: 'rgba(0,0,0,0.12)',
-    menuBg: '#FFFFFF',
+    bg: colors.nbBackground,
+    cardBg: colors.nbSurface,
+    text: colors.nbInk,
+    muted: colors.nbMuted,
+    chipBg: colors.nbSurfaceChip,
+    chipBorder: colors.nbBorder,
+    overlay: 'rgba(0,0,0,0.94)',
+    overlayBar: isDark ? 'rgba(11,11,11,0.92)' : 'rgba(242,242,240,0.95)',
+    navBtnBg: colors.nbSoft,
+    menuBg: colors.nbSurface,
   };
 }
 
@@ -284,44 +285,52 @@ function ZoomablePhoto({ uri, width, height, onZoomChange }) {
   );
 }
 
-function DropdownChip({ label, valueLabel, isDark, theme, focused, onPress }) {
+function DropdownChip({ label, valueLabel, colors, focused, onPress }) {
   return (
     <TouchableOpacity
       onPress={onPress}
       activeOpacity={0.85}
       style={{ flex: 1, minWidth: 0 }}
     >
-      <LinearGradient
-        colors={focused ? GRADIENT_PRIMARY : isDark ? ['rgba(255,255,255,0.14)', 'rgba(255,255,255,0.06)'] : ['rgba(193,38,90,0.35)', 'rgba(216,67,21,0.2)']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={{ borderRadius: 12, padding: focused ? 1.5 : 1 }}
+      <View
+        style={{
+          borderRadius: borderRadius.nbChip,
+          borderWidth: nb.borderWidth,
+          borderColor: colors.nbBorder,
+          backgroundColor: focused ? colors.nbFill : colors.nbSurfaceChip,
+          paddingVertical: 10,
+          paddingHorizontal: 12,
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          minHeight: nb.minTouchTarget,
+        }}
       >
-        <View
+        <Text
           style={{
-            borderRadius: 11,
-            backgroundColor: theme.chipBg,
-            paddingVertical: 10,
-            paddingHorizontal: 12,
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
+            fontSize: 13,
+            fontWeight: '700',
+            color: focused ? colors.nbOnFill : colors.nbInk,
           }}
+          numberOfLines={1}
         >
-          <Text style={{ fontSize: 13, fontWeight: '700', color: theme.text }} numberOfLines={1}>
-            {label}: {valueLabel}
-          </Text>
-          <Ionicons name="chevron-down" size={16} color={theme.muted} />
-        </View>
-      </LinearGradient>
+          {label}: {valueLabel}
+        </Text>
+        <Ionicons
+          name="chevron-down"
+          size={16}
+          color={focused ? colors.nbOnFill : colors.nbMuted}
+        />
+      </View>
     </TouchableOpacity>
   );
 }
 
-function PhotoGridCard({ item, cellSize, theme, isDark, onOpen, onMenu }) {
+function PhotoGridCard({ item, cellSize, theme, colors, onOpen, onMenu }) {
   const scale = useRef(new Animated.Value(1)).current;
   const dateObj = parsePhotoDate(item);
   const dateLine = formatPhotoDateLine(dateObj);
+  const thumbSide = cellSize - nb.borderWidth * 2;
 
   const pressIn = () => {
     Animated.timing(scale, { toValue: 1.02, duration: 100, useNativeDriver: true }).start();
@@ -334,33 +343,15 @@ function PhotoGridCard({ item, cellSize, theme, isDark, onOpen, onMenu }) {
     <View style={{ width: cellSize, marginBottom: 10 }}>
       <Animated.View style={{ transform: [{ scale }] }}>
         <Pressable onPress={() => onOpen(item)} onPressIn={pressIn} onPressOut={pressOut}>
-        <LinearGradient
-          colors={GRADIENT_CARD_BORDER}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={{
-            borderRadius: 12,
-            padding: 2,
-            shadowColor: isDark ? '#C1265A' : '#000',
-            shadowOffset: { width: 0, height: 8 },
-            shadowOpacity: isDark ? 0.3 : 0.12,
-            shadowRadius: isDark ? 24 : 12,
-            elevation: isDark ? 10 : 4,
-          }}
-        >
-          <View style={{ borderRadius: 10, overflow: 'hidden', backgroundColor: theme.cardBg }}>
-            <View style={{ width: cellSize - 4, height: cellSize - 4 }}>
-              <Image source={{ uri: item.url }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
-              <View
-                pointerEvents="none"
-                style={[
-                  StyleSheet.absoluteFillObject,
-                  { backgroundColor: 'rgba(0,0,0,0)' },
-                ]}
+          <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetCard}>
+            <NbCard noShadow style={{ padding: 0, overflow: 'hidden', width: cellSize }}>
+              <Image
+                source={{ uri: item.url }}
+                style={{ width: thumbSide, height: thumbSide, backgroundColor: theme.cardBg }}
+                resizeMode="cover"
               />
-            </View>
-          </View>
-        </LinearGradient>
+            </NbCard>
+          </HardShadow>
         </Pressable>
       </Animated.View>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6, paddingHorizontal: 2 }}>
@@ -368,7 +359,7 @@ function PhotoGridCard({ item, cellSize, theme, isDark, onOpen, onMenu }) {
           {dateLine}
         </Text>
         <TouchableOpacity onPress={() => onMenu(item)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <Ionicons name="chevron-down" size={18} color={theme.muted} />
+          <Ionicons name="chevron-down" size={18} color={colors.nbMuted} />
         </TouchableOpacity>
       </View>
     </View>
@@ -391,7 +382,7 @@ export default function MyProgressPhotosScreen({
 }) {
   const insets = useSafeAreaInsets();
   const { width: winW, height: winH } = useWindowDimensions();
-  const { isDark: appIsDark } = useTheme();
+  const { colors, isDark: appIsDark } = useTheme();
   const clientId = route?.params?.clientId;
   const clientName = route?.params?.clientName || 'Client';
   /** Trainers only view; clients upload from the gallery. */
@@ -411,8 +402,8 @@ export default function MyProgressPhotosScreen({
   const [galleryReloadKey, setGalleryReloadKey] = useState(0);
   const listRef = useRef(null);
 
-  const theme = useMemo(() => getTheme(appIsDark), [appIsDark]);
   const isDark = appIsDark;
+  const theme = useMemo(() => galleryThemeFromColors(colors, isDark), [colors, isDark]);
 
   const cols = winW >= TABLET_MIN_WIDTH ? 3 : 2;
   const gridPad = 16;
@@ -604,7 +595,7 @@ export default function MyProgressPhotosScreen({
         item={item}
         cellSize={cellSize}
         theme={theme}
-        isDark={isDark}
+        colors={colors}
         onOpen={openPhoto}
         onMenu={showPhotoActions}
       />
@@ -614,16 +605,29 @@ export default function MyProgressPhotosScreen({
   const flatIndexValid = modalIndex != null && modalIndex >= 0 && modalIndex < filteredSorted.length;
   const current = flatIndexValid ? filteredSorted[modalIndex] : null;
   const currentDate = current ? parsePhotoDate(current) : null;
-  const currentDateLabel =
-    currentDate &&
-    `${currentDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} · ${currentDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
-
-  const metricsLine = current?.metricsLine || current?.measurementNote || null;
+  const modalTitleShort = currentDate ? formatPhotoShortDate(currentDate) : '';
+  const modalPosition =
+    flatIndexValid && filteredSorted.length ? `${modalIndex + 1} of ${filteredSorted.length}` : '';
+  const modalBodyPart = current ? bodyPartDisplayName(current) : '';
+  const modalSubtitle =
+    modalBodyPart && modalPosition ? `${modalBodyPart} · ${modalPosition}` : modalPosition || modalBodyPart;
+  const photoOverlayCaption =
+    currentDate && modalBodyPart ? `${modalBodyPart}, ${formatPhotoShortDate(currentDate)}` : modalTitleShort;
+  const indexPill = flatIndexValid && filteredSorted.length ? `${modalIndex + 1} / ${filteredSorted.length}` : '';
   const noteLine = current?.note || current?.caption || null;
 
   const fullscreenHeight = winH - insets.top - insets.bottom;
 
-  const headerIconColor = isDark ? '#FFFFFF' : theme.text;
+  const goAdjacentPhoto = (direction) => {
+    if (modalIndex == null) return;
+    const next = modalIndex + direction;
+    if (next >= 0 && next < filteredSorted.length) {
+      setFullscreenZoomed(false);
+      setModalIndex(next);
+    }
+  };
+
+  const headerIconColor = colors.nbInk;
   const handleBack = () => {
     // 1. Shell header uses onBack. Standalone screen uses navigation.goBack.
     if (typeof onBack === 'function') onBack();
@@ -653,7 +657,13 @@ export default function MyProgressPhotosScreen({
             <Text style={[styles.headerTitle, { color: headerIconColor }]}>Progress Photos</Text>
             <View style={styles.hit44} />
           </View>
-          <LinearGradient colors={GRADIENT_PRIMARY} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ height: 3, marginHorizontal: gridPad, borderRadius: 2 }} />
+          <View
+            style={{
+              height: nb.borderWidth,
+              marginHorizontal: gridPad,
+              backgroundColor: colors.nbBorder,
+            }}
+          />
           <Text style={[styles.clientSub, { color: theme.muted }]} numberOfLines={1}>
             {clientName}
           </Text>
@@ -665,8 +675,7 @@ export default function MyProgressPhotosScreen({
           <DropdownChip
             label="Sort"
             valueLabel={sortLabel}
-            isDark={isDark}
-            theme={theme}
+            colors={colors}
             focused={showSortMenu}
             onPress={() => {
               setShowFilterMenu(false);
@@ -676,8 +685,7 @@ export default function MyProgressPhotosScreen({
           <DropdownChip
             label="Filter"
             valueLabel={filterLabel}
-            isDark={isDark}
-            theme={theme}
+            colors={colors}
             focused={showFilterMenu}
             onPress={() => {
               setShowSortMenu(false);
@@ -687,33 +695,33 @@ export default function MyProgressPhotosScreen({
         </View>
 
         {(showSortMenu || showFilterMenu) && (
-          <View style={[styles.menuPanel, { marginHorizontal: gridPad, backgroundColor: theme.menuBg, borderColor: theme.chipBorder }]}>
+          <View style={[styles.menuPanel, { marginHorizontal: gridPad, backgroundColor: theme.menuBg, borderColor: colors.nbBorder }]}>
             {showSortMenu &&
               SORT_OPTIONS.map((option) => (
                 <TouchableOpacity
                   key={option.id}
-                  style={styles.menuRow}
+                  style={[styles.menuRow, { borderBottomColor: colors.nbBorder }]}
                   onPress={() => {
                     setSortId(option.id);
                     setShowSortMenu(false);
                   }}
                 >
                   <Text style={[styles.menuText, { color: theme.text }]}>{option.label}</Text>
-                  {sortId === option.id ? <Ionicons name="checkmark" size={18} color="#C1265A" /> : null}
+                  {sortId === option.id ? <Ionicons name="checkmark" size={18} color={colors.nbFill} /> : null}
                 </TouchableOpacity>
               ))}
             {showFilterMenu &&
               FILTER_OPTIONS.map((option) => (
                 <TouchableOpacity
                   key={option.id}
-                  style={styles.menuRow}
+                  style={[styles.menuRow, { borderBottomColor: colors.nbBorder }]}
                   onPress={() => {
                     setFilterId(option.id);
                     setShowFilterMenu(false);
                   }}
                 >
                   <Text style={[styles.menuText, { color: theme.text }]}>{option.label}</Text>
-                  {filterId === option.id ? <Ionicons name="checkmark" size={18} color="#C1265A" /> : null}
+                  {filterId === option.id ? <Ionicons name="checkmark" size={18} color={colors.nbFill} /> : null}
                 </TouchableOpacity>
               ))}
           </View>
@@ -722,22 +730,23 @@ export default function MyProgressPhotosScreen({
 
       {loading && (
         <View style={styles.centerFill}>
-          <ActivityIndicator size="large" color="#C1265A" />
+          <ActivityIndicator size="large" color={colors.nbFill} />
         </View>
       )}
 
       {error && !loading && (
         <View style={styles.centerFill}>
           <Text style={{ color: '#F97373', textAlign: 'center', marginBottom: 12 }}>{error}</Text>
-          <TouchableOpacity
+          <NbButton
+            variant="fill"
+            sm
             onPress={() => {
               setError(null);
               setGalleryReloadKey((reloadKey) => reloadKey + 1);
             }}
-            style={styles.retryBtn}
           >
-            <Text style={{ color: '#fff', fontWeight: '700' }}>Retry</Text>
-          </TouchableOpacity>
+            Retry
+          </NbButton>
         </View>
       )}
 
@@ -751,16 +760,11 @@ export default function MyProgressPhotosScreen({
               : `When ${clientName} adds progress photos, they will appear here.`}
           </Text>
           {allowUpload ? (
-            <Pressable
-              onPress={handleAddPhoto}
-              accessibilityRole="button"
-              accessibilityLabel="Add progress photo from library"
-              style={({ pressed }) => [styles.emptyCtaWrap, pressed && styles.emptyCtaPressed]}
-            >
-              <LinearGradient colors={GRADIENT_PRIMARY} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.emptyCtaGrad}>
-                <Text style={styles.emptyCtaText}>Add photo from library</Text>
-              </LinearGradient>
-            </Pressable>
+            <View style={styles.emptyCtaWrap}>
+              <NbButton variant="fill" onPress={handleAddPhoto}>
+                Add photo from library
+              </NbButton>
+            </View>
           ) : null}
         </View>
       )}
@@ -798,28 +802,68 @@ export default function MyProgressPhotosScreen({
             hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
             style={({ pressed }) => [styles.fabTouch, pressed && styles.fabTouchPressed]}
           >
-            <LinearGradient colors={GRADIENT_PRIMARY} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.fab}>
-              <Ionicons name="add" size={32} color="#FFFFFF" />
-            </LinearGradient>
+            <HardShadow radius={31} offset={nb.shadowOffsetSmall}>
+              <LinearGradient
+                colors={gradients.brand.colors}
+                start={gradients.brand.start}
+                end={gradients.brand.end}
+                style={[
+                  styles.fab,
+                  {
+                    borderWidth: nb.borderWidth,
+                    borderColor: colors.nbBorder,
+                  },
+                ]}
+              >
+                <Ionicons name="add" size={32} color={colors.nbInk} />
+              </LinearGradient>
+            </HardShadow>
           </Pressable>
         </View>
       ) : null}
 
       <Modal visible={modalIndex != null} transparent animationType="fade" onRequestClose={closeModal}>
-        <View style={[styles.modalRoot, { backgroundColor: theme.overlay }]}>
+        <View style={[styles.modalRoot, { backgroundColor: colors.nbBackground }]}>
           <View style={[styles.modalTop, { paddingTop: insets.top + 8 }]}>
-            <TouchableOpacity onPress={closeModal} hitSlop={12} style={styles.hit44}>
-              <Ionicons name="chevron-back" size={24} color="#FFFFFF" />
+            <TouchableOpacity onPress={closeModal} hitSlop={12} accessibilityLabel="Close photo viewer">
+              <HardShadow radius={borderRadius.nbChip} offset={nb.shadowOffsetSmall}>
+                <View
+                  style={[
+                    styles.modalSqBtn,
+                    { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface },
+                  ]}
+                >
+                  <Ionicons name="chevron-back" size={22} color={colors.nbInk} />
+                </View>
+              </HardShadow>
             </TouchableOpacity>
-            <Text style={styles.modalDateCenter} numberOfLines={1}>
-              {currentDateLabel || ''}
-            </Text>
+            <View style={styles.modalTitleStack}>
+              <Text style={[styles.modalTitle, { color: colors.nbInk }]} numberOfLines={1}>
+                {modalTitleShort}
+              </Text>
+              {modalSubtitle ? (
+                <Text style={[styles.modalSubtitle, { color: colors.nbMuted }]} numberOfLines={1}>
+                  {modalSubtitle}
+                </Text>
+              ) : null}
+            </View>
             <TouchableOpacity
-              onPress={() => current && showPhotoActions(current)}
+              onPress={() => goAdjacentPhoto(1)}
               hitSlop={12}
-              style={styles.hit44}
+              disabled={!flatIndexValid || modalIndex >= filteredSorted.length - 1}
+              accessibilityLabel="Next photo"
+              style={{ opacity: modalIndex >= filteredSorted.length - 1 ? 0.4 : 1 }}
             >
-              <Ionicons name="ellipsis-horizontal" size={22} color="#FFFFFF" />
+              <HardShadow radius={borderRadius.nbChip} offset={nb.shadowOffsetSmall}>
+                <View
+                  style={[
+                    styles.modalSqBtn,
+                    { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface },
+                  ]}
+                >
+                  <Ionicons name="chevron-forward" size={22} color={colors.nbInk} />
+                </View>
+              </HardShadow>
             </TouchableOpacity>
           </View>
 
@@ -845,29 +889,124 @@ export default function MyProgressPhotosScreen({
               const idx = Math.round(x / winW);
               if (idx >= 0 && idx < filteredSorted.length) setModalIndex(idx);
             }}
-            renderItem={({ item }) => (
-              <View style={{ width: winW, height: fullscreenHeight - 160, justifyContent: 'center' }}>
-                {item.url ? (
-                  <ZoomablePhoto
-                    uri={item.url}
-                    width={winW}
-                    height={fullscreenHeight - 160}
-                    onZoomChange={setFullscreenZoomed}
-                  />
-                ) : null}
-              </View>
-            )}
+            renderItem={({ item, index }) => {
+              const framePad = 16;
+              const frameW = winW - framePad * 2;
+              const frameH = Math.min(fullscreenHeight - 260, frameW * 1.25);
+              return (
+                <View
+                  style={{
+                    width: winW,
+                    paddingHorizontal: framePad,
+                    justifyContent: 'center',
+                    minHeight: frameH + 24,
+                  }}
+                >
+                  <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetCard}>
+                    <View
+                      style={[
+                        styles.modalPhotoFrame,
+                        {
+                          width: frameW,
+                          height: frameH,
+                          borderColor: colors.nbBorder,
+                          backgroundColor: colors.nbSurface,
+                        },
+                      ]}
+                    >
+                      {item.url ? (
+                        <ZoomablePhoto
+                          uri={item.url}
+                          width={frameW}
+                          height={frameH}
+                          onZoomChange={setFullscreenZoomed}
+                        />
+                      ) : null}
+                      {index === modalIndex && indexPill ? (
+                        <View
+                          style={[
+                            styles.modalIndexPill,
+                            { borderColor: colors.nbBorder, backgroundColor: colors.nbFill },
+                          ]}
+                        >
+                          <Text style={[styles.modalIndexPillText, { color: colors.nbOnFill }]}>{indexPill}</Text>
+                        </View>
+                      ) : null}
+                      {index === modalIndex && photoOverlayCaption ? (
+                        <Text style={[styles.modalPhotoCaption, { color: colors.nbInk }]} numberOfLines={1}>
+                          {photoOverlayCaption}
+                        </Text>
+                      ) : null}
+                    </View>
+                  </HardShadow>
+                </View>
+              );
+            }}
           />
 
-          <View style={[styles.modalBottom, { paddingBottom: insets.bottom + 12, backgroundColor: theme.overlayBar }]}>
-            <Text style={styles.bottomDate}>{currentDateLabel}</Text>
-            {metricsLine ? (
-              <View style={styles.badge}>
-                <Text style={styles.badgeText}>{metricsLine}</Text>
-              </View>
+          <View style={[styles.modalBottom, { paddingBottom: insets.bottom + 12 }]}>
+            {/* Design Law photo viewer: thumbnail strip under the main frame */}
+            {filteredSorted.length > 1 ? (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.modalThumbStrip}
+              >
+                {filteredSorted.map((thumb, thumbIndex) => {
+                  const selected = thumbIndex === modalIndex;
+                  return (
+                    <TouchableOpacity
+                      key={thumb.id || thumb.url || `thumb-${thumbIndex}`}
+                      onPress={() => {
+                        setModalIndex(thumbIndex);
+                        listRef.current?.scrollToIndex?.({ index: thumbIndex, animated: true });
+                      }}
+                      activeOpacity={0.88}
+                    >
+                      <View
+                        style={[
+                          styles.modalThumb,
+                          {
+                            borderColor: colors.nbBorder,
+                            backgroundColor: colors.nbSoft,
+                            borderWidth: selected ? nb.borderWidth : 2,
+                            opacity: selected ? 1 : 0.72,
+                          },
+                        ]}
+                      >
+                        {thumb.url ? (
+                          <Image
+                            source={{ uri: thumb.url }}
+                            style={StyleSheet.absoluteFillObject}
+                            resizeMode="cover"
+                          />
+                        ) : null}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
             ) : null}
-            {noteLine ? <Text style={[styles.noteText, { color: theme.muted }]}>{noteLine}</Text> : null}
-            <Text style={styles.swipeHint}>Swipe for next photo</Text>
+            <Text style={[styles.swipeHint, { color: colors.nbMuted }]}>Swipe for next photo</Text>
+            {noteLine ? (
+              <Text style={[styles.noteText, { color: colors.nbMuted }]} numberOfLines={2}>
+                {noteLine}
+              </Text>
+            ) : null}
+            <View style={styles.modalActionRow}>
+              <View style={{ flex: 1 }}>
+                <NbButton variant="ghost" onPress={() => current?.url && handleShare(current.url)}>
+                  Share
+                </NbButton>
+              </View>
+              {allowUpload ? (
+                <View style={{ flex: 1 }}>
+                  <NbButton variant="fill" onPress={() => current && handleDeletePhoto(current)}>
+                    Delete
+                  </NbButton>
+                </View>
+              ) : null}
+            </View>
           </View>
         </View>
       </Modal>
@@ -889,8 +1028,8 @@ const styles = StyleSheet.create({
   clientSub: { fontSize: 12, textAlign: 'center', marginTop: 6, marginBottom: 10, paddingHorizontal: 24 },
   controlsRow: { flexDirection: 'row', marginBottom: 8 },
   menuPanel: {
-    borderRadius: 14,
-    borderWidth: 2.5,
+    borderRadius: borderRadius.nbCard,
+    borderWidth: nb.borderWidth,
     marginBottom: 8,
     overflow: 'hidden',
   },
@@ -900,18 +1039,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 14,
     paddingHorizontal: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(255,255,255,0.08)',
+    borderBottomWidth: 2,
   },
   menuText: { fontSize: 15, fontWeight: '600' },
   centerFill: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28 },
   emptyTitle: { marginTop: 16, fontSize: 18, fontWeight: '800', textAlign: 'center' },
   emptySub: { marginTop: 8, fontSize: 14, textAlign: 'center' },
-  emptyCtaWrap: { marginTop: 22, alignSelf: 'center', width: '80%', maxWidth: 400, minHeight: 52, justifyContent: 'center' },
-  emptyCtaPressed: { opacity: 0.9, transform: [{ scale: 0.98 }] },
-  emptyCtaGrad: { minHeight: 52, borderRadius: 14, alignItems: 'center', justifyContent: 'center', paddingVertical: 4, paddingHorizontal: 8 },
-  emptyCtaText: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
-  retryBtn: { paddingHorizontal: 22, paddingVertical: 10, borderRadius: 999, backgroundColor: '#C1265A' },
+  emptyCtaWrap: { marginTop: 22, alignSelf: 'center', width: '80%', maxWidth: 400 },
   fabRow: {
     position: 'absolute',
     right: 16,
@@ -933,32 +1067,66 @@ const styles = StyleSheet.create({
     borderRadius: 31,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#C1265A',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.35,
-    shadowRadius: 16,
-    elevation: 10,
   },
   modalRoot: { flex: 1 },
   modalTop: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 12,
-    paddingBottom: 8,
+    paddingHorizontal: 16,
+    paddingBottom: 10,
+    gap: 10,
   },
-  modalDateCenter: { flex: 1, textAlign: 'center', color: 'rgba(255,255,255,0.75)', fontSize: 14, fontWeight: '600' },
-  modalBottom: { paddingHorizontal: 16, paddingTop: 12 },
-  bottomDate: { color: '#FFFFFF', fontSize: 14, fontWeight: '700', marginBottom: 6 },
-  badge: {
-    alignSelf: 'flex-start',
-    backgroundColor: 'rgba(193,38,90,0.25)',
+  modalSqBtn: {
+    width: nb.minTouchTarget,
+    height: nb.minTouchTarget,
+    borderRadius: borderRadius.nbChip,
+    borderWidth: nb.borderWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalTitleStack: { flex: 1, minWidth: 0, alignItems: 'center' },
+  modalTitle: { fontSize: 22, fontWeight: '800', letterSpacing: -0.3 },
+  modalSubtitle: { fontSize: 13, fontWeight: '700', marginTop: 2 },
+  modalPhotoFrame: {
+    borderWidth: nb.borderWidth,
+    borderRadius: borderRadius.nbCard,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  modalIndexPill: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
     paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    marginBottom: 8,
+    paddingVertical: 5,
+    borderRadius: borderRadius.nbChip,
+    borderWidth: nb.borderWidth,
   },
-  badgeText: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
-  noteText: { fontSize: 13, fontStyle: 'italic', marginBottom: 8 },
-  swipeHint: { fontSize: 11, color: 'rgba(255,255,255,0.45)', textAlign: 'center', marginTop: 4 },
+  modalIndexPillText: { fontSize: 12, fontWeight: '800' },
+  modalPhotoCaption: {
+    position: 'absolute',
+    left: 12,
+    bottom: 10,
+    fontSize: 13,
+    fontWeight: '800',
+    maxWidth: '78%',
+  },
+  modalBottom: { paddingHorizontal: 16, paddingTop: 8 },
+  // Manipulate here: thumbnail strip under fullscreen photo (Design Law viewer)
+  modalThumbStrip: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingVertical: 8,
+    paddingRight: 8,
+  },
+  modalThumb: {
+    width: 56,
+    height: 72,
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  modalActionRow: { flexDirection: 'row', gap: 10, marginTop: 12 },
+  noteText: { fontSize: 13, fontStyle: 'italic', marginTop: 8, textAlign: 'center' },
+  swipeHint: { fontSize: 12, fontWeight: '700', textAlign: 'center' },
 });

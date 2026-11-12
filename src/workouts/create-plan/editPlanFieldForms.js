@@ -166,7 +166,7 @@ export default function WorkoutPlanBuilderFieldEditBody({
                     styles.optionButton,
                     {
                       backgroundColor: onboardingData.gender === option ? ui.optionSelectedBg : ui.optionBg,
-                      borderColor: onboardingData.gender === option ? '#FF6B9D' : ui.border,
+                      borderColor: onboardingData.gender === option ? lightColors.primary : ui.border,
                     },
                   ]}
                 >
@@ -199,7 +199,7 @@ export default function WorkoutPlanBuilderFieldEditBody({
                 styles.optionCard,
                 {
                   backgroundColor: onboardingData.fitnessLevel === level.value ? ui.optionSelectedBg : ui.optionBg,
-                  borderColor: onboardingData.fitnessLevel === level.value ? '#BE185D' : ui.border,
+                  borderColor: onboardingData.fitnessLevel === level.value ? lightColors.primaryDark : ui.border,
                 },
               ]}
             >
@@ -231,7 +231,7 @@ export default function WorkoutPlanBuilderFieldEditBody({
                 styles.optionCard,
                 {
                   backgroundColor: onboardingData.primaryGoal === goal.value ? ui.optionSelectedBg : ui.optionBg,
-                  borderColor: onboardingData.primaryGoal === goal.value ? '#BE185D' : ui.border,
+                  borderColor: onboardingData.primaryGoal === goal.value ? lightColors.primaryDark : ui.border,
                 },
               ]}
             >
@@ -270,7 +270,7 @@ export default function WorkoutPlanBuilderFieldEditBody({
                   styles.optionCard,
                   {
                     backgroundColor: isSelected ? ui.optionSelectedBg : ui.optionBg,
-                    borderColor: isSelected ? '#BE185D' : ui.border,
+                    borderColor: isSelected ? lightColors.primaryDark : ui.border,
                   },
                 ]}
               >
@@ -298,7 +298,7 @@ export default function WorkoutPlanBuilderFieldEditBody({
                 styles.optionCard,
                 {
                   backgroundColor: onboardingData.daysPerWeek === days ? ui.optionSelectedBg : ui.optionBg,
-                  borderColor: onboardingData.daysPerWeek === days ? '#BE185D' : ui.border,
+                  borderColor: onboardingData.daysPerWeek === days ? lightColors.primaryDark : ui.border,
                 },
               ]}
             >
@@ -338,7 +338,7 @@ export default function WorkoutPlanBuilderFieldEditBody({
                 styles.optionCard,
                 {
                   backgroundColor: onboardingData.trainingEnvironment === opt.value ? ui.optionSelectedBg : ui.optionBg,
-                  borderColor: onboardingData.trainingEnvironment === opt.value ? '#FF6B9D' : ui.border,
+                  borderColor: onboardingData.trainingEnvironment === opt.value ? lightColors.primary : ui.border,
                 },
               ]}
             >
@@ -364,7 +364,7 @@ export default function WorkoutPlanBuilderFieldEditBody({
                 styles.optionCard,
                 {
                   backgroundColor: onboardingData.preferredWorkoutTime === opt.value ? ui.optionSelectedBg : ui.optionBg,
-                  borderColor: onboardingData.preferredWorkoutTime === opt.value ? '#FF6B9D' : ui.border,
+                  borderColor: onboardingData.preferredWorkoutTime === opt.value ? lightColors.primary : ui.border,
                 },
               ]}
             >
@@ -423,7 +423,7 @@ export default function WorkoutPlanBuilderFieldEditBody({
                 styles.optionCard,
                 {
                   backgroundColor: onboardingData.currentStressLevel === opt.value ? ui.optionSelectedBg : ui.optionBg,
-                  borderColor: onboardingData.currentStressLevel === opt.value ? '#FF6B9D' : ui.border,
+                  borderColor: onboardingData.currentStressLevel === opt.value ? lightColors.primary : ui.border,
                 },
               ]}
             >
@@ -449,7 +449,7 @@ export default function WorkoutPlanBuilderFieldEditBody({
                 styles.optionCard,
                 {
                   backgroundColor: onboardingData.sleepQuality === opt.value ? ui.optionSelectedBg : ui.optionBg,
-                  borderColor: onboardingData.sleepQuality === opt.value ? '#FF6B9D' : ui.border,
+                  borderColor: onboardingData.sleepQuality === opt.value ? lightColors.primary : ui.border,
                 },
               ]}
             >
@@ -475,7 +475,7 @@ export default function WorkoutPlanBuilderFieldEditBody({
                 styles.optionCard,
                 {
                   backgroundColor: onboardingData.energyLevels === opt.value ? ui.optionSelectedBg : ui.optionBg,
-                  borderColor: onboardingData.energyLevels === opt.value ? '#FF6B9D' : ui.border,
+                  borderColor: onboardingData.energyLevels === opt.value ? lightColors.primary : ui.border,
                 },
               ]}
             >
@@ -501,7 +501,7 @@ export default function WorkoutPlanBuilderFieldEditBody({
                 styles.optionCard,
                 {
                   backgroundColor: onboardingData.hydrationHabits === opt.value ? ui.optionSelectedBg : ui.optionBg,
-                  borderColor: onboardingData.hydrationHabits === opt.value ? '#FF6B9D' : ui.border,
+                  borderColor: onboardingData.hydrationHabits === opt.value ? lightColors.primary : ui.border,
                 },
               ]}
             >

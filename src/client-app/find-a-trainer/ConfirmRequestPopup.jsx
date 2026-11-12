@@ -1,38 +1,31 @@
-// Confirm-before-send sheet when a client taps Request on a trainer profile.
-// Flow: show the trainer → explain the 3–5 day trial → show the first monthly price → Cancel or Confirm.
+// Confirm / sent / error sheets for marketplace connection requests (PNG 17 / 19 / 21).
+// Flow: confirm timeline → Cancel/Confirm; sent → Got it; error → Try again / Send message.
 // Used by SearchTrainersScreen. Price is read from price, then pricing.perMonth, then rate.
 //
-// vocab: neobrutalist = thick borders, hard shadows, gradient only for confirm button
+// vocab: variant = 'confirm' | 'sent' | 'error' — same Modal shell, different body
+// vocab: HardShadow sheet = Design Law bottom modal with 3px border + grabber
 
-import React, { useEffect, useRef } from 'react';
+import React from 'react';
 import {
   View,
   Text,
   Modal,
-  TouchableOpacity,
-  ScrollView,
-  Image,
-  ActivityIndicator,
   Pressable,
-  Animated,
   StyleSheet,
-  Dimensions,
-  useColorScheme,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import NbCard from '../../look-and-feel/NbCard';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 import NbButton from '../../look-and-feel/NbButton';
-import { lightColors, darkColors } from '../../look-and-feel/colorPalette';
-import { trainerPhotoUri } from '../../helpers/trainerProfilePhoto';
+import { useTheme } from '../../look-and-feel/lightDarkMode';
+import { accentGradients, borderRadius, nb, spacing } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
-const { width: SCREEN_W } = Dimensions.get('window');
-const MODAL_MAX_WIDTH_PX = 400;
-const MODAL_MAX_W = Math.min(SCREEN_W * 0.9, MODAL_MAX_WIDTH_PX);
 const TRAINER_NAME_DEFAULT = 'Trainer';
-const SCALE_HIDDEN = 0.94;
-const FADE_MS = 220;
+const MIN_BOTTOM_PAD = 16;
+const VARIANT_CONFIRM = 'confirm';
+const VARIANT_SENT = 'sent';
+const VARIANT_ERROR = 'error';
 
 // ===== HELPER FUNCTIONS =====
 
@@ -51,70 +44,157 @@ function getTrainerPrice(trainer) {
 
 /**
  * @param {object} trainer
- * @returns {{ name: string, firstName: string, initial: string, photoUri: string, price: *, hasPrice: boolean }}
  */
 function trainerConfirmFields(trainer) {
-  const name = trainer.displayName || trainer.name || TRAINER_NAME_DEFAULT;
+  const name = trainer?.displayName || trainer?.name || TRAINER_NAME_DEFAULT;
   const firstName = name.trim().split(/\s+/)[0] || name;
-  const initial = name.trim().charAt(0).toUpperCase() || '?';
-  const photoUri = trainerPhotoUri(trainer);
   const price = getTrainerPrice(trainer);
   const hasPrice = price != null && price !== '' && Number.isFinite(Number(price)) && Number(price) > 0;
-  return { name, firstName, initial, photoUri, price, hasPrice };
+  return { name, firstName, price, hasPrice };
 }
 
-function TrainerAvatar({ photoUri, initial, colors }) {
+/**
+ * One numbered step in the confirm timeline (PNG 17).
+ */
+function TimelineStep({ index, title, subtitle, current, colors, isLast }) {
+  const filled = current;
   return (
-    <View style={[styles.avatarRing, { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface }]}>
-      {photoUri ? (
-        <Image source={{ uri: photoUri }} style={styles.avatarImg} resizeMode="cover" />
-      ) : (
-        <View style={styles.avatarPlaceholder}>
-          <Text style={[styles.avatarInitial, { color: colors.nbInk }]}>{initial}</Text>
-        </View>
-      )}
-    </View>
-  );
-}
-
-function TrialCard({ firstName, colors }) {
-  return (
-    <View style={[styles.cardBlock, { backgroundColor: colors.nbSurfaceChip, borderColor: colors.nbBorder }]}>
-      <View style={styles.rowStart}>
-        <Ionicons name="calendar-outline" size={20} color={colors.nbMuted} style={styles.rowIcon} />
-        <View style={styles.rowBody}>
-          <Text style={[styles.sectionLabel, { color: colors.nbInk }]}>FREE TRIAL PERIOD: 3–5 DAYS</Text>
-          <Text style={[styles.bodyText, { color: colors.nbMuted }]}>
-            You can message {firstName} and discuss your fitness goals, training style, recovery needs, and anything else
-            you want to cover. Get to know each other first — no commitment yet.
+    <View style={styles.stepRow}>
+      <View style={styles.stepRail}>
+        <View
+          style={[
+            styles.stepDot,
+            {
+              backgroundColor: filled ? colors.nbFill : colors.nbSurface,
+              borderColor: colors.nbBorder,
+            },
+          ]}
+        >
+          <Text style={[styles.stepNum, { color: filled ? colors.nbOnFill : colors.nbInk }]}>
+            {index}
           </Text>
         </View>
+        {!isLast ? (
+          <View style={[styles.stepLine, { backgroundColor: colors.nbBorder }]} />
+        ) : null}
+      </View>
+      <View style={styles.stepCopy}>
+        <Text style={[styles.stepTitle, { color: colors.nbInk }]}>{title}</Text>
+        <Text style={[styles.stepSub, { color: colors.nbMuted }]}>{subtitle}</Text>
       </View>
     </View>
   );
 }
 
-function AfterTrialCard({ hasPrice, price, colors }) {
+function SheetChrome({ colors, insets, children }) {
   return (
-    <View style={[styles.cardBlock, { backgroundColor: colors.nbSurfaceChip, borderColor: colors.nbBorder }]}>
-      <View style={styles.rowStart}>
-        <Ionicons name="card-outline" size={20} color={colors.nbMuted} style={styles.rowIcon} />
-        <View style={styles.rowBody}>
-          <Text style={[styles.sectionLabel, { color: colors.nbInk }]}>AFTER YOUR TRIAL</Text>
-          {hasPrice ? (
-            <Text style={[styles.bodyText, { color: colors.nbMuted }]}>
-              Your first payment of{' '}
-              <Text style={[styles.priceAccent, { color: colors.nbInk }]}>${Number(price)}</Text>
-              /month will be charged. You can cancel anytime before your trial ends with no charge.
-            </Text>
-          ) : (
-            <Text style={[styles.bodyText, { color: colors.nbMuted }]}>
-              Your first payment will follow your coach's listed rate. You can cancel anytime before your trial ends
-              with no charge.
-            </Text>
-          )}
-        </View>
+    <View
+      style={[
+        styles.sheet,
+        {
+          backgroundColor: colors.nbSurface,
+          borderColor: colors.nbBorder,
+          paddingBottom: Math.max(insets.bottom, MIN_BOTTOM_PAD),
+        },
+      ]}
+    >
+      <View style={styles.handle}>
+        <View style={[styles.handleBar, { backgroundColor: colors.nbBorder }]} />
       </View>
+      {children}
+    </View>
+  );
+}
+
+function ConfirmBody({ firstName, hasPrice, price, busy, onCancel, onConfirm, colors }) {
+  const trialPriceLine = hasPrice
+    ? `Then $${Number(price)} per month. Cancel any time.`
+    : 'Then their listed monthly rate. Cancel any time.';
+
+  return (
+    <>
+      <Text style={[styles.title, { color: colors.nbInk }]}>Confirm your request</Text>
+      <View style={styles.timeline}>
+        <TimelineStep
+          index={1}
+          title="You send the request"
+          subtitle={`${firstName} sees your goals and message`}
+          current
+          colors={colors}
+        />
+        <TimelineStep
+          index={2}
+          title={`${firstName} accepts`}
+          subtitle="Usually within a day"
+          colors={colors}
+        />
+        <TimelineStep
+          index={3}
+          title="3–5 day free trial"
+          subtitle={trialPriceLine}
+          colors={colors}
+          isLast
+        />
+      </View>
+      <View style={styles.actions}>
+        <NbButton variant="plain" onPress={onCancel} disabled={busy} style={styles.actionBtn}>
+          Cancel
+        </NbButton>
+        <NbButton variant="fill" onPress={onConfirm} disabled={busy} style={styles.actionBtn}>
+          {busy ? 'Sending…' : 'Confirm'}
+        </NbButton>
+      </View>
+    </>
+  );
+}
+
+function SentBody({ firstName, onGotIt, colors }) {
+  return (
+    <>
+      <LinearGradient
+        colors={accentGradients[3] || accentGradients[0]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={[styles.sentBadge, { borderColor: colors.nbBorder }]}
+      >
+        <Text style={[styles.sentBadgeText, { color: colors.nbInk }]}>Request sent</Text>
+      </LinearGradient>
+      <Text style={[styles.title, { color: colors.nbInk }]}>
+        {firstName} has your request
+      </Text>
+      <Text style={[styles.sentSub, { color: colors.nbMuted }]}>
+        You are told as soon as they reply. Until then you can keep browsing.
+      </Text>
+      <NbButton variant="fill" onPress={onGotIt}>
+        Got it
+      </NbButton>
+    </>
+  );
+}
+
+function ErrorBody({ onRetry, onMessage, onCancel, colors }) {
+  return (
+    <View
+      style={[
+        styles.errorBox,
+        { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface },
+      ]}
+    >
+      <Text style={[styles.errorEyebrow, { color: colors.nbMuted }]}>UNABLE TO CONNECT</Text>
+      <Text style={[styles.errorTitle, { color: colors.nbInk }]}>
+        Connection requests are not available right now.
+      </Text>
+      <Text style={[styles.sentSub, { color: colors.nbMuted }]}>
+        Nothing was sent. Try again in a minute, or message the coach directly.
+      </Text>
+      <NbButton variant="fill" onPress={onRetry || onCancel}>
+        Try again
+      </NbButton>
+      {typeof onMessage === 'function' ? (
+        <NbButton variant="plain" onPress={onMessage} style={{ marginTop: spacing.sm }}>
+          Send message
+        </NbButton>
+      ) : null}
     </View>
   );
 }
@@ -122,8 +202,7 @@ function AfterTrialCard({ hasPrice, price, colors }) {
 // ===== MAIN FUNCTION =====
 
 /**
- * Trial + payment confirmation modal when a client requests a trainer.
- * Neobrutalist redesign: NbCard, NbButton, thick borders, one gradient moment (Confirm button).
+ * Trial confirm / request-sent / unable-to-connect sheets.
  * @param {object} props
  */
 export default function ConfirmRequestPopup({
@@ -132,167 +211,166 @@ export default function ConfirmRequestPopup({
   busy,
   onConfirm,
   onCancel,
+  onGotIt,
+  onRetry,
+  onMessage,
+  variant = VARIANT_CONFIRM,
 }) {
-  const colorScheme = useColorScheme();
-  const colors = colorScheme === 'dark' ? darkColors : lightColors;
-  const scale = useRef(new Animated.Value(SCALE_HIDDEN)).current;
-  const fade = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    if (visible) {
-      fade.setValue(0);
-      scale.setValue(SCALE_HIDDEN);
-      Animated.parallel([
-        Animated.timing(fade, { toValue: 1, duration: FADE_MS, useNativeDriver: true }),
-        Animated.spring(scale, { toValue: 1, friction: 8, tension: 65, useNativeDriver: true }),
-      ]).start();
-    }
-  }, [visible, fade, scale]);
-
-  const { name, firstName, initial, photoUri, price, hasPrice } = trainerConfirmFields(trainer);
-  const closeIfNotBusy = busy ? undefined : onCancel;
+  const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
+  const { firstName, price, hasPrice } = trainerConfirmFields(trainer);
+  const closeIfNotBusy = busy ? undefined : (onCancel || onGotIt);
+  const mode = variant || VARIANT_CONFIRM;
 
   return (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={closeIfNotBusy}>
-      <View style={styles.modalRoot}>
-        <Pressable style={styles.backdropPress} onPress={closeIfNotBusy} />
-        <View style={styles.centerWrap} pointerEvents="box-none">
-          <Animated.View
-            style={{
-              opacity: fade,
-              transform: [{ scale }],
-              width: MODAL_MAX_W,
-              maxWidth: '90%',
-            }}
-          >
-            <NbCard style={styles.card}>
-              <ScrollView
-                style={styles.scroll}
-                contentContainerStyle={styles.scrollContent}
-                showsVerticalScrollIndicator={false}
-              >
-                <View style={styles.header}>
-                  <TrainerAvatar photoUri={photoUri} initial={initial} colors={colors} />
-                  <Text style={[styles.title, { color: colors.nbInk }]}>Connect with {name}?</Text>
-                  <Text style={[styles.subtitle, { color: colors.nbMuted }]}>Start your free trial</Text>
-                </View>
-
-                <TrialCard firstName={firstName} colors={colors} />
-                <AfterTrialCard hasPrice={hasPrice} price={price} colors={colors} />
-
-                <View style={styles.actions}>
-                  <NbButton variant="plain" onPress={onCancel} disabled={busy}>
-                    Cancel
-                  </NbButton>
-                  <NbButton variant="brand" onPress={onConfirm} disabled={busy}>
-                    {busy ? <ActivityIndicator size="small" color="#0A0A0F" /> : 'Confirm'}
-                  </NbButton>
-                </View>
-              </ScrollView>
-            </NbCard>
-          </Animated.View>
-        </View>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={closeIfNotBusy}>
+      <View style={styles.overlay}>
+        <Pressable style={styles.backdrop} onPress={closeIfNotBusy} />
+        <SheetChrome colors={colors} insets={insets}>
+          {mode === VARIANT_SENT ? (
+            <SentBody firstName={firstName} onGotIt={onGotIt || onCancel} colors={colors} />
+          ) : null}
+          {mode === VARIANT_ERROR ? (
+            <ErrorBody
+              onRetry={onRetry}
+              onMessage={onMessage}
+              onCancel={onCancel}
+              colors={colors}
+            />
+          ) : null}
+          {mode === VARIANT_CONFIRM ? (
+            <ConfirmBody
+              firstName={firstName}
+              hasPrice={hasPrice}
+              price={price}
+              busy={busy}
+              onCancel={onCancel}
+              onConfirm={onConfirm}
+              colors={colors}
+            />
+          ) : null}
+        </SheetChrome>
       </View>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  modalRoot: {
+  overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'flex-end',
   },
-  backdropPress: {
-    ...StyleSheet.absoluteFillObject,
+  backdrop: { flex: 1 },
+  sheet: {
+    borderTopLeftRadius: borderRadius.nbSheet,
+    borderTopRightRadius: borderRadius.nbSheet,
+    borderTopWidth: nb.borderWidth,
+    borderLeftWidth: nb.borderWidth,
+    borderRightWidth: nb.borderWidth,
+    paddingHorizontal: spacing.lg,
   },
-  centerWrap: {
-    flex: 1,
+  handle: {
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 20,
+    paddingTop: spacing.sm + 4,
+    paddingBottom: spacing.sm,
   },
-  card: {
-    maxHeight: '85%',
-  },
-  scroll: {
-    maxHeight: 600,
-  },
-  scrollContent: {
-    padding: 20,
-  },
-  header: {
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  avatarRing: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    borderWidth: 2.5,
-    overflow: 'hidden',
-    marginBottom: 16,
-  },
-  avatarImg: {
-    width: '100%',
-    height: '100%',
-  },
-  avatarPlaceholder: {
-    width: '100%',
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarInitial: {
-    fontSize: 32,
-    fontFamily: 'SpaceGrotesk_700Bold',
+  handleBar: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
   },
   title: {
     fontSize: 24,
     fontFamily: 'SpaceGrotesk_700Bold',
-    textAlign: 'center',
+    letterSpacing: -0.3,
+    marginBottom: spacing.md,
   },
-  subtitle: {
-    marginTop: 6,
-    fontSize: 15,
-    fontFamily: 'Inter_400Regular',
-    textAlign: 'center',
+  timeline: {
+    marginBottom: spacing.lg,
   },
-  cardBlock: {
-    borderRadius: 12,
-    borderWidth: 2.5,
-    padding: 16,
-    marginBottom: 16,
-  },
-  rowStart: {
+  stepRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    gap: 14,
+    minHeight: 64,
   },
-  rowIcon: {
-    marginRight: 12,
-    marginTop: 2,
+  stepRail: {
+    width: 28,
+    alignItems: 'center',
   },
-  rowBody: {
-    flex: 1,
-    minWidth: 0,
+  stepDot: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: nb.borderWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  sectionLabel: {
-    fontSize: 12,
-    fontFamily: 'Inter_600SemiBold',
-    textTransform: 'uppercase',
-    letterSpacing: 0.1,
-    marginBottom: 8,
-  },
-  bodyText: {
-    fontSize: 15,
-    fontFamily: 'Inter_400Regular',
-    lineHeight: 22,
-  },
-  priceAccent: {
+  stepNum: {
+    fontSize: 13,
     fontFamily: 'SpaceGrotesk_700Bold',
+  },
+  stepLine: {
+    flex: 1,
+    width: 3,
+    marginVertical: 4,
+    borderRadius: 2,
+  },
+  stepCopy: {
+    flex: 1,
+    paddingBottom: 16,
+    gap: 2,
+  },
+  stepTitle: {
+    fontSize: 16,
+    fontFamily: 'SpaceGrotesk_700Bold',
+  },
+  stepSub: {
+    fontSize: 13,
+    fontFamily: 'Inter_400Regular',
+    lineHeight: 18,
   },
   actions: {
     flexDirection: 'row',
     gap: 12,
-    marginTop: 8,
+    marginBottom: spacing.sm,
+  },
+  actionBtn: { flex: 1 },
+  sentBadge: {
+    alignSelf: 'flex-start',
+    borderWidth: nb.borderWidthPill,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    marginBottom: spacing.sm,
+  },
+  sentBadgeText: {
+    fontSize: 12,
+    fontFamily: 'SpaceGrotesk_700Bold',
+  },
+  sentSub: {
+    fontSize: 14,
+    fontFamily: 'Inter_400Regular',
+    lineHeight: 20,
+    marginBottom: spacing.md,
+  },
+  errorBox: {
+    borderWidth: nb.borderWidth,
+    borderStyle: 'dashed',
+    borderRadius: borderRadius.nbCard,
+    padding: spacing.md,
+    gap: 8,
+    marginBottom: spacing.sm,
+  },
+  errorEyebrow: {
+    fontSize: 12,
+    fontFamily: 'Inter_700Bold',
+    letterSpacing: 0.7,
+  },
+  errorTitle: {
+    fontSize: 20,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    letterSpacing: -0.3,
+    lineHeight: 26,
   },
 });

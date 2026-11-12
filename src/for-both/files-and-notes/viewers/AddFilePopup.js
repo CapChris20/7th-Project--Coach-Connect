@@ -1,32 +1,46 @@
-// Bottom-sheet picker for adding a photo, video, PDF, or spreadsheet to Notes & Files.
-// Flow: pick a type → library or document picker → upload → close, or show import text.
-// Used by the Notes & Files plus button on client and trainer screens.
+// Design Law “Add files” sheet (files-and-notes PNG 05 / 06) — NbSheet list rows + Cancel.
+ // Flow: pick Photo/Video/Doc → picker → upload → close; note step → addNote; trainer create/import below.
+ // Used by Notes & Files + button on client and trainer screens.
+ //
+ // vocab: NbSheet = Design Law bottom sheet; HardShadow = solid offset shadow (no blur)
+ // KEEP upload/import handlers + Firebase keys. No LinearGradient option cards. Never green.
 
 import React, { useState } from 'react';
 import {
   View,
   Text,
-  Modal,
+  TextInput,
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
   Alert,
-  ScrollView,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { auth } from '../../../app-start/cloudConnection';
-import { addFile, addSpreadsheetFile, uploadTrainerDocumentImport, getTrainerImportedData } from '../../files-and-notes/saveNotesAndFiles';
+import {
+  addFile,
+  addNote,
+  addSpreadsheetFile,
+  uploadTrainerDocumentImport,
+  getTrainerImportedData,
+} from '../../files-and-notes/saveNotesAndFiles';
 import { functions } from '../../../app-start/cloudConnection';
 import { httpsCallable } from 'firebase/functions';
+import { useTheme } from '../../../look-and-feel/lightDarkMode';
+import NbSheet from '../../../look-and-feel/NbSheet';
+import NbButton from '../../../look-and-feel/NbButton';
+import NbIconChip from '../../../look-and-feel/NbIconChip';
+import HardShadow from '../../../look-and-feel/HardShadow';
+import { accentGradients, borderRadius, nb, spacing } from '../../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
 const STEP_PICKER = 'picker';
+const STEP_NOTE = 'note';
 const STEP_IMPORT_RESULT = 'importResult';
 const IMPORT_STATUS_UPLOADING = 'uploading';
 const IMPORT_STATUS_PARSING = 'parsing';
@@ -34,9 +48,11 @@ const IMPORT_STATUS_COMPLETE = 'complete';
 const IMPORT_STATUS_ERROR = 'error';
 const ADDED_BY_TRAINER = 'trainer';
 const ADDED_BY_CLIENT = 'client';
+
 const OPTION_PHOTO = 'photo';
 const OPTION_VIDEO = 'video';
 const OPTION_DOC = 'doc';
+const OPTION_NOTE = 'note';
 const OPTION_SPREADSHEET = 'spreadsheet';
 const OPTION_NEW_DOC = 'newDoc';
 const OPTION_NEW_SHEET = 'newSheet';
@@ -49,6 +65,8 @@ const IMPORT_POLL_ATTEMPTS = 20;
 // Manipulate here: wait between parse-status checks.
 const IMPORT_POLL_WAIT_MS = 800;
 const PHOTO_PICKER_QUALITY = 0.8;
+// Manipulate here: delay after sheet dismiss before ImagePicker / document editor opens (ms)
+const ACTION_OPEN_DELAY_MS = 120;
 
 const PDF_AND_WORD_TYPES = [
   'application/pdf',
@@ -63,56 +81,87 @@ const SPREADSHEET_PICKER_TYPES = [
   '*/*',
 ];
 
-const OPTIONS = [
-  { key: OPTION_PHOTO, label: 'Photo', icon: 'image-outline', gradient: ['#C2410C', '#FF6B9D'], group: 'add' },
-  { key: OPTION_VIDEO, label: 'Video', icon: 'videocam-outline', gradient: ['#C2410C', '#A855F7'], group: 'add' },
-  { key: OPTION_DOC, label: 'PDF / Doc', icon: 'document-attach-outline', gradient: ['#CA8A04', '#F97316'], group: 'add' },
+const PICTURE_ICON = require('../../../assets/icons/handoff/picture.png');
+const MUSCLE_ICON = require('../../../assets/icons/handoff/muscle.png');
+const WEEK_ICON = require('../../../assets/icons/handoff/week.png');
+const JOURNEY_ICON = require('../../../assets/icons/handoff/journey.png');
+const WORKOUT_ICON = require('../../../assets/icons/handoff/workout.png');
+const PROGRESS_ICON = require('../../../assets/icons/handoff/progress.png');
+
+// Manipulate here: PNG 05 primary rows — labels/subtitles are Design Law copy
+const CLIENT_ROWS = [
   {
-    key: OPTION_SPREADSHEET,
-    label: 'Spreadsheet',
-    icon: 'grid-outline',
-    gradient: ['#10B981', '#047857'],
-    group: 'add',
-    clientOnly: true,
+    key: OPTION_PHOTO,
+    label: 'Photo',
+    subtitle: 'Camera or library',
+    icon: PICTURE_ICON,
+    accentIndex: 0,
   },
+  {
+    key: OPTION_VIDEO,
+    label: 'Video',
+    subtitle: 'From your library',
+    icon: WORKOUT_ICON,
+    accentIndex: 3,
+  },
+  {
+    key: OPTION_DOC,
+    label: 'PDF / Doc',
+    subtitle: 'PDF or Word, up to 10 MB',
+    icon: MUSCLE_ICON,
+    accentIndex: 4,
+  },
+  {
+    key: OPTION_NOTE,
+    label: 'Add note or file',
+    subtitle: 'Write a note for your coach',
+    subtitleTrainer: 'Write a note for this client',
+    icon: WEEK_ICON,
+    accentIndex: 8,
+  },
+];
+
+// Trainer-only create/import — rendered as HardShadow rows below the primary list
+const TRAINER_EXTRA_ROWS = [
   {
     key: OPTION_NEW_DOC,
     label: 'New Document',
-    icon: 'document-text-outline',
-    gradient: ['#C2410C', '#A855F7'],
-    group: 'create',
-    trainerOnly: true,
+    subtitle: 'Blank doc for this client',
+    icon: JOURNEY_ICON,
+    accentIndex: 2,
   },
   {
     key: OPTION_NEW_SHEET,
     label: 'New Spreadsheet',
-    icon: 'grid-outline',
-    gradient: ['#CA8A04', '#F97316'],
-    group: 'create',
-    trainerOnly: true,
+    subtitle: 'Blank sheet for this client',
+    icon: PROGRESS_ICON,
+    accentIndex: 5,
   },
   {
     key: OPTION_IMPORT,
     label: 'Import & Parse',
-    icon: 'cloud-upload-outline',
-    gradient: ['#BE185D', '#C2410C'],
-    group: 'import',
-    trainerOnly: true,
+    subtitle: 'Upload a PDF/Word and extract text',
+    icon: MUSCLE_ICON,
+    accentIndex: 6,
   },
   {
     key: OPTION_IMPORT_SHEET,
     label: 'Import Sheet',
-    icon: 'download-outline',
-    gradient: ['#C2410C', '#FF6B9D'],
-    group: 'import',
-    trainerOnly: true,
+    subtitle: 'Bring in a spreadsheet file',
+    icon: PROGRESS_ICON,
+    accentIndex: 7,
   },
 ];
 
-const SECTION_DEFS = [
-  { id: 'add', title: 'ADD FILES', keys: [OPTION_PHOTO, OPTION_VIDEO, OPTION_DOC, OPTION_SPREADSHEET] },
-  { id: 'create', title: 'CREATE NEW', keys: [OPTION_NEW_DOC, OPTION_NEW_SHEET] },
-  { id: 'import', title: 'IMPORT', keys: [OPTION_IMPORT, OPTION_IMPORT_SHEET] },
+// Client-only extra under MORE (kept so spreadsheet upload handler stays reachable)
+const CLIENT_EXTRA_ROWS = [
+  {
+    key: OPTION_SPREADSHEET,
+    label: 'Spreadsheet file',
+    subtitle: 'Upload .xlsx or CSV',
+    icon: PROGRESS_ICON,
+    accentIndex: 8,
+  },
 ];
 
 // ===== HELPER FUNCTIONS =====
@@ -140,46 +189,17 @@ function optionalFileSize(size) {
   return typeof size === 'number' ? size : undefined;
 }
 
-function popupColors(isDark) {
-  return {
-    pageBackground: isDark ? '#0C0C12' : '#F7F7FB',
-    cardBackground: isDark ? 'rgba(255,255,255,0.06)' : '#FFFFFF',
-    cardBorder: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(10,10,15,0.08)',
-    textColor: isDark ? '#FFFFFF' : '#0A0A0F',
-    mutedColor: isDark ? 'rgba(255,255,255,0.55)' : 'rgba(10,10,15,0.5)',
-    sectionLabel: isDark ? 'rgba(255,255,255,0.38)' : 'rgba(10,10,15,0.4)',
-    progressTrack: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)',
-  };
-}
-
-function optionsVisibleForRole(addedBy) {
-  return OPTIONS.filter(
-    (option) =>
-      (!option.clientOnly || addedBy === ADDED_BY_CLIENT) &&
-      (!option.trainerOnly || addedBy === ADDED_BY_TRAINER),
-  );
-}
-
-function itemsForSection(section, visibleOptions) {
-  return section.keys
-    .map((key) => visibleOptions.find((option) => option.key === key))
-    .filter(Boolean);
-}
-
-function sectionsWithVisibleItems(visibleOptions) {
-  return SECTION_DEFS
-    .map((section) => ({ ...section, items: itemsForSection(section, visibleOptions) }))
-    .filter((section) => section.items.length > 0);
-}
-
-function runOptionAction(key, actions) {
-  const action = actions[key];
-  if (!action) return;
-  action();
-}
-
 async function requestLibraryPermission(message) {
   const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+  if (status !== 'granted') {
+    Alert.alert('Permission needed', message);
+    return false;
+  }
+  return true;
+}
+
+async function requestCameraPermission(message) {
+  const { status } = await ImagePicker.requestCameraPermissionsAsync();
   if (status !== 'granted') {
     Alert.alert('Permission needed', message);
     return false;
@@ -192,6 +212,16 @@ async function pickLibraryAsset(mediaTypes, extraOptions = {}) {
     mediaTypes,
     allowsEditing: false,
     ...extraOptions,
+  });
+  if (result.canceled || !result.assets?.[0]?.uri) return null;
+  return result.assets[0];
+}
+
+async function pickCameraPhoto() {
+  const result = await ImagePicker.launchCameraAsync({
+    mediaTypes: ['images'],
+    allowsEditing: false,
+    quality: PHOTO_PICKER_QUALITY,
   });
   if (result.canceled || !result.assets?.[0]?.uri) return null;
   return result.assets[0];
@@ -236,6 +266,7 @@ async function askServerToParseImport(trainerId, importId, storagePath) {
 }
 
 async function runTrainerImportParse({ trainerId, uid, file, onProgress, onParsingStarted }) {
+  // Also keep a copy in notes_and_files so the client sees the uploaded PDF/doc.
   if (uid) {
     await addFile(
       uid,
@@ -263,51 +294,93 @@ async function runTrainerImportParse({ trainerId, uid, file, onProgress, onParsi
   return waitForImportParse(trainerId, importId);
 }
 
-function applyImportResult(imported, setters) {
-  if (imported?.status === IMPORT_STATUS_ERROR) {
-    setters.setImportStatus(IMPORT_STATUS_ERROR);
-    setters.setImportError(imported.error || 'Parsing failed. The file may be corrupted or unsupported.');
-    setters.setStep(STEP_IMPORT_RESULT);
-    return;
-  }
-  setters.setImportStatus(IMPORT_STATUS_COMPLETE);
-  setters.setExtractedText(imported?.extractedText || '(No text extracted)');
-  setters.setStep(STEP_IMPORT_RESULT);
-}
-
 function uploadingStatusLabel(importStatus, uploadProgress) {
   if (importStatus === IMPORT_STATUS_PARSING) return 'Parsing document…';
   const percentSuffix = uploadProgress > 0 ? `${uploadProgress}%` : '';
   return `Uploading… ${percentSuffix}`;
 }
 
+/**
+ * PNG 05 list row: NbIconChip + title/subtitle + chevron.
+ * vocab: accentIndex picks which accentGradients ramp fills the chip (small accent only).
+ */
+function AddFileRow({ label, subtitle, icon, accentIndex, onPress, colors, showDivider, hardShadow }) {
+  const rowInner = (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.85}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      style={[
+        styles.row,
+        hardShadow && styles.rowHard,
+        hardShadow && {
+          backgroundColor: colors.nbSurface,
+          borderColor: colors.nbBorder,
+        },
+        !hardShadow && showDivider && {
+          borderBottomWidth: nb.borderWidthDivider,
+          borderBottomColor: colors.nbBorder,
+        },
+      ]}
+    >
+      <NbIconChip
+        source={icon}
+        size={44}
+        index={accentIndex}
+        colors={accentGradients[accentIndex % accentGradients.length]}
+      />
+      <View style={styles.rowText}>
+        <Text style={[styles.rowLabel, { color: colors.nbInk }]}>{label}</Text>
+        <Text style={[styles.rowSub, { color: colors.nbMuted }]} numberOfLines={1}>
+          {subtitle}
+        </Text>
+      </View>
+      <Ionicons name="chevron-forward" size={18} color={colors.nbMuted} />
+    </TouchableOpacity>
+  );
+
+  // Trainer extras: each option is its own HardShadow card (PNG law + user brief)
+  if (hardShadow) {
+    return (
+      <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetSmall} style={styles.extraRowWrap}>
+        {rowInner}
+      </HardShadow>
+    );
+  }
+  return rowInner;
+}
+
 // ===== MAIN FUNCTION =====
 
 /**
- * Modal triggered by the bottom nav plus button.
- * Add: Photo, Video, PDF/Doc (+ trainer create/import options).
+ * Design Law Add files sheet (PNG 05/06).
  * @param {object} props
  */
 export default function AddFilePopup({
   visible,
   onClose,
   onAdded,
-  isDark = true,
+  isDark: _isDarkIgnored,
   clientId: clientIdProp,
   addedBy: addedByProp = ADDED_BY_CLIENT,
   onNewDocument,
   onNewSpreadsheet,
   onImportSpreadsheet,
+  onAddNote,
 }) {
+  const { colors } = useTheme();
   const [step, setStep] = useState(STEP_PICKER);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [importStatus, setImportStatus] = useState('');
   const [extractedText, setExtractedText] = useState('');
   const [importError, setImportError] = useState('');
+  const [noteText, setNoteText] = useState('');
   const uid = clientIdProp ?? auth?.currentUser?.uid;
   const addedBy = addedByProp;
   const trainerId = auth?.currentUser?.uid;
+  const isTrainer = addedBy === ADDED_BY_TRAINER;
 
   const handleClose = () => {
     setStep(STEP_PICKER);
@@ -316,25 +389,28 @@ export default function AddFilePopup({
     setImportStatus('');
     setExtractedText('');
     setImportError('');
+    setNoteText('');
     onClose();
   };
 
-  const handlePhoto = async () => {
-    // 1. Need a user and photo-library permission.
-    if (!uid) return;
-    const hasPermission = await requestLibraryPermission('Allow access to your photo library to add photos.');
-    if (!hasPermission) return;
-
-    // 2. Pick one image. Cancel is a no-op.
-    const asset = await pickLibraryAsset(['images'], { quality: PHOTO_PICKER_QUALITY });
-    if (!asset) return;
-
-    // 3. Upload as a photo row, then close.
+  // Upload a still photo asset (camera or library) as type:photo.
+  const uploadPhotoAsset = async (asset) => {
+    if (!uid || !asset?.uri) return;
     setUploading(true);
     try {
       const { uri, fileSize } = asset;
       const name = uri.split('/').pop() || `photo_${Date.now()}.jpg`;
-      await addFile(uid, { localUri: uri, filename: name, mimeType: 'image/jpeg', type: 'photo', size: optionalFileSize(fileSize) }, addedBy);
+      await addFile(
+        uid,
+        {
+          localUri: uri,
+          filename: name,
+          mimeType: 'image/jpeg',
+          type: 'photo',
+          size: optionalFileSize(fileSize),
+        },
+        addedBy,
+      );
       onAdded?.();
       handleClose();
     } catch (error) {
@@ -345,22 +421,57 @@ export default function AddFilePopup({
     }
   };
 
-  const handleVideo = async () => {
-    // 1. Need a user and library permission.
+  // PNG subtitle “Camera or library” — offer both sources before ImagePicker opens.
+  const handlePhoto = () => {
     if (!uid) return;
-    const hasPermission = await requestLibraryPermission('Allow access to your library to add videos.');
-    if (!hasPermission) return;
+    Alert.alert('Add photo', 'Choose a source', [
+      {
+        text: 'Camera',
+        onPress: async () => {
+          const ok = await requestCameraPermission('Allow camera access to take a photo.');
+          if (!ok) return;
+          const asset = await pickCameraPhoto();
+          if (asset) await uploadPhotoAsset(asset);
+        },
+      },
+      {
+        text: 'Library',
+        onPress: async () => {
+          const ok = await requestLibraryPermission(
+            'Allow access to your photo library to add photos.',
+          );
+          if (!ok) return;
+          const asset = await pickLibraryAsset(['images'], { quality: PHOTO_PICKER_QUALITY });
+          if (asset) await uploadPhotoAsset(asset);
+        },
+      },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
 
-    // 2. Pick one video. Cancel is a no-op.
+  const handleVideo = async () => {
+    if (!uid) return;
+    const hasPermission = await requestLibraryPermission(
+      'Allow access to your library to add videos.',
+    );
+    if (!hasPermission) return;
     const asset = await pickLibraryAsset(['videos']);
     if (!asset) return;
-
-    // 3. Upload as a video row, then close.
     setUploading(true);
     try {
       const { uri, fileSize } = asset;
       const name = uri.split('/').pop() || `video_${Date.now()}.mp4`;
-      await addFile(uid, { localUri: uri, filename: name, mimeType: 'video/mp4', type: 'video', size: optionalFileSize(fileSize) }, addedBy);
+      await addFile(
+        uid,
+        {
+          localUri: uri,
+          filename: name,
+          mimeType: 'video/mp4',
+          type: 'video',
+          size: optionalFileSize(fileSize),
+        },
+        addedBy,
+      );
       onAdded?.();
       handleClose();
     } catch (error) {
@@ -372,7 +483,6 @@ export default function AddFilePopup({
   };
 
   const handleDoc = async () => {
-    // 1. Need a user, then a PDF or Word file.
     if (!uid) return;
     let file;
     try {
@@ -383,17 +493,19 @@ export default function AddFilePopup({
       return;
     }
     if (!file) return;
-
-    // 2. Upload the document, then close.
     setUploading(true);
     try {
-      await addFile(uid, {
-        localUri: file.uri,
-        filename: file.name || 'document',
-        mimeType: file.mimeType || DEFAULT_OCTET_STREAM,
-        type: notesTypeForDocument(file),
-        size: optionalFileSize(file.size),
-      }, addedBy);
+      await addFile(
+        uid,
+        {
+          localUri: file.uri,
+          filename: file.name || 'document',
+          mimeType: file.mimeType || DEFAULT_OCTET_STREAM,
+          type: notesTypeForDocument(file),
+          size: optionalFileSize(file.size),
+        },
+        addedBy,
+      );
       onAdded?.();
       handleClose();
     } catch (error) {
@@ -404,52 +516,7 @@ export default function AddFilePopup({
     }
   };
 
-  const handleImportParse = async () => {
-    // 1. Trainers only.
-    if (!trainerId || addedBy !== ADDED_BY_TRAINER) {
-      Alert.alert('Trainers only', 'Import & parse is available on the trainer Notes & Files flow.');
-      return;
-    }
-
-    // 2. Pick a PDF or Word file.
-    let file;
-    try {
-      file = await pickPdfOrWordDocument();
-    } catch (error) {
-      console.warn('Document picker error:', error);
-      Alert.alert('Picker failed', error?.message || 'Could not open the document picker.');
-      return;
-    }
-    if (!file) return;
-
-    // 3. Keep a copy in Notes & Files, upload for parse, and wait.
-    setUploading(true);
-    setImportStatus(IMPORT_STATUS_UPLOADING);
-    setImportError('');
-    setExtractedText('');
-    try {
-      const imported = await runTrainerImportParse({
-        trainerId,
-        uid,
-        file,
-        onProgress: (percent) => setUploadProgress(percent),
-        onParsingStarted: () => setImportStatus(IMPORT_STATUS_PARSING),
-      });
-      applyImportResult(imported, { setImportStatus, setImportError, setExtractedText, setStep });
-      onAdded?.();
-    } catch (error) {
-      console.warn('Import parse error:', error);
-      setImportStatus(IMPORT_STATUS_ERROR);
-      setImportError(error?.message || 'Import failed. Check the file type and try again.');
-      setStep(STEP_IMPORT_RESULT);
-    } finally {
-      setUploading(false);
-      setUploadProgress(0);
-    }
-  };
-
   const handleSpreadsheet = async () => {
-    // 1. Need a user, then a sheet or CSV.
     if (!uid) return;
     let file;
     try {
@@ -463,17 +530,20 @@ export default function AddFilePopup({
       console.warn('Document picker error:', error);
       return;
     }
-
-    // 2. Upload with a progress bar, then close.
     setUploading(true);
     setUploadProgress(0);
     try {
-      await addSpreadsheetFile(uid, {
-        localUri: file.uri,
-        filename: file.name || 'spreadsheet',
-        mimeType: file.mimeType || DEFAULT_OCTET_STREAM,
-        size: optionalFileSize(file.size),
-      }, addedBy, (percent) => setUploadProgress(percent));
+      await addSpreadsheetFile(
+        uid,
+        {
+          localUri: file.uri,
+          filename: file.name || 'spreadsheet',
+          mimeType: file.mimeType || DEFAULT_OCTET_STREAM,
+          size: optionalFileSize(file.size),
+        },
+        addedBy,
+        (percent) => setUploadProgress(percent),
+      );
       onAdded?.();
       handleClose();
     } catch (error) {
@@ -485,272 +555,341 @@ export default function AddFilePopup({
     }
   };
 
-  const colors = popupColors(isDark);
-  const visibleOptions = optionsVisibleForRole(addedBy);
-  const sections = sectionsWithVisibleItems(visibleOptions);
-
-  const handleOptionPress = (key) => {
-    // 1. Each tile key maps to one action. Unknown keys are a no-op.
-    runOptionAction(key, {
-      [OPTION_PHOTO]: handlePhoto,
-      [OPTION_VIDEO]: handleVideo,
-      [OPTION_DOC]: handleDoc,
-      [OPTION_IMPORT]: handleImportParse,
-      [OPTION_SPREADSHEET]: handleSpreadsheet,
-      [OPTION_NEW_DOC]: () => {
-        onNewDocument?.();
-        handleClose();
-      },
-      [OPTION_NEW_SHEET]: () => {
-        onNewSpreadsheet?.();
-        handleClose();
-      },
-      [OPTION_IMPORT_SHEET]: () => {
-        onImportSpreadsheet?.();
-        handleClose();
-      },
-    });
+  const handleImportParse = async () => {
+    // Trainers only — client role never sees this row.
+    if (!trainerId || addedBy !== ADDED_BY_TRAINER) {
+      Alert.alert('Trainers only', 'Import & parse is available on the trainer Notes & Files flow.');
+      return;
+    }
+    let file;
+    try {
+      file = await pickPdfOrWordDocument();
+    } catch (error) {
+      console.warn('Document picker error:', error);
+      Alert.alert('Picker failed', error?.message || 'Could not open the document picker.');
+      return;
+    }
+    if (!file) return;
+    setUploading(true);
+    setImportStatus(IMPORT_STATUS_UPLOADING);
+    setImportError('');
+    setExtractedText('');
+    try {
+      const imported = await runTrainerImportParse({
+        trainerId,
+        uid,
+        file,
+        onProgress: (percent) => setUploadProgress(percent),
+        onParsingStarted: () => setImportStatus(IMPORT_STATUS_PARSING),
+      });
+      if (imported?.status === IMPORT_STATUS_ERROR) {
+        setImportStatus(IMPORT_STATUS_ERROR);
+        setImportError(imported.error || 'Parsing failed. The file may be corrupted or unsupported.');
+        setStep(STEP_IMPORT_RESULT);
+        return;
+      }
+      setImportStatus(IMPORT_STATUS_COMPLETE);
+      setExtractedText(imported?.extractedText || '(No text extracted)');
+      setStep(STEP_IMPORT_RESULT);
+      onAdded?.();
+    } catch (error) {
+      console.warn('Import parse error:', error);
+      setImportStatus(IMPORT_STATUS_ERROR);
+      setImportError(error?.message || 'Import failed. Check the file type and try again.');
+      setStep(STEP_IMPORT_RESULT);
+    } finally {
+      setUploading(false);
+      setUploadProgress(0);
+    }
   };
 
-  return (
-    <Modal visible={visible} transparent animationType="fade">
-      <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={handleClose}>
-        <View style={[styles.outer, { backgroundColor: colors.pageBackground }]} onStartShouldSetResponder={() => true}>
-          <View style={styles.handle} />
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            keyboardVerticalOffset={80}
-            style={styles.inner}
-          >
-            <View style={styles.header}>
-              <View style={{ flex: 1, paddingRight: 12 }}>
-                <Text style={[styles.title, { color: colors.textColor }]}>Add to Notes & Files</Text>
-                <Text style={[styles.subtitle, { color: colors.mutedColor }]}>
-                  Upload media or create a file for Notes & Files
-                </Text>
-              </View>
-              <TouchableOpacity
-                onPress={handleClose}
-                hitSlop={12}
-                style={[styles.closeBtn, { backgroundColor: colors.cardBackground, borderColor: colors.cardBorder }]}
-              >
-                <Ionicons name="close" size={20} color={colors.mutedColor} />
-              </TouchableOpacity>
-            </View>
+  // PNG 07 path: write a note into notes_and_files (type:note). Parent may own a richer composer via onAddNote.
+  const handleSaveNote = async () => {
+    const content = String(noteText || '').trim();
+    if (!content) {
+      Alert.alert('Empty note', 'Write something for your coach first.');
+      return;
+    }
+    if (!uid) return;
+    setUploading(true);
+    try {
+      await addNote(uid, content, addedBy);
+      onAdded?.();
+      handleClose();
+    } catch (error) {
+      console.warn('Add note error:', error);
+      Alert.alert('Could not save note', error?.message || 'Please try again.');
+    } finally {
+      setUploading(false);
+    }
+  };
 
-            {uploading ? (
-              <View style={styles.loadingBlock}>
-                <ActivityIndicator size="large" color="#BE185D" />
-                <Text style={[styles.loadingText, { color: colors.mutedColor }]}>
-                  {uploadingStatusLabel(importStatus, uploadProgress)}
-                </Text>
-                {uploadProgress > 0 && (
-                  <View style={[styles.progressBarBg, { backgroundColor: colors.progressTrack }]}>
-                    <View style={[styles.progressBarFill, { width: `${uploadProgress}%` }]} />
-                  </View>
-                )}
-              </View>
-            ) : step === STEP_IMPORT_RESULT ? (
-              <ScrollView keyboardShouldPersistTaps="handled" style={styles.noteScroll}>
-                <Text style={[styles.noteLabel, { color: colors.mutedColor }]}>
-                  {importStatus === IMPORT_STATUS_ERROR ? 'Import failed' : 'Imported text'}
-                </Text>
-                {importStatus === IMPORT_STATUS_ERROR ? (
-                  <Text style={{ color: '#F87171', marginBottom: 16, lineHeight: 20 }}>{importError}</Text>
-                ) : (
-                  <Text style={[styles.noteInput, { color: colors.textColor, borderColor: colors.cardBorder, minHeight: 180 }]}>
-                    {extractedText}
-                  </Text>
-                )}
-                <View style={styles.noteActions}>
-                  <TouchableOpacity onPress={() => setStep(STEP_PICKER)}>
-                    <Text style={{ color: colors.mutedColor, fontSize: 15 }}>Back</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={handleClose}>
-                    <LinearGradient colors={['#BE185D', '#C2410C']} style={styles.saveNoteBtn}>
-                      <Text style={styles.saveNoteBtnText}>Done</Text>
-                    </LinearGradient>
-                  </TouchableOpacity>
-                </View>
-              </ScrollView>
-            ) : (
-              <ScrollView
-                showsVerticalScrollIndicator={false}
-                keyboardShouldPersistTaps="handled"
-                contentContainerStyle={styles.pickerScroll}
-              >
-                {sections.map((section) => (
-                  <View key={section.id} style={styles.sectionBlock}>
-                    <Text style={[styles.sectionTitle, { color: colors.sectionLabel }]}>{section.title}</Text>
-                    <View style={styles.optionsGrid}>
-                      {section.items.map((option, index) => {
-                        const isOrphan = section.items.length % 2 === 1 && index === section.items.length - 1;
-                        return (
-                          <TouchableOpacity
-                            key={option.key}
-                            style={[
-                              styles.optionCard,
-                              { backgroundColor: colors.cardBackground, borderColor: colors.cardBorder },
-                              isOrphan && styles.optionCardFull,
-                            ]}
-                            onPress={() => handleOptionPress(option.key)}
-                            activeOpacity={0.85}
-                          >
-                            <LinearGradient
-                              colors={option.gradient}
-                              style={[styles.optionIconWrap, isOrphan && styles.optionIconWrapRow]}
-                            >
-                              <Ionicons name={option.icon} size={24} color="#fff" />
-                            </LinearGradient>
-                            <Text
-                              style={[
-                                styles.optionLabel,
-                                { color: colors.textColor },
-                                isOrphan && styles.optionLabelRow,
-                              ]}
-                              numberOfLines={2}
-                            >
-                              {option.label}
-                            </Text>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
-                  </View>
-                ))}
-              </ScrollView>
-            )}
-          </KeyboardAvoidingView>
+  const openNoteStep = () => {
+    // Prefer parent composer when wired; otherwise stay in-sheet (STEP_NOTE).
+    if (typeof onAddNote === 'function') {
+      handleClose();
+      setTimeout(() => onAddNote(), ACTION_OPEN_DELAY_MS);
+      return;
+    }
+    setStep(STEP_NOTE);
+  };
+
+  const handleOptionPress = (key) => {
+    if (key === OPTION_PHOTO) return handlePhoto();
+    if (key === OPTION_VIDEO) return handleVideo();
+    if (key === OPTION_DOC) return handleDoc();
+    if (key === OPTION_SPREADSHEET) return handleSpreadsheet();
+    if (key === OPTION_IMPORT) return handleImportParse();
+    if (key === OPTION_NOTE) return openNoteStep();
+    if (key === OPTION_NEW_DOC) {
+      handleClose();
+      setTimeout(() => onNewDocument?.(), ACTION_OPEN_DELAY_MS);
+      return;
+    }
+    if (key === OPTION_NEW_SHEET) {
+      handleClose();
+      setTimeout(() => onNewSpreadsheet?.(), ACTION_OPEN_DELAY_MS);
+      return;
+    }
+    if (key === OPTION_IMPORT_SHEET) {
+      handleClose();
+      setTimeout(() => onImportSpreadsheet?.(), ACTION_OPEN_DELAY_MS);
+    }
+  };
+
+  const primaryRows = CLIENT_ROWS.map((row) =>
+    row.key === OPTION_NOTE && isTrainer
+      ? { ...row, subtitle: row.subtitleTrainer || row.subtitle }
+      : row,
+  );
+  const extraRows = isTrainer ? TRAINER_EXTRA_ROWS : CLIENT_EXTRA_ROWS;
+  const sheetTitle =
+    step === STEP_NOTE ? 'Add note or file' : step === STEP_IMPORT_RESULT ? 'Import' : 'Add files';
+
+  return (
+    <NbSheet visible={visible} onClose={handleClose} title={sheetTitle}>
+      {uploading ? (
+        <View style={styles.loadingBlock}>
+          <ActivityIndicator size="large" color={colors.nbInk} />
+          <Text style={[styles.loadingText, { color: colors.nbMuted }]}>
+            {uploadingStatusLabel(importStatus, uploadProgress)}
+          </Text>
+          {uploadProgress > 0 ? (
+            <View
+              style={[
+                styles.progressTrack,
+                { backgroundColor: colors.nbSoft, borderColor: colors.nbBorder },
+              ]}
+            >
+              <View
+                style={[
+                  styles.progressFill,
+                  { width: `${uploadProgress}%`, backgroundColor: colors.nbFill },
+                ]}
+              />
+            </View>
+          ) : null}
         </View>
-      </TouchableOpacity>
-    </Modal>
+      ) : step === STEP_IMPORT_RESULT ? (
+        <View style={{ paddingBottom: spacing.md }}>
+          <Text style={[styles.importLabel, { color: colors.nbMuted }]}>
+            {importStatus === IMPORT_STATUS_ERROR ? 'Import failed' : 'Imported text'}
+          </Text>
+          {importStatus === IMPORT_STATUS_ERROR ? (
+            <Text style={[styles.importBody, { color: colors.nbInk }]}>{importError}</Text>
+          ) : (
+            <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetCard}>
+              <View
+                style={[
+                  styles.importCard,
+                  { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder },
+                ]}
+              >
+                <Text style={[styles.importBody, { color: colors.nbInk }]}>{extractedText}</Text>
+              </View>
+            </HardShadow>
+          )}
+          <View style={styles.importActions}>
+            <NbButton variant="plain" onPress={() => setStep(STEP_PICKER)} style={{ flex: 1 }}>
+              Back
+            </NbButton>
+            <NbButton variant="fill" onPress={handleClose} style={{ flex: 1 }}>
+              Done
+            </NbButton>
+          </View>
+        </View>
+      ) : step === STEP_NOTE ? (
+        // PNG 07 composer lives in-sheet; pass onAddNote for a full-screen NbPageHeader composer.
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={{ paddingBottom: spacing.md }}
+        >
+          <Text style={[styles.importLabel, { color: colors.nbMuted }]}>YOUR NOTE</Text>
+          <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetCard}>
+            <TextInput
+              value={noteText}
+              onChangeText={setNoteText}
+              placeholder={
+                isTrainer
+                  ? 'Write a note for your client…'
+                  : 'Knee felt tight on the second set. Video attached.'
+              }
+              placeholderTextColor={colors.nbMuted}
+              multiline
+              textAlignVertical="top"
+              style={[
+                styles.noteInput,
+                {
+                  color: colors.nbInk,
+                  backgroundColor: colors.nbSurface,
+                  borderColor: colors.nbBorder,
+                },
+              ]}
+            />
+          </HardShadow>
+          <NbButton variant="fill" onPress={handleSaveNote} style={{ marginTop: 16 }}>
+            Add to Notes & Files
+          </NbButton>
+          <NbButton variant="plain" onPress={() => setStep(STEP_PICKER)} style={{ marginTop: 10 }}>
+            Back
+          </NbButton>
+        </KeyboardAvoidingView>
+      ) : (
+        <View style={{ paddingBottom: spacing.md }}>
+          {/* PNG 05: flat list on the sheet — no GradientFrame / option tiles */}
+          <View style={styles.list}>
+            {primaryRows.map((row, index) => (
+              <AddFileRow
+                key={row.key}
+                label={row.label}
+                subtitle={row.subtitle}
+                icon={row.icon}
+                accentIndex={row.accentIndex}
+                onPress={() => handleOptionPress(row.key)}
+                colors={colors}
+                showDivider={index < primaryRows.length - 1}
+              />
+            ))}
+          </View>
+
+          {extraRows.length > 0 ? (
+            <>
+              <Text style={[styles.sectionLabel, { color: colors.nbMuted }]}>
+                {isTrainer ? 'CREATE & IMPORT' : 'MORE'}
+              </Text>
+              {extraRows.map((row) => (
+                <AddFileRow
+                  key={row.key}
+                  label={row.label}
+                  subtitle={row.subtitle}
+                  icon={row.icon}
+                  accentIndex={row.accentIndex}
+                  onPress={() => handleOptionPress(row.key)}
+                  colors={colors}
+                  hardShadow
+                />
+              ))}
+            </>
+          ) : null}
+
+          {/* Cancel = plain NbButton (HardShadow built into NbButton) */}
+          <NbButton variant="plain" onPress={handleClose} style={{ marginTop: 16 }}>
+            Cancel
+          </NbButton>
+        </View>
+      )}
+    </NbSheet>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.62)',
-    justifyContent: 'flex-end',
+  list: {
+    overflow: 'hidden',
   },
-  outer: {
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    paddingBottom: 28,
-    maxHeight: '78%',
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.08)',
-  },
-  handle: {
-    alignSelf: 'center',
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.22)',
-    marginTop: 10,
-    marginBottom: 4,
-  },
-  inner: { paddingHorizontal: 18, paddingTop: 10, flexGrow: 0 },
-  header: {
+  row: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 14,
-  },
-  title: { fontSize: 20, fontWeight: '800', letterSpacing: -0.2 },
-  subtitle: { fontSize: 13, marginTop: 4, lineHeight: 18 },
-  closeBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
     alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
+    minHeight: 64,
+    paddingHorizontal: 4,
+    paddingVertical: 14,
+    gap: 12,
   },
-  loadingBlock: { alignItems: 'center', paddingVertical: 48, gap: 12 },
-  loadingText: { fontSize: 15 },
-  pickerScroll: { paddingBottom: 12 },
-  sectionBlock: { marginBottom: 16 },
-  sectionTitle: {
+  rowHard: {
+    paddingHorizontal: 14,
+    borderWidth: nb.borderWidth,
+    borderRadius: borderRadius.nbCard,
+    minHeight: nb.minTouchTarget + 12,
+  },
+  extraRowWrap: {
+    marginBottom: 10,
+  },
+  rowText: { flex: 1, minWidth: 0 },
+  rowLabel: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 16,
+    letterSpacing: -0.2,
+  },
+  rowSub: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 13,
+    marginTop: 2,
+  },
+  sectionLabel: {
+    fontFamily: 'SpaceGrotesk_700Bold',
     fontSize: 11,
-    fontWeight: '800',
+    letterSpacing: 1.2,
+    marginTop: 18,
+    marginBottom: 10,
+  },
+  loadingBlock: {
+    alignItems: 'center',
+    paddingVertical: 40,
+    gap: 12,
+  },
+  loadingText: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 14,
+  },
+  progressTrack: {
+    height: 8,
+    width: '80%',
+    maxWidth: 220,
+    borderRadius: 999,
+    borderWidth: nb.borderWidth,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+  },
+  importLabel: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 12,
     letterSpacing: 1.1,
     marginBottom: 10,
-    marginLeft: 2,
   },
-  optionsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    rowGap: 10,
-  },
-  optionCard: {
-    width: '48.5%',
-    borderRadius: 18,
-    paddingVertical: 16,
-    paddingHorizontal: 10,
-    alignItems: 'center',
-    borderWidth: 1,
-  },
-  optionCardFull: {
-    width: '100%',
-    flexDirection: 'row',
-    justifyContent: 'flex-start',
-    gap: 14,
-    paddingHorizontal: 16,
-  },
-  optionIconWrap: {
-    width: 50,
-    height: 50,
-    borderRadius: 15,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 10,
-  },
-  optionIconWrapRow: {
-    marginBottom: 0,
-  },
-  optionLabel: {
-    fontSize: 13,
-    fontWeight: '700',
-    textAlign: 'center',
-    lineHeight: 17,
-  },
-  optionLabelRow: {
-    textAlign: 'left',
-    flex: 1,
-    fontSize: 15,
-  },
-  noteScroll: { flexGrow: 0 },
-  noteLabel: { fontSize: 13, fontWeight: '600', marginBottom: 8 },
-  noteInput: {
-    borderWidth: 1,
-    borderRadius: 14,
+  importCard: {
+    borderWidth: nb.borderWidth,
+    borderRadius: borderRadius.nbCard,
     padding: 14,
     minHeight: 120,
-    textAlignVertical: 'top',
-    fontSize: 15,
   },
-  noteActions: {
+  importBody: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  importActions: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    gap: 10,
     marginTop: 16,
-    marginBottom: 8,
   },
-  saveNoteBtn: { paddingHorizontal: 20, paddingVertical: 12, borderRadius: 12 },
-  saveNoteBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
-  progressBarBg: {
-    height: 6,
-    width: '80%',
-    maxWidth: 200,
-    borderRadius: 3,
-    overflow: 'hidden',
-    marginTop: 8,
-  },
-  progressBarFill: {
-    height: '100%',
-    backgroundColor: '#10B981',
-    borderRadius: 3,
+  noteInput: {
+    borderWidth: nb.borderWidth,
+    borderRadius: borderRadius.nbCard,
+    padding: 14,
+    minHeight: 140,
+    fontFamily: 'Inter_400Regular',
+    fontSize: 15,
+    lineHeight: 22,
   },
 });

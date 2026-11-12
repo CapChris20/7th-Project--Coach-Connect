@@ -39,6 +39,7 @@ import {
 } from './loadWeekDailyEntries';
 import { WeeklyReportBody } from './WeeklyReportBody';
 import { NoReportYet } from './NoReportYet';
+import { lightColors } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
@@ -162,7 +163,7 @@ function ReportHeaderBack({ onClose, isDark }) {
     return null;
   }
 
-  const labelColor = isDark ? '#FFFFFF' : '#0A0A0F';
+  const labelColor = isDark ? lightColors.white : lightColors.nbInk;
   const labelStyle = [styles.headerBackText, { color: labelColor }];
 
   return (

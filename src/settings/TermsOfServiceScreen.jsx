@@ -7,11 +7,11 @@ import { Animated, View, Text, StyleSheet, ScrollView, StatusBar } from 'react-n
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../look-and-feel/lightDarkMode';
 import { getSupportEmail } from './supportContact';
-import TopHeader from '../for-both/loading-and-header/TopHeader';
+import NbPageHeader from '../look-and-feel/NbPageHeader';
 import { SHELL_SAFE_AREA_EDGES, FORM_SCROLL_PROPS, useShellBottomNavInset } from '../navigation/bottomMenuSpacing';
 import { Ionicons } from '@expo/vector-icons';
 import NbCard from '../look-and-feel/NbCard';
-import { nb, spacing } from '../look-and-feel/colorPalette';
+import { spacing } from '../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
@@ -233,8 +233,8 @@ export default function TermsOfServiceScreen({ onClose, embedShellBottomNav = fa
 
   return (
     <SafeAreaView style={styles.container} edges={SHELL_SAFE_AREA_EDGES}>
-      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.background} />
-      <TopHeader title="Terms of Service" skipTopSafeInset onBack={onClose} />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.nbBackground} />
+      <NbPageHeader title="Terms of service" onBack={onClose} />
 
       <ScrollView
         style={{ flex: 1 }}

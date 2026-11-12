@@ -581,7 +581,7 @@ listenWithPortCheck()
   console.log(
     `🤖 AI Coach daily limits: ${
       isAiCoachLimitsEnforced()
-        ? 'ENFORCED (10/day)'
+        ? 'ENFORCED (100 free / 200 plus / 400 pro per day)'
         : 'OFF — unlimited local/dev (Cloud Run prod enforces daily caps by default)'
     }`
   );

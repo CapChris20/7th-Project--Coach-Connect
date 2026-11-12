@@ -41,7 +41,7 @@ export default function MarkRestDayPopup({ params, reasoning, onConfirm, onCance
   }
 
   return (
-    <ToolModalBody title={POPUP_TITLE} reasoning={reasoning}>
+    <ToolModalBody badge="Coach wants to mark a rest day" title={POPUP_TITLE} reasoning={reasoning}>
       <DetailRow label={DATE_ROW_LABEL} value={restDayDate} />
       <DetailRow label={WORKOUT_CARD_ROW_LABEL} value={REST_DAY_CARD_TEXT} />
       <ConfirmCancelRow

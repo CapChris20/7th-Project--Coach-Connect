@@ -22,6 +22,7 @@ import {
   ClientMyProgressPhotosScreen,
   ClientAIWorkoutsScreen,
   ClientMyWorkoutPlanScreen,
+  ClientWorkoutSessionScreen,
   ClientCoachHomeScreen,
   ClientCoachConversationScreen,
   ClientAICoachTestScreen,
@@ -73,6 +74,7 @@ export default function ClientScreenList() {
       {pushedClientScreen(CLIENT_ROUTES.PhotoGallery, ClientMyProgressPhotosScreen)}
       {pushedClientScreen(CLIENT_ROUTES.AIWorkouts, ClientAIWorkoutsScreen)}
       {pushedClientScreen(CLIENT_ROUTES.PlanViewer, ClientMyWorkoutPlanScreen)}
+      {pushedClientScreen(CLIENT_ROUTES.WorkoutSession, ClientWorkoutSessionScreen)}
       {pushedClientScreen(CLIENT_ROUTES.AI, ClientCoachHomeScreen)}
       {pushedClientScreen(CLIENT_ROUTES.AIChat, ClientCoachConversationScreen)}
       {pushedClientScreen(QA_COACH_TEST_ROUTE, ClientAICoachTestScreen)}

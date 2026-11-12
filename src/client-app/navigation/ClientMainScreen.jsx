@@ -1,12 +1,9 @@
-// Client home shell: tabs, dashboard overlay, nutrition, AI coach, and notes/files.
-// Flow: read the shared shell → pick the overlay or tab → keep AI/workout mounted when needed.
+// Client home shell: Home tab IS the mockup client-home screen (no separate Dashboard).
+// Flow: read the shared shell → Home paints TrainingHomeScreen → other tabs/overlays stay as before.
 // Used once as the client MainTabs screen. Tab keys stay CLIENT_MAIN_TABS.*.
 
 import React, { useState, useEffect } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  RefreshControl,
   ScrollView,
   Share,
   StatusBar,
@@ -16,9 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
-import { doc, getDoc, serverTimestamp } from 'firebase/firestore';
-import { auth, db } from '../../app-start/cloudConnection';
+import { auth } from '../../app-start/cloudConnection';
 import { getClientDateKey } from '../../helpers/dateStrings';
 import { mergeClientDailyMetrics } from '../../daily-stats/saveDailyStats';
 import { markNotesAndFilesItemRead } from '../../for-both/files-and-notes/saveNotesAndFiles';
@@ -33,16 +28,7 @@ import {
   subscribeWorkoutGenerationSession,
 } from '../../workouts/create-plan/keepPlanBuildingInBackground';
 import { AppNavigationProvider } from '../../navigation/whichScreenIsOpen';
-import {
-  HomeTopBanner,
-  TopStatsRow,
-  WellnessStatsRow,
-  TrainingAgenda,
-  NutritionCard,
-} from '../home/homeScreenPieces';
-import FilesHeaderCard from '../../for-both/home-cards/FilesHeaderCard';
 import FilesSection from '../../for-both/files-and-notes/viewers/FilesSection';
-import { UpcomingSessionCard } from '../../for-both/home-cards/UpcomingSessionCard';
 import TrainerSharedFilesPopup from '../files-and-notes/TrainerSharedFilesPopup';
 import AddFilePopup from '../../for-both/files-and-notes/viewers/AddFilePopup';
 import PdfViewer from '../../for-both/files-and-notes/viewers/PdfViewer';
@@ -51,24 +37,20 @@ import DocumentViewer from '../../for-both/files-and-notes/viewers/DocumentViewe
 import PhotoVideoViewer from '../../for-both/files-and-notes/viewers/PhotoVideoViewer';
 import WebPageViewer from '../../for-both/files-and-notes/viewers/WebPageViewer';
 import WriteTrainerReviewPopup from '../home/WriteTrainerReviewPopup';
-import FindTrainerBanner from '../../for-both/home-cards/FindTrainerBanner';
-import TopBannerCard from '../home/TopBannerCard';
 import DailyLogContent from '../../nutrition/daily-log/DailyLogContent';
 import CreateWorkoutPlanScreen from '../../workouts/create-plan/CreateWorkoutPlanScreen';
 import CoachHomeScreen from '../../ai-coach/home-screen/CoachHomeScreen';
 import CoachConversationScreen from '../../ai-coach/conversation/CoachConversationScreen';
+import NbPageHeader from '../../look-and-feel/NbPageHeader';
 import { useIsFocused } from '@react-navigation/native';
 import { CLIENT_MAIN_TABS } from './goToClientScreen';
 import { useClientAppStartShell } from './ClientOpenScreenTracker';
+import { lightColors, darkColors } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
-const PAYMENT_STATUS_INACTIVE = 'inactive';
-const PAYMENT_STATUS_PAST_DUE = 'past_due';
 const AI_CHAT_HOME = 'home';
 const DEFAULT_SELF_NAME = 'You';
-const DEFAULT_COACH_NAME = 'Your coach';
-const ROLE_TRAINER = 'trainer';
 const SCROLL_BOTTOM_PAD = 130;
 
 // ===== HELPER FUNCTIONS =====
@@ -211,7 +193,7 @@ function notesFileCount(notesAndFiles) {
 // ===== MAIN FUNCTION =====
 
 /**
- * Client main tabs: home feed, nutrition, workout generator, AI coach, plus overlays.
+ * Client main tabs: mockup Home (TrainingHomeScreen), nutrition, workout, AI, plus overlays.
  * @returns {import('react').ReactElement}
  */
 export default function ClientMainScreen() {
@@ -220,8 +202,6 @@ export default function ClientMainScreen() {
     navProviderProps,
     isDark,
     styles,
-    colors,
-    themeMode,
     showTrainerMessaging,
     reviewPromptTrainer,
     setReviewPromptTrainer,
@@ -240,15 +220,15 @@ export default function ClientMainScreen() {
     showConversationsList,
     handleSelectConversation,
     handleCloseConversationsList,
-    showMyDashboard,
     trainerData,
     unreadMessageCount,
     setShowRemoveTrainerPopup,
     setProfileTrainer,
-    setShowMyDashboard,
     openTrainerProfile,
     caloriesConsumed,
     calorieGoal,
+    nutritionGoals,
+    nutritionMacros,
     waterIntake,
     sleepHours,
     setSoreness,
@@ -259,8 +239,6 @@ export default function ClientMainScreen() {
     setTodayWorkout,
     setDashboardWorkoutSummary,
     user,
-    applyFromSnapshots,
-    handleOpenConversations: openConversations,
     handleFindTrainers,
     day6Client,
     setDay6Client,
@@ -292,26 +270,8 @@ export default function ClientMainScreen() {
     setEmbedWebViewer,
     showRemoveTrainerPopup,
     showReviewSheetForPrompt,
-    userName,
-    userRole,
-    hasTrainer,
     openTrainerSearch,
-    agendaWorkouts,
-    soreness,
-    energyLevel,
-    stressLevel,
     onboardingData,
-    todayWorkout,
-    goalProgress,
-    handleAddWorkout,
-    setShowMyDashboard: goDashboard,
-    nutritionMacros,
-    additionalNutrients,
-    nutritionGoals,
-    pendingSessions,
-    respondToSession,
-    refreshing,
-    onRefresh,
     mainTab,
     mainTabActiveKey,
     aiChatState,
@@ -343,8 +303,6 @@ export default function ClientMainScreen() {
     return subscribeWorkoutGenerationSession(syncSession);
   }, [user?.uid, mainTab]);
 
-  const clientPaymentStatus = userData?.paymentStatus || PAYMENT_STATUS_INACTIVE;
-
   const aiChatPayload = aiChatState && typeof aiChatState === 'object' ? aiChatState : null;
   const isMainFocused = useIsFocused();
   const [nutritionOnboardingActive, setNutritionOnboardingActive] = useState(false);
@@ -375,7 +333,7 @@ export default function ClientMainScreen() {
         />
       ) : showConversationsList ? (
         <View
-          style={{ flex: 1, backgroundColor: isDark ? '#0A0A0F' : '#F7F7FA' }}
+          style={{ flex: 1, backgroundColor: isDark ? lightColors.nbInk : '#F7F7FA' }}
         >
           <InboxScreen
             embedInLayout
@@ -385,72 +343,15 @@ export default function ClientMainScreen() {
             onSettingsPress={() => openSettings()}
           />
         </View>
-      ) : showMyDashboard ? (
-        <View style={{ flex: 1, backgroundColor: isDark ? '#0A0A0F' : '#F7F7FA' }}>
-          <TopHeader
-              title="Dashboard"
-              skipTopSafeInset
-              onBack={() => setShowMyDashboard(false)}
-              onProfilePress={() => openProfile()}
-              onSettingsPress={() => openSettings()}
-            />
-            <TrainingHomeScreen
-              embedInLayout
-              trainer={trainerData}
-              userData={userData}
-              onOpenCoachingPayment={openCoachingPayment}
-              unreadMessageCount={unreadMessageCount}
-              onOpenRemoveTrainer={trainerData ? () => setShowRemoveTrainerPopup(true) : undefined}
-              onPressViewProfile={() => {
-                if (!trainerData) return;
-                setProfileTrainer(trainerData);
-                setShowMyDashboard(false);
-                openTrainerProfile();
-              }}
-              todayCalories={caloriesConsumed}
-              calorieGoal={calorieGoal}
-              waterOz={waterIntake}
-              sleepHoursValue={sleepHours}
-              onMetricsChange={(patch) =>
-                applyDashboardMetricsPatch(patch, user, {
-                  setSoreness,
-                  setEnergyLevel,
-                  setStressLevel,
-                  setWaterIntake,
-                  setSleepHours,
-                  setDashboardWorkoutSummary,
-                  setTodayWorkout,
-                })
-              }
-              onPressMessage={handleOpenConversations}
-              onPressFindTrainer={handleFindTrainers}
-              trainerClientId={user?.uid}
-              trainerClientName={userData?.firstName || user?.displayName || DEFAULT_SELF_NAME}
-              onOpenPhotoGallery={() => {
-                setDay6Client({ id: user?.uid, name: userData?.firstName || user?.displayName || DEFAULT_SELF_NAME });
-                openPhotoGallery();
-              }}
-              onOpenAIWorkouts={() => {
-                setDay6Client({ id: user?.uid, name: userData?.firstName || user?.displayName || DEFAULT_SELF_NAME });
-                openAIWorkouts();
-              }}
-              onOpenWeeklyReport={() => openWeeklyReport()}
-              onPressCalories={() => {
-                setShowMyDashboard(false);
-                openNutrition();
-              }}
-            />
-        </View>
       ) : showNotesFiles ? (
         <View
-          style={{ flex: 1, backgroundColor: isDark ? '#0A0A0F' : '#F7F7FA' }}
+          style={{ flex: 1, backgroundColor: isDark ? darkColors.nbBackground : lightColors.nbBackground }}
         >
-          <TopHeader
-            title="Notes & Files"
-            skipTopSafeInset
+          {/* Design Law PNG 01: NbPageHeader (not TopHeader) + FilesSection segmented workspace */}
+          <NbPageHeader
+            title="Your Notes & Files"
+            subtitle="Everything shared between you and your coach, all in one place."
             onBack={() => setShowNotesFiles(false)}
-            onProfilePress={() => openProfile()}
-            onSettingsPress={() => openSettings()}
           />
           <ScrollView
             style={{ flex: 1 }}
@@ -463,6 +364,7 @@ export default function ClientMainScreen() {
             <FilesSection
               items={notesAndFiles}
               isDark={isDark}
+              showHero={false}
               onOpenItem={openNotesFile}
               onDownloadItem={(x) => x?.url && openNotesFile(x)}
               onShareItem={(x) => x?.url && Share.share({ message: `${x?.name || x?.title || 'File'}\n${x.url}` }).catch(() => {})}
@@ -497,189 +399,94 @@ export default function ClientMainScreen() {
           onMessagesPress={handleOpenConversations}
         />
       ) : mainTab === CLIENT_MAIN_TABS.ai ? null : mainTab === CLIENT_MAIN_TABS.workout ? null : (
-      <View style={{ flex: 1 }}>
-        <TopHeader
-          isDark={isDark}
-          skipTopSafeInset
-          onProfilePress={() => openProfile()}
-          onSettingsPress={() => openSettings()}
-        />
-        {reviewPromptTrainer ? (
-          <View style={{
-            backgroundColor: 'rgba(255,107,157,0.1)',
-            borderColor: 'rgba(255,107,157,0.25)',
-            borderWidth: 1,
-            borderRadius: 12,
-            padding: 14,
-            flexDirection: 'row',
-            alignItems: 'center',
-            marginHorizontal: 16,
-            marginTop: 8,
-          }}>
-            <Ionicons name="star-outline" size={18} color="#FF6B9D" />
-            <Text style={{ flex: 1, marginLeft: 10, fontSize: 13, color: '#fff' }}>
-              How was your experience with {reviewPromptTrainer.name}?{' '}
-              <Text style={{ color: '#FF6B9D', fontWeight: 'bold' }} onPress={() => setShowReviewSheetForPrompt(true)}>Leave a review</Text>
-            </Text>
-            <TouchableOpacity onPress={() => setReviewPromptTrainer(null)}>
-              <Ionicons name="close" size={18} color="rgba(255,255,255,0.4)" />
-            </TouchableOpacity>
-          </View>
-        ) : null}
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={{ paddingBottom: SCROLL_BOTTOM_PAD, paddingTop: 6 }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={!isDark ? '#000' : '#fff'} />}
-        scrollEventThrottle={16}
-        keyboardDismissMode="on-drag"
-        showsVerticalScrollIndicator={false}
-      >
-        <HomeTopBanner isDark={isDark} userId={auth?.currentUser?.uid} userName={userName} />
-        {userRole !== ROLE_TRAINER && !hasTrainer && (
-          <FindTrainerBanner
-            onPress={() => openTrainerSearch()}
-            notificationCount={0}
+        // Home tab = Design Law client-home + Design Law TopHeader (profile + settings chips).
+        <View style={{ flex: 1, backgroundColor: isDark ? darkColors.nbBackground : lightColors.nbBackground }}>
+          <TopHeader
             isDark={isDark}
+            onProfilePress={() => openProfile()}
+            onSettingsPress={() => openSettings()}
           />
-        )}
-        {userRole !== ROLE_TRAINER && clientPaymentStatus === PAYMENT_STATUS_PAST_DUE ? (
-          <TouchableOpacity
-            activeOpacity={0.9}
-            onPress={() => openCoachingPayment?.()}
-            style={{
-              marginHorizontal: 16,
-              marginTop: 8,
-              marginBottom: 4,
-              borderRadius: 12,
-              borderWidth: 1,
-              borderColor: isDark ? 'rgba(239,68,68,0.35)' : 'rgba(255,59,48,0.35)',
-              backgroundColor: isDark ? 'rgba(239,68,68,0.12)' : 'rgba(239,68,68,0.10)',
-              paddingVertical: 10,
-              paddingHorizontal: 12,
-            }}
-          >
-            <Text style={{ color: colors.text, fontSize: 13, fontWeight: '700' }}>
-              Coaching payment past due — tap to update
-            </Text>
-          </TouchableOpacity>
-        ) : null}
-        {userRole !== ROLE_TRAINER && (
-          <TopBannerCard
-            onPress={() => setShowMyDashboard(true)}
-            unreadMessageCount={unreadMessageCount}
-            isDark={isDark}
-          />
-        )}
-        <TopStatsRow
-          isDark={isDark}
-          themeMode={themeMode}
-          colors={colors}
-          todayWorkout={todayWorkout}
-          waterIntake={waterIntake}
-          sleepHours={sleepHours}
-          primaryGoal={onboardingData?.primaryGoal}
-          goalProgress={goalProgress}
-          onPlanWorkout={handleAddWorkout}
-          onOpenDashboard={() => setShowMyDashboard(true)}
-        />
-        <TrainingAgenda theme={isDark ? 'dark' : 'light'} workouts={agendaWorkouts} />
-        {/* Weekly calendar removed */}
-        {userRole !== ROLE_TRAINER && (
-          <WellnessStatsRow
-            isDark={isDark}
-            colors={colors}
-            soreness={soreness}
-            energyLevel={energyLevel}
-            stressLevel={stressLevel}
-            onOpenDashboard={() => setShowMyDashboard(true)}
-          />
-        )}
-        <NutritionCard 
-          theme={isDark ? 'dark' : 'light'}
-          consumed={caloriesConsumed}
-          goal={calorieGoal}
-          macros={nutritionMacros}
-          additionalNutrients={additionalNutrients}
-          nutritionGoals={nutritionGoals}
-          compact
-        />
-        {/* Notes & Files hero card */}
-        <FilesHeaderCard
-          onPress={() => setShowNotesFiles(true)}
-          fileCount={notesFileCount(notesAndFiles)}
-          newCount={unreadNotesCount(notesAndFiles)}
-          isDark={isDark}
-        />
-
-        {pendingSessions.length > 0 && (
-        <View style={{ paddingHorizontal: 16, marginTop: 10, marginBottom: 18 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 14, gap: 10 }}>
+          {reviewPromptTrainer ? (
             <View
               style={{
-                width: 40,
-                height: 40,
-                borderRadius: 14,
-                borderWidth: 1,
-                borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)',
-                backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.9)',
+                backgroundColor: isDark ? darkColors.nbSurfaceChip : lightColors.nbSoft,
+                borderColor: isDark ? darkColors.nbBorder : lightColors.nbBorder,
+                borderWidth: 3,
+                borderRadius: 10,
+                padding: 14,
+                flexDirection: 'row',
                 alignItems: 'center',
-                justifyContent: 'center',
+                marginHorizontal: 16,
+                marginTop: 8,
               }}
             >
-              <Ionicons name="calendar" size={22} color="#C084FC" />
+              <Ionicons name="star-outline" size={18} color={isDark ? darkColors.nbInk : lightColors.nbInk} />
+              <Text style={{ flex: 1, marginLeft: 10, fontSize: 13, color: isDark ? darkColors.nbInk : lightColors.nbInk }}>
+                How was your experience with {reviewPromptTrainer.name}?{' '}
+                <Text
+                  style={{ color: isDark ? darkColors.nbInk : lightColors.nbInk, fontWeight: '900', textDecorationLine: 'underline' }}
+                  onPress={() => setShowReviewSheetForPrompt(true)}
+                >
+                  Leave a review
+                </Text>
+              </Text>
+              <TouchableOpacity onPress={() => setReviewPromptTrainer(null)}>
+                <Ionicons name="close" size={18} color={isDark ? darkColors.nbMuted : lightColors.nbMuted} />
+              </TouchableOpacity>
             </View>
-            <View style={{ flex: 1 }}>
-              <Text
-                style={{
-                  fontSize: 11,
-                  fontWeight: '800',
-                  letterSpacing: 1.4,
-                  color: isDark ? 'rgba(255,255,255,0.55)' : 'rgba(17, 24, 39, 0.55)',
-                  textTransform: 'uppercase',
-                }}
-              >
-                From your coach
-              </Text>
-              <Text
-                style={{
-                  marginTop: 2,
-                  fontSize: 16,
-                  fontWeight: '800',
-                  color: isDark ? '#fff' : '#0F172A',
-                  letterSpacing: -0.3,
-                }}
-              >
-                Session invites
-              </Text>
-              <Text
-                style={{
-                  marginTop: 2,
-                  fontSize: 12,
-                  fontWeight: '600',
-                  color: isDark ? 'rgba(255,255,255,0.45)' : 'rgba(15,23,42,0.55)',
-                }}
-              >
-                Lock in a time or pass — your call.
-              </Text>
-            </View>
-          </View>
-
-          {pendingSessions.map((session) => (
-            <UpcomingSessionCard
-              key={session.id}
-              mode="invite"
-              isDark={isDark}
-              coachName={trainerData?.displayName || trainerData?.name || DEFAULT_COACH_NAME}
-              session={session}
-              onRespond={respondToSession}
-            />
-          ))}
+          ) : null}
+          <TrainingHomeScreen
+            embedInLayout
+            trainer={trainerData}
+            userData={userData}
+            onOpenCoachingPayment={openCoachingPayment}
+            unreadMessageCount={unreadMessageCount}
+            onOpenRemoveTrainer={trainerData ? () => setShowRemoveTrainerPopup(true) : undefined}
+            onPressViewProfile={() => {
+              if (!trainerData) return;
+              setProfileTrainer(trainerData);
+              openTrainerProfile();
+            }}
+            todayCalories={caloriesConsumed}
+            calorieGoal={calorieGoal}
+            proteinG={nutritionMacros?.find?.((m) => m.label === 'Protein') ? parseFloat(String(nutritionMacros.find((m) => m.label === 'Protein').value)) : undefined}
+            carbsG={nutritionMacros?.find?.((m) => m.label === 'Carbs') ? parseFloat(String(nutritionMacros.find((m) => m.label === 'Carbs').value)) : undefined}
+            fatsG={nutritionMacros?.find?.((m) => m.label === 'Fats') ? parseFloat(String(nutritionMacros.find((m) => m.label === 'Fats').value)) : undefined}
+            proteinGoal={nutritionGoals?.proteinTarget || nutritionGoals?.macroSplit?.protein}
+            carbsGoal={nutritionGoals?.carbsTarget || nutritionGoals?.macroSplit?.carbs}
+            fatsGoal={nutritionGoals?.fatTarget || nutritionGoals?.macroSplit?.fat}
+            waterOz={waterIntake}
+            sleepHoursValue={sleepHours}
+            onMetricsChange={(patch) =>
+              applyDashboardMetricsPatch(patch, user, {
+                setSoreness,
+                setEnergyLevel,
+                setStressLevel,
+                setWaterIntake,
+                setSleepHours,
+                setDashboardWorkoutSummary,
+                setTodayWorkout,
+              })
+            }
+            onPressMessage={handleOpenConversations}
+            onPressFindTrainer={handleFindTrainers || openTrainerSearch}
+            trainerClientId={user?.uid}
+            trainerClientName={userData?.firstName || user?.displayName || DEFAULT_SELF_NAME}
+            onOpenPhotoGallery={() => {
+              setDay6Client({ id: user?.uid, name: userData?.firstName || user?.displayName || DEFAULT_SELF_NAME });
+              openPhotoGallery();
+            }}
+            onOpenAIWorkouts={() => {
+              setDay6Client({ id: user?.uid, name: userData?.firstName || user?.displayName || DEFAULT_SELF_NAME });
+              openAIWorkouts();
+            }}
+            onOpenWeeklyReport={() => openWeeklyReport()}
+            onPressCalories={() => openNutrition()}
+            onOpenNotesFiles={() => setShowNotesFiles(true)}
+            notesFilesCount={notesFileCount(notesAndFiles)}
+            notesFilesNewCount={unreadNotesCount(notesAndFiles)}
+          />
         </View>
-        )}
-
-        {/* Trainer shared + notes are rendered inside FilesSection */}
-      </ScrollView>
-      </View>
       )}
 
       {(mainTab === CLIENT_MAIN_TABS.workout || workoutGenInFlight) ? (

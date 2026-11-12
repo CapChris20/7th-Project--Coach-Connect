@@ -1,6 +1,6 @@
-// One food row on the daily log: name, macros, expand for nutrition facts.
-// Flow: paint the card → optional expand → edit / delete / save actions.
-// Used by the daily food log list.
+// Design Law food row card: HardShadow shell → compact macros → optional expand → actions.
+// Flow: press → expand NutritionFactsPanel / add / favorite. Used by search + food lists.
+// vocab: HardShadow = solid offset shadow (no blur)
 
 import React, { useMemo } from 'react';
 import {
@@ -29,8 +29,15 @@ import {
 } from 'lucide-react-native';
 import ColorText from './ColorText';
 import NutritionFactsPanel from './NutritionFactsPanel';
-import { gradients, radii, fonts, pillBackgroundGradient, getFoodCardPalette } from './foodCardColors';
-import { nb, borderRadius, gradients as nbGradients } from '../../look-and-feel/colorPalette';
+import { gradients, fonts, pillBackgroundGradient, getFoodCardPalette } from './foodCardColors';
+import HardShadow from '../../look-and-feel/HardShadow';
+import {
+  nb,
+  borderRadius,
+  gradients as nbGradients,
+  lightColors,
+  darkColors,
+} from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
@@ -135,20 +142,11 @@ export default function FoodCard({
     onAdd?.();
   };
 
-  // Neobrutalist hard shadow: no blur (shadowRadius: 0), offset by nb.shadowOffset
-  const cardShadow =
-    isExpanded && !embedded
-      ? Platform.select({
-          ios: {
-            shadowColor: palette.borderStrong || '#000000',
-            shadowOpacity: 1,
-            shadowRadius: 0,
-            shadowOffset: { width: nb.shadowOffset, height: nb.shadowOffset },
-          },
-          android: { elevation: 0 }, // Android doesn't support hard shadows well
-          default: {},
-        })
-      : null;
+  // Manipulate here: soft wash in light embedded cards; flat nbSurface otherwise
+  const frameFill = isDark
+    ? darkColors.nbSurface
+    : (embedded ? nbGradients.soft.colors[0] : lightColors.nbSurface);
+  const frameBorder = isDark ? darkColors.nbBorder : lightColors.nbBorder;
 
   return (
     <AnimatedPressable
@@ -158,18 +156,23 @@ export default function FoodCard({
       onPressOut={() => {
         scale.value = withTiming(1, { duration: 120 });
       }}
-      style={[
-        styles.card,
-        {
-          backgroundColor: isExpanded ? palette.expandedSurface : palette.background,
-          borderColor: isExpanded ? palette.borderStrong : palette.border,
-          borderWidth: nb.borderWidth,
-          overflow: onAdd || embedded ? 'visible' : 'hidden',
-        },
-        cardShadow,
-        animatedCardStyle,
-      ]}
+      style={[styles.cardPressable, animatedCardStyle]}
     >
+      <HardShadow
+        radius={borderRadius.nbCard}
+        offset={embedded ? 0 : nb.shadowOffsetCard}
+        style={styles.cardFrame}
+      >
+        <View
+          style={{
+            backgroundColor: frameFill,
+            borderWidth: nb.borderWidth,
+            borderColor: frameBorder,
+            borderRadius: borderRadius.nbCard,
+            overflow: onAdd || embedded ? 'visible' : 'hidden',
+          }}
+        >
+
       <View
         style={[styles.innerHighlight, { backgroundColor: palette.innerHighlight }]}
         pointerEvents="none"
@@ -334,13 +337,17 @@ export default function FoodCard({
           </View>
         </Animated.View>
       ) : null}
+            </View>
+    </HardShadow>
     </AnimatedPressable>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    borderRadius: borderRadius.nbCard,
+  cardPressable: {
+    position: 'relative',
+  },
+  cardFrame: {
     position: 'relative',
   },
   innerHighlight: {

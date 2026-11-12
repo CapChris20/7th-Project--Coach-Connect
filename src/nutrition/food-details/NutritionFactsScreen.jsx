@@ -1,21 +1,19 @@
-// Daily Nutrition Facts screen: calorie goal, macro mini-cards, fats/carbs lists, vitamins grid.
-// Flow: enrich sparse logs from search API → total today's nutrients → paint summary + detail cards.
-// Used by: the client nutrition tab / daily report when the user opens full facts.
+// Design Law daily Nutrition Facts report — HardShadow cards + nb tokens only.
+// Flow: enrich sparse logs from search API → total today's nutrients → calorie / macros / nutrient cards.
+// Used by DailyLogContent when the user opens full daily facts (not ConfirmFoodPopup per-food).
+//
+// vocab: HardShadow = solid offset shadow (no blur); enrichment = fill missing micros from search API
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, Platform } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { View, Text, ScrollView, StyleSheet, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
 import { useShellBottomNavInset } from '../../navigation/bottomMenuSpacing';
 import TwoColumnGrid from '../../look-and-feel/TwoColumnGrid';
-import { StatColorText } from '../../look-and-feel/homeStatColors';
-import { lightColors, darkColors, nb, borderRadius } from '../../look-and-feel/colorPalette';
-import {
-  NUT_ACTION_GRADIENT,
-  NUT_CALORIES_GRADIENT,
-  NUT_SECTION_GRADIENT,
-} from '../nutritionColors';
+import HardShadow from '../../look-and-feel/HardShadow';
+import NbPageHeader from '../../look-and-feel/NbPageHeader';
+import NbProgressBar from '../../look-and-feel/NbProgressBar';
+import { accentGradients, nb, borderRadius, spacing } from '../../look-and-feel/colorPalette';
 import searchFoods from '../food-search/searchFoods';
 import { updateFoodLog } from '../daily-log/saveLoggedFood';
 import {
@@ -31,74 +29,30 @@ import {
 const SCROLL_BOTTOM_PAD_DEFAULT = 24;
 const SHELL_BOTTOM_INSET_EXTRA = 16;
 const EMPTY_CAL_FILL_PCT = 0;
+// Manipulate here: tiny fill so empty-looking bars still read as “started” once food is logged
 const MIN_CAL_FILL_WHEN_LOGGED = 3;
 const MIN_MACRO_FILL_WHEN_VALUE = 4;
 const ZERO_VALUE_OPACITY = 0.35;
-const HEADER_TITLE_OPACITY = 0.7;
-const GOAL_LABEL_OPACITY = 0.5;
-const GRADIENT_LEFT = { x: 0, y: 0 };
-const GRADIENT_RIGHT = { x: 1, y: 0 };
-const DEPTH_OVERLAY_COLOR = 'rgba(255,255,255,0.02)';
 const EMPTY_ICON_NAME = 'nutrition-outline';
 const EMPTY_ICON_SIZE = 28;
+const MACRO_ICON_SIZE = 18;
 
-/** Muted accents — Nutrition Facts screen only (do not change global theme). */
-const FACTS_MUTED = {
-  pink: '#E85D8A',
-  orange: '#D4621A',
-  cyan: '#4DB8E8',
-  purple: '#A970E8',
+const PROTEIN_ICON = require('../../assets/icons/handoff/protein.png');
+const CARBS_ICON = require('../../assets/icons/handoff/carbs.png');
+const FATS_ICON = require('../../assets/icons/handoff/fats.png');
+
+// Manipulate here: progress fills only (PNG daily-log macros) — never card borders, never green
+const CAL_BAR_COLORS = accentGradients[3];
+const MACRO_BAR_COLORS = {
+  protein: ['#60A5FA', '#818CF8'],
+  carbs: ['#FDA4AF', '#FB923C'],
+  fat: ['#FB7185', '#EF4444'],
 };
-
-const FACTS_COLOR_MAP = {
-  '#FF6B9D': FACTS_MUTED.pink,
-  '#F97316': FACTS_MUTED.orange,
-  '#64D2FF': FACTS_MUTED.cyan,
-  '#C084FC': FACTS_MUTED.purple,
-  '#22D3EE': FACTS_MUTED.cyan,
-  '#06B6D4': '#3A9BC4',
-  '#DB2777': '#C44A75',
-  '#FBBF24': '#D4A820',
-  '#E94EAD': FACTS_MUTED.pink,
-  '#A348D0': FACTS_MUTED.purple,
-  '#6B3AD9': '#8B6AD4',
-  '#BE185D': '#C44A6F',
-  '#C2410C': FACTS_MUTED.orange,
-};
-
-const FACTS_PROGRESS_TRACK = 'rgba(255, 255, 255, 0.06)';
-const LIGHT_PROGRESS_TRACK = 'rgba(0,0,0,0.08)';
 
 // ===== HELPER FUNCTIONS =====
 
 /**
- * Swap bright brand stops for the muted facts palette.
- * @param {string[]|*} gradientStops
- * @returns {string[]|*}
- */
-function factsMutedGradient(gradientStops) {
-  if (!Array.isArray(gradientStops)) return gradientStops;
-  return gradientStops.map((stop) => FACTS_COLOR_MAP[stop] || stop);
-}
-
-/**
- * Section title color for FATS / CARBS / VITAMINS headers.
- * @param {string} title
- * @returns {string}
- */
-function sectionHeaderColor(title) {
-  const upperTitle = String(title || '').toUpperCase();
-  if (upperTitle === 'FATS') return FACTS_MUTED.cyan;
-  if (upperTitle.includes('CARBOHYDRATE')) return FACTS_MUTED.orange;
-  if (upperTitle.includes('VITAMIN')) return FACTS_MUTED.pink;
-  return FACTS_MUTED.purple;
-}
-
-/**
- * True when a display string or raw number means "nothing logged".
- * @param {*} display
- * @param {*} [raw]
- * @returns {boolean}
+ * Dim zero / dash values so missing micros don't look like real zeros.
  */
 function isZeroOrUnavailable(display, raw) {
   if (display === '—') return true;
@@ -107,198 +61,6 @@ function isZeroOrUnavailable(display, raw) {
   return false;
 }
 
-/**
- * Screen paint tokens for dark vs light.
- * @param {boolean} isDark
- * @returns {object}
- */
-function getColors(isDark) {
-  const nbColors = isDark ? darkColors : lightColors;
-  return {
-    screenBg: nbColors.nbBackground,
-    cardBg: nbColors.nbSurface,
-    cardBorder: nbColors.nbBorder,
-    text: nbColors.nbInk,
-    textMuted: nbColors.nbMuted,
-    textDim: nbColors.nbMuted,
-    divider: nbColors.nbBorder,
-    track: nbColors.nbBorder,
-  };
-}
-
-/**
- * Soft card shadow on light mode only.
- * @param {boolean} isDark
- * @returns {object}
- */
-function cardShadow(isDark) {
-  if (isDark) return {};
-  return Platform.select({
-    ios: {
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.06,
-      shadowRadius: 10,
-    },
-    android: { elevation: 3 },
-  });
-}
-
-/**
- * Gradient label using muted facts stops.
- */
-function GradientLabel({ children, style, colors: gradientColors, align = 'center' }) {
-  const mutedStops = factsMutedGradient(gradientColors);
-  return (
-    <View style={{ alignSelf: align }}>
-      <StatColorText
-        style={style}
-        colors={mutedStops}
-        start={GRADIENT_LEFT}
-        end={GRADIENT_RIGHT}
-      >
-        {children}
-      </StatColorText>
-    </View>
-  );
-}
-
-/**
- * Thin gradient accent along the top edge of a card.
- */
-function CardTopAccent({ gradient }) {
-  return (
-    <View style={styles.cardTopAccentWrap}>
-      <LinearGradient
-        colors={factsMutedGradient(gradient)}
-        start={GRADIENT_LEFT}
-        end={GRADIENT_RIGHT}
-        style={styles.cardTopAccent}
-      />
-    </View>
-  );
-}
-
-/**
- * Faint white wash on dark cards for depth.
- */
-function CardDepthOverlay({ show }) {
-  if (!show) return null;
-  return (
-    <View
-      pointerEvents="none"
-      style={[StyleSheet.absoluteFillObject, { backgroundColor: DEPTH_OVERLAY_COLOR }]}
-    />
-  );
-}
-
-/**
- * Fats / carbs detail list card.
- */
-function DetailListCard({ section, colors, isDark, depthLayer = false }) {
-  if (!section?.rows?.length) return null;
-  const mutedGradient = factsMutedGradient(section.gradient || NUT_SECTION_GRADIENT);
-  const headerColor = sectionHeaderColor(section.title);
-  const totalIsDim = isZeroOrUnavailable(section.total);
-
-  return (
-    <View
-      style={[
-        styles.detailCard,
-        { backgroundColor: colors.cardBg, borderColor: colors.cardBorder },
-        cardShadow(isDark),
-      ]}
-    >
-      <CardDepthOverlay show={depthLayer} />
-      <CardTopAccent gradient={mutedGradient} />
-      <View style={styles.detailHeader}>
-        <Text style={[styles.detailTitle, { color: headerColor, opacity: HEADER_TITLE_OPACITY }]}>
-          {section.title}
-        </Text>
-        <View style={totalIsDim ? { opacity: ZERO_VALUE_OPACITY } : undefined}>
-          <GradientLabel style={styles.detailTotal} colors={mutedGradient}>
-            {section.total}
-          </GradientLabel>
-        </View>
-      </View>
-      {section.rows.map((row, rowIndex) => {
-        const valueIsDim = isZeroOrUnavailable(row.display, row.raw);
-        return (
-          <View key={row.label}>
-            {rowIndex > 0 ? (
-              <View style={[styles.detailDivider, { backgroundColor: colors.divider }]} />
-            ) : null}
-            <View style={styles.detailRow}>
-              <Text style={[styles.detailLabel, { color: colors.textMuted }]}>{row.label}</Text>
-              <Text
-                style={[
-                  styles.detailValue,
-                  { color: colors.text, opacity: valueIsDim ? ZERO_VALUE_OPACITY : 1 },
-                ]}
-              >
-                {row.display}
-              </Text>
-            </View>
-          </View>
-        );
-      })}
-    </View>
-  );
-}
-
-/**
- * One macro mini-card (protein / carbs / fat) with a progress bar.
- */
-function MacroMiniCard({ macro, colors, isDark, depthLayer = false }) {
-  const trackColor = isDark ? FACTS_PROGRESS_TRACK : LIGHT_PROGRESS_TRACK;
-  const mutedGradient = factsMutedGradient(macro.gradient || NUT_CALORIES_GRADIENT);
-  const valueIsDim = isZeroOrUnavailable(macro.display, macro.value);
-  const fillWidth = Math.max(
-    macro.pct,
-    macro.value > 0 ? MIN_MACRO_FILL_WHEN_VALUE : 0,
-  );
-
-  return (
-    <View
-      style={[
-        styles.macroMini,
-        { backgroundColor: colors.cardBg, borderColor: colors.cardBorder },
-        cardShadow(isDark),
-      ]}
-    >
-      <CardDepthOverlay show={depthLayer} />
-      <CardTopAccent gradient={mutedGradient} />
-      <GradientLabel style={styles.macroMiniTitle} colors={mutedGradient}>
-        {macro.label}
-      </GradientLabel>
-      <Text
-        style={[
-          styles.macroMiniValue,
-          { color: colors.text, opacity: valueIsDim ? ZERO_VALUE_OPACITY : 1 },
-        ]}
-      >
-        {macro.display}
-      </Text>
-      <View style={[styles.macroMiniTrack, { backgroundColor: trackColor }]}>
-        <LinearGradient
-          colors={mutedGradient}
-          start={GRADIENT_LEFT}
-          end={GRADIENT_RIGHT}
-          style={[styles.macroMiniFill, { width: `${fillWidth}%` }]}
-        />
-      </View>
-      <Text style={[styles.macroMiniGoal, { color: colors.textDim, opacity: GOAL_LABEL_OPACITY }]}>
-        {macro.goalLabel}
-      </Text>
-    </View>
-  );
-}
-
-/**
- * Food-count subtitle under "Today's Nutrition".
- * @param {number} foodCount
- * @returns {string}
- */
 function foodCountSubtitle(foodCount) {
   if (foodCount > 0) {
     const plural = foodCount === 1 ? '' : 's';
@@ -308,15 +70,14 @@ function foodCountSubtitle(foodCount) {
 }
 
 /**
- * Enrich one log via searchFoods.fetchNutritionDetails; cache by cleaned name.
- * @param {object} log
- * @param {Map} cache
- * @param {object} nextEnrichment
+ * Fetch micros for one sparse log, cache by cleaned name, optionally patch Firestore.
+ * Why: many logs only store calories/macros; the daily report needs fiber/sodium/etc.
  */
 async function enrichOneLog(log, cache, nextEnrichment) {
   const foodName = cleanFoodDisplayName(log.food_name);
   if (!foodName) return;
 
+  // vocab: Map cache = same food name → one API hit for many logs of that food
   let nutrients = cache.get(foodName);
   if (nutrients === undefined) {
     try {
@@ -331,33 +92,139 @@ async function enrichOneLog(log, cache, nextEnrichment) {
   nextEnrichment[log.id] = nutrients;
   const patch = buildLogEnrichmentPatch(log, nutrients);
   if (patch) {
+    // Fire-and-forget — UI already has enrichmentByLogId for this session
     updateFoodLog(log.id, patch).catch(() => {});
   }
 }
 
-/**
- * Which logs still need micronutrient enrichment.
- * @param {Array} logs
- * @returns {Array}
- */
 function logsNeedingEnrichment(logs) {
   return logs.filter((log) => log?.id && logNeedsNutrientEnrichment(log));
 }
 
+function macroBarColorsForLabel(label) {
+  const key = String(label || '').toLowerCase();
+  if (key.includes('carb')) return MACRO_BAR_COLORS.carbs;
+  if (key.includes('fat')) return MACRO_BAR_COLORS.fat;
+  return MACRO_BAR_COLORS.protein;
+}
+
+function macroIconForLabel(label) {
+  const key = String(label || '').toLowerCase();
+  if (key.includes('carb')) return CARBS_ICON;
+  if (key.includes('fat')) return FATS_ICON;
+  return PROTEIN_ICON;
+}
+
 /**
- * One mineral cell in the vitamins grid.
+ * HardShadow shell for every facts card — 3px ink border, surface fill, no gradient chrome.
  */
+function FactsCard({ colors, children, style }) {
+  return (
+    <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetCard} style={style}>
+      <View
+        style={[
+          styles.cardInner,
+          { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder },
+        ]}
+      >
+        {children}
+      </View>
+    </HardShadow>
+  );
+}
+
+/**
+ * Fats / carbs detail list inside one HardShadow card.
+ */
+function DetailListCard({ section, colors }) {
+  if (!section?.rows?.length) return null;
+  const totalIsDim = isZeroOrUnavailable(section.total);
+
+  return (
+    <FactsCard colors={colors} style={styles.cardGap}>
+      <View style={styles.detailHeader}>
+        <Text style={[styles.detailTitle, { color: colors.nbMuted }]}>{section.title}</Text>
+        <Text
+          style={[
+            styles.detailTotal,
+            { color: colors.nbInk, opacity: totalIsDim ? ZERO_VALUE_OPACITY : 1 },
+          ]}
+        >
+          {section.total}
+        </Text>
+      </View>
+      {section.rows.map((row, rowIndex) => {
+        const valueIsDim = isZeroOrUnavailable(row.display, row.raw);
+        return (
+          <View key={row.label}>
+            {rowIndex > 0 ? (
+              <View style={[styles.detailDivider, { backgroundColor: colors.nbBorder }]} />
+            ) : null}
+            <View style={styles.detailRow}>
+              <Text style={[styles.detailLabel, { color: colors.nbMuted }]}>{row.label}</Text>
+              <Text
+                style={[
+                  styles.detailValue,
+                  { color: colors.nbInk, opacity: valueIsDim ? ZERO_VALUE_OPACITY : 1 },
+                ]}
+              >
+                {row.display}
+              </Text>
+            </View>
+          </View>
+        );
+      })}
+    </FactsCard>
+  );
+}
+
+/**
+ * One macro mini-card (protein / carbs / fat) with owner icon + NbProgressBar fill.
+ */
+function MacroMiniCard({ macro, colors }) {
+  const valueIsDim = isZeroOrUnavailable(macro.display, macro.value);
+  // Tiny minimum fill when value > 0 so thin bars stay visible
+  const fillWidth = Math.max(
+    macro.pct,
+    macro.value > 0 ? MIN_MACRO_FILL_WHEN_VALUE : 0,
+  );
+  const barColors = macroBarColorsForLabel(macro.label);
+  // vocab: NbProgressBar wants 0–1 fraction, card data stores 0–100 pct
+  const progress = Math.min(1, Math.max(0, fillWidth / 100));
+
+  return (
+    <FactsCard colors={colors} style={styles.macroMiniOuter}>
+      <Image
+        source={macroIconForLabel(macro.label)}
+        style={styles.macroIcon}
+        resizeMode="contain"
+      />
+      <Text style={[styles.macroMiniTitle, { color: colors.nbMuted }]}>{macro.label}</Text>
+      <Text
+        style={[
+          styles.macroMiniValue,
+          { color: colors.nbInk, opacity: valueIsDim ? ZERO_VALUE_OPACITY : 1 },
+        ]}
+      >
+        {macro.display}
+      </Text>
+      <NbProgressBar progress={progress} colors={barColors} style={{ marginTop: 10 }} />
+      <Text style={[styles.macroMiniGoal, { color: colors.nbMuted }]}>{macro.goalLabel}</Text>
+    </FactsCard>
+  );
+}
+
 function MineralCell({ item, colors }) {
   const valueIsDim = isZeroOrUnavailable(item.value, item.raw);
   return (
     <View style={styles.microCell}>
-      <Text style={[styles.microName, { color: colors.textDim }]} numberOfLines={1}>
+      <Text style={[styles.microName, { color: colors.nbMuted }]} numberOfLines={1}>
         {item.name}
       </Text>
       <Text
         style={[
           styles.microVal,
-          { color: colors.text, opacity: valueIsDim ? ZERO_VALUE_OPACITY : 1 },
+          { color: colors.nbInk, opacity: valueIsDim ? ZERO_VALUE_OPACITY : 1 },
         ]}
       >
         {item.value}
@@ -369,23 +236,24 @@ function MineralCell({ item, colors }) {
 // ===== MAIN FUNCTION =====
 
 /**
- * Full-day nutrition facts: summary, calorie bar, macros, fats, carbs, vitamins.
- * @param {{ logs?: Array, goals?: object, foodCount?: number, reserveShellBottomNav?: boolean }} props
+ * Full-day nutrition facts: calorie bar, macros, fats, carbs, vitamins.
+ * @param {{ logs?: Array, goals?: object, foodCount?: number, reserveShellBottomNav?: boolean, onBack?: Function }} props
  */
 export default function NutritionFactsScreen({
   logs = [],
   goals = {},
   foodCount = 0,
   reserveShellBottomNav = false,
+  onBack,
 }) {
-  const { isDark } = useTheme();
-  const colors = useMemo(() => getColors(isDark), [isDark]);
+  const { colors } = useTheme();
   const shellBottomPad = useShellBottomNavInset(SHELL_BOTTOM_INSET_EXTRA);
   const scrollBottomPad = reserveShellBottomNav ? shellBottomPad : SCROLL_BOTTOM_PAD_DEFAULT;
   const [enrichmentByLogId, setEnrichmentByLogId] = useState({});
   const [enriching, setEnriching] = useState(false);
 
-  // vocab: useEffect = after paint, fetch missing micros for sparse logs; cancel on unmount.
+  // After paint: fill missing micros for sparse logs; cancel if logs change / unmount.
+  // vocab: cancelled flag = ignore late API results after cleanup (stale closure guard)
   useEffect(() => {
     let cancelled = false;
     const cache = new Map();
@@ -402,9 +270,8 @@ export default function NutritionFactsScreen({
 
       if (!cancelled) setEnriching(true);
       const nextEnrichment = {};
-      await Promise.all(
-        targets.map((log) => enrichOneLog(log, cache, nextEnrichment)),
-      );
+      // Parallel fetches; cache above keeps same-name foods to one request
+      await Promise.all(targets.map((log) => enrichOneLog(log, cache, nextEnrichment)));
 
       if (!cancelled) {
         setEnrichmentByLogId(nextEnrichment);
@@ -418,6 +285,7 @@ export default function NutritionFactsScreen({
     };
   }, [logs]);
 
+  // Sum scaled nutrients across every log, merging session enrichment map
   const nutrients = useMemo(
     () => calculateDailyNutrientTotals(logs, enrichmentByLogId),
     [logs, enrichmentByLogId],
@@ -428,135 +296,78 @@ export default function NutritionFactsScreen({
   }, [nutrients, goals, foodCount, logs.length]);
 
   const isEmpty = data.calories <= 0 && logs.length === 0;
-  const calorieGradient = factsMutedGradient(data.calorieGradient || NUT_CALORIES_GRADIENT);
-  const mineralsGradient = factsMutedGradient(data.minerals?.gradient || NUT_SECTION_GRADIENT);
-  const summaryAccentGradient = factsMutedGradient(NUT_ACTION_GRADIENT);
-  const progressTrack = isDark ? FACTS_PROGRESS_TRACK : colors.track;
-  const mineralsHeaderColor = sectionHeaderColor(data.minerals.title);
   const calorieFillPct = Math.max(
     data.caloriePct,
     isEmpty ? EMPTY_CAL_FILL_PCT : MIN_CAL_FILL_WHEN_LOGGED,
   );
+  const calorieProgress = Math.min(1, Math.max(0, calorieFillPct / 100));
   const foodSubtitle = foodCountSubtitle(data.foodCount);
 
   return (
-    <View style={[styles.root, { backgroundColor: colors.screenBg }]}>
+    <View style={[styles.root, { backgroundColor: colors.nbBackground }]}>
+      {/* NbPageHeader owns back + title when DailyLogContent passes onBack */}
+      {typeof onBack === 'function' ? (
+        <NbPageHeader
+          title="Nutrition facts"
+          subtitle={foodSubtitle}
+          onBack={onBack}
+          skipTopSafeInset
+        />
+      ) : null}
+
       <ScrollView
         contentContainerStyle={[styles.scroll, { paddingBottom: scrollBottomPad }]}
         showsVerticalScrollIndicator={false}
       >
-        <View
-          style={[
-            styles.summaryCard,
-            { backgroundColor: colors.cardBg, borderColor: colors.cardBorder },
-            cardShadow(isDark),
-          ]}
-        >
-          <CardTopAccent gradient={summaryAccentGradient} />
-          <View style={styles.summaryTop}>
-            <View style={styles.summaryLeft}>
-              <Text style={[styles.summaryTitle, { color: colors.text }]}>
-                Today's Nutrition
-              </Text>
-              <Text style={[styles.summarySub, { color: colors.textMuted }]}>
-                {foodSubtitle}
-              </Text>
-            </View>
-            <View style={styles.summaryCalSlot}>
-              <Text style={[styles.summaryCal, { color: FACTS_MUTED.pink }]}>
-                {String(data.calories)}
-              </Text>
-              <Text style={[styles.summaryCalUnit, { color: FACTS_MUTED.pink }]}>CAL</Text>
-            </View>
+        {/* Inline title only when embedded without a header (rare / tests) */}
+        {!onBack ? (
+          <View style={styles.inlineHeader}>
+            <Text style={[styles.summaryTitle, { color: colors.nbInk }]}>Nutrition facts</Text>
+            <Text style={[styles.summarySub, { color: colors.nbMuted }]}>{foodSubtitle}</Text>
           </View>
-        </View>
+        ) : null}
 
-        <View
-          style={[
-            styles.calCard,
-            { backgroundColor: colors.cardBg, borderColor: colors.cardBorder },
-            cardShadow(isDark),
-          ]}
-        >
-          <CardDepthOverlay show={isDark} />
-          <CardTopAccent gradient={calorieGradient} />
+        {/* HardShadow calorie summary — goal % bar uses accentGradients only */}
+        <FactsCard colors={colors} style={styles.cardGap}>
           <View style={styles.calCardTop}>
-            <Text style={[styles.calCardKicker, { color: colors.textDim }]}>
-              DAILY CALORIES
-            </Text>
-            <Text style={[styles.calCardGoal, { color: colors.textMuted }]}>
+            <Text style={[styles.calCardKicker, { color: colors.nbMuted }]}>DAILY CALORIES</Text>
+            <Text style={[styles.calCardGoal, { color: colors.nbMuted }]}>
               {data.calorieGoal.toLocaleString()} kcal goal
             </Text>
           </View>
           <View style={styles.calValueRow}>
-            <GradientLabel style={styles.calCardValue} colors={calorieGradient}>
+            <Text style={[styles.calCardValue, { color: colors.nbInk }]}>
               {data.calories.toLocaleString()}
-            </GradientLabel>
-            <Text style={[styles.calCardUnit, { color: colors.textMuted }]}> kcal</Text>
+            </Text>
+            <Text style={[styles.calCardUnit, { color: colors.nbMuted }]}> kcal</Text>
           </View>
-          <View style={[styles.calTrack, { backgroundColor: progressTrack }]}>
-            <LinearGradient
-              colors={calorieGradient}
-              start={GRADIENT_LEFT}
-              end={GRADIENT_RIGHT}
-              style={[styles.calFill, { width: `${calorieFillPct}%` }]}
-            />
-          </View>
-          <Text style={[styles.calPctLabel, { color: colors.textDim }]}>
+          <NbProgressBar progress={calorieProgress} colors={CAL_BAR_COLORS} />
+          <Text style={[styles.calPctLabel, { color: colors.nbMuted }]}>
             {data.caloriePct}% of daily goal
           </Text>
-        </View>
+        </FactsCard>
 
+        {/* HardShadow macro minis — one card per macro */}
         <View style={styles.macroRow}>
-          {data.macros.map((macro, macroIndex) => (
-            <MacroMiniCard
-              key={macro.label}
-              macro={macro}
-              colors={colors}
-              isDark={isDark}
-              depthLayer={isDark && macroIndex % 2 === 1}
-            />
+          {data.macros.map((macro) => (
+            <MacroMiniCard key={macro.label} macro={macro} colors={colors} />
           ))}
         </View>
 
         {enriching ? (
-          <Text style={[styles.enrichingHint, { color: colors.textMuted }]}>
+          <Text style={[styles.enrichingHint, { color: colors.nbMuted }]}>
             Loading full nutrition facts from your food database…
           </Text>
         ) : null}
 
-        <DetailListCard
-          section={data.fats}
-          colors={colors}
-          isDark={isDark}
-          depthLayer={isDark}
-        />
-        <DetailListCard
-          section={data.carbs}
-          colors={colors}
-          isDark={isDark}
-          depthLayer={false}
-        />
+        {/* HardShadow nutrient sections */}
+        <DetailListCard section={data.fats} colors={colors} />
+        <DetailListCard section={data.carbs} colors={colors} />
 
-        <View
-          style={[
-            styles.detailCard,
-            { backgroundColor: colors.cardBg, borderColor: colors.cardBorder },
-            cardShadow(isDark),
-          ]}
-        >
-          <CardDepthOverlay show={isDark} />
-          <CardTopAccent gradient={mineralsGradient} />
-          <View style={{ marginBottom: 14 }}>
-            <Text
-              style={[
-                styles.detailTitle,
-                { color: mineralsHeaderColor, opacity: HEADER_TITLE_OPACITY },
-              ]}
-            >
-              {data.minerals.title}
-            </Text>
-          </View>
+        <FactsCard colors={colors} style={styles.cardGap}>
+          <Text style={[styles.detailTitle, { color: colors.nbMuted, marginBottom: 14 }]}>
+            {data.minerals.title}
+          </Text>
           <TwoColumnGrid
             items={data.minerals.items}
             keyExtractor={(item) => item.key}
@@ -564,12 +375,12 @@ export default function NutritionFactsScreen({
             itemWidth="48%"
             renderItem={(item) => <MineralCell item={item} colors={colors} />}
           />
-        </View>
+        </FactsCard>
 
         {isEmpty ? (
           <View style={styles.emptyHint}>
-            <Ionicons name={EMPTY_ICON_NAME} size={EMPTY_ICON_SIZE} color={colors.textDim} />
-            <Text style={[styles.emptyText, { color: colors.textMuted }]}>
+            <Ionicons name={EMPTY_ICON_NAME} size={EMPTY_ICON_SIZE} color={colors.nbMuted} />
+            <Text style={[styles.emptyText, { color: colors.nbMuted }]}>
               Log food today to see your full daily nutrition breakdown — sodium, fiber, and more.
             </Text>
           </View>
@@ -581,103 +392,87 @@ export default function NutritionFactsScreen({
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  scroll: { paddingHorizontal: 16, paddingTop: 8, gap: 12 },
-  cardTopAccentWrap: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 1,
-    opacity: 0.6,
-    zIndex: 1,
+  scroll: { paddingHorizontal: spacing.md, paddingTop: 8, gap: 12 },
+  inlineHeader: { marginBottom: 4 },
+  summaryTitle: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 22,
+    letterSpacing: -0.3,
   },
-  cardTopAccent: { flex: 1, height: 1 },
-  summaryCard: {
-    borderRadius: borderRadius.nbCard,
-    borderWidth: nb.borderWidth,
-    overflow: 'hidden',
-    padding: 16,
-    paddingTop: 18,
-  },
-  summaryTop: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-  },
-  summaryLeft: { flex: 1, paddingRight: 12 },
-  summaryTitle: { fontSize: 18, fontWeight: '800', letterSpacing: -0.3 },
-  summarySub: { fontSize: 12, fontWeight: '600', marginTop: 4 },
-  summaryCalSlot: { alignItems: 'flex-end' },
-  summaryCal: { fontSize: 32, fontWeight: '900', lineHeight: 36 },
-  summaryCalUnit: {
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 1,
-    opacity: 0.5,
+  summarySub: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 12,
     marginTop: 4,
   },
-  calCard: {
-    borderRadius: borderRadius.nbCard,
+  cardInner: {
     borderWidth: nb.borderWidth,
+    borderRadius: borderRadius.nbCard,
     padding: 16,
-    paddingTop: 18,
     overflow: 'hidden',
   },
+  cardGap: { marginBottom: 0 },
   calCardTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 8,
   },
-  calCardKicker: { fontSize: 10, fontWeight: '800', letterSpacing: 1.2 },
-  calCardGoal: { fontSize: 12, fontWeight: '600' },
+  calCardKicker: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 10,
+    letterSpacing: 1.2,
+  },
+  calCardGoal: { fontFamily: 'Inter_500Medium', fontSize: 12 },
   calValueRow: {
     flexDirection: 'row',
     alignItems: 'baseline',
     marginBottom: 12,
   },
-  calCardValue: { fontSize: 28, fontWeight: '900', letterSpacing: -0.5 },
-  calCardUnit: { fontSize: 16, fontWeight: '700' },
-  calTrack: { height: 5, borderRadius: 3, overflow: 'hidden' },
-  calFill: { height: '100%', borderRadius: 3 },
-  calPctLabel: { fontSize: 11, fontWeight: '600', marginTop: 8 },
-  macroRow: { flexDirection: 'row', gap: 10 },
-  enrichingHint: {
+  calCardValue: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 36,
+    letterSpacing: -0.8,
+    fontVariant: ['tabular-nums'],
+  },
+  calCardUnit: { fontFamily: 'SpaceGrotesk_700Bold', fontSize: 16 },
+  calPctLabel: {
+    fontFamily: 'Inter_500Medium',
     fontSize: 12,
-    fontWeight: '600',
-    textAlign: 'center',
+    marginTop: 8,
+  },
+  macroRow: { flexDirection: 'row', gap: 10 },
+  macroMiniOuter: { flex: 1 },
+  macroIcon: {
+    width: MACRO_ICON_SIZE,
+    height: MACRO_ICON_SIZE,
+    alignSelf: 'center',
     marginBottom: 4,
   },
-  macroMini: {
-    flex: 1,
-    borderRadius: borderRadius.nbChip,
-    borderWidth: nb.borderWidth,
-    padding: 16,
-    alignItems: 'center',
-    overflow: 'hidden',
-  },
   macroMiniTitle: {
+    fontFamily: 'SpaceGrotesk_700Bold',
     fontSize: 10,
-    fontWeight: '800',
     letterSpacing: 0.8,
     marginBottom: 6,
+    textAlign: 'center',
   },
-  macroMiniValue: { fontSize: 26, fontWeight: '900', letterSpacing: -0.5 },
-  macroMiniTrack: {
-    height: 5,
-    borderRadius: 3,
-    width: '100%',
-    marginTop: 10,
-    overflow: 'hidden',
+  macroMiniValue: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 22,
+    letterSpacing: -0.5,
+    textAlign: 'center',
+    fontVariant: ['tabular-nums'],
   },
-  macroMiniFill: { height: '100%', borderRadius: 3 },
-  macroMiniGoal: { fontSize: 10, fontWeight: '600', marginTop: 6 },
-  detailCard: {
-    borderRadius: borderRadius.nbCard,
-    borderWidth: nb.borderWidth,
-    padding: 16,
-    paddingTop: 18,
-    overflow: 'hidden',
+  macroMiniGoal: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 10,
+    marginTop: 6,
+    textAlign: 'center',
+  },
+  enrichingHint: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 12,
+    textAlign: 'center',
+    marginBottom: 4,
   },
   detailHeader: {
     flexDirection: 'row',
@@ -685,19 +480,35 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 12,
   },
-  detailTitle: { fontSize: 11, fontWeight: '800', letterSpacing: 1.5 },
-  detailTotal: { fontSize: 14, fontWeight: '800' },
-  detailDivider: { height: StyleSheet.hairlineWidth, marginVertical: 10 },
+  detailTitle: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 11,
+    letterSpacing: 1.5,
+  },
+  detailTotal: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 14,
+    fontVariant: ['tabular-nums'],
+  },
+  detailDivider: { height: StyleSheet.hairlineWidth * 2, opacity: 0.35, marginVertical: 10 },
   detailRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  detailLabel: { fontSize: 14, fontWeight: '600' },
-  detailValue: { fontSize: 14, fontWeight: '800' },
+  detailLabel: { fontFamily: 'Inter_500Medium', fontSize: 14 },
+  detailValue: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 14,
+    fontVariant: ['tabular-nums'],
+  },
   microCell: { gap: 4, paddingVertical: 4 },
-  microName: { fontSize: 11, fontWeight: '600' },
-  microVal: { fontSize: 17, fontWeight: '800' },
+  microName: { fontFamily: 'Inter_500Medium', fontSize: 11 },
+  microVal: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 17,
+    fontVariant: ['tabular-nums'],
+  },
   emptyHint: {
     alignItems: 'center',
     gap: 10,
@@ -705,9 +516,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   emptyText: {
+    fontFamily: 'Inter_500Medium',
     fontSize: 13,
     lineHeight: 19,
     textAlign: 'center',
-    fontWeight: '500',
   },
 });

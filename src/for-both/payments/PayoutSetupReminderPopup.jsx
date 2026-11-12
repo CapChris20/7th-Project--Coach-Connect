@@ -1,47 +1,31 @@
-// After signup, remind the trainer to finish Stripe payout setup on the dashboard.
-// Flow: show why payments matter → Start setup → Stripe phases (connecting / pending / active) → done or later.
-// Used by trainer home. Not shown during the onboarding wizard.
+// Design Law payout reminder — bottom sheet over trainer home (PNG 07/08).
+// Flow: checklist + Refresh status / Finish setup → Stripe WebView via trainerPayoutSetupFlow.
+// Used by TrainerHomeContent (props: visible, onClose, userEmail, stripeAccountId).
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Modal,
-  View,
-  Text,
-  TouchableOpacity,
-  ActivityIndicator,
-  StyleSheet,
-  ScrollView,
-  Dimensions,
-  Platform,
-} from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { doc, getDoc } from 'firebase/firestore';
+import NbSheet from '../../look-and-feel/NbSheet';
+import NbButton from '../../look-and-feel/NbButton';
+import { useTheme } from '../../look-and-feel/lightDarkMode';
+import { borderRadius, gradients, nb, spacing } from '../../look-and-feel/colorPalette';
 import { trainerPayoutSetupFlow } from './trainerPayoutSetupFlow';
 import { TrainerPayoutSetupPopup } from './TrainerPayoutSetupPopup';
 import { dismissPayoutSetupReminderPopup } from './whenToAskForPayoutSetup';
-import {
-  HowPaymentsWorkSection,
-  EarningsDashboardPreview,
-  VenmoComparisonSection,
-  TrainerPaymentFaqSnippet,
-} from './HowPaymentsWorkSections';
-import { auth } from '../../app-start/cloudConnection';
+import { resolveStripeStatus, verifyStripeConnectStatus } from './trainerPayoutSetup';
+import { auth, db } from '../../app-start/cloudConnection';
 
 // ===== NAMED CONSTANTS =====
 
-// Manipulate here: how long we wait on "verifying" before we say they can finish later.
+// Manipulate here: how long we wait on "verifying" before we stop the connecting spinner.
 const PENDING_DONE_MS = 30000;
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-const COLORS = {
-  overlay: 'rgba(0,0,0,0.94)',
-  card: '#111118',
-  cardBorder: 'rgba(255,255,255,0.08)',
-  text: '#FFFFFF',
-  textMuted: 'rgba(255,255,255,0.62)',
-  accent: '#FF3D8A',
-  accentSoft: 'rgba(255,61,138,0.14)',
+const SHEET_COPY = {
+  title: 'Finish payout setup',
+  body: 'You need this to accept clients and get paid for sessions.',
+  pillPending: 'Payout verification in progress',
 };
 
 // ===== HELPER FUNCTIONS =====
@@ -71,21 +55,124 @@ function applyStripePhaseToPopup(phase, stripeError, setters) {
   }
 }
 
+/**
+ * Checklist rows for PNG 07/08 — subtitles change with resolved Stripe status.
+ * @param {'not_connected'|'pending'|'active'} resolved
+ */
+function payoutStepSpecs(resolved) {
+  const pendingOrActive = resolved === 'pending' || resolved === 'active';
+  const active = resolved === 'active';
+  return [
+    {
+      key: 'identity',
+      title: 'Identity',
+      subtitle: pendingOrActive ? 'Verified' : 'Complete in Stripe',
+      done: pendingOrActive,
+      current: !pendingOrActive,
+    },
+    {
+      key: 'bank',
+      title: 'Bank account',
+      subtitle: pendingOrActive ? 'Added' : 'Add payout details',
+      done: pendingOrActive,
+      current: false,
+    },
+    {
+      key: 'verification',
+      title: 'Verification',
+      subtitle: active
+        ? 'Complete'
+        : pendingOrActive
+          ? 'Under review. Try Refresh status in a minute.'
+          : 'Starts after bank details',
+      done: active,
+      current: pendingOrActive && !active,
+    },
+  ];
+}
+
+// ===== SUBCOMPONENTS =====
+
+function StatusPill({ label }) {
+  const { colors } = useTheme();
+  return (
+    <LinearGradient
+      colors={gradients.brand.colors}
+      start={gradients.brand.start}
+      end={gradients.brand.end}
+      style={[styles.statusPill, { borderColor: colors.nbBorder }]}
+    >
+      <Text style={[styles.statusPillText, { color: colors.nbInk }]}>{label}</Text>
+    </LinearGradient>
+  );
+}
+
+function PayoutStepTimeline({ steps, colors }) {
+  return (
+    <View style={styles.timeline}>
+      {steps.map((step, index) => {
+        const isLast = index === steps.length - 1;
+        const showConnector = !isLast;
+        const dotStyle = [
+          styles.stepDot,
+          {
+            borderColor: colors.nbBorder,
+            backgroundColor: step.done || step.current ? colors.nbFill : colors.nbSurface,
+          },
+        ];
+        return (
+          <View key={step.key} style={styles.stepRow}>
+            <View style={styles.stepRail}>
+              <View style={dotStyle}>
+                {step.done ? (
+                  <Ionicons name="checkmark" size={16} color={colors.nbOnFill} />
+                ) : (
+                  <Text style={[styles.stepNumber, { color: step.current ? colors.nbOnFill : colors.nbInk }]}>
+                    {index + 1}
+                  </Text>
+                )}
+              </View>
+              {showConnector ? (
+                <View
+                  style={[
+                    styles.stepConnector,
+                    {
+                      backgroundColor: step.done ? colors.nbInk : colors.nbBorder,
+                      opacity: step.done ? 1 : 0.35,
+                    },
+                  ]}
+                />
+              ) : null}
+            </View>
+            <View style={styles.stepText}>
+              <Text style={[styles.stepTitle, { color: colors.nbInk }]}>{step.title}</Text>
+              <Text style={[styles.stepSub, { color: colors.nbMuted }]}>{step.subtitle}</Text>
+            </View>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
 // ===== MAIN FUNCTION =====
 
 /**
- * Dashboard reminder to finish Stripe payout setup.
+ * Dashboard reminder to finish Stripe payout setup (Design Law sheet).
  * @param {{ visible: boolean, onClose: Function, userEmail?: string, stripeAccountId?: string }} props
  */
 export function PayoutSetupReminderPopup({ visible, onClose, userEmail, stripeAccountId = '' }) {
-  const insets = useSafeAreaInsets();
+  const { colors, isDark } = useTheme();
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState(null);
   const [errorMessage, setErrorMessage] = useState(null);
   const [pendingTimedOut, setPendingTimedOut] = useState(false);
+  const [refreshingStripe, setRefreshingStripe] = useState(false);
+  const [firestoreStripeStatus, setFirestoreStripeStatus] = useState('');
   const pendingTimerRef = useRef(null);
 
   const email = String(userEmail || auth?.currentUser?.email || '').trim();
+  const trainerUid = auth?.currentUser?.uid || '';
 
   const stripeConnect = trainerPayoutSetupFlow({
     email,
@@ -93,8 +180,28 @@ export function PayoutSetupReminderPopup({ visible, onClose, userEmail, stripeAc
       setStatus('success');
       setLoading(false);
       setErrorMessage(null);
+      setFirestoreStripeStatus('active');
     },
   });
+
+  const reloadTrainerStripeFields = useCallback(async () => {
+    if (!trainerUid || !db) return;
+    try {
+      const snap = await getDoc(doc(db, 'users', trainerUid));
+      if (!snap.exists()) return;
+      const user = snap.data() || {};
+      const raw = user.stripeStatus || user.stripeConnectStatus || '';
+      setFirestoreStripeStatus(raw);
+    } catch (caughtError) {
+      console.warn('Payout sheet: could not reload trainer Stripe fields:', caughtError?.message || caughtError);
+    }
+  }, [trainerUid]);
+
+  useEffect(() => {
+    if (!visible) return undefined;
+    reloadTrainerStripeFields();
+    return undefined;
+  }, [visible, reloadTrainerStripeFields]);
 
   useEffect(() => {
     applyStripePhaseToPopup(stripeConnect.phase, stripeConnect.error, {
@@ -125,14 +232,28 @@ export function PayoutSetupReminderPopup({ visible, onClose, userEmail, stripeAc
     };
   }, [status]);
 
+  const resolvedStripeStatus = useMemo(() => {
+    if (status === 'success' || stripeConnect.phase === 'active') return 'active';
+    if (status === 'verifying' || stripeConnect.phase === 'pending') return 'pending';
+  // vocab: stripeAccountId alone does not mean payouts work — resolveStripeStatus reads status fields.
+    return resolveStripeStatus({
+      stripeStatus: firestoreStripeStatus,
+      stripeConnectStatus: firestoreStripeStatus,
+      stripeAccountId: stripeAccountId || undefined,
+    });
+  }, [status, stripeConnect.phase, firestoreStripeStatus, stripeAccountId]);
+
+  const steps = useMemo(() => payoutStepSpecs(resolvedStripeStatus), [resolvedStripeStatus]);
+  const showStatusPill = resolvedStripeStatus === 'pending';
+  const showConnecting = status === 'connecting';
+  const showVerifyingSpinner = status === 'verifying' && !pendingTimedOut && loading;
+
   const handleSetupNow = useCallback(async () => {
-    // 1. Clear the last error and show the connecting spinner.
     setErrorMessage(null);
     setPendingTimedOut(false);
     setStatus('connecting');
     setLoading(true);
     try {
-      // 2. Open the Stripe Connect form (WebView comes from trainerPayoutSetupFlow).
       await stripeConnect.startConnect();
     } catch (caughtError) {
       setStatus('error');
@@ -141,207 +262,107 @@ export function PayoutSetupReminderPopup({ visible, onClose, userEmail, stripeAc
     }
   }, [stripeConnect]);
 
-  const handleMaybeLater = useCallback(async () => {
-    // 1. Save "Maybe later" so we stay quiet for 30 days. A write fail still closes.
+  const handleDismiss = useCallback(async () => {
     try {
-      const uid = auth?.currentUser?.uid;
-      if (uid) await dismissPayoutSetupReminderPopup(uid);
+      if (trainerUid) await dismissPayoutSetupReminderPopup(trainerUid);
     } catch (caughtError) {
       console.warn('Failed to save payment popup dismissal:', caughtError?.message || caughtError);
     }
     onClose?.();
-  }, [onClose]);
+  }, [onClose, trainerUid]);
 
   const handleDone = useCallback(() => {
-    // 1. Close after success or after the verifying timeout ("check back soon").
     onClose?.();
   }, [onClose]);
 
-  const handleRetry = useCallback(() => {
-    // 1. Clear the error and ask Stripe to open the form again.
+  const handleRefreshStatus = useCallback(async () => {
+    setRefreshingStripe(true);
     setErrorMessage(null);
-    setStatus(null);
-    stripeConnect.retry();
-  }, [stripeConnect]);
+    try {
+      await verifyStripeConnectStatus();
+      await stripeConnect.pollStatus();
+      await reloadTrainerStripeFields();
+    } catch (caughtError) {
+      setErrorMessage(caughtError?.message || 'Could not refresh. Try Finish setup.');
+    } finally {
+      setRefreshingStripe(false);
+    }
+  }, [stripeConnect, reloadTrainerStripeFields]);
 
-  const showInitialButtons = !status || status === 'error';
-  const showConnecting = status === 'connecting';
-  const showVerifying = status === 'verifying' && !pendingTimedOut;
-  const showPendingDone = status === 'verifying' && pendingTimedOut;
-  const showSuccess = status === 'success';
-
-  const maxCardHeight = useMemo(
-    () => SCREEN_HEIGHT - insets.top - insets.bottom - 32,
-    [insets.top, insets.bottom],
-  );
+  const handleFinishSetup = useCallback(() => {
+    if (status === 'error') {
+      setErrorMessage(null);
+      setStatus(null);
+      stripeConnect.retry();
+      return;
+    }
+    handleSetupNow();
+  }, [handleSetupNow, status, stripeConnect]);
 
   if (!visible) return null;
 
+  const footerBusy = loading || refreshingStripe || showConnecting;
+  const showSuccess = status === 'success' || resolvedStripeStatus === 'active';
+
   return (
     <>
-      <Modal
-        visible={visible}
-        transparent
-        animationType="fade"
-        presentationStyle="overFullScreen"
-        statusBarTranslucent
-        onRequestClose={handleMaybeLater}
-      >
-        <View style={styles.overlay}>
-          <View
-            style={[
-              styles.card,
-              {
-                maxHeight: maxCardHeight,
-                marginTop: Math.max(insets.top, 16),
-                marginBottom: Math.max(insets.bottom, 16),
-              },
-            ]}
-          >
-            <TouchableOpacity
-              style={styles.closeBtn}
-              onPress={handleMaybeLater}
-              accessibilityLabel="Close"
-              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-            >
-              <Ionicons name="close" size={22} color={COLORS.textMuted} />
-            </TouchableOpacity>
+      <NbSheet visible={visible} onClose={handleDismiss}>
+        <View style={styles.sheetBody}>
+          {showStatusPill ? <StatusPill label={SHEET_COPY.pillPending} /> : null}
 
-            <ScrollView
-              style={styles.scroll}
-              contentContainerStyle={styles.scrollContent}
-              showsVerticalScrollIndicator={false}
-              bounces={false}
-              keyboardShouldPersistTaps="handled"
-            >
-              <View style={styles.iconWrap}>
-                <LinearGradient
-                  colors={['#FF8C42', '#FF3D8A']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.iconGradient}
-                >
-                  <Ionicons name="wallet" size={28} color="#FFFFFF" />
-                </LinearGradient>
-              </View>
+          <Text style={[styles.sheetTitle, { color: colors.nbInk }]}>{SHEET_COPY.title}</Text>
+          <Text style={[styles.sheetBodyText, { color: colors.nbMuted }]}>{SHEET_COPY.body}</Text>
 
-              <Text style={styles.title}>Payment Method (Stripe)</Text>
-              <Text style={styles.subtitle}>
-                This step is for getting paid — bank transfer, debit card, or other Stripe payout options. Identity Verification (Face ID) is separate on your profile.
+          <PayoutStepTimeline steps={steps} colors={colors} />
+
+          {showConnecting || showVerifyingSpinner ? (
+            <View style={styles.statusBlock}>
+              <ActivityIndicator size="small" color={colors.nbInk} />
+              <Text style={[styles.statusHint, { color: colors.nbMuted }]}>
+                {showConnecting ? 'Opening secure Stripe form…' : 'Checking verification status…'}
               </Text>
+            </View>
+          ) : null}
 
-              {showInitialButtons ? (
-                <>
-                  <HowPaymentsWorkSection
-                    textColor={COLORS.text}
-                    mutedColor={COLORS.textMuted}
-                  />
-                  <EarningsDashboardPreview
-                    textColor={COLORS.text}
-                    mutedColor={COLORS.textMuted}
-                    borderColor={COLORS.cardBorder}
-                    surfaceColor="rgba(255,255,255,0.04)"
-                  />
-                  <VenmoComparisonSection
-                    textColor={COLORS.text}
-                    mutedColor={COLORS.textMuted}
-                    borderColor={COLORS.cardBorder}
-                  />
-                  <TrainerPaymentFaqSnippet
-                    textColor={COLORS.text}
-                    mutedColor={COLORS.textMuted}
-                  />
-                </>
-              ) : (
-                <Text style={styles.body}>
-                  Trainers with verified accounts receive payouts in 2–5 business days. Setup
-                  usually takes under 2 minutes.
-                </Text>
-              )}
+          {errorMessage ? (
+            <Text style={[styles.errorText, { color: colors.error }]}>{errorMessage}</Text>
+          ) : null}
 
-              {showConnecting ? (
-                <View style={styles.statusBlock}>
-                  <ActivityIndicator size="large" color={COLORS.accent} />
-                  <Text style={styles.statusText}>Opening secure Stripe form…</Text>
-                </View>
-              ) : null}
-
-              {showVerifying ? (
-                <View style={styles.statusBlock}>
-                  <ActivityIndicator size="large" color="#A78BFA" />
-                  <Text style={styles.statusText}>Verifying account (can take up to 24 hours)…</Text>
-                </View>
-              ) : null}
-
-              {showPendingDone ? (
-                <View style={styles.statusBlock}>
-                  <Text style={styles.statusText}>Verification in progress. Check back soon.</Text>
-                </View>
-              ) : null}
-
-              {showSuccess ? (
-                <View style={styles.statusBlock}>
-                  <Ionicons name="checkmark-circle" size={48} color="#34D399" />
-                  <Text style={styles.successTitle}>Account verified</Text>
-                  <Text style={styles.statusText}>You&apos;re ready to receive payments.</Text>
-                </View>
-              ) : null}
-
-              {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
-            </ScrollView>
-
-            {showInitialButtons || showPendingDone || showSuccess ? (
-              <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom > 0 ? 0 : 8, 4) }]}>
-                {showInitialButtons ? (
-                  <>
-                    <TouchableOpacity
-                      activeOpacity={0.9}
-                      onPress={status === 'error' ? handleRetry : handleSetupNow}
-                      disabled={loading}
-                      style={styles.primaryWrap}
-                    >
-                      <LinearGradient
-                        colors={['#FF8C42', '#FF3D8A']}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 0 }}
-                        style={styles.primaryBtn}
-                      >
-                        {loading ? (
-                          <ActivityIndicator color="#FFFFFF" />
-                        ) : (
-                          <Text style={styles.primaryText}>
-                            {status === 'error' ? 'Try again' : 'Set up payments'}
-                          </Text>
-                        )}
-                      </LinearGradient>
-                    </TouchableOpacity>
-                    <TouchableOpacity activeOpacity={0.85} onPress={handleMaybeLater} style={styles.secondaryBtn}>
-                      <Text style={styles.secondaryText}>Maybe later</Text>
-                    </TouchableOpacity>
-                  </>
-                ) : (
-                  <TouchableOpacity activeOpacity={0.9} onPress={handleDone} style={styles.primaryWrap}>
-                    <LinearGradient
-                      colors={['#FF8C42', '#FF3D8A']}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 0 }}
-                      style={styles.primaryBtn}
-                    >
-                      <Text style={styles.primaryText}>Done</Text>
-                    </LinearGradient>
-                  </TouchableOpacity>
-                )}
-              </View>
-            ) : null}
-          </View>
+          {showSuccess ? (
+            <View style={styles.successBlock}>
+              <Text style={[styles.successText, { color: colors.nbInk }]}>Payout setup complete.</Text>
+              <NbButton variant="fill" onPress={handleDone} style={styles.successBtn}>
+                Done
+              </NbButton>
+            </View>
+          ) : (
+            <View style={styles.actionRow}>
+              <NbButton
+                variant="ghost"
+                onPress={handleRefreshStatus}
+                disabled={footerBusy}
+                style={styles.actionGhost}
+              >
+                {refreshingStripe ? 'Loading…' : 'Refresh status'}
+              </NbButton>
+              <NbButton
+                variant="fill"
+                onPress={handleFinishSetup}
+                disabled={footerBusy}
+                style={styles.actionFill}
+              >
+                {loading ? 'Loading…' : 'Finish setup'}
+              </NbButton>
+            </View>
+          )}
         </View>
-      </Modal>
+      </NbSheet>
 
       <TrainerPayoutSetupPopup
         visible={!!stripeConnect.webViewUrl}
         url={stripeConnect.webViewUrl}
         title="Connect with Stripe"
-        isDark
+        isDark={isDark}
         onClose={() => stripeConnect.closeWebView({ userClosed: true })}
         onComplete={stripeConnect.handleWebViewComplete}
       />
@@ -350,146 +371,123 @@ export function PayoutSetupReminderPopup({ visible, onClose, userEmail, stripeAc
 }
 
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: COLORS.overlay,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-  },
-  card: {
-    width: '100%',
-    maxWidth: 420,
-    backgroundColor: COLORS.card,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: COLORS.cardBorder,
-    overflow: 'hidden',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 16 },
-        shadowOpacity: 0.45,
-        shadowRadius: 32,
-      },
-      android: { elevation: 24 },
-    }),
-  },
-  closeBtn: {
-    position: 'absolute',
-    top: 14,
-    right: 14,
-    zIndex: 2,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  scroll: {
-    flexShrink: 1,
-  },
-  scrollContent: {
-    paddingTop: 28,
-    paddingHorizontal: 22,
-    paddingBottom: 12,
-    alignItems: 'center',
-  },
-  iconWrap: {
-    marginBottom: 18,
-  },
-  iconGradient: {
-    width: 64,
-    height: 64,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  title: {
-    fontSize: 26,
-    fontWeight: '800',
-    color: COLORS.text,
-    textAlign: 'center',
-    marginBottom: 8,
-    letterSpacing: -0.3,
-  },
-  subtitle: {
-    fontSize: 15,
-    fontWeight: '500',
-    color: COLORS.textMuted,
-    textAlign: 'center',
-    marginBottom: 20,
-    lineHeight: 22,
-    paddingHorizontal: 4,
-  },
-  body: {
-    fontSize: 14,
-    color: COLORS.textMuted,
-    textAlign: 'center',
-    lineHeight: 21,
-    marginBottom: 16,
-  },
-  statusBlock: {
-    alignItems: 'center',
-    marginTop: 8,
-    marginBottom: 8,
+  sheetBody: {
+    paddingBottom: spacing.sm,
     gap: 12,
-    width: '100%',
   },
-  statusText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.textMuted,
-    textAlign: 'center',
-    lineHeight: 20,
+  statusPill: {
+    alignSelf: 'flex-start',
+    borderWidth: nb.borderWidthPill,
+    borderRadius: borderRadius.round,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    minHeight: 32,
+    justifyContent: 'center',
   },
-  successTitle: {
-    fontSize: 20,
+  statusPillText: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 12,
     fontWeight: '800',
-    color: COLORS.text,
-    textAlign: 'center',
   },
-  errorText: {
-    color: '#FF6B6B',
-    fontSize: 14,
-    fontWeight: '600',
-    textAlign: 'center',
-    marginTop: 8,
+  sheetTitle: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 25,
+    fontWeight: '900',
+    letterSpacing: -0.5,
+    marginTop: 4,
+  },
+  sheetBodyText: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 15,
+    lineHeight: 22,
     marginBottom: 4,
   },
-  footer: {
-    paddingHorizontal: 22,
-    paddingTop: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: COLORS.cardBorder,
-    backgroundColor: COLORS.card,
+  timeline: {
+    marginTop: 4,
+    marginBottom: 8,
   },
-  primaryWrap: {
-    width: '100%',
-    marginBottom: 10,
-    borderRadius: 16,
-    overflow: 'hidden',
+  stepRow: {
+    flexDirection: 'row',
+    gap: 12,
+    alignItems: 'flex-start',
   },
-  primaryBtn: {
-    height: 54,
+  stepRail: {
+    width: 32,
+    alignItems: 'center',
+    paddingBottom: 4,
+  },
+  stepDot: {
+    width: 32,
+    height: 32,
     borderRadius: 16,
+    borderWidth: nb.borderWidth,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  primaryText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '700',
+  stepNumber: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 14,
+    fontWeight: '800',
   },
-  secondaryBtn: {
-    height: 46,
-    alignItems: 'center',
-    justifyContent: 'center',
+  stepConnector: {
+    width: 3,
+    flex: 1,
+    minHeight: 16,
+    marginVertical: 4,
   },
-  secondaryText: {
-    color: COLORS.textMuted,
+  stepText: {
+    flex: 1,
+    paddingBottom: 10,
+  },
+  stepTitle: {
+    fontFamily: 'SpaceGrotesk_700Bold',
     fontSize: 15,
-    fontWeight: '600',
+    fontWeight: '800',
+  },
+  stepSub: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 2,
+  },
+  statusBlock: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 4,
+  },
+  statusHint: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 13,
+    flex: 1,
+  },
+  errorText: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  actionRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 8,
+  },
+  actionGhost: {
+    flex: 1,
+  },
+  actionFill: {
+    flex: 1.2,
+  },
+  successBlock: {
+    gap: 12,
+    marginTop: 8,
+  },
+  successText: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 16,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  successBtn: {
+    width: '100%',
   },
 });

@@ -7,11 +7,11 @@ import { Animated, View, Text, StyleSheet, ScrollView, StatusBar, Linking, Press
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../look-and-feel/lightDarkMode';
 import { getSupportEmail, getPrivacyPolicyUrl } from './supportContact';
-import TopHeader from '../for-both/loading-and-header/TopHeader';
+import NbPageHeader from '../look-and-feel/NbPageHeader';
 import { SHELL_SAFE_AREA_EDGES, FORM_SCROLL_PROPS, useShellBottomNavInset } from '../navigation/bottomMenuSpacing';
 import { Ionicons } from '@expo/vector-icons';
 import NbCard from '../look-and-feel/NbCard';
-import { nb, spacing } from '../look-and-feel/colorPalette';
+import { spacing } from '../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
@@ -259,8 +259,8 @@ export default function PrivacyPolicyScreen({ onClose, embedShellBottomNav = fal
 
   return (
     <SafeAreaView style={styles.container} edges={SHELL_SAFE_AREA_EDGES}>
-      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.background} />
-      <TopHeader title="Privacy Policy" skipTopSafeInset onBack={onClose} />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.nbBackground} />
+      <NbPageHeader title="Privacy policy" onBack={onClose} />
 
       <ScrollView
         style={{ flex: 1 }}

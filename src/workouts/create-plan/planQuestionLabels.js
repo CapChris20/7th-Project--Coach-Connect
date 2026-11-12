@@ -4,6 +4,7 @@
 
 // ===== NAMED CONSTANTS =====
 
+import { lightColors } from '../../look-and-feel/colorPalette';
 const MISSING_VALUE = '—';
 // Manipulate here: height stored as total inches is only trusted in this adult range.
 const MIN_HEIGHT_INCHES = 36;
@@ -42,9 +43,9 @@ const MARKDOWN_STYLES = {
 };
 
 export const LOVABLE_ACCENTS = [
-  { key: 'warm-a', gradient: ['#BE185D', '#C2410C'], text: '#BE185D' },
-  { key: 'warm-b', gradient: ['#C2410C', '#BE185D'], text: '#C2410C' },
-  { key: 'warm-c', gradient: ['#BE185D', '#9A3412'], text: '#BE185D' },
+  { key: 'warm-a', gradient: [lightColors.primaryDark, '#C2410C'], text: lightColors.primaryDark },
+  { key: 'warm-b', gradient: ['#C2410C', lightColors.primaryDark], text: '#C2410C' },
+  { key: 'warm-c', gradient: [lightColors.primaryDark, '#9A3412'], text: lightColors.primaryDark },
   { key: 'warm-d', gradient: ['#9A3412', '#C2410C'], text: '#C2410C' },
 ];
 

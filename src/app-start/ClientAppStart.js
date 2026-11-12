@@ -97,7 +97,6 @@ import { CrashCatcher } from '../crash-reports/CrashCatcher';
 import ClientScreenList from '../client-app/navigation/ClientScreenList';
 import BottomMenuBar from '../navigation/BottomMenuBar';
 import { calculateMacroTotals, getDailyGoals, getFoodLogsForDate } from '../nutrition/daily-log/saveLoggedFood';
-import LogTodaysMealsScreen from '../client-app/meals/LogTodaysMealsScreen';
 import DailyLogContent from '../nutrition/daily-log/DailyLogContent';
 import AddFilePopup from '../for-both/files-and-notes/viewers/AddFilePopup';
 import { useStartupLoadingCoverLock } from '../for-both/loading-and-header/StartupLoadingCover';
@@ -115,7 +114,6 @@ import { UpcomingSessionCard } from '../for-both/home-cards/UpcomingSessionCard'
 import SpreadsheetViewer from '../for-both/files-and-notes/viewers/SpreadsheetViewer';
 import TrainerSharedFilesPopup from '../client-app/files-and-notes/TrainerSharedFilesPopup';
 import FilesScreen from '../client-app/files-and-notes/FilesScreen';
-import FindTrainerBanner from '../for-both/home-cards/FindTrainerBanner';
 import TopBannerCard from '../client-app/home/TopBannerCard';
 import FilesHeaderCard from '../for-both/home-cards/FilesHeaderCard';
 import { MyFilesSection } from '../client-app/files-and-notes/MyFilesSection';
@@ -148,6 +146,7 @@ import { fetchWorkoutHistory, getActiveWorkout, getCurrentWorkoutPlan } from '..
 import CreateWorkoutPlanScreen from '../workouts/create-plan/CreateWorkoutPlanScreen';
 import { clearAllUserData } from '../logout-cleanup/clearDataOnLogout';
 import { logSnapshotError, isFirestorePermissionDenied } from '../for-both/cloud-database/handleLiveUpdateErrors';
+import { lightColors } from '../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
@@ -601,7 +600,7 @@ function ClientAppShellLayout({
   onRefetchUserData,
 }) {
   if (loading) {
-    const bootBackground = isDark ? '#0A0A0A' : '#FFFFFF';
+    const bootBackground = isDark ? '#0A0A0A' : lightColors.white;
     return <View style={{ flex: 1, backgroundColor: bootBackground }} />;
   }
 
@@ -848,6 +847,7 @@ export default function ClientAppStart({ user, userData, onRefetchUserData }) {
     openPhotoGallery,
     openAIWorkouts,
     openPlanViewer,
+    openWorkoutSession,
     openAIChatHome,
     openAIChatSession,
     handleOpenConversations,
@@ -1744,6 +1744,7 @@ export default function ClientAppStart({ user, userData, onRefetchUserData }) {
     openPhotoGallery,
     openAIWorkouts,
     openPlanViewer,
+    openWorkoutSession,
     openTrainerSearch,
     openTrainerProfile,
     openAIChatHome,
@@ -1835,6 +1836,7 @@ export default function ClientAppStart({ user, userData, onRefetchUserData }) {
     selectedTrainer,
     selectedConversation,
     aiChatState,
+    openWorkoutSession,
     userName,
     userRole,
     hasTrainer,

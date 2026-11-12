@@ -3,29 +3,19 @@
 // Used by: the trainer document editor. Applied as RN StyleSheet objects + optional content scaffold (only added if the doc is empty).
 
 import { StyleSheet } from 'react-native';
+import { lightColors, darkColors } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
 const PRESET_KEY_DEFAULT = 'default';
-
-const EDITOR_DARK_BACKGROUND = '#121212';
-const EDITOR_LIGHT_BACKGROUND = '#ffffff';
-const EDITOR_DARK_FOREGROUND = '#f4f4f5';
-const EDITOR_LIGHT_FOREGROUND = '#111111';
-const EDITOR_CARET_COLOR = '#9333ea';
-const EDITOR_LINK_COLOR = '#9333ea';
-const EDITOR_CODE_DARK = '#1a1a1a';
-const EDITOR_CODE_LIGHT = '#f4f4f5';
-const EDITOR_TABLE_BORDER_DARK = '#333';
-const EDITOR_TABLE_BORDER_LIGHT = '#ddd';
-const PLACEHOLDER_DARK = 'rgba(244,244,245,0.45)';
-const PLACEHOLDER_LIGHT = 'rgba(17,17,17,0.4)';
-const PAPER_SHADOW_DARK = '0 1px 0 rgba(255,255,255,0.04)';
-const PAPER_SHADOW_LIGHT = '0 12px 30px -10px rgba(0,0,0,0.08)';
+const EDITOR_BORDER_WIDTH_PX = 3;
+const PLACEHOLDER_DARK = 'rgba(242,242,242,0.45)';
+const PLACEHOLDER_LIGHT = 'rgba(10,10,10,0.4)';
+const PAPER_HARD_SHADOW_LIGHT = '5px 5px 0 #0A0A0A';
 
 const RESUME_SCAFFOLD = `
 <h1 style="text-align:center;margin-bottom:0">Your Name</h1>
-<p style="text-align:center;color:#666">email@example.com · (555) 555-5555 · City, Country</p>
+<p style="text-align:center;color:#575757">email@example.com · (555) 555-5555 · City, Country</p>
 <h2>Experience</h2>
 <p><strong>Role · Company</strong> — 2022–Present<br>What you did and the impact you had.</p>
 <h2>Education</h2>
@@ -36,7 +26,7 @@ const RESUME_SCAFFOLD = `
 
 const ESSAY_SCAFFOLD = `
 <h1 style="text-align:center">Essay Title</h1>
-<p style="text-align:center;color:#666">Your Name — Date</p>
+<p style="text-align:center;color:#575757">Your Name — Date</p>
 <p>Begin your essay here.</p>
 `;
 
@@ -51,7 +41,7 @@ const LETTER_SCAFFOLD = `
 
 const REPORT_SCAFFOLD = `
 <h1 style="text-align:center">Report Title</h1>
-<p style="text-align:center;color:#666">Prepared by · Date</p>
+<p style="text-align:center;color:#575757">Prepared by · Date</p>
 <h2>Executive Summary</h2>
 <p>Brief overview of findings.</p>
 <h2>Introduction</h2>
@@ -81,24 +71,34 @@ function definePreset(key, label, description, paperClass, scaffold) {
   return preset;
 }
 
-function editorColors(isDark) {
+/**
+ * Design Law bg / surface / ink for the WebView canvas and paper card.
+ * @param {boolean} isDark
+ * @returns {object}
+ */
+function editorTokenColors(isDark) {
+  const palette = isDark ? darkColors : lightColors;
+  const tableBorder = isDark ? 'rgba(242,242,242,0.16)' : 'rgba(10,10,10,0.12)';
   return {
-    backgroundColor: isDark ? EDITOR_DARK_BACKGROUND : EDITOR_LIGHT_BACKGROUND,
-    foregroundColor: isDark ? EDITOR_DARK_FOREGROUND : EDITOR_LIGHT_FOREGROUND,
+    canvasBg: palette.nbBackground,
+    surfaceBg: palette.nbSurface,
+    foregroundColor: palette.nbInk,
+    accentInk: palette.nbInk,
+    borderColor: palette.nbBorder,
     placeholderColor: isDark ? PLACEHOLDER_DARK : PLACEHOLDER_LIGHT,
-    paperShadow: isDark ? PAPER_SHADOW_DARK : PAPER_SHADOW_LIGHT,
-    codeBackground: isDark ? EDITOR_CODE_DARK : EDITOR_CODE_LIGHT,
-    tableBorder: isDark ? EDITOR_TABLE_BORDER_DARK : EDITOR_TABLE_BORDER_LIGHT,
+    paperShadow: isDark ? 'none' : PAPER_HARD_SHADOW_LIGHT,
+    codeBackground: palette.nbSoft,
+    tableBorder,
   };
 }
 
 function buildBaseEditorCss(isDark) {
-  const colors = editorColors(isDark);
+  const colors = editorTokenColors(isDark);
   return `
     html, body {
       margin: 0;
       padding: 0;
-      background: ${colors.backgroundColor};
+      background: ${colors.canvasBg};
       color: ${colors.foregroundColor};
       height: 100%;
     }
@@ -111,7 +111,7 @@ function buildBaseEditorCss(isDark) {
       font-family: 'Outfit', -apple-system, sans-serif;
       font-size: 16px;
       line-height: 1.6;
-      caret-color: ${EDITOR_CARET_COLOR};
+      caret-color: ${colors.accentInk};
     }
     .ProseMirror *:not(a) {
       color: inherit;
@@ -120,20 +120,21 @@ function buildBaseEditorCss(isDark) {
       color: ${colors.placeholderColor};
     }
     .doc-paper-wrap {
-      background: ${colors.backgroundColor};
+      background: ${colors.surfaceBg};
       color: ${colors.foregroundColor};
       min-height: 100%;
-      border-radius: 4px;
+      border-radius: 10px;
+      border: ${EDITOR_BORDER_WIDTH_PX}px solid ${colors.borderColor};
       box-shadow: ${colors.paperShadow};
     }
     .ProseMirror p { margin: 0 0 8px; }
     .ProseMirror h1 { font-size: 32px; font-weight: 800; margin: 0 0 12px; }
     .ProseMirror h2 { font-size: 24px; font-weight: 800; margin: 20px 0 8px; }
     .ProseMirror h3 { font-size: 18px; font-weight: 700; margin: 16px 0 6px; }
-    .ProseMirror blockquote { margin: 12px 0; padding: 10px 12px; border-left: 3px solid ${EDITOR_LINK_COLOR}; opacity: 0.9; font-style: italic; }
+    .ProseMirror blockquote { margin: 12px 0; padding: 10px 12px; border-left: ${EDITOR_BORDER_WIDTH_PX}px solid ${colors.accentInk}; opacity: 0.9; font-style: italic; }
     .ProseMirror pre { background: ${colors.codeBackground}; padding: 12px; border-radius: 8px; overflow: auto; }
     .ProseMirror code { font-family: 'JetBrains Mono', monospace; background: ${colors.codeBackground}; padding: 2px 6px; border-radius: 4px; }
-    .ProseMirror a { color: ${EDITOR_LINK_COLOR}; text-decoration: none; }
+    .ProseMirror a { color: ${colors.accentInk}; text-decoration: underline; text-underline-offset: 2px; }
     .ProseMirror img { max-width: 100%; border-radius: 8px; }
     .ProseMirror table { border-collapse: collapse; width: 100%; }
     .ProseMirror td, .ProseMirror th { border: 1px solid ${colors.tableBorder}; padding: 6px 8px; }
@@ -171,7 +172,7 @@ export const paperStyles = StyleSheet.create({
   docPaper: {
     position: 'relative',
     marginHorizontal: 'auto',
-    borderRadius: 4,
+    borderRadius: 10,
   },
   presetDefault: {
     width: '100%',
@@ -238,7 +239,7 @@ export function getPaperStyle(presetKey) {
 
 /**
  * CSS injected into the TipTap WebView for typography presets.
- * Hex strings stay identical so the editor looks the same in light and dark.
+ * Canvas uses Design Law bg; paper card uses surface + nb ink accents.
  * @param {string} presetKey
  * @param {boolean} isDark
  * @returns {string}

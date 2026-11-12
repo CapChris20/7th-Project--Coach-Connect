@@ -47,7 +47,7 @@ const SegBtn = ({ active, onPress, icon, label, colors, isDark }) => {
   const buttonContent = (
     <View style={[styles.segBtn, active && styles.segBtnActive]}>
       {icon}
-      <Text style={[styles.segBtnText, { color: active ? '#0A0A0F' : colors.nbMuted }]}>{label}</Text>
+      <Text style={[styles.segBtnText, { color: active ? lightColors.nbInk : colors.nbMuted }]}>{label}</Text>
     </View>
   );
 
@@ -100,7 +100,7 @@ const StandaloneHeaderBrand = ({ colors, title }) => (
   <View style={styles.headerContent}>
     <View style={styles.brandContainer}>
       <LinearGradient
-        colors={['#FF6B9D', '#C084FC']}
+        colors={[lightColors.primary, '#E25588']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.brandIcon}
@@ -130,7 +130,7 @@ const TabSwitcher = ({ tab, onSelectTab, colors, embedded, isDark }) => (
     <SegBtn
       active={tab === 'calendar'}
       onPress={() => onSelectTab('calendar')}
-      icon={<CalendarDays size={14} color={tab === 'calendar' ? '#0A0A0F' : colors.nbMuted} />}
+      icon={<CalendarDays size={14} color={tab === 'calendar' ? lightColors.nbInk : colors.nbMuted} />}
       label="Calendar"
       colors={colors}
       isDark={isDark}
@@ -138,7 +138,7 @@ const TabSwitcher = ({ tab, onSelectTab, colors, embedded, isDark }) => (
     <SegBtn
       active={tab === 'list'}
       onPress={() => onSelectTab('list')}
-      icon={<ListIcon size={14} color={tab === 'list' ? '#0A0A0F' : colors.nbMuted} />}
+      icon={<ListIcon size={14} color={tab === 'list' ? lightColors.nbInk : colors.nbMuted} />}
       label="List"
       colors={colors}
       isDark={isDark}

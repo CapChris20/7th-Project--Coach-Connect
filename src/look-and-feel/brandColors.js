@@ -6,7 +6,7 @@
 
 const BRAND_PINK = '#E94EAD';
 const BRAND_PURPLE = '#A348D0';
-const BRAND_INDIGO = '#6B3AD9';
+const BRAND_INDIGO = '#E25588';
 const HERO_DARK_PINK = '#BE185D';
 const HERO_DARK_ORANGE = '#C2410C';
 

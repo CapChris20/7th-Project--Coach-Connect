@@ -1,145 +1,17 @@
-// Dark mesh background: obsidian base plus three corner blurs, one SVG for every platform.
-// Flow: paint the obsidian fill → stack indigo, violet, and slate washes → render children on top.
-// Used by dark screens that sit glass cards on the liquid background.
+// Solid page background (strip pass: was pastel/mesh glass wash).
+// Flow: paint bg → children. Props kept for callers.
+// Used by screens that still wrap content in GlassBackground*.
 
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
-import Svg, { Defs, RadialGradient, Stop, Rect } from 'react-native-svg';
-import { Liquid } from './glassSettings';
 
-// ===== NAMED CONSTANTS =====
-
-// Manipulate here: each corner's first stop is the hot color. Later stops fade it out before the edge.
-const DARK_CORNER_BLURS = [
-  {
-    gradientId: 'indigo',
-    centerX: '0%',
-    centerY: '0%',
-    radius: '70%',
-    color: '#2E5BFF',
-    stops: [
-      { offset: '0%', opacity: '0.42' },
-      { offset: '55%', opacity: '0.12' },
-      { offset: '100%', opacity: '0' },
-    ],
-  },
-  {
-    gradientId: 'violet',
-    centerX: '100%',
-    centerY: '0%',
-    radius: '75%',
-    color: '#6D28D9',
-    stops: [
-      { offset: '0%', opacity: '0.40' },
-      { offset: '60%', opacity: '0.12' },
-      { offset: '100%', opacity: '0' },
-    ],
-  },
-  {
-    gradientId: 'slate',
-    centerX: '100%',
-    centerY: '100%',
-    radius: '80%',
-    color: '#64748B',
-    stops: [
-      { offset: '0%', opacity: '0.28' },
-      { offset: '60%', opacity: '0.10' },
-      { offset: '100%', opacity: '0' },
-    ],
-  },
-];
-
-// ===== HELPER FUNCTIONS =====
-
-// vocab: RadialGradient = a circular fade. The same id is what the full-screen rects paint with url(#id).
-function CornerBlurDefinition({ gradientId, centerX, centerY, radius, color, stops }) {
-  return (
-    <RadialGradient id={gradientId} cx={centerX} cy={centerY} r={radius}>
-      {stops.map((stop) => (
-        <Stop
-          key={`${gradientId}-${stop.offset}`}
-          offset={stop.offset}
-          stopColor={color}
-          stopOpacity={stop.opacity}
-        />
-      ))}
-    </RadialGradient>
-  );
-}
-
-function FullScreenWashRect({ gradientId }) {
-  return (
-    <Rect
-      x="0"
-      y="0"
-      width="100%"
-      height="100%"
-      fill={`url(#${gradientId})`}
-    />
-  );
-}
-
-function DarkMeshSvg() {
-  return (
-    <Svg style={StyleSheet.absoluteFillObject} width="100%" height="100%">
-      <Defs>
-        {DARK_CORNER_BLURS.map((blur) => (
-          <CornerBlurDefinition key={blur.gradientId} {...blur} />
-        ))}
-      </Defs>
-      <Rect x="0" y="0" width="100%" height="100%" fill={Liquid.colors.obsidian} />
-      {DARK_CORNER_BLURS.map((blur) => (
-        <FullScreenWashRect key={blur.gradientId} gradientId={blur.gradientId} />
-      ))}
-    </Svg>
-  );
-}
-
-
-/**
- * One full-bleed rect painted with a named radial gradient id.
- * @param {string} gradientId
- * @returns {import('react').ReactElement}
- */
-function GradientWashRect({ gradientId }) {
-  return (
-    <Rect
-      x="0"
-      y="0"
-      width="100%"
-      height="100%"
-      fill={`url(#${gradientId})`}
-    />
-  );
-}
-
-/**
- * @returns {import('react').ReactElement}
- */
-function ObsidianBaseRect() {
-  return <Rect x="0" y="0" width="100%" height="100%" fill={Liquid.colors.obsidian} />;
+export default function GlassBackgroundDark({ children, style }) {
+  return <View style={[styles.root, style]}>{children}</View>;
 }
 
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: Liquid.colors.obsidian,
+    backgroundColor: '#0B0B0B',
   },
 });
-
-// ===== MAIN FUNCTION =====
-
-/**
- * Full-screen dark mesh. Children sit above the SVG so the washes never block taps.
- * @param {{ children?: import('react').ReactNode }} props
- * @returns {import('react').ReactElement}
- */
-export default function GlassBackgroundDark({ children }) {
-  return (
-    <View style={styles.root}>
-      <DarkMeshSvg />
-      {children}
-    </View>
-  );
-}
-

@@ -1,221 +1,107 @@
-// Neobrutalist chip component — single-select or multi-select chips
-// Flow: pressable chip with border, optional gradient fill when selected
-// Where used: filters, date pickers, option lists, tags
+// Neobrutalist chip — HardShadow outline, fill or brand gradient when selected.
+// Flow: press → optional selected gradient → label (string) or custom children (date stacks).
+// Where used: filters, date pickers, time grids, option lists, tags.
 //
-// vocab: neobrutalist = thick border, hard shadow, gradient when active
+// vocab: neobrutalist = thick border, hard offset shadow, gradient only when active
+// Fix: do NOT wrap React-element children in <Text> — that blanks View-based date stacks
 
-import React, { useRef } from 'react';
-import { Text, StyleSheet, Pressable, Animated, Platform, View } from 'react-native';
-
+import React from 'react';
+import { Text, StyleSheet, Pressable, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+
+import HardShadow from './HardShadow';
 import { borderRadius, nb, gradients } from './colorPalette';
 import { useTheme } from './lightDarkMode';
 
 /**
- * Single chip with optional gradient when selected.
- * Press animation: translate 2,2 and collapse shadow.
- * 
  * @param {object} props
- * @param {string} props.children - chip text (single line)
- * @param {boolean} [props.selected] - selected state (applies brand gradient)
- * @param {Function} [props.onPress] - press handler
- * @param {boolean} [props.disabled] - disabled state
- * @param {object} [props.style] - additional container styles
+ * @param {React.ReactNode} props.children - string label OR custom node (e.g. day+date stack)
+ * @param {boolean} [props.selected]
+ * @param {Function} [props.onPress]
+ * @param {boolean} [props.disabled]
+ * @param {object} [props.style] - outer HardShadow / width helpers (e.g. time grid 31%)
+ * @param {object} [props.contentStyle] - inner chip padding / minHeight overrides
  */
-export default function NbChip({ children, selected = false, onPress, disabled = false, style }) {
+export default function NbChip({
+  children,
+  selected = false,
+  onPress,
+  disabled = false,
+  style,
+  contentStyle,
+}) {
   const { colors } = useTheme();
-  
-  const translateAnim = useRef(new Animated.Value(0)).current;
-  
-  const handlePressIn = () => {
-    Animated.timing(translateAnim, {
-      toValue: 1,
-      duration: 100,
-      useNativeDriver: true,
-    }).start();
-  };
-  
-  const handlePressOut = () => {
-    Animated.timing(translateAnim, {
-      toValue: 0,
-      duration: 100,
-      useNativeDriver: true,
-    }).start();
-  };
-  
-  const translateX = translateAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, 2],
-  });
-  
-  const translateY = translateAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, 2],
-  });
-  
-  const shadowTranslateX = translateAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [3, 0],
-  });
-  
-  const shadowTranslateY = translateAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [3, 0],
-  });
-  
-  // Text color: black on gradient, theme ink on plain
-  const textColor = selected ? '#0A0A0F' : colors.nbInk;
-  
-  const chipContent = (
-    <View
-      style={[
-        styles.chip,
-        {
-          borderColor: colors.nbBorder,
-          backgroundColor: selected ? undefined : colors.nbSurfaceChip,
-        },
-      ]}
-    >
-      <Text
-        style={[
-          styles.text,
-          { color: textColor },
-        ]}
-        numberOfLines={1}
-      >
-        {children}
-      </Text>
-    </View>
+  // Design Law: text on brand gradient is nbInk, not white
+  const textColor = selected ? colors.nbInk : colors.nbInk;
+  const isPlainLabel = typeof children === 'string' || typeof children === 'number';
+
+  const label = isPlainLabel ? (
+    <Text style={[styles.text, { color: textColor }]} numberOfLines={1}>
+      {children}
+    </Text>
+  ) : (
+    children
   );
-  
-  const chipInner = selected ? (
+
+  const chipBody = selected ? (
     <LinearGradient
       colors={gradients.brand.colors}
       start={gradients.brand.start}
       end={gradients.brand.end}
       style={[
         styles.chip,
-        {
-          borderColor: colors.nbBorder,
-        },
+        { borderColor: colors.nbBorder },
+        contentStyle,
       ]}
     >
-      <Text
-        style={[
-          styles.text,
-          { color: textColor },
-        ]}
-        numberOfLines={1}
-      >
-        {children}
-      </Text>
+      {label}
     </LinearGradient>
   ) : (
-    chipContent
-  );
-  
-  // Android hard shadow
-  const renderAndroidChip = () => {
-    return (
-      <View style={style}>
-        <Animated.View
-          style={[
-            styles.shadowView,
-            {
-              backgroundColor: colors.nbShadow,
-              borderColor: colors.nbShadow,
-            },
-            {
-              transform: [
-                { translateX: shadowTranslateX },
-                { translateY: shadowTranslateY },
-              ],
-            },
-          ]}
-        />
-        <Animated.View
-          style={{
-            transform: [
-              { translateX },
-              { translateY },
-            ],
-          }}
-        >
-          {chipInner}
-        </Animated.View>
-      </View>
-    );
-  };
-  
-  // iOS shadow
-  const iosShadowStyle = {
-    shadowColor: colors.nbShadow,
-    shadowOffset: { width: 3, height: 3 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-  };
-  
-  const renderIOSChip = () => {
-    return (
-      <Animated.View
-        style={[
-          iosShadowStyle,
-          {
-            transform: [
-              { translateX },
-              { translateY },
-            ],
-          },
-          style,
-        ]}
-      >
-        {chipInner}
-      </Animated.View>
-    );
-  };
-  
-  return (
-    <Pressable
-      onPress={onPress}
-      onPressIn={handlePressIn}
-      onPressOut={handlePressOut}
-      disabled={disabled}
+    <View
       style={[
-        styles.container,
-        disabled && styles.disabled,
+        styles.chip,
+        {
+          borderColor: colors.nbBorder,
+          backgroundColor: colors.nbSurface,
+        },
+        contentStyle,
       ]}
     >
-      {Platform.OS === 'android' ? renderAndroidChip() : renderIOSChip()}
-    </Pressable>
+      {label}
+    </View>
+  );
+
+  return (
+    <HardShadow offset={nb.shadowOffsetSmall} radius={borderRadius.nbChip} style={style}>
+      <Pressable
+        onPress={onPress}
+        disabled={disabled}
+        accessibilityRole="button"
+        accessibilityState={{ selected, disabled }}
+        style={({ pressed }) => [
+          disabled && styles.disabled,
+          pressed && !disabled && styles.pressed,
+        ]}
+      >
+        {chipBody}
+      </Pressable>
+    </HardShadow>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    // Pressable is just the hit area
-  },
   chip: {
     borderRadius: borderRadius.nbChip,
     borderWidth: nb.borderWidth,
-    paddingHorizontal: nb.chipPadding,
-    height: 36,
+    paddingHorizontal: 12,
+    minHeight: nb.minTouchTarget,
     justifyContent: 'center',
     alignItems: 'center',
   },
   text: {
     fontFamily: 'SpaceGrotesk_700Bold',
-    fontSize: 14,
+    fontSize: 13,
   },
-  disabled: {
-    opacity: 0.45,
-  },
-  shadowView: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    right: 0,
-    height: 36,
-    borderRadius: borderRadius.nbChip,
-    borderWidth: nb.borderWidth,
-  },
+  disabled: { opacity: 0.45 },
+  pressed: { opacity: 0.92 },
 });

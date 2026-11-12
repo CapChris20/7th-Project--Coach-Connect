@@ -12,7 +12,7 @@ import { auth, db } from '../../app-start/cloudConnection';
 import { getClientDateKey } from '../../helpers/dateStrings';
 import { doc, getDoc, setDoc, deleteDoc, onSnapshot, collection, query, where } from 'firebase/firestore';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
-import TopHeader from '../../for-both/loading-and-header/TopHeader';
+import { accentGradients } from '../../look-and-feel/colorPalette';
 import BottomMenuBar from '../../navigation/BottomMenuBar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { SHELL_SAFE_AREA_EDGES, ShellBottomNavAnchor } from '../../navigation/bottomMenuSpacing';
@@ -32,11 +32,11 @@ import NutritionNewUserSetupScreen, {
   NUTRITION_ONBOARDING_TAB_BAR_CLEARANCE,
 } from '../targets/NutritionSetupScreen';
 import DailyFoodLogScreen from './DailyFoodLogScreen';
-import NutritionFactsScreen from '../food-details/NutritionFactsScreen';
 import QuickAddNutrition from '../quick-add/QuickAddNutrition';
 import FoodSearchScreen from '../food-search/FoodSearchScreen';
 import BarcodeScannerScreen from '../barcode/BarcodeScannerScreen';
 import NutritionSettingsScreen from '../targets/NutritionSettingsScreen';
+import NutritionFactsScreen from '../food-details/NutritionFactsScreen';
 import EditServingPopup from '../food-details/EditServingPopup';
 
 
@@ -148,11 +148,15 @@ export const DailyLogContent = ({
   const [editAmountValue, setEditAmountValue] = useState('');
   const [editQuantityValue, setEditQuantityValue] = useState('');
   const [showNutritionSettings, setShowNutritionSettings] = useState(false);
+  // vocab: showDailyFacts = full-day NutritionFactsScreen overlay (not per-food confirm)
+  const [showDailyFacts, setShowDailyFacts] = useState(false);
   const [recordError, setLogError] = useState(null);
   const [topFoodNames, setTopFoodNames] = useState([]);
+  // PNG 21 hub pills — from users/{uid} onboarding prefs (nutritionFavoriteFoods / nutritionLeastFavoriteFoods)
+  const [favoriteFoods, setFavoriteFoods] = useState([]);
+  const [leastFavoriteFoods, setLeastFavoriteFoods] = useState([]);
   const [viewDate, setViewDate] = useState(getClientDateKey());
   const [datesWithLogs, setDatesWithLogs] = useState([]);
-  const [showDailyFacts, setShowDailyFacts] = useState(false);
   const pendingLogs = useRef(new Set());
   const { isDark } = useTheme();
 
@@ -256,7 +260,31 @@ export const DailyLogContent = ({
     getTopLoggedFoodNames(uid, TOP_FOOD_NAMES_LIMIT).then(setTopFoodNames).catch(() => {});
   }, [uid]);
 
-  const handleOnboardingComplete = async ({ calories, macros }) => {
+  // Load love/skip foods for Nutrition settings hub (PNG 21)
+  useEffect(() => {
+    if (!uid || !db) return undefined;
+    const userRef = doc(db, 'users', uid);
+    return onSnapshot(
+      userRef,
+      (snap) => {
+        if (!snap.exists()) {
+          setFavoriteFoods([]);
+          setLeastFavoriteFoods([]);
+          return;
+        }
+        const data = snap.data() || {};
+        const loved = data.nutritionFavoriteFoods || data.favoriteFoods || [];
+        const skipped = data.nutritionLeastFavoriteFoods || data.leastFavoriteFoods || [];
+        setFavoriteFoods(Array.isArray(loved) ? loved.filter(Boolean) : []);
+        setLeastFavoriteFoods(Array.isArray(skipped) ? skipped.filter(Boolean) : []);
+      },
+      (err) => {
+        if (__DEV__) console.warn('Nutrition food prefs listener:', err?.message);
+      },
+    );
+  }, [uid]);
+
+  const handleOnboardingComplete = async ({ calories, macros, favorites, leastFavorites }) => {
     setNeedsOnboarding(false);
     if (!uid) return;
     setLoading(true);
@@ -268,6 +296,9 @@ export const DailyLogContent = ({
         fatTarget: macros.fat,
         macroSplit: { protein: macros.protein, carbs: macros.carbs, fat: macros.fat },
       });
+
+      if (Array.isArray(favorites)) setFavoriteFoods(favorites.filter(Boolean));
+      if (Array.isArray(leastFavorites)) setLeastFavoriteFoods(leastFavorites.filter(Boolean));
 
       const [goalsData, logsData] = await Promise.all([
         getDailyGoals(uid),
@@ -287,26 +318,27 @@ export const DailyLogContent = ({
   const goal = goals?.calories || FALLBACK_CALORIE_GOAL;
   const burned = 0;
 
+  // Macro lane accents = Design Law accentGradients only (never solid purple/pink hex chrome)
   const macros = [
     {
       label: 'Protein',
       val: Math.round(totals.protein || 0),
       goal: goals?.proteinTarget || DEFAULT_PROTEIN_GOAL,
-      color: isDark ? '#FF6B9D' : '#BE185D',
+      color: accentGradients[2],
       pct: goals?.proteinTarget ? Math.round(((totals.protein || 0) / goals.proteinTarget) * 100) : 0,
     },
     {
       label: 'Carbs',
       val: Math.round(totals.carbs || 0),
       goal: goals?.carbsTarget || DEFAULT_CARBS_GOAL,
-      color: isDark ? '#F97316' : '#C2410C',
+      color: accentGradients[1],
       pct: goals?.carbsTarget ? Math.round(((totals.carbs || 0) / goals.carbsTarget) * 100) : 0,
     },
     {
       label: 'Fat',
       val: Math.round(totals.fat || 0),
       goal: goals?.fatTarget || DEFAULT_FAT_GOAL,
-      color: isDark ? '#06B6D4' : '#0891B2',
+      color: accentGradients[4],
       pct: goals?.fatTarget ? Math.round(((totals.fat || 0) / goals.fatTarget) * 100) : 0,
     },
   ];
@@ -317,11 +349,6 @@ export const DailyLogContent = ({
     const cals = foods.reduce((s, f) => s + (f.calories || 0), 0);
     return { name: type.charAt(0).toUpperCase() + type.slice(1), cals, foods };
   });
-
-  const weekData = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => ({
-    day: d,
-    cals: 0,
-  }));
 
   const handleLog = (mealType) => {
     setActiveMealType(mealType.toLowerCase());
@@ -508,12 +535,6 @@ export const DailyLogContent = ({
   if (needsOnboarding) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: screenBg }} edges={SHELL_SAFE_AREA_EDGES}>
-        <TopHeader
-          title="Nutrition"
-          skipTopSafeInset={true}
-          onProfilePress={onProfilePress}
-          onSettingsPress={onSettingsPress}
-        />
         <View style={{ flex: 1, minHeight: 0 }}>
           <NutritionNewUserSetupScreen
             onComplete={handleOnboardingComplete}
@@ -532,14 +553,6 @@ export const DailyLogContent = ({
     const addFoodBg = colors.nbBackground;
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: addFoodBg }} edges={SHELL_SAFE_AREA_EDGES}>
-        <TopHeader
-          title="Add Food"
-          isDark={isDark}
-          skipTopSafeInset
-          onBack={() => setShowFoodSearch(false)}
-          onProfilePress={onProfilePress}
-          onSettingsPress={onSettingsPress}
-        />
         <View style={flexScrollHost}>
           <FoodSearchScreen
             embedded
@@ -547,6 +560,8 @@ export const DailyLogContent = ({
             mealType={activeMealType}
             onFoodSelected={handleFoodAdded}
             onClose={() => { setShowFoodSearch(false); setInitialSearchQuery(''); }}
+            onOpenBarcode={() => { setShowFoodSearch(false); setShowBarcodeScanner(true); }}
+            onOpenQuickAdd={() => { setShowFoodSearch(false); setShowQuickAdd(true); }}
             userId={uid}
             initialQuery={initialSearchQuery}
           />
@@ -563,11 +578,13 @@ export const DailyLogContent = ({
         onScanSuccess={handleFoodAdded}
         onClose={(payload) => {
           setShowBarcodeScanner(false);
-          if (payload?.openFoodSearch) {
+          if (payload?.openQuickAdd) {
+            setShowQuickAdd(true);
+          } else if (payload?.openFoodSearch) {
             setInitialSearchQuery('');
             setShowFoodSearch(true);
-          } else if (payload?.searchQuery) {
-            setInitialSearchQuery(payload.searchQuery);
+          } else if (payload?.searchQuery != null) {
+            setInitialSearchQuery(payload.searchQuery || '');
             setShowFoodSearch(true);
           }
         }}
@@ -578,21 +595,15 @@ export const DailyLogContent = ({
   if (showQuickAdd) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: screenBg }} edges={SHELL_SAFE_AREA_EDGES}>
-        <TopHeader
-          title="Quick Add"
-          isDark={isDark}
-          skipTopSafeInset={true}
-          onBack={() => setShowQuickAdd(false)}
-          onProfilePress={onProfilePress}
-          onSettingsPress={onSettingsPress}
-        />
         <View style={flexScrollHost}>
         <QuickAddNutrition
           reserveShellBottomNav
+          mealType={activeMealType}
+          onBack={() => setShowQuickAdd(false)}
           userId={uid}
           onLogFood={(entry) => {
             // QuickAddNutrition UI already collects macros in grams.
-            handleFoodAdded(foodFromQuickAddEntry(entry), activeMealType);
+            handleFoodAdded(foodFromQuickAddEntry(entry), entry?.mealType || activeMealType);
           }}
         />
         </View>
@@ -601,38 +612,9 @@ export const DailyLogContent = ({
     );
   }
 
-  if (showDailyFacts) {
-    return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: screenBg }} edges={SHELL_SAFE_AREA_EDGES}>
-        <TopHeader
-          title="Daily Nutrition"
-          isDark={isDark}
-          skipTopSafeInset
-          onBack={() => setShowDailyFacts(false)}
-          onProfilePress={onProfilePress}
-          onSettingsPress={onSettingsPress}
-        />
-        <NutritionFactsScreen
-          logs={logs}
-          goals={goals}
-          foodCount={logs.length}
-          reserveShellBottomNav
-        />
-        {bottomNavEl}
-      </SafeAreaView>
-    );
-  }
-
   if (showNutritionSettings) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: screenBg }} edges={SHELL_SAFE_AREA_EDGES}>
-        <TopHeader
-          title="Goals"
-          skipTopSafeInset
-          onBack={() => setShowNutritionSettings(false)}
-          onProfilePress={onProfilePress}
-          onSettingsPress={onSettingsPress}
-        />
         <View style={flexScrollHost}>
           <NutritionSettingsScreen
             embedded
@@ -643,6 +625,8 @@ export const DailyLogContent = ({
               carbsTarget: goals?.carbsTarget ?? 200,
               fatTarget: goals?.fatTarget ?? 65,
             }}
+            favoriteFoods={favoriteFoods}
+            leastFavoriteFoods={leastFavoriteFoods}
             onGoalsUpdated={handleGoalsUpdated}
             onResetOnboarding={handleResetOnboarding}
             onClose={() => setShowNutritionSettings(false)}
@@ -653,15 +637,27 @@ export const DailyLogContent = ({
     );
   }
 
+  // Daily totals report — NbPageHeader lives inside NutritionFactsScreen
+  if (showDailyFacts) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: screenBg }} edges={SHELL_SAFE_AREA_EDGES}>
+        <View style={flexScrollHost}>
+          <NutritionFactsScreen
+            logs={logs}
+            goals={goals || {}}
+            foodCount={logs.length}
+            reserveShellBottomNav
+            onBack={() => setShowDailyFacts(false)}
+          />
+        </View>
+        {bottomNavEl}
+      </SafeAreaView>
+    );
+  }
+
+  // Design Law daily log paints its own date/Nutrition/settings header — no TopHeader chrome.
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: screenBg }} edges={SHELL_SAFE_AREA_EDGES}>
-      <TopHeader
-        title="Nutrition"
-        isDark={isDark}
-        skipTopSafeInset={true}
-        onProfilePress={onProfilePress}
-        onSettingsPress={onSettingsPress}
-      />
       <View style={flexScrollHost}>
       <DailyFoodLogScreen
         reserveShellBottomNav
@@ -670,7 +666,6 @@ export const DailyLogContent = ({
         burned={burned}
         macros={macros}
         meals={meals}
-        weekData={weekData}
         onLog={handleLog}
         onScan={handleScan}
         onManualSave={handleFoodAdded}
@@ -679,10 +674,10 @@ export const DailyLogContent = ({
         onSearch={() => { setInitialSearchQuery(''); setShowFoodSearch(true); }}
         onPillSearch={handlePillSearch}
         onOpenSettings={() => setShowNutritionSettings(true)}
+        onOpenDailyFacts={() => setShowDailyFacts(true)}
         viewDate={viewDate}
         onSelectViewDate={setViewDate}
         datesWithLogs={datesWithLogs}
-        onOpenDailyFacts={() => setShowDailyFacts(true)}
         topFoodNames={topFoodNames}
         onQuickAdd={handleOpenQuickAdd}
       />

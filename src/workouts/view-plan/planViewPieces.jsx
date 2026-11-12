@@ -3,6 +3,7 @@
 // Used by: WorkoutPlanView. Padding and colors stay as layout numbers; the platform bottom inset is the only extracted rule.
 
 import { Platform, StyleSheet } from 'react-native';
+import { lightColors } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
@@ -119,12 +120,12 @@ function dayCardStyles() {
     dayShort: {
       fontSize: 13,
       fontWeight: '800',
-      color: '#FFFFFF',
+      color: lightColors.white,
       opacity: 0.95,
       letterSpacing: 0.5,
     },
     dayInfo: { flex: 1 },
-    dayName: { fontSize: 16, fontWeight: '800', color: '#FFFFFF' },
+    dayName: { fontSize: 16, fontWeight: '800', color: lightColors.white },
     dayFocus: { fontSize: 13, color: 'rgba(255,255,255,0.88)', marginTop: 2 },
     dayExpanded: { borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: 14, paddingBottom: 14, paddingTop: 12 },
     recoveryContainer: { alignItems: 'center', paddingVertical: 12 },
@@ -190,7 +191,7 @@ function logSheetStyles() {
     logContent: { paddingHorizontal: 16, maxHeight: LOG_CONTENT_MAX_HEIGHT },
     saveBtnGradient: { marginHorizontal: 16, marginTop: 8, borderRadius: 14, overflow: 'hidden' },
     saveButton: { paddingVertical: 16, alignItems: 'center' },
-    saveButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
+    saveButtonText: { color: lightColors.white, fontSize: 16, fontWeight: '800' },
   };
 }
 
@@ -224,7 +225,7 @@ function overviewAndEmptyStyles() {
     errorTitle: { fontSize: ERROR_TITLE_FONT_SIZE, fontWeight: '700', marginTop: 16 },
     errorMessage: { fontSize: 14, marginTop: 8, textAlign: 'center', lineHeight: 20 },
     errorButton: { marginTop: ERROR_BUTTON_MARGIN_TOP, paddingVertical: 12, paddingHorizontal: BUTTON_HORIZONTAL_PADDING, borderRadius: 12 },
-    errorButtonText: { color: '#FFFFFF', fontWeight: '700' },
+    errorButtonText: { color: lightColors.white, fontWeight: '700' },
     loaderContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     loaderText: { marginTop: 16, fontSize: 14 },
     emptyContainer: {
@@ -238,7 +239,7 @@ function overviewAndEmptyStyles() {
     emptyTitle: { fontSize: 20, fontWeight: '700', marginTop: 16 },
     emptyMessage: { fontSize: 14, marginTop: 8, textAlign: 'center' },
     emptyButton: { marginTop: EMPTY_BUTTON_MARGIN_TOP, paddingVertical: 12, paddingHorizontal: BUTTON_HORIZONTAL_PADDING, borderRadius: 12 },
-    emptyButtonText: { color: '#FFFFFF', fontWeight: '700' },
+    emptyButtonText: { color: lightColors.white, fontWeight: '700' },
     noExerciseText: { fontSize: 14, textAlign: 'center', paddingVertical: 16 },
   };
 }

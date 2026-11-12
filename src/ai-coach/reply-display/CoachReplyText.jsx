@@ -7,6 +7,7 @@ import Markdown from 'react-native-markdown-display';
 import { stripCoachToolJsonFromReply } from '../coach-actions/readActionsFromReply';
 import { stripInlineWebCitations } from '../reply-display/copyableReplyText';
 import { buildCoachMarkdownStyles } from '../reply-display/replyTextStyles';
+import { stripHonestyOpeners } from '../reply-display/stripHonestyOpeners';
 import { buildCoachMarkdownRules } from './coachMarkdownRules';
 import InternetAnswerReply from './InternetAnswerReply';
 
@@ -18,7 +19,8 @@ const IN_APP_CITATION_SCHEME = 'coachcite://';
 
 function cleanedCoachReplyMarkdown(rawReply) {
   const withoutTools = stripCoachToolJsonFromReply(String(rawReply || ''));
-  return stripInlineWebCitations(withoutTools);
+  const withoutCitations = stripInlineWebCitations(withoutTools);
+  return stripHonestyOpeners(withoutCitations);
 }
 
 function blockExternalLinkOpen(linkUrl) {
@@ -38,8 +40,8 @@ export default function CoachReplyText({ text, isDark = true, isWebSearch = fals
   // Hooks first, branch second — React requires the same hook order every render.
   const displayMarkdown = useMemo(() => cleanedCoachReplyMarkdown(text), [text]);
   const markdownTheme = useMemo(() => buildCoachMarkdownStyles(isDark), [isDark]);
-  // Custom rules: tables get a horizontal ScrollView (coachMarkdownRules).
-  const markdownRules = useMemo(() => buildCoachMarkdownRules(), []);
+  // Custom rules: Design Law square bullets + scrollable tables.
+  const markdownRules = useMemo(() => buildCoachMarkdownRules({ isDark }), [isDark]);
 
   if (isWebSearch) {
     return <InternetAnswerReply text={text} isDark={isDark} />;

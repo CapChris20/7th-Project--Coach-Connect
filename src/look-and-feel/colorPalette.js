@@ -88,8 +88,8 @@ const LIGHT_INDIGO_HEX = {
   300: '#B8B8FF',
   [PALETTE_STEP_400]: '#9F9FFF',
   [PALETTE_STEP_500]: '#8686FF',
-  600: '#5856D6',
-  700: '#4A49C7',
+  600: '#E25588',
+  700: '#BE185D',
   800: '#3C3BA8',
   900: '#2E2D89',
 };
@@ -114,8 +114,8 @@ const DARK_INDIGO_HEX = {
   300: '#4C4C52',
   [PALETTE_STEP_400]: '#5C5C63',
   [PALETTE_STEP_500]: '#6C6C74',
-  600: '#5856D6',
-  700: '#6B6CFF',
+  600: '#E25588',
+  700: '#FF6B9D',
   800: '#7F7FFF',
   900: '#9393FF',
 };
@@ -137,10 +137,11 @@ const DARK_GRAY_HEX = {
 
 /** Light mode colors (Modern Neutral theme). Keep these keys — screens import them by name. */
 export const lightColors = {
-  primary: '#5856D6', // iOS indigo primary
-  primaryDark: '#4A49C7',
+  // Strip pass: no purple primary/accent chrome — brand pink / ink neutrals until handoff tokens land.
+  primary: '#E25588',
+  primaryDark: '#BE185D',
   secondary: '#6B7280',
-  accent: '#AF52DE', // Subtle purple accent
+  accent: '#E25588',
   background: '#F2F2F7', // iOS light gray background
   surface: '#FFFFFF', // White surface
   surfaceSecondary: '#F9F9F9',
@@ -149,29 +150,33 @@ export const lightColors = {
   success: '#30D158', // iOS green
   warning: '#FF9F0A', // iOS orange
   error: '#FF3B30', // iOS red
-  info: '#5856D6',
+  info: '#E25588',
   border: '#E5E5E7',
   white: '#FFFFFF',
   black: '#000000',
   indigo: indigoRamp(LIGHT_INDIGO_HEX),
   gray: grayRamp(LIGHT_GRAY_HEX),
   
-  // Neobrutalist tokens (light mode)
-  nbBackground: '#F3EEFF',
+  // Handoff tokens (docs/design/DESIGN.md) — B/W/gray neo-brutalist
+  nbBackground: '#F2F2F0',
   nbSurface: '#FFFFFF',
   nbSurfaceChip: '#FFFFFF',
-  nbInk: '#0A0A0F',
-  nbMuted: '#55506B',
-  nbBorder: '#0A0A0F',
-  nbShadow: '#0A0A0F',
+  nbSoft: '#E3E3DF',
+  nbInk: '#0A0A0A',
+  nbMuted: '#575757',
+  nbBorder: '#0A0A0A',
+  nbShadow: '#0A0A0A',
+  nbFill: '#0A0A0A',
+  nbOnFill: '#FFFFFF',
 };
 
 /** Dark mode colors. Gray is flipped so 50 is the darkest step. */
 export const darkColors = {
-  primary: '#5856D6', // iOS indigo primary (same for consistency)
-  primaryDark: '#6B6CFF',
+  // Strip pass: no purple primary/accent chrome.
+  primary: '#E25588',
+  primaryDark: '#FF6B9D',
   secondary: '#8E8E93',
-  accent: '#AF52DE', // Subtle purple accent
+  accent: '#E25588',
   background: '#000000', // Pure black background
   surface: '#1C1C1E', // iOS dark gray surface
   surfaceSecondary: '#2C2C2E',
@@ -180,21 +185,26 @@ export const darkColors = {
   success: '#30D158', // iOS green (brighter for dark mode)
   warning: '#FF9F0A', // iOS orange
   error: '#FF453A', // iOS red
-  info: '#5856D6',
+  info: '#E25588',
   border: '#38383A',
   white: '#FFFFFF',
   black: '#000000',
   indigo: indigoRamp(DARK_INDIGO_HEX),
   gray: grayRamp(DARK_GRAY_HEX),
   
-  // Neobrutalist tokens (dark mode)
-  nbBackground: '#0A0A0F',
-  nbSurface: '#17171F',
-  nbSurfaceChip: '#1F1F2A',
-  nbInk: '#F3EEFF',
-  nbMuted: '#A7A1BE',
-  nbBorder: '#F3EEFF',
-  nbShadow: '#6B3AD9',
+  // Handoff tokens (docs/design/DESIGN.md) — B/W/gray neo-brutalist
+  nbBackground: '#0B0B0B',
+  nbSurface: '#161616',
+  nbSurfaceChip: '#1F1F1F',
+  nbSoft: '#262626',
+  nbInk: '#F2F2F2',
+  nbMuted: '#A6A6A6',
+  nbBorder: '#F2F2F2',
+  // Manipulate here: Design Law dark hard shadow must be bright (same as border), not gray —
+  // gray shadows disappear on black and kill the neo-brutalist “sticker” pop light mode gets for free.
+  nbShadow: '#F2F2F2',
+  nbFill: '#F2F2F2',
+  nbOnFill: '#0A0A0A',
 };
 
 export const typography = {
@@ -253,12 +263,15 @@ export const borderRadius = {
   xxl: 20,
   round: BORDER_RADIUS_PILL,
   
-  // Neobrutalist radii by role
+  // Handoff radii by role
   nbChip: 12,
-  nbCard: 14,
-  nbHero: 18,
-  nbSheet: 20,
-  nbPhone: 34,
+  nbCard: 10,
+  nbHero: 10,
+  nbSheet: 24,
+  nbPhone: 36,
+  nbButton: 10,
+  nbInput: 8,
+  nbIconChip: 12,
 };
 
 export const fontSize = {
@@ -289,22 +302,44 @@ export const shadows = {
   xl: buildDropShadow(8, 0.2, 16, 10),
 };
 
-// Neobrutalist design tokens
+// Neobrutalist design tokens (handoff)
 export const nb = {
-  // Border width for all neobrutalist components
-  borderWidth: 2.5,
-  
-  // Hard shadow config (offset 4/4, no blur)
-  // iOS: use shadowRadius: 0
-  // Android: use a duplicated offset View because elevation can't do hard shadows
+  borderWidth: 3,
+  borderWidthDivider: 2,
+  borderWidthPill: 2.5,
+  // Hard shadow offsets — no blur (iOS shadowRadius 0; Android sibling View)
   shadowOffset: 4,
-  
-  // Minimum touch target
+  shadowOffsetCard: 5,
+  shadowOffsetHero: 6,
+  shadowOffsetSmall: 3,
   minTouchTarget: 44,
-  
-  // Chip/button horizontal padding
+  buttonMinHeight: 50,
   chipPadding: 16,
+  cardPadding: 14,
+  screenGutter: 16,
+  blockGap: 16,
+  // Manipulate here: clearance above Design Law raised + dock (62 + raise + labels)
+  bottomNavClearance: 140,
 };
+
+/** Accent gradient pairs — small accents only (pills, icon chips, nav +). Never card fills.
+ *  No yellow / gold stops — pink→orange / purple / blue / coral only (owner: no yellow). */
+export const accentGradients = [
+  ['#FF6B9D', '#FB923C'],
+  ['#FB7185', '#EF4444'],
+  ['#A78BFA', '#E879F9'],
+  ['#60A5FA', '#818CF8'],
+  ['#FDA4AF', '#FB923C'],
+  ['#FDA4AF', '#FB7185'],
+  ['#7DD3FC', '#A78BFA'],
+  ['#FB7185', '#FF6B9D'],
+  ['#FDBA74', '#C4B5FD'],
+  ['#A78BFA', '#FB7185'],
+  ['#FF6B9D', '#F472B6'],
+];
+
+/** Nav + button — brand pink→orange (no yellow/gold). */
+export const navAccentGradient = ['#FF6B9D', '#FB923C'];
 
 // Gradient definitions for expo-linear-gradient
 // All use 115deg diagonal, start {x:0,y:0} end {x:1,y:1}
@@ -317,10 +352,9 @@ export const gradients = {
     end: { x: 1, y: 1 },
   },
   
-  // Secondary buttons, selected segments, selected checkboxes
-  // Text on ink gradient is white
+  // Strip: was purple→magenta — now brand pink→orange (no purple chrome).
   ink: {
-    colors: ['#6B3AD9', '#BE185D'],
+    colors: ['#FF6B9D', '#FB923C'],
     start: { x: 0, y: 0 },
     end: { x: 1, y: 1 },
   },
@@ -346,19 +380,21 @@ export const gradients = {
     end: { x: 1, y: 1 },
   },
   sleep: {
-    colors: ['#E9D5FF', '#A78BFA'],
+    colors: ['#FDA4AF', '#FB7185'],
     start: { x: 0, y: 0 },
     end: { x: 1, y: 1 },
   },
+  // Energy accents — coral→orange (no yellow).
   energy: {
-    colors: ['#BBF7D0', '#5EEAD4'],
+    colors: ['#FDA4AF', '#FB923C'],
     start: { x: 0, y: 0 },
     end: { x: 1, y: 1 },
   },
   
-  // Selected option rows, lottie frames, sheet cards - text is nbInk (#0A0A0F)
+  // Selected option rows / soft card washes — muted pink→peach (readable, not neon). Never lavender/purple.
+  // Manipulate here: raise both stops toward white = brighter; lower = calmer contrast.
   soft: {
-    colors: ['#FFF1F7', '#EDE4FF'],
+    colors: ['#F3E4EA', '#F0D9C8'],
     start: { x: 0, y: 0 },
     end: { x: 1, y: 1 },
   },

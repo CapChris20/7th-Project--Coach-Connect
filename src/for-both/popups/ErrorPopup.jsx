@@ -15,21 +15,22 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
-import { NbCard } from '../../look-and-feel/NbCard';
-import { NbButton } from '../../look-and-feel/NbButton';
+import NbCard from '../../look-and-feel/NbCard';
+import NbButton from '../../look-and-feel/NbButton';
+import { lightColors } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
 const COLORS = {
-  bg: '#0A0A0F',
+  bg: lightColors.nbInk,
   cardBg: '#141419',
-  textPrimary: '#FFFFFF',
+  textPrimary: lightColors.white,
   textSecondary: 'rgba(255,255,255,0.65)',
   textTertiary: 'rgba(255,255,255,0.4)',
-  pink: '#FF6B9D',
+  pink: lightColors.primary,
   orange: '#F97316',
   cyan: '#06B6D4',
-  purple: '#C084FC',
+  purple: '#E25588',
 };
 
 const CTA_GRADIENT = [COLORS.pink, COLORS.orange];

@@ -21,7 +21,6 @@ import BaseColorText from '../../look-and-feel/ColorText';
 import Svg, { Path } from 'react-native-svg';
 import LottieView from 'lottie-react-native';
 import HomeTopBannerBase from '../../for-both/home-cards/HomeTopBanner';
-import FilesHeaderCard from '../../for-both/home-cards/FilesHeaderCard';
 import FilesSection from '../../for-both/files-and-notes/viewers/FilesSection';
 import AddFilePopup from '../../for-both/files-and-notes/viewers/AddFilePopup';
 import PhotoVideoViewer from '../../for-both/files-and-notes/viewers/PhotoVideoViewer';
@@ -36,8 +35,15 @@ import {
 import { Dimensions } from 'react-native';
 import { useTheme as useGlobalTheme } from '../../look-and-feel/lightDarkMode';
 import { lightColors, darkColors, gradients, nb, borderRadius, spacing } from '../../look-and-feel/colorPalette';
+import { ChevronRight } from 'lucide-react-native';
 import NbCard from '../../look-and-feel/NbCard';
 import NbButton from '../../look-and-feel/NbButton';
+import NbIconChip from '../../look-and-feel/NbIconChip';
+
+const ICON_NOTES_DOC = require('../../assets/icons/handoff/checkin.png');
+const ICON_NOTES_SHEET = require('../../assets/icons/handoff/week.png');
+const ICON_NOTES_MEDIA = require('../../assets/icons/handoff/picture.png');
+const NOTES_INLINE_LIMIT = 4;
 
 // ===== NAMED CONSTANTS =====
 
@@ -116,10 +122,10 @@ function hexToRgbTriple(hex) {
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 // ─────────────────────────────────────────────
-// YOUR COLOR SYSTEM: #C084FC #FF6B9D #F97316 #06B6D4 — different combo per section
+// YOUR COLOR SYSTEM: #E25588 #FF6B9D #F97316 #06B6D4 — different combo per section
 // ─────────────────────────────────────────────
-const PURPLE = '#C084FC';
-const PINK = '#FF6B9D';
+const PURPLE = '#E25588';
+const PINK = lightColors.primary;
 const ORANGE = '#F97316';
 const CYAN = '#06B6D4';
 
@@ -151,15 +157,15 @@ const BADGE_COLOR = PINK;
 const ICON_ACCENT = PURPLE;
 
 // Progress tab VALUE text only — soft combos (not neon), one per card
-const S_P = '#A78BFA';   // soft purple
+const S_P = '#FB7185';   // soft purple
 const S_K = '#E8799A';   // soft pink
-const S_O = '#FB923C';   // soft orange
+const S_O = lightColors.accent;   // soft orange
 const S_C = '#0D9488';   // soft teal
 // Daily metric big numbers — distinct combos (dark pink / dark orange / gray); avoid one hue for all
 const D_PINK_DEEP = '#9F1239';
-const D_PINK_MID = '#BE185D';
+const D_PINK_MID = lightColors.primaryDark;
 const D_ORANGE_DEEP = '#9A3412';
-const D_ORANGE_SOFT = '#FB923C';
+const D_ORANGE_SOFT = lightColors.accent;
 const D_GRAY_DEEP = '#1F2937';
 const D_GRAY_MID = '#6B7280';
 const PROGRESS_VALUE_WEIGHT = [S_P, S_K];
@@ -683,23 +689,101 @@ const TrainerNotesFilesHeroAndWorkspace = ({
     }
   }, [clientId, onRefetchNotesAndFiles]);
 
+  // Design Law ct:f — compact inline rows under the pills (full workspace still available).
+  const trainerDocs = Array.isArray(trainerDocuments) ? trainerDocuments : [];
+  const previewRows = [...items, ...trainerDocs].slice(0, NOTES_INLINE_LIMIT);
+  const clientNote = items.find(
+    (row) =>
+      (row?.type === 'note' || row?.kind === 'note' || !row?.url) &&
+      String(row?.content || row?.text || row?.body || '').trim(),
+  );
+
+  const iconForNotesRow = (row, index) => {
+    if (row?.type === 'spreadsheet') return ICON_NOTES_SHEET;
+    if (row?.type === 'image' || row?.type === 'video' || isNotesImageFile(row) || isNotesVideoFile(row)) {
+      return ICON_NOTES_MEDIA;
+    }
+    return index % 2 === 0 ? ICON_NOTES_DOC : ICON_NOTES_SHEET;
+  };
+
+  const subtitleForNotesRow = (row) => {
+    if (row?.type === 'document') return 'Document · shared by you';
+    if (row?.type === 'spreadsheet') return 'Spreadsheet · shared by you';
+    if ((row?.addedBy || 'client') === 'client') {
+      return clientName ? `Uploaded by ${clientName}` : 'Uploaded by client';
+    }
+    return 'Shared by you';
+  };
+
   return (
     <>
-      <View style={{ marginHorizontal: -16 }}>
-        <FilesHeaderCard
-          isDark={isDark}
-          fileCount={fileCount}
-          newCount={newCount}
-          headerLabel="Client workspace"
-          headline={clientName ? `Notes & files · ${clientName}` : 'Client notes & files'}
-          subhead="Uploads, coaching notes, and documents — the same library your client sees in the app."
-          ctaLabel="Open notes & files"
-          statSingular="item"
-          statPlural="items"
-          statSharedSuffix="in workspace"
-          onPress={() => setWorkspaceOpen(true)}
-        />
+      <View style={{ gap: 16, paddingTop: 4 }}>
+        <NbCard style={{ paddingVertical: 4, paddingHorizontal: 12 }}>
+          {previewRows.length === 0 ? (
+            <View style={{ paddingVertical: 16, gap: 6 }}>
+              <Text style={{ color: palette.nbInk, fontSize: 16, fontWeight: '900' }}>No files yet</Text>
+              <Text style={{ color: palette.nbMuted, fontSize: 13, fontWeight: '600', lineHeight: 18 }}>
+                Notes and files you share with {clientName || 'this client'} show up here.
+              </Text>
+            </View>
+          ) : (
+            previewRows.map((row, index) => (
+              <TouchableOpacity
+                key={row.id || row.documentId || `notes-${index}`}
+                onPress={() => openItem(row)}
+                activeOpacity={0.88}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 12,
+                  minHeight: 56,
+                  paddingVertical: 10,
+                  borderBottomWidth: index === previewRows.length - 1 ? 0 : 2,
+                  borderBottomColor: palette.nbBorder,
+                }}
+              >
+                <NbIconChip source={iconForNotesRow(row, index)} index={index} size={40} />
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{ color: palette.nbInk, fontSize: 16, fontWeight: '800' }} numberOfLines={1}>
+                    {row.name || row.title || 'Untitled'}
+                  </Text>
+                  <Text style={{ color: palette.nbMuted, fontSize: 13, fontWeight: '600', marginTop: 2 }} numberOfLines={1}>
+                    {subtitleForNotesRow(row)}
+                  </Text>
+                </View>
+                <ChevronRight size={18} color={palette.nbInk} strokeWidth={3} />
+              </TouchableOpacity>
+            ))
+          )}
+        </NbCard>
+
+        {clientNote ? (
+          <View
+            style={{
+              borderWidth: nb.borderWidth,
+              borderColor: palette.nbBorder,
+              borderRadius: 10,
+              padding: 14,
+              backgroundColor: palette.nbSurface,
+            }}
+          >
+            <Text style={{ color: palette.nbInk, fontSize: 15, fontWeight: '900', marginBottom: 6 }}>
+              {clientName ? `Note from ${clientName}` : 'Note from client'}
+            </Text>
+            <Text style={{ color: palette.nbMuted, fontSize: 14, fontWeight: '600', lineHeight: 20 }}>
+              {String(clientNote.content || clientNote.text || clientNote.body)}
+            </Text>
+          </View>
+        ) : null}
+
+        <NbButton variant="ghost" onPress={() => setWorkspaceOpen(true)}>
+          {fileCount > 0 ? `Open all (${fileCount})` : 'Open notes & files'}
+        </NbButton>
+        <NbButton variant="fill" onPress={() => setShowAddModal(true)}>
+          Add note or file
+        </NbButton>
       </View>
+
       <Modal visible={workspaceOpen} animationType="slide" presentationStyle="fullScreen" onRequestClose={() => setWorkspaceOpen(false)}>
         <SafeAreaView style={{ flex: 1, backgroundColor: sheetBg }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10, gap: 8 }}>
@@ -766,67 +850,59 @@ const TrainerNotesFilesHeroAndWorkspace = ({
 // ─────────────────────────────────────────────
 // TAB PILLS
 // ─────────────────────────────────────────────
+// Internal keys stay full; Design Law segment shows short “Notes” so labels never clip.
 const TABS = ['Progress', 'Nutrition', 'Sessions', 'Notes & Files'];
+const TAB_LABELS = {
+  Progress: 'Progress',
+  Nutrition: 'Nutrition',
+  Sessions: 'Sessions',
+  'Notes & Files': 'Notes',
+};
 
 const TabPills = ({ activeTab, onTabChange, isDark }) => {
   const palette = isDark ? darkColors : lightColors;
   return (
-    <View style={{ flexDirection: 'row', gap: 6, marginBottom: 12 }}>
-      {TABS.map((tab) => {
+    <View
+      style={{
+        flexDirection: 'row',
+        borderWidth: nb.borderWidth,
+        borderColor: palette.nbBorder,
+        borderRadius: borderRadius.nbChip,
+        backgroundColor: palette.nbSurface,
+        marginBottom: 12,
+        overflow: 'hidden',
+        minHeight: nb.minTouchTarget,
+      }}
+    >
+      {TABS.map((tab, index) => {
         const isActive = tab === activeTab;
-        if (isActive) {
-          return (
-            <TouchableOpacity
-              key={tab}
-              style={{ flex: 1 }}
-              onPress={() => onTabChange(tab)}
-              activeOpacity={0.9}
-            >
-              <LinearGradient
-                colors={gradients.ink.colors}
-                start={gradients.ink.start}
-                end={gradients.ink.end}
-                style={{
-                  paddingVertical: 10,
-                  paddingHorizontal: 8,
-                  borderRadius: borderRadius.nbChip,
-                  borderWidth: nb.borderWidth,
-                  borderColor: palette.nbBorder,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  minHeight: nb.minTouchTarget,
-                }}
-              >
-                <Text
-                  style={{ color: '#FFFFFF', fontSize: 12, fontFamily: 'SpaceGrotesk_700Bold' }}
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.7}
-                >
-                  {tab}
-                </Text>
-              </LinearGradient>
-            </TouchableOpacity>
-          );
-        }
+        const label = TAB_LABELS[tab] || tab;
         return (
           <TouchableOpacity
             key={tab}
+            onPress={() => onTabChange(tab)}
+            activeOpacity={0.88}
             style={{
               flex: 1,
-              paddingVertical: 10,
-              borderRadius: borderRadius.nbChip,
-              borderWidth: nb.borderWidth,
+              minHeight: nb.minTouchTarget,
               alignItems: 'center',
               justifyContent: 'center',
-              backgroundColor: palette.nbSurface,
-              borderColor: palette.nbBorder,
-              minHeight: nb.minTouchTarget,
+              paddingHorizontal: 6,
+              backgroundColor: isActive ? palette.nbFill : 'transparent',
+              borderLeftWidth: index === 0 ? 0 : nb.borderWidth,
+              borderLeftColor: palette.nbBorder,
             }}
-            onPress={() => onTabChange(tab)}
-            activeOpacity={0.8}
           >
-            <Text style={{ color: palette.nbMuted, fontSize: 12, fontFamily: 'Inter_600SemiBold' }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{tab}</Text>
+            <Text
+              style={{
+                color: isActive ? palette.nbOnFill : palette.nbInk,
+                fontSize: 13,
+                fontWeight: '800',
+              }}
+              numberOfLines={1}
+            >
+              {label}
+            </Text>
           </TouchableOpacity>
         );
       })}

@@ -5,10 +5,11 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import Svg, { Text as SvgText, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
+import { lightColors } from './colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
-const DEFAULT_COLORS = ['#E94EAD', '#6B3AD9'];
+const DEFAULT_COLORS = ['#E94EAD', lightColors.info];
 const SINGLE_COLOR_FALLBACK = '#A348D0';
 const DEFAULT_FONT_SIZE = 14;
 const DEFAULT_FONT_WEIGHT = '400';

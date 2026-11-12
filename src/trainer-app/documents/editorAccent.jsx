@@ -5,10 +5,11 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { lightColors } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
-const EDITOR_ACCENT = '#FFFFFF';
+const EDITOR_ACCENT = lightColors.white;
 const EDITOR_ACCENT_MUTED = 'rgba(255,255,255,0.55)';
 const EDITOR_ACCENT_SOFT = 'rgba(255,255,255,0.12)';
 const EDITOR_ACCENT_BORDER = 'rgba(255,255,255,0.32)';

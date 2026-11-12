@@ -1,8 +1,12 @@
-// BarcodeScannerScreen — camera / typed UPC lookup that lands on ConfirmFoodPopup.
-// Flow: permission → scan or type → searchFoods.lookupBarcode → confirm sheet or miss UI.
-// Used by: DailyLogContent when the user taps Scan on a meal card.
+// Design Law barcode scan (PNG 09–12): hatched viewfinder → lookup card → confirm or miss CTAs.
+// Flow: camera permission → scan / type digits → searchFoods.lookupBarcode → FoodConfirmSheet or miss.
+// Used by DailyLogContent when the user taps Scan on a meal / food search.
+//
+// vocab: HardShadow = solid offset shadow (no blur); viewfinder = hatch OR live camera + corner brackets
+// vocab: missState = barcode looked up but not in our food databases
+// NO green accents, NO GradientFrame, NO pink rings — tokens + HardShadow only.
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useId, useMemo } from 'react';
 import {
   View,
   Text,
@@ -13,66 +17,40 @@ import {
   TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+import Svg, { Defs, Pattern, Rect } from 'react-native-svg';
+import { CameraView, useCameraPermissions } from 'expo-camera';
+
 import { useTheme } from '../../look-and-feel/lightDarkMode';
+import HardShadow from '../../look-and-feel/HardShadow';
+import NbButton from '../../look-and-feel/NbButton';
+import NbIconChip from '../../look-and-feel/NbIconChip';
+import { borderRadius, nb, spacing } from '../../look-and-feel/colorPalette';
 import searchFoods from '../food-search/searchFoods';
 import { fixBarcodeDigits } from '../barcode/fixBarcodeDigits';
 import { cacheFoodProduct } from '../daily-log/saveLoggedFood';
-import { lightColors, darkColors, nb, borderRadius, gradients as nbGradients } from '../../look-and-feel/colorPalette';
-import { CameraView, useCameraPermissions } from 'expo-camera';
-import { LinearGradient } from 'expo-linear-gradient';
 import FoodConfirmSheet from '../food-search/ConfirmFoodPopup';
 
 // ===== NAMED CONSTANTS =====
 
-// Manipulate here: brand accents + viewfinder corner colors.
-const ACCENT = {
-  hotPink: '#FF6B9D',
-  orange: '#F97316',
-  purple: '#C084FC',
-  cyan: '#06B6D4',
-  green: '#22C55E',
-  /** Barcode viewfinder corners — dark pink / dark orange */
-  framePink: '#9F1239',
-  frameOrange: '#C2410C',
-};
-
-// Manipulate here: shortest UPC/EAN we will look up (below this → invalid alert).
+// Manipulate here: shortest UPC/EAN we will look up (below this → invalid alert)
 const MIN_BARCODE_DIGITS = 8;
 
-// Manipulate here: miss-state suggestion chips (hide tracker/GS1 junk, cap at 3).
+// Manipulate here: miss-state suggestion chips (hide tracker/GS1 junk, cap at 3)
 const MAX_SUGGESTION_CHIPS = 3;
 const SUGGESTION_LABEL_MAX_CHARS = 42;
 const JUNK_SUGGESTION_PATTERN = /barcode|gs1|tracker|nutritionix|fnic|calorie content/i;
 
 const FALLBACK_WRONG_ITEM_SEARCH = 'packaged food';
+const SCALES_ICON = require('../../assets/icons/handoff/scales.png');
 
-// Use neobrutalist gradients
-const MISS_BORDER_GRADIENT_DARK = nbGradients.ink.colors;
-const MISS_BORDER_GRADIENT_LIGHT = nbGradients.ink.colors;
-const LOOKUP_BUTTON_GRADIENT = nbGradients.brand.colors;
+// Manipulate here: viewfinder bracket size / thickness / frame height (PNG 09)
+const BRACKET_SIZE = 28;
+const BRACKET_THICK = 3;
+const VIEWFINDER_HEIGHT = 220;
+const HATCH_STRIPE_PX = 10;
 
 // ===== HELPER FUNCTIONS =====
-
-/**
- * Theme tokens for scanner chrome (screen bg, cards, muted text).
- * @param {boolean} isDark
- * @returns {object}
- */
-function getTokens(isDark) {
-  const nbColors = isDark ? darkColors : lightColors;
-  return {
-    ...ACCENT,
-    screenBg: nbColors.nbBackground,
-    cardBg: nbColors.nbSurface,
-    cardBorder: nbColors.nbBorder,
-    surfaceOpaque: nbColors.nbSurface,
-    text: nbColors.nbInk,
-    textMuted: nbColors.nbMuted,
-    textVeryMuted: nbColors.nbMuted,
-    inputBg: nbColors.nbSurfaceChip,
-    secondaryAction: nbColors.nbInk,
-  };
-}
 
 /**
  * Shape searchFoods.lookupBarcode output into success/miss for the UI.
@@ -144,265 +122,141 @@ function truncateSuggestionLabel(label) {
 }
 
 /**
- * Style factory — depends on theme spacing + tokens.
- * @param {*} spacing
- * @param {object} themeTokens
- * @returns {object}
+ * Format digits with spaces for the status card (e.g. 0 49000 02830 2).
+ * @param {string} digits
+ * @returns {string}
  */
-function createStyles(spacing, themeTokens) {
-  return StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: themeTokens.screenBg,
-    },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.sm,
-      backgroundColor: themeTokens.cardBg,
-      borderBottomWidth: nb.borderWidth,
-      borderBottomColor: themeTokens.cardBorder,
-    },
-    closeButton: {
-      width: 40,
-      height: 40,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    closeText: {
-      color: themeTokens.text,
-      fontSize: 22,
-      fontWeight: '600',
-    },
-    title: {
-      color: themeTokens.text,
-      fontSize: 18,
-      fontWeight: '800',
-    },
-    placeholder: {
-      width: 40,
-    },
-    scannerContainer: {
-      flex: 1,
-      position: 'relative',
-    },
-    overlay: {
-      ...StyleSheet.absoluteFillObject,
-      justifyContent: 'center',
-      alignItems: 'center',
-    },
-    scanArea: {
-      width: 250,
-      height: 250,
-      position: 'relative',
-    },
-    corner: {
-      position: 'absolute',
-      width: 30,
-      height: 30,
-      borderColor: themeTokens.framePink,
-      borderWidth: 3,
-    },
-    topLeft: {
-      top: 0,
-      left: 0,
-      borderColor: themeTokens.framePink,
-      borderRightWidth: 0,
-      borderBottomWidth: 0,
-    },
-    topRight: {
-      top: 0,
-      right: 0,
-      borderColor: themeTokens.frameOrange,
-      borderLeftWidth: 0,
-      borderBottomWidth: 0,
-    },
-    bottomLeft: {
-      bottom: 0,
-      left: 0,
-      borderColor: themeTokens.frameOrange,
-      borderRightWidth: 0,
-      borderTopWidth: 0,
-    },
-    bottomRight: {
-      bottom: 0,
-      right: 0,
-      borderColor: themeTokens.framePink,
-      borderLeftWidth: 0,
-      borderTopWidth: 0,
-    },
-    loadingOverlay: {
-      ...StyleSheet.absoluteFillObject,
-      backgroundColor: 'rgba(0,0,0,0.7)',
-      justifyContent: 'center',
-      alignItems: 'center',
-    },
-    loadingText: {
-      color: themeTokens.text,
-      marginTop: spacing.md,
-      fontSize: 16,
-    },
-    instructions: {
-      padding: spacing.lg,
-      backgroundColor: themeTokens.cardBg,
-      borderTopWidth: nb.borderWidth,
-      borderTopColor: themeTokens.cardBorder,
-      alignItems: 'center',
-    },
-    instructionText: {
-      color: themeTokens.text,
-      fontSize: 16,
-      textAlign: 'center',
-    },
-    rescanButton: {
-      marginTop: spacing.md,
-      paddingVertical: spacing.sm,
-      paddingHorizontal: spacing.md,
-      backgroundColor: themeTokens.cardBg,
-      borderWidth: nb.borderWidth,
-      borderColor: themeTokens.cardBorder,
-      borderRadius: borderRadius.nbChip,
-    },
-    rescanText: {
-      color: themeTokens.text,
-      fontSize: 14,
-      fontWeight: '600',
-    },
-    permissionContainer: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      padding: spacing.lg,
-    },
-    permissionText: {
-      color: themeTokens.text,
-      fontSize: 16,
-      textAlign: 'center',
-      marginTop: spacing.md,
-    },
-    button: {
-      marginTop: spacing.lg,
-      paddingVertical: spacing.md,
-      paddingHorizontal: spacing.lg,
-      backgroundColor: themeTokens.cardBg,
-      borderWidth: nb.borderWidth,
-      borderColor: themeTokens.cardBorder,
-      borderRadius: borderRadius.nbChip,
-    },
-    buttonText: {
-      color: themeTokens.text,
-      fontSize: 16,
-      fontWeight: '600',
-    },
-    manualEntryContainer: {
-      flex: 1,
-      padding: spacing.lg,
-      justifyContent: 'center',
-    },
-    manualEntryTitle: {
-      color: themeTokens.text,
-      fontSize: 24,
-      fontWeight: '700',
-      textAlign: 'center',
-      marginBottom: spacing.md,
-    },
-    manualEntrySubtitle: {
-      color: themeTokens.textMuted,
-      fontSize: 14,
-      textAlign: 'center',
-      marginBottom: spacing.xl,
-    },
-    barcodeInput: {
-      backgroundColor: themeTokens.inputBg,
-      borderRadius: borderRadius.nbChip,
-      padding: spacing.md,
-      color: themeTokens.text,
-      fontSize: 18,
-      textAlign: 'center',
-      marginBottom: spacing.md,
-      borderWidth: nb.borderWidth,
-      borderColor: themeTokens.cardBorder,
-    },
-    searchButton: {
-      borderRadius: borderRadius.nbCard,
-      overflow: 'hidden',
-      borderWidth: nb.borderWidth,
-      borderColor: themeTokens.cardBorder,
-      marginBottom: spacing.md,
-    },
-    searchButtonInner: {
-      borderRadius: 12,
-      paddingVertical: 14,
-      paddingHorizontal: 16,
-      alignItems: 'center',
-    },
-    searchButtonDisabled: {
-      opacity: 0.6,
-    },
-    searchButtonText: {
-      color: '#fff',
-      fontSize: 16,
-      fontWeight: '600',
-    },
-    cancelButton: {
-      padding: spacing.md,
-      alignItems: 'center',
-    },
-    cancelButtonText: {
-      color: themeTokens.secondaryAction,
-      fontSize: 14,
-      fontWeight: '600',
-    },
-    amountStepContent: {
-      flex: 1,
-      padding: spacing.lg,
-      paddingTop: spacing.xl,
-    },
-    amountProductName: {
-      color: themeTokens.text,
-      fontSize: 20,
-      fontWeight: '700',
-      marginBottom: spacing.sm,
-    },
-    amountDefaultText: {
-      color: themeTokens.textMuted,
-      fontSize: 14,
-      marginBottom: spacing.xl,
-    },
-    amountLabel: {
-      color: themeTokens.text,
-      fontSize: 16,
-      fontWeight: '600',
-      marginBottom: spacing.sm,
-    },
-    amountInput: {
-      backgroundColor: themeTokens.inputBg,
-      borderRadius: borderRadius.nbChip,
-      padding: spacing.md,
-      color: themeTokens.text,
-      fontSize: 20,
-      marginBottom: spacing.sm,
-      borderWidth: nb.borderWidth,
-      borderColor: themeTokens.cardBorder,
-    },
-    amountEstimated: {
-      color: themeTokens.textMuted,
-      fontSize: 14,
-      marginBottom: spacing.xl,
-    },
-    logButton: {
-      borderRadius: 12,
-      overflow: 'hidden',
-      marginBottom: spacing.md,
-    },
-    logButtonText: {
-      color: '#fff',
-      fontSize: 16,
-      fontWeight: '600',
-    },
-  });
+function spacedBarcode(digits) {
+  const clean = String(digits || '').replace(/\D/g, '');
+  if (clean.length < 8) return clean;
+  // Manipulate here: grouping for UPC-A style display
+  if (clean.length === 12) {
+    return `${clean[0]} ${clean.slice(1, 6)} ${clean.slice(6, 11)} ${clean[11]}`;
+  }
+  return clean.replace(/(.{4})/g, '$1 ').trim();
+}
+
+/**
+ * Diagonal hatch fill for the viewfinder when camera is off / miss state (Design Law SVG pattern).
+ */
+function ViewfinderHatch() {
+  const { colors } = useTheme();
+  // vocab: useId keeps pattern ids unique if multiple viewfinders mount
+  const reactId = useId();
+  const patternId = useMemo(
+    () => `scanHatch_${String(reactId).replace(/[^a-zA-Z0-9]/g, '')}`,
+    [reactId],
+  );
+  const patternSize = HATCH_STRIPE_PX * 2;
+
+  return (
+    <Svg width="100%" height="100%" style={StyleSheet.absoluteFill} pointerEvents="none">
+      <Defs>
+        <Pattern
+          id={patternId}
+          patternUnits="userSpaceOnUse"
+          width={patternSize}
+          height={patternSize}
+          patternTransform="rotate(135)"
+        >
+          <Rect x={0} y={0} width={HATCH_STRIPE_PX} height={patternSize} fill={colors.nbSoft} />
+          <Rect
+            x={HATCH_STRIPE_PX}
+            y={0}
+            width={HATCH_STRIPE_PX}
+            height={patternSize}
+            fill={colors.nbSurfaceChip || colors.nbSurface}
+          />
+        </Pattern>
+      </Defs>
+      <Rect x="0" y="0" width="100%" height="100%" fill={`url(#${patternId})`} />
+    </Svg>
+  );
+}
+
+/**
+ * PNG 09 header: back square + centered title + optional close square (HardShadow).
+ */
+function ScanHeader({ title, onBack, onClose, colors, centerTitle = true }) {
+  return (
+    <View style={styles.header}>
+      <HardShadow offset={nb.shadowOffsetSmall} radius={12}>
+        <TouchableOpacity
+          onPress={onBack}
+          style={[
+            styles.sq,
+            { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface },
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+          activeOpacity={0.85}
+        >
+          <Ionicons name="chevron-back" size={22} color={colors.nbInk} />
+        </TouchableOpacity>
+      </HardShadow>
+      <Text
+        style={[
+          styles.title,
+          { color: colors.nbInk, textAlign: centerTitle ? 'center' : 'left' },
+        ]}
+        numberOfLines={1}
+      >
+        {title}
+      </Text>
+      {typeof onClose === 'function' ? (
+        <HardShadow offset={nb.shadowOffsetSmall} radius={12}>
+          <TouchableOpacity
+            onPress={onClose}
+            style={[
+              styles.sq,
+              { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface },
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="Close"
+            activeOpacity={0.85}
+          >
+            <Ionicons name="close" size={20} color={colors.nbInk} />
+          </TouchableOpacity>
+        </HardShadow>
+      ) : (
+        // Keep title centered when there is no close square (PNG 11 miss)
+        <View style={styles.sqSpacer} />
+      )}
+    </View>
+  );
+}
+
+/**
+ * PNG viewfinder: HardShadow frame + hatch/camera + black corner brackets (+ optional scan line).
+ */
+function Viewfinder({ colors, children, showScanLine = false, showHatch = true }) {
+  const bracketColor = colors.nbBorder;
+  return (
+    <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard} style={styles.vfShadow}>
+      <View
+        style={[
+          styles.vf,
+          {
+            borderColor: colors.nbBorder,
+            backgroundColor: colors.nbSoft,
+          },
+        ]}
+      >
+        {/* Hatch sits under live camera so PNG still reads when permission/camera fails */}
+        {showHatch ? <ViewfinderHatch /> : null}
+        <View style={StyleSheet.absoluteFill}>{children}</View>
+        <View style={styles.bracketBox} pointerEvents="none">
+          <View style={[styles.bracket, styles.tl, { borderColor: bracketColor }]} />
+          <View style={[styles.bracket, styles.tr, { borderColor: bracketColor }]} />
+          <View style={[styles.bracket, styles.bl, { borderColor: bracketColor }]} />
+          <View style={[styles.bracket, styles.br, { borderColor: bracketColor }]} />
+          {showScanLine ? (
+            <View style={[styles.scanLine, { backgroundColor: bracketColor }]} />
+          ) : null}
+        </View>
+      </View>
+    </HardShadow>
+  );
 }
 
 // ===== MAIN FUNCTION =====
@@ -412,8 +266,7 @@ function createStyles(spacing, themeTokens) {
  * @param {{ onClose?: Function, onScanSuccess?: Function, mealType?: string }} props
  */
 export default function BarcodeScannerScreen({ onClose, onScanSuccess, mealType }) {
-  const { colors, spacing, isDark } = useTheme();
-  const themeTokens = getTokens(isDark);
+  const { colors, isDark } = useTheme();
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -423,13 +276,10 @@ export default function BarcodeScannerScreen({ onClose, onScanSuccess, mealType 
   const [lastScannedBarcode, setLastScannedBarcode] = useState('');
   const [missState, setMissState] = useState(null);
   const isProcessingRef = useRef(false);
-  const styles = createStyles(spacing, themeTokens);
 
   const hasPermission = permission?.granted ?? false;
   const permissionUndecided = permission?.status === 'undetermined' || permission == null;
-  const permissionDenied = permission?.granted === false;
 
-  // Request camera permission when status is undecided
   // vocab: useCameraPermissions = expo-camera hook for grant / deny / undetermined
   useEffect(() => {
     if (!permission) return;
@@ -440,7 +290,6 @@ export default function BarcodeScannerScreen({ onClose, onScanSuccess, mealType 
 
   /**
    * Normalize digits → lookup → cache on hit or show miss UI.
-   * Nested try for cache lives in tryCacheFoodProduct so depth stays flat.
    * @param {string} barcode
    */
   const lookupBarcode = async (barcode) => {
@@ -510,7 +359,10 @@ export default function BarcodeScannerScreen({ onClose, onScanSuccess, mealType 
     }
   };
 
-  const handleConfirmFood = async (adjustedFood) => {
+  /**
+   * Confirm sheet returns (food, mealKey). Prefer sheet meal; fall back to scanner mealType.
+   */
+  const handleConfirmFood = async (adjustedFood, mealKeyFromSheet) => {
     if (!adjustedFood || !onScanSuccess) return;
     const gtin =
       adjustedFood.scannedBarcode ||
@@ -523,7 +375,7 @@ export default function BarcodeScannerScreen({ onClose, onScanSuccess, mealType 
         console.warn('Failed to save verified barcode:', error?.message || error);
       }
     }
-    onScanSuccess(adjustedFood, mealType);
+    onScanSuccess(adjustedFood, mealKeyFromSheet || mealType);
     if (onClose) onClose();
   };
 
@@ -539,13 +391,13 @@ export default function BarcodeScannerScreen({ onClose, onScanSuccess, mealType 
     setScanned(false);
   };
 
-  // Serving confirm (after successful scan) — shared with search confirm UX
+  // Serving confirm (after successful scan) — Design Law Nutrition facts (PNG 13)
   if (pendingBarcodeFood) {
     return (
       <FoodConfirmSheet
         food={pendingBarcodeFood}
-        title="Confirm & log"
-        theme={{ screenBg: themeTokens.screenBg }}
+        mealType={mealType}
+        theme={{ screenBg: colors.nbBackground, isDark }}
         showVerification
         reserveShellBottomNav
         scannedBarcode={pendingBarcodeFood.scannedBarcode || lastScannedBarcode}
@@ -556,170 +408,101 @@ export default function BarcodeScannerScreen({ onClose, onScanSuccess, mealType 
     );
   }
 
-  // Not found — typed UPC retry + name search (never dead-end)
+  // PNG 11/12 — barcode not in database (fill Quick add + plain Search by name)
   if (missState) {
     const suggestions = filterUsableSuggestions(missState.suggestions);
-    const missBorderColors = isDark ? MISS_BORDER_GRADIENT_DARK : MISS_BORDER_GRADIENT_LIGHT;
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-            <Text style={styles.closeText} selectable={true}>
-              ✕
-            </Text>
-          </TouchableOpacity>
-          <Text style={styles.title} selectable={true}>
-            Not found
-          </Text>
-          <View style={styles.placeholder} />
-        </View>
-        <View style={styles.manualEntryContainer}>
-          <LinearGradient
-            colors={missBorderColors}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={{ borderRadius: 22, padding: 1 }}
-          >
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.nbBackground }]}>
+        {/* Miss header: back + title only (no X) — matches PNG 11 */}
+        <ScanHeader title="Scan barcode" onBack={resetScanner} colors={colors} />
+        <View style={styles.body}>
+          <Viewfinder colors={colors} showScanLine={false} />
+
+          <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard}>
             <View
-              style={{
-                borderRadius: 21,
-                backgroundColor: themeTokens.surfaceOpaque,
-                paddingVertical: 22,
-                paddingHorizontal: 18,
-                borderWidth: StyleSheet.hairlineWidth,
-                borderColor: themeTokens.cardBorder,
-              }}
+              style={[
+                styles.missCard,
+                {
+                  backgroundColor: colors.nbFill,
+                  borderColor: colors.nbBorder,
+                },
+              ]}
             >
-              <Text style={styles.manualEntryTitle} selectable={true}>
-                {missState.variableWeight ? 'Store scale label' : 'Barcode not in database'}
+              <Text style={[styles.missKicker, { color: colors.nbOnFill, opacity: 0.7 }]}>
+                {missState.variableWeight ? 'STORE SCALE LABEL' : 'BARCODE NOT IN DATABASE'}
               </Text>
-              <Text style={styles.manualEntrySubtitle} selectable={true}>
-                {missState.message}
-                {'\n\n'}
-                UPC: {missState.barcode}
+              <Text style={[styles.missTitle, { color: colors.nbOnFill }]}>
+                {missState.variableWeight
+                  ? 'This looks like a store scale label.'
+                  : 'This product is not in our food databases yet.'}
               </Text>
-              <TextInput
-                style={styles.barcodeInput}
-                placeholder="Try typing UPC again"
-                placeholderTextColor={themeTokens.textVeryMuted}
-                value={manualBarcode}
-                onChangeText={setManualBarcode}
-                keyboardType="numeric"
-                returnKeyType="search"
-                onSubmitEditing={() => lookupBarcode(manualBarcode || missState.barcode)}
-              />
-              <TouchableOpacity
-                style={[styles.searchButton, loading && styles.searchButtonDisabled]}
-                onPress={() => lookupBarcode(manualBarcode || missState.barcode)}
-                disabled={loading}
-                activeOpacity={0.9}
-              >
-                <LinearGradient
-                  colors={LOOKUP_BUTTON_GRADIENT}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={styles.searchButtonInner}
-                >
-                  {loading ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <Text style={styles.searchButtonText} selectable={true}>
-                      Look up UPC
-                    </Text>
-                  )}
-                </LinearGradient>
-              </TouchableOpacity>
-              {suggestions.slice(0, MAX_SUGGESTION_CHIPS).map((suggestion) => (
-                <TouchableOpacity
-                  key={suggestion}
-                  style={[styles.button, { marginTop: 10 }]}
-                  onPress={() => goSearchByName(suggestion)}
-                >
-                  <Text style={styles.buttonText} selectable={true}>
-                    Search: {truncateSuggestionLabel(suggestion)}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-              <TouchableOpacity
-                style={[styles.button, { marginTop: 10 }]}
-                onPress={() => onClose?.({ openFoodSearch: true })}
-              >
-                <Text style={styles.buttonText} selectable={true}>
-                  Search by name
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.cancelButton}
-                onPress={resetScanner}
-                hitSlop={{ top: 8, bottom: 8 }}
-              >
-                <Text style={styles.cancelButtonText} selectable={true}>
-                  Scan again
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.cancelButton}
-                onPress={onClose}
-                hitSlop={{ top: 8, bottom: 8 }}
-              >
-                <Text style={styles.cancelButtonText} selectable={true}>
-                  Cancel
-                </Text>
-              </TouchableOpacity>
+              <Text style={[styles.missBody, { color: colors.nbOnFill, opacity: 0.85 }]}>
+                {missState.variableWeight
+                  ? missState.message
+                  : 'Store scale labels do not scan either. Add it yourself in a few seconds.'}
+              </Text>
             </View>
-          </LinearGradient>
+          </HardShadow>
+
+          <NbButton variant="fill" onPress={() => onClose?.({ openQuickAdd: true })}>
+            Quick add it
+          </NbButton>
+          <NbButton variant="plain" onPress={() => onClose?.({ openFoodSearch: true })}>
+            Search by name
+          </NbButton>
+
+          {suggestions.slice(0, MAX_SUGGESTION_CHIPS).map((suggestion) => (
+            <TouchableOpacity
+              key={suggestion}
+              onPress={() => goSearchByName(suggestion)}
+              style={[
+                styles.suggestionChip,
+                { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface },
+              ]}
+            >
+              <Text style={[styles.suggestionText, { color: colors.nbInk }]} numberOfLines={1}>
+                Search: {truncateSuggestionLabel(suggestion)}
+              </Text>
+            </TouchableOpacity>
+          ))}
         </View>
       </SafeAreaView>
     );
   }
 
-  // Manual entry screen (user chose "Enter manually")
-  const renderManualEntry = () => {
-    const missBorderColors = isDark ? MISS_BORDER_GRADIENT_DARK : MISS_BORDER_GRADIENT_LIGHT;
+  // Manual entry — Type the number instead
+  if (showManualEntry) {
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => setShowManualEntry(false)} style={styles.closeButton}>
-            <Text style={styles.closeText} selectable={true}>
-              ←
-            </Text>
-          </TouchableOpacity>
-          <Text style={styles.title} selectable={true}>
-            Enter Barcode
-          </Text>
-          <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-            <Text style={styles.closeText} selectable={true}>
-              ✕
-            </Text>
-          </TouchableOpacity>
-        </View>
-        <View style={styles.manualEntryContainer}>
-          <LinearGradient
-            colors={missBorderColors}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={{ borderRadius: 22, padding: 1 }}
-          >
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.nbBackground }]}>
+        <ScanHeader
+          title="Scan barcode"
+          onBack={() => setShowManualEntry(false)}
+          onClose={onClose}
+          colors={colors}
+        />
+        <View style={styles.body}>
+          <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard}>
             <View
-              style={{
-                borderRadius: 21,
-                backgroundColor: themeTokens.surfaceOpaque,
-                paddingVertical: 22,
-                paddingHorizontal: 18,
-                borderWidth: StyleSheet.hairlineWidth,
-                borderColor: themeTokens.cardBorder,
-              }}
+              style={[
+                styles.manualCard,
+                { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder },
+              ]}
             >
-              <Text style={styles.manualEntryTitle} selectable={true}>
-                Manual barcode
-              </Text>
-              <Text style={styles.manualEntrySubtitle} selectable={true}>
-                Type the numbers under the barcode.
+              <Text style={[styles.manualTitle, { color: colors.nbInk }]}>Type the number</Text>
+              <Text style={[styles.manualSub, { color: colors.nbMuted }]}>
+                Enter the digits under the barcode.
               </Text>
               <TextInput
-                style={styles.barcodeInput}
+                style={[
+                  styles.barcodeInput,
+                  {
+                    backgroundColor: colors.nbSurfaceChip,
+                    borderColor: colors.nbBorder,
+                    color: colors.nbInk,
+                  },
+                ]}
                 placeholder="e.g. 012000504051"
-                placeholderTextColor={themeTokens.textVeryMuted}
+                placeholderTextColor={colors.nbMuted}
                 value={manualBarcode}
                 onChangeText={setManualBarcode}
                 keyboardType="numeric"
@@ -727,53 +510,26 @@ export default function BarcodeScannerScreen({ onClose, onScanSuccess, mealType 
                 returnKeyType="search"
                 onSubmitEditing={() => lookupBarcode(manualBarcode)}
               />
-              <TouchableOpacity
-                style={[styles.searchButton, loading && styles.searchButtonDisabled]}
+              <NbButton
+                variant="fill"
                 onPress={() => lookupBarcode(manualBarcode)}
                 disabled={loading}
-                activeOpacity={0.9}
               >
-                <LinearGradient
-                  colors={LOOKUP_BUTTON_GRADIENT}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={styles.searchButtonInner}
-                >
-                  {loading ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <Text style={styles.searchButtonText} selectable={true}>
-                      Look up
-                    </Text>
-                  )}
-                </LinearGradient>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.cancelButton}
-                onPress={onClose}
-                hitSlop={{ top: 8, bottom: 8 }}
-              >
-                <Text style={styles.cancelButtonText} selectable={true}>
-                  Cancel
-                </Text>
-              </TouchableOpacity>
+                {loading ? 'Looking up…' : 'Look up'}
+              </NbButton>
             </View>
-          </LinearGradient>
+          </HardShadow>
         </View>
       </SafeAreaView>
     );
-  };
-
-  if (showManualEntry) {
-    return renderManualEntry();
   }
 
   if (permissionUndecided) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.nbBackground }]}>
         <View style={styles.permissionContainer}>
-          <ActivityIndicator size="large" color={themeTokens.hotPink} />
-          <Text style={styles.permissionText} selectable={true}>
+          <ActivityIndicator size="large" color={colors.nbInk} />
+          <Text style={[styles.permissionText, { color: colors.nbInk }]}>
             Requesting camera permission...
           </Text>
         </View>
@@ -781,124 +537,267 @@ export default function BarcodeScannerScreen({ onClose, onScanSuccess, mealType 
     );
   }
 
-  if (hasPermission === false && !showManualEntry) {
+  if (!hasPermission) {
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-            <Text style={styles.closeText} selectable={true}>
-              ✕
-            </Text>
-          </TouchableOpacity>
-          <Text style={styles.title} selectable={true}>
-            Camera access
-          </Text>
-          <View style={styles.placeholder} />
-        </View>
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.nbBackground }]}>
+        <ScanHeader title="Camera access" onBack={onClose} colors={colors} />
         <View style={styles.permissionContainer}>
-          <Text style={styles.permissionText} selectable={true}>
+          <Text style={[styles.permissionText, { color: colors.nbInk }]}>
             Camera permission is required to scan barcodes. You can still enter the barcode number
             manually.
           </Text>
-          {permission?.canAskAgain !== false && (
-            <TouchableOpacity style={styles.button} onPress={() => requestPermission()}>
-              <Text style={styles.buttonText} selectable={true}>
-                Try again
-              </Text>
-            </TouchableOpacity>
-          )}
-          <TouchableOpacity
-            style={[styles.button, { marginTop: 12 }]}
-            onPress={() => setShowManualEntry(true)}
-          >
-            <Text style={styles.buttonText} selectable={true}>
-              Enter barcode manually
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.cancelButton} onPress={onClose}>
-            <Text style={styles.cancelButtonText} selectable={true}>
-              Cancel
-            </Text>
-          </TouchableOpacity>
+          {permission?.canAskAgain !== false ? (
+            <NbButton variant="fill" onPress={() => requestPermission()}>
+              Try again
+            </NbButton>
+          ) : null}
+          <NbButton variant="plain" onPress={() => setShowManualEntry(true)}>
+            Type the number instead
+          </NbButton>
         </View>
       </SafeAreaView>
     );
   }
 
-  // Camera view with barcode scanning (Expo Go compatible via expo-camera)
-  return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-          <Text style={styles.closeText} selectable={true}>
-            ✕
-          </Text>
-        </TouchableOpacity>
-        <Text style={styles.title} selectable={true}>
-          Scan Barcode
-        </Text>
-        <TouchableOpacity onPress={() => setShowManualEntry(true)} style={styles.closeButton}>
-          <Text style={[styles.closeText, { fontSize: 14 }]} selectable={true}>
-            Type
-          </Text>
-        </TouchableOpacity>
-      </View>
+  // PNG 09/10 — live camera + status card + Type the number instead
+  const statusDigits = lastScannedBarcode || '049000028302';
+  const statusTitle = loading ? 'Looking up barcode' : scanned ? 'Hold steady' : 'Point at a barcode';
+  const statusSub = loading
+    ? `Hold steady. ${spacedBarcode(statusDigits)}`
+    : scanned
+      ? 'Tap below to scan again'
+      : 'Align the bars inside the brackets';
 
-      <View style={styles.scannerContainer}>
-        <CameraView
-          style={StyleSheet.absoluteFillObject}
-          facing="back"
-          barcodeScannerSettings={{
-            barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e', 'code128', 'code39'],
-          }}
-          onBarcodeScanned={
-            scanned
-              ? undefined
-              : (result) => {
-                  if (result?.data) {
-                    handleBarCodeScanned({ type: result.type, data: result.data });
+  return (
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.nbBackground }]}>
+      <ScanHeader title="Scan barcode" onBack={onClose} onClose={onClose} colors={colors} />
+
+      <View style={styles.body}>
+        <Viewfinder colors={colors} showScanLine={loading || !scanned}>
+          <CameraView
+            style={StyleSheet.absoluteFillObject}
+            facing="back"
+            barcodeScannerSettings={{
+              barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e', 'code128', 'code39'],
+            }}
+            onBarcodeScanned={
+              scanned
+                ? undefined
+                : (result) => {
+                    if (result?.data) {
+                      handleBarCodeScanned({ type: result.type, data: result.data });
+                    }
                   }
-                }
-          }
-        />
-        <View style={styles.overlay}>
-          <View style={styles.scanArea}>
-            <View style={[styles.corner, styles.topLeft]} />
-            <View style={[styles.corner, styles.topRight]} />
-            <View style={[styles.corner, styles.bottomLeft]} />
-            <View style={[styles.corner, styles.bottomRight]} />
-          </View>
-          {loading && (
+            }
+          />
+          {loading ? (
             <View style={styles.loadingOverlay}>
-              <ActivityIndicator size="large" color={themeTokens.hotPink} />
-              <Text style={styles.loadingText} selectable={true}>
-                Looking up product...
+              <ActivityIndicator size="large" color={colors.nbOnFill} />
+            </View>
+          ) : null}
+        </Viewfinder>
+
+        {/* Status card — NbIconChip scales + Looking up barcode + muted digits */}
+        <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard}>
+          <View
+            style={[
+              styles.statusCard,
+              { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder },
+            ]}
+          >
+            <NbIconChip source={SCALES_ICON} size={44} index={2} />
+            <View style={styles.statusTextCol}>
+              <Text style={[styles.statusTitle, { color: colors.nbInk }]}>{statusTitle}</Text>
+              <Text style={[styles.statusSub, { color: colors.nbMuted }]} numberOfLines={2}>
+                {statusSub}
               </Text>
             </View>
-          )}
-        </View>
-      </View>
+          </View>
+        </HardShadow>
 
-      <View style={styles.instructions}>
-        <Text style={styles.instructionText} selectable={true}>
-          Position the barcode within the frame
-        </Text>
-        <TouchableOpacity onPress={() => setShowManualEntry(true)} style={{ marginTop: 8 }}>
-          <Text
-            style={[styles.instructionText, { textDecorationLine: 'underline', opacity: 0.9 }]}
-            selectable={true}
+        <NbButton variant="plain" onPress={() => setShowManualEntry(true)}>
+          Type the number instead
+        </NbButton>
+
+        {scanned && !loading ? (
+          <TouchableOpacity
+            onPress={() => setScanned(false)}
+            style={[styles.rescan, { borderColor: colors.nbBorder }]}
           >
-            Enter barcode number manually
-          </Text>
-        </TouchableOpacity>
-        {scanned && !loading && (
-          <TouchableOpacity style={styles.rescanButton} onPress={() => setScanned(false)}>
-            <Text style={styles.rescanText} selectable={true}>
-              Tap to scan again
-            </Text>
+            <Text style={[styles.rescanText, { color: colors.nbInk }]}>Tap to scan again</Text>
           </TouchableOpacity>
-        )}
+        ) : null}
       </View>
     </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  container: { flex: 1 },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  // Manipulate here: back / close square size
+  sq: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    borderWidth: nb.borderWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sqSpacer: { width: 44, height: 44 },
+  title: {
+    flex: 1,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 22,
+    letterSpacing: -0.4,
+  },
+  body: {
+    flex: 1,
+    paddingHorizontal: nb.screenGutter,
+    paddingTop: spacing.sm,
+    gap: 14,
+  },
+  vfShadow: { width: '100%' },
+  vf: {
+    height: VIEWFINDER_HEIGHT,
+    borderWidth: nb.borderWidth,
+    borderRadius: borderRadius.nbCard,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bracketBox: {
+    width: 160,
+    height: 110,
+    position: 'relative',
+  },
+  bracket: {
+    position: 'absolute',
+    width: BRACKET_SIZE,
+    height: BRACKET_SIZE,
+    borderWidth: BRACKET_THICK,
+  },
+  tl: { top: 0, left: 0, borderRightWidth: 0, borderBottomWidth: 0 },
+  tr: { top: 0, right: 0, borderLeftWidth: 0, borderBottomWidth: 0 },
+  bl: { bottom: 0, left: 0, borderRightWidth: 0, borderTopWidth: 0 },
+  br: { bottom: 0, right: 0, borderLeftWidth: 0, borderTopWidth: 0 },
+  scanLine: {
+    position: 'absolute',
+    left: 8,
+    right: 8,
+    top: '42%',
+    height: 2,
+  },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  statusCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderWidth: nb.borderWidth,
+    borderRadius: borderRadius.nbCard,
+    padding: 14,
+  },
+  statusTextCol: { flex: 1, minWidth: 0 },
+  statusTitle: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 16,
+  },
+  statusSub: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 13,
+    marginTop: 2,
+  },
+  missCard: {
+    borderWidth: nb.borderWidth,
+    borderRadius: borderRadius.nbCard,
+    padding: 16,
+    gap: 8,
+  },
+  missKicker: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 11,
+    letterSpacing: 1.3,
+  },
+  missTitle: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 20,
+    letterSpacing: -0.3,
+  },
+  missBody: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  manualCard: {
+    borderWidth: nb.borderWidth,
+    borderRadius: borderRadius.nbCard,
+    padding: 18,
+    gap: 12,
+  },
+  manualTitle: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 22,
+    textAlign: 'center',
+  },
+  manualSub: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  barcodeInput: {
+    borderRadius: borderRadius.nbChip,
+    padding: spacing.md,
+    fontSize: 18,
+    textAlign: 'center',
+    borderWidth: nb.borderWidth,
+    fontFamily: 'SpaceGrotesk_700Bold',
+  },
+  permissionContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+    gap: 14,
+  },
+  permissionText: {
+    fontSize: 16,
+    textAlign: 'center',
+    fontFamily: 'Inter_400Regular',
+    lineHeight: 22,
+  },
+  suggestionChip: {
+    borderWidth: nb.borderWidth,
+    borderRadius: borderRadius.nbChip,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    minHeight: nb.minTouchTarget,
+    justifyContent: 'center',
+  },
+  suggestionText: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 14,
+  },
+  rescan: {
+    alignSelf: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderWidth: nb.borderWidth,
+    borderRadius: borderRadius.nbChip,
+  },
+  rescanText: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 14,
+  },
+});

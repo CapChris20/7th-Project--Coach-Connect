@@ -1,10 +1,10 @@
-// Frosted panel. The blur sits behind the children so icons and text stay visible.
-// Flow: peel padding off the outer style → blur fills the edges → children sit in a normal layer on top.
-// Used by: headers and menus that need a frosted strip without blanking their contents.
+// Solid surface shell (strip pass: no frosted blur).
+// Flow: apply style to a View → render children. Same API as the old blur wrapper so callers keep working.
+// Used by: headers, menus, cards that previously used expo-blur.
 
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
-import { BlurView } from 'expo-blur';
+import { lightColors, darkColors } from './colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
@@ -21,7 +21,7 @@ const PADDING_KEYS = [
 // ===== HELPER FUNCTIONS =====
 
 /**
- * Padding on the outer style would shrink the blur. It belongs on the content instead.
+ * Padding on the outer style stays on the content layer so layout matches the old blur shell.
  * @param {object} flatStyle
  * @returns {{ shellStyle: object, contentInset: object }}
  */
@@ -36,29 +36,40 @@ function splitShellPadding(flatStyle) {
   return { shellStyle, contentInset };
 }
 
+/**
+ * Tint → solid fill. Dark tint uses dark surface; light uses white surface.
+ * @param {string|undefined} tint
+ * @returns {string}
+ */
+function solidFillForTint(tint) {
+  if (tint === 'dark') return darkColors.nbSurface;
+  return lightColors.nbSurface;
+}
+
 // ===== MAIN FUNCTION =====
 
 /**
- * Do not put images, icons, or text inputs inside the blur view. They go blank on iOS and Android.
+ * Strip pass: ignores blur intensity — paints a solid surface so glass chrome is gone.
  * @param {{ intensity?: number, tint?: string, style?: object, contentWrapperStyle?: object, children?: import('react').ReactNode }} props
  */
 export default function BlurredBackground({ intensity, tint, style, contentWrapperStyle, children }) {
   const flattenedStyle = StyleSheet.flatten(style) || {};
   const { shellStyle, contentInset } = splitShellPadding(flattenedStyle);
   const { backgroundColor, ...restOfShell } = shellStyle;
-  const shellFrameStyle = [restOfShell, { position: 'relative', overflow: 'hidden' }];
-  const contentLayerStyle = [{ position: 'relative', zIndex: 1 }, contentInset, contentWrapperStyle];
+  const fill = backgroundColor || solidFillForTint(tint);
 
   return (
-    <View style={shellFrameStyle}>
-      <BlurView intensity={intensity} tint={tint} pointerEvents="none" style={StyleSheet.absoluteFillObject} />
-      {backgroundColor && (
-        <View
-          style={[StyleSheet.absoluteFillObject, { backgroundColor }]}
-          pointerEvents="none"
-        />
-      )}
-      <View style={contentLayerStyle} collapsable={false}>
+    <View
+      style={[
+        restOfShell,
+        {
+          position: 'relative',
+          overflow: 'hidden',
+          backgroundColor: fill,
+        },
+      ]}
+    >
+      <View style={[{ position: 'relative', zIndex: 1 }, contentInset, contentWrapperStyle]} collapsable={false}>
         {children}
       </View>
     </View>

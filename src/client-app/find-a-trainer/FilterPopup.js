@@ -1,74 +1,47 @@
-// Bottom sheet for marketplace filters: sort, specialty, experience, price, session type.
-// Flow: copy current filters into a draft → edit the draft → Apply writes it back, Reset restores defaults.
-// Used by SearchTrainersScreen. The parent owns the live filters; this sheet only edits a copy.
+// Marketplace Filter bottom sheet — Design Law HardShadow / Nb* chrome (PNG 05).
+// Flow: copy live filters into a draft → edit → Reset restores defaults → Show N trainers applies + closes.
+// Used by SearchTrainersScreen. Parent owns the live filters; this sheet only edits a copy.
 //
-// vocab: neobrutalist = thick borders, hard shadows, gradient only for primary moment
+// vocab: draft = local copy so Cancel-by-backdrop never leaks half-edited filters
+// vocab: NbSegmented = mutually exclusive solid-fill tabs in one outlined track
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Platform,
+  Modal,
+  Pressable,
+  ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   View,
 } from 'react-native';
-import { useColorScheme } from 'react-native';
-import Slider from '@react-native-community/slider';
-import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
+  AVAILABILITY_OPTIONS,
   DEFAULT_FILTERS,
   EXPERIENCE_OPTIONS,
   FILTER_SPECIALTIES,
-  PRICE_CEILING,
-  PRICE_FLOOR,
   SESSION_TYPES,
   SORT_OPTIONS,
+  filterTrainers,
 } from './trainerFilters';
-import NbSheet from '../../look-and-feel/NbSheet';
-import NbChipRow from '../../look-and-feel/NbChipRow';
+import HardShadow from '../../look-and-feel/HardShadow';
 import NbButton from '../../look-and-feel/NbButton';
-import { lightColors, darkColors, spacing } from '../../look-and-feel/colorPalette';
+import NbSegmented from '../../look-and-feel/NbSegmented';
+import NbSwitch from '../../look-and-feel/NbSwitch';
+import { useTheme } from '../../look-and-feel/lightDarkMode';
+import { borderRadius, nb, spacing } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
-const THUMB_SIZE = 18;
-const PRICE_SLIDER_STEP = 10;
-const SHEET_SCROLL_EXTRA_PAD = 20;
+const SHEET_SCROLL_EXTRA_PAD = 24;
 const MIN_SHEET_BOTTOM_PAD = 16;
-const ANY_PRICE_LABEL = 'Any';
+const SECTION_GAP = 18;
 
 // ===== HELPER FUNCTIONS =====
 
 /**
- * How far the custom thumb sits on the track. 0 = floor, 1 = ceiling.
- * @param {number} value
- * @returns {number}
- */
-function priceSliderRatio(value) {
-  return (value - PRICE_FLOOR) / (PRICE_CEILING - PRICE_FLOOR);
-}
-
-/**
- * @param {object} draft
- * @returns {number}
- */
-function draftMaxPrice(draft) {
-  if (!draft.priceMax.trim()) return PRICE_CEILING;
-  return Math.min(PRICE_CEILING, Math.max(PRICE_FLOOR, Number(draft.priceMax) || PRICE_CEILING));
-}
-
-/**
- * At the ceiling we show "Any" so a blank max-price field and the slider match.
- * @param {number} sliderMax
- * @returns {string}
- */
-function maxPriceLabel(sliderMax) {
-  if (sliderMax >= PRICE_CEILING) return ANY_PRICE_LABEL;
-  return `$${sliderMax}`;
-}
-
-/**
+ * Multi-select specialty toggle — add if missing, remove if present.
  * @param {string[]} specialties
  * @param {string} specialty
  * @returns {string[]}
@@ -81,54 +54,63 @@ function specialtiesAfterToggle(specialties, specialty) {
 }
 
 /**
- * Painted track + invisible native slider. The OS thumb is hidden so we can draw a branded one.
+ * Availability is a single exclusive pick (or null = any). Tap again to clear.
+ * @param {string|null} current
+ * @param {string} option
+ * @returns {string|null}
  */
-function PriceSlider({ value, onValueChange, isDark, mutedColor }) {
-  const [trackWidth, setTrackWidth] = useState(0);
-  const ratio = priceSliderRatio(value);
-  const fillPct = Math.min(100, Math.max(0, ratio * 100));
-  const thumbLeft = trackWidth > 0
-    ? Math.min(trackWidth - THUMB_SIZE, Math.max(0, ratio * trackWidth - THUMB_SIZE / 2))
-    : 0;
+function availabilityAfterTap(current, option) {
+  if (current === option) return null;
+  return option;
+}
 
+function SectionLabel({ children, colors }) {
   return (
-    <View
-      style={styles.sliderHost}
-      onLayout={(event) => setTrackWidth(event.nativeEvent.layout.width)}
-    >
-      <View style={[styles.sliderTrack, { backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : mutedColor }]}>
-        <LinearGradient
-          colors={[BRAND.pink, BRAND.orange]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={[styles.sliderFill, { width: `${fillPct}%` }]}
-        />
-      </View>
-      <Slider
-        style={styles.sliderNative}
-        minimumValue={PRICE_FLOOR}
-        maximumValue={PRICE_CEILING}
-        step={PRICE_SLIDER_STEP}
-        value={value}
-        onValueChange={onValueChange}
-        minimumTrackTintColor="transparent"
-        maximumTrackTintColor="transparent"
-        thumbTintColor="transparent"
-      />
-      {trackWidth > 0 ? (
-        <View pointerEvents="none" style={[styles.sliderThumb, { left: thumbLeft }]}>
-          <View style={styles.sliderThumbInner} />
-        </View>
-      ) : null}
-    </View>
+    <Text style={[styles.sectionLabel, { color: colors.nbMuted }]}>{children}</Text>
   );
 }
 
-function FilterSection({ label, children }) {
+/**
+ * Solid-fill selected pill (PNG 05 specialty / experience / availability).
+ * Selected = nbFill + onFill text — never brand gradient chrome.
+ */
+function FilterPill({ label, active, onPress, colors }) {
   return (
-    <View style={styles.filterSection}>
-      <SectionLabel>{label}</SectionLabel>
-      {children}
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+      style={[
+        styles.pill,
+        {
+          borderColor: colors.nbBorder,
+          backgroundColor: active ? colors.nbFill : colors.nbSurface,
+        },
+      ]}
+    >
+      <Text
+        style={[styles.pillText, { color: active ? colors.nbOnFill : colors.nbInk }]}
+        numberOfLines={1}
+      >
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+function ToggleRow({ title, subtitle, value, onValueChange, colors, showDivider }) {
+  return (
+    <View
+      style={[
+        styles.toggleRow,
+        showDivider && { borderBottomWidth: StyleSheet.hairlineWidth * 2, borderBottomColor: colors.nbBorder },
+      ]}
+    >
+      <View style={styles.toggleCopy}>
+        <Text style={[styles.toggleTitle, { color: colors.nbInk }]}>{title}</Text>
+        <Text style={[styles.toggleSub, { color: colors.nbMuted }]}>{subtitle}</Text>
+      </View>
+      <NbSwitch value={value} onValueChange={onValueChange} />
     </View>
   );
 }
@@ -136,35 +118,58 @@ function FilterSection({ label, children }) {
 // ===== MAIN FUNCTION =====
 
 /**
- * Marketplace filter sheet. Edits a draft copy; Apply is the only write back to the parent.
- * vocab: useSafeAreaInsets = notch / home-indicator padding so the footer is not hidden.
- * vocab: useEffect recopies `filters` whenever the sheet opens so Cancel-by-backdrop never leaks edits.
- * @param {{ visible: boolean, filters: object, onClose: Function, onApply: Function, isDark?: boolean }} props
+ * Marketplace filter sheet. Edits a draft copy; Show N trainers is the only write back to the parent.
+ * @param {{
+ *   visible: boolean,
+ *   filters: object,
+ *   onClose: Function,
+ *   onApply: Function,
+ *   trainers?: object[],
+ *   search?: string,
+ *   quickSpecialty?: string,
+ * }} props
  */
-export function FilterPopup({ visible, filters, onClose, onApply, isDark = true }) {
-  const theme = getTheme(isDark);
+export function FilterPopup({
+  visible,
+  filters,
+  onClose,
+  onApply,
+  trainers = [],
+  search = '',
+  quickSpecialty = 'All',
+}) {
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const [draft, setDraft] = useState(filters);
+  const [draft, setDraft] = useState(filters || DEFAULT_FILTERS);
 
+  // Recopy live filters whenever the sheet opens so Cancel never leaks half-edits.
   useEffect(() => {
-    if (visible) setDraft(filters);
+    if (visible) setDraft({ ...DEFAULT_FILTERS, ...(filters || {}) });
   }, [visible, filters]);
 
-  const sliderMax = draftMaxPrice(draft);
-  const maxLabel = maxPriceLabel(sliderMax);
+  // Live match count for the fill CTA — same rules as the list (filterTrainers).
+  const matchCount = useMemo(
+    () => filterTrainers(trainers, draft, { query: search, quickSpecialty }).length,
+    [trainers, draft, search, quickSpecialty],
+  );
+
+  const sortSegments = SORT_OPTIONS.map((option) => ({ id: option, label: option }));
+  const sessionSegments = SESSION_TYPES.map((option) => ({ id: option, label: option }));
 
   const toggleSpecialty = (specialty) => {
-    setDraft((currentDraft) => ({
-      ...currentDraft,
-      specialties: specialtiesAfterToggle(currentDraft.specialties, specialty),
+    setDraft((current) => ({
+      ...current,
+      specialties: specialtiesAfterToggle(current.specialties || [], specialty),
     }));
   };
 
   const applyDraftAndClose = () => {
-    // 1. Write the draft to the parent, then close. Closing first would lose the edits.
-    onApply(draft);
-    onClose();
+    onApply?.(draft);
+    onClose?.();
   };
+
+  const showLabel =
+    matchCount === 1 ? 'Show 1 trainer' : `Show ${matchCount} trainers`;
 
   return (
     <Modal
@@ -175,190 +180,185 @@ export function FilterPopup({ visible, filters, onClose, onApply, isDark = true 
       statusBarTranslucent
       onRequestClose={onClose}
     >
-      <View style={styles.filterSheetWrap}>
-        <View style={styles.modalOverlay} pointerEvents="box-none">
-          <BlurredBackground
-            intensity={isDark ? 32 : 24}
-            tint={isDark ? 'dark' : 'light'}
-            style={StyleSheet.absoluteFill}
-          >
-            <Pressable
-              style={[
-                StyleSheet.absoluteFill,
-                { backgroundColor: isDark ? 'rgba(5, 5, 8, 0.48)' : 'rgba(250, 250, 252, 0.55)' },
-              ]}
-              onPress={onClose}
-              accessibilityRole="button"
-            />
-          </BlurredBackground>
-        </View>
-        <View style={[styles.filterSheet, { backgroundColor: theme.card }]}>
+      <View style={styles.overlay}>
+        <Pressable style={styles.backdrop} onPress={onClose} accessibilityRole="button" />
+        <View
+          style={[
+            styles.sheet,
+            {
+              backgroundColor: colors.nbSurface,
+              borderColor: colors.nbBorder,
+              paddingBottom: Math.max(insets.bottom, MIN_SHEET_BOTTOM_PAD),
+            },
+          ]}
+        >
+          <View style={styles.handle}>
+            <View style={[styles.handleBar, { backgroundColor: colors.nbBorder }]} />
+          </View>
+
           <ScrollView
-            style={styles.filterScrollView}
-            contentContainerStyle={[
-              styles.filterScroll,
-              { paddingBottom: Math.max(insets.bottom, MIN_SHEET_BOTTOM_PAD) + SHEET_SCROLL_EXTRA_PAD },
-            ]}
+            style={styles.scroll}
+            contentContainerStyle={[styles.scrollContent, { paddingBottom: SHEET_SCROLL_EXTRA_PAD }]}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             bounces
           >
-            <View style={styles.filterHeader}>
-              <View>
-                <SectionLabel>Refine</SectionLabel>
-                <Text style={[styles.filterTitle, { color: theme.foreground, fontFamily: MP_FONT.displayBold }]}>
-                  Filters
-                </Text>
-              </View>
-              <Pressable onPress={onClose} style={[styles.iconBtn, { borderColor: theme.border }]}>
-                <Text style={{ color: theme.foreground, fontSize: 18 }}>✕</Text>
+            {/* Header: Filter + underlined Reset */}
+            <View style={styles.headerRow}>
+              <Text style={[styles.title, { color: colors.nbInk }]}>Filter</Text>
+              <Pressable
+                onPress={() => setDraft({ ...DEFAULT_FILTERS })}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Reset filters"
+              >
+                <Text style={[styles.resetLink, { color: colors.nbInk }]}>Reset</Text>
               </Pressable>
             </View>
 
-            <FilterSection label="Sort by">
-              <View style={[styles.pillWrap, styles.pillWrapCenter]}>
-                {SORT_OPTIONS.map((option) => (
-                  <Pill
-                    key={option}
-                    label={option}
-                    active={draft.sort === option}
-                    onPress={() => setDraft({ ...draft, sort: option })}
-                    t={theme}
-                    isDark={isDark}
-                  />
-                ))}
-              </View>
-            </FilterSection>
+            {/* SORT BY — segmented */}
+            <View style={styles.section}>
+              <SectionLabel colors={colors}>SORT BY</SectionLabel>
+              <NbSegmented
+                segments={sortSegments}
+                selected={draft.sort || 'Newest'}
+                onSelect={(id) => setDraft({ ...draft, sort: id })}
+              />
+            </View>
 
-            <FilterSection label="Specialty">
-              <View style={[styles.pillWrap, styles.pillWrapCenter]}>
+            {/* SPECIALTY — multi pills */}
+            <View style={styles.section}>
+              <SectionLabel colors={colors}>SPECIALTY</SectionLabel>
+              <View style={styles.pillWrap}>
                 {FILTER_SPECIALTIES.map((option) => (
-                  <Pill
+                  <FilterPill
                     key={option}
                     label={option}
-                    active={draft.specialties.includes(option)}
+                    active={(draft.specialties || []).includes(option)}
                     onPress={() => toggleSpecialty(option)}
-                    t={theme}
-                    isDark={isDark}
+                    colors={colors}
                   />
                 ))}
               </View>
-            </FilterSection>
+            </View>
 
-            <FilterSection label="Experience">
+            {/* SESSION TYPE — segmented */}
+            <View style={styles.section}>
+              <SectionLabel colors={colors}>SESSION TYPE</SectionLabel>
+              <NbSegmented
+                segments={sessionSegments}
+                selected={draft.sessionType || 'Both'}
+                onSelect={(id) => setDraft({ ...draft, sessionType: id })}
+              />
+            </View>
+
+            {/* EXPERIENCE — exclusive pills */}
+            <View style={styles.section}>
+              <SectionLabel colors={colors}>EXPERIENCE</SectionLabel>
               <View style={styles.pillWrap}>
                 {EXPERIENCE_OPTIONS.map((option) => (
-                  <Pill
+                  <FilterPill
                     key={option}
                     label={option}
                     active={draft.experience === option}
                     onPress={() => setDraft({ ...draft, experience: option })}
-                    t={theme}
-                    isDark={isDark}
+                    colors={colors}
                   />
                 ))}
               </View>
-            </FilterSection>
+            </View>
 
-            <FilterSection label="Availability">
-              <View
-                style={[
-                  styles.toggleRow,
-                  {
-                    borderColor: isDark ? 'rgba(255,255,255,0.12)' : theme.border,
-                    backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : theme.muted,
-                  },
-                ]}
-              >
-                <Text style={{ color: theme.foreground, fontWeight: '600' }}>Available only</Text>
-                <Switch
-                  value={draft.availableOnly}
-                  onValueChange={(isAvailableOnly) => setDraft({ ...draft, availableOnly: isAvailableOnly })}
-                  trackColor={{ false: theme.border, true: BRAND.pink }}
-                  thumbColor="#fff"
-                />
+            {/* PRICE PER MONTH — min / max fields (no slider in PNG 05) */}
+            <View style={styles.section}>
+              <SectionLabel colors={colors}>PRICE PER MONTH</SectionLabel>
+              <View style={styles.priceRow}>
+                <HardShadow offset={nb.shadowOffsetSmall} radius={borderRadius.nbInput} style={styles.priceField}>
+                  <TextInput
+                    placeholder="Min $/mo"
+                    placeholderTextColor={colors.nbMuted}
+                    keyboardType="number-pad"
+                    value={draft.priceMin}
+                    onChangeText={(typed) => setDraft({ ...draft, priceMin: typed })}
+                    style={[
+                      styles.input,
+                      {
+                        color: colors.nbInk,
+                        borderColor: colors.nbBorder,
+                        backgroundColor: colors.nbSurface,
+                      },
+                    ]}
+                  />
+                </HardShadow>
+                <HardShadow offset={nb.shadowOffsetSmall} radius={borderRadius.nbInput} style={styles.priceField}>
+                  <TextInput
+                    placeholder="Max $/mo"
+                    placeholderTextColor={colors.nbMuted}
+                    keyboardType="number-pad"
+                    value={draft.priceMax}
+                    onChangeText={(typed) => setDraft({ ...draft, priceMax: typed })}
+                    style={[
+                      styles.input,
+                      {
+                        color: colors.nbInk,
+                        borderColor: colors.nbBorder,
+                        backgroundColor: colors.nbSurface,
+                      },
+                    ]}
+                  />
+                </HardShadow>
               </View>
-            </FilterSection>
+            </View>
 
-            <FilterSection label={`Max price · ${maxLabel}/mo`}>
-              <PriceSlider
-                value={sliderMax}
-                isDark={isDark}
-                mutedColor={theme.muted}
-                onValueChange={(nextPrice) =>
-                  setDraft({ ...draft, priceMax: nextPrice >= PRICE_CEILING ? '' : String(Math.round(nextPrice)) })
-                }
-              />
-              <View style={styles.sliderLabels}>
-                <Text style={{ color: theme.mutedForeground, fontSize: 12 }}>${PRICE_FLOOR}</Text>
-                <Text style={{ color: theme.mutedForeground, fontSize: 12 }}>${PRICE_CEILING}</Text>
-              </View>
-              <View style={styles.priceInputs}>
-                <TextInput
-                  placeholder="Min $/mo"
-                  placeholderTextColor={theme.mutedForeground}
-                  keyboardType="number-pad"
-                  value={draft.priceMin}
-                  onChangeText={(typedPrice) => setDraft({ ...draft, priceMin: typedPrice })}
-                  style={[
-                    styles.input,
-                    {
-                      color: theme.foreground,
-                      borderColor: isDark ? 'rgba(255,255,255,0.1)' : theme.border,
-                      backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : theme.muted,
-                    },
-                  ]}
-                />
-                <TextInput
-                  placeholder="Max $/mo"
-                  placeholderTextColor={theme.mutedForeground}
-                  keyboardType="number-pad"
-                  value={draft.priceMax}
-                  onChangeText={(typedPrice) => setDraft({ ...draft, priceMax: typedPrice })}
-                  style={[
-                    styles.input,
-                    {
-                      color: theme.foreground,
-                      borderColor: isDark ? 'rgba(255,255,255,0.1)' : theme.border,
-                      backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : theme.muted,
-                    },
-                  ]}
-                />
-              </View>
-            </FilterSection>
-
-            <FilterSection label="Session type">
+            {/* AVAILABILITY — exclusive pills */}
+            <View style={styles.section}>
+              <SectionLabel colors={colors}>AVAILABILITY</SectionLabel>
               <View style={styles.pillWrap}>
-                {SESSION_TYPES.map((option) => (
-                  <Pill
+                {AVAILABILITY_OPTIONS.map((option) => (
+                  <FilterPill
                     key={option}
                     label={option}
-                    active={draft.sessionType === option}
-                    onPress={() => setDraft({ ...draft, sessionType: option })}
-                    t={theme}
-                    isDark={isDark}
+                    active={draft.availability === option}
+                    onPress={() =>
+                      setDraft({
+                        ...draft,
+                        availability: availabilityAfterTap(draft.availability, option),
+                      })
+                    }
+                    colors={colors}
                   />
                 ))}
               </View>
-            </FilterSection>
+            </View>
 
+            {/* Verified + Available only toggles in one outlined group */}
             <View
               style={[
-                styles.filterFooter,
-                { borderTopColor: isDark ? 'rgba(255,255,255,0.1)' : theme.border },
+                styles.toggleGroup,
+                { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface },
               ]}
             >
-              <SecondaryButton
-                onPress={() => setDraft(DEFAULT_FILTERS)}
-                style={{ flex: 1 }}
-                textColor={theme.foreground}
-                isDark={isDark}
-              >
-                Reset
-              </SecondaryButton>
-              <PrimaryButton onPress={applyDraftAndClose} style={{ flex: 2 }}>
-                Apply filters
-              </PrimaryButton>
+              <ToggleRow
+                title="Verified"
+                subtitle="Credentials checked"
+                value={!!draft.verifiedOnly}
+                onValueChange={(next) => setDraft({ ...draft, verifiedOnly: next })}
+                colors={colors}
+                showDivider
+              />
+              <ToggleRow
+                title="Available only"
+                subtitle="Hide waitlists"
+                value={!!draft.availableOnly}
+                onValueChange={(next) => setDraft({ ...draft, availableOnly: next })}
+                colors={colors}
+              />
+            </View>
+
+            {/* Primary CTA */}
+            <View style={styles.ctaWrap}>
+              <NbButton variant="fill" onPress={applyDraftAndClose}>
+                {showLabel}
+              </NbButton>
             </View>
           </ScrollView>
         </View>
@@ -370,113 +370,127 @@ export function FilterPopup({ visible, filters, onClose, onApply, isDark = true 
 export default FilterPopup;
 
 const styles = StyleSheet.create({
-  filterSheetWrap: { flex: 1, justifyContent: 'flex-end' },
-  modalOverlay: {
-    ...StyleSheet.absoluteFillObject,
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'flex-end',
   },
-  sliderHost: {
-    height: 44,
-    justifyContent: 'center',
-    marginTop: 4,
+  backdrop: {
+    flex: 1,
   },
-  sliderTrack: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    height: 8,
-    borderRadius: 999,
-    top: 18,
-    overflow: 'hidden',
-  },
-  sliderFill: {
-    height: '100%',
-    borderRadius: 999,
-  },
-  sliderNative: {
-    width: '100%',
-    height: 44,
-  },
-  sliderThumb: {
-    position: 'absolute',
-    top: 13,
-    width: THUMB_SIZE,
-    height: THUMB_SIZE,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...Platform.select({
-      ios: {
-        shadowColor: BRAND.pink,
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.45,
-        shadowRadius: 4,
-      },
-      android: { elevation: 4 },
-      default: {},
-    }),
-  },
-  sliderThumbInner: {
-    width: THUMB_SIZE,
-    height: THUMB_SIZE,
-    borderRadius: THUMB_SIZE / 2,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 2,
-    borderColor: BRAND.pink,
-  },
-  filterSheet: {
+  sheet: {
     maxHeight: '92%',
-    width: '100%',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopLeftRadius: borderRadius.nbSheet,
+    borderTopRightRadius: borderRadius.nbSheet,
+    borderTopWidth: nb.borderWidth,
+    borderLeftWidth: nb.borderWidth,
+    borderRightWidth: nb.borderWidth,
     overflow: 'hidden',
-    alignSelf: 'stretch',
   },
-  filterScrollView: {
+  handle: {
+    alignItems: 'center',
+    paddingTop: spacing.sm + 4,
+    paddingBottom: spacing.sm,
+  },
+  handleBar: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+  },
+  scroll: {
     flexGrow: 0,
     flexShrink: 1,
   },
-  filterScroll: { padding: 24, paddingBottom: 0 },
-  pillWrapCenter: { justifyContent: 'center' },
-  filterHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 8,
+  scrollContent: {
+    paddingHorizontal: spacing.lg,
   },
-  filterTitle: { fontSize: 24, fontWeight: '800', marginTop: 4 },
-  iconBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    borderWidth: 1,
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
+  },
+  title: {
+    fontSize: 24,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    letterSpacing: -0.3,
+  },
+  resetLink: {
+    fontSize: 15,
+    fontFamily: 'Inter_700Bold',
+    textDecorationLine: 'underline',
+  },
+  section: {
+    marginBottom: SECTION_GAP,
+    gap: 8,
+  },
+  sectionLabel: {
+    fontSize: 12,
+    fontFamily: 'Inter_700Bold',
+    letterSpacing: 0.7,
+  },
+  pillWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  pill: {
+    borderWidth: nb.borderWidth,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    minHeight: 36,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  filterSection: { marginBottom: 20 },
-  pillWrap: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 8 },
-  toggleRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 14,
-    borderRadius: 14,
-    borderWidth: 1,
-    marginTop: 8,
-  },
-  sliderLabels: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 },
-  priceInputs: { flexDirection: 'row', gap: 10, marginTop: 12 },
-  input: {
-    flex: 1,
-    height: 44,
-    borderRadius: 12,
-    borderWidth: 1,
-    paddingHorizontal: 12,
+  pillText: {
     fontSize: 14,
+    fontFamily: 'SpaceGrotesk_700Bold',
   },
-  filterFooter: {
+  priceRow: {
     flexDirection: 'row',
     gap: 10,
-    marginTop: 8,
-    paddingTop: 20,
-    borderTopWidth: 1,
+  },
+  priceField: {
+    flex: 1,
+  },
+  input: {
+    height: nb.minTouchTarget,
+    borderRadius: borderRadius.nbInput,
+    borderWidth: nb.borderWidth,
+    paddingHorizontal: 12,
+    fontSize: 14,
+    fontFamily: 'Inter_500Medium',
+  },
+  toggleGroup: {
+    borderWidth: nb.borderWidth,
+    borderRadius: borderRadius.nbCard,
+    marginBottom: SECTION_GAP,
+    overflow: 'hidden',
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 12,
+    minHeight: 56,
+  },
+  toggleCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  toggleTitle: {
+    fontSize: 15,
+    fontFamily: 'SpaceGrotesk_700Bold',
+  },
+  toggleSub: {
+    fontSize: 12,
+    fontFamily: 'Inter_400Regular',
+  },
+  ctaWrap: {
+    marginTop: 4,
+    marginBottom: spacing.sm,
   },
 });

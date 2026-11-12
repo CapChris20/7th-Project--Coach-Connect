@@ -20,7 +20,6 @@ import {
 import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import ColorText from '../../look-and-feel/ColorText';
 import { HERO_TITLE_TEXT_GRADIENT } from '../../look-and-feel/brandColors';
-import BlurredBackground from '../../look-and-feel/BlurredBackground';
 import { getClientDateKey } from '../../helpers/dateStrings';
 import {
   HOME_STAT_WORKOUT_GRADIENT,
@@ -39,6 +38,7 @@ import LottieView from 'lottie-react-native';
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 import { calculateBMR, calculateTDEE } from '../../for-both/calorieAndMacroMath';
 import styles, { SCREEN_WIDTH, STATS_ROW_PAD_H, STATS_ROW_CARD_GAP, CARD_GAP } from './homeLooks';
+import { lightColors, darkColors } from '../../look-and-feel/colorPalette';
 
 const LOTTIE_SORENESS_EMPTY = require('../../assets/sad reaction.json');
 const LOTTIE_ENERGY_EMPTY = require('../../assets/Run Hamster... run.json');
@@ -48,7 +48,8 @@ const WORKOUT_EMPTY_ICON = require('../../assets/icons/workout.png');
 
 // ===== NAMED CONSTANTS =====
 
-const ACCENT_COLOR = '#7C3AED';
+// Strip pass: brand pink, not purple chrome.
+const ACCENT_COLOR = '#E25588';
 const DAYS_IN_WEEK = 7;
 const SUNDAY_INDEX = 0;
 const MONDAY_SHIFT_FROM_SUNDAY = -6;
@@ -92,16 +93,16 @@ const DEFAULT_FAT_TARGET = 70;
 
 const NUT_DONUT_CALORIES_GRADIENT = ['#DB2777', '#C2410C'];
 const NUT_DONUT_MACRO_GRADIENTS = {
-  protein: ['#6D28D9', '#FDE68A'],
+  protein: ['#BE185D', '#FDE68A'],
   carbs: ['#FBBF24', '#FB7185'],
-  fat: ['#6D28D9', '#DB2777'],
+  fat: ['#E07A32', '#DB2777'],
 };
 
 const EXTRA_NUTRIENT_RULES = {
   Fiber: { goal: DEFAULT_FIBER_GOAL_G, color: '#22C55E' },
   Sugar: { goal: DEFAULT_SUGAR_LIMIT_G, color: '#F97316' },
   Sodium: { goal: SODIUM_LIMIT_MG, color: '#06B6D4' },
-  Potassium: { goal: POTASSIUM_GOAL_MG, color: '#C084FC' },
+  Potassium: { goal: POTASSIUM_GOAL_MG, color: '#E25588' },
 };
 
 // ===== HELPER FUNCTIONS =====
@@ -113,17 +114,18 @@ const EXTRA_NUTRIENT_RULES = {
  * @returns {object}
  */
 const getPremiumTheme = (isDark, colors) => {
-  const text = isDark ? '#FFFFFF' : 'rgba(15,23,42,0.92)';
-  const subtext = isDark ? 'rgba(255,255,255,0.60)' : 'rgba(15,23,42,0.58)';
-  const label = isDark ? 'rgba(255,255,255,0.50)' : 'hsla(222, 47.40%, 11.20%, 0.45)';
-  const icon = isDark ? 'rgba(255,255,255,0.60)' : 'rgba(15,23,42,0.55)';
+  // Strip pass: solid nb tokens — no glass/blur fills.
+  const text = isDark ? darkColors.nbInk : lightColors.nbInk;
+  const subtext = isDark ? darkColors.nbMuted : lightColors.nbMuted;
+  const label = isDark ? darkColors.nbMuted : lightColors.nbMuted;
+  const icon = isDark ? darkColors.nbMuted : lightColors.nbMuted;
 
   return {
     blurTint: isDark ? 'dark' : 'light',
-    cardBg: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.72)',
-    cardBgStrong: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.86)',
-    border: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)',
-    borderSubtle: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+    cardBg: isDark ? darkColors.nbSurface : lightColors.nbSurface,
+    cardBgStrong: isDark ? darkColors.nbSurfaceChip : lightColors.nbSurfaceChip,
+    border: isDark ? darkColors.nbBorder : lightColors.nbBorder,
+    borderSubtle: isDark ? darkColors.nbBorder : lightColors.nbBorder,
     text,
     subtext,
     label,
@@ -133,18 +135,18 @@ const getPremiumTheme = (isDark, colors) => {
 };
 
 function homeCardBackground(isDark, colors) {
-  if (isDark) return '#0A0A0F';
-  return colors?.background ?? '#F2F2F7';
+  if (isDark) return darkColors.nbBackground;
+  return colors?.nbBackground ?? lightColors.nbBackground;
 }
 
 function statKickerColor(isDark, colors) {
-  if (isDark) return 'rgba(255,255,255,0.72)';
-  return colors?.textSecondary ?? '#6B7280';
+  if (isDark) return darkColors.nbMuted;
+  return colors?.nbMuted ?? lightColors.nbMuted;
 }
 
 function statFootnoteColor(isDark, colors) {
-  if (isDark) return 'rgba(255,255,255,0.58)';
-  return colors?.textSecondary ?? '#6B7280';
+  if (isDark) return darkColors.nbMuted;
+  return colors?.nbMuted ?? lightColors.nbMuted;
 }
 
 function cardTiltDegrees(cardIndex) {
@@ -153,22 +155,24 @@ function cardTiltDegrees(cardIndex) {
 }
 
 function agendaTextureColorList(isDark) {
-  if (isDark) return ['rgba(255,255,255,0.07)', 'rgba(255,255,255,0)', 'rgba(192,132,252,0.08)'];
-  return ['rgba(0,0,0,0.03)', 'rgba(0,0,0,0)', 'rgba(192,132,252,0.10)'];
+  // Strip: brand wash, not purple mist.
+  if (isDark) return [darkColors.nbSurfaceChip, 'transparent', 'rgba(226,85,136,0.10)'];
+  return [lightColors.nbSurfaceChip, 'transparent', 'rgba(226,85,136,0.08)'];
 }
 
 function agendaCardColors(isEmpty, isDark) {
-  if (isEmpty && isDark) return ['#1B1430', '#14101F', '#1A120E'];
-  if (isEmpty) return ['#F8F5FF', '#FFFFFF', '#FFF7ED'];
-  if (isDark) return ['#1A1F2E', '#0F1419'];
-  return ['#FFFFFF', '#F3F4F6'];
+  if (isEmpty && isDark) return [darkColors.nbSurface, darkColors.nbBackground, darkColors.nbSurfaceChip];
+  if (isEmpty) return [lightColors.nbBackground, lightColors.nbSurface, '#FFF7ED'];
+  if (isDark) return [darkColors.nbSurface, darkColors.nbBackground];
+  return [lightColors.nbSurface, lightColors.nbBackground];
 }
 
 function agendaEmptyAmbientColors(isDark) {
+  // Strip: purple ambient → brand pink/orange wash only.
   if (isDark) {
-    return ['rgba(109,40,217,0.28)', 'rgba(190,24,93,0.16)', 'rgba(194,65,12,0.18)', 'transparent'];
+    return ['rgba(226,85,136,0.22)', 'rgba(190,24,93,0.16)', 'rgba(194,65,12,0.18)', 'transparent'];
   }
-  return ['rgba(109,40,217,0.12)', 'rgba(190,24,93,0.08)', 'rgba(194,65,12,0.10)', 'transparent'];
+  return ['rgba(226,85,136,0.10)', 'rgba(190,24,93,0.08)', 'rgba(194,65,12,0.10)', 'transparent'];
 }
 
 function agendaEmptyRuleColors(isDark) {
@@ -207,7 +211,7 @@ function compactNutritionRings(nutrientsWithData, consumed, goal) {
       value: roundedCalories,
       goal,
       label: 'Calories',
-      color: '#8B5CF6',
+      color: '#E25588',
       gradientColors: NUT_DONUT_CALORIES_GRADIENT,
       unit: '',
     }];
@@ -216,8 +220,8 @@ function compactNutritionRings(nutrientsWithData, consumed, goal) {
 }
 
 function calorieBarColor(isDark) {
-  if (isDark) return '#8B5CF6';
-  return '#7C3AED';
+  if (isDark) return '#E25588';
+  return '#BE185D';
 }
 
 function clamp(value, min, max) {
@@ -395,29 +399,28 @@ function workoutFontSizeForCard(displayWorkoutType, cardWidth) {
   return size;
 }
 
-const LiquidGlassStatCard = ({ isDark, colors, children, style, centerContent }) => {
-  const surface = colors?.surface;
-  const border = colors?.border;
-  const shadow = colors?.black;
-  const cardFill = isDark ? hexToRgba(surface, 0.35) : hexToRgba(surface, 0.75);
-  const cardBorder = isDark ? hexToRgba(border, 0.6) : hexToRgba(border, 0.75);
+// Strip pass: solid nb surface — no BlurredBackground / glass fill.
+const FlatStatCard = ({ isDark, colors, children, style, centerContent }) => {
+  const cardFill = isDark ? darkColors.nbSurface : lightColors.nbSurface;
+  const cardBorder = isDark ? darkColors.nbBorder : lightColors.nbBorder;
+  const shadow = colors?.black ?? (isDark ? darkColors.nbShadow : lightColors.nbShadow);
 
   return (
     <View style={[styles.statCardShadow, { shadowColor: shadow }, style]}>
-      <BlurredBackground intensity={28} tint={isDark ? 'dark' : 'light'} style={styles.statCardBlur}>
-        <View
-          style={[
-            styles.statCardInner,
-            centerContent && styles.statCardInnerCentered,
-            {
-              backgroundColor: cardFill,
-              borderColor: cardBorder,
-            },
-          ]}
-        >
-          {children}
-        </View>
-      </BlurredBackground>
+      <View
+        style={[
+          styles.statCardBlur,
+          styles.statCardInner,
+          centerContent && styles.statCardInnerCentered,
+          {
+            backgroundColor: cardFill,
+            borderColor: cardBorder,
+            borderWidth: 2,
+          },
+        ]}
+      >
+        {children}
+      </View>
     </View>
   );
 };
@@ -640,7 +643,7 @@ const TopStatsRow = ({
         {/* Card 1 — Workout */}
         <View style={{ width: cardWidth }}>
           <FightyBouncyCardWrap index={0} width={cardWidth} disableAnimations>
-            <LiquidGlassStatCard isDark={isDark} colors={colors} style={{ width: cardWidth }}>
+            <FlatStatCard isDark={isDark} colors={colors} style={{ width: cardWidth }}>
               <Text style={[styles.statKicker, { color: kickerColor }]}>TODAY'S WORKOUT</Text>
               {displayWorkoutType ? (
                 <View style={styles.statGradientBlock}>
@@ -674,14 +677,14 @@ const TopStatsRow = ({
                   <Text style={[styles.statEmptyText, { color: colors?.textSecondary }]}>No workout planned yet</Text>
                 </View>
               )}
-            </LiquidGlassStatCard>
+            </FlatStatCard>
           </FightyBouncyCardWrap>
         </View>
 
         {/* Card 2 — Water */}
         <View style={{ width: cardWidth }}>
           <FightyBouncyCardWrap index={1} width={cardWidth} disableAnimations>
-            <LiquidGlassStatCard isDark={isDark} colors={colors} style={{ width: cardWidth }}>
+            <FlatStatCard isDark={isDark} colors={colors} style={{ width: cardWidth }}>
               <Text style={[styles.statKicker, { color: kickerColor }]}>WATER INTAKE</Text>
               {waterVal !== null ? (
                 <View style={styles.statGradientBlock}>
@@ -708,14 +711,14 @@ const TopStatsRow = ({
                   </TouchableOpacity>
                 </View>
               )}
-            </LiquidGlassStatCard>
+            </FlatStatCard>
           </FightyBouncyCardWrap>
         </View>
 
         {/* Card 3 — Sleep */}
         <View style={{ width: cardWidth }}>
           <FightyBouncyCardWrap index={2} width={cardWidth} disableAnimations>
-            <LiquidGlassStatCard isDark={isDark} colors={colors} style={{ width: cardWidth }}>
+            <FlatStatCard isDark={isDark} colors={colors} style={{ width: cardWidth }}>
               <Text style={[styles.statKicker, { color: kickerColor }]}>SLEEP</Text>
               {sleepVal !== null ? (
                 <View style={styles.statGradientBlock}>
@@ -742,7 +745,7 @@ const TopStatsRow = ({
                   </TouchableOpacity>
                 </View>
               )}
-            </LiquidGlassStatCard>
+            </FlatStatCard>
           </FightyBouncyCardWrap>
         </View>
 
@@ -795,7 +798,7 @@ const WellnessStatsRow = ({ isDark, colors, soreness, energyLevel, stressLevel, 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.statsRowContent} decelerationRate="fast">
         <View style={{ width: cardWidth }}>
           <FightyBouncyCardWrap index={0} width={cardWidth} disableAnimations>
-            <LiquidGlassStatCard isDark={isDark} colors={colors} style={{ width: '100%' }} centerContent>
+            <FlatStatCard isDark={isDark} colors={colors} style={{ width: '100%' }} centerContent>
               <Text style={[wellnessKicker, { color: kickerColor }]}>SORENESS</Text>
               {soreness != null && soreness !== '' ? (
                 <View style={styles.statWellnessValueBlock}>
@@ -817,13 +820,13 @@ const WellnessStatsRow = ({ isDark, colors, soreness, energyLevel, stressLevel, 
                   </TouchableOpacity>
                 </View>
               )}
-            </LiquidGlassStatCard>
+            </FlatStatCard>
           </FightyBouncyCardWrap>
         </View>
 
         <View style={{ width: cardWidth }}>
           <FightyBouncyCardWrap index={1} width={cardWidth} disableAnimations>
-            <LiquidGlassStatCard isDark={isDark} colors={colors} style={{ width: '100%' }} centerContent>
+            <FlatStatCard isDark={isDark} colors={colors} style={{ width: '100%' }} centerContent>
               <Text style={[wellnessKicker, { color: kickerColor }]}>ENERGY LEVEL</Text>
               {energyLevel != null && energyLevel !== '' ? (
                 <View style={styles.statWellnessValueBlock}>
@@ -845,13 +848,13 @@ const WellnessStatsRow = ({ isDark, colors, soreness, energyLevel, stressLevel, 
                   </TouchableOpacity>
                 </View>
               )}
-            </LiquidGlassStatCard>
+            </FlatStatCard>
           </FightyBouncyCardWrap>
         </View>
 
         <View style={{ width: cardWidth }}>
           <FightyBouncyCardWrap index={2} width={cardWidth} disableAnimations>
-            <LiquidGlassStatCard isDark={isDark} colors={colors} style={{ width: '100%' }} centerContent>
+            <FlatStatCard isDark={isDark} colors={colors} style={{ width: '100%' }} centerContent>
               <Text style={[wellnessKicker, { color: kickerColor }]}>STRESS LEVEL</Text>
               {stressLevel != null && stressLevel !== '' ? (
                 <View style={styles.statWellnessValueBlock}>
@@ -873,7 +876,7 @@ const WellnessStatsRow = ({ isDark, colors, soreness, energyLevel, stressLevel, 
                   </TouchableOpacity>
                 </View>
               )}
-            </LiquidGlassStatCard>
+            </FlatStatCard>
           </FightyBouncyCardWrap>
         </View>
       </ScrollView>
@@ -887,12 +890,12 @@ const GreetingSection = ({ userName = "Client", theme, isDark }) => {
     <View style={styles.greetingSection}>
       {/* Keep greeting logic — just style/layout changes */}
       <View style={styles.greetingLineWrap}>
-        <Text style={[styles.greetingTitle, { color: dark ? '#FFFFFF' : '#111827' }]}>
+        <Text style={[styles.greetingTitle, { color: dark ? lightColors.white : '#111827' }]}>
           Good {getAuroraHeroGreeting()},
         </Text>
         <ColorText
           style={[styles.greetingTitle, { marginLeft: 6 }]}
-          colors={['#FF6B9D', '#C084FC']}
+          colors={['#E25588', '#E07A32']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
         >
@@ -931,7 +934,7 @@ const NewCalendar = ({ theme }) => {
           !isDark && styles.lightCard,
           {
             borderWidth: 1,
-            borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(10,10,15,0.08)',
+            borderColor: isDark ? darkColors.nbBorder : lightColors.nbBorder,
             borderRadius: 16,
           },
         ]}
@@ -1024,7 +1027,7 @@ function AgendaFocusBody({ isEmpty, mutedColor, shownExercises, itemAnims, dotCo
           end={{ x: 1, y: 1 }}
           style={styles.agendaEmptyIconWrap}
         >
-          <Ionicons name="barbell-outline" size={22} color="#FFFFFF" />
+          <Ionicons name="barbell-outline" size={22} color={lightColors.white} />
         </LinearGradient>
         <ColorText
           colors={HERO_TITLE_TEXT_GRADIENT}
@@ -1062,10 +1065,10 @@ function AgendaFocusBody({ isEmpty, mutedColor, shownExercises, itemAnims, dotCo
 // Training agenda: Today's workouts list with checkboxes and structured exercises.
 const TrainingAgenda = ({ theme, workouts = [] }) => {
   const isDark = theme === 'dark';
-  const textColor = isDark ? '#FFFFFF' : '#111827';
-  const mutedColor = isDark ? 'rgba(255,255,255,0.62)' : 'rgba(17,24,39,0.58)';
-  const subtleBorder = isDark ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.10)';
-  const subtleFill = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)';
+  const textColor = isDark ? lightColors.white : '#111827';
+  const mutedColor = isDark ? darkColors.nbMuted : lightColors.nbMuted;
+  const subtleBorder = isDark ? darkColors.nbBorder : lightColors.nbBorder;
+  const subtleFill = isDark ? darkColors.nbSurfaceChip : lightColors.nbSurfaceChip;
   const agendaTextureColors = agendaTextureColorList(isDark);
 
   const firstWorkout = (workouts || [])[0] || null;
@@ -1143,7 +1146,7 @@ const TrainingAgenda = ({ theme, workouts = [] }) => {
           styles.agendaColorBorder,
           {
             borderWidth: 1,
-            borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(10,10,15,0.08)',
+            borderColor: isDark ? darkColors.nbBorder : lightColors.nbBorder,
             borderRadius: 18,
             padding: 0,
           },
@@ -1261,9 +1264,9 @@ const NutritionCard = ({ theme, consumed = 0, goal = DEFAULT_NUTRITION_CARD_GOAL
     Math.round(Number(consumed) || 0) > 0 ||
     (allNutrients || []).some((n) => Number(n.value) > 0);
 
-  const textPrimary = isDark ? '#FFFFFF' : '#1a1040';
-  const textMuted = isDark ? 'rgba(255,255,255,0.65)' : 'rgba(26,16,64,0.6)';
-  const trackColor = isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)';
+  const textPrimary = isDark ? darkColors.nbInk : lightColors.nbInk;
+  const textMuted = isDark ? darkColors.nbMuted : lightColors.nbMuted;
+  const trackColor = isDark ? darkColors.nbBorder : lightColors.nbBorder;
 
   // Arc progress — one circle with value in center, label below
   const ClientArcProgress = ({ value, goal, label, color, unit, gradientColors }) => {
@@ -1324,8 +1327,8 @@ const NutritionCard = ({ theme, consumed = 0, goal = DEFAULT_NUTRITION_CARD_GOAL
   const barColor = calorieBarColor(isDark);
   const calorieSummary = `${Math.round(consumed)} / ${goal} kcal`;
   const barWidth = `${Math.min(pct, 100)}%`;
-  let nutritionBorderColor = 'rgba(10,10,15,0.08)';
-  if (isDark) nutritionBorderColor = 'rgba(255,255,255,0.10)';
+  let nutritionBorderColor = lightColors.nbBorder;
+  if (isDark) nutritionBorderColor = darkColors.nbBorder;
 
   const ringCells = (rings, cellStyle) => rings.map((ring) => (
     <View key={ring.label} style={cellStyle}>
@@ -1349,7 +1352,7 @@ const NutritionCard = ({ theme, consumed = 0, goal = DEFAULT_NUTRITION_CARD_GOAL
             value={roundedCalories}
             goal={goal}
             label="Calories"
-            color="#8B5CF6"
+            color="#E25588"
             gradientColors={NUT_DONUT_CALORIES_GRADIENT}
             unit=""
           />
@@ -1468,8 +1471,8 @@ const NutritionCard = ({ theme, consumed = 0, goal = DEFAULT_NUTRITION_CARD_GOAL
 
 const NotesFiles = ({ theme, items = [], onOpenFile }) => {
   const isDark = theme === 'dark';
-  const textColor = isDark ? '#fff' : '#1a1040';
-  const mutedColor = isDark ? 'rgba(255,255,255,0.6)' : 'rgba(26,16,64,0.6)';
+  const textColor = isDark ? darkColors.nbInk : lightColors.nbInk;
+  const mutedColor = isDark ? darkColors.nbMuted : lightColors.nbMuted;
   const fromYou = (items || []).filter((item) => (item.addedBy || 'client') === 'client');
   const fromTrainer = (items || []).filter((item) => item.addedBy === 'trainer' || (item.type === 'document' && item.trainerId));
   const hasAny = items.length > 0;
@@ -1523,7 +1526,7 @@ const NotesFiles = ({ theme, items = [], onOpenFile }) => {
           <>
             <Text style={[styles.notesSectionTitle, { color: mutedColor }]}>Notes</Text>
             {(notes || []).map((note, i) => (
-              <View key={note.id || i} style={[styles.notesNoteCard, { borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)' }]}>
+              <View key={note.id || i} style={[styles.notesNoteCard, { borderColor: isDark ? darkColors.nbBorder : lightColors.nbBorder }]}>
                 <Text style={[styles.notesNoteText, { color: textColor }]}>{note.content}</Text>
                 <Text style={[styles.notesNoteDate, { color: mutedColor }]}>{formatDate(note.createdAt)}</Text>
               </View>
@@ -1536,13 +1539,13 @@ const NotesFiles = ({ theme, items = [], onOpenFile }) => {
             <View style={styles.notesMediaGrid}>
               {(photos || []).map((photo, i) => (
                 <TouchableOpacity key={photo.id || i} onPress={() => photo.url && openUrl(photo.url, photo)} style={styles.notesMediaCard} activeOpacity={0.8}>
-                  <Image source={{ uri: photo.url }} style={[styles.notesMediaThumb, { borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' }]} />
+                  <Image source={{ uri: photo.url }} style={[styles.notesMediaThumb, { borderColor: isDark ? darkColors.nbBorder : lightColors.nbBorder }]} />
                   <Text style={[styles.notesMediaLabel, { color: mutedColor }]} numberOfLines={1}>{photo.name || 'Photo'}</Text>
                 </TouchableOpacity>
               ))}
               {(videos || []).map((video, i) => (
                 <TouchableOpacity key={video.id || i} onPress={() => video.url && openUrl(video.url, video)} style={styles.notesMediaCard} activeOpacity={0.8}>
-                  <View style={[styles.notesMediaThumb, styles.notesVideoPlaceholder, { borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' }]}>
+                  <View style={[styles.notesMediaThumb, styles.notesVideoPlaceholder, { borderColor: isDark ? darkColors.nbBorder : lightColors.nbBorder }]}>
                     <Feather name="video" size={24} color={isDark ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.8)'} />
                   </View>
                   <Text style={[styles.notesMediaLabel, { color: mutedColor }]} numberOfLines={1}>{video.name || 'Video'}</Text>
@@ -1564,10 +1567,10 @@ const NotesFiles = ({ theme, items = [], onOpenFile }) => {
                     openUrl(file.url, file);
                   }
                 }}
-                style={[styles.notesDocRow, { borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)' }]}
+                style={[styles.notesDocRow, { borderColor: isDark ? darkColors.nbBorder : lightColors.nbBorder }]}
                 activeOpacity={0.8}
               >
-                <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', alignItems: 'center', justifyContent: 'center' }}>
+                <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: isDark ? darkColors.nbSurfaceChip : lightColors.nbSurfaceChip, alignItems: 'center', justifyContent: 'center' }}>
                   <Ionicons name={fileIcon(file)} size={22} color={textColor} />
                 </View>
                 <View style={styles.notesFileInfo}>
@@ -1602,7 +1605,7 @@ const NotesFiles = ({ theme, items = [], onOpenFile }) => {
         Notes & Files
       </Text>
       <LinearGradient
-        colors={['#C084FC', '#FF6B9D']}
+        colors={['#E25588', '#E07A32']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.notesColorBorder}

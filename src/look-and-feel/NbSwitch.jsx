@@ -7,8 +7,7 @@
 import React from 'react';
 import { View, Pressable, StyleSheet, Animated } from 'react-native';
 
-import { LinearGradient } from 'expo-linear-gradient';
-import { nb, gradients } from './colorPalette';
+import { nb } from './colorPalette';
 import { useTheme } from './lightDarkMode';
 
 /**
@@ -41,35 +40,13 @@ export default function NbSwitch({ value, onValueChange, style }) {
     onValueChange(!value);
   };
   
-  const trackInner = value ? (
-    <LinearGradient
-      colors={gradients.brand.colors}
-      start={gradients.brand.start}
-      end={gradients.brand.end}
-      style={[
-        styles.track,
-        {
-          borderColor: colors.nbBorder,
-        },
-      ]}
-    >
-      <Animated.View
-        style={[
-          styles.thumb,
-          {
-            backgroundColor: '#0A0A0F',
-            borderColor: '#0A0A0F',
-            transform: [{ translateX: thumbTranslate }],
-          },
-        ]}
-      />
-    </LinearGradient>
-  ) : (
+  // Design Law: on = solid fill track + onFill thumb (not brand gradient)
+  const trackInner = (
     <View
       style={[
         styles.track,
         {
-          backgroundColor: colors.nbSurface,
+          backgroundColor: value ? colors.nbFill : colors.nbSurface,
           borderColor: colors.nbBorder,
         },
       ]}
@@ -78,7 +55,7 @@ export default function NbSwitch({ value, onValueChange, style }) {
         style={[
           styles.thumb,
           {
-            backgroundColor: colors.nbInk,
+            backgroundColor: value ? colors.nbOnFill : colors.nbInk,
             borderColor: colors.nbBorder,
             transform: [{ translateX: thumbTranslate }],
           },

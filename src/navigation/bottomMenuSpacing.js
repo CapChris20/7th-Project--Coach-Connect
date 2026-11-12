@@ -8,8 +8,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // ===== NAMED CONSTANTS =====
 
-// Manipulate here: this has to match the drawn height of the bottom menu.
-const BOTTOM_NAV_BAR_HEIGHT = 80;
+// Manipulate here: this has to match the drawn height of the bottom menu (BottomMenuBar BAR_VISUAL_HEIGHT).
+const BOTTOM_NAV_BAR_HEIGHT = 90;
 const SHELL_SAFE_AREA_EDGES = ['left', 'right'];
 const DEFAULT_CONTENT_GAP = 12;
 const DEFAULT_MODAL_EXTRA = 32;
@@ -85,6 +85,17 @@ export function useModalScrollBottomPad(extra = DEFAULT_MODAL_EXTRA) {
 export function useEmbeddedScrollBottomPad(extra = DEFAULT_EMBEDDED_EXTRA) {
   const insets = useSafeAreaInsets();
   return paddingAboveDeviceEdge(insets.bottom, extra);
+}
+
+/**
+ * Shell SafeArea is left/right only — section titles must clear status bar / Dynamic Island.
+ * vocab: use this (or NbPageHeader) for every tab-root header; never pad with spacing.sm alone.
+ * @param {number} [extra] gap under the inset (default 8)
+ * @returns {number}
+ */
+export function useShellTopPad(extra = 8) {
+  const insets = useSafeAreaInsets();
+  return Math.max(insets.top, 0) + extra;
 }
 
 export {

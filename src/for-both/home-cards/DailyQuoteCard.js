@@ -7,6 +7,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
 import dailyQuotesData from '../../daily-stats/dailyQuotes.json';
+import { lightColors } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
@@ -49,14 +50,14 @@ function cardThemeColors(isDark, embedded) {
     return {
       cardBackground: 'transparent',
       borderColor: 'transparent',
-      textColor: isDark ? '#FFFFFF' : '#111827',
+      textColor: isDark ? lightColors.white : '#111827',
       authorColor: isDark ? 'rgba(255,255,255,0.78)' : 'rgba(17,24,39,0.70)',
     };
   }
   return {
     cardBackground: isDark ? 'rgba(10,10,15,0.78)' : 'rgba(255,255,255,0.92)',
     borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(17,24,39,0.10)',
-    textColor: isDark ? '#FFFFFF' : '#111827',
+    textColor: isDark ? lightColors.white : '#111827',
     authorColor: isDark ? 'rgba(255,255,255,0.78)' : 'rgba(17,24,39,0.70)',
   };
 }
@@ -227,6 +228,32 @@ export default function DailyQuoteCard({ userId, cardWidth, cardMinHeight, embed
 }
 
 /**
+ * Hook for Design Law hero — same pin/rotate rules as DailyQuoteCard.
+ * @param {string|undefined} userId
+ * @returns {{ q: string, a: string }}
+ */
+export function useDailyQuote(userId) {
+  const [quoteIndex, setQuoteIndex] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      if (!userId) return;
+      try {
+        await resolveQuoteIndexForCard(userId, (index) => {
+          if (!cancelled) setQuoteIndex(index);
+        });
+      } catch (_) {}
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
+  const quote = quoteAtIndex(quoteIndex);
+  return { q: quote?.q || FALLBACK_QUOTE.q, a: displayAuthor(quote?.a) };
+}
+
+/**
  * Compact quote. `maxLines` truncates; omit it and the quote wraps.
  * @param {{ userId?: string, isDarkOverride?: boolean, maxLines?: number, embedded?: boolean }} props
  */
@@ -271,7 +298,7 @@ export function DailyQuotePill({ userId, isDarkOverride, maxLines, embedded = fa
         ]}
       >
         <Text
-          style={[pillStyles.text, { color: isDark ? '#FFFFFF' : '#0A0A0F' }]}
+          style={[pillStyles.text, { color: isDark ? lightColors.white : lightColors.nbInk }]}
           {...(hasLineLimit ? { numberOfLines: maxLines, ellipsizeMode: 'tail' } : {})}
         >
           "{quote.q}"
@@ -320,7 +347,7 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '800',
     letterSpacing: 0.5,
-    color: '#FF6B9D',
+    color: lightColors.primary,
   },
   authorText: {
     marginTop: 4,

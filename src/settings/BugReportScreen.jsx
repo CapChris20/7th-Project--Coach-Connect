@@ -3,19 +3,19 @@
 // Used from Settings. Field order (expected, happened, steps, device) is what the email body uses.
 
 import React, { useMemo, useRef, useState } from 'react';
-import { Animated, View, Text, StyleSheet, ScrollView, StatusBar, Alert, Pressable, TextInput, ActivityIndicator } from 'react-native';
+import { Animated, View, Text, StyleSheet, ScrollView, StatusBar, Alert, Pressable, TextInput } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../look-and-feel/lightDarkMode';
 import { getSupportEmail } from './supportContact';
 import { openSupportMailto, offerSupportMailtoFallback } from './emailSupport';
 import { getApiBase } from '../for-both/online-connection/whereToConnect';
 import { getAuth } from 'firebase/auth';
-import TopHeader from '../for-both/loading-and-header/TopHeader';
+import NbPageHeader from '../look-and-feel/NbPageHeader';
 import { SHELL_SAFE_AREA_EDGES, FORM_SCROLL_PROPS, useShellBottomNavInset } from '../navigation/bottomMenuSpacing';
 import { Ionicons } from '@expo/vector-icons';
 import NbCard from '../look-and-feel/NbCard';
 import NbButton from '../look-and-feel/NbButton';
-import { nb, gradients, spacing } from '../look-and-feel/colorPalette';
+import { nb, spacing } from '../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
@@ -356,8 +356,8 @@ export default function BugReportScreen({ onClose, embedShellBottomNav = false }
 
   return (
     <SafeAreaView style={styles.container} edges={SHELL_SAFE_AREA_EDGES}>
-      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.background} />
-      <TopHeader title="Report a bug" skipTopSafeInset onBack={onClose} />
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.nbBackground} />
+      <NbPageHeader title="Report a bug" onBack={onClose} />
 
       <ScrollView
         style={{ flex: 1 }}
@@ -446,7 +446,7 @@ export default function BugReportScreen({ onClose, embedShellBottomNav = false }
             <Text style={styles.helper}>Don’t include passwords or payment details.</Text>
 
             <View style={styles.buttonWrap}>
-              <NbButton variant="brand" onPress={submitBug} disabled={submitting}>
+              <NbButton variant="fill" onPress={submitBug} disabled={submitting}>
                 {submitting ? 'Sending…' : 'Send bug report'}
               </NbButton>
             </View>

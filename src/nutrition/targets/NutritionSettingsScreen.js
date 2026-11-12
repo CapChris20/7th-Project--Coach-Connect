@@ -1,6 +1,8 @@
-// Nutrition goals editor — calories + protein/carbs/fat lanes.
-// Flow: load current goals → nudge or type numbers → Save writes targets → optional reset to onboarding.
-// Used by: daily log (embedded) or as a standalone Goals screen.
+// Design Law Nutrition settings / goals editor (PNG 19–24).
+// Flow: hub rows → Set your numbers (black cal card + macro sliders) → Save; Reset opens confirm sheet.
+// Used by DailyLogContent (embedded) or standalone. Firestore goal keys stay frozen.
+//
+// vocab: HardShadow = solid offset shadow; NbSlider = gradient-fill track + ink knob
 
 import React, { useState, useMemo } from 'react';
 import {
@@ -8,29 +10,23 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  TextInput,
   ScrollView,
-  Alert,
   StatusBar,
-  Image,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
-import { useShellBottomNavInset, SHELL_SAFE_AREA_EDGES } from '../../navigation/bottomMenuSpacing';
-import { NUT_MACRO_GRADIENTS } from '../nutritionColors';
-import { lightColors, darkColors, nb, borderRadius, gradients as nbGradients } from '../../look-and-feel/colorPalette';
-import NbCard from '../../look-and-feel/NbCard';
+import { useShellBottomNavInset, SHELL_SAFE_AREA_EDGES, FORM_SCROLL_PROPS } from '../../navigation/bottomMenuSpacing';
+import { accentGradients, nb, borderRadius, spacing } from '../../look-and-feel/colorPalette';
+import HardShadow from '../../look-and-feel/HardShadow';
 import NbButton from '../../look-and-feel/NbButton';
+import NbPageHeader from '../../look-and-feel/NbPageHeader';
+import NbSlider from '../../look-and-feel/NbSlider';
+import NbIconChip from '../../look-and-feel/NbIconChip';
+import NbSheet from '../../look-and-feel/NbSheet';
 
 // ===== NAMED CONSTANTS =====
-
-// Use neobrutalist gradients from tokens
-const CTA_GRAD = nbGradients.brand.colors;
-const PINK_SOFT = nbGradients.brand.colors[0];
-const ORANGE_SOFT = nbGradients.brand.colors[1];
-const CYAN = '#06B6D4';
 
 const DEFAULT_CALORIES = 2000;
 const DEFAULT_PROTEIN_GRAMS = 150;
@@ -41,155 +37,70 @@ const MAX_DAILY_CALORIES = 5000;
 const MAX_PROTEIN_GRAMS = 500;
 const MAX_CARBS_GRAMS = 600;
 const MAX_FAT_GRAMS = 200;
-const CALORIE_NUDGE_STEP = 50;
-const PROTEIN_SPLIT_FRACTION = 0.3;
-const CARBS_SPLIT_FRACTION = 0.4;
-const FAT_SPLIT_FRACTION = 0.3;
-const KCAL_PER_GRAM_PROTEIN_OR_CARB = 4;
-const KCAL_PER_GRAM_FAT = 9;
 const SHELL_NAV_INSET = 24;
 const STANDALONE_BOTTOM_SAFE_PAD = 16;
 const STANDALONE_EXTRA_SCROLL_PAD = 32;
-const BAR_FILL_PERCENT = 100;
-const MIN_VISIBLE_BAR_PERCENT = 4;
-const PROTEIN_BAR_MAX_GRAMS = 250;
-const CARBS_BAR_MAX_GRAMS = 350;
-const FAT_BAR_MAX_GRAMS = 120;
-const MACRO_INPUT_MAX_LENGTH = 3;
-const CALORIE_INPUT_MAX_LENGTH = 4;
+const KCAL_PER_P = 4;
+const KCAL_PER_C = 4;
+const KCAL_PER_F = 9;
 
-const MACRO_LANES = [
-  {
-    key: 'protein',
-    label: 'Protein',
-    icon: require('../../assets/icons/Protein.png'),
-    gradient: NUT_MACRO_GRADIENTS.protein,
-    barMax: PROTEIN_BAR_MAX_GRAMS,
-  },
-  {
-    key: 'carbs',
-    label: 'Carbs',
-    icon: require('../../assets/icons/Carbs.png'),
-    gradient: NUT_MACRO_GRADIENTS.carbs,
-    barMax: CARBS_BAR_MAX_GRAMS,
-  },
-  {
-    key: 'fat',
-    label: 'Fat',
-    icon: require('../../assets/icons/Fats.png'),
-    gradient: NUT_MACRO_GRADIENTS.fat,
-    barMax: FAT_BAR_MAX_GRAMS,
-  },
-];
+// Manipulate here: preset splits at the current calorie target (PNG macro chips)
+const PRESETS = {
+  balanced: { id: 'balanced', label: 'Balanced', p: 0.3, c: 0.4, f: 0.3 },
+  high_protein: { id: 'high_protein', label: 'High protein', p: 0.4, c: 0.3, f: 0.3 },
+  low_carb: { id: 'low_carb', label: 'Low carb', p: 0.35, c: 0.2, f: 0.45 },
+};
+
+// Slider accent fills only — never card borders (Design Law)
+const CAL_SLIDER_GRAD = accentGradients[3]; // blue→purple
+const PROTEIN_SLIDER_GRAD = accentGradients[2]; // purple→pink
+const CARBS_SLIDER_GRAD = accentGradients[1]; // coral→red
+const FAT_SLIDER_GRAD = accentGradients[4]; // peach→orange
+
+const FOOD_ICON = require('../../assets/icons/handoff/apple.png');
+const MUSCLE_ICON = require('../../assets/icons/handoff/muscle.png');
+const HYDRATION_ICON = require('../../assets/icons/handoff/hydration.png');
 
 // ===== HELPER FUNCTIONS =====
 
-/**
- * Light vs dark paint tokens for the goals editor.
- * @param {boolean} isDark
- * @returns {object}
- */
-function getPalette(isDark) {
-  const nbColors = isDark ? darkColors : lightColors;
+function clampCalories(raw) {
+  const n = Math.round(Number(raw) || DEFAULT_CALORIES);
+  return Math.max(MIN_DAILY_CALORIES, Math.min(MAX_DAILY_CALORIES, n));
+}
+
+function clampGrams(raw, max) {
+  return Math.round(Math.max(0, Math.min(max, Number(raw) || 0)));
+}
+
+function macrosFromPreset(calories, preset) {
+  const cal = clampCalories(calories);
   return {
-    bg: nbColors.nbBackground,
-    panel: nbColors.nbSurface,
-    cardSolid: nbColors.nbSurface,
-    panelBorder: nbColors.nbBorder,
-    text: nbColors.nbInk,
-    textSoft: nbColors.nbMuted,
-    textMuted: nbColors.nbMuted,
-    inputBg: nbColors.nbSurfaceChip,
-    stepBg: nbColors.nbSurfaceChip,
-    stepBorder: nbColors.nbBorder,
-    destructive: isDark ? '#FCA5A5' : '#DC2626',
+    protein: Math.round((cal * preset.p) / KCAL_PER_P),
+    carbs: Math.round((cal * preset.c) / KCAL_PER_C),
+    fat: Math.round((cal * preset.f) / KCAL_PER_F),
   };
 }
 
-/**
- * Clamp a typed calorie string into the allowed daily range.
- * @param {string|number} rawCalories
- * @returns {number}
- */
-function clampDailyCalories(rawCalories) {
-  const parsed = parseInt(rawCalories, 10) || DEFAULT_CALORIES;
-  return Math.max(MIN_DAILY_CALORIES, Math.min(MAX_DAILY_CALORIES, parsed));
+function macrosAddUpKcal(protein, carbs, fat) {
+  return Math.round(
+    clampGrams(protein, MAX_PROTEIN_GRAMS) * KCAL_PER_P
+      + clampGrams(carbs, MAX_CARBS_GRAMS) * KCAL_PER_C
+      + clampGrams(fat, MAX_FAT_GRAMS) * KCAL_PER_F,
+  );
 }
 
-/**
- * Balanced macro grams suggested from a calorie target (30/40/30 split).
- * @param {number} calorieTarget
- * @returns {{ protein: number, carbs: number, fat: number }}
- */
-function estimatedMacrosFromCalories(calorieTarget) {
-  const calories = Number(calorieTarget) || 0;
-  return {
-    protein: Math.round((calories * PROTEIN_SPLIT_FRACTION) / KCAL_PER_GRAM_PROTEIN_OR_CARB),
-    carbs: Math.round((calories * CARBS_SPLIT_FRACTION) / KCAL_PER_GRAM_PROTEIN_OR_CARB),
-    fat: Math.round((calories * FAT_SPLIT_FRACTION) / KCAL_PER_GRAM_FAT),
-  };
-}
-
-/**
- * Clamp a macro gram field to a sane max.
- * @param {string|number} rawGrams
- * @param {number} maxGrams
- * @returns {number}
- */
-function clampMacroGrams(rawGrams, maxGrams) {
-  return Math.round(Math.max(0, Math.min(maxGrams, parseFloat(rawGrams) || 0)));
-}
-
-/**
- * How full the lane bar should look (0–1), from the typed grams vs that lane’s visual max.
- * @param {string|number} value
- * @param {number} barMax
- * @returns {number}
- */
-function laneFillFraction(value, barMax) {
-  const grams = Math.max(0, parseFloat(value) || 0);
-  return Math.min(1, grams / barMax);
-}
-
-/**
- * Width percent for the filled portion of a macro bar.
- * Manipulate here: MIN_VISIBLE_BAR_PERCENT keeps a tiny sliver visible when grams > 0.
- * @param {number} fillFraction
- * @returns {number}
- */
-function laneFillWidthPercent(fillFraction) {
-  if (fillFraction <= 0) return 0;
-  return Math.max(fillFraction * BAR_FILL_PERCENT, MIN_VISIBLE_BAR_PERCENT);
-}
-
-/**
- * Bottom padding so the floating tab bar never covers Save / Reset.
- * @param {boolean} embedded
- * @param {boolean} reserveShellBottomNav
- * @param {number} shellBottomPad
- * @param {number} safeBottom
- * @returns {number}
- */
 function scrollContentBottomPad(embedded, reserveShellBottomNav, shellBottomPad, safeBottom) {
   if (embedded || reserveShellBottomNav) return shellBottomPad;
   return Math.max(safeBottom, STANDALONE_BOTTOM_SAFE_PAD) + STANDALONE_EXTRA_SCROLL_PAD;
 }
 
-/**
- * Build the goals object the parent saves to Firestore / local state.
- * @param {string} caloriesText
- * @param {string} proteinText
- * @param {string} carbsText
- * @param {string} fatText
- * @returns {object}
- */
-function goalsPayloadFromFields(caloriesText, proteinText, carbsText, fatText) {
-  const calories = clampDailyCalories(caloriesText);
-  const proteinGrams = clampMacroGrams(proteinText, MAX_PROTEIN_GRAMS);
-  const carbsGrams = clampMacroGrams(carbsText, MAX_CARBS_GRAMS);
-  const fatGrams = clampMacroGrams(fatText, MAX_FAT_GRAMS);
+function goalsPayload(calories, protein, carbs, fat) {
+  const cal = clampCalories(calories);
+  const proteinGrams = clampGrams(protein, MAX_PROTEIN_GRAMS);
+  const carbsGrams = clampGrams(carbs, MAX_CARBS_GRAMS);
+  const fatGrams = clampGrams(fat, MAX_FAT_GRAMS);
   return {
-    calories,
+    calories: cal,
     proteinTarget: proteinGrams,
     carbsTarget: carbsGrams,
     fatTarget: fatGrams,
@@ -198,162 +109,321 @@ function goalsPayloadFromFields(caloriesText, proteinText, carbsText, fatText) {
 }
 
 /**
- * One macro row: icon, editable grams, gradient fill bar.
- * @param {{ row: object, value: string, onChange: Function, palette: object }} props
+ * Ink-filled meal-style chip for macro presets (PNG 19 — HardShadow pills).
  */
-function MacroLane({ row, value, onChange, palette }) {
-  const fillFraction = laneFillFraction(value, row.barMax);
-  const fillWidth = `${laneFillWidthPercent(fillFraction)}%`;
-
+function PresetChip({ label, selected, onPress, colors }) {
   return (
-    <NbCard style={laneStyles.wrap}>
-      <View style={laneStyles.topRow}>
-        <Image source={row.icon} style={laneStyles.icon} resizeMode="contain" />
-        <Text style={[laneStyles.label, { color: palette.text }]}>{row.label}</Text>
-        <View style={laneStyles.inputWrap}>
-          <TextInput
-            style={[laneStyles.input, { color: palette.text, backgroundColor: palette.inputBg }]}
-            value={value}
-            onChangeText={onChange}
-            keyboardType="number-pad"
-            maxLength={MACRO_INPUT_MAX_LENGTH}
-            selectTextOnFocus
-            accessibilityLabel={`${row.label} grams`}
-          />
-          <Text style={[laneStyles.unit, { color: palette.textMuted }]}>g</Text>
-        </View>
-      </View>
-      <View style={[laneStyles.track, { backgroundColor: palette.inputBg }]}>
-        <View style={[laneStyles.fill, { width: fillWidth }]}>
-          <LinearGradient
-            colors={row.gradient}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={StyleSheet.absoluteFill}
-          />
-        </View>
-      </View>
-    </NbCard>
+    <HardShadow offset={nb.shadowOffsetSmall} radius={999}>
+      <TouchableOpacity
+        onPress={onPress}
+        activeOpacity={0.88}
+        accessibilityRole="button"
+        accessibilityState={{ selected }}
+        style={[
+          styles.presetChip,
+          {
+            backgroundColor: selected ? colors.nbFill : colors.nbSurface,
+            borderColor: colors.nbBorder,
+          },
+        ]}
+      >
+        <Text style={[styles.presetChipText, { color: selected ? colors.nbOnFill : colors.nbInk }]}>
+          {label}
+        </Text>
+      </TouchableOpacity>
+    </HardShadow>
   );
 }
 
 /**
- * Calorie panel with −50 / +50 and a balanced-split hint.
- * @param {object} props
+ * One settings hub row (PNG 21) with gradient icon chip + chevron.
  */
-function CaloriePanel({ calories, setCalories, onNudge, estMacros, palette }) {
+function SettingsHubRow({ title, subtitle, icon, index, onPress, colors, showDivider }) {
   return (
-    <NbCard style={screenStyles.calPanel}>
-      <LinearGradient colors={CTA_GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={screenStyles.calStripe} />
-      <Text style={[screenStyles.calLabel, { color: palette.textMuted }]}>CALORIES PER DAY</Text>
-
-      <View style={screenStyles.calRow}>
-        <TouchableOpacity
-          onPress={() => onNudge(-CALORIE_NUDGE_STEP)}
-          style={[screenStyles.stepBtn, { backgroundColor: palette.stepBg, borderColor: palette.stepBorder }]}
-          activeOpacity={0.75}
-        >
-          <Text style={[screenStyles.stepBtnText, { color: PINK_SOFT }]}>−50</Text>
-        </TouchableOpacity>
-
-        <View style={screenStyles.calCenter}>
-          <TextInput
-            style={[screenStyles.calInput, { color: palette.text }]}
-            value={calories}
-            onChangeText={setCalories}
-            keyboardType="number-pad"
-            maxLength={CALORIE_INPUT_MAX_LENGTH}
-            selectTextOnFocus
-            accessibilityLabel="Daily calories"
-          />
-          <Text style={[screenStyles.calUnit, { color: palette.textMuted }]}>kcal</Text>
-        </View>
-
-        <TouchableOpacity
-          onPress={() => onNudge(CALORIE_NUDGE_STEP)}
-          style={[screenStyles.stepBtn, { backgroundColor: palette.stepBg, borderColor: palette.stepBorder }]}
-          activeOpacity={0.75}
-        >
-          <Text style={[screenStyles.stepBtnText, { color: ORANGE_SOFT }]}>+50</Text>
-        </TouchableOpacity>
+    <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={styles.hubRow}>
+      <NbIconChip source={icon} size={40} index={index} />
+      <View style={styles.hubText}>
+        <Text style={[styles.hubTitle, { color: colors.nbInk }]}>{title}</Text>
+        <Text style={[styles.hubSub, { color: colors.nbMuted }]} numberOfLines={1}>
+          {subtitle}
+        </Text>
       </View>
-
-      <Text style={[screenStyles.splitHint, { color: palette.textMuted }]}>
-        Balanced split at this level{' '}
-        <Text style={{ color: PINK_SOFT }}>{estMacros.protein}g P</Text>
-        {' · '}
-        <Text style={{ color: ORANGE_SOFT }}>{estMacros.carbs}g C</Text>
-        {' · '}
-        <Text style={{ color: CYAN }}>{estMacros.fat}g F</Text>
-      </Text>
-    </NbCard>
+      <Ionicons name="chevron-forward" size={18} color={colors.nbInk} />
+      {showDivider ? (
+        <View style={[styles.hubDivider, { backgroundColor: colors.nbBorder }]} />
+      ) : null}
+    </TouchableOpacity>
   );
 }
 
 /**
- * Scrollable goals form body shared by embedded and standalone shells.
- * @param {object} props
+ * PNG 19 — Set your numbers editor body.
  */
-function GoalsEditorBody({
+function SetNumbersBody({
   scrollBottomPad,
-  palette,
+  colors,
   calories,
   setCalories,
-  onNudgeCalories,
-  estMacros,
-  macroValues,
-  macroSetters,
+  protein,
+  setProtein,
+  carbs,
+  setCarbs,
+  fat,
+  setFat,
+  presetId,
+  setPresetId,
   onSave,
   saving,
-  onResetOnboarding,
+  onBackToHub,
 }) {
+  const applyPreset = (preset) => {
+    setPresetId(preset.id);
+    const next = macrosFromPreset(calories, preset);
+    setProtein(next.protein);
+    setCarbs(next.carbs);
+    setFat(next.fat);
+  };
+
+  const addUp = macrosAddUpKcal(protein, carbs, fat);
+
   return (
     <ScrollView
-      style={screenStyles.scroll}
-      contentContainerStyle={[screenStyles.scrollContent, { paddingBottom: scrollBottomPad }]}
-      showsVerticalScrollIndicator
-      keyboardShouldPersistTaps="handled"
-      keyboardDismissMode="interactive"
-      automaticallyAdjustKeyboardInsets
+      style={styles.scroll}
+      contentContainerStyle={[styles.scrollContent, { paddingBottom: scrollBottomPad }]}
+      {...FORM_SCROLL_PROPS}
     >
-      <Text style={[screenStyles.kicker, { color: palette.textMuted }]}>Daily targets</Text>
-      <Text style={[screenStyles.headline, { color: palette.text }]}>Set your numbers</Text>
-      <Text style={[screenStyles.subline, { color: palette.textSoft }]}>
-        Tap values to edit. Use +/− for calories.
+      {typeof onBackToHub === 'function' ? (
+        <TouchableOpacity onPress={onBackToHub} style={styles.backLink} hitSlop={8}>
+          <Text style={[styles.backLinkText, { color: colors.nbMuted }]}>← Nutrition settings</Text>
+        </TouchableOpacity>
+      ) : null}
+
+      <Text style={[styles.kicker, { color: colors.nbMuted }]}>Daily targets</Text>
+      <Text style={[styles.headline, { color: colors.nbInk }]}>Set your numbers</Text>
+
+      {/* Black calories card */}
+      <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetCard} style={styles.block}>
+        <View
+          style={[
+            styles.calCard,
+            {
+              backgroundColor: colors.nbFill,
+              borderColor: colors.nbOnFill,
+            },
+          ]}
+        >
+          <Text style={[styles.calLabel, { color: colors.nbMuted }]}>CALORIES PER DAY</Text>
+          <Text style={[styles.calValue, { color: colors.nbOnFill }]}>
+            {clampCalories(calories).toLocaleString()} kcal
+          </Text>
+          <NbSlider
+            value={clampCalories(calories)}
+            min={MIN_DAILY_CALORIES}
+            max={MAX_DAILY_CALORIES}
+            onChange={setCalories}
+            colors={CAL_SLIDER_GRAD}
+            style={{ marginTop: 12, marginBottom: 14 }}
+          />
+          <TouchableOpacity
+            onPress={() => {
+              // Placeholder — same as old “Calculate for me” alert path
+              applyPreset(PRESETS.balanced);
+            }}
+            activeOpacity={0.88}
+            style={[
+              styles.calcBtn,
+              { backgroundColor: colors.nbOnFill, borderColor: colors.nbFill },
+            ]}
+          >
+            <Text style={[styles.calcBtnText, { color: colors.nbFill }]}>Calculate for me</Text>
+          </TouchableOpacity>
+        </View>
+      </HardShadow>
+
+      <Text style={[styles.sectionLabel, { color: colors.nbMuted }]}>
+        MACRO TARGETS AT THIS CALORIE TARGET
       </Text>
+      <View style={styles.presetRow}>
+        {Object.values(PRESETS).map((preset) => (
+          <PresetChip
+            key={preset.id}
+            label={preset.label}
+            selected={presetId === preset.id}
+            onPress={() => applyPreset(preset)}
+            colors={colors}
+          />
+        ))}
+      </View>
 
-      <CaloriePanel
-        calories={calories}
-        setCalories={setCalories}
-        onNudge={onNudgeCalories}
-        estMacros={estMacros}
-        palette={palette}
-      />
+      {/* White macro card with gradient sliders */}
+      <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetCard} style={styles.block}>
+        <View
+          style={[
+            styles.macroCard,
+            { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder },
+          ]}
+        >
+          <NbSlider
+            label="Protein"
+            valueLabel={`${clampGrams(protein, MAX_PROTEIN_GRAMS)} g`}
+            value={clampGrams(protein, MAX_PROTEIN_GRAMS)}
+            min={0}
+            max={MAX_PROTEIN_GRAMS}
+            onChange={(n) => {
+              setPresetId(null);
+              setProtein(n);
+            }}
+            colors={PROTEIN_SLIDER_GRAD}
+            style={styles.macroSlider}
+          />
+          <NbSlider
+            label="Carbs"
+            valueLabel={`${clampGrams(carbs, MAX_CARBS_GRAMS)} g`}
+            value={clampGrams(carbs, MAX_CARBS_GRAMS)}
+            min={0}
+            max={MAX_CARBS_GRAMS}
+            onChange={(n) => {
+              setPresetId(null);
+              setCarbs(n);
+            }}
+            colors={CARBS_SLIDER_GRAD}
+            style={styles.macroSlider}
+          />
+          <NbSlider
+            label="Fats"
+            valueLabel={`${clampGrams(fat, MAX_FAT_GRAMS)} g`}
+            value={clampGrams(fat, MAX_FAT_GRAMS)}
+            min={0}
+            max={MAX_FAT_GRAMS}
+            onChange={(n) => {
+              setPresetId(null);
+              setFat(n);
+            }}
+            colors={FAT_SLIDER_GRAD}
+            style={styles.macroSlider}
+          />
+          <View style={[styles.macroFooter, { borderTopColor: colors.nbBorder }]}>
+            <Text style={[styles.macroFooterLabel, { color: colors.nbMuted }]}>
+              MACROS ADD UP TO
+            </Text>
+            <Text style={[styles.macroFooterValue, { color: colors.nbInk }]}>
+              {addUp.toLocaleString()} kcal
+            </Text>
+          </View>
+        </View>
+      </HardShadow>
 
-      <Text style={[screenStyles.sectionTitle, { color: palette.textMuted }]}>Macro targets</Text>
-
-      {MACRO_LANES.map((row) => (
-        <MacroLane
-          key={row.key}
-          row={row}
-          value={macroValues[row.key]}
-          onChange={macroSetters[row.key]}
-          palette={palette}
-        />
-      ))}
-
-      <NbButton variant="brand" onPress={onSave} disabled={saving}>
+      <NbButton variant="fill" onPress={onSave} disabled={saving}>
         {saving ? 'Saving…' : 'Save goals'}
       </NbButton>
+    </ScrollView>
+  );
+}
 
-      <View style={[screenStyles.resetZone, { borderTopColor: palette.panelBorder }]}>
-        <Text style={[screenStyles.resetHint, { color: palette.textSoft }]}>
-          Want to start fresh? This clears targets and runs setup again.
-        </Text>
-        <TouchableOpacity onPress={onResetOnboarding} activeOpacity={0.7} hitSlop={8}>
-          <Text style={[screenStyles.resetLink, { color: palette.destructive }]}>Reset to onboarding</Text>
-        </TouchableOpacity>
+/**
+ * PNG 21 — Nutrition settings hub (rows + loved/skip pills + reset).
+ */
+function SettingsHubBody({
+  scrollBottomPad,
+  colors,
+  calories,
+  protein,
+  carbs,
+  fat,
+  lovedFoods,
+  skipFoods,
+  onOpenTargets,
+  onResetPress,
+}) {
+  const calSub = `${clampCalories(calories).toLocaleString()} kcal`;
+  const macroSub = `${clampGrams(protein, MAX_PROTEIN_GRAMS)} g protein · ${clampGrams(carbs, MAX_CARBS_GRAMS)} g carbs · ${clampGrams(fat, MAX_FAT_GRAMS)} g fat`;
+  const loveSkipSub = `${lovedFoods.length} loved · ${skipFoods.length} skipped`;
+
+  return (
+    <ScrollView
+      style={styles.scroll}
+      contentContainerStyle={[styles.scrollContent, { paddingBottom: scrollBottomPad }]}
+      {...FORM_SCROLL_PROPS}
+    >
+      <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetCard} style={styles.block}>
+        <View
+          style={[
+            styles.hubCard,
+            { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder },
+          ]}
+        >
+          <SettingsHubRow
+            title="Daily targets"
+            subtitle={calSub}
+            icon={FOOD_ICON}
+            index={0}
+            onPress={onOpenTargets}
+            colors={colors}
+            showDivider
+          />
+          <SettingsHubRow
+            title="Macro targets"
+            subtitle={macroSub}
+            icon={MUSCLE_ICON}
+            index={2}
+            onPress={onOpenTargets}
+            colors={colors}
+            showDivider
+          />
+          <SettingsHubRow
+            title="Foods you love and skip"
+            subtitle={loveSkipSub}
+            icon={HYDRATION_ICON}
+            index={6}
+            onPress={onOpenTargets}
+            colors={colors}
+            showDivider={false}
+          />
+        </View>
+      </HardShadow>
+
+      <Text style={[styles.sectionLabel, { color: colors.nbMuted }]}>FOODS YOU LOVE AND SKIP</Text>
+      <View style={styles.pillWrap}>
+        {lovedFoods.map((name) => (
+          <HardShadow key={`love-${name}`} offset={nb.shadowOffsetSmall} radius={999}>
+            <View
+              style={[styles.pill, { backgroundColor: colors.nbFill, borderColor: colors.nbBorder }]}
+            >
+              <Text style={[styles.pillText, { color: colors.nbOnFill }]}>{name}</Text>
+            </View>
+          </HardShadow>
+        ))}
+        {skipFoods.map((name) => (
+          <HardShadow key={`skip-${name}`} offset={nb.shadowOffsetSmall} radius={999}>
+            <View
+              style={[styles.pill, { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder }]}
+            >
+              <Text style={[styles.pillText, { color: colors.nbInk }]}>{name}</Text>
+            </View>
+          </HardShadow>
+        ))}
+        {lovedFoods.length === 0 && skipFoods.length === 0 ? (
+          <Text style={[styles.emptyPills, { color: colors.nbMuted }]}>
+            Add favorites during onboarding — they show up here for the coach and search.
+          </Text>
+        ) : null}
       </View>
+
+      <HardShadow offset={nb.shadowOffsetSmall} radius={borderRadius.nbButton} style={{ marginTop: 8 }}>
+        <TouchableOpacity
+          onPress={onResetPress}
+          activeOpacity={0.88}
+          style={[
+            styles.resetBtn,
+            { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder },
+          ]}
+        >
+          <Text style={[styles.resetBtnText, { color: colors.nbInk }]}>Reset to onboarding</Text>
+        </TouchableOpacity>
+      </HardShadow>
+      <Text style={[styles.resetHint, { color: colors.nbMuted }]}>
+        Clears your targets and shows setup again next time you open Nutrition.
+      </Text>
     </ScrollView>
   );
 }
@@ -361,24 +431,22 @@ function GoalsEditorBody({
 // ===== MAIN FUNCTION =====
 
 /**
- * Edit daily calorie and macro targets. Embeds under the daily log or stands alone.
- * @param {{ onClose?: Function, onGoalsUpdated?: Function, onResetOnboarding?: Function, currentGoals?: object, embedded?: boolean, reserveShellBottomNav?: boolean }} props
+ * Nutrition settings hub + Set your numbers editor.
+ * @param {{ onClose?: Function, onGoalsUpdated?: Function, onResetOnboarding?: Function, currentGoals?: object, embedded?: boolean, reserveShellBottomNav?: boolean, favoriteFoods?: string[], leastFavoriteFoods?: string[] }} props
  */
 export default function NutritionSettingsScreen({
   onClose,
   onGoalsUpdated,
   onResetOnboarding,
   currentGoals = {},
-  /** Parent renders TopHeader + bottom nav (DailyLogContent). */
   embedded = false,
   reserveShellBottomNav = false,
+  favoriteFoods = [],
+  leastFavoriteFoods = [],
 }) {
-  const { isDark } = useTheme();
-  const palette = useMemo(() => getPalette(isDark), [isDark]);
+  const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const shellBottomPad = useShellBottomNavInset(SHELL_NAV_INSET);
-  // Floating BottomMenuBar always overlays when embedded in DailyLogContent
-  // (either this container's nav or the parent shell's). Never stack insets twice.
   const scrollBottomPad = scrollContentBottomPad(
     embedded,
     reserveShellBottomNav,
@@ -386,267 +454,361 @@ export default function NutritionSettingsScreen({
     insets.bottom,
   );
 
-  const [calories, setCalories] = useState(String(currentGoals.calories ?? DEFAULT_CALORIES));
-  const [protein, setProtein] = useState(String(currentGoals.proteinTarget ?? DEFAULT_PROTEIN_GRAMS));
-  const [carbs, setCarbs] = useState(String(currentGoals.carbsTarget ?? DEFAULT_CARBS_GRAMS));
-  const [fat, setFat] = useState(String(currentGoals.fatTarget ?? DEFAULT_FAT_GRAMS));
+  // Hub first (PNG 21); tapping a row opens Set your numbers (PNG 19).
+  const [view, setView] = useState('hub');
+  const [showResetSheet, setShowResetSheet] = useState(false);
+
+  const [calories, setCalories] = useState(
+    clampCalories(currentGoals.calories ?? DEFAULT_CALORIES),
+  );
+  const [protein, setProtein] = useState(
+    clampGrams(currentGoals.proteinTarget ?? DEFAULT_PROTEIN_GRAMS, MAX_PROTEIN_GRAMS),
+  );
+  const [carbs, setCarbs] = useState(
+    clampGrams(currentGoals.carbsTarget ?? DEFAULT_CARBS_GRAMS, MAX_CARBS_GRAMS),
+  );
+  const [fat, setFat] = useState(
+    clampGrams(currentGoals.fatTarget ?? DEFAULT_FAT_GRAMS, MAX_FAT_GRAMS),
+  );
+  const [presetId, setPresetId] = useState('high_protein');
   const [saving, setSaving] = useState(false);
 
-  const macroValues = { protein, carbs, fat };
-  const macroSetters = { protein: setProtein, carbs: setCarbs, fat: setFat };
-
-  const estMacros = useMemo(
-    () => estimatedMacrosFromCalories(Number(calories) || 0),
-    [calories],
+  const lovedFoods = useMemo(
+    () => (Array.isArray(favoriteFoods) ? favoriteFoods : []).filter(Boolean),
+    [favoriteFoods],
+  );
+  const skipFoods = useMemo(
+    () => (Array.isArray(leastFavoriteFoods) ? leastFavoriteFoods : []).filter(Boolean),
+    [leastFavoriteFoods],
   );
 
-  // 1. Nudge calories by ±50 within the allowed range.
-  const nudgeCalories = (delta) => {
-    const next = clampDailyCalories((parseInt(calories, 10) || DEFAULT_CALORIES) + delta);
-    setCalories(String(next));
-  };
-
-  // 2. Save clamped targets to the parent, then close.
   const handleSave = () => {
     if (!onGoalsUpdated) {
       onClose?.();
       return;
     }
     setSaving(true);
-    onGoalsUpdated(goalsPayloadFromFields(calories, protein, carbs, fat));
+    onGoalsUpdated(goalsPayload(calories, protein, carbs, fat));
     setSaving(false);
+    setView('hub');
     onClose?.();
   };
 
-  // 3. Confirm before clearing goals and sending the user back through onboarding.
-  const handleResetOnboarding = () => {
-    Alert.alert(
-      'Reset nutrition goals?',
-      'This clears your targets and shows onboarding again next time you open Nutrition.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Reset',
-          style: 'destructive',
-          onPress: () => {
-            onResetOnboarding?.();
-            onClose?.();
-          },
-        },
-      ],
-    );
+  const confirmReset = () => {
+    setShowResetSheet(false);
+    onResetOnboarding?.();
+    onClose?.();
   };
 
-  const editorBody = (
-    <GoalsEditorBody
-      scrollBottomPad={scrollBottomPad}
-      palette={palette}
-      calories={calories}
-      setCalories={setCalories}
-      onNudgeCalories={nudgeCalories}
-      estMacros={estMacros}
-      macroValues={macroValues}
-      macroSetters={macroSetters}
-      onSave={handleSave}
-      saving={saving}
-      onResetOnboarding={handleResetOnboarding}
-    />
+  const body =
+    view === 'targets' ? (
+      <SetNumbersBody
+        scrollBottomPad={scrollBottomPad}
+        colors={colors}
+        calories={calories}
+        setCalories={setCalories}
+        protein={protein}
+        setProtein={setProtein}
+        carbs={carbs}
+        setCarbs={setCarbs}
+        fat={fat}
+        setFat={setFat}
+        presetId={presetId}
+        setPresetId={setPresetId}
+        onSave={handleSave}
+        saving={saving}
+        onBackToHub={embedded ? () => setView('hub') : undefined}
+      />
+    ) : (
+      <SettingsHubBody
+        scrollBottomPad={scrollBottomPad}
+        colors={colors}
+        calories={calories}
+        protein={protein}
+        carbs={carbs}
+        fat={fat}
+        lovedFoods={lovedFoods}
+        skipFoods={skipFoods}
+        onOpenTargets={() => setView('targets')}
+        onResetPress={() => setShowResetSheet(true)}
+      />
+    );
+
+  const headerTitle = view === 'targets' ? 'Set your numbers' : 'Nutrition settings';
+  const headerSub = view === 'targets' ? 'Daily targets' : null;
+
+  const resetSheet = (
+    <NbSheet
+      visible={showResetSheet}
+      onClose={() => setShowResetSheet(false)}
+      title="Reset nutrition goals?"
+    >
+      <LinearGradient
+        colors={accentGradients[1]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={styles.warnBadge}
+      >
+        <Text style={styles.warnBadgeText}>Clears your targets</Text>
+      </LinearGradient>
+      <Text style={[styles.resetSheetBody, { color: colors.nbMuted }]}>
+        This clears your targets and shows onboarding again next time you open Nutrition. Your logged
+        foods stay.
+      </Text>
+      <View style={styles.resetActions}>
+        <View style={{ flex: 1 }}>
+          <NbButton variant="plain" onPress={() => setShowResetSheet(false)}>
+            Cancel
+          </NbButton>
+        </View>
+        <View style={{ flex: 1 }}>
+          <NbButton variant="fill" onPress={confirmReset}>
+            Reset goals
+          </NbButton>
+        </View>
+      </View>
+    </NbSheet>
   );
 
   if (embedded) {
-    return <View style={[screenStyles.root, screenStyles.rootEmbedded]}>{editorBody}</View>;
+    return (
+      <View style={[styles.root, styles.rootEmbedded]}>
+        <NbPageHeader
+          title={headerTitle}
+          subtitle={headerSub}
+          onBack={
+            view === 'targets'
+              ? () => setView('hub')
+              : typeof onClose === 'function'
+                ? onClose
+                : undefined
+          }
+          skipTopSafeInset
+        />
+        {body}
+        {resetSheet}
+      </View>
+    );
   }
 
   return (
-    <SafeAreaView style={[screenStyles.root, { backgroundColor: palette.bg }]} edges={SHELL_SAFE_AREA_EDGES}>
+    <SafeAreaView style={[styles.root, { backgroundColor: colors.nbBackground }]} edges={SHELL_SAFE_AREA_EDGES}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
-      <View style={[screenStyles.standaloneHeader, { borderBottomColor: palette.panelBorder }]}>
-        <TouchableOpacity onPress={onClose} style={screenStyles.standaloneBack} hitSlop={12}>
-          <Ionicons name="chevron-back" size={28} color={palette.text} />
-        </TouchableOpacity>
-        <Text style={[screenStyles.standaloneTitle, { color: palette.text }]}>Goals</Text>
-        <View style={screenStyles.standaloneBack} />
-      </View>
-      {editorBody}
+      <NbPageHeader
+        title={headerTitle}
+        subtitle={headerSub}
+        onBack={
+          view === 'targets'
+            ? () => setView('hub')
+            : onClose
+        }
+        skipTopSafeInset
+      />
+      {body}
+      {resetSheet}
     </SafeAreaView>
   );
 }
 
-const screenStyles = StyleSheet.create({
+const styles = StyleSheet.create({
   root: { flex: 1 },
   rootEmbedded: { flex: 1, minHeight: 0, backgroundColor: 'transparent' },
   scroll: { flex: 1 },
   scrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: 8,
+    paddingHorizontal: spacing.md,
+    paddingTop: 4,
   },
-  standaloneHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 8,
-    paddingBottom: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  standaloneBack: {
-    width: 44,
-    height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  standaloneTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-  },
+  block: { marginBottom: 16 },
   kicker: {
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-    marginBottom: 6,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 11,
+    letterSpacing: 1,
+    marginBottom: 4,
   },
   headline: {
+    fontFamily: 'SpaceGrotesk_700Bold',
     fontSize: 28,
-    fontWeight: '800',
-    letterSpacing: -0.6,
-    marginBottom: 6,
-  },
-  subline: {
-    fontSize: 14,
-    lineHeight: 20,
-    marginBottom: 22,
-  },
-  calPanel: {
-    paddingHorizontal: 18,
-    paddingBottom: 18,
-    marginBottom: 20,
-    overflow: 'hidden',
-  },
-  calStripe: {
-    height: 3,
-    marginHorizontal: -18,
+    letterSpacing: -0.5,
     marginBottom: 16,
   },
-  calLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 1,
-    marginBottom: 12,
-  },
-  calRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-    marginBottom: 14,
-  },
-  stepBtn: {
-    minWidth: 52,
-    paddingHorizontal: 10,
-    paddingVertical: 12,
-    borderRadius: borderRadius.nbChip,
+  backLink: { marginBottom: 8 },
+  backLinkText: { fontFamily: 'Inter_500Medium', fontSize: 13 },
+  calCard: {
     borderWidth: nb.borderWidth,
-    alignItems: 'center',
-  },
-  stepBtnText: {
-    fontSize: 15,
-    fontWeight: '800',
-  },
-  calCenter: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  calInput: {
-    fontSize: 44,
-    fontWeight: '800',
-    letterSpacing: -1.5,
-    padding: 0,
-    minWidth: 120,
-    textAlign: 'center',
-  },
-  calUnit: {
-    fontSize: 13,
-    fontWeight: '600',
-    marginTop: 2,
-  },
-  splitHint: {
-    fontSize: 12,
-    lineHeight: 18,
-    textAlign: 'center',
-  },
-  sectionTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-    marginBottom: 12,
-  },
-  resetZone: {
-    marginTop: 28,
-    paddingTop: 22,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    alignItems: 'center',
-    gap: 10,
-  },
-  resetHint: {
-    fontSize: 13,
-    lineHeight: 19,
-    textAlign: 'center',
-    maxWidth: 300,
-  },
-  resetLink: {
-    fontSize: 15,
-    fontWeight: '700',
-  },
-});
-
-const laneStyles = StyleSheet.create({
-  wrap: {
+    borderRadius: borderRadius.nbCard,
     padding: 16,
-    marginBottom: 12,
   },
-  topRow: {
+  calLabel: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 11,
+    letterSpacing: 1,
+    marginBottom: 8,
+  },
+  calValue: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 32,
+    letterSpacing: -0.8,
+  },
+  calcBtn: {
+    borderWidth: nb.borderWidth,
+    borderRadius: borderRadius.nbButton,
+    paddingVertical: 12,
+    alignItems: 'center',
+    minHeight: nb.minTouchTarget,
+    justifyContent: 'center',
+  },
+  calcBtnText: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 14,
+  },
+  sectionLabel: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 11,
+    letterSpacing: 0.8,
+    marginBottom: 10,
+    marginTop: 4,
+  },
+  presetRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 16,
+  },
+  presetChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 999,
+    borderWidth: nb.borderWidth,
+    minHeight: nb.minTouchTarget,
+    justifyContent: 'center',
+  },
+  presetChipActive: {
+    shadowOffset: { width: nb.shadowOffsetSmall, height: nb.shadowOffsetSmall },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 3,
+  },
+  presetChipText: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 13,
+  },
+  macroCard: {
+    borderWidth: nb.borderWidth,
+    borderRadius: borderRadius.nbCard,
+    padding: 16,
+  },
+  macroSlider: { marginBottom: 14 },
+  macroFooter: {
+    borderTopWidth: nb.borderWidthDivider,
+    paddingTop: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  macroFooterLabel: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 11,
+    letterSpacing: 0.8,
+  },
+  macroFooterValue: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 16,
+  },
+  hubCard: {
+    borderWidth: nb.borderWidth,
+    borderRadius: borderRadius.nbCard,
+    overflow: 'hidden',
+  },
+  hubRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    minHeight: 64,
+    position: 'relative',
+  },
+  hubText: { flex: 1, minWidth: 0 },
+  hubTitle: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 15,
+  },
+  hubSub: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 12,
+    marginTop: 2,
+  },
+  hubDivider: {
+    position: 'absolute',
+    left: 66,
+    right: 14,
+    bottom: 0,
+    height: StyleSheet.hairlineWidth,
+  },
+  pillWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 20,
+  },
+  pill: {
+    borderWidth: nb.borderWidth,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  pillText: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 13,
+  },
+  emptyPills: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  resetBtn: {
+    borderWidth: nb.borderWidth,
+    borderRadius: borderRadius.nbButton,
+    paddingVertical: 14,
+    alignItems: 'center',
+    minHeight: nb.minTouchTarget,
+    justifyContent: 'center',
+  },
+  resetBtnText: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 15,
+  },
+  resetHint: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 12,
+    lineHeight: 17,
+    textAlign: 'center',
+    marginTop: 10,
+    marginBottom: 8,
+  },
+  warnBadge: {
+    alignSelf: 'flex-start',
+    borderRadius: 999,
+    borderWidth: nb.borderWidth,
+    borderColor: '#0A0A0A',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     marginBottom: 12,
   },
-  icon: {
-    width: 40,
-    height: 40,
+  warnBadgeText: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 12,
+    color: '#0A0A0A',
   },
-  label: {
-    flex: 1,
-    fontSize: 17,
-    fontWeight: '700',
-  },
-  inputWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  input: {
-    minWidth: 56,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 10,
-    fontSize: 18,
-    fontWeight: '800',
-    textAlign: 'right',
-  },
-  unit: {
+  resetSheetBody: {
+    fontFamily: 'Inter_400Regular',
     fontSize: 14,
-    fontWeight: '600',
-    width: 14,
+    lineHeight: 20,
+    marginBottom: 16,
   },
-  track: {
-    height: 6,
-    borderRadius: 99,
-    overflow: 'hidden',
-  },
-  fill: {
-    height: '100%',
-    borderRadius: 99,
-    overflow: 'hidden',
+  resetActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 8,
   },
 });

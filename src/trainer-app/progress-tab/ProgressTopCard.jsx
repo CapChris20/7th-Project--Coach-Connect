@@ -6,15 +6,16 @@ import React from 'react';
 import { View, Text, StyleSheet, Platform } from 'react-native';
 // vocab: Ionicons = icon font from Expo's vector-icons; `name` selects a glyph by string id
 import { Ionicons } from '@expo/vector-icons';
+import { lightColors } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
-const DARK_TEXT = '#FFFFFF';
-const LIGHT_TEXT = '#0A0A0F';
+const DARK_TEXT = lightColors.white;
+const LIGHT_TEXT = lightColors.nbInk;
 const DARK_MUTED = 'rgba(255,255,255,0.55)';
 const LIGHT_MUTED = 'rgba(10,10,15,0.55)';
 const DARK_BACKGROUND = '#14141C';
-const LIGHT_BACKGROUND = '#FFFFFF';
+const LIGHT_BACKGROUND = lightColors.white;
 const DARK_BORDER = 'rgba(255,255,255,0.10)';
 const LIGHT_BORDER = 'rgba(10,10,15,0.08)';
 const SHADOW_COLOR = '#000';

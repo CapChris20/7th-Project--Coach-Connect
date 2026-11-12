@@ -1,11 +1,12 @@
 // Empty weekly-report card when nobody has logged a week yet.
-import { NbCard } from '../../look-and-feel/NbCard';// Flow: paint the background → show the "no report" card → list the three things that fill it in.
+// Flow: paint the background → show the "no report" card → list the three things that fill it in.
 // Used by the client and trainer weekly report screens.
+
+import NbCard from '../../look-and-feel/NbCard';
 
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { GRADIENTS, useTheme } from '../weekly-report/reportColorSettings';
 import { ColorBorder } from './ColorBorder';
@@ -70,7 +71,7 @@ export function NoReportYet({ isClientSelfView = false }) {
           end={{ x: 1, y: 1 }}
           style={StyleSheet.absoluteFill}
         />
-        <BlurView intensity={blurIntensity} tint={colors.blurTint} style={StyleSheet.absoluteFill} />
+        <View intensity={blurIntensity} tint={colors.blurTint} style={StyleSheet.absoluteFill} />
 
         <View style={styles.cardBody}>
           <LinearGradient colors={GRADIENTS.g3} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.heroIcon}>

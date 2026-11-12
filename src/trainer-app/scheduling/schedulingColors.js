@@ -5,19 +5,20 @@
 // ===== NAMED CONSTANTS =====
 
 // Manipulate here: change a hex once. Every scheduling screen reads these names.
+import { lightColors } from '../../look-and-feel/colorPalette';
 const DARK_ORANGE = '#EA580C';
 const DARK_PINK = '#D91E63';
-const DARK_PURPLE = '#7C3AED';
+const DARK_PURPLE = '#BE185D';
 const GOLD = '#F59E0B';
 
 const SESSION_GRADIENT = [DARK_PINK, DARK_PURPLE];
 const ACCENT_GRADIENT = [GOLD, DARK_ORANGE];
 
 const DARK_THEME_COLORS = {
-  bg: '#0A0A0F',
+  bg: lightColors.nbInk,
   cardBg: '#1A1A1F',
-  text: '#FFFFFF',
-  label: '#FFFFFF',
+  text: lightColors.white,
+  label: lightColors.white,
   muted: 'rgba(255,255,255,0.62)',
   divider: 'rgba(255,255,255,0.12)',
   wheelShell: 'rgba(255,255,255,0.04)',
@@ -28,8 +29,8 @@ const DARK_THEME_COLORS = {
 const LIGHT_THEME_COLORS = {
   bg: '#FAFAF9',
   cardBg: '#F5F5F3',
-  text: '#0A0A0F',
-  label: '#0A0A0F',
+  text: lightColors.nbInk,
+  label: lightColors.nbInk,
   muted: 'rgba(10,10,15,0.55)',
   divider: 'rgba(10,10,15,0.1)',
   wheelShell: 'rgba(10,10,15,0.04)',

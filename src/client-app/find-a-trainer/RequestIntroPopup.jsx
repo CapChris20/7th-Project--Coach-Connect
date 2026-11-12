@@ -1,42 +1,40 @@
-// Optional "send a message with this request" popup after a client taps Connect.
-// Flow: fade+scale in → optional draft → Skip (no message) or Send/Continue → Close on backdrop.
-// Used by: the find-a-trainer connect flow. Busy disables every tap so a double-send cannot fire.
+// Optional intro message sheet before a connection request is sent (PNG 15).
+// Flow: bottom HardShadow sheet → optional draft → Cancel or Continue → Close on backdrop.
+// Used by SearchTrainersScreen connect flow. Busy disables every tap so a double-send cannot fire.
 //
-// vocab: neobrutalist = thick borders, hard shadows, gradient only for send button
+// vocab: HardShadow sheet = Design Law bottom modal with 3px border + grabber (not centered NbCard)
 
-import React, { useEffect, useRef } from 'react';
+import React, { useMemo } from 'react';
 import {
   View,
   Text,
   Modal,
   TextInput,
   Pressable,
-  Animated,
   StyleSheet,
-  Dimensions,
   KeyboardAvoidingView,
   Platform,
-  useColorScheme,
 } from 'react-native';
-import NbCard from '../../look-and-feel/NbCard';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 import NbButton from '../../look-and-feel/NbButton';
-import { lightColors, darkColors } from '../../look-and-feel/colorPalette';
+import { useTheme } from '../../look-and-feel/lightDarkMode';
+import { accentGradients, borderRadius, nb, spacing } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
-const SCREEN_WIDTH = Dimensions.get('window').width;
-const MODAL_MAX_WIDTH_PX = 400;
-const MODAL_WIDTH_RATIO = 0.9;
-const MODAL_MAX_W = Math.min(SCREEN_WIDTH * MODAL_WIDTH_RATIO, MODAL_MAX_WIDTH_PX);
 const FALLBACK_COACH_NAME = 'your coach';
-const OPEN_SCALE_START = 0.94;
-const OPEN_FADE_MS = 220;
 const KEYBOARD_PAD_BEHAVIOR = Platform.OS === 'ios' ? 'padding' : undefined;
+const MIN_BOTTOM_PAD = 16;
+
+// Manipulate here: goal / level chips shown under the note (display only — request payload unchanged)
+const DEFAULT_GOAL_CHIP = 'Build Muscle';
+const DEFAULT_LEVEL_CHIP = 'Intermediate';
 
 // ===== HELPER FUNCTIONS =====
 
 /**
- * First name only, so the title stays short. Empty / missing names fall back to "your coach".
+ * First name only, so the title stays short.
  * @param {string} trainerName
  * @returns {string}
  */
@@ -45,33 +43,10 @@ function firstNameForTitle(trainerName) {
   return trimmedName.split(/\s+/)[0] || FALLBACK_COACH_NAME;
 }
 
-/**
- * Play the open animation from the starting scale/fade. Called whenever `visible` becomes true.
- * vocab: useNativeDriver true = the animation runs on the native thread (smoother on the phone).
- * @param {Animated.Value} fade
- * @param {Animated.Value} scale
- */
-function playIntroOpenAnimation(fade, scale) {
-  fade.setValue(0);
-  scale.setValue(OPEN_SCALE_START);
-  Animated.parallel([
-    Animated.timing(fade, { toValue: 1, duration: OPEN_FADE_MS, useNativeDriver: true }),
-    Animated.spring(scale, {
-      toValue: 1,
-      friction: 8,
-      tension: 65,
-      useNativeDriver: true,
-    }),
-  ]).start();
-}
-
 // ===== MAIN FUNCTION =====
 
 /**
- * Optional intro message before a connection request is sent.
- * Neobrutalist redesign: NbCard, NbButton, thick borders, gradient only for send button.
- * vocab: useRef holds the Animated.Value across re-renders without resetting the animation.
- * vocab: useEffect re-runs the open animation each time the modal becomes visible.
+ * Optional intro message before a connection request is sent — PNG 15 bottom sheet.
  * @param {object} props
  */
 export default function RequestIntroPopup({
@@ -83,74 +58,95 @@ export default function RequestIntroPopup({
   onSendMessage,
   onClose,
   busy = false,
+  goalLabel = DEFAULT_GOAL_CHIP,
+  levelLabel = DEFAULT_LEVEL_CHIP,
 }) {
-  const colorScheme = useColorScheme();
-  const colors = colorScheme === 'dark' ? darkColors : lightColors;
-  const scale = useRef(new Animated.Value(OPEN_SCALE_START)).current;
-  const fade = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    if (visible) {
-      playIntroOpenAnimation(fade, scale);
-    }
-  }, [visible, fade, scale]);
-
-  const firstName = firstNameForTitle(trainerName);
-  const hasDraft = String(messageDraft || '').trim().length > 0;
+  const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
+  const firstName = useMemo(() => firstNameForTitle(trainerName), [trainerName]);
   const closeUnlessBusy = busy ? undefined : onClose;
-  const skipUnlessBusy = busy ? undefined : onSkip;
-  const sendUnlessBusy = busy ? undefined : onSendMessage;
-  const sendLabel = hasDraft ? 'Send message' : 'Continue';
+  // Cancel closes the sheet. Continue sends (onSendMessage). onSkip kept for older callers who wired Skip→send.
+  const cancelUnlessBusy = busy ? undefined : onClose;
+  const continueUnlessBusy = busy ? undefined : (onSendMessage || onSkip);
 
   return (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={closeUnlessBusy}>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={closeUnlessBusy}>
       <KeyboardAvoidingView style={styles.flex} behavior={KEYBOARD_PAD_BEHAVIOR}>
-        <View style={styles.modalRoot}>
-          <Pressable style={styles.backdropPress} onPress={closeUnlessBusy} />
-          <View style={styles.centerWrap} pointerEvents="box-none">
-            <Animated.View
-              style={{
-                opacity: fade,
-                transform: [{ scale }],
-                width: MODAL_MAX_W,
-                maxWidth: '90%',
-              }}
-            >
-              <NbCard style={styles.card}>
-                <Text style={[styles.title, { color: colors.nbInk }]}>
-                  Send a message to {firstName}?
+        <View style={styles.overlay}>
+          <Pressable style={styles.backdrop} onPress={closeUnlessBusy} />
+          <View
+            style={[
+              styles.sheet,
+              {
+                backgroundColor: colors.nbSurface,
+                borderColor: colors.nbBorder,
+                paddingBottom: Math.max(insets.bottom, MIN_BOTTOM_PAD),
+              },
+            ]}
+          >
+            <View style={styles.handle}>
+              <View style={[styles.handleBar, { backgroundColor: colors.nbBorder }]} />
+            </View>
+
+            <Text style={[styles.title, { color: colors.nbInk }]}>
+              Say hello to {firstName}
+            </Text>
+            <Text style={[styles.subtitle, { color: colors.nbMuted }]}>
+              A short note helps {firstName} say yes. They see your goal and level.
+            </Text>
+
+            {/* Goal + level chips (display context for the trainer) */}
+            <View style={[styles.chipBox, { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface }]}>
+              <LinearGradient
+                colors={accentGradients[0]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={[styles.contextChip, { borderColor: colors.nbBorder }]}
+              >
+                <Text style={[styles.contextChipText, { color: colors.nbInk }]} numberOfLines={1}>
+                  {goalLabel}
                 </Text>
-                <Text style={[styles.subtitle, { color: colors.nbMuted }]}>(Optional)</Text>
+              </LinearGradient>
+              <View
+                style={[
+                  styles.contextChip,
+                  { borderColor: colors.nbBorder, backgroundColor: colors.nbSoft || colors.nbSurfaceChip || colors.nbSurface },
+                ]}
+              >
+                <Text style={[styles.contextChipText, { color: colors.nbInk }]} numberOfLines={1}>
+                  {levelLabel}
+                </Text>
+              </View>
+            </View>
 
-                <TextInput
-                  value={messageDraft}
-                  onChangeText={onChangeMessage}
-                  placeholder={`Introduce yourself to ${firstName}...`}
-                  placeholderTextColor={colors.nbMuted}
-                  multiline
-                  numberOfLines={4}
-                  maxLength={500}
-                  editable={!busy}
-                  style={[
-                    styles.input,
-                    {
-                      backgroundColor: colors.nbSurfaceChip,
-                      borderColor: colors.nbBorder,
-                      color: colors.nbInk,
-                    },
-                  ]}
-                />
+            <Text style={[styles.fieldLabel, { color: colors.nbMuted }]}>MESSAGE</Text>
+            <TextInput
+              value={messageDraft}
+              onChangeText={onChangeMessage}
+              placeholder={`Hi ${firstName}, I want to…`}
+              placeholderTextColor={colors.nbMuted}
+              multiline
+              numberOfLines={4}
+              maxLength={500}
+              editable={!busy}
+              style={[
+                styles.input,
+                {
+                  backgroundColor: colors.nbSurface,
+                  borderColor: colors.nbBorder,
+                  color: colors.nbInk,
+                },
+              ]}
+            />
 
-                <View style={styles.actions}>
-                  <NbButton variant="plain" onPress={skipUnlessBusy} disabled={busy}>
-                    Skip
-                  </NbButton>
-                  <NbButton variant="brand" onPress={sendUnlessBusy} disabled={busy}>
-                    {sendLabel}
-                  </NbButton>
-                </View>
-              </NbCard>
-            </Animated.View>
+            <View style={styles.actions}>
+              <NbButton variant="plain" onPress={cancelUnlessBusy} disabled={busy} style={styles.actionBtn}>
+                Cancel
+              </NbButton>
+              <NbButton variant="fill" onPress={continueUnlessBusy} disabled={busy} style={styles.actionBtnWide}>
+                Continue
+              </NbButton>
+            </View>
           </View>
         </View>
       </KeyboardAvoidingView>
@@ -159,50 +155,85 @@ export default function RequestIntroPopup({
 }
 
 const styles = StyleSheet.create({
-  flex: {
+  flex: { flex: 1 },
+  overlay: {
     flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'flex-end',
   },
-  modalRoot: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+  backdrop: { flex: 1 },
+  sheet: {
+    borderTopLeftRadius: borderRadius.nbSheet,
+    borderTopRightRadius: borderRadius.nbSheet,
+    borderTopWidth: nb.borderWidth,
+    borderLeftWidth: nb.borderWidth,
+    borderRightWidth: nb.borderWidth,
+    paddingHorizontal: spacing.lg,
+    maxHeight: '88%',
   },
-  backdropPress: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  centerWrap: {
-    flex: 1,
+  handle: {
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 20,
+    paddingTop: spacing.sm + 4,
+    paddingBottom: spacing.sm,
   },
-  card: {
-    padding: 20,
+  handleBar: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
   },
   title: {
-    fontSize: 20,
+    fontSize: 24,
     fontFamily: 'SpaceGrotesk_700Bold',
-    textAlign: 'center',
+    letterSpacing: -0.3,
     marginBottom: 6,
   },
   subtitle: {
     fontSize: 14,
     fontFamily: 'Inter_400Regular',
-    textAlign: 'center',
-    marginBottom: 20,
+    lineHeight: 20,
+    marginBottom: spacing.md,
+  },
+  chipBox: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    borderWidth: nb.borderWidth,
+    borderRadius: borderRadius.nbCard,
+    padding: 12,
+    marginBottom: spacing.md,
+  },
+  contextChip: {
+    borderWidth: nb.borderWidthPill,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  contextChipText: {
+    fontSize: 13,
+    fontFamily: 'SpaceGrotesk_700Bold',
+  },
+  fieldLabel: {
+    fontSize: 12,
+    fontFamily: 'Inter_700Bold',
+    letterSpacing: 0.7,
+    marginBottom: 8,
   },
   input: {
-    borderRadius: 12,
-    borderWidth: 2.5,
+    borderRadius: borderRadius.nbInput,
+    borderWidth: nb.borderWidth,
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 15,
     fontFamily: 'Inter_400Regular',
-    minHeight: 100,
+    minHeight: 110,
     textAlignVertical: 'top',
-    marginBottom: 20,
+    marginBottom: spacing.md,
   },
   actions: {
     flexDirection: 'row',
     gap: 12,
+    marginBottom: spacing.sm,
   },
+  actionBtn: { flex: 1 },
+  actionBtnWide: { flex: 1.4 },
 });

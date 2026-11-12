@@ -5,14 +5,15 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import Svg, { Text as SvgText, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
+import { lightColors } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
-export const BRAND_GRADIENT = ['#6D28D9', '#C2410C'];
+export const BRAND_GRADIENT = ['#BE185D', '#C2410C'];
 
 const DEFAULT_FONT_SIZE = 17;
 const DEFAULT_FONT_WEIGHT = '800';
-const DEFAULT_FILL_COLOR = '#FFFFFF';
+const DEFAULT_FILL_COLOR = lightColors.white;
 const DEFAULT_LETTER_SPACING = 0;
 const DEFAULT_NUMBER_OF_LINES = 1;
 const ANCHOR_START = 'start';

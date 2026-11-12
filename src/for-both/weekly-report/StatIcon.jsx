@@ -12,6 +12,7 @@ import {
   HOME_STAT_STRESS_GRADIENT,
 } from '../../look-and-feel/homeStatColors';
 import { useTheme } from '../weekly-report/reportColorSettings';
+import { lightColors } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
@@ -22,7 +23,7 @@ const MIN_INNER_RADIUS = 8;
 const RING_PADDING = 1.5;
 const DARK_MODE = 'dark';
 const DARK_INNER_COLOR = 'rgba(12,10,20,0.98)';
-const LIGHT_INNER_COLOR = '#FFFFFF';
+const LIGHT_INNER_COLOR = lightColors.white;
 const FALLBACK_METRIC_KEY = 'energy';
 
 const EXTRA_METRIC_VISUAL = {

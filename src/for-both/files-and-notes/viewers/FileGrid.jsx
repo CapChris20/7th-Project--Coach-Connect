@@ -1,72 +1,45 @@
-// Two-column file gallery: photos, videos, PDFs, and trainer document stubs.
-// Flow: pick a palette → image card or file card → hold-to-delete overlay when asked.
-// Used by Notes & Files screens and compact file modals.
+// Design Law two-column file gallery — HardShadow cards, hatch thumbs, type pills.
+// Flow: image / video / doc card → tap opens → optional hold-to-delete overlay.
+// Used by Notes & Files screens and TrainerSharedFilesPopup. PNG: screens/files-and-notes/01–04, 13–16.
+// vocab: HardShadow = solid offset (no blur); HatchedThumbFill = diagonal stripe placeholder
 
 import React from 'react';
 import { View, Text, TouchableOpacity, Pressable, StyleSheet, Image, Platform, Animated } from 'react-native';
-import { useTheme } from '../../../look-and-feel/lightDarkMode';import { LinearGradient } from 'expo-linear-gradient';
 import { WebView } from 'react-native-webview';
-import { useTheme } from '../../../look-and-feel/lightDarkMode';import { Video, ResizeMode } from 'expo-av';
-import {
-  FileText,
-  FileSpreadsheet,
-  FileType2,
-  File as FileIcon,
-  Image as ImageIcon,
-} from 'lucide-react-native';
+import { Video, ResizeMode } from 'expo-av';
+import HardShadow from '../../../look-and-feel/HardShadow';
+import NbIconChip from '../../../look-and-feel/NbIconChip';
+import { useTheme } from '../../../look-and-feel/lightDarkMode';
+import { borderRadius, nb } from '../../../look-and-feel/colorPalette';
+import HatchedThumbFill from '../../../workouts/exercise-videos/HatchedThumbFill';
 import { getFriendlyFileTitle } from '../../../helpers/fileSizeAndDateText';
 
 // ===== NAMED CONSTANTS =====
 
-const PALETTES = ['cyan', 'pink', 'purple', 'orange'];
 const HOLD_DURATION_MS = 850;
 const HOLD_MIN_DURATION_MS = 250;
 const HOLD_RESET_DELAY_MS = 250;
-const DEFAULT_ICON_SIZE = 26;
 
-const COLORS = {
-  light: {
-    background: '#FFFFFF',
-    foreground: '#0B0B12',
-    surface: '#FFFFFF',
-    surfaceTint: '#F0F2F8',
-    textMuted: '#5C6370',
-    border: '#E4E7EE',
-  },
-  dark: {
-    background: '#0A0A0F',
-    foreground: '#FFFFFF',
-    surface: '#131319',
-    surfaceTint: '#222230',
-    textMuted: '#9CA3AF',
-    border: '#2D2D38',
-  },
-};
+const ICON_PICTURE = require('../../../assets/icons/handoff/picture.png');
+const ICON_WEEK = require('../../../assets/icons/handoff/week.png');
+const ICON_MUSCLE = require('../../../assets/icons/handoff/muscle.png');
+const ICON_CHECKIN = require('../../../assets/icons/handoff/checkin.png');
 
-const GRADIENTS = {
-  cyan: '#64D2FF',
-  pink: '#FF6B9D',
-  purple: '#C084FC',
-  orange: '#F97316',
-};
-
-const PALETTE_GRADIENTS = {
-  cyan: [GRADIENTS.cyan, GRADIENTS.pink],
-  pink: [GRADIENTS.pink, GRADIENTS.purple],
-  purple: [GRADIENTS.purple, GRADIENTS.orange],
-  orange: [GRADIENTS.orange, GRADIENTS.cyan],
+const TYPE_PILL = {
+  PDF: { label: 'PDF', chip: 3 },
+  Document: { label: 'DOC', chip: 6 },
+  Spreadsheet: { label: 'SHEET', chip: 4 },
+  Image: { label: 'IMAGE', chip: 1 },
+  Video: { label: 'VIDEO', chip: 0 },
+  File: { label: 'FILE', chip: 2 },
+  Other: { label: 'FILE', chip: 2 },
 };
 
 // ===== HELPER FUNCTIONS =====
 
-const paletteClass = (index) => PALETTES[index % PALETTES.length];
-
-const getPaletteGradient = (palette) => {
-  return PALETTE_GRADIENTS[palette] || PALETTE_GRADIENTS.cyan;
-};
-
 function thumbHeight(dense) {
-  return dense ? 56 : 64;
+  // Manipulate here: dense = modal / compact tiles
+  return dense ? 72 : 96;
 }
 
 function googleEmbedUrl(url) {
@@ -172,13 +145,13 @@ function PaperDocPreview({ title, excerpt, height, colors, showSkeleton }) {
   const bodyText = normalizePreviewText(excerpt);
 
   return (
-    <View style={[styles.paperPreview, { height, backgroundColor: colors.surfaceTint }]}>
-      <View style={[styles.paperAccent, { backgroundColor: colors.foreground }]} />
-      <Text style={[styles.paperTitle, { color: colors.foreground }]} numberOfLines={2}>
+    <View style={[styles.paperPreview, { height, backgroundColor: colors.nbSoft }]}>
+      <View style={[styles.paperAccent, { backgroundColor: colors.nbInk }]} />
+      <Text style={[styles.paperTitle, { color: colors.nbInk }]} numberOfLines={2}>
         {title}
       </Text>
       {bodyText.length > 0 ? (
-        <Text style={[styles.paperBody, { color: colors.textMuted, fontFamily: mono }]} numberOfLines={7}>
+        <Text style={[styles.paperBody, { color: colors.nbMuted, fontFamily: mono }]} numberOfLines={7}>
           {bodyText}
         </Text>
       ) : showSkeleton ? (
@@ -186,22 +159,13 @@ function PaperDocPreview({ title, excerpt, height, colors, showSkeleton }) {
           {[0.92, 0.85, 0.72, 0.88].map((widthFraction, index) => (
             <View
               key={index}
-              style={[styles.fakeLine, { width: `${widthFraction * 100}%`, backgroundColor: colors.border }]}
+              style={[styles.fakeLine, { width: `${widthFraction * 100}%`, backgroundColor: colors.nbBorder }]}
             />
           ))}
         </View>
       ) : null}
     </View>
   );
-}
-
-function iconForDisplayType(type, size = DEFAULT_ICON_SIZE, iconColor = '#FFFFFF') {
-  const iconTint = iconColor;
-  if (type === 'PDF') return <FileText size={size} color={iconTint} />;
-  if (type === 'Document') return <FileType2 size={size} color={iconTint} />;
-  if (type === 'Spreadsheet') return <FileSpreadsheet size={size} color={iconTint} />;
-  if (type === 'Image') return <ImageIcon size={size} color={iconTint} />;
-  return <FileIcon size={size} color={iconTint} />;
 }
 
 function displayTypeForFile(file) {
@@ -275,6 +239,20 @@ function shouldEmbedDocumentPreview(file) {
   return mimeLooksLikeDocument(mimeType);
 }
 
+function thumbIconForDisplayType(displayType) {
+  if (displayType === 'Image' || displayType === 'Video') return ICON_PICTURE;
+  if (displayType === 'Spreadsheet') return ICON_WEEK;
+  if (displayType === 'PDF' || displayType === 'Document') return ICON_CHECKIN;
+  return ICON_MUSCLE;
+}
+
+function whoBadgeForFile(file) {
+  if (file?.addedBy === 'trainer' || (file?.type === 'document' && file?.trainerId)) {
+    return 'From your coach';
+  }
+  return 'From you';
+}
+
 function VideoThumb({ url, posterUri, height }) {
   if (posterUri) {
     return <Image source={{ uri: posterUri }} style={[styles.previewImg, { height }]} />;
@@ -344,9 +322,7 @@ function HoldPressable({
               styles.holdOverlayFill,
               {
                 opacity: progress.interpolate({ inputRange: [0, 1], outputRange: [0, 0.22] }),
-                transform: [
-                  { scaleX: progress },
-                ],
+                transform: [{ scaleX: progress }],
               },
             ]}
           />
@@ -355,55 +331,13 @@ function HoldPressable({
               styles.holdBar,
               {
                 width: progress.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }),
+                backgroundColor: '#000',
               },
             ]}
           />
         </View>
       ) : null}
     </Pressable>
-  );
-}
-
-function GalleryImageCard({ file, palette, colors, onPress, thumbH, holdToAction }) {
-  const uri = storedThumbnailUri(file) || file.url || file.src;
-  const label = displayTypeForFile(file);
-  const metaDate = shortDate(file.createdAt);
-  const title = decodeFileTitle(file);
-
-  return (
-    <HoldPressable
-      style={styles.card}
-      enabled={!!holdToAction}
-      durationMs={holdToAction?.durationMs}
-      onPress={onPress}
-      onHoldComplete={holdToAction ? () => holdToAction.onComplete?.(file) : undefined}
-    >
-      <LinearGradient
-        colors={getPaletteGradient(palette)}
-        start={{ x: 0, y: 0.5 }}
-        end={{ x: 1, y: 0.5 }}
-        style={styles.gradBorder}
-      >
-        <View style={[styles.gradInner, { backgroundColor: colors.surface }]}>
-          {uri ? (
-            <Image source={{ uri }} style={[styles.previewImg, { height: thumbH }]} />
-          ) : (
-            <View style={[styles.previewSlot, styles.iconPlaceholder, { height: thumbH, backgroundColor: colors.surfaceTint }]}>
-              {iconForDisplayType('Image', 28, colors.textMuted)}
-            </View>
-          )}
-          <View style={styles.cardInfo}>
-            <Text style={[styles.cardName, { color: colors.foreground }]} numberOfLines={2}>
-              {title}
-            </Text>
-            <Text style={[styles.cardMeta, { color: colors.textMuted }]} numberOfLines={1}>
-              {label}
-              {metaDate ? ` · ${metaDate}` : ''}
-            </Text>
-          </View>
-        </View>
-      </LinearGradient>
-    </HoldPressable>
   );
 }
 
@@ -459,9 +393,8 @@ function previewForGalleryFile({
   return iconFallback;
 }
 
-function GalleryFileCard({
+function GalleryCard({
   file,
-  palette,
   colors,
   onPress,
   displayType,
@@ -469,77 +402,81 @@ function GalleryFileCard({
   holdToAction,
 }) {
   const label = displayType || displayTypeForFile(file);
+  const pill = TYPE_PILL[label] || TYPE_PILL.Other;
   const metaDate = shortDate(file.createdAt || file.updatedAt);
   const title = decodeFileTitle(file);
   const stored = storedThumbnailUri(file);
   const url = file.url;
-  const mutedIcon = colors.textMuted;
   const snippet = String(file.previewSnippet || file.previewText || '').trim();
   const isTrainerDocStub =
     file.type === 'document' && file.documentId && file.trainerId && !url;
 
-  const tintBase = colors.surfaceTint;
-  const filePreviewBg = { backgroundColor: tintBase };
-
   const iconFallback = (
     <View style={[styles.previewSlot, styles.iconPlaceholder, { height: thumbH }]}>
-      {iconForDisplayType(label, 28, mutedIcon)}
+      <HatchedThumbFill />
+      <View style={styles.thumbChipCenter}>
+        <NbIconChip source={thumbIconForDisplayType(label)} size={40} index={pill.chip} />
+      </View>
     </View>
   );
 
-  const inner = previewForGalleryFile({
-    file,
-    title,
-    snippet,
-    isTrainerDocStub,
-    stored,
-    url,
-    thumbH,
-    tintBase,
-    label,
-    colors,
-    iconFallback,
-  });
+  const showRealPreview =
+    stored ||
+    (isVideoFile(file) && url) ||
+    shouldShowPaperPreview(isTrainerDocStub, url, snippet) ||
+    (url && shouldEmbedDocumentPreview(file)) ||
+    (url && (label === 'Image' || mimeLooksLikeImage(file)));
+
+  const inner = showRealPreview
+    ? previewForGalleryFile({
+        file,
+        title,
+        snippet,
+        isTrainerDocStub,
+        stored,
+        url,
+        thumbH,
+        tintBase: colors.nbSoft,
+        label,
+        colors,
+        iconFallback,
+      })
+    : iconFallback;
 
   return (
-    <HoldPressable
-      style={styles.card}
-      enabled={!!holdToAction}
-      durationMs={holdToAction?.durationMs}
-      onPress={onPress}
-      onHoldComplete={holdToAction ? () => holdToAction.onComplete?.(file) : undefined}
-    >
-      <LinearGradient
-        colors={getPaletteGradient(palette)}
-        start={{ x: 0, y: 0.5 }}
-        end={{ x: 1, y: 0.5 }}
-        style={styles.gradBorder}
+    <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard} style={styles.cardWrap}>
+      <HoldPressable
+        style={styles.cardPress}
+        enabled={!!holdToAction}
+        durationMs={holdToAction?.durationMs}
+        onPress={onPress}
+        onHoldComplete={holdToAction ? () => holdToAction.onComplete?.(file) : undefined}
       >
-        <View style={[styles.gradInner, { backgroundColor: colors.surface }]}>
-          <View style={[styles.filePreview, filePreviewBg]}>
+        <View style={[styles.cardInner, { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder }]}>
+          <View style={[styles.thumbBox, { height: thumbH, borderColor: colors.nbBorder, backgroundColor: colors.nbSoft }]}>
             {inner}
-            <View style={styles.tintOverlay} pointerEvents="none" />
-            <LinearGradient
-              colors={getPaletteGradient(palette)}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.iconBadge}
-            >
-              <View style={styles.iconContainer}>{iconForDisplayType(label, 16)}</View>
-            </LinearGradient>
           </View>
-          <View style={styles.cardInfo}>
-            <Text style={[styles.cardName, { color: colors.foreground }]} numberOfLines={2}>
-              {title}
-            </Text>
-            <Text style={[styles.cardMeta, { color: colors.textMuted }]} numberOfLines={1}>
-              {label}
-              {metaDate ? ` · ${metaDate}` : ''}
+          <Text style={[styles.cardName, { color: colors.nbInk }]} numberOfLines={2}>
+            {title}
+          </Text>
+          <View style={styles.metaRow}>
+            <View style={[styles.typePill, { backgroundColor: colors.nbFill }]}>
+              <Text style={[styles.typePillText, { color: colors.nbOnFill }]}>{pill.label}</Text>
+            </View>
+            {metaDate ? (
+              <Text style={[styles.cardMeta, { color: colors.nbMuted }]} numberOfLines={1}>
+                {metaDate}
+              </Text>
+            ) : null}
+          </View>
+          <View style={[styles.whoPill, { backgroundColor: colors.nbSoft, borderColor: colors.nbBorder }]}>
+            <Text style={[styles.whoPillText, { color: colors.nbInk }]} numberOfLines={1}>
+              {whoBadgeForFile(file)}
             </Text>
           </View>
         </View>
-      </LinearGradient>
-    </HoldPressable>
+      </HoldPressable>
+    </HardShadow>
   );
 }
 
@@ -548,30 +485,13 @@ function holdActionForFile(holdToDelete, onLongPressItem, holdDurationMs) {
   return { durationMs: holdDurationMs, onComplete: (file) => onLongPressItem?.(file) };
 }
 
-function FileGridCard({ file, index, colors, thumbH, onPressItem, onLongPressItem, holdToDelete, holdDurationMs }) {
-  const palette = paletteClass(index);
+function FileGridCard({ file, colors, thumbH, onPressItem, onLongPressItem, holdToDelete, holdDurationMs }) {
   const handler = () => onPressItem?.(file);
   const holdToAction = holdActionForFile(holdToDelete, onLongPressItem, holdDurationMs);
-  const cardKey = file.id || `${file.name || file.title || 'file'}_${index}`;
 
-  if (isImageFile(file) && file.url) {
-    return (
-      <GalleryImageCard
-        key={cardKey}
-        file={file}
-        palette={palette}
-        colors={colors}
-        onPress={handler}
-        thumbH={thumbH}
-        holdToAction={holdToAction}
-      />
-    );
-  }
   return (
-    <GalleryFileCard
-      key={cardKey}
+    <GalleryCard
       file={file}
-      palette={palette}
       colors={colors}
       onPress={handler}
       displayType={displayTypeForFile(file)}
@@ -584,12 +504,12 @@ function FileGridCard({ file, index, colors, thumbH, onPressItem, onLongPressIte
 // ===== MAIN FUNCTION =====
 
 /**
- * Shared file gallery — gradient-bordered cards in a 2-column grid.
+ * Shared file gallery — Design Law HardShadow cards in a 2-column grid.
  * @param {object} props
  * @param {boolean} [props.dense] tighter thumbnail height (modal / compact)
  */
 export default function FileGrid({
-  isDark,
+  isDark: _isDarkIgnored,
   files = [],
   maxItems,
   onPressItem,
@@ -600,14 +520,12 @@ export default function FileGrid({
   holdToDelete = false,
   holdDurationMs = HOLD_DURATION_MS,
 }) {
-  const colors = isDark ? COLORS.dark : COLORS.light;
+  const { colors } = useTheme();
   const list = typeof maxItems === 'number' ? files.slice(0, maxItems) : [...files];
   const thumbH = thumbHeight(dense);
 
-  // 1. Hide the whole block when asked and there is nothing to show.
   if (hideWhenEmpty && list.length === 0) return null;
 
-  // 2. One image card or file card per item. Optional footer link under the grid.
   return (
     <View>
       <View style={styles.gallery}>
@@ -615,7 +533,6 @@ export default function FileGrid({
           <FileGridCard
             key={file.id || `${file.name || file.title || 'file'}_${index}`}
             file={file}
-            index={index}
             colors={colors}
             thumbH={thumbH}
             onPressItem={onPressItem}
@@ -627,29 +544,62 @@ export default function FileGrid({
       </View>
       {footerLink ? (
         <TouchableOpacity activeOpacity={0.85} onPress={footerLink.onPress} style={styles.footerBtn}>
-          <Text style={styles.footerText}>{footerLink.label}</Text>
+          <Text style={[styles.footerText, { color: colors.nbInk }]}>{footerLink.label}</Text>
         </TouchableOpacity>
       ) : null}
     </View>
   );
 }
 
-export { COLORS as FILE_GALLERY_THEME_COLORS, getPaletteGradient, paletteClass };
+// Kept for call sites that imported the old gallery theme map (no longer used for paint).
+export const FILE_GALLERY_THEME_COLORS = {
+  light: {},
+  dark: {},
+};
+export function getPaletteGradient() {
+  return ['#000', '#000'];
+}
+export function paletteClass() {
+  return 'ink';
+}
 
 const styles = StyleSheet.create({
   gallery: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
+    gap: 12,
     justifyContent: 'space-between',
   },
-  card: {
+  cardWrap: {
     width: '48%',
     maxWidth: '48%',
   },
+  cardPress: {
+    width: '100%',
+  },
+  cardInner: {
+    borderRadius: borderRadius.nbCard,
+    borderWidth: nb.borderWidth,
+    padding: 10,
+    gap: 8,
+  },
+  thumbBox: {
+    width: '100%',
+    borderRadius: 8,
+    borderWidth: nb.borderWidth,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  thumbChipCenter: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1,
+  },
   holdOverlayWrap: {
     ...StyleSheet.absoluteFillObject,
-    borderRadius: 16,
+    borderRadius: borderRadius.nbCard,
     overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'flex-end',
@@ -660,28 +610,16 @@ const styles = StyleSheet.create({
   },
   holdBar: {
     height: 3,
-    backgroundColor: '#FF6B9D',
     alignSelf: 'flex-start',
-  },
-  gradBorder: {
-    borderRadius: 16,
-    padding: 1.5,
-    overflow: 'hidden',
-  },
-  gradInner: {
-    borderRadius: 14.5,
-    overflow: 'hidden',
   },
   previewImg: {
     width: '100%',
     resizeMode: 'cover',
-    backgroundColor: 'rgba(0,0,0,0.06)',
   },
   previewSlot: {
     width: '100%',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.04)',
   },
   webInner: {
     flex: 1,
@@ -690,7 +628,6 @@ const styles = StyleSheet.create({
   },
   paperPreview: {
     width: '100%',
-    borderRadius: 10,
     overflow: 'hidden',
     paddingHorizontal: 10,
     paddingVertical: 8,
@@ -701,7 +638,6 @@ const styles = StyleSheet.create({
     height: 3,
     borderRadius: 2,
     marginBottom: 6,
-    opacity: 0.9,
   },
   paperTitle: {
     fontSize: 11,
@@ -724,50 +660,48 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     opacity: 0.35,
   },
-  filePreview: {
-    width: '100%',
-    justifyContent: 'center',
-    alignItems: 'center',
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  tintOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(10, 12, 22, 0.075)',
-  },
   iconPlaceholder: {
     width: '100%',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  iconBadge: {
-    position: 'absolute',
-    bottom: 6,
-    right: 6,
-    width: 26,
-    height: 26,
-    borderRadius: 7,
-    justifyContent: 'center',
+  metaRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    overflow: 'hidden',
+    gap: 8,
+    flexWrap: 'wrap',
   },
-  iconContainer: {
-    justifyContent: 'center',
-    alignItems: 'center',
+  typePill: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
   },
-  cardInfo: {
-    paddingHorizontal: 8,
-    paddingVertical: 6,
+  typePillText: {
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.6,
   },
   cardName: {
-    fontSize: 12,
-    fontWeight: '600',
-    lineHeight: 15,
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+    minHeight: 36,
   },
   cardMeta: {
-    fontSize: 10,
-    marginTop: 2,
-    lineHeight: 13,
+    fontSize: 12,
+    fontWeight: '600',
+    flexShrink: 1,
+  },
+  whoPill: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: nb.borderWidthPill,
+  },
+  whoPillText: {
+    fontSize: 12,
+    fontWeight: '700',
   },
   footerBtn: {
     marginTop: 12,
@@ -775,9 +709,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   footerText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#FF6B9D',
+    fontSize: 13,
+    fontWeight: '800',
     textDecorationLine: 'underline',
   },
 });

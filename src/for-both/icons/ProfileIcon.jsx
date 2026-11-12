@@ -15,7 +15,7 @@ import CalendarIcon from './CalendarIcon';
 
 const FREQUENCY_ITEM_ID = 'frequency';
 const FALLBACK_ICON_NAME = 'ellipse-outline';
-const FALLBACK_ICON_COLOR = '#9333EA';
+const FALLBACK_ICON_COLOR = '#BE185D';
 const IMAGE_CONTENT_FIT = 'contain';
 const IMAGE_CACHE_POLICY = 'memory-disk';
 // Manipulate here: 0 skips the fade so a row of icons does not blink in one by one.

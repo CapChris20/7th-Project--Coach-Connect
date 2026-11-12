@@ -8,12 +8,13 @@
 // ===== NAMED CONSTANTS =====
 
 /** Colors the plan viewer / builder share — letters stay so screens keep matching. */
+import { lightColors } from '../../look-and-feel/colorPalette';
 const PLAN_BUILDER_COLORS = {
-  bgDark: '#0A0A0F',
+  bgDark: lightColors.nbInk,
   bgLight: '#F5F5F5',
   cardDark: '#12131A',
-  cardLight: '#FFFFFF',
-  pink: '#FF6B9D',
+  cardLight: lightColors.white,
+  pink: lightColors.primary,
   /** Secondary accent for row icons (replaces old purple). */
   purple: '#64D2FF',
   cyan: '#06B6D4',
@@ -23,7 +24,7 @@ const PLAN_BUILDER_COLORS = {
 
 /** Day-type tint on viewer cards — key letters (Push/Pull/Legs/…) stay frozen. */
 const DAY_TYPE_COLORS = {
-  Push: '#FF6B9D',
+  Push: lightColors.primary,
   Pull: '#06B6D4',
   Legs: '#F97316',
   'Full Body': '#10B981',
@@ -658,6 +659,18 @@ function structuredDayToPlanViewerRow(day, dayIndex, weeklySchedule) {
               Array.isArray(exercise?.formCues) && exercise.formCues.length
                 ? exercise.formCues.map((cue) => String(cue)).join('\n')
                 : undefined;
+            const weight =
+              exercise?.startingWeight != null
+                ? String(exercise.startingWeight)
+                : exercise?.weight != null
+                  ? String(exercise.weight)
+                  : undefined;
+            const equipment =
+              exercise?.equipment != null
+                ? String(exercise.equipment)
+                : exercise?.equip != null
+                  ? String(exercise.equip)
+                  : undefined;
             return {
               name,
               sets: exercise?.sets != null ? String(exercise.sets) : '1',
@@ -665,6 +678,9 @@ function structuredDayToPlanViewerRow(day, dayIndex, weeklySchedule) {
               rest: exercise?.rest != null ? String(exercise.rest) : '',
               muscle: String(muscle),
               notes,
+              // Optional display fields for Design Law exercise rows (weight · equipment pills)
+              ...(weight ? { weight } : {}),
+              ...(equipment ? { equipment } : {}),
             };
           })
           .filter(Boolean)
@@ -683,6 +699,12 @@ function structuredDayToPlanViewerRow(day, dayIndex, weeklySchedule) {
     exercises,
     warmUp: Array.isArray(day?.warmUp) ? day.warmUp : [],
     coolDown: Array.isArray(day?.coolDown) ? day.coolDown : [],
+    // Pass through if the structured day had a time estimate — Plan hero uses it
+    ...(day?.estimatedTime != null
+      ? { estimatedTime: day.estimatedTime }
+      : day?.sessionDuration != null
+        ? { estimatedTime: day.sessionDuration }
+        : {}),
   };
 }
 
@@ -718,7 +740,29 @@ function routeItemExerciseToViewerExercise(exercise, item) {
     notes = exercise.formCues.filter(Boolean).join('\n');
   }
 
-  return { name, sets, reps, rest: restEx, muscle, notes: notes || undefined };
+  const weight =
+    exercise.startingWeight != null
+      ? String(exercise.startingWeight)
+      : exercise.weight != null
+        ? String(exercise.weight)
+        : undefined;
+  const equipment =
+    exercise.equipment != null
+      ? String(exercise.equipment)
+      : exercise.equip != null
+        ? String(exercise.equip)
+        : undefined;
+
+  return {
+    name,
+    sets,
+    reps,
+    rest: restEx,
+    muscle,
+    notes: notes || undefined,
+    ...(weight ? { weight } : {}),
+    ...(equipment ? { equipment } : {}),
+  };
 }
 
 // ===== MAIN FUNCTION =====
@@ -820,6 +864,11 @@ function normalizeRouteWorkoutPlanItem(item, index) {
     exercises,
     warmUp: Array.isArray(item.warmUp) ? item.warmUp : [],
     coolDown: Array.isArray(item.coolDown) ? item.coolDown : [],
+    ...(item.estimatedTime != null
+      ? { estimatedTime: item.estimatedTime }
+      : item.sessionDuration != null
+        ? { estimatedTime: item.sessionDuration }
+        : {}),
   };
 }
 

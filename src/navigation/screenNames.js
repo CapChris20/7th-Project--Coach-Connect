@@ -32,6 +32,8 @@ export const CLIENT_ROUTES = {
   PhotoGallery: 'ClientPhotoGallery',
   AIWorkouts: 'ClientAIWorkouts',
   PlanViewer: 'ClientPlanViewer',
+  // Design Law session mode (log set + rest) — opened from My workout plan Start session
+  WorkoutSession: 'ClientWorkoutSession',
   AIChat: 'ClientAIChat',
 };
 

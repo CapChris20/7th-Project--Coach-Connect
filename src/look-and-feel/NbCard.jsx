@@ -21,11 +21,13 @@ export default function NbCard({ children, style, noShadow = false }) {
   const { colors } = useTheme();
 
   // Hard shadow: on iOS we use shadowRadius 0, on Android we duplicate the view
+  const offset = nb.shadowOffsetCard;
+
   const shadowStyle = Platform.select({
     ios: !noShadow
       ? {
           shadowColor: colors.nbShadow,
-          shadowOffset: { width: nb.shadowOffset, height: nb.shadowOffset },
+          shadowOffset: { width: offset, height: offset },
           shadowOpacity: 1,
           shadowRadius: 0,
         }
@@ -45,7 +47,7 @@ export default function NbCard({ children, style, noShadow = false }) {
               borderColor: colors.nbShadow,
             },
             StyleSheet.absoluteFill,
-            { top: nb.shadowOffset, left: nb.shadowOffset },
+            { top: offset, left: offset },
           ]}
         />
         <View
@@ -54,6 +56,7 @@ export default function NbCard({ children, style, noShadow = false }) {
             {
               backgroundColor: colors.nbSurface,
               borderColor: colors.nbBorder,
+              padding: nb.cardPadding,
             },
           ]}
         >
@@ -70,6 +73,7 @@ export default function NbCard({ children, style, noShadow = false }) {
         {
           backgroundColor: colors.nbSurface,
           borderColor: colors.nbBorder,
+          padding: nb.cardPadding,
         },
         shadowStyle,
         style,
@@ -87,3 +91,5 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
 });
+
+export { NbCard };

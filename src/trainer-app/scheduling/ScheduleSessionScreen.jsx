@@ -149,14 +149,19 @@ export function ScheduleSessionScreen(props = {}) {
   const weekChips = useMemo(() => {
     return weekDates.map((date) => ({
       id: format(date, 'yyyy-MM-dd'),
+      // Custom node (not a string) — NbChip must render this outside <Text>
       label: (
         <View style={styles.dateChipContent}>
-          <Text style={styles.dateChipDay}>{WEEKDAY_LABELS[date.getDay()]}</Text>
-          <Text style={styles.dateChipDate}>{format(date, 'd')}</Text>
+          <Text style={[styles.dateChipDay, { color: colors.nbInk }]}>
+            {WEEKDAY_LABELS[date.getDay()]}
+          </Text>
+          <Text style={[styles.dateChipDate, { color: colors.nbInk }]}>
+            {format(date, 'd')}
+          </Text>
         </View>
       ),
     }));
-  }, [weekDates]);
+  }, [weekDates, colors.nbInk]);
 
   const selectedDateKey = format(selectedDate, 'yyyy-MM-dd');
 
@@ -265,9 +270,11 @@ export function ScheduleSessionScreen(props = {}) {
         <Text style={[styles.clientName, { color: colors.nbInk }]}>{clientName}</Text>
       </View>
 
-      {/* Date strip (horizontal scroll week chips) */}
+      {/* Date strip — day letter + number (PNG 11). Month label is live, not hardcoded. */}
       <View style={styles.section}>
-        <Text style={[styles.label, { color: colors.nbMuted }]}>DATE · NOVEMBER</Text>
+        <Text style={[styles.label, { color: colors.nbMuted }]}>
+          {`DATE · ${format(selectedDate, 'MMMM').toUpperCase()}`}
+        </Text>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -282,6 +289,7 @@ export function ScheduleSessionScreen(props = {}) {
                 if (foundDate) setSelectedDate(foundDate);
               }}
               style={styles.dateChip}
+              contentStyle={styles.dateChipInner}
             >
               {chip.label}
             </NbChip>
@@ -289,7 +297,7 @@ export function ScheduleSessionScreen(props = {}) {
         </ScrollView>
       </View>
 
-      {/* Time slots (3-column grid) */}
+      {/* Time slots — readable labels in a 3-col wrap (was blank: NbChip wrapped Views in Text) */}
       <View style={styles.section}>
         <Text style={[styles.label, { color: colors.nbMuted }]}>START TIME</Text>
         <View style={styles.timeGrid}>
@@ -299,6 +307,7 @@ export function ScheduleSessionScreen(props = {}) {
               selected={selectedTime === time}
               onPress={() => setSelectedTime(time)}
               style={styles.timeChip}
+              contentStyle={styles.timeChipInner}
             >
               {time}
             </NbChip>
@@ -463,7 +472,12 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   dateChip: {
-    minWidth: 52,
+    minWidth: 56,
+  },
+  dateChipInner: {
+    minHeight: 56,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
   },
   dateChipContent: {
     alignItems: 'center',
@@ -476,15 +490,21 @@ const styles = StyleSheet.create({
   },
   dateChipDate: {
     fontFamily: 'SpaceGrotesk_700Bold',
-    fontSize: 15,
+    fontSize: 16,
   },
   timeGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.sm,
   },
+  // Manipulate here: ~3 columns — fixed % + HardShadow sibling needs a little headroom for gaps
   timeChip: {
-    width: '31%', // 3 columns with gaps
+    width: '31%',
+  },
+  timeChipInner: {
+    minHeight: 44,
+    paddingVertical: 10,
+    width: '100%',
   },
   notesInput: {
     borderWidth: nb.borderWidth,

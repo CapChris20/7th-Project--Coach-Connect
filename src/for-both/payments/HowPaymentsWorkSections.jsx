@@ -6,7 +6,7 @@ import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
-import { NbCard } from '../../look-and-feel/NbCard';
+import NbCard from '../../look-and-feel/NbCard';
 import {
   HOW_PAYMENTS_WORK,
   VENMO_VS_COACHCONNECT,
@@ -14,10 +14,11 @@ import {
   EARNINGS_MOCK,
   formatPaymentDollars,
 } from './howPaymentsWorkText';
+import { lightColors } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
-const DEFAULT_TEXT_COLOR = '#FFFFFF';
+const DEFAULT_TEXT_COLOR = lightColors.white;
 const DEFAULT_MUTED_COLOR = 'rgba(255,255,255,0.6)';
 const DEFAULT_MUTED_PREVIEW = 'rgba(255,255,255,0.55)';
 const DEFAULT_BORDER_COLOR = 'rgba(255,255,255,0.1)';

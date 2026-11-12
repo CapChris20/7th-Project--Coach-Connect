@@ -1,64 +1,35 @@
-// Thin gradient ring around a compact input on nutrition modals.
-// Flow: pick the dark or light border colors → paint the gradient ring → nest the field inside.
-// Used by the edit-serving popup so those inputs match the food-search border.
-// Redesigned with neobrutalist nb.borderWidth.
+// Design Law field frame — HardShadow + 3px ink border around a form control.
+// Flow: wrap children in outlined surface. Used by food-card editors.
+//
+// vocab: HardShadow = solid offset shadow (no blur)
 
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { nb, gradients } from '../../look-and-feel/colorPalette';
-
-// ===== NAMED CONSTANTS =====
-
-const GRADIENT_LOCATIONS = [0, 0.5, 1];
-const GRADIENT_START = { x: 0, y: 0 };
-const GRADIENT_END = { x: 1, y: 1 };
-
-// ===== HELPER FUNCTIONS =====
+import { View } from 'react-native';
+import HardShadow from '../../look-and-feel/HardShadow';
+import { useTheme } from '../../look-and-feel/lightDarkMode';
+import { borderRadius, nb } from '../../look-and-feel/colorPalette';
 
 /**
- * Use ink gradient for neobrutalist styling.
- * @param {boolean} isDark
- * @returns {string[]}
+ * @param {{ children: React.ReactNode, radius?: number, style?: object, contentStyle?: object }} props
  */
-function borderColorsForTheme(isDark) {
-  return gradients.ink.colors;
-}
-
-// ===== MAIN FUNCTION =====
-
-/**
- * Gradient ring around one compact nutrition input.
- * @param {object} props
- * @param {boolean} props.isDark
- * @param {object} [props.style]
- * @param {React.ReactNode} props.children
- * @returns {JSX.Element}
- */
-export default function ColorFieldFrame({ isDark, style, children }) {
-  const borderGradientColors = borderColorsForTheme(isDark);
-  const ringStyle = [styles.ring, style];
+export default function ColorFieldFrame({ children, radius = borderRadius.nbInput, style, contentStyle }) {
+  const { colors } = useTheme();
   return (
-    // vocab: LinearGradient = a view painted with color stops instead of one flat background.
-    <LinearGradient
-      colors={borderGradientColors}
-      start={GRADIENT_START}
-      end={GRADIENT_END}
-      locations={GRADIENT_LOCATIONS}
-      style={ringStyle}
-    >
-      <View style={styles.inner}>{children}</View>
-    </LinearGradient>
+    <HardShadow radius={radius} offset={nb.shadowOffsetSmall} style={style}>
+      <View
+        style={[
+          {
+            borderWidth: nb.borderWidth,
+            borderColor: colors.nbBorder,
+            backgroundColor: colors.nbSurface,
+            borderRadius: radius,
+            overflow: 'hidden',
+          },
+          contentStyle,
+        ]}
+      >
+        {children}
+      </View>
+    </HardShadow>
   );
 }
-
-const styles = StyleSheet.create({
-  ring: {
-    borderRadius: 14,
-    padding: nb.borderWidth,
-  },
-  inner: {
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-});

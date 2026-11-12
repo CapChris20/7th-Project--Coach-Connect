@@ -50,10 +50,6 @@ import { getApiBaseCandidates } from '../for-both/online-connection/whereToConne
 import { queuePendingOnboardingSync } from '../for-both/online-connection/uploadSetupAnswers';
 import { useAI } from '../for-both/app-wide-settings/AIPermission';
 import { AIPermissionStep } from '../for-both/setup-steps/AIPermissionStep';
-import {
-  TrainerProOfferStep,
-  TrainerSubscriptionCtaFooter,
-} from '../for-both/setup-steps/TrainerProOfferStep';
 import { useSubscription } from '../trainer-pro-plan/ProPlanSetup';
 import { TRAINER_PLATFORM_SUBSCRIPTION_ENABLED } from '../trainer-pro-plan/proPlanSwitches';
 import DislikedExercisesPicker from '../workouts/exercise-videos/DislikedExercisesPicker';
@@ -98,8 +94,26 @@ import {
   OnboardingPrimaryButton,
 } from '../for-both/setup-steps/setupStepPieces';
 import NbProgressSteps from '../look-and-feel/NbProgressSteps';
-import NbHero from '../look-and-feel/NbHero';
 import NbButton from '../look-and-feel/NbButton';
+import ClientOnboardingStep, {
+  CLIENT_ONBOARDING_STEPS,
+  getClientChapterMeta,
+  getClientScreenTitle,
+  validateClientOnboardingStep,
+  withClientSliderDefaults,
+} from './ClientOnboardingScreens';
+import DesignLawTrainerOnboardingStep, {
+  TRAINER_ONBOARDING_STEPS,
+  TRAINER_INVITE_STEP,
+  TRAINER_PRO_STEP,
+  TRAINER_COMPLETE_STEP,
+  TRAINER_PAYOUT_STEP,
+  getTrainerChapterMeta,
+  getTrainerScreenTitle,
+  validateTrainerOnboardingStep,
+  withTrainerSliderDefaults,
+} from './DesignLawTrainerOnboardingScreens';
+import NbHero from '../look-and-feel/NbHero';
 import NbChip from '../look-and-feel/NbChip';
 import NbChipRow from '../look-and-feel/NbChipRow';
 import NbSegmented from '../look-and-feel/NbSegmented';
@@ -127,8 +141,7 @@ const DAYS_IN_WEEK = 7;
 const DAY_OF_WEEK_NUMBERS = [1, 2, 3, 4, 5, 6, DAYS_IN_WEEK];
 // Client step tint index for trainer-code / invite step.
 const CLIENT_INVITE_STEP = 7;
-// Trainer invite-code step number in the trainer flow.
-const TRAINER_INVITE_STEP = 7;
+// Trainer invite-code step — Design Law part 1 step 4 (see DesignLawTrainerOnboardingScreens).
 // Invite code display "XXX-XXX" is 7 chars including the dash.
 const INVITE_CODE_DISPLAY_LENGTH = 7;
 // Manipulate here: orange warning when bio is near the limit.
@@ -239,39 +252,37 @@ function CardLeadingIcon({ iconSource, iconName, iconColor, grid, large, row }) 
 }
 
 /**
- * Thin progress bar for the onboarding header (current step / total steps).
+ * Thin legacy % bar — prefer NbProgressSteps for Design Law chapter chrome.
  * @param {{current: number, total: number, t: object, gradientColors?: string[]}} props
  */
 export function OnboardingProgressBar({ current, total, t, gradientColors }) {
   const pct = Math.min((current / total) * 100, 100);
-  const barGradient =
-    Array.isArray(gradientColors) && gradientColors.length >= 2
-      ? gradientColors
-      : ONBOARDING_BRAND_GRADIENT;
-  const gradientEnd = barGradient[barGradient.length - 1];
   return (
     <View
       style={{
         flex: 1,
-        height: 4,
-        borderRadius: 2,
+        height: 10,
+        borderRadius: 999,
+        borderWidth: 3,
+        borderColor: t.cardBorder,
         backgroundColor: t.progressTrack,
         marginHorizontal: 12,
         overflow: 'hidden',
       }}
     >
-      <LinearGradient
-        colors={[barGradient[0], gradientEnd]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        style={{ width: `${pct}%`, height: 4, borderRadius: 2 }}
+      <View
+        style={{
+          width: `${pct}%`,
+          height: '100%',
+          backgroundColor: t.fill || t.cardSelectedBg,
+        }}
       />
     </View>
   );
 }
 
 /**
- * Tappable choice card used on most onboarding steps (goal, specialty, etc.).
+ * Design Law choice card — 3px border, hard shadow, selected = solid fill + check.
  * @param {object} props
  */
 export function SelectionCard({
@@ -286,27 +297,37 @@ export function SelectionCard({
   accentGradient,
 }) {
   const cardBackground = selected ? t.cardSelectedBg : t.cardBg;
-  const border = selected ? t.cardSelectedBorder : t.cardBorder;
+  const border = t.cardBorder;
+  const labelColor = selected ? (t.cardSelectedText || t.onFill || '#FFFFFF') : t.textPrimary;
+  const descColor = selected ? labelColor : t.textSecondary;
   const gradient = accentGradient || ONBOARDING_BRAND_GRADIENT;
-  const iconColor = selected ? gradient[1] : gradient[0];
+  const iconColor = selected ? labelColor : gradient[0];
   const hasIcon = !!(iconSource || iconName);
+  const hardShadow = {
+    shadowColor: t.shadow || t.cardBorder,
+    shadowOffset: { width: 3, height: 3 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 3,
+  };
 
   if (variant === 'grid') {
     return (
       <TouchableOpacity
         onPress={onPress}
-        activeOpacity={0.8}
+        activeOpacity={0.85}
         style={{
           flex: 1,
           minHeight: 100,
           backgroundColor: cardBackground,
-          borderWidth: 1.5,
+          borderWidth: 3,
           borderColor: border,
-          borderRadius: 14,
+          borderRadius: 10,
           padding: 14,
           alignItems: 'center',
           justifyContent: 'center',
           gap: 8,
+          ...hardShadow,
         }}
       >
         {hasIcon ? (
@@ -314,10 +335,10 @@ export function SelectionCard({
             <CardLeadingIcon iconSource={iconSource} iconName={iconName} iconColor={iconColor} grid />
           </IconGradientWrap>
         ) : null}
-        <Text style={{ fontSize: 13, fontWeight: '600', color: t.textPrimary, textAlign: 'center' }}>{label}</Text>
+        <Text style={{ fontSize: 13, fontWeight: '800', color: labelColor, textAlign: 'center' }}>{label}</Text>
         {selected ? (
           <View style={{ position: 'absolute', top: 8, right: 8 }}>
-            <Ionicons name="checkmark" size={14} color={ONBOARDING_ACCENT} />
+            <Ionicons name="checkmark" size={16} color={labelColor} />
           </View>
         ) : null}
       </TouchableOpacity>
@@ -328,27 +349,28 @@ export function SelectionCard({
     return (
       <TouchableOpacity
         onPress={onPress}
-        activeOpacity={0.8}
+        activeOpacity={0.85}
         style={{
           flex: 1,
           backgroundColor: cardBackground,
-          borderWidth: 1.5,
+          borderWidth: 3,
           borderColor: border,
-          borderRadius: 14,
+          borderRadius: 10,
           padding: 24,
           alignItems: 'center',
           justifyContent: 'center',
           gap: 10,
+          ...hardShadow,
         }}
       >
         {hasIcon ? (
-          <IconGradientWrap gradient={gradient} selected={selected} size={48} radius={24}>
+          <IconGradientWrap gradient={gradient} selected={selected} size={48} radius={12}>
             <CardLeadingIcon iconSource={iconSource} iconName={iconName} iconColor={iconColor} large />
           </IconGradientWrap>
         ) : null}
-        <Text style={{ fontSize: 16, fontWeight: '700', color: t.textPrimary }}>{label}</Text>
+        <Text style={{ fontSize: 16, fontWeight: '800', color: labelColor }}>{label}</Text>
         {description ? (
-          <Text style={{ fontSize: 13, color: t.textSecondary, textAlign: 'center' }}>{description}</Text>
+          <Text style={{ fontSize: 13, color: descColor, textAlign: 'center', fontWeight: '500' }}>{description}</Text>
         ) : null}
       </TouchableOpacity>
     );
@@ -357,18 +379,19 @@ export function SelectionCard({
   return (
     <TouchableOpacity
       onPress={onPress}
-      activeOpacity={0.8}
+      activeOpacity={0.85}
       style={{
         flexDirection: 'row',
         alignItems: 'center',
         width: '100%',
         minHeight: 64,
         backgroundColor: cardBackground,
-        borderWidth: 1.5,
+        borderWidth: 3,
         borderColor: border,
-        borderRadius: 14,
+        borderRadius: 10,
         paddingHorizontal: 14,
-        marginBottom: 8,
+        marginBottom: 10,
+        ...hardShadow,
       }}
     >
       {hasIcon ? (
@@ -377,12 +400,12 @@ export function SelectionCard({
         </IconGradientWrap>
       ) : null}
       <View style={{ flex: 1 }}>
-        <Text style={{ fontSize: 15, fontWeight: '600', color: t.textPrimary }}>{label}</Text>
+        <Text style={{ fontSize: 15, fontWeight: '800', color: labelColor }}>{label}</Text>
         {description ? (
-          <Text style={{ fontSize: 13, color: t.textSecondary, marginTop: 1 }}>{description}</Text>
+          <Text style={{ fontSize: 13, color: descColor, marginTop: 1, fontWeight: '500' }}>{description}</Text>
         ) : null}
       </View>
-      {selected ? <Ionicons name="checkmark" size={20} color={ONBOARDING_ACCENT} style={{ marginLeft: 8 }} /> : null}
+      {selected ? <Ionicons name="checkmark" size={20} color={labelColor} style={{ marginLeft: 8 }} /> : null}
     </TouchableOpacity>
   );
 }
@@ -397,7 +420,6 @@ export function OnboardingTextArea({
   t,
   editable = true,
 }) {
-  const [focused, setFocused] = useState(false);
   return (
     <View style={{ marginBottom: 4, opacity: editable ? 1 : 0.55 }}>
       <TextInput
@@ -408,22 +430,25 @@ export function OnboardingTextArea({
         placeholderTextColor={t.textLabel}
         multiline
         numberOfLines={numberOfLines}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
         style={{
-          backgroundColor: focused ? t.cardBg : t.inputBg,
-          borderWidth: 1.5,
-          borderColor: focused ? ONBOARDING_ACCENT : t.cardBorder,
-          borderRadius: 14,
+          backgroundColor: t.inputBg,
+          borderWidth: 3,
+          borderColor: t.cardBorder,
+          borderRadius: 8,
           paddingHorizontal: 14,
           paddingVertical: 12,
           fontSize: 14,
+          fontWeight: '600',
           color: t.textPrimary,
           textAlignVertical: 'top',
           minHeight: numberOfLines * 22 + 24,
+          shadowColor: t.shadow || t.cardBorder,
+          shadowOffset: { width: 3, height: 3 },
+          shadowOpacity: 1,
+          shadowRadius: 0,
         }}
       />
-      <Text style={{ fontSize: 11, color: t.textLabel, textAlign: 'right', marginTop: 4 }}>
+      <Text style={{ fontSize: 12, color: t.textLabel, textAlign: 'right', marginTop: 4, fontWeight: '700' }}>
         {value.length}/{maxLength}
       </Text>
     </View>
@@ -465,19 +490,23 @@ export function OnboardingInputRow({
   t,
   textInputProps = {},
 }) {
-  const [focused, setFocused] = useState(false);
   return (
     <View
       style={{
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: focused ? t.cardBg : t.inputBg,
-        borderWidth: 1.5,
-        borderColor: focused ? ONBOARDING_ACCENT : t.cardBorder,
-        borderRadius: 14,
+        backgroundColor: t.inputBg,
+        borderWidth: 3,
+        borderColor: t.cardBorder,
+        borderRadius: 8,
         paddingHorizontal: 14,
         height: 64,
         marginBottom: 10,
+        shadowColor: t.shadow || t.cardBorder,
+        shadowOffset: { width: 3, height: 3 },
+        shadowOpacity: 1,
+        shadowRadius: 0,
+        elevation: 3,
       }}
     >
       {iconSource ? (
@@ -486,7 +515,7 @@ export function OnboardingInputRow({
         <Ionicons name={iconName} size={20} color={t.textSecondary} style={{ marginRight: 12 }} />
       ) : null}
       <View style={{ flex: 1 }}>
-        <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1, color: t.textLabel, marginBottom: 2 }}>
+        <Text style={{ fontSize: 12, fontWeight: '900', letterSpacing: 1.2, color: t.textLabel, marginBottom: 2 }}>
           {label}
         </Text>
         <TextInput
@@ -495,9 +524,7 @@ export function OnboardingInputRow({
           placeholder={placeholder}
           placeholderTextColor={t.textLabel}
           keyboardType={keyboardType}
-          onFocus={() => setFocused(true)}
           onBlur={() => {
-            setFocused(false);
             onBlur?.();
           }}
           autoCorrect={false}
@@ -505,7 +532,7 @@ export function OnboardingInputRow({
           spellCheck={false}
           textContentType="none"
           importantForAutofill="no"
-          style={{ fontSize: 15, color: t.textPrimary, padding: 0 }}
+          style={{ fontSize: 16, fontWeight: '700', color: t.textPrimary, padding: 0 }}
           {...textInputProps}
         />
       </View>
@@ -518,49 +545,41 @@ export function OnboardingInputRow({
 export function OnboardingDayPicker({ value, onChange, t }) {
   return (
     <View style={{ flexDirection: 'row', justifyContent: 'center', flexWrap: 'wrap', gap: 8, marginTop: 20, marginBottom: 8 }}>
-      {DAY_OF_WEEK_NUMBERS.map((dayNumber) => (
-        <TouchableOpacity
-          key={dayNumber}
-          onPress={() => onChange(dayNumber)}
-          activeOpacity={0.8}
-          style={{
-            width: 40,
-            height: 40,
-            borderRadius: 20,
-            alignItems: 'center',
-            justifyContent: 'center',
-            overflow: 'hidden',
-          }}
-        >
-          {value === dayNumber ? (
-            <LinearGradient
-              colors={ONBOARDING_CTA_GRADIENT}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={StyleSheet.absoluteFillObject}
-            />
-          ) : (
-            <View
-              style={{
-                ...StyleSheet.absoluteFillObject,
-                backgroundColor: t.dayBtnBg,
-                borderWidth: 1.5,
-                borderColor: t.cardBorder,
-                borderRadius: 20,
-              }}
-            />
-          )}
-          <Text
+      {DAY_OF_WEEK_NUMBERS.map((dayNumber) => {
+        const on = value === dayNumber;
+        return (
+          <TouchableOpacity
+            key={dayNumber}
+            onPress={() => onChange(dayNumber)}
+            activeOpacity={0.85}
             style={{
-              fontSize: 14,
-              fontWeight: '700',
-              color: value === dayNumber ? '#fff' : t.textPrimary,
+              width: 44,
+              height: 44,
+              borderRadius: 12,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: on ? t.cardSelectedBg : t.dayBtnBg,
+              borderWidth: 3,
+              borderColor: t.cardBorder,
+              shadowColor: t.shadow || t.cardBorder,
+              shadowOffset: { width: 3, height: 3 },
+              shadowOpacity: 1,
+              shadowRadius: 0,
+              elevation: 3,
             }}
           >
-            {dayNumber}
-          </Text>
-        </TouchableOpacity>
-      ))}
+            <Text
+              style={{
+                fontSize: 14,
+                fontWeight: '900',
+                color: on ? (t.cardSelectedText || t.onFill || '#FFFFFF') : t.textPrimary,
+              }}
+            >
+              {dayNumber}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
     </View>
   );
 }
@@ -587,31 +606,30 @@ export function OnboardingOptionChips({ options, selected, onSelect, t }) {
             style={{
               paddingVertical: 12,
               paddingHorizontal: 18,
-              borderRadius: 16,
-              borderWidth: 1.5,
-              borderColor: on ? 'transparent' : t.cardBorder,
-              backgroundColor: on ? 'transparent' : t.cardBg,
-              overflow: 'hidden',
+              borderRadius: 999,
+              borderWidth: 3,
+              borderColor: t.cardBorder,
+              backgroundColor: on ? t.cardSelectedBg : t.cardBg,
               minWidth: 104,
+              minHeight: 44,
               alignItems: 'center',
-              ...(on && {
-                shadowColor: ONBOARDING_ACCENT,
-                shadowOpacity: 0.35,
-                shadowRadius: 10,
-                shadowOffset: { width: 0, height: 6 },
-                elevation: 6,
-              }),
+              justifyContent: 'center',
+              shadowColor: t.shadow || t.cardBorder,
+              shadowOffset: { width: 3, height: 3 },
+              shadowOpacity: 1,
+              shadowRadius: 0,
+              elevation: 3,
             }}
           >
-            {on ? (
-              <LinearGradient
-                colors={ONBOARDING_CTA_GRADIENT}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={StyleSheet.absoluteFillObject}
-              />
-            ) : null}
-            <Text style={{ fontSize: 15, fontWeight: '700', color: on ? '#fff' : t.textPrimary }}>{o.label}</Text>
+            <Text
+              style={{
+                fontSize: 15,
+                fontWeight: '800',
+                color: on ? (t.cardSelectedText || t.onFill || '#FFFFFF') : t.textPrimary,
+              }}
+            >
+              {o.label}
+            </Text>
           </TouchableOpacity>
         );
       })}
@@ -624,35 +642,40 @@ export function OnboardingMultiSelectPills({ options, selectedValues, onToggle, 
   const set = new Set(selectedValues || []);
   return (
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 8 }}>
-      {options.map((o, index) => {
+      {options.map((o) => {
         const on = set.has(o.value);
-        const gradient = o.accentGradient || onboardingOptionGradient(index);
         return (
           <TouchableOpacity
             key={o.value}
             onPress={() => onToggle(o.value)}
             activeOpacity={0.85}
             style={{
-              paddingVertical: 8,
+              paddingVertical: 10,
               paddingHorizontal: 14,
-              borderRadius: 50,
+              borderRadius: 999,
               marginRight: 8,
               marginBottom: 8,
-              borderWidth: 1.5,
-              borderColor: on ? 'transparent' : t.cardBorder,
-              backgroundColor: on ? 'transparent' : t.cardBg,
-              overflow: 'hidden',
+              minHeight: 44,
+              justifyContent: 'center',
+              borderWidth: 3,
+              borderColor: t.cardBorder,
+              backgroundColor: on ? t.cardSelectedBg : t.cardBg,
+              shadowColor: t.shadow || t.cardBorder,
+              shadowOffset: { width: 3, height: 3 },
+              shadowOpacity: 1,
+              shadowRadius: 0,
+              elevation: 3,
             }}
           >
-            {on ? (
-              <LinearGradient
-                colors={pillBackgroundGradient(gradient, { strong: true })}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={StyleSheet.absoluteFillObject}
-              />
-            ) : null}
-            <Text style={{ fontSize: 13, fontWeight: '600', color: on ? gradient[1] : t.textPrimary }}>{o.label}</Text>
+            <Text
+              style={{
+                fontSize: 13,
+                fontWeight: '800',
+                color: on ? (t.cardSelectedText || t.onFill || '#FFFFFF') : t.textPrimary,
+              }}
+            >
+              {o.label}
+            </Text>
           </TouchableOpacity>
         );
       })}
@@ -663,18 +686,19 @@ export function OnboardingMultiSelectPills({ options, selectedValues, onToggle, 
 export const onboardingHeadingStyles = StyleSheet.create({
   heading: {
     fontSize: 26,
-    fontWeight: '800',
-    textAlign: 'center',
+    fontWeight: '900',
+    textAlign: 'left',
     lineHeight: 32,
-    marginTop: 16,
+    marginTop: 8,
     marginBottom: 6,
-    letterSpacing: -0.3,
+    letterSpacing: -0.6,
   },
   subtitle: {
     fontSize: 15,
-    textAlign: 'center',
+    textAlign: 'left',
     lineHeight: 22,
-    marginBottom: 4,
+    marginBottom: 12,
+    fontWeight: '500',
   },
 });
 
@@ -707,14 +731,14 @@ const COLORS = {
   textPrimary: '#2D3748',
   textSecondary: '#718096',
   border: '#E2E8F0',
-  white: '#FFFFFF',
+  white: lightColors.white,
 };
 
 // Design System Gradients
 const GRADIENTS = {
-  bluePurple: ['#5B86E5', '#A855F7'],
+  bluePurple: ['#5B86E5', '#E07A32'],
   tealBlue: ['#14B8A6', '#3B82F6'],
-  indigoPurple: ['#6366F1', '#8B5CF6'],
+  indigoPurple: ['#6366F1', '#E25588'],
   greenBlue: ['#10B981', '#3B82F6'],
   orangeRed: FOOD_CARD_MACRO_GRADIENTS.protein,
   green: ['#10B981', '#059669'],
@@ -1653,10 +1677,10 @@ export default function NewUserSetupScreen({
   const [certUploading, setCertUploading] = useState(false);
   const faceCamRef = useRef(null);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
-  const [onboardingData, setOnboardingData] = useState({
-    // Client fields - Basic Info
-    weight: null, // in kg or lbs
-    height: null, // { feet, inches } from input like 5'11"
+  const [onboardingData, setOnboardingData] = useState(() => withClientSliderDefaults({
+    // Client fields - Basic Info (Design Law sliders seed weight/height/age defaults)
+    weight: null, // lbs
+    height: null, // { feet, inches }
     age: null,
     gender: null, // 'male', 'female', 'other', 'prefer_not_to_say'
     // Client fields - Fitness Info
@@ -1700,14 +1724,17 @@ export default function NewUserSetupScreen({
     trainerProfileBio: '',
     /** 'available' | 'waitlist' */
     trainerAvailabilityStatus: null,
-  });
+  }));
+
+  // Design Law trainer step: Yes / Not yet segmented (not two separate old cards).
+  const [trainerChoice, setTrainerChoice] = useState('yes');
 
   useEffect(() => {
-    // Load persisted theme mode for onboarding
+    // Prefer light on first visit; only flip to dark when explicitly saved.
     AsyncStorage.getItem('themeMode')
       .then((mode) => {
         if (mode === 'dark') setIsDark(true);
-        if (mode === 'light') setIsDark(false);
+        else setIsDark(false);
       })
       .catch(() => {});
   }, []);
@@ -1724,16 +1751,16 @@ export default function NewUserSetupScreen({
 
   const theme = isDark
     ? {
-        bg: '#0A0A0F',
+        bg: lightColors.nbInk,
         card: 'rgba(255,255,255,0.05)',
         cardBorder: 'rgba(255,255,255,0.08)',
         cardSelected: 'rgba(255,107,157,0.15)',
-        cardSelectedBorder: '#FF6B9D',
-        text: '#FFFFFF',
+        cardSelectedBorder: lightColors.primary,
+        text: lightColors.white,
         subtext: 'rgba(255,255,255,0.55)',
         input: 'rgba(255,255,255,0.05)',
         inputBorder: 'rgba(255,255,255,0.08)',
-        inputText: '#FFFFFF',
+        inputText: lightColors.white,
         placeholder: 'rgba(255,255,255,0.3)',
         progressBg: 'rgba(255,255,255,0.08)',
         backBtn: 'rgba(255,255,255,0.08)',
@@ -1741,16 +1768,16 @@ export default function NewUserSetupScreen({
         toggleIcon: 'sunny-outline',
       }
     : {
-        bg: '#F2F2F7',
-        card: '#FFFFFF',
+        bg: lightColors.nbBackground,
+        card: lightColors.white,
         cardBorder: 'rgba(0,0,0,0.08)',
         cardSelected: 'rgba(255,107,157,0.1)',
-        cardSelectedBorder: '#FF6B9D',
-        text: '#0A0A0F',
+        cardSelectedBorder: lightColors.primary,
+        text: lightColors.nbInk,
         subtext: 'rgba(0,0,0,0.5)',
-        input: '#FFFFFF',
+        input: lightColors.white,
         inputBorder: 'rgba(0,0,0,0.12)',
-        inputText: '#0A0A0F',
+        inputText: lightColors.nbInk,
         placeholder: 'rgba(0,0,0,0.3)',
         progressBg: 'rgba(0,0,0,0.08)',
         backBtn: 'rgba(0,0,0,0.06)',
@@ -1816,8 +1843,16 @@ export default function NewUserSetupScreen({
     };
   }, [role, currentStep, inviteBorderRotation, inviteBorderPulse]);
 
-  // Get total steps based on role
-  const totalSteps = role === 'client' ? 9 : 8;
+  // Design Law client = 8 screens (7 questions + All set). Trainer unchanged at 8.
+  const totalSteps = role === 'client' ? CLIENT_ONBOARDING_STEPS : TRAINER_ONBOARDING_STEPS;
+
+  // Design Law chapter bar — YOU / HOW YOU TRAIN / SUPPORT with partial fill per PNG.
+  const trainerChapterMeta =
+    role === 'trainer' ? getTrainerChapterMeta(currentStep) : null;
+
+  const clientChapterMeta = role === 'client'
+    ? getClientChapterMeta(currentStep)
+    : { chapter: 1, fraction: 1, label: 'YOU', stepLabel: `${currentStep}/${totalSteps}` };
 
   /** CTA gradient for onboarding Continue */
   const getStepGradient = () => ONBOARDING_CTA_GRADIENT;
@@ -2079,87 +2114,22 @@ export default function NewUserSetupScreen({
     return finalizeHeightFromDraft(heightDraft);
   };
 
-  const getClientStep1Blockers = () => {
-    const missing = [];
-    const weight = onboardingData.weight;
-    if (weight == null || !Number.isFinite(weight) || weight <= 0) {
-      missing.push('weight');
-    }
-    if (!isHeightComplete(resolveClientHeight())) {
-      missing.push('height (e.g. 5\'11" or 5,11)');
-    }
-    if (onboardingData.age == null || !Number.isFinite(onboardingData.age) || onboardingData.age <= 0) {
-      missing.push('age');
-    }
-    if (!onboardingData.gender) {
-      missing.push('gender');
-    }
-    return missing;
-  };
-
   const validateStep = () => {
     if (role === 'client') {
-      switch (currentStep) {
-        case 1:
-          // Basic info: weight, height, age, gender all required
-          return getClientStep1Blockers().length === 0;
-        case 2:
-          return onboardingData.fitnessLevel !== null;
-        case 3:
-          return Array.isArray(onboardingData.goals) && onboardingData.goals.length > 0;
-        case 4:
-          return onboardingData.equipmentAccess.length > 0;
-        case 5:
-          return onboardingData.daysPerWeek !== null;
-        case 6:
-          return true; // Optional
-        case CLIENT_INVITE_STEP:
-          return true; // Optional
-        case 8:
-          // Situation description required: 50-1000 characters
-          const desc = onboardingData.situationDescription || '';
-          return desc.length >= PHILOSOPHY_MIN_CHARS && desc.length <= PHILOSOPHY_MAX_CHARS;
-        case 9:
-          // AI opt-in required (must explicitly choose)
-          return onboardingData.aiEnabled === true || onboardingData.aiEnabled === false;
-        default:
-          return false;
-      }
-    } else {
-      // Trainer
-      switch (currentStep) {
-        case 1:
-          return onboardingData.certifications.length > 0;
-        case 2:
-          return onboardingData.yearsExperience !== null;
-        case 3:
-          return onboardingData.specialties.length > 0;
-        case 4:
-          return true; // Training philosophy — optional
-        case 5:
-          // Availability + session format required
-          return !!onboardingData.trainerAvailabilityStatus && !!onboardingData.sessionType;
-        case 6:
-          return !!(String(onboardingData.name || '').trim() && String(onboardingData.location || '').trim());
-        case CLIENT_INVITE_STEP:
-          return true; // Auto-generated invite code
-        case 8:
-          // Pro IAP is offered here but not required to finish setup / enter the app.
-          return true;
-        default:
-          return false;
-      }
+      return validateClientOnboardingStep(currentStep, onboardingData, {
+        trainerChoice,
+        codeValid,
+        trainerCode,
+      });
     }
+    return validateTrainerOnboardingStep(
+      currentStep,
+      withTrainerSliderDefaults(onboardingData),
+    );
   };
 
   const handleNext = () => {
-    if (role === 'client' && currentStep === 1) {
-      const finalizedHeight = resolveClientHeight();
-      if (finalizedHeight && !isHeightComplete(onboardingData.height)) {
-        setOnboardingData((prev) => ({ ...prev, height: finalizedHeight }));
-        setHeightDraft(formatHeightInputDisplay(finalizedHeight));
-      }
-    }
+    // Client Design Law: height is a slider → already a complete {feet,inches} object.
     if (!validateStep()) return;
 
     if (currentStep < totalSteps) {
@@ -2205,9 +2175,10 @@ export default function NewUserSetupScreen({
   // Trainer: step 4 (training philosophy) and step 8 (Pro offer) are optional.
   const isOptionalStep = () => {
     if (role === 'client') {
-      return currentStep === 6 || currentStep === CLIENT_INVITE_STEP;
+      // Health + trainer are skippable in Design Law (Continue always enabled).
+      return currentStep === 4 || currentStep === 5;
     }
-    return currentStep === 4 || currentStep === 8;
+    return currentStep === TRAINER_PAYOUT_STEP || currentStep === TRAINER_PRO_STEP;
   };
 
   const handleSkip = () => {
@@ -2363,475 +2334,51 @@ export default function NewUserSetupScreen({
 
   const getStepTitle = () => {
     if (role === 'client') {
-      const titles = [
-        "Tell us about yourself",
-        "What's your fitness experience?",
-        "What's your main goal?",
-        "What equipment do you have access to?",
-        "How many days per week can you train?",
-        "Any injuries or limitations?",
-        "Do you have a trainer?",
-        "Describe Your Situation",
-        "AI-Powered Features",
-      ];
-      return titles[currentStep - 1];
-    } else {
-      const titles = [
-        'What certifications do you have?',
-        'How long have you been training clients?',
-        'What are your specialties?',
-        'Describe your training philosophy',
-        'Availability & session format',
-        'Almost done!',
-        'Your client invite code',
-        'Coach Connect Pro',
-      ];
-      return titles[currentStep - 1];
+      return getClientScreenTitle(currentStep);
     }
+    return getTrainerScreenTitle(currentStep);
   };
 
-  const renderClientStep = () => {
-    const headingStyles = onboardingHeadingStyles;
-    switch (currentStep) {
-      case 1:
-        return (
-          <View style={styles.stepContainer}>
-            <StepLottie style={CLIENT_ONBOARDING_LOTTIE_STYLE} />
-            <Text style={[headingStyles.heading, { color: ot.textPrimary }]}>{getStepTitle()}</Text>
-            <Text style={[headingStyles.subtitle, { color: ot.textSecondary }]}>This helps us personalize your experience</Text>
-            <OnboardingInputRow
-              t={ot}
-              iconSource={getOnboardingIconSource('weight')}
-              iconName="scale-outline"
-              label="WEIGHT"
-              value={onboardingData.weight != null ? String(onboardingData.weight) : ''}
-              onChangeText={(text) => {
-                const num = text.replace(/[^0-9.]/g, '');
-                setOnboardingData((prev) => ({ ...prev, weight: num ? parseFloat(num) : null }));
-              }}
-              placeholder="Enter weight"
-              keyboardType="numeric"
-              rightElement={<Text style={{ fontSize: 12, fontWeight: '700', color: ot.cardSelectedBorder }}>LBS</Text>}
-            />
-            <OnboardingInputRow
-              t={ot}
-              iconSource={getOnboardingIconSource('height')}
-              iconName="resize-outline"
-              label="HEIGHT"
-              value={heightDraft}
-              onChangeText={(text) => {
-                const { text: formatted, height } = parseHeightInputText(text);
-                setHeightDraft(formatted);
-                setOnboardingData((prev) => ({ ...prev, height }));
-              }}
-              onBlur={() => {
-                const finalized = finalizeHeightFromDraft(heightDraft);
-                if (!finalized) return;
-                setOnboardingData((prev) => ({ ...prev, height: finalized }));
-                setHeightDraft(formatHeightInputDisplay(finalized));
-              }}
-              placeholder={'e.g., 5\'11" or 5,11'}
-              keyboardType="default"
-              textInputProps={{
-                autoCapitalize: 'none',
-                autoCorrect: false,
-                smartInsertDelete: false,
-              }}
-            />
-            <OnboardingInputRow
-              t={ot}
-              iconSource={getOnboardingIconSource('age')}
-              iconName="calendar-outline"
-              label="AGE"
-              value={onboardingData.age != null ? String(onboardingData.age) : ''}
-              onChangeText={(text) => {
-                const num = text.replace(/[^0-9]/g, '');
-                setOnboardingData((prev) => ({ ...prev, age: num ? parseInt(num, 10) : null }));
-              }}
-              placeholder="Enter age"
-              keyboardType="numeric"
-              rightElement={<Text style={{ fontSize: 12, fontWeight: '700', color: ot.textSecondary }}>YRS</Text>}
-            />
-            <OnboardingSectionLabel text="GENDER" t={ot} />
-            {[
-              { id: 'male', label: 'Male', icon: 'man-outline', accentGradient: onboardingOptionGradient(0) },
-              { id: 'female', label: 'Female', icon: 'woman-outline', accentGradient: onboardingOptionGradient(1) },
-              { id: 'other', label: 'Other', icon: 'person-outline', accentGradient: onboardingOptionGradient(2) },
-              { id: 'prefer_not_to_say', label: 'Prefer not to say', icon: 'ellipsis-horizontal-circle-outline', accentGradient: onboardingOptionGradient(3) },
-            ].map((g) => (
-              <SelectionCard
-                key={g.id}
-                t={ot}
-                selected={onboardingData.gender === g.id}
-                onPress={() => handleSelect('gender', g.id)}
-                iconSource={getOnboardingIconSource(g.id)}
-                iconName={g.icon}
-                label={g.label}
-                accentGradient={g.accentGradient}
-              />
-            ))}
-          </View>
-        );
-
-      case 2:
-        return (
-          <View style={styles.stepContainer}>
-            <StepLottie style={CLIENT_ONBOARDING_LOTTIE_STYLE} />
-            <Text style={[headingStyles.heading, { color: ot.textPrimary }]}>{getStepTitle()}</Text>
-            <View style={{ marginTop: 12 }}>
-              {[
-                { id: 'beginner', label: 'Beginner', desc: 'New to working out', icon: 'leaf-outline', accentGradient: onboardingOptionGradient(0) },
-                { id: 'intermediate', label: 'Intermediate', desc: 'Work out regularly', icon: 'trending-up-outline', accentGradient: onboardingOptionGradient(1) },
-                { id: 'advanced', label: 'Advanced', desc: 'Experienced athlete', icon: 'flash-outline', accentGradient: onboardingOptionGradient(2) },
-              ].map((l) => (
-                <SelectionCard
-                  key={l.id}
-                  t={ot}
-                  selected={onboardingData.fitnessLevel === l.id}
-                  onPress={() => handleSelect('fitnessLevel', l.id)}
-                  iconSource={getOnboardingIconSource(l.id)}
-                  iconName={l.icon}
-                  label={l.label}
-                  description={l.desc}
-                  accentGradient={l.accentGradient}
-                />
-              ))}
-            </View>
-            <Text style={{ fontSize: 12, color: ot.textSecondary, marginTop: 12, lineHeight: 18, textAlign: 'center' }}>
-              Beginners (under 1 year of consistent training) often progress fastest with compound movements—keep it simple at first.
-            </Text>
-          </View>
-        );
-
-      case 3:
-        return (
-          <View style={styles.stepContainer}>
-            <StepLottie style={CLIENT_ONBOARDING_LOTTIE_STYLE} />
-            <Text style={[headingStyles.heading, { color: ot.textPrimary }]}>{getStepTitle()}</Text>
-            <Text style={[headingStyles.subtitle, { color: ot.textSecondary }]}>Select all that apply</Text>
-            <View style={{ marginTop: 12 }}>
-              {[
-                { value: 'lose_fat', label: 'Lose Fat', icon: 'trending-down-outline', accentGradient: onboardingOptionGradient(0) },
-                { value: 'build_muscle', label: 'Build Muscle', icon: 'barbell-outline', accentGradient: onboardingOptionGradient(1) },
-                { value: 'maintain_health', label: 'Maintain Health', icon: 'heart-outline', accentGradient: onboardingOptionGradient(2) },
-                { value: 'athletic_performance', label: 'Athletic Performance', icon: 'flash-outline', accentGradient: onboardingOptionGradient(3) },
-                { value: 'improve_mental_health', label: 'Improve Mental Health', icon: 'sunny-outline', accentGradient: onboardingOptionGradient(4) },
-                { value: 'build_habits', label: 'Build Consistency & Habits', icon: 'calendar-outline', accentGradient: onboardingOptionGradient(5) },
-              ].map((item) => {
-                const goalsArray = Array.isArray(onboardingData.goals) ? onboardingData.goals : [];
-                const selected = goalsArray.includes(item.value);
-                return (
-                  <SelectionCard
-                    key={item.value}
-                    t={ot}
-                    selected={selected}
-                    onPress={() => {
-                      setOnboardingData((prev) => {
-                        const current = Array.isArray(prev.goals) ? prev.goals : [];
-                        const exists = current.includes(item.value);
-                        const nextGoals = exists ? current.filter((g) => g !== item.value) : [...current, item.value];
-                        return { ...prev, goals: nextGoals, primaryGoal: nextGoals[0] || null };
-                      });
-                    }}
-                    iconName={item.icon}
-                    label={item.label}
-                    accentGradient={item.accentGradient}
-                  />
-                );
-              })}
-            </View>
-          </View>
-        );
-
-      case 4:
-        return (
-          <View style={styles.stepContainer}>
-            <StepLottie style={CLIENT_ONBOARDING_LOTTIE_STYLE_EQUIPMENT} />
-            <Text style={[headingStyles.heading, { color: ot.textPrimary }]}>{getStepTitle()}</Text>
-            <Text style={[headingStyles.subtitle, { color: ot.textSecondary }]}>Select all that apply</Text>
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 16, marginBottom: 10 }}>
-              {[
-                { value: 'full_gym', label: 'Full Gym', icon: 'fitness-outline', accentGradient: onboardingOptionGradient(0) },
-                { value: 'dumbbells', label: 'Dumbbells', icon: 'barbell-outline', accentGradient: onboardingOptionGradient(1) },
-              ].map((e) => (
-                <SelectionCard
-                  key={e.value}
-                  t={ot}
-                  variant="grid"
-                  selected={onboardingData.equipmentAccess.includes(e.value)}
-                  onPress={() => handleSelect('equipmentAccess', e.value, true)}
-                  iconSource={getOnboardingIconSource(e.value)}
-                  iconName={e.icon}
-                  label={e.label}
-                  accentGradient={e.accentGradient}
-                />
-              ))}
-            </View>
-            <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
-              {[
-                { value: 'resistance_bands', label: 'Resistance Bands', icon: 'infinite-outline', accentGradient: onboardingOptionGradient(2) },
-                { value: 'pull_up_bar', label: 'Pull-up Bar', icon: 'move-outline', accentGradient: onboardingOptionGradient(3) },
-              ].map((e) => (
-                <SelectionCard
-                  key={e.value}
-                  t={ot}
-                  variant="grid"
-                  selected={onboardingData.equipmentAccess.includes(e.value)}
-                  onPress={() => handleSelect('equipmentAccess', e.value, true)}
-                  iconSource={getOnboardingIconSource(e.value)}
-                  iconName={e.icon}
-                  label={e.label}
-                  accentGradient={e.accentGradient}
-                />
-              ))}
-            </View>
-            <View style={{ width: onboardingGridHalfWidth(), alignSelf: 'center', marginBottom: 4 }}>
-              <SelectionCard
-                t={ot}
-                variant="grid"
-                selected={onboardingData.equipmentAccess.includes('bodyweight')}
-                onPress={() => handleSelect('equipmentAccess', 'bodyweight', true)}
-                iconSource={getOnboardingIconSource('bodyweight')}
-                iconName="body-outline"
-                label="Bodyweight Only"
-                accentGradient={onboardingOptionGradient(4)}
-              />
-            </View>
-            {Array.isArray(onboardingData.equipmentAccess) && onboardingData.equipmentAccess.includes('bodyweight') ? (
-              <Text style={{ fontSize: 12, color: ot.textSecondary, marginTop: 8, lineHeight: 18, textAlign: 'center' }}>
-                Bodyweight works—adding even light dumbbells unlocks more progression over time.
-              </Text>
-            ) : null}
-            <OnboardingSectionLabel text="WHERE DO YOU PREFER TO TRAIN?" t={ot} style={{ marginTop: 8 }} />
-            {[
-              { value: 'home', label: 'Home', icon: 'home-outline', desc: 'Work out from the comfort of your home', accentGradient: onboardingOptionGradient(0) },
-              { value: 'gym', label: 'Gym', icon: 'barbell-outline', desc: 'Access to a full range of gym equipment', accentGradient: onboardingOptionGradient(1) },
-              { value: 'both', label: 'Both', icon: 'shuffle-outline', desc: 'Flexible, combining home and gym', accentGradient: onboardingOptionGradient(2) },
-            ].map((l) => (
-              <SelectionCard
-                key={l.value}
-                t={ot}
-                selected={onboardingData.trainingEnvironment === l.value}
-                onPress={() => setOnboardingData((prev) => ({ ...prev, trainingEnvironment: l.value }))}
-                iconName={l.icon}
-                label={l.label}
-                description={l.desc}
-                accentGradient={l.accentGradient}
-              />
-            ))}
-          </View>
-        );
-
-      case 5:
-        return (
-          <View style={styles.stepContainer}>
-            <StepLottie style={CLIENT_ONBOARDING_LOTTIE_STYLE} />
-            <Text style={[headingStyles.heading, { color: ot.textPrimary }]}>{getStepTitle()}</Text>
-            <OnboardingDayPicker
-              t={ot}
-              value={onboardingData.daysPerWeek}
-              onChange={(n) => handleSelect('daysPerWeek', n)}
-            />
-            <Text style={{ fontSize: 12, color: ot.textSecondary, marginTop: 8, lineHeight: 18, textAlign: 'center' }}>
-              Most muscle groups respond well to 2–3 sessions per week; 4 days/week is a sweet spot for many people.
-            </Text>
-            <OnboardingSectionLabel text="PREFERRED WORKOUT TIME" t={ot} />
-            {[
-              { value: 'morning', label: 'Morning', icon: 'sunny-outline', desc: '5am – 12pm', accentGradient: onboardingOptionGradient(0) },
-              { value: 'afternoon', label: 'Afternoon', icon: 'partly-sunny-outline', desc: '12pm – 5pm', accentGradient: onboardingOptionGradient(1) },
-              { value: 'evening', label: 'Evening', icon: 'moon-outline', desc: '5pm – 10pm', accentGradient: onboardingOptionGradient(2) },
-              { value: 'no_preference', label: 'No preference', icon: 'time-outline', desc: 'Anytime works', accentGradient: onboardingOptionGradient(3) },
-            ].map((item) => (
-              <SelectionCard
-                key={item.value}
-                t={ot}
-                selected={onboardingData.preferredWorkoutTime === item.value}
-                onPress={() => setOnboardingData((prev) => ({ ...prev, preferredWorkoutTime: item.value }))}
-                iconName={item.icon}
-                label={item.label}
-                description={item.desc}
-                accentGradient={item.accentGradient}
-              />
-            ))}
-          </View>
-        );
-
-      case 6: {
-        const noLimitations = onboardingData.injuries === null;
-        return (
-          <View style={styles.stepContainer}>
-            <StepLottie style={CLIENT_ONBOARDING_LOTTIE_STYLE} />
-            <Text style={[headingStyles.heading, { color: ot.textPrimary }]}>{getStepTitle()}</Text>
-            <Text style={[headingStyles.subtitle, { color: ot.textSecondary }]}>{"We'll help you work around them safely"}</Text>
-            <OnboardingSectionLabel text="INJURIES OR PHYSICAL LIMITATIONS (RECOMMENDED)" t={ot} style={{ marginTop: 8 }} />
-            <OnboardingTextArea
-              t={ot}
-              value={noLimitations ? '' : onboardingData.injuries || ''}
-              onChangeText={(text) => setOnboardingData((prev) => ({ ...prev, injuries: text }))}
-              placeholder="e.g., lower back pain, knee issues, shoulder injury..."
-              numberOfLines={5}
-              maxLength={500}
-              editable={!noLimitations}
-            />
-            <Text style={{ fontSize: 12, color: ot.textSecondary, marginTop: 4, lineHeight: 18 }}>
-              {"Be specific: area, movements that bother you, and whether it's recent or chronic."}
-            </Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12, marginBottom: 8 }}>
-              <Text style={{ fontSize: 14, fontWeight: '500', color: ot.textPrimary }}>I have no limitations</Text>
-              <Switch
-                value={noLimitations}
-                onValueChange={(value) => setOnboardingData((prev) => ({ ...prev, injuries: value ? null : '' }))}
-                trackColor={{ false: ot.cardBorder, true: ot.toggleTrack }}
-                thumbColor={COLORS.white}
-              />
-            </View>
-            <OnboardingSectionLabel text="EXERCISES YOU WOULD PREFER (RECOMMENDED)" t={ot} />
-            <DislikedExercisesPicker
-              t={ot}
-              intent="prefer"
-              value={onboardingData.exercisesDislike || ''}
-              onChange={(next) => setOnboardingData((prev) => ({ ...prev, exercisesDislike: next }))}
-              animatePills
-            />
-            <OnboardingSectionLabel text="SUPPLEMENTS CURRENTLY TAKING (OPTIONAL)" t={ot} />
-            <OnboardingTextArea
-              t={ot}
-              value={onboardingData.supplementsCurrentlyTaking || ''}
-              onChangeText={(text) => setOnboardingData((prev) => ({ ...prev, supplementsCurrentlyTaking: text }))}
-              placeholder="e.g., creatine, protein, multivitamin..."
-              numberOfLines={3}
-              maxLength={500}
-            />
-          </View>
-        );
-      }
-
-      case CLIENT_INVITE_STEP:
-        return (
-          <TrainerCodeStep
-            lottie={getSafeLottie()}
-            heading={getStepTitle()}
-            trainerCode={trainerCode}
-            setTrainerCode={setTrainerCode}
-            codeValid={codeValid}
-            setCodeValid={setCodeValid}
-            setCodeError={setCodeError}
-            validateTrainerCode={validateTrainerCode}
-            shakeAnimation={shakeAnimation}
-            isDark={isDark}
-          />
-        );
-
-      case 8: {
-        const charCount = (onboardingData.situationDescription || '').length;
-        const minChars = 50;
-        const maxChars = PHILOSOPHY_MAX_CHARS;
-        return (
-          <View style={styles.stepContainer}>
-            <StepLottie style={CLIENT_ONBOARDING_LOTTIE_STYLE_WIDE} />
-            <Text style={[headingStyles.heading, { color: ot.textPrimary }]}>{getStepTitle()}</Text>
-            <Text style={[headingStyles.subtitle, { color: ot.textSecondary }]}>Optional details — then tell us your story below (required)</Text>
-            <OnboardingSectionLabel text="CURRENT STRESS LEVEL (OPTIONAL)" t={ot} style={{ marginTop: 4 }} />
-            <OnboardingOptionChips
-              t={ot}
-              options={[
-                { value: 'low', label: 'Low' },
-                { value: 'moderate', label: 'Moderate' },
-                { value: 'high', label: 'High' },
-              ]}
-              selected={onboardingData.currentStressLevel}
-              onSelect={(v) => setOnboardingData((prev) => ({ ...prev, currentStressLevel: v }))}
-            />
-            <OnboardingSectionLabel text="SLEEP QUALITY (OPTIONAL)" t={ot} />
-            <OnboardingOptionChips
-              t={ot}
-              options={[
-                { value: 'poor', label: 'Poor' },
-                { value: 'fair', label: 'Fair' },
-                { value: 'good', label: 'Good' },
-              ]}
-              selected={onboardingData.sleepQuality}
-              onSelect={(v) => setOnboardingData((prev) => ({ ...prev, sleepQuality: v }))}
-            />
-            <OnboardingSectionLabel text="ENERGY LEVELS (OPTIONAL)" t={ot} />
-            <OnboardingOptionChips
-              t={ot}
-              options={[
-                { value: 'low', label: 'Low' },
-                { value: 'moderate', label: 'Moderate' },
-                { value: 'high', label: 'High' },
-              ]}
-              selected={onboardingData.energyLevels}
-              onSelect={(v) => setOnboardingData((prev) => ({ ...prev, energyLevels: v }))}
-            />
-            <OnboardingSectionLabel text="HYDRATION HABITS (OPTIONAL)" t={ot} />
-            <OnboardingOptionChips
-              t={ot}
-              options={[
-                { value: 'less_than_4', label: 'Under 4 cups/day' },
-                { value: '4_8', label: '4–8 cups/day' },
-                { value: 'more_than_8', label: '8+ cups/day' },
-              ]}
-              selected={onboardingData.hydrationHabits}
-              onSelect={(v) => setOnboardingData((prev) => ({ ...prev, hydrationHabits: v }))}
-            />
-            <OnboardingSectionLabel text="DESCRIBE YOUR SITUATION (REQUIRED)" t={ot} />
-            <OnboardingTextArea
-              t={ot}
-              value={onboardingData.situationDescription || ''}
-              onChangeText={(text) =>
-                setOnboardingData((prev) => ({
-                  ...prev,
-                  situationDescription: text.slice(0, maxChars),
-                }))
-              }
-              placeholder={`Tell us about yourself…
-
-Examples:
-• Current routine and challenges
-• What motivates you
-• Timeline for results
-• Lifestyle factors we should know`}
-              numberOfLines={8}
-              maxLength={maxChars}
-            />
-            {charCount > 0 && charCount < minChars ? (
-              <Text style={{ fontSize: 14, color: '#F59E0B', textAlign: 'center', marginBottom: 8 }}>
-                Minimum {minChars} characters (currently: {charCount})
-              </Text>
-            ) : null}
-          </View>
-        );
-      }
-
-      case 9: {
-        return (
-          <View style={styles.stepContainer}>
-            <AIPermissionStep
-              isDark={isDark}
-              currentStep={currentStep}
-              totalSteps={totalSteps}
-              onEnableAI={async () => {
-                setOnboardingData((prev) => ({ ...prev, aiEnabled: true }));
-                await AsyncStorage.setItem('aiEnabled', 'true');
-                setAIFromOnboarding(true);
-                handleFinish({ aiEnabled: true });
-              }}
-              onSkipAI={async () => {
-                setOnboardingData((prev) => ({ ...prev, aiEnabled: false }));
-                await AsyncStorage.setItem('aiEnabled', 'false');
-                setAIFromOnboarding(false);
-                handleFinish({ aiEnabled: false });
-              }}
-            />
-          </View>
-        );
-      }
-
-      default:
-        return null;
-    }
+  const enableAIFromStep = async () => {
+    setOnboardingData((prev) => ({ ...prev, aiEnabled: true }));
+    await AsyncStorage.setItem('aiEnabled', 'true');
+    setAIFromOnboarding(true);
+    setCurrentStep(8);
   };
+
+  const skipAIFromStep = async () => {
+    setOnboardingData((prev) => ({ ...prev, aiEnabled: false }));
+    await AsyncStorage.setItem('aiEnabled', 'false');
+    setAIFromOnboarding(false);
+    setCurrentStep(8);
+  };
+
+  // Design Law client bodies — structure matches screens/client-onboarding PNGs 01–16.
+  const renderClientStep = () => (
+    <View style={styles.stepContainer}>
+      <ClientOnboardingStep
+        step={currentStep}
+        data={onboardingData}
+        setData={setOnboardingData}
+        trainerChoice={trainerChoice}
+        setTrainerChoice={setTrainerChoice}
+        trainerCode={trainerCode}
+        setTrainerCode={setTrainerCode}
+        codeValid={codeValid}
+        setCodeValid={setCodeValid}
+        setCodeError={setCodeError}
+        validateTrainerCode={validateTrainerCode}
+        shakeAnimation={shakeAnimation}
+        matchedTrainer={
+          codeValid === true && onboardingData.trainerId
+            ? { name: 'Trainer', subtitle: 'Coach Connect trainer', initials: 'TR' }
+            : null
+        }
+        onEnableAI={enableAIFromStep}
+        onSkipAI={skipAIFromStep}
+      />
+    </View>
+  );
 
 
   /** Pick a cert sheet, upload it, then optionally AI-verify image uploads. */
@@ -2887,415 +2434,60 @@ Examples:
     }
   };
 
-  // Render trainer step — purple/pink Lovable-style cards (matches TrainerNewUserSetupScreen reference)
-  const renderTrainerStep = () => {
-    const ot = getOnboardingUiTokens(isDark);
-    const headingStyles = onboardingHeadingStyles;
-    const safeTrainerLottie = getSafeLottie();
-    const trainerLottie =
-      safeTrainerLottie != null ? (
-        <LottieView source={safeTrainerLottie} autoPlay loop style={CLIENT_ONBOARDING_LOTTIE_STYLE} />
-      ) : null;
-
-    switch (currentStep) {
-      case 1:
-        return (
-          <View style={styles.stepContainer}>
-            {trainerLottie}
-            <Text style={[headingStyles.heading, { color: ot.textPrimary }]}>{getStepTitle()}</Text>
-            <Text style={[headingStyles.subtitle, { color: ot.textSecondary }]}>Select all that apply.</Text>
-            <View style={{ marginTop: 16 }}>
-              {[
-                { value: 'NASM-CPT', label: 'NASM-CPT', icon: 'medal-outline', accentGradient: onboardingOptionGradient(0) },
-                { value: 'ACE', label: 'ACE', icon: 'ribbon-outline', accentGradient: onboardingOptionGradient(1) },
-                { value: 'ISSA', label: 'ISSA', icon: 'school-outline', accentGradient: onboardingOptionGradient(2) },
-                { value: 'ACSM', label: 'ACSM', icon: 'fitness-outline', accentGradient: onboardingOptionGradient(3) },
-                { value: 'NSCA-CPT', label: 'NSCA-CPT', icon: 'barbell-outline', accentGradient: onboardingOptionGradient(4) },
-                { value: 'Other', label: 'Other', icon: 'create-outline', accentGradient: onboardingOptionGradient(5) },
-                { value: 'None', label: 'No formal certification', icon: 'person-outline', accentGradient: onboardingOptionGradient(0) },
-              ].map((item) => (
-                <SelectionCard
-                  key={item.value}
-                  t={ot}
-                  selected={onboardingData.certifications.includes(item.value)}
-                  onPress={() => {
-                    handleSelect('certifications', item.value, true);
-                    if (item.value !== 'Other' && onboardingData.certifications.includes('Other')) {
-                      setOnboardingData((prev) => ({ ...prev, certificationOther: '' }));
-                    }
-                  }}
-                  iconName={item.icon}
-                  label={item.label}
-                  description={
-                    item.value === 'None' ? 'You have experience but no formal certification.' : undefined
-                  }
-                  accentGradient={item.accentGradient}
-                />
-              ))}
-            </View>
-            {onboardingData.certifications.includes('Other') ? (
-              <View style={{ marginTop: 16 }}>
-                <OnboardingSectionLabel text="SPECIFY CERTIFICATION" t={ot} style={{ marginTop: 0 }} />
-                <TextInput
-                  value={onboardingData.certificationOther}
-                  onChangeText={(text) => setOnboardingData((prev) => ({ ...prev, certificationOther: text }))}
-                  placeholder="e.g. Precision Nutrition Level 1"
-                  placeholderTextColor={ot.textLabel}
-                  style={{
-                    backgroundColor: ot.inputBg,
-                    borderWidth: 1.5,
-                    borderColor: ot.inputBorder,
-                    borderRadius: 14,
-                    padding: 14,
-                    minHeight: 52,
-                    color: ot.textPrimary,
-                    fontSize: 15,
-                  }}
-                />
-              </View>
-            ) : null}
-            <TouchableOpacity
-              activeOpacity={0.85}
-              disabled={certUploading || !auth?.currentUser?.uid}
-              onPress={handleUploadCertificationSheet}
-              style={{
-                marginTop: 16,
-                borderRadius: 14,
-                borderWidth: 1,
-                borderColor: ot.cardBorder,
-                paddingVertical: 14,
-                paddingHorizontal: 16,
-                alignItems: 'center',
-                flexDirection: 'row',
-                justifyContent: 'center',
-                gap: 8,
-              }}
-            >
-              {certUploading ? (
-                <ActivityIndicator color={ot.textPrimary} />
-              ) : (
-                <>
-                  <Ionicons name="document-attach-outline" size={20} color={ot.textPrimary} />
-                  <Text style={{ color: ot.textPrimary, fontWeight: '700' }}>
-                    Upload cert sheet ({(onboardingData.certificationSheetURLs || []).length})
-                  </Text>
-                </>
-              )}
-            </TouchableOpacity>
-            {certificationStatusLabel(onboardingData.certificationVerificationStatus) ? (
-              <View style={{ marginTop: 12, paddingHorizontal: 2 }}>
-                <Text style={{ color: ot.textPrimary, fontWeight: '700', fontSize: 13 }}>
-                  {certificationStatusLabel(onboardingData.certificationVerificationStatus)}
-                </Text>
-                {certificationStatusDetail(onboardingData.certificationVerificationStatus) ? (
-                  <Text style={{ color: ot.textMuted || ot.textSecondary, fontSize: 12, marginTop: 4, lineHeight: 17 }}>
-                    {certificationStatusDetail(onboardingData.certificationVerificationStatus)}
-                  </Text>
-                ) : null}
-              </View>
-            ) : null}
-          </View>
-        );
-
-      case 2:
-        return (
-          <View style={styles.stepContainer}>
-            {trainerLottie}
-            <Text style={[headingStyles.heading, { color: ot.textPrimary }]}>{getStepTitle()}</Text>
-            <Text style={[headingStyles.subtitle, { color: ot.textSecondary }]}>Tell clients how long you've been coaching.</Text>
-            <View style={{ marginTop: 16 }}>
-              {[
-                { value: 'less_than_1', label: 'Less than 1 year', icon: 'leaf-outline', accentGradient: onboardingOptionGradient(0) },
-                { value: '1_2', label: '1–2 years', icon: 'time-outline', accentGradient: onboardingOptionGradient(1) },
-                { value: '3_5', label: '3–5 years', icon: 'trending-up-outline', accentGradient: onboardingOptionGradient(2) },
-                { value: '6_10', label: '6–10 years', icon: 'star-outline', accentGradient: onboardingOptionGradient(3) },
-                { value: '10_plus', label: '10+ years', icon: 'trophy-outline', accentGradient: onboardingOptionGradient(4) },
-              ].map((item) => (
-                <SelectionCard
-                  key={item.value}
-                  t={ot}
-                  selected={onboardingData.yearsExperience === item.value}
-                  onPress={() => handleSelect('yearsExperience', item.value)}
-                  iconName={item.icon}
-                  label={item.label}
-                  accentGradient={item.accentGradient}
-                />
-              ))}
-            </View>
-          </View>
-        );
-
-      case 3:
-        return (
-          <View style={styles.stepContainer}>
-            {trainerLottie}
-            <Text style={[headingStyles.heading, { color: ot.textPrimary }]}>{getStepTitle()}</Text>
-            <Text style={[headingStyles.subtitle, { color: ot.textSecondary }]}>Select all that apply.</Text>
-            <OnboardingMultiSelectPills
-              t={ot}
-              selectedValues={onboardingData.specialties}
-              onToggle={(value) => handleSelect('specialties', value, true)}
-              options={[
-                { value: 'strength', label: 'Strength Training' },
-                { value: 'weight_loss', label: 'Weight Loss' },
-                { value: 'bodybuilding', label: 'Bodybuilding' },
-                { value: 'athletic', label: 'Athletic Performance' },
-                { value: 'rehabilitation', label: 'Rehabilitation' },
-                { value: 'powerlifting', label: 'Powerlifting' },
-                { value: 'crossfit', label: 'CrossFit' },
-                { value: 'yoga', label: 'Yoga & Flexibility' },
-                { value: 'senior', label: 'Senior Fitness' },
-                { value: 'youth', label: 'Youth Training' },
-                { value: 'hiit', label: 'HIIT' },
-                { value: 'nutrition', label: 'Nutrition Coaching' },
-              ]}
-            />
-          </View>
-        );
-
-      case 4: {
-        return (
-          <View style={styles.stepContainer}>
-            {trainerLottie}
-            <Text style={[headingStyles.heading, { color: ot.textPrimary }]}>{getStepTitle()}</Text>
-            <Text style={[headingStyles.subtitle, { color: ot.textSecondary }]}>Help clients understand your approach.</Text>
-            <View style={{ marginTop: 16 }}>
-              <OnboardingTextArea
-                t={ot}
-                value={onboardingData.trainingPhilosophy}
-                onChangeText={(text) => setOnboardingData((prev) => ({ ...prev, trainingPhilosophy: text }))}
-                placeholder="e.g., I believe in progressive overload with strong form fundamentals..."
-                numberOfLines={6}
-                maxLength={500}
-              />
-            </View>
-          </View>
-        );
-      }
-
-      case 5:
-        return (
-          <View style={styles.stepContainer}>
-            {trainerLottie}
-            <Text style={[headingStyles.heading, { color: ot.textPrimary }]}>{getStepTitle()}</Text>
-            <Text style={[headingStyles.subtitle, { color: ot.textSecondary }]}>Set how clients can book with you.</Text>
-
-            <OnboardingSectionLabel text="AVAILABILITY" t={ot} />
-            <SelectionCard
-              t={ot}
-              selected={onboardingData.trainerAvailabilityStatus === 'available'}
-              onPress={() => setOnboardingData((prev) => ({ ...prev, trainerAvailabilityStatus: 'available' }))}
-              iconName="checkmark-circle-outline"
-              label="Available now"
-              description="Accepting new clients"
-              accentGradient={onboardingOptionGradient(0)}
-            />
-            <SelectionCard
-              t={ot}
-              selected={onboardingData.trainerAvailabilityStatus === 'waitlist'}
-              onPress={() => setOnboardingData((prev) => ({ ...prev, trainerAvailabilityStatus: 'waitlist' }))}
-              iconName="time-outline"
-              label="Waitlist"
-              description="Currently full — adding to waitlist"
-              accentGradient={onboardingOptionGradient(1)}
-            />
-
-            <OnboardingSectionLabel text="SESSION TYPE" t={ot} />
-            <SelectionCard
-              t={ot}
-              selected={onboardingData.sessionType === 'Remote'}
-              onPress={() => setOnboardingData((prev) => ({ ...prev, sessionType: 'Remote' }))}
-              iconName="videocam-outline"
-              label="Remote"
-              description="Online sessions only"
-              accentGradient={onboardingOptionGradient(2)}
-            />
-            <SelectionCard
-              t={ot}
-              selected={onboardingData.sessionType === 'In-person'}
-              onPress={() => setOnboardingData((prev) => ({ ...prev, sessionType: 'In-person' }))}
-              iconName="location-outline"
-              label="In-person"
-              description="Local sessions"
-              accentGradient={onboardingOptionGradient(3)}
-            />
-            <SelectionCard
-              t={ot}
-              selected={onboardingData.sessionType === 'Both'}
-              onPress={() => setOnboardingData((prev) => ({ ...prev, sessionType: 'Both' }))}
-              iconName="shuffle-outline"
-              label="Both"
-              description="Remote and in-person"
-              accentGradient={onboardingOptionGradient(4)}
-            />
-          </View>
-        );
-
-      case 6:
-        return (
-          <View style={styles.stepContainer}>
-            {trainerLottie}
-            <Text style={[headingStyles.heading, { color: ot.textPrimary }]}>{getStepTitle()}</Text>
-            <Text style={[headingStyles.subtitle, { color: ot.textSecondary }]}>A few last details for your profile.</Text>
-            <View style={{ marginTop: 20, gap: 12 }}>
-              <OnboardingInputRow
-                t={ot}
-                iconName="person-outline"
-                label="FULL NAME"
-                value={onboardingData.name || ''}
-                onChangeText={(text) => setOnboardingData((prev) => ({ ...prev, name: text }))}
-                placeholder="Your name as clients will see it"
-              />
-              <OnboardingInputRow
-                t={ot}
-                iconName="location-outline"
-                label="CITY, STATE"
-                value={onboardingData.location || ''}
-                onChangeText={(text) => setOnboardingData((prev) => ({ ...prev, location: text }))}
-                placeholder="e.g. Detroit, MI"
-              />
-              <OnboardingSectionLabel text="SHORT BIO (OPTIONAL)" t={ot} style={{ marginTop: 8 }} />
-              <OnboardingTextArea
-                t={ot}
-                value={onboardingData.trainerProfileBio || ''}
-                onChangeText={(text) => setOnboardingData((prev) => ({ ...prev, trainerProfileBio: text }))}
-                placeholder="One or two sentences for your marketplace card..."
-                numberOfLines={3}
-                maxLength={250}
-              />
-              <TouchableOpacity
-                activeOpacity={0.85}
-                disabled={faceCapturing}
-                onPress={async () => {
-                  if (!cameraPermission?.granted) {
-                    const res = await requestCameraPermission();
-                    if (!res.granted) {
-                      Alert.alert('Camera needed', 'Allow camera access to verify your face for your trainer profile.');
-                      return;
-                    }
-                  }
-                  setFaceCamOpen(true);
-                }}
-                style={{ alignItems: 'center', marginTop: 8 }}
-              >
-                <View
-                  style={{
-                    width: 96,
-                    height: 96,
-                    borderRadius: 48,
-                    borderWidth: 2,
-                    borderStyle: 'dashed',
-                    borderColor: onboardingData.faceVerificationPhotoURL ? '#22C55E' : ot.cardBorder,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    overflow: 'hidden',
-                  }}
-                >
-                  {onboardingData.faceVerificationPhotoURL ? (
-                    <Image
-                      source={{ uri: onboardingData.faceVerificationPhotoURL }}
-                      style={{ width: 96, height: 96, borderRadius: 48 }}
-                    />
-                  ) : (
-                    <Ionicons name="scan-outline" size={28} color={ot.textSecondary} />
-                  )}
-                </View>
-                <Text style={{ fontSize: 14, fontWeight: '600', color: ot.textPrimary, marginTop: 8 }}>
-                  {onboardingData.faceVerificationPhotoURL
-                    ? 'Identity Verification submitted'
-                    : 'Identity Verification (Face ID)'}
-                </Text>
-                <Text style={{ fontSize: 12, color: ot.textSecondary, textAlign: 'center', paddingHorizontal: 24 }}>
-                  {onboardingData.faceVerificationPhotoURL
-                    ? 'Pending manual review — Verified badge appears after approval. This is not a payment step.'
-                    : 'Take a selfie for identity review only. Payment method (bank/debit via Stripe) is a separate step.'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        );
-
-      case CLIENT_INVITE_STEP: {
-        const rotate = inviteBorderRotation.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
-        const pulseScale = inviteBorderPulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.02] });
-        const displayCode = inviteCode ? inviteCode.replace('-', '') : 'XXXXXX';
-        return (
-          <View style={styles.stepContainer}>
-            {trainerLottie}
-            <Text style={[headingStyles.heading, { color: ot.textPrimary }]}>{getStepTitle()}</Text>
-            <Text style={[headingStyles.subtitle, { color: ot.textSecondary }]}>Share this with your clients to get started.</Text>
-
-            <View style={styles.codeCardOuter}>
-              <Animated.View style={{ transform: [{ scale: pulseScale }] }}>
-                <View style={styles.codeCardFrame}>
-                  <Animated.View style={[styles.codeCardBorderAnim, { transform: [{ rotate }] }]}>
-                    <LinearGradient
-                      colors={TRAINER_ONBOARDING_GRADIENT}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 0 }}
-                      style={StyleSheet.absoluteFill}
-                    />
-                  </Animated.View>
-                  <View style={styles.codeCardInner}>
-                    {generatingCode ? (
-                      <ActivityIndicator size="large" color={COLORS.textPrimary} />
-                    ) : (
-                      <Text style={styles.codeCardText}>{`TRAINER-${displayCode}`}</Text>
-                    )}
-                  </View>
-                </View>
-              </Animated.View>
-            </View>
-
-            <View style={styles.inviteButtons}>
-              <TouchableOpacity style={styles.halfButton} onPress={() => copyToClipboard(inviteCode)} disabled={!inviteCode}>
-                <LinearGradient
-                  colors={TRAINER_ONBOARDING_GRADIENT}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={styles.halfButtonBorder}
-                >
-                  <View style={styles.halfButtonInner}>
-                    <Text style={styles.halfButtonText}>Copy Code</Text>
-                  </View>
-                </LinearGradient>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.halfButton} onPress={shareInviteCode} disabled={!inviteCode}>
-                <LinearGradient
-                  colors={TRAINER_ONBOARDING_GRADIENT}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={styles.halfButtonFill}
-                >
-                  <Text style={styles.halfButtonTextFilled}>Share</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-            </View>
-          </View>
-        );
-      }
-
-      case 8:
-        return (
-          <View style={styles.stepContainer}>
-            <TrainerProOfferStep
-              isDark={isDark}
-              selectedPlanId={trainerPlanId}
-              onSelectPlan={setTrainerPlanId}
-            />
-          </View>
-        );
-
-      default:
-        return null;
-    }
-  };
+  // Design Law trainer bodies — trainer-setup + trainer-setup-part-2 PNGs.
+  const renderTrainerStep = () => (
+    <View style={styles.stepContainer}>
+      <DesignLawTrainerOnboardingStep
+        step={currentStep}
+        data={onboardingData}
+        setData={setOnboardingData}
+        onToggleField={handleSelect}
+        onUploadCert={handleUploadCertificationSheet}
+        certUploading={certUploading}
+        inviteCode={inviteCode}
+        generatingCode={generatingCode}
+        onCopyInvite={() => copyToClipboard(inviteCode)}
+        onShareInvite={shareInviteCode}
+        onEditReviewStep={(s) => setCurrentStep(s)}
+        onReviewGoLive={handleNext}
+        onReviewSaveLater={() => handleFinish()}
+        onStartFace={async () => {
+          if (!cameraPermission?.granted) {
+            const res = await requestCameraPermission();
+            if (!res.granted) {
+              Alert.alert(
+                'Allow camera access',
+                'Allow camera access to verify your face for your trainer profile. The photo is used for review only.',
+              );
+              return;
+            }
+          }
+          setFaceCamOpen(true);
+        }}
+        faceCapturing={faceCapturing}
+        payoutEmail={auth?.currentUser?.email}
+        identitySubmitted={!!onboardingData.faceVerificationPhotoURL}
+        onPayoutSkip={() => setCurrentStep(TRAINER_PRO_STEP)}
+        onPayoutComplete={() => setCurrentStep(TRAINER_PRO_STEP)}
+        isDark={isDark}
+        trainerPlanId={trainerPlanId}
+        setTrainerPlanId={setTrainerPlanId}
+        onProSkip={() => setCurrentStep(TRAINER_COMPLETE_STEP)}
+        displayName={auth?.currentUser?.displayName}
+      />
+    </View>
+  );
 
   const dynamicStyles = getStyles(isDark);
   const ot = getOnboardingUiTokens(isDark);
-  const hideBottomNav = (role === 'client' && currentStep === 9)
-    || (role === 'trainer' && currentStep === 8);
-  const isTrainerPaywallStep = role === 'trainer' && currentStep === 8;
+  // Trainer Pro paywall uses its sticky footer. Client Design Law always uses the bottom bar
+  // (Continue / AI Not now+Turn on / Open my Today).
+  const hideBottomNav =
+    role === 'trainer' &&
+    (currentStep === TRAINER_PAYOUT_STEP ||
+      currentStep === TRAINER_PRO_STEP ||
+      currentStep === 5);
+  const isTrainerPaywallStep = false;
   const onboardingFooterPadTop = 12;
   const onboardingFooterPadBottom = Math.max(insets.bottom, 12);
   const onboardingFooterBarHeight = onboardingFooterPadTop + 56 + onboardingFooterPadBottom;
@@ -3317,83 +2509,151 @@ Examples:
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
-            {/* Header row: back, progress bar, theme toggle */}
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                marginBottom: 16,
-                gap: 12,
-              }}
-            >
-              <TouchableOpacity
-                onPress={currentStep > 1 ? handleBack : handleLogout}
-                activeOpacity={0.8}
-                style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 18,
-                  backgroundColor: theme.backBtn,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Ionicons
-                  name={currentStep > 1 ? 'chevron-back' : 'close'}
-                  size={18}
-                  color={theme.backBtnText}
-                />
-              </TouchableOpacity>
+            {/* Design Law header: hard-shadow back + title + 3 chapter bars + step meta */}
+            <View style={{ marginBottom: 12 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+                <TouchableOpacity
+                  onPress={currentStep > 1 ? handleBack : handleLogout}
+                  activeOpacity={0.85}
+                  style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: 12,
+                    borderWidth: 3,
+                    borderColor: ot.cardBorder,
+                    backgroundColor: ot.cardBg,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    shadowColor: ot.shadow || ot.cardBorder,
+                    shadowOffset: { width: 3, height: 3 },
+                    shadowOpacity: 1,
+                    shadowRadius: 0,
+                    elevation: 3,
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={currentStep > 1 ? 'Go back' : 'Close setup'}
+                >
+                  <Ionicons
+                    // Design Law client PNGs always show a back chevron (step 1 exits setup).
+                    name={role === 'client' || currentStep > 1 ? 'chevron-back' : 'close'}
+                    size={22}
+                    color={ot.textPrimary}
+                  />
+                </TouchableOpacity>
+                <Text
+                  style={{
+                    flex: 1,
+                    fontSize: 25,
+                    fontWeight: '900',
+                    letterSpacing: -0.6,
+                    color: ot.textPrimary,
+                  }}
+                  numberOfLines={1}
+                >
+                  {role === 'client' ? getClientScreenTitle(currentStep) : getTrainerScreenTitle(currentStep)}
+                </Text>
+                {role === 'client' ? null : (
+                  <TouchableOpacity
+                    onPress={() => setIsDark(!isDark)}
+                    activeOpacity={0.85}
+                    style={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: 12,
+                      borderWidth: 3,
+                      borderColor: ot.cardBorder,
+                      backgroundColor: ot.cardBg,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      shadowColor: ot.shadow || ot.cardBorder,
+                      shadowOffset: { width: 3, height: 3 },
+                      shadowOpacity: 1,
+                      shadowRadius: 0,
+                      elevation: 3,
+                    }}
+                  >
+                    <Ionicons name={theme.toggleIcon} size={20} color={ot.textPrimary} />
+                  </TouchableOpacity>
+                )}
+              </View>
 
-              <OnboardingProgressBar
-                current={currentStep}
-                total={totalSteps}
-                t={ot}
-                gradientColors={role === 'trainer' ? TRAINER_ONBOARDING_GRADIENT : undefined}
-              />
-
-              <Text
-                style={{
-                  fontSize: 12,
-                  fontWeight: '600',
-                  color: theme.subtext,
-                  minWidth: 36,
-                  textAlign: 'right',
-                }}
-              >
-                {`${currentStep}/${totalSteps}`}
-              </Text>
-
-              <TouchableOpacity
-                onPress={() => setIsDark(!isDark)}
-                activeOpacity={0.8}
-                style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 18,
-                  backgroundColor: theme.backBtn,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Ionicons name={theme.toggleIcon} size={18} color={theme.subtext} />
-              </TouchableOpacity>
+              {role === 'client' ? (
+                <>
+                  <NbProgressSteps
+                    total={3}
+                    current={clientChapterMeta.done ? 4 : clientChapterMeta.chapter}
+                    fraction={clientChapterMeta.done ? 1 : clientChapterMeta.fraction}
+                    style={{ marginBottom: clientChapterMeta.done ? 16 : 8 }}
+                  />
+                  {/* Design Law All set (PNG 15): filled bars only — no CHAPTER / 7/7 row */}
+                  {clientChapterMeta.done ? null : (
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          fontWeight: '900',
+                          letterSpacing: 1.1,
+                          color: ot.textLabel,
+                        }}
+                      >
+                        {`CHAPTER ${clientChapterMeta.chapter} OF ${clientChapterMeta.of} · ${clientChapterMeta.label}`}
+                      </Text>
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          fontWeight: '900',
+                          color: ot.textLabel,
+                        }}
+                      >
+                        {clientChapterMeta.stepLabel}
+                      </Text>
+                    </View>
+                  )}
+                </>
+              ) : (
+                <>
+                  <NbProgressSteps
+                    total={3}
+                    current={trainerChapterMeta?.done ? 4 : trainerChapterMeta?.chapter}
+                    fraction={trainerChapterMeta?.done ? 1 : trainerChapterMeta?.fraction}
+                    style={{ marginBottom: trainerChapterMeta?.done ? 16 : 8 }}
+                  />
+                  {trainerChapterMeta?.done ? null : (
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          fontWeight: '900',
+                          letterSpacing: 1.1,
+                          color: ot.textLabel,
+                        }}
+                      >
+                        {`CHAPTER ${trainerChapterMeta?.chapter} OF ${trainerChapterMeta?.of} · ${trainerChapterMeta?.label}`}
+                      </Text>
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          fontWeight: '900',
+                          color: ot.textLabel,
+                        }}
+                      >
+                        {trainerChapterMeta?.stepLabel}
+                      </Text>
+                    </View>
+                  )}
+                  {trainerChapterMeta?.heroTime && currentStep === 1 ? (
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: ot.textSecondary, marginTop: 6 }}>
+                      {trainerChapterMeta.heroTime}
+                    </Text>
+                  ) : null}
+                </>
+              )}
             </View>
 
             {role === 'client' ? renderClientStep() : renderTrainerStep()}
           </ScrollView>
 
-          {/* Trainer step 8: sticky paywall CTA (FitFlow-style fixed footer) */}
-          {isTrainerPaywallStep ? (
-            <TrainerSubscriptionCtaFooter
-              isDark={isDark}
-              selectedPlanId={trainerPlanId}
-              onComplete={() => handleFinish()}
-              bottomInset={onboardingFooterPadBottom}
-            />
-          ) : null}
-
-          {/* Bottom bar: symmetric layout so Continue stays screen-centered; safe-area + no extra button margins */}
+          {/* Design Law bottom bar: back square + Continue / AI pair / Open my Today */}
           {hideBottomNav ? null : (
             <View
               style={[
@@ -3402,43 +2662,89 @@ Examples:
                   paddingTop: onboardingFooterPadTop,
                   paddingBottom: onboardingFooterPadBottom,
                   paddingHorizontal: 16,
+                  borderTopWidth: 3,
+                  borderTopColor: ot.cardBorder,
+                  gap: 10,
                 },
               ]}
             >
               {loading ? (
                 <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', height: 56 }}>
-                  <ActivityIndicator size="small" color={ONBOARDING_ACCENT} />
+                  <ActivityIndicator size="small" color={ot.textPrimary} />
                 </View>
+              ) : role === 'client' && currentStep === 7 ? (
+                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <NbButton variant="ghost" onPress={skipAIFromStep} style={{ flex: 1 }}>
+                    Not now
+                  </NbButton>
+                  <NbButton variant="fill" onPress={enableAIFromStep} style={{ flex: 1 }}>
+                    Turn on
+                  </NbButton>
+                </View>
+              ) : role === 'client' && currentStep === 8 ? (
+                <NbButton variant="fill" onPress={() => handleFinish()} style={{ flex: 1 }}>
+                  Open my Today >
+                </NbButton>
+              ) : role === 'trainer' && currentStep === TRAINER_COMPLETE_STEP ? (
+                <NbButton variant="fill" onPress={() => handleFinish()} style={{ flex: 1 }}>
+                  Open my trainer home >
+                </NbButton>
               ) : (
-                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
-                  <View style={{ width: 80, justifyContent: 'center', alignItems: 'flex-start' }}>
-                    {isOptionalStep() ? (
-                      <TouchableOpacity style={styles.skipButton} onPress={handleSkip} disabled={loading}>
-                        <Text style={dynamicStyles.skipButtonText}>Skip</Text>
-                      </TouchableOpacity>
-                    ) : null}
-                  </View>
-                  <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', minWidth: 0, paddingHorizontal: 6 }}>
+                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  {(role === 'client' || role === 'trainer') && currentStep > 1 ? (
+                    <TouchableOpacity
+                      onPress={handleBack}
+                      activeOpacity={0.85}
+                      style={{
+                        width: 56,
+                        height: 56,
+                        borderRadius: 12,
+                        borderWidth: 3,
+                        borderColor: ot.cardBorder,
+                        backgroundColor: ot.cardBg,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        shadowColor: ot.shadow || ot.cardBorder,
+                        shadowOffset: { width: 3, height: 3 },
+                        shadowOpacity: 1,
+                        shadowRadius: 0,
+                        elevation: 3,
+                      }}
+                      accessibilityLabel="Back"
+                    >
+                      <Ionicons name="chevron-back" size={22} color={ot.textPrimary} />
+                    </TouchableOpacity>
+                  ) : role === 'trainer' && isOptionalStep() ? (
+                    <TouchableOpacity style={styles.skipButton} onPress={handleSkip} disabled={loading}>
+                      <Text style={dynamicStyles.skipButtonText}>Skip</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                  <View style={{ flex: 1, minWidth: 0 }}>
                     <OnboardingPrimaryButton
                       variant="footer"
                       t={ot}
                       disabled={!validateStep()}
                       onDisabledPress={() => {
-                        if (role === 'client' && currentStep === 1) {
-                          const missing = getClientStep1Blockers();
-                          if (missing.length) {
-                            Alert.alert(
-                              'Almost there',
-                              `Please complete: ${missing.join(', ')}. Scroll up if you need to enter weight or height.`
-                            );
-                          }
+                        if (role === 'client') {
+                          Alert.alert('Almost there', 'Finish the required fields on this screen to continue.');
                         }
                       }}
                       onPress={handleNext}
-                      label={currentStep === totalSteps ? '✓ Complete Setup' : 'Continue'}
+                      label={
+                        role === 'client'
+                          ? 'Continue >'
+                          : currentStep === 3
+                            ? 'Get my invite code >'
+                            : currentStep === 2
+                              ? 'Continue to rates >'
+                              : currentStep === 1
+                                ? 'Continue to proof >'
+                                : currentStep === totalSteps
+                                  ? 'Continue'
+                                  : 'Continue >'
+                      }
                     />
                   </View>
-                  <View style={{ width: 80 }} />
                 </View>
               )}
             </View>
@@ -3447,7 +2753,7 @@ Examples:
       </View>
 
       <Modal visible={faceCamOpen} animationType="slide" onRequestClose={() => setFaceCamOpen(false)}>
-        <View style={{ flex: 1, backgroundColor: '#0A0A0F' }}>
+        <View style={{ flex: 1, backgroundColor: lightColors.nbInk }}>
           <CameraView
             ref={faceCamRef}
             style={{ flex: 1 }}
@@ -3511,7 +2817,7 @@ Examples:
                 width: 72,
                 height: 72,
                 borderRadius: 36,
-                backgroundColor: '#FF6B9D',
+                backgroundColor: lightColors.primary,
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
@@ -3635,16 +2941,16 @@ const getStyles = (isDark = true) => ({
     flex: 1,
     height: 56,
     borderRadius: 12,
-    backgroundColor: isDark ? '#2A2A2A' : '#FFFFFF',
+    backgroundColor: isDark ? '#2A2A2A' : lightColors.white,
     borderWidth: 2,
-    borderColor: '#8B5CF6',
+    borderColor: '#E25588',
     justifyContent: 'center',
     alignItems: 'center',
   },
   secondaryButtonText: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#8B5CF6',
+    color: '#E25588',
   },
   inputError: {
     borderWidth: 2,
@@ -3661,7 +2967,7 @@ const getStyles = (isDark = true) => ({
   modernNumberInput: {
     fontSize: 32,
     fontWeight: '700',
-    color: isDark ? '#FFFFFF' : '#1F2937',
+    color: isDark ? lightColors.white : '#1F2937',
     textAlign: 'center',
     flex: 1,
     minWidth: STYLE_UNIT_MIN_WIDTH,
@@ -3687,7 +2993,7 @@ const getStyles = (isDark = true) => ({
     textAlign: 'center',
   },
   modernGenderLabelSelected: {
-    color: '#FFFFFF',
+    color: lightColors.white,
     fontWeight: '700',
   },
 });
@@ -3790,7 +3096,7 @@ const styles = StyleSheet.create({
   codeInput: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#FFFFFF',
+    color: lightColors.white,
     textAlign: 'center',
     letterSpacing: 2,
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
@@ -3899,7 +3205,7 @@ const styles = StyleSheet.create({
   inviteCode: {
     fontSize: 32,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: lightColors.white,
     letterSpacing: 4,
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
@@ -3911,16 +3217,16 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 56,
     borderRadius: 12,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: lightColors.white,
     borderWidth: 2,
-    borderColor: '#8B5CF6',
+    borderColor: '#E25588',
     justifyContent: 'center',
     alignItems: 'center',
   },
   secondaryButtonText: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#8B5CF6',
+    color: '#E25588',
   },
   primaryButton: {
     flex: 1,
@@ -3936,7 +3242,7 @@ const styles = StyleSheet.create({
   primaryButtonText: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#FFFFFF',
+    color: lightColors.white,
   },
   navigationBar: {
     position: 'absolute',
@@ -4003,7 +3309,7 @@ const styles = StyleSheet.create({
   nextButtonText: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: lightColors.white,
     letterSpacing: 0.5,
   },
   nextButtonTextDisabled: {
@@ -4019,7 +3325,7 @@ const styles = StyleSheet.create({
   modernInputCard: {
     flex: 1,
     minWidth: (width - 60) / 3 - 8,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: lightColors.white,
     borderRadius: 20,
     padding: 20,
     alignItems: 'center',
@@ -4125,11 +3431,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
-    borderColor: '#FFFFFF',
+    borderColor: lightColors.white,
   },
   modernGenderCheckmarkText: {
     fontSize: 16,
-    color: '#FFFFFF',
+    color: lightColors.white,
     fontWeight: 'bold',
   },
 
@@ -4325,8 +3631,8 @@ const styles = StyleSheet.create({
     width: 22,
     height: 22,
     borderRadius: 11,
-    backgroundColor: '#C084FC',
-    borderColor: '#C084FC',
+    backgroundColor: '#E25588',
+    borderColor: '#E25588',
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
@@ -4334,7 +3640,7 @@ const styles = StyleSheet.create({
   equipmentCheckboxText: {
     fontSize: 14,
     fontWeight: '800',
-    color: '#FFFFFF',
+    color: lightColors.white,
   },
 
   // Day selector
@@ -4932,7 +4238,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   neumorphicCardTitleSelected: {
-    color: '#7C3AED',
+    color: '#BE185D',
   },
   neumorphicCardSubtitle: {
     fontSize: 14,

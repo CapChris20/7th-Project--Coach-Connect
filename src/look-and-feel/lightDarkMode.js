@@ -1,6 +1,7 @@
 // The app-wide light, dark, or system theme.
 // Flow: read the saved choice → follow the phone when the choice is system → share colors through context.
 // Used by screens that call useTheme() for the palette.
+// First launch defaults to light — Design Law / neo-brutal hard shadows read best there.
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useColorScheme } from 'react-native';
@@ -12,6 +13,9 @@ import { lightColors, darkColors, typography, spacing, borderRadius, fontSize, f
 const THEME_STORAGE_KEY = '@coachconnect_theme_mode';
 const SYSTEM_MODE = 'system';
 const DARK_MODE = 'dark';
+const LIGHT_MODE = 'light';
+// Manipulate here: first-run default before any saved preference (owner: prioritize light)
+const DEFAULT_THEME_MODE = LIGHT_MODE;
 const themeContext = createContext();
 
 // ===== HELPER FUNCTIONS =====
@@ -52,8 +56,8 @@ function isDarkForMode(themeMode, systemColorScheme) {
  */
 export function ThemeProvider({ children }) {
   const systemColorScheme = useColorScheme();
-  const [themeMode, setThemeMode] = useState(SYSTEM_MODE);
-  const [isDark, setIsDark] = useState(systemColorScheme === DARK_MODE);
+  const [themeMode, setThemeMode] = useState(DEFAULT_THEME_MODE);
+  const [isDark, setIsDark] = useState(false);
 
   useEffect(() => {
     loadSavedThemeMode(setThemeMode);

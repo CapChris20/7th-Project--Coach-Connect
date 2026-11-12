@@ -1,6 +1,8 @@
-// Trainer document editor modal — rich-text WebView + Firestore autosave.
-// Flow: load HTML → edit in WebView → debounce-save to users/{trainerId}/documents → share/export.
+// Trainer document editor — Design Law chrome (PNG 17–20) over rich-text WebView + Firestore autosave.
+// Flow: load HTML → edit in WebView → debounce-save to users/{trainerId}/documents → Export / Share.
 // Used by: trainer files screen when opening or creating a document.
+// vocab: HardShadow = solid offset shadow; fill-selected = nbFill + nbOnFill when a toolbar chip is on
+// KEEP: Firebase keys (users/{trainerId}/documents), bodyHtml/body/title, projectId anatrox-auth.
 
 import React, { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import { Modal, View, Text, TouchableOpacity, TextInput, StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator, Alert, ScrollView, Pressable, Share, Keyboard } from 'react-native';
@@ -15,9 +17,12 @@ import { db } from '../../app-start/cloudConnection';
 import ShareDocumentPopup from './ShareDocumentPopup';
 import BottomMenuBar from '../../navigation/BottomMenuBar';
 import { SHELL_SAFE_AREA_EDGES } from '../../navigation/bottomMenuSpacing';
-import { EditorIconButton, EditorInlineTitle, DEFAULT_SAVE_TITLE_DOCUMENT } from './EditorTopButtons';
-import { EDITOR_HIGHLIGHT_COLORS, EDITOR_TEXT_COLORS, FONT_SIZES, getEditorTheme } from './editorColors';
-import { EditorGradientPill } from './editorAccent';
+import { EditorInlineTitle, DEFAULT_SAVE_TITLE_DOCUMENT } from './EditorTopButtons';
+import { EDITOR_HIGHLIGHT_COLORS, EDITOR_TEXT_COLORS, getEditorTheme, formatEditorSavedAgo } from './editorColors';
+import { computeStats, schoolGradeFromStats, readingEaseCopy } from './readingLevel';
+import { lightColors, nb, borderRadius, spacing } from '../../look-and-feel/colorPalette';
+import HardShadow from '../../look-and-feel/HardShadow';
+import NbButton from '../../look-and-feel/NbButton';
 
 // ===== NAMED CONSTANTS =====
 
@@ -31,8 +36,40 @@ const WEBVIEW_BOOT_EMIT_MS = 50;
 const MAX_WORD_COUNT_CLAMP = 999999;
 const MAX_CHAR_COUNT_CLAMP = 9999999;
 const DEFAULT_FONT_SIZE_PX = 16;
-const DARK_DEFAULT_TEXT_COLOR = '#FFFFFF';
-const LIGHT_DEFAULT_TEXT_COLOR = '#0A0A0F';
+const DARK_DEFAULT_TEXT_COLOR = lightColors.white;
+const LIGHT_DEFAULT_TEXT_COLOR = lightColors.nbInk;
+
+// Manipulate here: Design Law page-style chips (PNG row under the format toolbar)
+const PAGE_STYLE_CLEAN = 'clean';
+const PAGE_STYLE_BOLD = 'bold';
+const PAGE_STYLE_HANDOUT = 'handout';
+const PAGE_STYLE_CHIPS = [
+  { id: PAGE_STYLE_CLEAN, label: 'Clean' },
+  { id: PAGE_STYLE_BOLD, label: 'Bold' },
+  { id: PAGE_STYLE_HANDOUT, label: 'Handout' },
+];
+
+/** Extra CSS for Clean / Bold / Handout — paper layout only; does not change saved HTML. */
+function pageStyleCss(pageStyle) {
+  if (pageStyle === PAGE_STYLE_BOLD) {
+    return `
+      #editor { font-weight: 600; }
+      h1 { font-size: 32px; font-weight: 900; letter-spacing: -0.5px; }
+      h2 { font-size: 24px; font-weight: 900; }
+      p, li { font-weight: 600; }
+    `;
+  }
+  if (pageStyle === PAGE_STYLE_HANDOUT) {
+    return `
+      #editor { font-size: 12pt; line-height: 1.75; }
+      h1 { font-size: 26px; margin-bottom: 16px; }
+      h2 { font-size: 20px; margin-top: 22px; }
+      p, li { font-size: 15px; margin-bottom: 12px; }
+      .page { padding: 48px 36px 56px; }
+    `;
+  }
+  return '';
+}
 
 // ===== HELPER FUNCTIONS =====
 
@@ -277,72 +314,64 @@ function loadDocumentWhenVisible({
     });
 }
 
-function ToolButton({
-  icon,
-  active,
-  disabled,
-  onPress,
-  theme
-}) {
-  const hitProps = {
-    onPress,
-    disabled,
-    activeOpacity: 0.7,
-    style: [styles.toolBtn, {
-      opacity: disabled ? 0.35 : 1
-    }]
-  };
-  if (active) {
-    return <EditorGradientPill radius={8} style={styles.toolBtn} backgroundColor={theme?.accentSoft}>
-        <TouchableOpacity {...hitProps}>{icon}</TouchableOpacity>
-      </EditorGradientPill>;
-  }
-  return <TouchableOpacity {...hitProps}>{icon}</TouchableOpacity>;
+/**
+ * Design Law fill-selected toolbar chip (HardShadow + 3px border).
+ * Active = nbFill / nbOnFill; idle = surface + ink.
+ */
+function ToolButton({ icon, active, disabled, onPress, theme, wide }) {
+  const fillBg = active ? theme.accent : theme.pageBg;
+  const ink = active ? theme.textOnAccent : theme.text;
+  return (
+    <HardShadow offset={nb.shadowOffsetSmall} radius={borderRadius.nbButton} style={{ opacity: disabled ? 0.35 : 1 }}>
+      <TouchableOpacity
+        onPress={onPress}
+        disabled={disabled}
+        activeOpacity={0.85}
+        style={[
+          styles.toolBtn,
+          wide ? styles.toolBtnWide : null,
+          {
+            backgroundColor: fillBg,
+            borderColor: theme.chromeBorder,
+          },
+        ]}
+      >
+        {typeof icon === 'function' ? icon(ink) : icon}
+      </TouchableOpacity>
+    </HardShadow>
+  );
 }
-function Divider({
-  theme
-}) {
-  return <View style={[styles.divider, {
-    backgroundColor: theme.divider
-  }]} />;
+
+function GlyphButton({ label, active, disabled, onPress, theme, textStyle, wide }) {
+  return (
+    <ToolButton
+      theme={theme}
+      active={active}
+      disabled={disabled}
+      onPress={onPress}
+      wide={wide}
+      icon={(ink) => (
+        <Text style={[styles.toolGlyph, { color: ink }, textStyle]}>{label}</Text>
+      )}
+    />
+  );
 }
-function GlyphButton({
-  label,
-  active,
-  disabled,
-  onPress,
-  theme,
-  style
-}) {
-  return <ToolButton theme={theme} active={active} disabled={disabled} onPress={onPress} icon={<Text style={[styles.toolGlyph, {
-    color: active ? theme.text : theme.textMuted
-  }, style]}>
-          {label}
-        </Text>} />;
-}
-function IonTool({
-  name,
-  active,
-  disabled,
-  onPress,
-  theme,
-  size = 17
-}) {
-  return <ToolButton theme={theme} active={active} disabled={disabled} onPress={onPress} icon={<Ionicons name={name} size={size} color={active ? theme.text : theme.textMuted} />} />;
-}
-function buildEditorHtml2({
-  theme,
-  initialHtml
-}) {
-  const pageBg = theme.printPageBg || '#FFFFFF';
-  const canvasBg = theme.printCanvasBg || '#E8EAED';
-  const fg = theme.printPageText || '#202124';
-  const subtle = 'rgba(60,64,67,0.2)';
-  const accent = theme.selectionBorder;
-  const linkColor = '#1A73E8';
-  const codeBg = '#F1F3F4';
-  const pageShadow = '0 1px 2px rgba(60,64,67,0.3), 0 1px 3px 1px rgba(60,64,67,0.15)';
-  const pageMuted = theme.printPageMuted || '#5F6368';
+
+function buildEditorHtml2({ theme, initialHtml, pageStyle = PAGE_STYLE_CLEAN }) {
+  // Design Law paper: surface card, 3px border, hard offset shadow (no Google-docs soft blur)
+  const pageBg = theme.printPageBg || lightColors.nbSurface;
+  const canvasBg = theme.printCanvasBg || lightColors.nbSoft;
+  const fg = theme.printPageText || lightColors.nbInk;
+  const border = theme.chromeBorder || lightColors.nbBorder;
+  const subtle = 'rgba(10,10,10,0.14)';
+  const accent = theme.selectionBorder || border;
+  const linkColor = fg;
+  const codeBg = theme.accentSoft || lightColors.nbSoft;
+  const pageShadow = theme.printCanvasBg && String(theme.printCanvasBg).startsWith('#0')
+    ? '4px 4px 0 rgba(138,138,138,0.9)'
+    : '5px 5px 0 #0A0A0A';
+  const pageMuted = theme.printPageMuted || lightColors.nbMuted;
+  const styleExtra = pageStyleCss(pageStyle);
   return `<!doctype html>
 <html>
   <head>
@@ -358,35 +387,27 @@ function buildEditorHtml2({
         -webkit-text-size-adjust: 100%;
       }
       body {
-        font-family: 'Google Sans', Roboto, -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
-        padding: 20px 14px 48px;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+        padding: 14px 12px 40px;
       }
       .page {
-        margin: 0 auto 24px;
-        width: calc(100% - 4px);
+        margin: 0 auto 20px;
+        width: 100%;
         max-width: 816px;
         background: ${pageBg};
-        min-height: calc((100vw - 28px) * 1.294);
+        min-height: calc((100vw - 24px) * 1.15);
         box-shadow: ${pageShadow};
-        border-radius: 0;
-        border: none;
-        padding: 72px 56px 80px;
+        border-radius: 10px;
+        border: 3px solid ${border};
+        padding: 28px 22px 36px;
       }
       .page:last-child { margin-bottom: 0; }
-      @media (max-width: 600px) {
-        body { padding: 16px 12px 40px; }
-        .page {
-          width: 100%;
-          padding: 56px 40px 64px;
-          min-height: calc((100vw - 24px) * 1.294);
-        }
-      }
       #editor {
         outline: none;
-        min-height: calc((100vw - 28px) * 1.294 - 136px);
+        min-height: calc((100vw - 24px) * 1.15 - 80px);
         caret-color: ${accent};
         font-size: 11pt;
-        line-height: 1.5;
+        line-height: 1.55;
         color: ${fg};
         font-family: inherit;
         word-break: break-word;
@@ -411,8 +432,9 @@ function buildEditorHtml2({
       blockquote { margin: 12px 0; padding: 10px 12px; border-left: 3px solid ${accent}; background: ${codeBg}; border-radius: 8px; font-style: italic; opacity: 0.92; }
       code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background: ${codeBg}; padding: 2px 6px; border-radius: 6px; font-size: 13px; }
       pre { background: ${codeBg}; border: 1px solid ${subtle}; border-radius: 10px; padding: 12px; overflow: auto; }
-      a { color: ${linkColor}; text-decoration: none; }
-      img { max-width: 100%; border-radius: 8px; border: 1px solid ${subtle}; }
+      a { color: ${linkColor}; text-decoration: underline; text-underline-offset: 2px; }
+      img { max-width: 100%; border-radius: 8px; border: 3px solid ${border}; }
+      ${styleExtra}
     </style>
   </head>
   <body>
@@ -597,7 +619,7 @@ export default function DocumentEditor({
     chars: 0
   });
   const [fontSize, setFontSize] = useState(16);
-  const [textColor, setTextColor] = useState('#FFFFFF');
+  const [textColor, setTextColor] = useState(lightColors.white);
   const [highlightColor, setHighlightColor] = useState('transparent');
   const [titleFocused, setTitleFocused] = useState(false);
   const [toolState, setToolState] = useState({
@@ -629,13 +651,36 @@ export default function DocumentEditor({
     value: ''
   });
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+  // Manipulate here: default page style chip (Clean | Bold | Handout)
+  const [pageStyle, setPageStyle] = useState(PAGE_STYLE_CLEAN);
+  const [plainPreview, setPlainPreview] = useState('');
   const isEditorDark = editorColorsMode === 'dark';
   const theme = useMemo(() => getEditorTheme(isEditorDark), [isEditorDark]);
   const insets = useSafeAreaInsets();
   const editorHtml = useMemo(() => buildEditorHtml2({
     theme,
-    initialHtml: EMPTY_HTML
-  }), [theme]);
+    initialHtml: EMPTY_HTML,
+    pageStyle,
+  }), [theme, pageStyle]);
+
+  // Reading-level card (PNG): Grade N + ease copy from live plain text
+  const readingCard = useMemo(() => {
+    const stats = computeStats(plainPreview);
+    const schoolGrade = schoolGradeFromStats(stats);
+    return {
+      schoolGrade,
+      easeCopy: readingEaseCopy(schoolGrade),
+    };
+  }, [plainPreview]);
+
+  const savedSubtitle = useMemo(() => {
+    if (status === 'saving') return 'Saving…';
+    if (status === 'unsaved') return 'Unsaved changes';
+    const ago = formatEditorSavedAgo(lastSaved);
+    return ago === 'just now' ? 'Saved just now' : `Saved ${ago}`;
+  }, [status, lastSaved]);
+
+  const displayTitle = String(title || '').trim() || DEFAULT_SAVE_TITLE_DOCUMENT;
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
     const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
@@ -658,15 +703,16 @@ export default function DocumentEditor({
     if (visible) setEditorThemeMode(isDark ? 'dark' : 'light');
   }, [visible, isDark]);
   useEffect(() => {
-    setTextColor(isEditorDark ? '#FFFFFF' : '#0A0A0F');
+    setTextColor(isEditorDark ? lightColors.white : lightColors.nbInk);
   }, [isEditorDark]);
   useEffect(() => {
+    // Re-push HTML after theme or page-style remount so the WebView does not open blank.
     if (!visible || loading) return;
     const html = lastUpdateHtml.current || EMPTY_HTML;
     setTimeout(() => {
       postHtmlToWebView(webRef, html);
     }, THEME_HTML_REAPPLY_MS);
-  }, [isEditorDark, visible, loading]);
+  }, [isEditorDark, pageStyle, visible, loading]);
 
   useEffect(() => {
     if (!visible) return;
@@ -743,6 +789,7 @@ export default function DocumentEditor({
           const html = String(payload?.html || '');
           const text = String(payload?.text || '');
           setCounts(countsFromWebPayload(payload));
+          setPlainPreview(text);
           lastUpdateHtml.current = html;
           queueSave(html, text);
         },
@@ -851,11 +898,17 @@ export default function DocumentEditor({
       text: 'Rename',
       onPress: handleRename
     }, {
+      text: 'Text style',
+      onPress: openStyleMenu
+    }, {
+      text: 'Insert…',
+      onPress: openInsertMenu
+    }, {
       text: favorite ? 'Remove favorite' : 'Add favorite',
-      onPress: () => setFavorite(v => !v)
+      onPress: () => setFavorite((wasFavorite) => !wasFavorite)
     }, {
       text: isEditorDark ? 'Light mode' : 'Dark mode',
-      onPress: () => setEditorThemeMode(t => t === 'dark' ? 'light' : 'dark')
+      onPress: () => setEditorThemeMode((mode) => (mode === 'dark' ? 'light' : 'dark'))
     }, {
       text: `Word count (${counts.words} words)`,
       onPress: () => Alert.alert('Word count', `${counts.words} words · ${counts.chars} characters`)
@@ -922,352 +975,532 @@ export default function DocumentEditor({
     }]);
   };
   const nav = trainerNavChrome;
-  const iconColor = active => active ? theme.text : theme.textMuted;
-  const renderFormatToolbar = () => <View style={styles.formatDock}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.toolbarScroll} contentContainerStyle={styles.toolbarRow} keyboardShouldPersistTaps="handled">
-        <ToolButton theme={theme} active={picker === 'fontSize' || toolState.h1 || toolState.h2 || toolState.h3} onPress={openStyleMenu} icon={<Text style={[styles.toolGlyph, {
-        color: theme.textMuted,
-        fontWeight: '700'
-      }]}>Aa</Text>} />
-        <GlyphButton theme={theme} label="B" active={toolState.bold} onPress={() => postCmd('bold')} style={{
-        fontWeight: '800'
-      }} />
-        <GlyphButton theme={theme} label="I" active={toolState.italic} onPress={() => postCmd('italic')} style={{
-        fontStyle: 'italic',
-        fontWeight: '700'
-      }} />
-        <GlyphButton theme={theme} label="U" active={toolState.underline} onPress={() => postCmd('underline')} style={{
-        textDecorationLine: 'underline',
-        fontWeight: '700'
-      }} />
-        <Divider theme={theme} />
-        <ToolButton theme={theme} active={picker === 'textColor'} onPress={() => setPicker(p => p === 'textColor' ? null : 'textColor')} icon={<Ionicons name="text-outline" size={17} color={iconColor(picker === 'textColor')} />} />
-        <ToolButton theme={theme} active={picker === 'highlight'} onPress={() => setPicker(p => p === 'highlight' ? null : 'highlight')} icon={<Ionicons name="color-fill-outline" size={17} color={iconColor(picker === 'highlight')} />} />
-        <Divider theme={theme} />
-        <IonTool theme={theme} name="list-outline" active={toolState.ul} onPress={() => postCmd('ul')} />
-        <IonTool theme={theme} name="reorder-four-outline" active={toolState.ol} onPress={() => postCmd('ol')} />
-        <IonTool theme={theme} name="link-outline" active={toolState.link} onPress={() => setPrompt({
-        visible: true,
-        kind: 'link',
-        value: 'https://'
-      })} />
-        <IonTool theme={theme} name="image-outline" active={false} onPress={() => setPrompt({
-        visible: true,
-        kind: 'image',
-        value: ''
-      })} />
-        <IonTool theme={theme} name="add-outline" active={false} onPress={openInsertMenu} />
+
+  // Design Law format row (PNG): B I U H1 H2 • List — fill-selected chips
+  const renderFormatToolbar = () => (
+    <View style={styles.formatDock}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.toolbarScroll}
+        contentContainerStyle={styles.toolbarRow}
+        keyboardShouldPersistTaps="handled"
+      >
+        <GlyphButton
+          theme={theme}
+          label="B"
+          active={toolState.bold}
+          onPress={() => postCmd('bold')}
+          textStyle={{ fontWeight: '900' }}
+        />
+        <GlyphButton
+          theme={theme}
+          label="I"
+          active={toolState.italic}
+          onPress={() => postCmd('italic')}
+          textStyle={{ fontStyle: 'italic', fontWeight: '700' }}
+        />
+        <GlyphButton
+          theme={theme}
+          label="U"
+          active={toolState.underline}
+          onPress={() => postCmd('underline')}
+          textStyle={{ textDecorationLine: 'underline', fontWeight: '700' }}
+        />
+        <GlyphButton
+          theme={theme}
+          label="H1"
+          active={toolState.h1}
+          onPress={() => postCmd('heading', toolState.h1 ? 0 : 1)}
+          textStyle={{ fontWeight: '800', fontSize: 12 }}
+        />
+        <GlyphButton
+          theme={theme}
+          label="H2"
+          active={toolState.h2}
+          onPress={() => postCmd('heading', toolState.h2 ? 0 : 2)}
+          textStyle={{ fontWeight: '800', fontSize: 12 }}
+        />
+        <GlyphButton
+          theme={theme}
+          label="• List"
+          active={toolState.ul}
+          onPress={() => postCmd('ul')}
+          wide
+          textStyle={{ fontWeight: '700', fontSize: 12 }}
+        />
+        <ToolButton
+          theme={theme}
+          active={false}
+          onPress={openMoreMenu}
+          icon={(ink) => <Ionicons name="ellipsis-horizontal" size={18} color={ink} />}
+        />
       </ScrollView>
-      {picker === 'fontSize' ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pickerRow}>
-          {FONT_SIZES.map(size => fontSize === size ? <EditorGradientPill key={size} style={styles.pickerChip} radius={8}>
-                <TouchableOpacity onPress={() => {
-          setFontSize(size);
-          postCmd('fontSize', size);
-          setPicker(null);
-        }} style={styles.pickerChipInner}>
-                  <Text style={{
-            color: theme.text,
-            fontWeight: '700',
-            fontSize: 12
-          }}>{size}</Text>
-                </TouchableOpacity>
-              </EditorGradientPill> : <TouchableOpacity key={size} onPress={() => {
-        setFontSize(size);
-        postCmd('fontSize', size);
-        setPicker(null);
-      }} style={styles.pickerChip}>
-                <Text style={{
-          color: theme.textMuted,
-          fontWeight: '700',
-          fontSize: 12
-        }}>{size}</Text>
-              </TouchableOpacity>)}
-        </ScrollView> : null}
-      {picker === 'textColor' ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pickerRow}>
-          {EDITOR_TEXT_COLORS.map(color => <TouchableOpacity key={color} onPress={() => {
-        setTextColor(color);
-        postCmd('foreColor', color);
-        setPicker(null);
-      }} style={[styles.colorSwatch, {
-        backgroundColor: color,
-        borderColor: textColor === color ? theme.selectionBorder : theme.border,
-        borderWidth: textColor === color ? 2 : 1,
-        width: 28,
-        height: 28
-      }]} />)}
-        </ScrollView> : null}
-      {picker === 'highlight' ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pickerRow}>
-          {EDITOR_HIGHLIGHT_COLORS.map(color => <TouchableOpacity key={color} onPress={() => {
-        setHighlightColor(color);
-        postCmd('hiliteColor', color === 'transparent' ? 'transparent' : color);
-        setPicker(null);
-      }} style={[styles.colorSwatch, {
-        backgroundColor: color === 'transparent' ? theme.inputBg : color,
-        borderColor: theme.border,
-        width: 28,
-        height: 28
-      }]} />)}
-        </ScrollView> : null}
-    </View>;
-  return <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={handleBackPress}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{
-      flex: 1,
-      backgroundColor: theme.canvasBg
-    }}>
-        <SafeAreaView style={{
-        flex: 1,
-        backgroundColor: theme.canvasBg
-      }} edges={SHELL_SAFE_AREA_EDGES}>
-          <View style={[styles.gdocsTopBar, {
-          paddingTop: insets.top + 6,
-          backgroundColor: theme.headerBg,
-          borderBottomColor: theme.border
-        }]}>
-            <TouchableOpacity onPress={handleBackPress} style={styles.headerBtn} hitSlop={12} accessibilityLabel="Back">
-              <Ionicons name="chevron-back" size={22} color={theme.text} />
-            </TouchableOpacity>
-            <View style={styles.gdocsTitleWrap}>
-              <EditorInlineTitle inputRef={titleInputRef} value={title} onChangeText={t => {
-              setTitle(t);
-              setStatus('unsaved');
-              if (saveTimer.current) clearTimeout(saveTimer.current);
-              saveTimer.current = setTimeout(() => {
-                queueSave(lastUpdateHtml.current, htmlToPlainText(lastUpdateHtml.current));
-              }, TITLE_SAVE_DEBOUNCE_MS);
-            }} onFocus={() => setTitleFocused(true)} onBlur={() => setTitleFocused(false)} focused={titleFocused} theme={theme} />
+
+      {/* Page style chips — Clean / Bold / Handout (single-select, fill when on) */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.pageStyleRow}
+        keyboardShouldPersistTaps="handled"
+      >
+        {PAGE_STYLE_CHIPS.map((chip) => {
+          const selected = pageStyle === chip.id;
+          return (
+            <HardShadow key={chip.id} offset={nb.shadowOffsetSmall} radius={999}>
+              <TouchableOpacity
+                onPress={() => setPageStyle(chip.id)}
+                activeOpacity={0.85}
+                style={[
+                  styles.pageStyleChip,
+                  {
+                    backgroundColor: selected ? theme.accent : theme.pageBg,
+                    borderColor: theme.chromeBorder,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.pageStyleChipText,
+                    { color: selected ? theme.textOnAccent : theme.text },
+                  ]}
+                >
+                  {chip.label}
+                </Text>
+              </TouchableOpacity>
+            </HardShadow>
+          );
+        })}
+      </ScrollView>
+
+      {picker === 'textColor' ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pickerRow}>
+          {EDITOR_TEXT_COLORS.map((color) => (
+            <TouchableOpacity
+              key={color}
+              onPress={() => {
+                setTextColor(color);
+                postCmd('foreColor', color);
+                setPicker(null);
+              }}
+              style={[
+                styles.colorSwatch,
+                {
+                  backgroundColor: color,
+                  borderColor: textColor === color ? theme.selectionBorder : theme.border,
+                },
+              ]}
+            />
+          ))}
+        </ScrollView>
+      ) : null}
+      {picker === 'highlight' ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pickerRow}>
+          {EDITOR_HIGHLIGHT_COLORS.map((color) => (
+            <TouchableOpacity
+              key={color}
+              onPress={() => {
+                setHighlightColor(color);
+                postCmd('hiliteColor', color === 'transparent' ? 'transparent' : color);
+                setPicker(null);
+              }}
+              style={[
+                styles.colorSwatch,
+                {
+                  backgroundColor: color === 'transparent' ? theme.inputBg : color,
+                  borderColor: theme.border,
+                },
+              ]}
+            />
+          ))}
+        </ScrollView>
+      ) : null}
+    </View>
+  );
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={handleBackPress}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1, backgroundColor: theme.bg }}
+      >
+        <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }} edges={SHELL_SAFE_AREA_EDGES}>
+          {/* Header: HardShadow back + editable title + save subtitle + share square */}
+          <View style={[styles.topBar, { paddingTop: insets.top + spacing.sm }]}>
+            <HardShadow offset={nb.shadowOffsetSmall} radius={borderRadius.nbIconChip}>
+              <TouchableOpacity
+                onPress={handleBackPress}
+                style={[styles.headerSq, { backgroundColor: theme.pageBg, borderColor: theme.chromeBorder }]}
+                hitSlop={8}
+                accessibilityLabel="Back"
+              >
+                <Ionicons name="chevron-back" size={22} color={theme.text} />
+              </TouchableOpacity>
+            </HardShadow>
+
+            <View style={styles.titleWrap}>
+              <EditorInlineTitle
+                inputRef={titleInputRef}
+                value={title}
+                onChangeText={(nextTitle) => {
+                  setTitle(nextTitle);
+                  setStatus('unsaved');
+                  if (saveTimer.current) clearTimeout(saveTimer.current);
+                  saveTimer.current = setTimeout(() => {
+                    queueSave(lastUpdateHtml.current, htmlToPlainText(lastUpdateHtml.current));
+                  }, TITLE_SAVE_DEBOUNCE_MS);
+                }}
+                onFocus={() => setTitleFocused(true)}
+                onBlur={() => setTitleFocused(false)}
+                focused={titleFocused}
+                theme={theme}
+              />
+              <Text style={[styles.savedLabel, { color: theme.textMuted }]}>{savedSubtitle}</Text>
             </View>
-            <TouchableOpacity onPress={() => postCmd('undo')} disabled={!toolState.canUndo} style={[styles.headerBtn, {
-            opacity: toolState.canUndo ? 1 : 0.35
-          }]} accessibilityLabel="Undo">
-              <Ionicons name="arrow-undo-outline" size={20} color={theme.text} />
+
+            <HardShadow offset={nb.shadowOffsetSmall} radius={borderRadius.nbIconChip}>
+              <TouchableOpacity
+                onPress={handleSharePress}
+                style={[styles.headerSq, { backgroundColor: theme.pageBg, borderColor: theme.chromeBorder }]}
+                accessibilityLabel="Share"
+              >
+                <Ionicons name="paper-plane-outline" size={20} color={theme.text} />
+              </TouchableOpacity>
+            </HardShadow>
+          </View>
+
+          {renderFormatToolbar()}
+
+          <View style={[styles.editorDesk, { backgroundColor: theme.printCanvasBg }]}>
+            {loading ? (
+              <View style={styles.loadingBlock}>
+                <ActivityIndicator size="large" color={theme.text} />
+              </View>
+            ) : (
+              <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard} style={styles.editorShadow}>
+                <View
+                  style={[
+                    styles.editorCard,
+                    { backgroundColor: theme.printPageBg, borderColor: theme.chromeBorder },
+                  ]}
+                >
+                  <WebView
+                    key={`${isEditorDark ? 'dark' : 'light'}-${pageStyle}`}
+                    ref={webRef}
+                    originWhitelist={['*']}
+                    style={styles.webview}
+                    source={{ html: editorHtml }}
+                    onMessage={handleWebMessage}
+                    javaScriptEnabled
+                    domStorageEnabled
+                    keyboardDisplayRequiresUserAction={false}
+                    hideKeyboardAccessoryView
+                    nestedScrollEnabled
+                    scrollEnabled
+                  />
+                </View>
+              </HardShadow>
+            )}
+          </View>
+
+          {/* Reading level card + Clear formatting */}
+          <View
+            style={[
+              styles.readingCard,
+              { backgroundColor: theme.pageBg, borderColor: theme.chromeBorder },
+            ]}
+          >
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={[styles.readingTitle, { color: theme.text }]}>
+                Reading level: Grade {readingCard.schoolGrade}
+              </Text>
+              <Text style={[styles.readingSub, { color: theme.textMuted }]}>{readingCard.easeCopy}</Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => postCmd('clear')}
+              style={[styles.clearPill, { borderColor: theme.chromeBorder, backgroundColor: theme.pageBg }]}
+              accessibilityLabel="Clear formatting"
+            >
+              <Text style={[styles.clearPillText, { color: theme.text }]}>Clear</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => postCmd('redo')} disabled={!toolState.canRedo} style={[styles.headerBtn, {
-            opacity: toolState.canRedo ? 1 : 0.35
-          }]} accessibilityLabel="Redo">
-              <Ionicons name="arrow-redo-outline" size={20} color={theme.text} />
-            </TouchableOpacity>
-            <EditorIconButton icon="share-outline" onPress={handleSharePress} theme={theme} accessibilityLabel="Share" />
-            <EditorIconButton icon="ellipsis-vertical" onPress={openMoreMenu} theme={theme} accessibilityLabel="More options" />
           </View>
 
-          <View style={{
-          flex: 1,
-          minHeight: 0,
-          backgroundColor: theme.printCanvasBg
-        }}>
-            {loading ? <View style={{
-            flex: 1,
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: theme.printCanvasBg
-          }}>
-                <ActivityIndicator size="large" color={theme.selectionBorder} />
-              </View> : <WebView key={isEditorDark ? 'editor-dark' : 'editor-light'} ref={webRef} originWhitelist={['*']} style={{
-            flex: 1,
-            backgroundColor: theme.printCanvasBg
-          }} source={{
-            html: editorHtml
-          }} onMessage={handleWebMessage} javaScriptEnabled domStorageEnabled keyboardDisplayRequiresUserAction={false} hideKeyboardAccessoryView nestedScrollEnabled scrollEnabled />}
+          <View style={[styles.bottomActions, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
+            <NbButton variant="plain" onPress={handleExportPdf} style={styles.halfBtn}>
+              Export
+            </NbButton>
+            <NbButton variant="fill" onPress={handleSharePress} style={styles.halfBtn}>
+              Share
+            </NbButton>
           </View>
 
-          <View style={[styles.bottomChrome, {
-          backgroundColor: theme.toolbarBg,
-          borderTopColor: theme.border
-        }]}>
-            {renderFormatToolbar()}
-            {nav && !keyboardVisible ? <BottomMenuBar appearanceIsDark={isEditorDark} activeTabKey={nav.activeTabKey || 'files'} onHomePress={nav.onHomePress} onPlusPress={nav.onPlusPress} onVoicePress={nav.onVoicePress} onNutritionPress={nav.onNutritionPress} onWorkoutPress={nav.onWorkoutPress} onMessagesPress={nav.onMessagesPress} /> : null}
-          </View>
+          {nav && !keyboardVisible ? (
+            <BottomMenuBar
+              appearanceIsDark={isEditorDark}
+              activeTabKey={nav.activeTabKey || 'files'}
+              onHomePress={nav.onHomePress}
+              onPlusPress={nav.onPlusPress}
+              onVoicePress={nav.onVoicePress}
+              onNutritionPress={nav.onNutritionPress}
+              onWorkoutPress={nav.onWorkoutPress}
+              onMessagesPress={nav.onMessagesPress}
+            />
+          ) : null}
 
-          {prompt.visible && <Pressable style={styles.promptOverlay} onPress={() => setPrompt({
-          visible: false,
-          kind: null,
-          value: ''
-        })}>
-              <Pressable style={[styles.promptSheet, {
-            backgroundColor: theme.pageBg,
-            borderColor: theme.border
-          }]} onStartShouldSetResponder={() => true}>
-                <Text style={[styles.promptTitle, {
-              color: theme.text
-            }]}>{prompt.kind === 'link' ? 'Add link' : 'Insert image'}</Text>
-                <TextInput value={prompt.value} onChangeText={v => setPrompt(p => ({
-              ...p,
-              value: v
-            }))} placeholder={prompt.kind === 'link' ? 'https://example.com' : 'https://image-url'} placeholderTextColor={theme.textMuted} autoCapitalize="none" autoCorrect={false} style={[styles.promptInput, {
-              color: theme.text,
-              borderColor: theme.border
-            }]} />
-                <View style={{
-              flexDirection: 'row',
-              gap: 10,
-              marginTop: 12
-            }}>
-                  <TouchableOpacity style={[styles.promptBtn, {
-                backgroundColor: theme.inputBg,
-                borderColor: theme.border
-              }]} onPress={() => setPrompt({
-                visible: false,
-                kind: null,
-                value: ''
-              })}>
-                    <Text style={{
-                  color: theme.textMuted,
-                  fontWeight: '700'
-                }}>Cancel</Text>
-                  </TouchableOpacity>
-                  <EditorGradientPill style={{
-                flex: 1
-              }} radius={10}>
-                    <TouchableOpacity style={[styles.promptBtn, {
-                  borderWidth: 0
-                }]} onPress={() => {
-                  const promptValue = String(prompt.value || '').trim();
-                  const kind = prompt.kind;
-                  setPrompt({
-                    visible: false,
-                    kind: null,
-                    value: ''
-                  });
-                  if (!promptValue) return;
-                  if (kind === 'link') postCmd('link', promptValue);
-                  if (kind === 'image') postCmd('image', promptValue);
-                }}>
-                      <Text style={{
-                    color: theme.text,
-                    fontWeight: '800'
-                  }}>Insert</Text>
-                    </TouchableOpacity>
-                  </EditorGradientPill>
+          {prompt.visible ? (
+            <Pressable
+              style={styles.promptOverlay}
+              onPress={() => setPrompt({ visible: false, kind: null, value: '' })}
+            >
+              <Pressable
+                style={[styles.promptSheet, { backgroundColor: theme.pageBg, borderColor: theme.border }]}
+                onStartShouldSetResponder={() => true}
+              >
+                <Text style={[styles.promptTitle, { color: theme.text }]}>
+                  {prompt.kind === 'link' ? 'Add link' : 'Insert image'}
+                </Text>
+                <TextInput
+                  value={prompt.value}
+                  onChangeText={(value) => setPrompt((previous) => ({ ...previous, value }))}
+                  placeholder={prompt.kind === 'link' ? 'https://example.com' : 'https://image-url'}
+                  placeholderTextColor={theme.textMuted}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  style={[styles.promptInput, { color: theme.text, borderColor: theme.border }]}
+                />
+                <View style={styles.promptRow}>
+                  <NbButton
+                    variant="plain"
+                    onPress={() => setPrompt({ visible: false, kind: null, value: '' })}
+                    style={styles.halfBtn}
+                  >
+                    Cancel
+                  </NbButton>
+                  <NbButton
+                    variant="fill"
+                    onPress={() => {
+                      const promptValue = String(prompt.value || '').trim();
+                      const kind = prompt.kind;
+                      setPrompt({ visible: false, kind: null, value: '' });
+                      if (!promptValue) return;
+                      if (kind === 'link') postCmd('link', promptValue);
+                      if (kind === 'image') postCmd('image', promptValue);
+                    }}
+                    style={styles.halfBtn}
+                  >
+                    Insert
+                  </NbButton>
                 </View>
               </Pressable>
-            </Pressable>}
+            </Pressable>
+          ) : null}
 
-          <ShareDocumentPopup visible={showShare} onClose={() => setShowShare(false)} trainerId={trainerId} documentId={docId} initialSharedWith={sharedWith} isDark={isEditorDark} onSaved={() => {
-          if (trainerId && docId) {
-            getTrainerDocument(trainerId, docId).then(d => {
-              if (d && mounted.current) setSharedWith(Array.isArray(d.sharedWith) ? d.sharedWith : []);
-            });
-          }
-        }} />
-
+          <ShareDocumentPopup
+            visible={showShare}
+            onClose={() => setShowShare(false)}
+            trainerId={trainerId}
+            documentId={docId}
+            documentTitle={displayTitle}
+            initialSharedWith={sharedWith}
+            isDark={isEditorDark}
+            onSaved={() => {
+              if (trainerId && docId) {
+                getTrainerDocument(trainerId, docId).then((documentRecord) => {
+                  if (documentRecord && mounted.current) {
+                    setSharedWith(
+                      Array.isArray(documentRecord.sharedWith) ? documentRecord.sharedWith : [],
+                    );
+                  }
+                });
+              }
+            }}
+          />
         </SafeAreaView>
       </KeyboardAvoidingView>
-    </Modal>;
+    </Modal>
+  );
 }
 const styles = StyleSheet.create({
-  gdocsTopBar: {
+  topBar: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    paddingHorizontal: 8,
-    paddingBottom: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    gap: 4
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.sm,
+    gap: spacing.sm,
   },
-  gdocsTitleWrap: {
+  headerSq: {
+    width: nb.minTouchTarget,
+    height: nb.minTouchTarget,
+    borderRadius: borderRadius.nbIconChip,
+    borderWidth: nb.borderWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  titleWrap: {
     flex: 1,
     minWidth: 0,
-    paddingRight: 2,
-    justifyContent: 'center'
+    justifyContent: 'center',
   },
-  headerBtn: {
-    width: 36,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  bottomChrome: {
-    flexGrow: 0,
-    flexShrink: 0,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    zIndex: 10
+  savedLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    marginTop: 2,
   },
   formatDock: {
-    minHeight: 44,
     flexGrow: 0,
-    flexShrink: 0
+    flexShrink: 0,
+    paddingBottom: 4,
   },
   toolbarScroll: {
-    flexGrow: 0
+    flexGrow: 0,
   },
   toolbarRow: {
-    paddingHorizontal: 8,
+    paddingHorizontal: spacing.md,
     paddingVertical: 6,
     alignItems: 'center',
-    gap: 2,
-    flexGrow: 0,
-    minHeight: 44
+    gap: 8,
+    minHeight: nb.minTouchTarget,
   },
   toolBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    minWidth: nb.minTouchTarget,
+    height: nb.minTouchTarget,
+    paddingHorizontal: 10,
+    borderRadius: borderRadius.nbButton,
+    borderWidth: nb.borderWidth,
     alignItems: 'center',
-    justifyContent: 'center'
+    justifyContent: 'center',
+  },
+  toolBtnWide: {
+    paddingHorizontal: 12,
   },
   toolGlyph: {
-    fontSize: 13
+    fontSize: 14,
+    fontWeight: '800',
   },
-  toolText: {
-    fontSize: 14
-  },
-  divider: {
-    width: 1,
-    height: 20,
-    marginHorizontal: 4
-  },
-  colorSwatch: {
-    width: 20,
-    height: 20,
-    borderRadius: 999,
-    borderWidth: 1
-  },
-  pickerRow: {
-    paddingHorizontal: 10,
+  pageStyleRow: {
+    paddingHorizontal: spacing.md,
     paddingBottom: 8,
     gap: 8,
-    alignItems: 'center'
-  },
-  pickerChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8
-  },
-  pickerChipInner: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
     alignItems: 'center',
-    justifyContent: 'center'
+  },
+  pageStyleChip: {
+    height: 36,
+    paddingHorizontal: nb.chipPadding,
+    borderRadius: 999,
+    borderWidth: nb.borderWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pageStyleChipText: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  editorDesk: {
+    flex: 1,
+    minHeight: 0,
+    paddingHorizontal: spacing.md,
+    paddingTop: 4,
+  },
+  editorShadow: {
+    flex: 1,
+  },
+  editorCard: {
+    flex: 1,
+    borderRadius: borderRadius.nbCard,
+    borderWidth: nb.borderWidth,
+    overflow: 'hidden',
+  },
+  webview: {
+    flex: 1,
+    backgroundColor: 'transparent',
+  },
+  loadingBlock: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  readingCard: {
+    marginHorizontal: spacing.md,
+    marginTop: 10,
+    marginBottom: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: borderRadius.nbCard,
+    borderWidth: nb.borderWidth,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  readingTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  readingSub: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  clearPill: {
+    minHeight: 36,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    borderWidth: nb.borderWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  clearPillText: {
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  bottomActions: {
+    flexDirection: 'row',
+    gap: 10,
+    paddingHorizontal: spacing.md,
+    paddingTop: 4,
+  },
+  halfBtn: {
+    flex: 1,
+  },
+  colorSwatch: {
+    width: 28,
+    height: 28,
+    borderRadius: 999,
+    borderWidth: nb.borderWidth,
+  },
+  pickerRow: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: 8,
+    gap: 8,
+    alignItems: 'center',
   },
   promptOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.55)',
-    justifyContent: 'flex-end'
+    justifyContent: 'flex-end',
   },
   promptSheet: {
-    borderTopLeftRadius: 22,
-    borderTopRightRadius: 22,
-    borderWidth: 1,
+    borderTopLeftRadius: borderRadius.nbSheet,
+    borderTopRightRadius: borderRadius.nbSheet,
+    borderWidth: nb.borderWidth,
     padding: 16,
-    paddingBottom: Platform.OS === 'ios' ? 28 : 16
+    paddingBottom: Platform.OS === 'ios' ? 28 : 16,
   },
   promptTitle: {
     fontSize: 16,
-    fontWeight: '800'
+    fontWeight: '800',
   },
   promptInput: {
     marginTop: 12,
-    borderWidth: 1,
-    borderRadius: 10,
+    borderWidth: nb.borderWidth,
+    borderRadius: borderRadius.nbInput,
     paddingHorizontal: 12,
     paddingVertical: 12,
-    fontSize: 14
+    fontSize: 14,
   },
-  promptBtn: {
-    flex: 1,
-    height: 44,
-    borderRadius: 10,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center'
-  }
+  promptRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 12,
+  },
 });
