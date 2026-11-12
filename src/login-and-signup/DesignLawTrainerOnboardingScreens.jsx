@@ -25,6 +25,7 @@ import HardShadow from '../look-and-feel/HardShadow';
 import {
   accentGradients,
   borderRadius,
+  gradients,
   nb,
   spacing,
 } from '../look-and-feel/colorPalette';
@@ -332,18 +333,35 @@ function ProfileStep({ data, setData, onToggleSpecialty }) {
           </Text>
         }
       />
+      {/* PNG 01: solid fill when selected (not brand gradient) — left-aligned wrap so rows don’t look random */}
       <View style={styles.chipGrid}>
         {SPECIALTY_OPTIONS.map((opt) => {
           const on = selected.includes(opt.value);
           return (
-            <NbChip
-              key={opt.value}
-              selected={on}
-              onPress={() => toggleSpec(opt.value)}
-              style={styles.specChip}
-            >
-              {on ? `${opt.label} ✓` : opt.label}
-            </NbChip>
+            <HardShadow key={opt.value} offset={nb.shadowOffsetSmall} radius={999}>
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityState={{ selected: on }}
+                onPress={() => toggleSpec(opt.value)}
+                activeOpacity={0.88}
+                style={[
+                  styles.specPill,
+                  {
+                    backgroundColor: on ? colors.nbFill : colors.nbSurface,
+                    borderColor: colors.nbBorder,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.specPillText,
+                    { color: on ? colors.nbOnFill : colors.nbInk },
+                  ]}
+                >
+                  {on ? `${opt.label} ✓` : opt.label}
+                </Text>
+              </TouchableOpacity>
+            </HardShadow>
           );
         })}
       </View>
@@ -378,8 +396,16 @@ function ProfileStep({ data, setData, onToggleSpecialty }) {
               <Text style={{ fontSize: 22, fontWeight: '900', color: colors.nbInk }}>+</Text>
             </TouchableOpacity>
             <View style={{ flex: 1 }} />
-            <LinearGradient colors={accentGradients[2]} style={styles.expBadge}>
-              <Text style={styles.expBadgeText}>{yearsBadgeLabel(years)}</Text>
+            {/* Small accent only — brand pink→orange, never purple chrome */}
+            <LinearGradient
+              colors={gradients.brand?.colors || accentGradients[0]}
+              start={gradients.brand?.start}
+              end={gradients.brand?.end}
+              style={[styles.expBadge, { borderColor: colors.nbBorder }]}
+            >
+              <Text style={[styles.expBadgeText, { color: colors.nbInk }]}>
+                {yearsBadgeLabel(years)}
+              </Text>
             </LinearGradient>
           </View>
         </NbCard>
@@ -1136,10 +1162,25 @@ const styles = StyleSheet.create({
   chipGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    justifyContent: 'flex-start',
     gap: 8,
   },
   specChip: {
     minHeight: 44,
+  },
+  // Manipulate here: specialty pill padding — keep min touch 44
+  specPill: {
+    minHeight: 44,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 999,
+    borderWidth: nb.borderWidth,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  specPillText: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 13,
   },
   stepperCard: {
     paddingVertical: 12,
@@ -1168,11 +1209,11 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 6,
+    borderWidth: nb.borderWidth,
   },
   expBadgeText: {
+    fontFamily: 'SpaceGrotesk_700Bold',
     fontSize: 12,
-    fontWeight: '900',
-    color: '#000',
   },
   textArea: {
     minHeight: 96,
