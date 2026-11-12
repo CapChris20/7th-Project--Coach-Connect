@@ -4,7 +4,17 @@
 
 import { pickBestTips } from './pickBestTips';
 import { writeTrainerTips } from './writeTrainerTips';
-import { lightColors } from '../../look-and-feel/colorPalette';
+import { accentGradients, navAccentGradient } from '../../look-and-feel/colorPalette';
+
+// Manipulate here: highlight accents — brand / accentGradients only (never purple #BE185D / #4C1D95)
+const HIGHLIGHT_GRAD = {
+  checkIns: navAccentGradient,
+  workouts: accentGradients[1] || navAccentGradient,
+  sleep: accentGradients[4] || navAccentGradient,
+  water: accentGradients[6] || navAccentGradient,
+  energy: accentGradients[0] || navAccentGradient,
+  weight: accentGradients[8] || navAccentGradient,
+};
 
 // ===== NAMED CONSTANTS =====
 
@@ -296,7 +306,7 @@ function buildOverviewHighlights(stats, days, report) {
       icon: 'checkmark-circle',
       label: 'Check-ins',
       value: `${stats.checkInDays}/${DAYS_IN_WEEK}`,
-      gradient: [lightColors.primaryDark, '#C2410C'],
+      gradient: HIGHLIGHT_GRAD.checkIns,
     },
   ];
 
@@ -305,7 +315,7 @@ function buildOverviewHighlights(stats, days, report) {
       icon: 'barbell',
       label: 'Workout days',
       value: String(stats.workoutDaysLogged),
-      gradient: ['#C2410C', '#9A3412'],
+      gradient: HIGHLIGHT_GRAD.workouts,
     });
   }
 
@@ -321,7 +331,7 @@ function buildOverviewHighlights(stats, days, report) {
       icon: 'moon',
       label: sleepLabel,
       value: sleepValue,
-      gradient: ['#BE185D', '#4C1D95'],
+      gradient: HIGHLIGHT_GRAD.sleep,
     });
   }
 
@@ -331,7 +341,7 @@ function buildOverviewHighlights(stats, days, report) {
       icon: 'water',
       label: '64+ oz days',
       value: String(waterGoalDays),
-      gradient: ['#0891B2', '#06B6D4'],
+      gradient: HIGHLIGHT_GRAD.water,
     });
   }
 
@@ -341,7 +351,7 @@ function buildOverviewHighlights(stats, days, report) {
       icon: 'flash',
       label: 'Avg energy',
       value: `${round1(avgEnergy)}/${ENERGY_SCALE_MAX}`,
-      gradient: ['#DB2777', lightColors.primaryDark],
+      gradient: HIGHLIGHT_GRAD.energy,
     });
   }
 
@@ -351,7 +361,7 @@ function buildOverviewHighlights(stats, days, report) {
       icon: 'scale',
       label: 'Avg weight',
       value: `${round1(avgWeight)} lbs`,
-      gradient: ['#B45309', '#C2410C'],
+      gradient: HIGHLIGHT_GRAD.weight,
     });
   }
 
@@ -379,19 +389,51 @@ function parseWeekDays(report, parseDayNote, parseStructuredDayNote, nutritionBy
   return enrichDaysWithDailyLogs(days, dailyLogsByDay, workoutsFromDailyLog);
 }
 
+function meanNullable(values) {
+  const numbers = (values || []).filter((number) => Number.isFinite(number));
+  if (!numbers.length) return null;
+  return numbers.reduce((sum, number) => sum + number, 0) / numbers.length;
+}
+
 function computeStats(days, report) {
   const sleepVals = days.map((day) => day.sleepHours).filter((value) => value > 0);
   const waterVals = days.map((day) => day.waterOz).filter((value) => value > 0);
   const stepVals = days.map((day) => day.steps).filter((value) => value > 0);
   const calVals = days.map((day) => day.calories).filter((value) => value > 0);
   const proteinVals = days.map((day) => day.protein).filter((value) => value > 0);
-  const workoutDays = days.filter((day) => day.workouts?.length > 0).length;
+  // Design Law client grid also shows energy / soreness / stress / weight / adherence
+  const energyVals = days.map((day) => day.energy).filter((value) => value != null);
+  const sorenessVals = days.map((day) => day.soreness).filter((value) => value != null);
+  const stressVals = days.map((day) => day.stress).filter((value) => value != null);
+  const weightVals = days.map((day) => day.weight).filter((value) => value != null);
+  const workoutDays = days.filter((day) => day.workouts?.length > 0 && !day.isRecovery).length;
 
   const avgSleep = parseNum(report?.avgSleep) ?? mean(sleepVals);
   const avgWater = parseNum(report?.avgWater) ?? mean(waterVals);
   const avgSteps = parseNum(report?.avgSteps) ?? mean(stepVals);
   const avgCalories = mean(calVals);
   const avgProtein = mean(proteinVals);
+  const avgEnergy = parseNum(report?.avgEnergy) ?? meanNullable(energyVals);
+  const avgSoreness = parseNum(report?.avgSoreness) ?? meanNullable(sorenessVals);
+  const avgStress = parseNum(report?.avgStress) ?? meanNullable(stressVals);
+  const avgWeight = parseNum(report?.avgWeight) ?? meanNullable(weightVals);
+
+  // Adherence % from planned days when present — same keys writeTrainerTips already reads
+  const planned =
+    parseNum(report?.plannedWorkouts) ??
+    parseNum(report?.daysPerWeek) ??
+    parseNum(report?.plannedDays);
+  const adherencePct =
+    planned && planned > 0
+      ? Math.min(100, Math.round((workoutDays / planned) * 100))
+      : workoutDays > 0
+        ? Math.min(100, Math.round((workoutDays / DAYS_IN_WEEK) * 100))
+        : null;
+
+  // Water cups for trainer PNG (≈ 8 oz per cup) — keep oz display key unchanged
+  const WATER_OZ_PER_CUP = 8;
+  const waterCups =
+    avgWater != null ? String(round1(avgWater / WATER_OZ_PER_CUP)) : EMPTY_DISPLAY;
 
   return {
     avgSleep: avgSleep != null ? round1(avgSleep) : null,
@@ -399,15 +441,26 @@ function computeStats(days, report) {
     avgSteps: avgSteps != null ? round0(avgSteps) : null,
     avgCalories: avgCalories != null ? round0(avgCalories) : null,
     avgProtein: avgProtein != null ? round1(avgProtein) : null,
+    avgEnergy: avgEnergy != null ? round1(avgEnergy) : null,
+    avgSoreness: avgSoreness != null ? round1(avgSoreness) : null,
+    avgStress: avgStress != null ? round1(avgStress) : null,
+    avgWeight: avgWeight != null ? round1(avgWeight) : null,
+    adherencePct,
     nutritionDaysLogged: calVals.length,
     checkInDays: days.filter((day) => day.hasCheckIn).length,
     workoutDaysLogged: workoutDays,
     display: {
       sleep: avgSleep != null ? String(round1(avgSleep)) : EMPTY_DISPLAY,
       water: avgWater != null ? String(round1(avgWater)) : EMPTY_DISPLAY,
+      waterCups,
       steps: avgSteps != null ? formatSteps(avgSteps) : EMPTY_DISPLAY,
       calories: avgCalories != null ? String(round0(avgCalories)) : EMPTY_DISPLAY,
       protein: avgProtein != null ? String(round1(avgProtein)) : EMPTY_DISPLAY,
+      energy: avgEnergy != null ? String(round1(avgEnergy)) : EMPTY_DISPLAY,
+      soreness: avgSoreness != null ? String(round1(avgSoreness)) : EMPTY_DISPLAY,
+      stress: avgStress != null ? String(round1(avgStress)) : EMPTY_DISPLAY,
+      weight: avgWeight != null ? String(round0(avgWeight)) : EMPTY_DISPLAY,
+      adherence: adherencePct != null ? String(adherencePct) : EMPTY_DISPLAY,
     },
   };
 }

@@ -1,16 +1,16 @@
-// WeeklyReportScreen.jsx
-//
-// The full weekly report screen. It loads saved weeks from the database, then shows
-// WeeklyReportBody (the cards and chart). You can also export the week as a PDF.
-// Opened from the client home and from a trainer looking at one client.
-//
-// How to read this file:
-//   1. Helpers that turn database rows into weeks, and helpers that build the PDF
-//   2. WeeklyReportScreenLayout — what you see (header, spinner, empty, or the report)
-//   3. WeeklyReportScreen at the bottom — the database load and the export button
+// Design Law weekly report screen — Nb header, HardShadow chrome, shared body.
+// Flow: load users/{id}/weeklySummaries → prepare weeks → body or NoReportYet → PDF export.
+// Opened from client home and trainer “Open report”. Firebase projectId stays anatrox-auth.
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View, Alert, TouchableOpacity } from 'react-native';
+import {
+  ActivityIndicator,
+  StyleSheet,
+  Text,
+  View,
+  Alert,
+  Pressable,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { collection, doc, getDoc, getDocs } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,19 +18,22 @@ import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 
 import { db } from '../../app-start/cloudConnection';
-import TopHeader from '../loading-and-header/TopHeader';
 import BottomMenuBar from '../../navigation/BottomMenuBar';
 import {
   useShellBottomNavInset,
+  useShellTopPad,
   SHELL_SAFE_AREA_EDGES,
   ShellBottomNavAnchor,
 } from '../../navigation/bottomMenuSpacing';
+import HardShadow from '../../look-and-feel/HardShadow';
+import { borderRadius, nb, spacing } from '../../look-and-feel/colorPalette';
+import { useTheme as useAppTheme } from '../../look-and-feel/lightDarkMode';
 import {
   parseDayNote,
   parseStructuredDayNote,
   formatDateRange,
 } from '../../trainer-app/weekly-report/WeeklyReportBars';
-import { WeeklyReportThemeProvider } from './reportColorSettings';
+import { WeeklyReportThemeProvider, useTheme as useReportTheme } from './reportColorSettings';
 import { prepareReportForScreensToWeeks, formatDayForShare } from './prepareReportForScreen';
 import { fetchNutritionByDayForRange } from './loadWeekFoodTotals';
 import {
@@ -39,23 +42,21 @@ import {
 } from './loadWeekDailyEntries';
 import { WeeklyReportBody } from './WeeklyReportBody';
 import { NoReportYet } from './NoReportYet';
-import { lightColors } from '../../look-and-feel/colorPalette';
+import { WeekPicker } from './WeekPicker';
 
 // ===== NAMED CONSTANTS =====
 
 const USERS_COLLECTION = 'users';
 const WEEKLY_SUMMARIES_COLLECTION = 'weeklySummaries';
 const REPORT_PARSERS = { parseDayNote, parseStructuredDayNote, formatDateRange };
-// Manipulate here: extra space above the shell's bottom menu. 16 is the inset the menu already uses.
 const SHELL_NAV_CONTENT_INSET = 16;
 const SCROLL_PAD_WITH_NAV = 24;
 const SCROLL_PAD_WITHOUT_NAV = 32;
 const NOON_ON_DAY_SUFFIX = 'T12:00:00';
+const HEADER_SQUARE = nb.minTouchTarget;
 
 // ===== HELPER FUNCTIONS =====
 
-// Turns the raw weekly-summary documents from the database into a list of weeks,
-// newest week first. Skips any document that has no week start date.
 function mapSummaryDocsToRows(summaryDocs) {
   return summaryDocs
     .map((summaryDoc) => ({ id: summaryDoc.id, ...summaryDoc.data() }))
@@ -68,8 +69,6 @@ function mapSummaryDocsToRows(summaryDocs) {
     .sort((left, right) => String(right.weekStart).localeCompare(String(left.weekStart)));
 }
 
-// Loads the extra numbers the report needs besides the saved summary:
-// food totals per day, daily logs (sleep, steps, workouts), and how many days a week they train.
 async function loadSupportingWeekData(clientId, rows) {
   if (rows.length === 0) {
     return { nutrition: {}, dailyLogs: {}, meta: {} };
@@ -89,8 +88,6 @@ async function loadSupportingWeekData(clientId, rows) {
   return { nutrition, dailyLogs, meta };
 }
 
-// Turns a list of sentences (trends, wins, focus items) into a bullet list for the PDF.
-// If the list is empty, the PDF says "None logged."
 function buildShareListHtml(items) {
   if (items?.length) {
     return `<ul>${items.map((item) => `<li>${item}</li>`).join('')}</ul>`;
@@ -98,12 +95,10 @@ function buildShareListHtml(items) {
   return '<p><em>None logged.</em></p>';
 }
 
-// One PDF bullet per day in the week (sleep, water, and the rest of that day's line).
 function buildDayShareRows(days) {
   return (days || []).map((day) => `<li>${formatDayForShare(day)}</li>`).join('');
 }
 
-// Builds the whole PDF page: averages, week summary, each day, trends, wins, and focus.
 function buildWeeklyReportHtml(activeWeek, clientName) {
   const dayRows = buildDayShareRows(activeWeek.days);
   return `
@@ -132,7 +127,6 @@ function buildWeeklyReportHtml(activeWeek, clientName) {
       </body></html>`;
 }
 
-// Wipes the screen back to "nothing loaded" when there is no client or the load fails.
 function clearLoadedReport(setters) {
   setters.setReports([]);
   setters.setNutritionByDay({});
@@ -140,43 +134,82 @@ function clearLoadedReport(setters) {
   setters.setClientMeta({});
 }
 
-// Extra empty space at the bottom of the scroll so the last card is not hidden behind the tab bar.
 function reportScrollBottomPad(reserveShellBottomNav, showInlineBottomNav, shellBottomPad) {
   if (reserveShellBottomNav || showInlineBottomNav) return shellBottomPad + SCROLL_PAD_WITH_NAV;
   return SCROLL_PAD_WITHOUT_NAV;
 }
 
-// The spinner and "Loading reports…" text shown while the weeks are still coming from the database.
-function ReportLoadingState() {
+function HeaderSquare({ onPress, accessibilityLabel, children, colors }) {
   return (
-    <View style={styles.centered}>
-      <ActivityIndicator color="#ff6b35" size="large" />
-      <Text style={styles.hint}>Loading reports…</Text>
+    <HardShadow offset={nb.shadowOffsetSmall} radius={borderRadius.nbChip}>
+      <Pressable
+        onPress={onPress}
+        accessibilityLabel={accessibilityLabel}
+        style={[
+          styles.headerSq,
+          { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface },
+        ]}
+      >
+        {children}
+      </Pressable>
+    </HardShadow>
+  );
+}
+
+/**
+ * Back + title + options. Owns status-bar clearance via useShellTopPad.
+ */
+function ReportPageHeader({ title, subtitle, onBack, onOpenOptions, colors, topPad }) {
+  return (
+    <View style={[styles.headerRow, { paddingTop: topPad }]}>
+      {typeof onBack === 'function' ? (
+        <HeaderSquare onPress={onBack} accessibilityLabel="Go back" colors={colors}>
+          <Ionicons name="chevron-back" size={22} color={colors.nbInk} />
+        </HeaderSquare>
+      ) : (
+        <View style={styles.headerSqSpacer} />
+      )}
+      <View style={styles.headerText}>
+        <Text style={[styles.headerTitle, { color: colors.nbInk }]} numberOfLines={1}>
+          {title}
+        </Text>
+        {subtitle ? (
+          <Text style={[styles.headerSub, { color: colors.nbMuted }]} numberOfLines={1}>
+            {subtitle}
+          </Text>
+        ) : null}
+      </View>
+      {typeof onOpenOptions === 'function' ? (
+        <HeaderSquare onPress={onOpenOptions} accessibilityLabel="Report options" colors={colors}>
+          <Ionicons name="ellipsis-horizontal" size={20} color={colors.nbInk} />
+        </HeaderSquare>
+      ) : (
+        <View style={styles.headerSqSpacer} />
+      )}
     </View>
   );
 }
 
-// The back arrow plus the words "Weekly Report" in the top bar.
-// Only shows when this screen was opened on top of another screen (there is an onClose to go back).
-function ReportHeaderBack({ onClose, isDark }) {
-  if (!onClose) {
-    return null;
-  }
-
-  const labelColor = isDark ? lightColors.white : lightColors.nbInk;
-  const labelStyle = [styles.headerBackText, { color: labelColor }];
-
+function ReportLoadingState({ colors }) {
   return (
-    <TouchableOpacity
-      onPress={onClose}
-      activeOpacity={0.85}
-      accessibilityLabel="Go back"
-      style={styles.headerBack}
-      hitSlop={12}
-    >
-      <Ionicons name="chevron-back" size={22} color={labelColor} />
-      <Text style={labelStyle}>Weekly Report</Text>
-    </TouchableOpacity>
+    <View style={styles.centered}>
+      <ActivityIndicator color={colors.nbInk} size="large" />
+      <Text style={[styles.hint, { color: colors.nbMuted }]}>Loading reports…</Text>
+    </View>
+  );
+}
+
+function EmptyWithWeekChrome({ isClientSelfView, colors, clientName }) {
+  return (
+    <View style={{ flex: 1 }}>
+      <WeekPicker label="—" title="This week" canPrev={false} canNext={false} onPrev={() => {}} onNext={() => {}} />
+      {!isClientSelfView && clientName ? (
+        <Text style={[styles.emptyClient, { color: colors.textMuted || colors.nbMuted }]}>
+          {clientName}
+        </Text>
+      ) : null}
+      <NoReportYet isClientSelfView={isClientSelfView} />
+    </View>
   );
 }
 
@@ -189,14 +222,22 @@ function ReportMiddle({
   clientName,
   onExport,
   scrollBottomPad,
+  openOptionsSignal,
 }) {
+  const { colors } = useReportTheme();
+
   if (isLoadingReport) {
-    return <ReportLoadingState />;
+    return <ReportLoadingState colors={colors} />;
   }
 
-  const noWeeksSaved = weeks.length === 0;
-  if (noWeeksSaved) {
-    return <NoReportYet isClientSelfView={isClientSelfView} />;
+  if (weeks.length === 0) {
+    return (
+      <EmptyWithWeekChrome
+        isClientSelfView={isClientSelfView}
+        colors={colors}
+        clientName={clientName}
+      />
+    );
   }
 
   return (
@@ -205,22 +246,18 @@ function ReportMiddle({
       weekIndex={weekIndex}
       onWeekIndexChange={onWeekIndexChange}
       clientName={clientName}
+      isClientSelfView={isClientSelfView}
       onExport={onExport}
+      openOptionsSignal={openOptionsSignal}
       contentBottomPad={scrollBottomPad}
     />
   );
 }
 
-// ===== SCREEN LAYOUT (what the user sees — read this first) =====
+// ===== SCREEN LAYOUT =====
 
-// What you see on this screen: top bar, then either the loading spinner, "no report yet",
-// or the scrollable report. Adds the bottom tab bar when this screen owns the tabs.
-// Does not load the database — WeeklyReportScreen below passes in weeks that are already loaded.
 function WeeklyReportScreenLayout({
-  isDark,
   onClose,
-  onProfilePress,
-  onSettingsPress,
   isLoadingReport,
   weeks,
   weekIndex,
@@ -238,60 +275,62 @@ function WeeklyReportScreenLayout({
   onMessagesPress,
   onProfilePressForNav,
 }) {
-  const themeMode = isDark ? 'dark' : 'light';
+  const { colors: appColors } = useAppTheme();
+  const topPad = useShellTopPad(spacing.sm);
+  const [bodyOptionsTick, setBodyOptionsTick] = useState(0);
+
+  const headerSubtitle =
+    !isClientSelfView && clientName
+      ? clientName
+      : null;
 
   return (
-    <WeeklyReportThemeProvider initialMode={themeMode}>
-      <View style={styles.root}>
-        <SafeAreaView style={styles.safeTop} edges={SHELL_SAFE_AREA_EDGES}>
-          <TopHeader
-            title="Weekly Report"
-            skipTopSafeInset
-            appearanceIsDark={isDark}
-            onBack={onClose}
-            onProfilePress={onProfilePress}
-            onSettingsPress={onSettingsPress}
-            headerLeft={<ReportHeaderBack onClose={onClose} isDark={isDark} />}
+    <View style={[styles.root, { backgroundColor: appColors.nbBackground }]}>
+      <SafeAreaView style={styles.safeTop} edges={SHELL_SAFE_AREA_EDGES}>
+        <ReportPageHeader
+          title="Weekly report"
+          subtitle={headerSubtitle}
+          onBack={onClose}
+          onOpenOptions={() => setBodyOptionsTick((n) => n + 1)}
+          colors={appColors}
+          topPad={topPad}
+        />
+
+        <View style={styles.content}>
+          <ReportMiddle
+            isLoadingReport={isLoadingReport}
+            weeks={weeks}
+            isClientSelfView={isClientSelfView}
+            weekIndex={weekIndex}
+            onWeekIndexChange={onWeekIndexChange}
+            clientName={clientName}
+            onExport={onExport}
+            scrollBottomPad={scrollBottomPad}
+            openOptionsSignal={bodyOptionsTick}
           />
+        </View>
 
-          <View style={styles.content}>
-            <ReportMiddle
-              isLoadingReport={isLoadingReport}
-              weeks={weeks}
-              isClientSelfView={isClientSelfView}
-              weekIndex={weekIndex}
-              onWeekIndexChange={onWeekIndexChange}
-              clientName={clientName}
-              onExport={onExport}
-              scrollBottomPad={scrollBottomPad}
+        {showInlineBottomNav ? (
+          <ShellBottomNavAnchor>
+            <BottomMenuBar
+              activeTabKey="home"
+              onHomePress={onHomePress}
+              onPlusPress={onPlusPress}
+              onVoicePress={onVoicePress}
+              onNutritionPress={onNutritionPress}
+              onWorkoutPress={onWorkoutPress}
+              onMessagesPress={onMessagesPress}
+              onProfilePress={onProfilePressForNav}
             />
-          </View>
-
-          {showInlineBottomNav ? (
-            <ShellBottomNavAnchor>
-              <BottomMenuBar
-                activeTabKey="home"
-                onHomePress={onHomePress}
-                onPlusPress={onPlusPress}
-                onVoicePress={onVoicePress}
-                onNutritionPress={onNutritionPress}
-                onWorkoutPress={onWorkoutPress}
-                onMessagesPress={onMessagesPress}
-                onProfilePress={onProfilePressForNav}
-              />
-            </ShellBottomNavAnchor>
-          ) : null}
-        </SafeAreaView>
-      </View>
-    </WeeklyReportThemeProvider>
+          </ShellBottomNavAnchor>
+        ) : null}
+      </SafeAreaView>
+    </View>
   );
 }
 
 // ===== MAIN FUNCTION =====
-// (loads Firestore weeks + nutrition logs — read this last; WeeklyReportScreenLayout above is the UI)
 
-// Turns two dates into a short label like "Mar 1 – Mar 7" for a week chip.
-// Other screens import this; the name stays formatChipRange.
 export function formatChipRange(weekStart, weekEnd) {
   const weekStartText = String(weekStart || '').trim();
   const weekEndText = String(weekEnd || weekStartText).trim();
@@ -303,9 +342,6 @@ export function formatChipRange(weekStart, weekEnd) {
   return `${startLabel} – ${endLabel}`;
 }
 
-// The screen other parts of the app open. It loads this client's saved weeks from the database,
-// builds the numbers for the chart, and hands them to WeeklyReportScreenLayout above.
-// The export button turns the week you are looking at into a PDF and opens the share sheet.
 export default function WeeklyReportScreen({
   clientId,
   clientName = '',
@@ -319,7 +355,7 @@ export default function WeeklyReportScreen({
   onWorkoutPress,
   onMessagesPress,
   onProfilePress,
-  onSettingsPress,
+  onSettingsPress: _onSettingsPress,
   reserveShellBottomNav = false,
 }) {
   const shellBottomPad = useShellBottomNavInset(SHELL_NAV_CONTENT_INSET);
@@ -338,7 +374,7 @@ export default function WeeklyReportScreen({
     }
     setIsLoadingReport(true);
     try {
-      // vocab: getDocs = one-shot Firestore read. collection() points at users/{id}/weeklySummaries.
+      // vocab: getDocs = one-shot Firestore read of users/{id}/weeklySummaries
       const snap = await getDocs(collection(db, USERS_COLLECTION, clientId, WEEKLY_SUMMARIES_COLLECTION));
       const rows = mapSummaryDocsToRows(snap.docs);
       const supporting = await loadSupportingWeekData(clientId, rows);
@@ -384,7 +420,6 @@ export default function WeeklyReportScreen({
     if (!activeWeek) return;
     const html = buildWeeklyReportHtml(activeWeek, clientName);
     try {
-      // vocab: printToFileAsync = Expo writes the HTML to a PDF file and returns its uri.
       const { uri } = await Print.printToFileAsync({ html });
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: 'Export weekly report' });
@@ -397,48 +432,63 @@ export default function WeeklyReportScreen({
     }
   }, [activeWeek, clientName]);
 
+  const themeMode = isDark ? 'dark' : 'light';
+
   return (
-    <WeeklyReportScreenLayout
-      isDark={isDark}
-      onClose={onClose}
-      onProfilePress={onProfilePress}
-      onSettingsPress={onSettingsPress}
-      isLoadingReport={isLoadingReport}
-      weeks={weeks}
-      weekIndex={weekIndex}
-      onWeekIndexChange={setWeekIndex}
-      clientName={clientName}
-      isClientSelfView={isClientSelfView}
-      onExport={handleExport}
-      scrollBottomPad={scrollBottomPad}
-      showInlineBottomNav={showInlineBottomNav}
-      onHomePress={onHomePress}
-      onPlusPress={onPlusPress}
-      onVoicePress={onVoicePress}
-      onNutritionPress={onNutritionPress}
-      onWorkoutPress={onWorkoutPress}
-      onMessagesPress={onMessagesPress}
-      onProfilePressForNav={onProfilePress}
-    />
+    <WeeklyReportThemeProvider initialMode={themeMode}>
+      <WeeklyReportScreenLayout
+        onClose={onClose}
+        isLoadingReport={isLoadingReport}
+        weeks={weeks}
+        weekIndex={weekIndex}
+        onWeekIndexChange={setWeekIndex}
+        clientName={clientName}
+        isClientSelfView={isClientSelfView}
+        onExport={handleExport}
+        scrollBottomPad={scrollBottomPad}
+        showInlineBottomNav={showInlineBottomNav}
+        onHomePress={onHomePress}
+        onPlusPress={onPlusPress}
+        onVoicePress={onVoicePress}
+        onNutritionPress={onNutritionPress}
+        onWorkoutPress={onWorkoutPress}
+        onMessagesPress={onMessagesPress}
+        onProfilePressForNav={onProfilePress}
+      />
+    </WeeklyReportThemeProvider>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#0a0a0f' },
+  root: { flex: 1 },
   safeTop: { flex: 1, minHeight: 0 },
   content: { flex: 1, minHeight: 0 },
-  headerBack: {
+  headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingVertical: 6,
-    paddingRight: 8,
-    maxWidth: '100%',
+    gap: spacing.sm,
+    paddingHorizontal: nb.screenGutter,
+    paddingBottom: spacing.sm,
   },
-  headerBackText: {
-    fontSize: 17,
-    fontWeight: '700',
-    letterSpacing: -0.3,
+  headerSq: {
+    width: HEADER_SQUARE,
+    height: HEADER_SQUARE,
+    borderRadius: borderRadius.nbChip,
+    borderWidth: nb.borderWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerSqSpacer: { width: HEADER_SQUARE, height: HEADER_SQUARE },
+  headerText: { flex: 1, minWidth: 0 },
+  headerTitle: {
+    fontSize: 25,
+    fontWeight: '900',
+    letterSpacing: -0.6,
+  },
+  headerSub: {
+    fontSize: 13,
+    fontWeight: '500',
+    marginTop: 2,
   },
   centered: {
     flex: 1,
@@ -447,12 +497,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
     minHeight: 200,
   },
-  hint: { marginTop: 12, fontSize: 13, fontWeight: '500', color: '#b4b4c0' },
-  emptyText: {
-    fontSize: 15,
-    textAlign: 'center',
-    lineHeight: 22,
-    fontWeight: '500',
-    color: '#b4b4c0',
+  hint: { marginTop: 12, fontSize: 13, fontWeight: '500' },
+  emptyClient: {
+    paddingHorizontal: nb.screenGutter,
+    fontSize: 13,
+    fontWeight: '600',
+    marginBottom: spacing.sm,
   },
 });

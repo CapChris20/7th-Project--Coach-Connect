@@ -14,6 +14,7 @@ import {
   ClientPrivacyScreen,
   ClientContactSupportScreen,
   ClientBugReportScreen,
+  ClientPrivacyDataRightsScreen,
   ClientDailyFoodLogScreen,
   ClientWorkoutPlanScreen,
   ClientSearchTrainersScreen,
@@ -66,6 +67,7 @@ export default function ClientScreenList() {
       {pushedClientScreen(CLIENT_ROUTES.Privacy, ClientPrivacyScreen)}
       {pushedClientScreen(CLIENT_ROUTES.ContactSupport, ClientContactSupportScreen)}
       {pushedClientScreen(CLIENT_ROUTES.BugReport, ClientBugReportScreen)}
+      {pushedClientScreen(CLIENT_ROUTES.PrivacyDataRights, ClientPrivacyDataRightsScreen)}
       {pushedClientScreen(CLIENT_ROUTES.Nutrition, ClientDailyFoodLogScreen)}
       {pushedClientScreen(CLIENT_ROUTES.WorkoutPlan, ClientWorkoutPlanScreen)}
       {pushedClientScreen(CLIENT_ROUTES.TrainerSearch, ClientSearchTrainersScreen)}

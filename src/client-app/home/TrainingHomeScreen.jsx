@@ -1937,13 +1937,13 @@ function TrainingHomeScreenLayout({
                       style={[dash.btnGhost, { flex: 1, borderColor: themeColors.cardBorder, backgroundColor: themeColors.cardBg }]}
                       onPress={() => respondToDashboardSession?.({ sessionId: upNextSession.id, status: 'declined' })}
                     >
-                      <Text style={[dash.btnGhostText, { color: themeColors.text }]}>Pass</Text>
+                      <Text style={[dash.btnGhostText, { color: themeColors.text }]}>Decline</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[dash.btnFill, { flex: 1, borderColor: themeColors.cardBorder, backgroundColor: themeColors.fill }]}
                       onPress={() => respondToDashboardSession?.({ sessionId: upNextSession.id, status: 'accepted' })}
                     >
-                      <Text style={[dash.btnFillText, { color: themeColors.onFill }]}>I&apos;m in</Text>
+                      <Text style={[dash.btnFillText, { color: themeColors.onFill }]}>Confirm</Text>
                     </TouchableOpacity>
                   </View>
                 ) : (

@@ -1,52 +1,58 @@
-// Color tokens for the weekly report. Screens read these names.
-// Flow: pick a gradient or a light/dark palette. Nothing in this file computes a number.
-// Used by: weekly report charts and cards.
+// Weekly-report color tokens — Design Law nb palette only (no green, no purple chrome).
+// Flow: pick accent gradients for icon chips → light/dark text+surface from nb tokens.
+// Used by: reportColorSettings and every weekly-report card/chart.
+
+import { accentGradients, darkColors, lightColors } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
-const GRADIENT_ORANGE_PINK = ['#ff6b35', '#ff1493'];
-const GRADIENT_GOLD_PINK = ['#ffd700', '#ff1493'];
-const GRADIENT_SKY_PINK = ['#00bfff', '#ff1493'];
-
+// Manipulate here: which accentGradients pair feeds g1–g5 (icon chips / focus tips only)
 const GRADIENTS = {
-  g1: GRADIENT_ORANGE_PINK,
-  g2: GRADIENT_GOLD_PINK,
-  g3: GRADIENT_GOLD_PINK,
-  g4: GRADIENT_SKY_PINK,
-  g5: GRADIENT_ORANGE_PINK,
+  g1: accentGradients[0],
+  g2: accentGradients[2],
+  g3: accentGradients[3],
+  g4: accentGradients[6],
+  g5: accentGradients[8],
 };
 
-const DARK_COLORS = {
-  background: '#0a0a0f',
-  backgroundGradient: ['#0a0a0f', '#12121c'],
-  surfacePrimary: 'rgba(20, 20, 30, 0.55)',
-  surfaceSecondary: 'rgba(30, 30, 45, 0.4)',
-  textPrimary: '#ffffff',
-  textSecondary: '#b4b4c0',
-  textMuted: '#8e8e93',
-  border: 'rgba(255, 255, 255, 0.08)',
-  blurTint: 'dark',
-};
-
+// Design Law light — flat bg, ink text, 3px border token (never soft purple wash)
 const LIGHT_COLORS = {
-  background: '#f4f4f6',
-  backgroundGradient: ['#f7f7fa', '#eaeaf0'],
-  surfacePrimary: 'rgba(255, 255, 255, 0.85)',
-  surfaceSecondary: 'rgba(240, 240, 245, 0.6)',
-  textPrimary: '#111111',
-  textSecondary: '#444455',
-  textMuted: '#80808a',
-  border: 'rgba(0, 0, 0, 0.06)',
+  background: lightColors.nbBackground,
+  backgroundGradient: [lightColors.nbBackground, lightColors.nbBackground],
+  surfacePrimary: lightColors.nbSurface,
+  surfaceSecondary: lightColors.nbSoft,
+  textPrimary: lightColors.nbInk,
+  textSecondary: lightColors.nbMuted,
+  textMuted: lightColors.nbMuted,
+  border: lightColors.nbBorder,
   blurTint: 'light',
+  fill: lightColors.nbFill,
+  onFill: lightColors.nbOnFill,
+  soft: lightColors.nbSoft,
+  shadow: lightColors.nbShadow,
 };
 
-const TREND_POSITIVE = '#34d399';
-const TREND_NEGATIVE = '#f87171';
+// Design Law dark — same roles, bright border/shadow so hard offsets still read
+const DARK_COLORS = {
+  background: darkColors.nbBackground,
+  backgroundGradient: [darkColors.nbBackground, darkColors.nbBackground],
+  surfacePrimary: darkColors.nbSurface,
+  surfaceSecondary: darkColors.nbSoft,
+  textPrimary: darkColors.nbInk,
+  textSecondary: darkColors.nbMuted,
+  textMuted: darkColors.nbMuted,
+  border: darkColors.nbBorder,
+  blurTint: 'dark',
+  fill: darkColors.nbFill,
+  onFill: darkColors.nbOnFill,
+  soft: darkColors.nbSoft,
+  shadow: darkColors.nbShadow,
+};
+
+// Trend arrows stay ink/muted — never green (Design Law: never green)
+const TREND_POSITIVE = lightColors.nbInk;
+const TREND_NEGATIVE = lightColors.nbMuted;
 const STORAGE_KEY = 'coachconnect.theme.mode';
-
-// ===== HELPER FUNCTIONS =====
-
-// (palette only — no runtime helpers)
 
 // ===== MAIN FUNCTION =====
 

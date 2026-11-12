@@ -254,12 +254,13 @@ export default function DayPicker({
 }
 
 const styles = StyleSheet.create({
-  wrap: { width: '100%', marginBottom: 4 },
+  // Manipulate here: space under the week strip before the ring card (Design Law block gap = 16)
+  wrap: { width: '100%', marginBottom: 16 },
   monthRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 10,
+    marginBottom: 12,
   },
   chevronBtn: {
     width: 32,

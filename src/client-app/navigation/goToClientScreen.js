@@ -27,6 +27,7 @@ const SCREEN_TERMS = 'terms';
 const SCREEN_PRIVACY = 'privacy';
 const SCREEN_CONTACT_SUPPORT = 'contactSupport';
 const SCREEN_BUG_REPORT = 'bugReport';
+const SCREEN_PRIVACY_DATA_RIGHTS = 'privacyDataRights';
 const SCREEN_NUTRITION = 'nutrition';
 const SCREEN_WORKOUT = 'workout';
 const SCREEN_MESSAGES = 'messages';
@@ -105,6 +106,8 @@ const SCREEN_KEYWORD_ACTIONS = {
   [SCREEN_PRIVACY]: (actions) => openAfterBack(actions, actions.openPrivacy),
   [SCREEN_CONTACT_SUPPORT]: (actions) => openAfterBack(actions, actions.openContactSupport),
   [SCREEN_BUG_REPORT]: (actions) => openAfterBack(actions, actions.openBugReport),
+  [SCREEN_PRIVACY_DATA_RIGHTS]: (actions) =>
+    openAfterBack(actions, actions.openPrivacyDataRights),
   [SCREEN_NUTRITION]: openClientNutrition,
   [SCREEN_WORKOUT]: (actions) => actions.openWorkout(),
   [SCREEN_MESSAGES]: openClientMessages,
@@ -172,6 +175,10 @@ export function goToClientScreen({ refetchNutritionData } = {}) {
   const openPrivacy = useCallback(() => rootNavigate(CLIENT_ROUTES.Privacy), []);
   const openContactSupport = useCallback(() => rootNavigate(CLIENT_ROUTES.ContactSupport), []);
   const openBugReport = useCallback(() => rootNavigate(CLIENT_ROUTES.BugReport), []);
+  const openPrivacyDataRights = useCallback(
+    () => rootNavigate(CLIENT_ROUTES.PrivacyDataRights),
+    [],
+  );
   const popStackToMainTabs = useCallback(() => {
     resetRootToMainTabs();
   }, []);
@@ -292,6 +299,7 @@ export function goToClientScreen({ refetchNutritionData } = {}) {
         openPrivacy,
         openContactSupport,
         openBugReport,
+        openPrivacyDataRights,
         openNutrition,
         openWorkout,
         handleOpenConversations,
@@ -309,6 +317,7 @@ export function goToClientScreen({ refetchNutritionData } = {}) {
       openPrivacy,
       openContactSupport,
       openBugReport,
+      openPrivacyDataRights,
       openNutrition,
       openWorkout,
       handleOpenConversations,
@@ -376,6 +385,7 @@ export function goToClientScreen({ refetchNutritionData } = {}) {
     openPrivacy,
     openContactSupport,
     openBugReport,
+    openPrivacyDataRights,
     openNutrition,
     openWorkoutPlan,
     openTrainerSearch,

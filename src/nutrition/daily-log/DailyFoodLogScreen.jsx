@@ -24,9 +24,14 @@ import MealCard from './MealCard';
 // ===== NAMED CONSTANTS =====
 
 const DEFAULT_CALORIE_GOAL = 2200;
-const SHELL_BOTTOM_INSET_EXTRA = 24;
+// Manipulate here: extra scroll clearance above the tab bar (nav height already counted in the inset hook)
+const SHELL_BOTTOM_INSET_EXTRA = 40;
 const DEFAULT_STEP_GOAL = 10000;
 const RING_SIZE = 118;
+// Manipulate here: space between stacked HardShadow cards (Design Law block gap = 16; 20 reads less cramped with heavy borders)
+const BLOCK_GAP = 20;
+// Manipulate here: air above QUICK PICKS / MEALS labels (Design Law dense-page section gap 24–28)
+const SECTION_GAP_TOP = 24;
 
 const DEFAULT_MEALS = [
   { name: 'Breakfast', cals: 0, foods: [] },
@@ -311,7 +316,7 @@ export const DailyFoodLogScreen = ({
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.quickRow}
-          style={{ marginBottom: spacing.md }}
+          style={{ marginBottom: BLOCK_GAP }}
         >
           {quickPicks.map((name) => (
             <HardShadow
@@ -373,7 +378,7 @@ const styles = StyleSheet.create({
   dateSub: {
     fontSize: 13,
     fontWeight: '600',
-    marginBottom: 2,
+    marginBottom: 4,
   },
   title: {
     fontFamily: 'SpaceGrotesk_700Bold',
@@ -387,7 +392,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   block: {
-    marginBottom: spacing.md,
+    marginBottom: BLOCK_GAP,
   },
   summaryCard: {
     borderRadius: borderRadius.nbCard,
@@ -397,15 +402,15 @@ const styles = StyleSheet.create({
   summaryTop: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
+    gap: 16,
   },
   macroCol: {
     flex: 1,
     minWidth: 0,
-    gap: 10,
+    gap: 12,
   },
   macroLane: {
-    gap: 4,
+    gap: 6,
   },
   macroLabelRow: {
     flexDirection: 'row',
@@ -431,8 +436,8 @@ const styles = StyleSheet.create({
   mathDivider: {
     height: StyleSheet.hairlineWidth * 2,
     opacity: 0.35,
-    marginTop: 14,
-    marginBottom: 12,
+    marginTop: 16,
+    marginBottom: 14,
   },
   mathRow: {},
   mathText: {
@@ -440,7 +445,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     letterSpacing: 0.2,
-    lineHeight: 16,
+    lineHeight: 18,
   },
   mathNum: {
     fontWeight: '900',
@@ -481,8 +486,8 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '900',
     letterSpacing: 1.2,
-    marginBottom: 10,
-    marginTop: 4,
+    marginBottom: 12,
+    marginTop: SECTION_GAP_TOP,
   },
   quickRow: {
     paddingRight: 8,

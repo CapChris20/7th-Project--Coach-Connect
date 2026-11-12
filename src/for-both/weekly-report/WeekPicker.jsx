@@ -1,222 +1,150 @@
-// Week strip on the weekly report: back, previous/next week, and a settings (ellipsis) button.
-// Flow: optional back → week label between chevrons → settings. Each tap plays a light selection haptic.
-// Used by: WeeklyReportBody for both trainer and client.
+// Design Law week strip — square chevrons + “This week” / date range (progress PNG).
+// Flow: haptic on tap → prev/next week. Settings lives on the page header, not here.
+// Used by: WeeklyReportBody for client and trainer.
 
 import React from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Haptics from 'expo-haptics';
+import HardShadow from '../../look-and-feel/HardShadow';
+import { borderRadius, nb, spacing } from '../../look-and-feel/colorPalette';
 import { useTheme } from '../weekly-report/reportColorSettings';
 
 // ===== NAMED CONSTANTS =====
 
-const DARK_MODE = 'dark';
-const DARK_BAR_FILL = 'rgba(10,10,15,0.6)';
-const LIGHT_BAR_FILL = 'rgba(244,244,246,0.6)';
-const DARK_BUTTON_FILL = 'rgba(255,255,255,0.06)';
-const LIGHT_BUTTON_FILL = 'rgba(0,0,0,0.05)';
-const DISABLED_ARROW_OPACITY = 0.35;
-const ENABLED_ARROW_OPACITY = 1;
-const BLUR_INTENSITY = 40;
 const HIT_SLOP = 10;
-const EYEBROW_LABEL = 'WEEKLY REPORT';
-const BACK_ACCESSIBILITY_LABEL = 'Go back';
-const ICON_CHEVRON_BACK = 'chevron-back';
-const ICON_CHEVRON_FORWARD = 'chevron-forward';
-const ICON_SETTINGS = 'ellipsis-horizontal';
+const DISABLED_OPACITY = 0.4;
+const ENABLED_OPACITY = 1;
+const THIS_WEEK_LABEL = 'This week';
+const ICON_BACK = 'chevron-back';
+const ICON_FORWARD = 'chevron-forward';
+// Manipulate here: square size matches header back chips (44)
+const SQUARE = nb.minTouchTarget;
 
 // ===== HELPER FUNCTIONS =====
 
-/**
- * Selection haptic. A missing haptic engine (web / simulator) is ignored on purpose.
- */
 function playSelectionHaptic() {
   Haptics.selectionAsync().catch(() => {});
 }
 
-/**
- * @param {string} mode
- * @returns {string}
- */
-function barBackground(mode) {
-  return mode === DARK_MODE ? DARK_BAR_FILL : LIGHT_BAR_FILL;
-}
-
-/**
- * @param {string} mode
- * @returns {string}
- */
-function buttonFill(mode) {
-  return mode === DARK_MODE ? DARK_BUTTON_FILL : LIGHT_BUTTON_FILL;
-}
-
-/**
- * Dim the chevron when that direction has no more weeks.
- * @param {boolean} isEnabled
- * @returns {number}
- */
-function arrowOpacity(isEnabled) {
-  return isEnabled ? ENABLED_ARROW_OPACITY : DISABLED_ARROW_OPACITY;
-}
-
-/**
- * Haptic first so the tap feels instant even if the callback is slow.
- * @param {Function} [onPress]
- */
 function pressWithHaptic(onPress) {
   playSelectionHaptic();
-  onPress();
+  onPress?.();
+}
+
+function arrowOpacity(isEnabled) {
+  return isEnabled ? ENABLED_OPACITY : DISABLED_OPACITY;
+}
+
+/**
+ * HardShadow outlined square for prev/next — same chrome as NbPageHeader back chip.
+ */
+function WeekSquare({ onPress, disabled, accessibilityLabel, children, colors }) {
+  return (
+    <HardShadow offset={nb.shadowOffsetSmall} radius={borderRadius.nbChip} style={{ opacity: arrowOpacity(!disabled) }}>
+      <Pressable
+        onPress={() => pressWithHaptic(onPress)}
+        disabled={disabled}
+        hitSlop={HIT_SLOP}
+        accessibilityLabel={accessibilityLabel}
+        style={[
+          styles.square,
+          {
+            borderColor: colors.border,
+            backgroundColor: colors.surfacePrimary,
+          },
+        ]}
+      >
+        {children}
+      </Pressable>
+    </HardShadow>
+  );
 }
 
 // ===== MAIN FUNCTION =====
 
 /**
- * Frosted week picker. Disabled chevrons stay visible but faded so the user knows there is a bound.
- * @param {{ label: string, canPrev: boolean, canNext: boolean, onPrev: Function, onNext: Function, onSettings: Function, onBack?: Function }} props
+ * @param {{
+ *   label: string,
+ *   title?: string,
+ *   canPrev: boolean,
+ *   canNext: boolean,
+ *   onPrev: Function,
+ *   onNext: Function,
+ * }} props
  */
-export function WeekPicker({ label, canPrev, canNext, onPrev, onNext, onSettings, onBack }) {
-  const { colors, mode } = useTheme();
+export function WeekPicker({
+  label,
+  title = THIS_WEEK_LABEL,
+  canPrev,
+  canNext,
+  onPrev,
+  onNext,
+}) {
+  const { colors } = useTheme();
 
   return (
-    <View
-      style={[
-        styles.container,
-        {
-          backgroundColor: barBackground(mode),
-          borderBottomColor: colors.border,
-        },
-      ]}
-    >
-      <View intensity={BLUR_INTENSITY} tint={colors.blurTint} style={StyleSheet.absoluteFill} />
-      <View style={styles.row}>
-        {onBack ? (
-          <Pressable
-            onPress={() => pressWithHaptic(onBack)}
-            hitSlop={HIT_SLOP}
-            style={[
-              styles.backBtn,
-              {
-                backgroundColor: buttonFill(mode),
-              },
-            ]}
-            accessibilityLabel={BACK_ACCESSIBILITY_LABEL}
-          >
-            <Ionicons name={ICON_CHEVRON_BACK} size={20} color={colors.textPrimary} />
-          </Pressable>
-        ) : null}
-        <View style={styles.titleBlock}>
-          <Text style={[styles.eyebrow, { color: colors.textMuted }]}>{EYEBROW_LABEL}</Text>
-          <View style={styles.weekRow}>
-            <Pressable
-              testID="week-selector-prev"
-              hitSlop={HIT_SLOP}
-              onPress={() => pressWithHaptic(onPrev)}
-              disabled={!canPrev}
-              style={[
-                styles.arrowBtn,
-                {
-                  backgroundColor: buttonFill(mode),
-                  opacity: arrowOpacity(canPrev),
-                },
-              ]}
-            >
-              <Ionicons name={ICON_CHEVRON_BACK} size={18} color={colors.textPrimary} />
-            </Pressable>
+    <View style={styles.row}>
+      <WeekSquare
+        onPress={onPrev}
+        disabled={!canPrev}
+        accessibilityLabel="Previous week"
+        colors={colors}
+      >
+        <Ionicons name={ICON_BACK} size={22} color={colors.textPrimary} />
+      </WeekSquare>
 
-            <Text style={[styles.weekLabel, { color: colors.textPrimary }]} testID="week-label">
-              {label}
-            </Text>
-
-            <Pressable
-              testID="week-selector-next"
-              hitSlop={HIT_SLOP}
-              onPress={() => pressWithHaptic(onNext)}
-              disabled={!canNext}
-              style={[
-                styles.arrowBtn,
-                {
-                  backgroundColor: buttonFill(mode),
-                  opacity: arrowOpacity(canNext),
-                },
-              ]}
-            >
-              <Ionicons name={ICON_CHEVRON_FORWARD} size={18} color={colors.textPrimary} />
-            </Pressable>
-          </View>
-        </View>
-
-        <Pressable
-          testID="settings-btn"
-          onPress={() => pressWithHaptic(onSettings)}
-          hitSlop={HIT_SLOP}
-          style={[
-            styles.settingsBtn,
-            {
-              backgroundColor: buttonFill(mode),
-              borderColor: colors.border,
-            },
-          ]}
-        >
-          <Ionicons name={ICON_SETTINGS} size={20} color={colors.textPrimary} />
-        </Pressable>
+      <View style={styles.mid} testID="week-label">
+        <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>
+          {title}
+        </Text>
+        <Text style={[styles.range, { color: colors.textMuted }]} numberOfLines={1}>
+          {label}
+        </Text>
       </View>
+
+      <WeekSquare
+        onPress={onNext}
+        disabled={!canNext}
+        accessibilityLabel="Next week"
+        colors={colors}
+      >
+        <Ionicons name={ICON_FORWARD} size={18} color={colors.textPrimary} />
+      </WeekSquare>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    paddingHorizontal: 20,
-    paddingTop: 8,
-    paddingBottom: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    overflow: 'hidden',
-  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: spacing.sm,
+    paddingHorizontal: nb.screenGutter,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.md,
   },
-  titleBlock: {
+  square: {
+    width: SQUARE,
+    height: SQUARE,
+    borderRadius: borderRadius.nbChip,
+    borderWidth: nb.borderWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mid: {
     flex: 1,
-  },
-  eyebrow: {
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 1.5,
-    marginBottom: 6,
-  },
-  weekRow: {
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    minWidth: 0,
   },
-  arrowBtn: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    alignItems: 'center',
-    justifyContent: 'center',
+  title: {
+    fontSize: 17,
+    fontWeight: '900',
+    letterSpacing: -0.3,
   },
-  weekLabel: {
-    fontSize: 20,
-    fontWeight: '800',
-    letterSpacing: -0.5,
-  },
-  settingsBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 8,
+  range: {
+    fontSize: 13,
+    fontWeight: '600',
+    marginTop: 2,
   },
 });

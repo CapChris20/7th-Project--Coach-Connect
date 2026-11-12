@@ -77,6 +77,11 @@ function runTrainerScreenKeyword(screen, actions) {
     actions.openBugReport();
     return;
   }
+  if (screen === 'privacyDataRights') {
+    rootGoBack();
+    actions.openPrivacyDataRights();
+    return;
+  }
   if (screen === 'nutrition') {
     actions.handleHomePress();
     actions.openNutrition();
@@ -139,6 +144,10 @@ export function goToTrainerScreen() {
   const openPrivacy = useCallback(() => rootNavigate(TRAINER_ROUTES.Privacy), []);
   const openContactSupport = useCallback(() => rootNavigate(TRAINER_ROUTES.ContactSupport), []);
   const openBugReport = useCallback(() => rootNavigate(TRAINER_ROUTES.BugReport), []);
+  const openPrivacyDataRights = useCallback(
+    () => rootNavigate(TRAINER_ROUTES.PrivacyDataRights),
+    [],
+  );
   const openNutrition = useCallback(() => rootNavigate(TRAINER_ROUTES.Nutrition), []);
   const openWorkoutPlan = useCallback(() => rootNavigate(TRAINER_ROUTES.WorkoutPlan), []);
   const openTrainerSearch = useCallback(() => rootNavigate(TRAINER_ROUTES.TrainerSearch), []);
@@ -189,6 +198,7 @@ export function goToTrainerScreen() {
         openPrivacy,
         openContactSupport,
         openBugReport,
+        openPrivacyDataRights,
         openNutrition,
         openWorkoutPlan,
         openVoiceAI,
@@ -206,6 +216,7 @@ export function goToTrainerScreen() {
       openPrivacy,
       openContactSupport,
       openBugReport,
+      openPrivacyDataRights,
       openNutrition,
       openWorkoutPlan,
       openVoiceAI,
@@ -260,6 +271,12 @@ export function goToTrainerScreen() {
     setSelectedConversation,
     openProfile,
     openSettings,
+    openHelpFAQ,
+    openTerms,
+    openPrivacy,
+    openContactSupport,
+    openBugReport,
+    openPrivacyDataRights,
     openNutrition,
     openWorkoutPlan,
     openTrainerSearch,

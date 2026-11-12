@@ -1,65 +1,79 @@
-// Weekly report "pros & cons" block: what went well and what to improve.
-// Flow: pick the top tips → if none, hide the section → otherwise paint the glass card with both lists.
-// Used by: WeeklyReportBody after the week's food/workout stats.
-
-import NbCard from '../../look-and-feel/NbCard';
+// Design Law pros / cons / focus — solid vs hollow bullets (progress PNG, no color coding).
+// Flow: pickBestTips → HardShadow cards → TipRow for focus. Used under daily breakdown.
+// Used by: WeeklyReportBody after the sleep chart / day list.
 
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { GRADIENTS, useTheme } from '../weekly-report/reportColorSettings';
-import { ColorBorder } from './ColorBorder';
+import HardShadow from '../../look-and-feel/HardShadow';
+import { borderRadius, nb, spacing } from '../../look-and-feel/colorPalette';
+import { useTheme } from '../weekly-report/reportColorSettings';
 import { TipRow } from './TipRow';
 import { pickBestTips } from '../weekly-report/pickBestTips';
 
 // ===== NAMED CONSTANTS =====
 
 const MAX_TIPS_PER_BLOCK = 5;
-const PRO_VARIANT = 'pro';
-const CON_VARIANT = 'con';
-const DARK_MODE = 'dark';
-const DARK_INNER_BACKGROUND = 'rgba(16,16,26,0.95)';
-const LIGHT_INNER_BACKGROUND = 'rgba(255,255,255,0.98)';
-const DARK_SHELL_BACKGROUND = 'rgba(20,20,30,0.55)';
-const LIGHT_SHELL_BACKGROUND = 'rgba(255,255,255,0.7)';
-const BLUR_INTENSITY = 25;
-const REVIEW_BORDER_WIDTH = 1.5;
-const REVIEW_CARD_RADIUS = 24;
-const GRADIENT_START = { x: 0, y: 0 };
-const GRADIENT_END = { x: 1, y: 1 };
+const BULLET = 14;
 
 // ===== HELPER FUNCTIONS =====
 
-/**
- * @param {string} mode
- * @returns {boolean}
- */
-function isDarkMode(mode) {
-  return mode === DARK_MODE;
+function Eyebrow({ children, colors }) {
+  return <Text style={[styles.eyebrow, { color: colors.textMuted }]}>{children}</Text>;
 }
 
-/**
- * One labeled list (PROS or CONS). Hidden when that list is empty so we don't show a header with no rows.
- * `mode` is accepted because the parent always passes theme mode, matching the original call.
- * @param {{ variant: string, items: string[], colors: object, mode: string }} props
- */
-function CoachingBlock({ variant, items, colors, mode }) {
-  const isPro = variant === PRO_VARIANT;
-  const label = isPro ? 'PROS' : 'CONS';
-  const title = isPro ? 'What went well' : 'What to improve';
-
+function BulletCard({ title, items, filled, colors }) {
   if (!items.length) return null;
-
   return (
     <View style={styles.block}>
-      <View style={styles.blockHeader}>
-        <Text style={[styles.blockLabel, { color: colors.textMuted }]}>{label}</Text>
-        <Text style={[styles.blockTitle, { color: colors.textPrimary }]}>{title}</Text>
-      </View>
+      <Eyebrow colors={colors}>{title}</Eyebrow>
+      <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard}>
+        <View
+          style={[
+            styles.card,
+            {
+              borderColor: colors.border,
+              backgroundColor: filled ? colors.soft : colors.surfacePrimary,
+            },
+          ]}
+        >
+          {items.map((text, tipIndex) => (
+            <View key={`${title}-${tipIndex}`} style={styles.bulletRow}>
+              <View
+                style={[
+                  styles.bullet,
+                  {
+                    borderColor: colors.border,
+                    backgroundColor: filled ? colors.fill : 'transparent',
+                  },
+                ]}
+              />
+              <Text style={[styles.bulletText, { color: colors.textPrimary }]}>{text}</Text>
+            </View>
+          ))}
+        </View>
+      </HardShadow>
+    </View>
+  );
+}
 
-      {items.map((text, tipIndex) => (
-        <TipRow key={`${variant}-${tipIndex}`} index={tipIndex + 1} text={text} variant={variant} />
-      ))}
+function FocusCard({ items, colors }) {
+  if (!items.length) return null;
+  return (
+    <View style={styles.block}>
+      <Eyebrow colors={colors}>What to focus on</Eyebrow>
+      <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard}>
+        <View
+          style={[
+            styles.card,
+            styles.focusCard,
+            { borderColor: colors.border, backgroundColor: colors.surfacePrimary },
+          ]}
+        >
+          {items.map((text, tipIndex) => (
+            <TipRow key={`focus-${tipIndex}`} index={tipIndex + 1} text={text} />
+          ))}
+        </View>
+      </HardShadow>
     </View>
   );
 }
@@ -67,94 +81,66 @@ function CoachingBlock({ variant, items, colors, mode }) {
 // ===== MAIN FUNCTION =====
 
 /**
- * Coaching review card for one week. Hidden when both lists are empty.
- * @param {{ week: { pros?: Array, cons?: Array }, animationKey?: string|number }} props
+ * @param {{ week: { pros?: Array, cons?: Array, focus?: Array }, animationKey?: string|number }} props
  */
 export function WinsAndWorkOnsSection({ week, animationKey }) {
-  const { colors, mode } = useTheme();
+  const { colors } = useTheme();
   const pros = pickBestTips(week.pros || [], MAX_TIPS_PER_BLOCK);
   const cons = pickBestTips(week.cons || [], MAX_TIPS_PER_BLOCK);
-  const innerBackground = isDarkMode(mode) ? DARK_INNER_BACKGROUND : LIGHT_INNER_BACKGROUND;
-  const shellBackground = isDarkMode(mode) ? DARK_SHELL_BACKGROUND : LIGHT_SHELL_BACKGROUND;
+  const focus = pickBestTips(week.focus || [], MAX_TIPS_PER_BLOCK);
 
-  if (!pros.length && !cons.length) return null;
+  if (!pros.length && !cons.length && !focus.length) return null;
 
   return (
     <View key={animationKey} style={styles.section}>
-      <View style={styles.sectionHeader}>
-        <Text style={[styles.sectionLabel, { color: colors.textMuted }]}>COACHING REVIEW</Text>
-        <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Pros & cons</Text>
-      </View>
-
-      <ColorBorder
-        colors={GRADIENTS.g4}
-        borderWidth={REVIEW_BORDER_WIDTH}
-        radius={REVIEW_CARD_RADIUS}
-        innerBackground={innerBackground}
-      >
-        <View
-          style={[
-            styles.shell,
-            {
-              backgroundColor: shellBackground,
-            },
-          ]}
-        >
-          <View intensity={BLUR_INTENSITY} tint={colors.blurTint} style={StyleSheet.absoluteFill} />
-          <LinearGradient
-            colors={[`${GRADIENTS.g4[0]}18`, `${GRADIENTS.g4[1]}08`, 'transparent']}
-            start={GRADIENT_START}
-            end={GRADIENT_END}
-            style={StyleSheet.absoluteFill}
-          />
-          <CoachingBlock variant={PRO_VARIANT} items={pros} colors={colors} mode={mode} />
-          <CoachingBlock variant={CON_VARIANT} items={cons} colors={colors} mode={mode} />
-        </View>
-      </ColorBorder>
+      <BulletCard title="Pros and wins" items={pros} filled colors={colors} />
+      <BulletCard title="Cons and areas to improve" items={cons} filled={false} colors={colors} />
+      <FocusCard items={focus} colors={colors} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   section: {
-    paddingHorizontal: 20,
-    marginTop: 32,
-  },
-  sectionHeader: {
-    marginBottom: 14,
-  },
-  sectionLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 1.5,
-    marginBottom: 4,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    letterSpacing: -0.5,
-  },
-  shell: {
-    padding: 16,
-    overflow: 'hidden',
-    gap: 20,
+    paddingHorizontal: nb.screenGutter,
+    marginTop: spacing.lg,
+    gap: spacing.lg,
   },
   block: {
-    gap: 8,
+    gap: spacing.sm,
   },
-  blockHeader: {
-    marginLeft: 2,
-    marginBottom: 4,
-    gap: 2,
+  eyebrow: {
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 1.3,
+    textTransform: 'uppercase',
   },
-  blockLabel: {
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 1.4,
+  card: {
+    borderRadius: borderRadius.nbCard,
+    borderWidth: nb.borderWidth,
+    padding: nb.cardPadding,
+    gap: spacing.sm + 2,
   },
-  blockTitle: {
-    fontSize: 17,
-    fontWeight: '800',
-    letterSpacing: -0.3,
+  focusCard: {
+    gap: spacing.md,
+  },
+  bulletRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm + 2,
+  },
+  // Manipulate here: solid = wins, hollow = cons (PNG differs without color)
+  bullet: {
+    width: BULLET,
+    height: BULLET,
+    borderRadius: 3,
+    borderWidth: nb.borderWidth,
+    marginTop: 3,
+  },
+  bulletText: {
+    flex: 1,
+    fontSize: 15,
+    lineHeight: 21,
+    fontWeight: '600',
   },
 });

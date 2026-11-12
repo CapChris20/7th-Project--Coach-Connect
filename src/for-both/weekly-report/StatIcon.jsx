@@ -1,70 +1,78 @@
-// The round icon next to a weekly-report stat.
-// Flow: look up the picture and gradient for that stat → paint a ring → put the picture in the middle.
-// Used by: weekly report rows for food, protein, carbs, and fat, plus the shared workout stats.
+// Design Law metric icon — NbIconChip with owner handoff art (accent gradient only).
+// Flow: map metricKey → handoff PNG → NbIconChip. Used by tips / legacy day expand rows.
+// vocab: NbIconChip = 3px bordered gradient square; never a purple ring border
 
 import React from 'react';
-import { View, Image, StyleSheet } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import NbIconChip from '../../look-and-feel/NbIconChip';
+import { accentGradients } from '../../look-and-feel/colorPalette';
 import { WR_METRIC_VISUAL } from '../../trainer-app/weekly-report/WeeklyReportBars';
-import {
-  HOME_STAT_ENERGY_GRADIENT,
-  HOME_STAT_MOOD_GRADIENT,
-  HOME_STAT_STRESS_GRADIENT,
-} from '../../look-and-feel/homeStatColors';
-import { useTheme } from '../weekly-report/reportColorSettings';
-import { lightColors } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
-const DEFAULT_ICON_SIZE = 36;
-const DEFAULT_IMAGE_SIZE = 20;
-const RING_INSET = 2;
-const MIN_INNER_RADIUS = 8;
-const RING_PADDING = 1.5;
-const DARK_MODE = 'dark';
-const DARK_INNER_COLOR = 'rgba(12,10,20,0.98)';
-const LIGHT_INNER_COLOR = lightColors.white;
+const DEFAULT_ICON_SIZE = 40;
 const FALLBACK_METRIC_KEY = 'energy';
 
 const EXTRA_METRIC_VISUAL = {
   nutrition: {
-    source: require('../../assets/icons/burger.png'),
-    gradient: HOME_STAT_STRESS_GRADIENT,
+    source: require('../../assets/icons/handoff/apple.png'),
+    index: 3,
   },
   protein: {
-    source: require('../../assets/icons/Protein.png'),
-    gradient: HOME_STAT_MOOD_GRADIENT,
+    source: require('../../assets/icons/handoff/protein.png'),
+    index: 0,
   },
   carbs: {
-    source: require('../../assets/icons/Carbs.png'),
-    gradient: HOME_STAT_ENERGY_GRADIENT,
+    source: require('../../assets/icons/handoff/carbs.png'),
+    index: 4,
   },
   fat: {
-    source: require('../../assets/icons/Fats.png'),
-    gradient: HOME_STAT_STRESS_GRADIENT,
+    source: require('../../assets/icons/handoff/fats.png'),
+    index: 1,
   },
+};
+
+const HANDOFF_BY_KEY = {
+  sleep: require('../../assets/icons/handoff/sleeping.png'),
+  water: require('../../assets/icons/handoff/hydration.png'),
+  steps: require('../../assets/icons/handoff/journey.png'),
+  energy: require('../../assets/icons/handoff/energy.png'),
+  stress: require('../../assets/icons/handoff/stress.png'),
+  soreness: require('../../assets/icons/handoff/injury.png'),
+  scale: require('../../assets/icons/handoff/scales.png'),
+  workout: require('../../assets/icons/handoff/workout.png'),
+  mood: require('../../assets/icons/handoff/progress.png'),
+  bodyfat: require('../../assets/icons/handoff/progress.png'),
 };
 
 // ===== HELPER FUNCTIONS =====
 
 /**
- * Food macros live here. Workout stats come from the weekly report bars.
  * @param {string} metricKey
- * @returns {{ source: number, gradient: string[] }}
+ * @returns {{ source: number, index: number }}
  */
 export function getReportMetricVisual(metricKey) {
-  if (EXTRA_METRIC_VISUAL[metricKey]) return EXTRA_METRIC_VISUAL[metricKey];
-  if (WR_METRIC_VISUAL[metricKey]) return WR_METRIC_VISUAL[metricKey];
-  return WR_METRIC_VISUAL[FALLBACK_METRIC_KEY];
-}
-
-function innerCircleRadius(size) {
-  return Math.max(MIN_INNER_RADIUS, size / 2 - RING_INSET);
-}
-
-function ringBackgroundColor(mode) {
-  if (mode === DARK_MODE) return DARK_INNER_COLOR;
-  return LIGHT_INNER_COLOR;
+  if (EXTRA_METRIC_VISUAL[metricKey]) {
+    return {
+      source: EXTRA_METRIC_VISUAL[metricKey].source,
+      index: EXTRA_METRIC_VISUAL[metricKey].index,
+      gradient: accentGradients[EXTRA_METRIC_VISUAL[metricKey].index],
+    };
+  }
+  if (HANDOFF_BY_KEY[metricKey]) {
+    const index = Object.keys(HANDOFF_BY_KEY).indexOf(metricKey);
+    return {
+      source: HANDOFF_BY_KEY[metricKey],
+      index,
+      gradient: accentGradients[index % accentGradients.length],
+    };
+  }
+  // Fall back to WeeklyReportBars visual when a rare key appears
+  const legacy = WR_METRIC_VISUAL[metricKey] || WR_METRIC_VISUAL[FALLBACK_METRIC_KEY];
+  return {
+    source: legacy.source,
+    index: 0,
+    gradient: legacy.gradient || accentGradients[0],
+  };
 }
 
 // ===== MAIN FUNCTION =====
@@ -72,42 +80,14 @@ function ringBackgroundColor(mode) {
 /**
  * @param {{ metricKey: string, size?: number, imageSize?: number }} props
  */
-export function StatIcon({ metricKey, size = DEFAULT_ICON_SIZE, imageSize = DEFAULT_IMAGE_SIZE }) {
-  const { mode } = useTheme();
-  const metricVisual = getReportMetricVisual(metricKey);
-  const innerRadius = innerCircleRadius(size);
-  const ringRadius = innerRadius + RING_INSET;
-  const fillColor = ringBackgroundColor(mode);
-
+export function StatIcon({ metricKey, size = DEFAULT_ICON_SIZE, imageSize: _imageSize }) {
+  const visual = getReportMetricVisual(metricKey);
   return (
-    <LinearGradient
-      colors={metricVisual.gradient}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-      style={[styles.ring, { width: size, height: size, borderRadius: ringRadius }]}
-    >
-      <View
-        style={[
-          styles.inner,
-          {
-            borderRadius: innerRadius,
-            backgroundColor: fillColor,
-          },
-        ]}
-      >
-        <Image source={metricVisual.source} style={{ width: imageSize, height: imageSize }} resizeMode="contain" />
-      </View>
-    </LinearGradient>
+    <NbIconChip
+      source={visual.source}
+      index={visual.index}
+      size={size}
+      colors={visual.gradient}
+    />
   );
 }
-
-const styles = StyleSheet.create({
-  ring: {
-    padding: RING_PADDING,
-  },
-  inner: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});

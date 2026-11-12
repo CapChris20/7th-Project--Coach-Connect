@@ -1,16 +1,10 @@
-// BookSessionScreen.jsx
+// Design Law trainer scheduling: Calendar (week strip / month) + List, SessionCards, empty states.
+// Flow: useSessions() live listener → Calendar|List → week agenda or month grid → open / create session.
+// Used by: TrainerAppStart Sessions tab and client-detail embedded calendar.
 //
-// The trainer's calendar screen. Shows every session for one client (or all clients) two ways:
-// a month calendar you can tap a day on, or a flat upcoming list.
-//
-// Where the data comes from: useSessions() is a live Firestore listener (see mySessions.js).
-// It watches trainer_clients/{trainerUid}/sessions and updates automatically — this screen
-// never fetches anything itself, it just reads whatever useSessions() currently has.
-//
-// Used by: TrainerAppStart (the trainer's main "Sessions" tab) and the client detail screen
-// (embedded=true, filtered to one clientId).
-//
-// vocab: neobrutalist = thick outlines (2.5px), hard shadows, nb tokens for colors
+// vocab: week strip = primary calendar (PNG 01); month view is one tap away (PNG 05)
+// vocab: useShellTopPad = status-bar clearance when shell SafeArea is left/right only
+// Manipulate here: UPCOMING_LIMIT, week length (7), empty-state copy
 
 import React, { useMemo, useState } from 'react';
 import {
@@ -19,682 +13,554 @@ import {
   Text,
   TouchableOpacity,
   View,
-  useColorScheme,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Plus, CalendarDays, List as ListIcon } from 'lucide-react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { Plus, ChevronLeft, ChevronRight } from 'lucide-react-native';
+import {
+  addDays,
+  format,
+  parseISO,
+  startOfWeek,
+  isValid,
+  addWeeks,
+  subWeeks,
+} from 'date-fns';
 import { useSessions } from '../scheduling/mySessions';
 import { MonthCalendar } from './MonthCalendar';
 import { SessionCard } from './SessionCard';
-import { formatDateLong } from '../../helpers/sessionTimeText';
-import { FORM_SCROLL_PROPS, useEmbeddedScrollBottomPad } from '../../navigation/bottomMenuSpacing';
-import { lightColors, darkColors, gradients, nb, borderRadius } from '../../look-and-feel/colorPalette';
-import NbCard from '../../look-and-feel/NbCard';
+import {
+  FORM_SCROLL_PROPS,
+  useEmbeddedScrollBottomPad,
+  useShellTopPad,
+} from '../../navigation/bottomMenuSpacing';
+import { useTheme } from '../../look-and-feel/lightDarkMode';
+import { nb, spacing } from '../../look-and-feel/colorPalette';
+import NbSegmented from '../../look-and-feel/NbSegmented';
 import NbButton from '../../look-and-feel/NbButton';
+import NbChip from '../../look-and-feel/NbChip';
+import NbCard from '../../look-and-feel/NbCard';
+import NbIconChip from '../../look-and-feel/NbIconChip';
+import HardShadow from '../../look-and-feel/HardShadow';
 
 // ===== NAMED CONSTANTS =====
 
-// Manipulate here: extra space below the last card so the bottom tab bar never covers it.
-// Embedded (inside another screen) needs less — that screen already has its own bottom padding.
 const SCROLL_BOTTOM_PAD_EMBEDDED = 24;
 const SCROLL_BOTTOM_PAD_STANDALONE = 40;
+const UPCOMING_LIMIT = 12;
+const WEEKDAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+const ICON_SCHEDULE = require('../../assets/icons/handoff/schedule.png');
 
-// ===== HELPER FUNCTIONS =====
+const VIEW_SEGMENTS = [
+  { id: 'calendar', label: 'Calendar' },
+  { id: 'list', label: 'List' },
+];
 
-// One pill in the Calendar/List switcher. "active" just means this is the tab currently showing.
-const SegBtn = ({ active, onPress, icon, label, colors, isDark }) => {
-  const buttonContent = (
-    <View style={[styles.segBtn, active && styles.segBtnActive]}>
-      {icon}
-      <Text style={[styles.segBtnText, { color: active ? lightColors.nbInk : colors.nbMuted }]}>{label}</Text>
-    </View>
-  );
+// ===== HELPERS =====
 
-  if (active) {
-    return (
-      <TouchableOpacity onPress={onPress} activeOpacity={0.85}>
-        <LinearGradient
-          colors={gradients.brand.colors}
-          start={gradients.brand.start}
-          end={gradients.brand.end}
-          style={styles.segBtnGradient}
-        >
-          {buttonContent}
-        </LinearGradient>
-      </TouchableOpacity>
-    );
+function dateKeyFromDate(dateValue) {
+  return format(dateValue, 'yyyy-MM-dd');
+}
+
+function generateWeekDates(anchor) {
+  const weekStart = startOfWeek(anchor, { weekStartsOn: 0 });
+  return Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+}
+
+function collectSessionDayKeys(sessions) {
+  const set = new Set();
+  for (const s of sessions || []) {
+    if (s?.date) set.add(String(s.date).slice(0, 10));
   }
+  return set;
+}
 
+function formatDayHeader(dateKey, todayKey) {
+  if (!dateKey) return '';
+  try {
+    const d = parseISO(dateKey);
+    if (!isValid(d)) return dateKey;
+    const base = format(d, 'EEE, MMM d');
+    if (dateKey === todayKey) return `Today · ${base}`;
+    return base;
+  } catch (_e) {
+    return dateKey;
+  }
+}
+
+function formatAgendaTitle(dateKey) {
+  try {
+    const d = parseISO(dateKey);
+    if (!isValid(d)) return dateKey;
+    return format(d, 'EEEE, MMM d');
+  } catch (_e) {
+    return dateKey;
+  }
+}
+
+function groupSessionsByDate(sessions) {
+  const map = new Map();
+  for (const session of sessions || []) {
+    const key = String(session.date || '').slice(0, 10);
+    if (!key) continue;
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(session);
+  }
+  for (const list of map.values()) {
+    list.sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')));
+  }
+  return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
+}
+
+function NavSquare({ onPress, children, colors }) {
   return (
-    <TouchableOpacity onPress={onPress} activeOpacity={0.85}>
-      {buttonContent}
-    </TouchableOpacity>
-  );
-};
-
-// A reusable "nothing here" card: icon, title, optional subtitle, optional call-to-action button.
-// Used whenever a day or the whole list has zero sessions to show.
-const EmptyState = ({ title, subtitle, cta, onCta, colors }) => (
-  <NbCard style={[styles.emptyState, { borderStyle: 'dashed' }]}>
-    <LinearGradient
-      colors={gradients.brand.colors}
-      start={gradients.brand.start}
-      end={gradients.brand.end}
-      style={styles.emptyIcon}
-    >
-      <CalendarDays color="#0A0A0F" size={20} />
-    </LinearGradient>
-    <Text style={[styles.emptyTitle, { color: colors.nbInk }]}>{title}</Text>
-    {subtitle ? <Text style={[styles.emptySubtitle, { color: colors.nbMuted }]}>{subtitle}</Text> : null}
-    {cta && onCta ? (
-      <NbButton variant="brand" onPress={onCta} sm style={styles.emptyBtn}>
-        {cta}
-      </NbButton>
-    ) : null}
-  </NbCard>
-);
-
-// Only shown when the screen is standalone (not embedded) — logo, app name, and screen subtitle.
-const StandaloneHeaderBrand = ({ colors, title }) => (
-  <View style={styles.headerContent}>
-    <View style={styles.brandContainer}>
-      <LinearGradient
-        colors={[lightColors.primary, '#E25588']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.brandIcon}
+    <HardShadow offset={nb.shadowOffsetSmall} radius={12}>
+      <TouchableOpacity
+        onPress={onPress}
+        style={[
+          styles.navSquare,
+          { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface },
+        ]}
+        accessibilityRole="button"
+        activeOpacity={0.8}
       >
-        <CalendarDays color="white" size={20} />
-      </LinearGradient>
-      <View>
-        <Text style={[styles.appTitle, { color: colors.text }]}>Coach Connect</Text>
-        <Text style={[styles.appSubtitle, { color: colors.textSecondary }]} numberOfLines={1}>
-          {title}
-        </Text>
-      </View>
-    </View>
-    <View style={styles.themeToggle} />
-  </View>
-);
-
-// The Calendar / List pill switcher at the top of the content area.
-const TabSwitcher = ({ tab, onSelectTab, colors, embedded, isDark }) => (
-  <View
-    style={[
-      styles.segmentedControl,
-      embedded && styles.segmentedEmbedded,
-      { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder },
-    ]}
-  >
-    <SegBtn
-      active={tab === 'calendar'}
-      onPress={() => onSelectTab('calendar')}
-      icon={<CalendarDays size={14} color={tab === 'calendar' ? lightColors.nbInk : colors.nbMuted} />}
-      label="Calendar"
-      colors={colors}
-      isDark={isDark}
-    />
-    <SegBtn
-      active={tab === 'list'}
-      onPress={() => onSelectTab('list')}
-      icon={<ListIcon size={14} color={tab === 'list' ? lightColors.nbInk : colors.nbMuted} />}
-      label="List"
-      colors={colors}
-      isDark={isDark}
-    />
-  </View>
-);
-
-// The "New session" button at the top of the scrollable content.
-const NewSessionButton = ({ onPress }) => (
-  <View style={styles.newSessionRow}>
-    <NbButton variant="brand" onPress={onPress}>
-      + New session
-    </NbButton>
-  </View>
-);
-
-/**
- * The "Day List" area under the month calendar. Three states, checked in order:
- * no day tapped yet → prompt to tap one; a day tapped with no sessions → EmptyState;
- * a day tapped with sessions → the list of SessionCards for that day.
- */
-function CalendarDayPanel({
-  colors,
-  embedded,
-  dayListTitle,
-  selectedDate,
-  sessionsOnSelectedDate,
-  clientLabel,
-  clientId,
-  theme,
-  onClearDate,
-  onOpenSession,
-  onScheduleForDate,
-}) {
-  const dayListHeader = (
-    <View style={styles.dayListHeader}>
-      <Text style={[styles.dayListTitle, { color: colors.nbInk }]}>{dayListTitle}</Text>
-      {selectedDate && (
-        <TouchableOpacity onPress={onClearDate}>
-          <Text style={[styles.clearBtn, { color: gradients.brand.colors[0] }]}>Clear</Text>
-        </TouchableOpacity>
-      )}
-    </View>
-  );
-
-  // State 1: nothing tapped yet — just a hint to tap a day.
-  if (!selectedDate) {
-    const promptText = clientId
-      ? `Tap a day to see ${clientLabel}'s sessions for that date.`
-      : 'Tap a day on the calendar to see sessions.';
-    return (
-      <View style={styles.dayListSection}>
-        {dayListHeader}
-        <View
-          style={[
-            styles.emptyPrompt,
-            embedded && styles.emptyPromptEmbedded,
-            !embedded && { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder, borderWidth: nb.borderWidth },
-          ]}
-        >
-          <Text style={[styles.emptyPromptText, { color: colors.nbMuted }]}>{promptText}</Text>
-        </View>
-      </View>
-    );
-  }
-
-  // State 2: a day is tapped, but it has no sessions.
-  if (sessionsOnSelectedDate.length === 0) {
-    return (
-      <View style={styles.dayListSection}>
-        {dayListHeader}
-        <EmptyState
-          title="No sessions this day"
-          subtitle={`Nothing scheduled with ${clientLabel} on this date.`}
-          cta="Schedule one"
-          onCta={() => onScheduleForDate(selectedDate)}
-          colors={colors}
-        />
-      </View>
-    );
-  }
-
-  // State 3: a day is tapped and it has sessions — show them.
-  return (
-    <View style={styles.dayListSection}>
-      {dayListHeader}
-      <View style={styles.sessionsList}>
-        {sessionsOnSelectedDate.map((session) => (
-          <TouchableOpacity key={session.id} onPress={() => onOpenSession(session.id)} activeOpacity={0.88}>
-            <SessionCard session={session} theme={theme} showDate={false} />
-          </TouchableOpacity>
-        ))}
-      </View>
-    </View>
+        {children}
+      </TouchableOpacity>
+    </HardShadow>
   );
 }
 
-/**
- * The "List" tab content: a header with a count, then either EmptyState or the next
- * 5 upcoming SessionCards.
- */
-function UpcomingSessionsPanel({
-  colors,
-  clientLabel,
-  clientId,
-  upcomingSessions,
-  theme,
-  onOpenSession,
-  onScheduleNew,
-}) {
-  const listHeader = (
-    <View style={styles.listHeader}>
-      <Text style={[styles.listTitle, { color: colors.nbInk }]}>Upcoming · {clientLabel}</Text>
-      <Text style={[styles.listCount, { color: colors.nbMuted }]}>
-        Next {upcomingSessions.length} {upcomingSessions.length === 1 ? 'session' : 'sessions'}
-      </Text>
-    </View>
-  );
-
-  if (upcomingSessions.length === 0) {
-    const emptySubtitle = clientId
-      ? `Schedule a session with ${clientLabel}.`
-      : 'Schedule your first session.';
-    return (
-      <>
-        {listHeader}
-        <EmptyState
-          title="No sessions yet"
-          subtitle={emptySubtitle}
-          cta="New session"
-          onCta={onScheduleNew}
-          colors={colors}
-        />
-      </>
-    );
-  }
-
+function EmptyState({ title, subtitle, cta, onCta }) {
+  const { colors } = useTheme();
   return (
-    <>
-      {listHeader}
-      <View style={styles.sessionsList}>
-        {upcomingSessions.map((session) => (
-          <TouchableOpacity key={session.id} onPress={() => onOpenSession(session.id)} activeOpacity={0.88}>
-            <SessionCard session={session} theme={theme} showDate />
-          </TouchableOpacity>
-        ))}
-      </View>
-    </>
+    <NbCard style={[styles.emptyState, { borderStyle: 'dashed' }]}>
+      <NbIconChip source={ICON_SCHEDULE} index={7} size={48} />
+      <Text style={[styles.emptyTitle, { color: colors.nbInk }]}>{title}</Text>
+      {subtitle ? (
+        <Text style={[styles.emptySubtitle, { color: colors.nbMuted }]}>{subtitle}</Text>
+      ) : null}
+      {cta && onCta ? (
+        <NbButton variant="fill" onPress={onCta} sm style={styles.emptyBtn}>
+          {cta}
+        </NbButton>
+      ) : null}
+    </NbCard>
   );
 }
 
-// ===== SCREEN LAYOUT (what the user sees — read this first) =====
-
-/**
- * The whole visual screen: header, Calendar/List switcher, scroll area, and whichever
- * tab is active. Pure layout — it does not know about Firestore, hooks, or state. Everything
- * it needs (the session lists, the callbacks for tapping things) is already handed to it.
- * @param {object} props
- * @param {boolean} props.embedded - true when shown inside another screen (e.g. client detail)
- * @param {'dark'|'light'} props.theme
- * @param {object} props.colors - COLORS[theme], already picked by the caller
- * @param {number} props.scrollBottomPad - extra bottom space so the tab bar never covers a card
- * @param {string} [props.clientId]
- * @param {string} props.clientLabel
- * @param {'calendar'|'list'} props.tab
- * @param {(tab: string) => void} props.onSelectTab
- * @param {string|null} props.selectedDate
- * @param {(dateKey: string) => void} props.onSelectDate
- * @param {Array} props.sessionsForClient - every session for this screen's calendar month view
- * @param {string} props.dayListTitle
- * @param {Array} props.sessionsOnSelectedDate
- * @param {() => void} props.onClearDate
- * @param {(sessionId: string) => void} props.onOpenSession
- * @param {(dateKey: string) => void} props.onScheduleForDate
- * @param {Array} props.upcomingSessions
- * @param {() => void} props.onScheduleNew
- * @param {() => void} props.onNewSessionPress
- * @returns {JSX.Element}
- */
-function ScreenLayout({
-  embedded,
-  theme,
-  colors,
-  isDark,
-  scrollBottomPad,
-  clientId,
-  clientLabel,
-  tab,
-  onSelectTab,
-  selectedDate,
+function WeekDateStrip({
+  weekDates,
+  selectedDateKey,
+  sessionDays,
   onSelectDate,
-  sessionsForClient,
-  dayListTitle,
-  sessionsOnSelectedDate,
-  onClearDate,
-  onOpenSession,
-  onScheduleForDate,
-  upcomingSessions,
-  onScheduleNew,
-  onNewSessionPress,
+  colors,
 }) {
-  // Embedded (inside another screen) uses a plain View; standalone uses SafeAreaView for the notch.
-  const Root = embedded ? View : SafeAreaView;
-
-  // Everything below is just "what color / which style sits on this box" — pulled out of the
-  // JSX so the return statement reads as a layout, not a wall of ternaries.
-  const rootContainerStyle = [
-    styles.container,
-    embedded && styles.embeddedRoot,
-    { backgroundColor: embedded ? 'transparent' : colors.nbBackground },
-  ];
-  const headerBorderStyle = embedded
-    ? null
-    : { borderBottomColor: colors.nbBorder, borderBottomWidth: nb.borderWidth };
-  const headerContainerStyle = [
-    styles.header,
-    embedded && styles.headerEmbedded,
-    { backgroundColor: embedded ? 'transparent' : colors.nbBackground },
-    headerBorderStyle,
-  ];
-  const screenTitleForHeader = clientId ? `Calendar · ${clientLabel}` : 'Trainer scheduling';
-  const scrollContentStyle = [
-    styles.scrollContent,
-    embedded && styles.scrollContentEmbedded,
-    { paddingBottom: scrollBottomPad },
-  ];
-  // Both tabs sit inside the same padded section — one style array, used twice below.
-  const tabSectionStyle = [styles.section, embedded && styles.sectionEmbedded];
-
   return (
-    <Root style={rootContainerStyle}>
-      {!embedded && <View style={[styles.aurora, { backgroundColor: colors.nbBackground }]} />}
-
-      {/* Sticky header: brand row (standalone only) + the Calendar/List switcher */}
-      <View style={headerContainerStyle}>
-        {!embedded && <StandaloneHeaderBrand colors={colors} title={screenTitleForHeader} />}
-        <TabSwitcher tab={tab} onSelectTab={onSelectTab} colors={colors} embedded={embedded} isDark={isDark} />
-      </View>
-
-      {/* Scrollable content: New-session button, then whichever tab is active */}
-      <ScrollView style={styles.content} contentContainerStyle={scrollContentStyle} {...FORM_SCROLL_PROPS}>
-        <NewSessionButton onPress={onNewSessionPress} />
-
-        {tab === 'calendar' && (
-          <View style={tabSectionStyle}>
-            <MonthCalendar
-              sessions={sessionsForClient}
-              selectedDate={selectedDate}
-              onSelectDate={onSelectDate}
-              theme={theme}
-              borderless={embedded}
-            />
-            <CalendarDayPanel
-              colors={colors}
-              embedded={embedded}
-              dayListTitle={dayListTitle}
-              selectedDate={selectedDate}
-              sessionsOnSelectedDate={sessionsOnSelectedDate}
-              clientLabel={clientLabel}
-              clientId={clientId}
-              theme={theme}
-              onClearDate={onClearDate}
-              onOpenSession={onOpenSession}
-              onScheduleForDate={onScheduleForDate}
-            />
-          </View>
-        )}
-
-        {tab === 'list' && (
-          <View style={tabSectionStyle}>
-            <UpcomingSessionsPanel
-              colors={colors}
-              clientLabel={clientLabel}
-              clientId={clientId}
-              upcomingSessions={upcomingSessions}
-              theme={theme}
-              onOpenSession={onOpenSession}
-              onScheduleNew={onScheduleNew}
-            />
-          </View>
-        )}
-      </ScrollView>
-    </Root>
+    <View style={styles.weekStrip}>
+      {weekDates.map((date) => {
+        const id = dateKeyFromDate(date);
+        const selected = id === selectedDateKey;
+        const hasSession = sessionDays.has(id);
+        const ink = selected ? colors.nbOnFill : colors.nbInk;
+        return (
+          <NbChip
+            key={id}
+            selected={selected}
+            onPress={() => onSelectDate(id)}
+            style={styles.weekChip}
+            contentStyle={styles.weekChipInner}
+          >
+            <View style={styles.weekChipContent}>
+              <Text style={[styles.weekDay, { color: ink }]}>
+                {WEEKDAY_LABELS[date.getDay()]}
+              </Text>
+              <Text style={[styles.weekDate, { color: ink }]}>{format(date, 'd')}</Text>
+              <View
+                style={[
+                  hasSession ? styles.dotFilled : styles.dotHollow,
+                  {
+                    borderColor: ink,
+                    backgroundColor: hasSession ? ink : 'transparent',
+                  },
+                ]}
+              />
+            </View>
+          </NbChip>
+        );
+      })}
+    </View>
   );
 }
 
-// ===== MAIN FUNCTION =====
-// (where the data actually comes from — read this last; ScreenLayout above does the rendering)
+// ===== MAIN =====
 
 /**
- * The trainer's session calendar — a month view plus an upcoming list, both backed by
- * the live useSessions() Firestore listener. Pass clientId to show only that client's sessions.
- * This function only wires data (Firestore, state, handlers); ScreenLayout above does the
- * actual rendering.
- * @param {object} props
- * @param {'dark'|'light'} [props.theme]
- * @param {boolean} [props.embedded] - true when shown inside another screen (e.g. client detail)
- * @param {(path: string) => void} [props.onNavigate]
- * @param {string} [props.clientId] - when set, only this client's sessions are shown
- * @param {string} [props.clientName]
- * @returns {JSX.Element}
+ * Trainer session calendar — week agenda (default), month grid, or upcoming list.
+ * Pass clientId to filter to one client. Restyle only — Firestore keys unchanged.
  */
-export const BookSessionScreen = ({ theme, embedded = true, onNavigate, clientId, clientName }) => {
-  const colorScheme = useColorScheme();
-  const isDark = theme === 'dark' || (theme == null && colorScheme === 'dark');
-  const colors = isDark ? darkColors : lightColors;
-
-  // Live data: whenever Firestore changes, useSessions() re-renders this screen automatically.
+export const BookSessionScreen = ({
+  theme: _themeIgnored,
+  embedded = true,
+  onNavigate,
+  clientId,
+  clientName,
+}) => {
+  const { colors, isDark: _isDark } = useTheme();
   const { sessions } = useSessions();
-
-  // Which day is tapped on the calendar (null = none tapped yet), and which tab is showing.
-  const [selectedDate, setSelectedDate] = useState(null);
-  const [tab, setTab] = useState('calendar');
-
-  // Not read directly below — calling this hook keeps the screen in sync if the device's
-  // safe-area (notch/home-bar) size changes, e.g. on rotation.
-  const insets = useSafeAreaInsets();
+  const shellTopPad = useShellTopPad(spacing.sm);
   const scrollBottomPad = useEmbeddedScrollBottomPad(
     embedded ? SCROLL_BOTTOM_PAD_EMBEDDED : SCROLL_BOTTOM_PAD_STANDALONE,
   );
 
-  // Standalone Sessions tab has no single client — label the list as "all clients".
-  const clientLabel = clientName || (clientId ? 'this client' : 'all clients');
+  const [tab, setTab] = useState('calendar');
+  // vocab: calendarMode = week strip (default) vs full month grid
+  const [calendarMode, setCalendarMode] = useState('week');
+  const [weekAnchor, setWeekAnchor] = useState(() => new Date());
+  const [selectedDate, setSelectedDate] = useState(() => dateKeyFromDate(new Date()));
 
-  // When embedded on a client's detail page, only that client's sessions should show.
-  // When this screen is the trainer's main "Sessions" tab (no clientId), show everyone's.
+  const clientLabel = clientName || (clientId ? 'this client' : 'all clients');
+  const todayKey = dateKeyFromDate(new Date());
+
   const sessionsForClient = useMemo(() => {
-    const allSessions = sessions || [];
-    if (!clientId) return allSessions;
-    const clientIdText = String(clientId);
-    return allSessions.filter(
-      (session) => session?.clientId != null && String(session.clientId) === clientIdText,
-    );
+    const all = sessions || [];
+    if (!clientId) return all;
+    const id = String(clientId);
+    return all.filter((s) => s?.clientId != null && String(s.clientId) === id);
   }, [sessions, clientId]);
 
-  const todayKey = new Date().toISOString().slice(0, 10);
+  const sessionDays = useMemo(
+    () => collectSessionDayKeys(sessionsForClient),
+    [sessionsForClient],
+  );
 
-  // The next 5 sessions from today onward, earliest first — used by the "List" tab.
+  const weekDates = useMemo(() => generateWeekDates(weekAnchor), [weekAnchor]);
+  const monthTitle = format(weekAnchor, 'MMMM yyyy');
+
+  const sessionsOnSelectedDate = useMemo(() => {
+    if (!selectedDate) return [];
+    return sessionsForClient
+      .filter((s) => s.date === selectedDate)
+      .sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')));
+  }, [sessionsForClient, selectedDate]);
+
   const upcomingSessions = useMemo(
     () =>
       [...sessionsForClient]
-        .filter((session) => (session.date || '') >= todayKey)
-        .sort((sessionA, sessionB) =>
-          (String(sessionA.date) + String(sessionA.time)).localeCompare(
-            String(sessionB.date) + String(sessionB.time),
-          ),
+        .filter((s) => (s.date || '') >= todayKey)
+        .sort((a, b) =>
+          `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`),
         )
-        .slice(0, 5),
+        .slice(0, UPCOMING_LIMIT),
     [sessionsForClient, todayKey],
   );
 
-  // Only filled in once the trainer taps a specific day on the calendar.
-  const sessionsOnSelectedDate = selectedDate
-    ? sessionsForClient
-        .filter((session) => session.date === selectedDate)
-        .sort((sessionA, sessionB) => String(sessionA.time).localeCompare(String(sessionB.time)))
-    : [];
+  const groupedUpcoming = useMemo(
+    () => groupSessionsByDate(upcomingSessions),
+    [upcomingSessions],
+  );
 
-  // Heading above the day's session list: the tapped date, or a hint to tap one, or the list title.
-  const dayListTitle =
-    tab === 'list'
-      ? `Upcoming · ${clientLabel}`
-      : selectedDate
-        ? formatDateLong(selectedDate)
-        : 'Tap a day';
-
-  // Where "New session" should navigate to — pre-fills the date if one is already selected.
   function newSessionPath(dateKey) {
     if (!dateKey) return '/sessions/new';
     return `/sessions/new?date=${encodeURIComponent(dateKey)}`;
   }
 
-  // Tapping any session card in either tab opens that session's detail page.
   function goToSession(sessionId) {
     onNavigate?.(`/sessions/${sessionId}`);
   }
 
-  // Hand everything off to the layout function above — it does all the actual rendering.
+  const agendaCount = sessionsOnSelectedDate.length;
+  const agendaTitle = selectedDate
+    ? calendarMode === 'month'
+      ? `${formatAgendaTitle(selectedDate)} · ${agendaCount} session${agendaCount === 1 ? '' : 's'}`
+      : formatAgendaTitle(selectedDate)
+    : 'Pick a day';
+
+  const headerPad = embedded ? 0 : shellTopPad;
+
   return (
-    <ScreenLayout
-      embedded={embedded}
-      theme={theme}
-      colors={colors}
-      isDark={isDark}
-      scrollBottomPad={scrollBottomPad}
-      clientId={clientId}
-      clientLabel={clientLabel}
-      tab={tab}
-      onSelectTab={setTab}
-      selectedDate={selectedDate}
-      onSelectDate={(tappedDateKey) => setSelectedDate(tappedDateKey)}
-      sessionsForClient={sessionsForClient}
-      dayListTitle={dayListTitle}
-      sessionsOnSelectedDate={sessionsOnSelectedDate}
-      onClearDate={() => setSelectedDate(null)}
-      onOpenSession={goToSession}
-      onScheduleForDate={(dateKey) => onNavigate?.(newSessionPath(dateKey))}
-      upcomingSessions={upcomingSessions}
-      onScheduleNew={() => onNavigate?.(newSessionPath(null))}
-      onNewSessionPress={() => onNavigate?.(newSessionPath(selectedDate))}
-    />
+    <View
+      style={[
+        styles.root,
+        {
+          backgroundColor: embedded ? 'transparent' : colors.nbBackground,
+          paddingTop: headerPad,
+        },
+      ]}
+    >
+      {/* Title row + add — Design Law PNG header */}
+      {!embedded ? (
+        <View style={styles.headerRow}>
+          <Text style={[styles.screenTitle, { color: colors.nbInk }]} numberOfLines={1}>
+            Trainer scheduling
+          </Text>
+          <NavSquare
+            colors={colors}
+            onPress={() => onNavigate?.(newSessionPath(selectedDate))}
+          >
+            <Plus size={22} color={colors.nbInk} strokeWidth={3} />
+          </NavSquare>
+        </View>
+      ) : null}
+
+      <View style={[styles.switcherWrap, embedded && styles.switcherEmbedded]}>
+        <NbSegmented segments={VIEW_SEGMENTS} selected={tab} onSelect={setTab} />
+      </View>
+
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: scrollBottomPad }]}
+        {...FORM_SCROLL_PROPS}
+      >
+        {tab === 'calendar' ? (
+          <View style={styles.section}>
+            {/* Week mode owns the month chevrons; month mode uses MonthCalendar's header (PNG 05) */}
+            {calendarMode === 'week' ? (
+              <>
+                <View style={styles.monthNav}>
+                  <NavSquare
+                    colors={colors}
+                    onPress={() => setWeekAnchor((d) => subWeeks(d, 1))}
+                  >
+                    <ChevronLeft size={18} color={colors.nbInk} />
+                  </NavSquare>
+                  <Text style={[styles.monthTitle, { color: colors.nbInk }]}>
+                    {monthTitle}
+                  </Text>
+                  <NavSquare
+                    colors={colors}
+                    onPress={() => setWeekAnchor((d) => addWeeks(d, 1))}
+                  >
+                    <ChevronRight size={18} color={colors.nbInk} />
+                  </NavSquare>
+                </View>
+                <WeekDateStrip
+                  weekDates={weekDates}
+                  selectedDateKey={selectedDate}
+                  sessionDays={sessionDays}
+                  onSelectDate={setSelectedDate}
+                  colors={colors}
+                />
+              </>
+            ) : (
+              <MonthCalendar
+                key={`${weekAnchor.getFullYear()}-${weekAnchor.getMonth()}`}
+                sessions={sessionsForClient}
+                selectedDate={selectedDate}
+                onSelectDate={setSelectedDate}
+                onMonthChange={(cursor) => setWeekAnchor(cursor)}
+                borderless
+              />
+            )}
+
+            {/* Agenda header + Month view / Week view toggle chip */}
+            <View style={styles.agendaHeader}>
+              <Text style={[styles.agendaTitle, { color: colors.nbInk }]} numberOfLines={1}>
+                {agendaTitle}
+              </Text>
+              <NbChip
+                selected={false}
+                variant="outline"
+                onPress={() =>
+                  setCalendarMode((m) => (m === 'week' ? 'month' : 'week'))
+                }
+                contentStyle={styles.monthViewChip}
+              >
+                {calendarMode === 'week' ? 'Month view' : 'Week view'}
+              </NbChip>
+            </View>
+
+            {sessionsOnSelectedDate.length === 0 ? (
+              <EmptyState
+                title="Schedule your first session."
+                subtitle={
+                  clientId
+                    ? `Tap a day to see ${clientLabel}'s sessions. Add one and they get an invite.`
+                    : 'Tap a day on the calendar to see sessions. Add one and your client gets an invite.'
+                }
+                cta="New session"
+                onCta={() => onNavigate?.(newSessionPath(selectedDate))}
+              />
+            ) : (
+              <View style={styles.cardStack}>
+                {sessionsOnSelectedDate.map((session) => (
+                  <TouchableOpacity
+                    key={session.id}
+                    onPress={() => goToSession(session.id)}
+                    activeOpacity={0.88}
+                  >
+                    <SessionCard session={session} showDate={false} />
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+          </View>
+        ) : null}
+
+        {tab === 'list' ? (
+          <View style={styles.section}>
+            {groupedUpcoming.length === 0 ? (
+              <EmptyState
+                title="No upcoming sessions."
+                subtitle="Sessions you schedule show up here in date order."
+                cta="New session"
+                onCta={() => onNavigate?.(newSessionPath(null))}
+              />
+            ) : (
+              groupedUpcoming.map(([dateKey, daySessions]) => (
+                <View key={dateKey} style={styles.listGroup}>
+                  <Text style={[styles.listDayHeader, { color: colors.nbInk }]}>
+                    {formatDayHeader(dateKey, todayKey)}
+                  </Text>
+                  <View style={styles.cardStack}>
+                    {daySessions.map((session) => (
+                      <TouchableOpacity
+                        key={session.id}
+                        onPress={() => goToSession(session.id)}
+                        activeOpacity={0.88}
+                      >
+                        <SessionCard session={session} showDate={false} />
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              ))
+            )}
+          </View>
+        ) : null}
+
+        {/* Embedded client detail still needs an obvious create CTA */}
+        {embedded ? (
+          <NbButton
+            variant="ghost"
+            onPress={() => onNavigate?.(newSessionPath(selectedDate))}
+          >
+            New session
+          </NbButton>
+        ) : null}
+      </ScrollView>
+    </View>
   );
 };
 
 export default BookSessionScreen;
 
-// Fixed layout numbers (sizes, spacing, radii) for every piece above.
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  embeddedRoot: { flexGrow: 0, flexShrink: 0 },
-  aurora: { position: 'absolute', inset: 0 },
-  header: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  headerEmbedded: {
-    paddingHorizontal: 0,
-    paddingTop: 0,
-    paddingBottom: 12,
-  },
-  headerContent: {
+  root: { flex: 1 },
+  headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 16,
-  },
-  brandContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.sm,
     gap: 12,
   },
-  brandIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: borderRadius.nbCard,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  appTitle: {
-    fontSize: 16,
-    fontFamily: 'SpaceGrotesk_700Bold',
-    fontWeight: '700',
-    letterSpacing: -0.5,
-  },
-  appSubtitle: {
-    fontSize: 10,
-    marginTop: 2,
-  },
-  themeToggle: { width: 44, height: 32 },
-  segmentedControl: {
-    flexDirection: 'row',
-    borderRadius: borderRadius.nbSheet,
-    padding: 4,
-    borderWidth: nb.borderWidth,
-    gap: 4,
-  },
-  segmentedEmbedded: {
-    borderWidth: 0,
-    backgroundColor: 'transparent',
-    padding: 0,
-    gap: 8,
-  },
-  segBtn: {
+  screenTitle: {
     flex: 1,
-    paddingVertical: 9,
-    paddingHorizontal: 8,
-    borderRadius: borderRadius.nbCard,
-    flexDirection: 'row',
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 28,
+    letterSpacing: -0.4,
+  },
+  navSquare: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    borderWidth: nb.borderWidth,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  switcherWrap: {
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  switcherEmbedded: {
+    paddingHorizontal: 0,
+  },
+  scroll: { flex: 1 },
+  scrollContent: {
+    paddingHorizontal: spacing.md,
+    gap: spacing.md,
+  },
+  section: { gap: spacing.md },
+  monthNav: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  monthTitle: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 16,
+    letterSpacing: -0.2,
+  },
+  weekStrip: {
+    flexDirection: 'row',
     gap: 6,
   },
-  segBtnActive: {
-    // gradient background applied as wrapper
-  },
-  segBtnGradient: {
-    borderRadius: borderRadius.nbCard,
-    overflow: 'hidden',
-  },
-  segBtnText: { 
-    fontSize: 12, 
-    fontFamily: 'SpaceGrotesk_700Bold',
-    fontWeight: '700' 
-  },
-  content: { flexGrow: 0 },
-  scrollContent: { gap: 0 },
-  scrollContentEmbedded: { gap: 12 },
-  newSessionRow: { marginBottom: 8, paddingHorizontal: 16 },
-  section: { padding: 16, paddingTop: 0 },
-  sectionEmbedded: { paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0 },
-  dayListSection: { marginTop: 14 },
-  dayListHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-    paddingHorizontal: 0,
-  },
-  dayListTitle: { 
-    fontSize: 14, 
-    fontFamily: 'SpaceGrotesk_700Bold',
-    fontWeight: '700' 
-  },
-  clearBtn: { 
-    fontSize: 12, 
-    fontFamily: 'SpaceGrotesk_700Bold',
-    fontWeight: '700' 
-  },
-  listHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
+  weekChip: { flex: 1, minWidth: 0 },
+  weekChipInner: {
+    minHeight: 68,
+    paddingVertical: 8,
     paddingHorizontal: 4,
+    width: '100%',
   },
-  listTitle: { 
-    fontSize: 14, 
+  weekChipContent: { alignItems: 'center', gap: 2 },
+  weekDay: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 11,
+    textTransform: 'uppercase',
+  },
+  weekDate: {
     fontFamily: 'SpaceGrotesk_700Bold',
-    fontWeight: '700' 
+    fontSize: 16,
   },
-  listCount: { fontSize: 12 },
-  sessionsList: { gap: 14 },
-  emptyPrompt: {
-    borderRadius: borderRadius.nbCard,
-    paddingVertical: 24,
-    paddingHorizontal: 16,
+  dotFilled: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginTop: 4,
+  },
+  dotHollow: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    borderWidth: 1.5,
+    marginTop: 4,
+  },
+  agendaHeader: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
   },
-  emptyPromptEmbedded: {
-    paddingVertical: 12,
-    paddingHorizontal: 0,
-    alignItems: 'flex-start',
+  agendaTitle: {
+    flex: 1,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 15,
   },
-  emptyPromptText: { fontSize: 14, textAlign: 'center', lineHeight: 20 },
+  monthViewChip: {
+    minHeight: 32,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+  },
+  cardStack: { gap: 12 },
+  listGroup: { gap: 10, marginBottom: 8 },
+  listDayHeader: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 15,
+  },
   emptyState: {
-    paddingVertical: 40,
+    paddingVertical: 28,
     paddingHorizontal: 16,
     alignItems: 'center',
+    gap: 10,
   },
-  emptyIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: borderRadius.nbChip,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-  },
-  emptyTitle: { 
-    fontSize: 16, 
+  emptyTitle: {
     fontFamily: 'SpaceGrotesk_700Bold',
-    fontWeight: '700', 
-    marginBottom: 4 
+    fontSize: 18,
+    textAlign: 'center',
   },
-  emptySubtitle: { fontSize: 12, marginBottom: 16, textAlign: 'center', lineHeight: 18 },
-  emptyBtn: {
-    marginTop: 12,
+  emptySubtitle: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 18,
   },
+  emptyBtn: { marginTop: 6, alignSelf: 'stretch' },
 });
-

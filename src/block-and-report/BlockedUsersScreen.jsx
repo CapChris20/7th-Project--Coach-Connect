@@ -1,6 +1,6 @@
-// Settings sub-panel: list people you’ve blocked and unblock them.
-// Flow: Settings row opens this overlay → listMyBlocks → unblockUser → refresh.
-// Used by: SettingsScreen (local overlay — no shell route required).
+// Design Law Blocked users — NbPageHeader, per-person cards with avatar + Unblock.
+// Flow: Settings opens overlay → listMyBlocks → unblockUser → refresh.
+// Used by: SettingsScreen modal. Block list keys stay as blockUser.js writes them.
 
 import React, { useCallback, useEffect, useState } from 'react';
 import {
@@ -9,7 +9,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -18,6 +17,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../look-and-feel/lightDarkMode';
 import NbPageHeader from '../look-and-feel/NbPageHeader';
 import NbCard from '../look-and-feel/NbCard';
+import NbAvatar from '../look-and-feel/NbAvatar';
+import NbButton from '../look-and-feel/NbButton';
 import { SHELL_SAFE_AREA_EDGES } from '../navigation/bottomMenuSpacing';
 import { listMyBlocks, unblockUser } from './blockUser';
 import { nb, spacing } from '../look-and-feel/colorPalette';
@@ -37,45 +38,53 @@ function blockedUserLabel(item) {
   return item.displayName || item.blockedUid || item.id;
 }
 
-function BlockedUserRow({ item, colors, busyId, onUnblock }) {
+/** Initials for NbAvatar when there is no photo. */
+function initialsFromLabel(label) {
+  const nameText = String(label || '').trim();
+  if (!nameText) return '?';
+  return nameText
+    .split(/\s+/)
+    .map((part) => part[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase();
+}
+
+/**
+ * One blocked person as their own Design Law card (avatar · copy · Unblock).
+ */
+function BlockedUserCard({ item, colors, busyId, onUnblock }) {
   const label = blockedUserLabel(item);
   const isUnblocking = busyId === item.id;
-  const showsStoredId = Boolean(item.displayName);
+  const reasonLine = [item.blockedAtLabel, item.reason].filter(Boolean).join(' · ');
+  const subtitle =
+    reasonLine ||
+    (item.displayName ? String(item.blockedUid || item.id) : 'Blocked from messaging and profile');
 
   return (
-    <View style={styles.row}>
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={[styles.name, { color: colors.nbInk }]} numberOfLines={1}>
-          {label}
-        </Text>
-        {showsStoredId ? (
-          <Text style={[styles.sub, { color: colors.nbMuted }]} numberOfLines={1}>
-            {item.blockedUid || item.id}
+    <NbCard style={styles.userCard}>
+      <View style={styles.row}>
+        <NbAvatar initials={initialsFromLabel(label)} size={44} />
+        <View style={styles.copy}>
+          <Text style={[styles.name, { color: colors.nbInk }]} numberOfLines={1}>
+            {label}
           </Text>
-        ) : null}
+          <Text style={[styles.sub, { color: colors.nbMuted }]} numberOfLines={2}>
+            {subtitle}
+          </Text>
+        </View>
+        <View style={styles.unblockWrap}>
+          <NbButton
+            variant="ghost"
+            sm
+            onPress={() => onUnblock(item.id, item.displayName)}
+            disabled={isUnblocking}
+          >
+            {isUnblocking ? '…' : 'Unblock'}
+          </NbButton>
+        </View>
       </View>
-      <TouchableOpacity
-        onPress={() => onUnblock(item.id, item.displayName)}
-        disabled={isUnblocking}
-        style={[
-          styles.unblockBtn,
-          {
-            borderColor: colors.nbBorder,
-            backgroundColor: colors.nbSurface,
-            shadowColor: colors.nbShadow,
-          },
-        ]}
-        accessibilityRole="button"
-        accessibilityLabel={`Unblock ${label}`}
-        activeOpacity={0.85}
-      >
-        {isUnblocking ? (
-          <ActivityIndicator size="small" color={colors.nbInk} />
-        ) : (
-          <Text style={[styles.unblockText, { color: colors.nbInk }]}>Unblock</Text>
-        )}
-      </TouchableOpacity>
-    </View>
+    </NbCard>
   );
 }
 
@@ -101,14 +110,18 @@ function BlockedUsersBody({ colors, isLoading, rows, busyId, onUnblock }) {
 
   return (
     <ScrollView contentContainerStyle={styles.listPad} showsVerticalScrollIndicator={false}>
-      <NbCard style={styles.listCard}>
-        {rows.map((item, index) => (
-          <View key={item.id}>
-            {index > 0 ? <View style={[styles.sep, { backgroundColor: colors.nbBorder }]} /> : null}
-            <BlockedUserRow item={item} colors={colors} busyId={busyId} onUnblock={onUnblock} />
-          </View>
-        ))}
-      </NbCard>
+      {rows.map((item) => (
+        <BlockedUserCard
+          key={item.id}
+          item={item}
+          colors={colors}
+          busyId={busyId}
+          onUnblock={onUnblock}
+        />
+      ))}
+      <Text style={[styles.helper, { color: colors.nbMuted }]}>
+        Blocked people cannot message you or see your profile. You can unblock anyone here.
+      </Text>
     </ScrollView>
   );
 }
@@ -134,7 +147,7 @@ function BlockedUsersLayout({ colors, isLoading, rows, busyId, onClose, onUnbloc
 // ===== MAIN FUNCTION =====
 
 /**
- * Overlay list of blocked users with an Unblock button on each row.
+ * Overlay list of blocked users with an Unblock button on each card.
  * @param {{ onClose: Function }} props
  */
 export default function BlockedUsersScreen({ onClose }) {
@@ -202,7 +215,7 @@ export default function BlockedUsersScreen({ onClose }) {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   listPad: { paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: 40 },
-  listCard: { paddingVertical: spacing.xs, paddingHorizontal: 0 },
+  userCard: { marginBottom: spacing.md, padding: spacing.md },
   center: {
     flex: 1,
     alignItems: 'center',
@@ -219,28 +232,17 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: spacing.md,
     gap: 12,
     minHeight: nb.minTouchTarget,
   },
+  copy: { flex: 1, minWidth: 0 },
   name: { fontFamily: 'SpaceGrotesk_700Bold', fontSize: 16 },
-  sub: { fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 2 },
-  // Manipulate here: Unblock chip border / hard shadow
-  unblockBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 12,
-    borderWidth: nb.borderWidth,
-    minWidth: 84,
-    minHeight: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowOffset: { width: nb.shadowOffsetSmall, height: nb.shadowOffsetSmall },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 3,
+  sub: { fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 2, lineHeight: 16 },
+  unblockWrap: { maxWidth: 110 },
+  helper: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 13,
+    lineHeight: 19,
+    marginTop: spacing.sm,
   },
-  unblockText: { fontFamily: 'SpaceGrotesk_700Bold', fontSize: 13 },
-  sep: { height: nb.borderWidthDivider, marginHorizontal: spacing.md },
 });

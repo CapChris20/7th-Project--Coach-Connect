@@ -20,7 +20,14 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../look-and-feel/lightDarkMode';
-import { deleteUser, getAuth, signOut, updatePassword } from 'firebase/auth';
+import {
+  deleteUser,
+  EmailAuthProvider,
+  getAuth,
+  reauthenticateWithCredential,
+  signOut,
+  updatePassword,
+} from 'firebase/auth';
 import { doc, setDoc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../app-start/cloudConnection';
 import { httpsCallable } from 'firebase/functions';
@@ -337,11 +344,12 @@ function SettingsProfileCard({ name, subtitle, initials, photoURL, onEdit, color
   return (
     <NbCard style={styles.identityCard}>
       <View style={styles.identityRow}>
+        {/* Design Law: avatar gradient accent OK; 3px border keeps chrome honest */}
         <LinearGradient
           colors={gradients.brand.colors}
           start={gradients.brand.start}
           end={gradients.brand.end}
-          style={styles.identityAvatar}
+          style={[styles.identityAvatar, { borderColor: colors.nbBorder }]}
         >
           {photoURL ? (
             <Image source={{ uri: photoURL }} style={styles.identityAvatarImg} />
@@ -594,7 +602,7 @@ function PaymentStatusChip({ label, tone, colors }) {
  */
 function PaymentHistoryRow({ row, colors }) {
   const amountText = row.amount % 1 === 0 ? String(row.amount) : row.amount.toFixed(2);
-  const statusColor = row.status === 'Completed' ? colors.success : colors.warning;
+  // Design Law: status text stays ink/muted — no green status chrome
   return (
     <View
       style={{
@@ -643,7 +651,7 @@ function PaymentHistoryRow({ row, colors }) {
           fontSize: 11,
           fontFamily: 'SpaceGrotesk_700Bold',
           textAlign: 'right',
-          color: statusColor,
+          color: colors.nbMuted,
         }}
       >
         {row.status}
@@ -685,7 +693,10 @@ export default function SettingsScreen({
   const [reminderTime, setReminderTime] = useState(new Date());
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [isPasswordModalVisible, setPasswordModalVisible] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordUpdatedNote, setPasswordUpdatedNote] = useState(false);
   const [showDeleteHoldModal, setShowDeleteHoldModal] = useState(false);
   const [showBlockedUsers, setShowBlockedUsers] = useState(false);
   const [aiDetailsOpen, setAiDetailsOpen] = useState(false);
@@ -800,21 +811,46 @@ export default function SettingsScreen({
     }
   };
 
-  // 3. Update Firebase Auth password from the bottom sheet.
-  const handleChangePassword = () => {
-    if (!newPassword) {
-      Alert.alert('Error', 'Please enter a new password.');
+  // 3. Re-auth with current password, then update Firebase Auth password (Design Law: 3 fields).
+  const handleChangePassword = async () => {
+    if (!user) {
+      Alert.alert('Error', 'Please sign in again and retry.');
       return;
     }
-    updatePassword(user, newPassword)
-      .then(() => {
-        Alert.alert('Success', 'Password updated successfully.');
-        setNewPassword('');
-        setPasswordModalVisible(false);
-      })
-      .catch((error) => {
-        Alert.alert('Error', error.message);
-      });
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      Alert.alert('Error', 'Fill in current, new, and confirm password.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      Alert.alert('Error', 'New password and confirmation do not match.');
+      return;
+    }
+    if (newPassword.length < 6) {
+      Alert.alert('Error', 'New password must be at least 6 characters.');
+      return;
+    }
+    try {
+      const email = user.email;
+      if (!email) throw new Error('No email on this account — sign in again.');
+      // vocab: reauthenticateWithCredential proves they know the current password before updatePassword.
+      const credential = EmailAuthProvider.credential(email, currentPassword);
+      await reauthenticateWithCredential(user, credential);
+      await updatePassword(user, newPassword);
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setPasswordUpdatedNote(true);
+    } catch (error) {
+      Alert.alert('Error', error?.message || 'Could not update password.');
+    }
+  };
+
+  const closePasswordModal = () => {
+    setPasswordModalVisible(false);
+    setCurrentPassword('');
+    setNewPassword('');
+    setConfirmPassword('');
+    setPasswordUpdatedNote(false);
   };
 
   // 4. Delete via callable, then HTTP fallback, then sign out.
@@ -1214,17 +1250,7 @@ export default function SettingsScreen({
             title="Privacy and data rights"
             colors={colors}
             showChevron
-            onPress={() =>
-              Alert.alert(
-                'Privacy & your data',
-                'Use Delete account (below) to permanently remove your account from this app. Details and any limits are in the Privacy Policy.\n\nFor a copy of your data, corrections, or other privacy requests (including under laws like the GDPR), contact us through Contact Support. We may ask you to verify your identity.\n\nThis app cannot provide legal advice; work with counsel if you need a formal compliance review.',
-                [
-                  { text: 'Privacy Policy', onPress: () => openSettingsSubScreen('privacy', onNavigate) },
-                  { text: 'Contact Support', onPress: () => openSettingsSubScreen('contactSupport', onNavigate) },
-                  { text: 'Close', style: 'cancel' },
-                ],
-              )
-            }
+            onPress={() => openSettingsSubScreen('privacyDataRights', onNavigate)}
           />
           <GroupDivider colors={colors} />
           <SettingsGroupRow
@@ -1269,29 +1295,64 @@ export default function SettingsScreen({
             ]}
           >
             <Text style={[styles.bottomSheetTitle, { color: colors.nbInk }]}>Change password</Text>
-            <Text style={[styles.passwordLabel, { color: colors.nbMuted }]}>NEW PASSWORD</Text>
-            <TextInput
-              style={[
-                styles.passwordInput,
-                {
-                  backgroundColor: colors.nbSurface,
-                  color: colors.nbInk,
-                  borderColor: colors.nbBorder,
-                  shadowColor: colors.nbShadow,
-                },
-              ]}
-              placeholder="New password"
-              placeholderTextColor={colors.nbMuted}
-              secureTextEntry
-              value={newPassword}
-              onChangeText={setNewPassword}
-            />
+            {[
+              {
+                key: 'current',
+                label: 'CURRENT PASSWORD',
+                value: currentPassword,
+                setValue: setCurrentPassword,
+              },
+              {
+                key: 'new',
+                label: 'NEW PASSWORD',
+                value: newPassword,
+                setValue: setNewPassword,
+              },
+              {
+                key: 'confirm',
+                label: 'CONFIRM NEW PASSWORD',
+                value: confirmPassword,
+                setValue: setConfirmPassword,
+              },
+            ].map((field) => (
+              <View key={field.key}>
+                <Text style={[styles.passwordLabel, { color: colors.nbMuted }]}>{field.label}</Text>
+                <TextInput
+                  style={[
+                    styles.passwordInput,
+                    {
+                      backgroundColor: colors.nbSurface,
+                      color: colors.nbInk,
+                      borderColor: colors.nbBorder,
+                      shadowColor: colors.nbShadow,
+                    },
+                  ]}
+                  placeholder="••••••••"
+                  placeholderTextColor={colors.nbMuted}
+                  secureTextEntry
+                  value={field.value}
+                  onChangeText={field.setValue}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              </View>
+            ))}
+            {passwordUpdatedNote ? (
+              <NbCard style={styles.passwordSuccessCard}>
+                <Text style={[styles.passwordSuccessTitle, { color: colors.nbInk }]}>
+                  Password updated successfully.
+                </Text>
+                <Text style={[styles.passwordSuccessBody, { color: colors.nbMuted }]}>
+                  This is the success message, shown after saving.
+                </Text>
+              </NbCard>
+            ) : null}
             <View style={styles.confirmButtonOuter}>
               <NbButton variant="fill" onPress={handleChangePassword}>
                 Update password
               </NbButton>
             </View>
-            <TouchableOpacity style={styles.cancelButton} onPress={() => setPasswordModalVisible(false)}>
+            <TouchableOpacity style={styles.cancelButton} onPress={closePasswordModal}>
               <Text style={[styles.cancelButtonText, { color: colors.nbMuted }]}>Cancel</Text>
             </TouchableOpacity>
           </View>
@@ -1319,8 +1380,7 @@ export default function SettingsScreen({
           '\n\nHold the button until the bar fills to confirm.'
         }
         holdDurationMs={HOLD_TO_DELETE_MS}
-        pillLabel="Hold until bar fills to delete account"
-        barGradient={gradients.brand.colors}
+        pillLabel="Hold to confirm"
         onHoldComplete={performDeleteAccount}
       />
 
@@ -1395,6 +1455,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
+    borderWidth: nb.borderWidth,
   },
   identityAvatarImg: { width: 52, height: 52, borderRadius: 26 },
   identityInitials: {
@@ -1559,5 +1620,19 @@ const styles = StyleSheet.create({
   cancelButton: { padding: spacing.md, alignItems: 'center' },
   cancelButtonText: {
     fontFamily: 'Inter_600SemiBold',
+  },
+  passwordSuccessCard: {
+    marginBottom: spacing.md,
+    padding: spacing.md,
+  },
+  passwordSuccessTitle: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 15,
+    marginBottom: 4,
+  },
+  passwordSuccessBody: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 13,
+    lineHeight: 18,
   },
 });

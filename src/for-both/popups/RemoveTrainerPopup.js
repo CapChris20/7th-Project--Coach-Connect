@@ -1,27 +1,27 @@
-// Bottom sheet to end a trainer–client link, with reasons and a hold-to-confirm.
-// Flow: pick why → hold the button → call removeTrainerClientLink → close.
-// Used from client Settings (Remove Trainer) and trainer client detail (Remove Client).
+// Design Law remove-trainer sheet — reason chips, “What changes”, Keep / Remove.
+// Flow: pick why → Remove calls removeTrainerClientLink → parent refreshes → close.
+// Used from client Settings / home card and trainer client detail. Firebase projectId stays anatrox-auth.
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   Modal,
-  TouchableOpacity,
+  Pressable,
   TextInput,
-  Animated,
-  Alert,
+  ScrollView,
+  StyleSheet,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { collection, serverTimestamp } from 'firebase/firestore';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { httpsCallable } from 'firebase/functions';
-import { db, functions } from '../../app-start/cloudConnection';
-import { lightColors } from '../../look-and-feel/colorPalette';
+import { functions } from '../../app-start/cloudConnection';
+import { useTheme } from '../../look-and-feel/lightDarkMode';
+import NbButton from '../../look-and-feel/NbButton';
+import NbCard from '../../look-and-feel/NbCard';
+import NbPill from '../../look-and-feel/NbPill';
+import { nb, spacing } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
-
-// Manipulate here: how long they must hold before the link is removed.
-const HOLD_TO_REMOVE_MS = 3000;
 
 const REASONS = [
   'Not seeing results',
@@ -43,6 +43,7 @@ function nextSelectedReasons(currentReasons, reasonLabel) {
 
 /**
  * Cloud Function that ends the trainer–client link. Same argument keys as before.
+ * vocab: httpsCallable = Firebase callable. Server name stays removeTrainerClientLink.
  * @param {{ trainerId: string, clientId: string, reasons: string[], otherText: string|null, removedBy: string }} args
  * @returns {Promise<unknown>}
  */
@@ -50,7 +51,6 @@ async function callRemoveTrainerClientLink({ trainerId, clientId, reasons, other
   if (!functions) {
     throw new Error('Cloud Functions not initialized');
   }
-  // vocab: httpsCallable = Firebase callable. The server name stays removeTrainerClientLink.
   const removeLinkCall = httpsCallable(functions, 'removeTrainerClientLink');
   return removeLinkCall({
     trainerId,
@@ -61,10 +61,26 @@ async function callRemoveTrainerClientLink({ trainerId, clientId, reasons, other
   });
 }
 
+function keepLabel(removedBy, displayName) {
+  if (removedBy === 'client') {
+    return displayName ? `Keep ${displayName.split(' ')[0]}` : 'Keep trainer';
+  }
+  return displayName ? `Keep ${displayName.split(' ')[0]}` : 'Keep client';
+}
+
+function removeTitle(removedBy, displayName) {
+  if (removedBy === 'client') {
+    return displayName
+      ? `Remove ${displayName.split(' ')[0]} as your trainer?`
+      : 'Remove your trainer?';
+  }
+  return displayName ? `Remove ${displayName.split(' ')[0]} as a client?` : 'Remove this client?';
+}
+
 // ===== MAIN FUNCTION =====
 
 /**
- * Remove trainer or client after they pick reasons and hold to confirm.
+ * Single Design Law sheet (not the old 3-step purple wizard).
  * @param {object} props
  */
 export default function RemoveTrainerPopup({
@@ -77,35 +93,34 @@ export default function RemoveTrainerPopup({
   trainerId,
   clientId,
 }) {
-  const [step, setStep] = useState(1);
+  const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const [selectedReasons, setSelectedReasons] = useState([]);
   const [otherText, setOtherText] = useState('');
   const [isRemoving, setIsRemoving] = useState(false);
   const [removalError, setRemovalError] = useState(null);
-  const holdAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (!visible) {
-      setStep(1);
       setSelectedReasons([]);
       setOtherText('');
       setIsRemoving(false);
       setRemovalError(null);
-      holdAnim.setValue(0);
     }
-  }, [visible, holdAnim]);
+  }, [visible]);
+
+  const displayName = removedBy === 'client' ? trainerName : clientName;
+  const canRemove = selectedReasons.length > 0 && !isRemoving;
 
   const toggleReason = (reasonLabel) => {
-    // 1. Tap again to uncheck. First tap adds the reason chip.
     setSelectedReasons((currentReasons) => nextSelectedReasons(currentReasons, reasonLabel));
   };
 
   const handleRemoval = async () => {
-    // 1. Need both ids. Missing either one is a no-op, not a half-delete.
-    if (!trainerId || !clientId) return;
+    if (!trainerId || !clientId || !canRemove) return;
     setRemovalError(null);
+    setIsRemoving(true);
     try {
-      // 2. Call the server. Reasons and "Other" text stay on the request.
       await callRemoveTrainerClientLink({
         trainerId,
         clientId,
@@ -113,8 +128,6 @@ export default function RemoveTrainerPopup({
         otherText: otherText || null,
         removedBy,
       });
-
-      // 3. Parent refreshes, then we close.
       onRemovalComplete?.();
       onClose?.();
     } catch (caughtError) {
@@ -125,413 +138,212 @@ export default function RemoveTrainerPopup({
     }
   };
 
-  const displayName = removedBy === 'client' ? trainerName : clientName;
-
-  const startHold = () => {
-    // 1. Already removing → ignore a second press.
-    if (isRemoving) return;
-
-    // 2. When the bar fills (3 seconds), lock and call the server.
-    const listenerId = holdAnim.addListener(({ value }) => {
-      if (value >= 1) {
-        holdAnim.removeListener(listenerId);
-        setIsRemoving(true);
-        handleRemoval();
-      }
-    });
-    Animated.timing(holdAnim, {
-      toValue: 1,
-      duration: HOLD_TO_REMOVE_MS,
-      useNativeDriver: false,
-    }).start();
-  };
-
-  const cancelHold = () => {
-    // 1. Release early → bar springs back. A finished hold is not cancelled.
-    if (isRemoving) return;
-    Animated.spring(holdAnim, {
-      toValue: 0,
-      useNativeDriver: false,
-    }).start();
-  };
-
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
-    >
-      <TouchableOpacity
-        style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' }}
-        activeOpacity={1}
-        onPress={onClose}
-      >
-        <View
-          style={{
-            marginTop: 'auto',
-            backgroundColor: '#0C0C14',
-            borderTopLeftRadius: 24,
-            borderTopRightRadius: 24,
-            padding: 24,
-          }}
-          onStartShouldSetResponder={() => true}
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={styles.scrim} onPress={onClose}>
+        <Pressable
+          style={[
+            styles.sheet,
+            {
+              backgroundColor: colors.nbSurface,
+              borderColor: colors.nbBorder,
+              paddingBottom: Math.max(insets.bottom, spacing.md) + spacing.sm,
+            },
+          ]}
+          onPress={(event) => event.stopPropagation?.()}
         >
-          <View
-            style={{
-              flexDirection: 'row',
-              justifyContent: 'center',
-              alignItems: 'center',
-              gap: 8,
-              marginBottom: 24,
-            }}
-          >
-            {[1, 2, 3].map((stepNumber) => (
-              <View
-                key={stepNumber}
-                style={{
-                  width: step === stepNumber ? 8 : 6,
-                  height: step === stepNumber ? 8 : 6,
-                  borderRadius: 4,
-                  backgroundColor:
-                    step === stepNumber ? lightColors.primary : 'rgba(255,255,255,0.2)',
-                }}
-              />
-            ))}
+          <View style={styles.handleWrap}>
+            <View style={[styles.handle, { backgroundColor: colors.nbBorder }]} />
           </View>
 
-          {step === 1 && (
-            <>
-              <Text
-                style={{
-                  fontSize: 20,
-                  fontWeight: '700',
-                  color: '#fff',
-                  marginBottom: 8,
-                }}
-              >
-                Before you go...
-              </Text>
-              <Text
-                style={{
-                  fontSize: 14,
-                  color: 'rgba(255,255,255,0.5)',
-                  marginBottom: 24,
-                }}
-              >
-                Help us understand why.
-              </Text>
-              <View
-                style={{
-                  flexDirection: 'row',
-                  flexWrap: 'wrap',
-                  gap: 8,
-                  marginBottom: 20,
-                }}
-              >
-                {REASONS.map((reasonLabel) => {
-                  const selected = selectedReasons.includes(reasonLabel);
-                  return (
-                    <TouchableOpacity
-                      key={reasonLabel}
-                      onPress={() => toggleReason(reasonLabel)}
-                      style={{
-                        height: 36,
-                        paddingHorizontal: 12,
-                        borderRadius: 10,
-                        backgroundColor: selected
-                          ? 'rgba(255,107,157,0.15)'
-                          : 'rgba(255,255,255,0.05)',
-                        borderWidth: 1,
-                        borderColor: selected ? lightColors.primary : 'rgba(255,255,255,0.12)',
-                        justifyContent: 'center',
-                      }}
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={styles.scrollPad}
+          >
+            {/* Design Law accent pill — small gradient OK; no purple borders */}
+            <NbPill variant="energy">Ends coaching</NbPill>
+
+            <Text style={[styles.title, { color: colors.nbInk }]}>
+              {removeTitle(removedBy, displayName)}
+            </Text>
+            <Text style={[styles.sub, { color: colors.nbMuted }]}>
+              Why are you leaving? This helps other clients and {displayName || 'them'}.
+            </Text>
+
+            <View style={styles.chipWrap}>
+              {REASONS.map((reasonLabel) => {
+                const selected = selectedReasons.includes(reasonLabel);
+                return (
+                  <Pressable
+                    key={reasonLabel}
+                    onPress={() => toggleReason(reasonLabel)}
+                    style={[
+                      styles.chip,
+                      {
+                        borderColor: colors.nbBorder,
+                        backgroundColor: selected ? colors.nbFill : colors.nbSurface,
+                        shadowColor: colors.nbShadow,
+                      },
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                  >
+                    <Text
+                      style={[
+                        styles.chipText,
+                        { color: selected ? colors.nbOnFill : colors.nbInk },
+                      ]}
                     >
-                      <Text
-                        style={{
-                          fontSize: 13,
-                          color: selected ? lightColors.primary : 'rgba(255,255,255,0.5)',
-                        }}
-                      >
-                        {reasonLabel}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-              {selectedReasons.includes('Other') && (
-                <TextInput
-                  placeholder="Tell us more (optional)"
-                  placeholderTextColor="rgba(255,255,255,0.3)"
-                  value={otherText}
-                  onChangeText={setOtherText}
-                  style={{
-                    backgroundColor: 'rgba(255,255,255,0.05)',
-                    borderWidth: 1,
-                    borderColor: 'rgba(255,255,255,0.1)',
-                    borderRadius: 10,
-                    height: 44,
-                    paddingHorizontal: 12,
-                    fontSize: 14,
-                    color: '#fff',
-                    marginBottom: 24,
-                  }}
-                />
-              )}
-              <TouchableOpacity
-                onPress={() => setStep(2)}
-                disabled={selectedReasons.length === 0}
-                style={{
-                  width: '100%',
-                  height: 50,
-                  borderRadius: 12,
-                  backgroundColor: lightColors.primary,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  opacity: selectedReasons.length === 0 ? 0.4 : 1,
-                }}
-              >
-                <Text style={{ fontSize: 15, fontWeight: '700', color: '#fff' }}>
-                  Next
-                </Text>
-              </TouchableOpacity>
-            </>
-          )}
+                      {reasonLabel}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
 
-          {step === 2 && (
-            <>
-              <Text
-                style={{
-                  fontSize: 20,
-                  fontWeight: '700',
-                  color: '#fff',
-                  marginBottom: 16,
-                }}
-              >
-                Are you sure?
-              </Text>
-              <View
-                style={{
-                  backgroundColor: 'rgba(255,59,48,0.08)',
-                  borderWidth: 1,
-                  borderColor: 'rgba(255,59,48,0.2)',
-                  borderRadius: 12,
-                  padding: 16,
-                  gap: 12,
-                }}
-              >
-                <View style={{ flexDirection: 'row', gap: 12 }}>
-                  <Ionicons
-                    name="chatbubbles-outline"
-                    size={18}
-                    color="rgba(255,255,255,0.5)"
-                  />
-                  <Text
-                    style={{
-                      fontSize: 13,
-                      color: 'rgba(255,255,255,0.6)',
-                      flex: 1,
-                    }}
-                  >
-                    Your message history will be archived and read-only
-                  </Text>
-                </View>
-                <View style={{ flexDirection: 'row', gap: 12 }}>
-                  <Ionicons
-                    name="barbell-outline"
-                    size={18}
-                    color="rgba(255,255,255,0.5)"
-                  />
-                  <Text
-                    style={{
-                      fontSize: 13,
-                      color: 'rgba(255,255,255,0.6)',
-                      flex: 1,
-                    }}
-                  >
-                    All assigned workouts will be removed from your plan
-                  </Text>
-                </View>
-                <View style={{ flexDirection: 'row', gap: 12 }}>
-                  <Ionicons
-                    name="calendar-outline"
-                    size={18}
-                    color="rgba(255,255,255,0.5)"
-                  />
-                  <Text
-                    style={{
-                      fontSize: 13,
-                      color: 'rgba(255,255,255,0.6)',
-                      flex: 1,
-                    }}
-                  >
-                    Any upcoming scheduled sessions will be cancelled
-                  </Text>
-                </View>
-                <View style={{ flexDirection: 'row', gap: 12 }}>
-                  <Ionicons
-                    name="star-outline"
-                    size={18}
-                    color="rgba(255,255,255,0.5)"
-                  />
-                  <Text
-                    style={{
-                      fontSize: 13,
-                      color: 'rgba(255,255,255,0.6)',
-                      flex: 1,
-                    }}
-                  >
-                    You can leave a review after removing
-                  </Text>
-                </View>
-              </View>
-              <Text
-                style={{
-                  fontSize: 12,
-                  color: '#10B981',
-                  marginTop: 12,
-                }}
-              >
-                Your workout history and progress data stays on your account —
-                you won't lose your personal records.
-              </Text>
-              <TouchableOpacity
-                onPress={() => setStep(1)}
-                style={{
-                  width: '100%',
-                  height: 50,
-                  borderRadius: 12,
-                  borderWidth: 1,
-                  borderColor: 'rgba(255,255,255,0.12)',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  marginTop: 24,
-                }}
-              >
-                <Text
-                  style={{ fontSize: 15, fontWeight: '600', color: 'rgba(255,255,255,0.5)' }}
-                >
-                  Go Back
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => setStep(3)}
-                style={{
-                  width: '100%',
-                  height: 50,
-                  borderRadius: 12,
-                  backgroundColor: lightColors.primary,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  marginTop: 10,
-                }}
-              >
-                <Text style={{ fontSize: 15, fontWeight: '700', color: '#fff' }}>
-                  Continue
-                </Text>
-              </TouchableOpacity>
-            </>
-          )}
+            {selectedReasons.includes('Other') ? (
+              <TextInput
+                placeholder="Tell us more (optional)"
+                placeholderTextColor={colors.nbMuted}
+                value={otherText}
+                onChangeText={setOtherText}
+                style={[
+                  styles.otherInput,
+                  {
+                    backgroundColor: colors.nbBackground,
+                    borderColor: colors.nbBorder,
+                    color: colors.nbInk,
+                    shadowColor: colors.nbShadow,
+                  },
+                ]}
+              />
+            ) : null}
 
-          {step === 3 && (
-            <>
-              <Text
-                style={{
-                  fontSize: 20,
-                  fontWeight: '700',
-                  color: '#fff',
-                  marginBottom: 8,
-                }}
-              >
-                Last step
+            <NbCard style={styles.changesCard}>
+              <Text style={[styles.changesTitle, { color: colors.nbInk }]}>What changes</Text>
+              <Text style={[styles.changesBody, { color: colors.nbMuted }]}>
+                Your plans stay on your phone. {displayName || 'They'} stop seeing new logs. Billing
+                for future sessions stops.
               </Text>
-              <Text
-                style={{
-                  fontSize: 14,
-                  color: 'rgba(255,255,255,0.5)',
-                  marginBottom: 32,
-                }}
-              >
-                Hold the button below for 3 seconds to confirm. This cannot be
-                undone.
-              </Text>
-              <View
-                style={{
-                  width: '100%',
-                  height: 56,
-                  borderRadius: 14,
-                  backgroundColor: 'rgba(255,107,157,0.15)',
-                  borderWidth: 1,
-                  borderColor: lightColors.primary,
-                  overflow: 'hidden',
-                  position: 'relative',
-                }}
-              >
-                <Animated.View
-                  style={{
-                    position: 'absolute',
-                    left: 0,
-                    top: 0,
-                    bottom: 0,
-                    width: holdAnim.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: ['0%', '100%'],
-                    }),
-                    backgroundColor: 'rgba(255,107,157,0.3)',
-                    borderRadius: 14,
-                  }}
-                />
-                <TouchableOpacity
-                  onPressIn={startHold}
-                  onPressOut={cancelHold}
-                  disabled={isRemoving}
-                  style={{
-                    flex: 1,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <Text
-                    style={{
-                      fontSize: 14,
-                      fontWeight: '700',
-                      color: '#fff',
-                    }}
-                  >
-                    {isRemoving
-                      ? 'Removing...'
-                      : `Hold to Remove ${displayName || (removedBy === 'client' ? 'Trainer' : 'Client')}`}
-                  </Text>
-                </TouchableOpacity>
+            </NbCard>
+
+            {removalError ? (
+              <Text style={[styles.errorText, { color: colors.nbInk }]}>{removalError}</Text>
+            ) : null}
+
+            <View style={styles.actions}>
+              <View style={styles.actionFlex}>
+                <NbButton variant="ghost" onPress={onClose} disabled={isRemoving}>
+                  {keepLabel(removedBy, displayName)}
+                </NbButton>
               </View>
-              {removalError ? (
-                <Text
-                  style={{
-                    fontSize: 13,
-                    color: lightColors.primary,
-                    marginTop: 12,
-                  }}
-                >
-                  {removalError}
-                </Text>
-              ) : null}
-              <TouchableOpacity
-                onPress={onClose}
-                style={{ alignItems: 'center', marginTop: 20 }}
-              >
-                <Text
-                  style={{
-                    fontSize: 13,
-                    color: 'rgba(255,255,255,0.4)',
-                  }}
-                >
-                  Changed your mind?
-                </Text>
-              </TouchableOpacity>
-            </>
-          )}
-        </View>
-      </TouchableOpacity>
+              <View style={styles.actionFlex}>
+                <NbButton variant="fill" onPress={handleRemoval} disabled={!canRemove}>
+                  {isRemoving
+                    ? 'Removing…'
+                    : removedBy === 'client'
+                      ? 'Remove trainer'
+                      : 'Remove client'}
+                </NbButton>
+              </View>
+            </View>
+          </ScrollView>
+        </Pressable>
+      </Pressable>
     </Modal>
   );
 }
+
+const styles = StyleSheet.create({
+  scrim: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  sheet: {
+    maxHeight: '92%',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderTopWidth: nb.borderWidth,
+    borderLeftWidth: nb.borderWidth,
+    borderRightWidth: nb.borderWidth,
+    paddingTop: spacing.sm,
+  },
+  handleWrap: { alignItems: 'center', marginBottom: spacing.sm },
+  handle: { width: 40, height: 4, borderRadius: 999 },
+  scrollPad: { paddingHorizontal: spacing.md, paddingBottom: spacing.md },
+  title: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 22,
+    letterSpacing: -0.4,
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  sub: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: spacing.md,
+  },
+  chipWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: spacing.md,
+  },
+  // Manipulate here: reason chip padding / hard shadow
+  chip: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 999,
+    borderWidth: nb.borderWidth,
+    minHeight: 40,
+    justifyContent: 'center',
+    shadowOffset: { width: nb.shadowOffsetSmall, height: nb.shadowOffsetSmall },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 3,
+  },
+  chipText: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 13,
+  },
+  otherInput: {
+    fontFamily: 'Inter_400Regular',
+    borderWidth: nb.borderWidth,
+    borderRadius: 10,
+    minHeight: 48,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.md,
+    shadowOffset: { width: nb.shadowOffsetSmall, height: nb.shadowOffsetSmall },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 3,
+  },
+  changesCard: {
+    marginBottom: spacing.md,
+    padding: spacing.md,
+  },
+  changesTitle: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 15,
+    marginBottom: 6,
+  },
+  changesBody: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  errorText: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 13,
+    marginBottom: spacing.sm,
+  },
+  actions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  actionFlex: { flex: 1 },
+});

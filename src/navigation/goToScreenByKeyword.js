@@ -18,6 +18,7 @@ const SCREEN_TERMS = 'terms';
 const SCREEN_PRIVACY = 'privacy';
 const SCREEN_CONTACT_SUPPORT = 'contactSupport';
 const SCREEN_BUG_REPORT = 'bugReport';
+const SCREEN_PRIVACY_DATA_RIGHTS = 'privacyDataRights';
 const SCREEN_NUTRITION = 'nutrition';
 const SCREEN_WORKOUT = 'workout';
 const SCREEN_MESSAGES = 'messages';
@@ -108,6 +109,10 @@ function dispatchScreenKeyword(shell, screenKeyword) {
   }
   if (screenKeyword === SCREEN_BUG_REPORT) {
     popSettingsThenOpen(shell, () => shell.openBugReport?.());
+    return;
+  }
+  if (screenKeyword === SCREEN_PRIVACY_DATA_RIGHTS) {
+    popSettingsThenOpen(shell, () => shell.openPrivacyDataRights?.());
     return;
   }
 

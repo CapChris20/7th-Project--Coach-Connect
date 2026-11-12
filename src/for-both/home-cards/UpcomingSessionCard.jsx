@@ -1,13 +1,17 @@
-// Neobrutalist session card on the home screen. Invite mode asks Pass / I'm in. Reminder mode can open the workout.
-// Flow: read the session → paint when column + title → show invite buttons or the workout button.
-// Used by the client home when a coach sends or confirms a session (extra invites beyond the primary Up next card).
+// Design Law home / My-sessions invite card: time rail + trainer info + Decline / Confirm.
+// Flow: read the session → paint when column + title → invite buttons or reminder workout CTA.
+// Used by the client home when a coach sends or confirms a session (extra invites beyond Up next).
+//
+// vocab: HardShadow via NbCard; status chips match SessionCard Confirmed/Pending language
+// Manipulate here: button labels (Decline / Confirm per PNG 17), Pass/I'm in retired
 
 import React, { useMemo } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { View, Text, StyleSheet } from 'react-native';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
 import NbCard from '../../look-and-feel/NbCard';
 import NbButton from '../../look-and-feel/NbButton';
+import NbAvatar from '../../look-and-feel/NbAvatar';
+import NbChip from '../../look-and-feel/NbChip';
 import { formatTime12, formatDateLong } from '../../helpers/sessionTimeText';
 import { nb } from '../../look-and-feel/colorPalette';
 
@@ -18,12 +22,24 @@ const SESSION_STATUS_ACCEPTED = 'accepted';
 const DEFAULT_DURATION_MINUTES = 60;
 const INVITE_MODE = 'invite';
 const REMINDER_MODE = 'reminder';
+const TIME_COL_WIDTH = 78;
+const AVATAR_SIZE = 40;
 
-// ===== HELPER FUNCTIONS =====
+// ===== HELPERS =====
 
 function coachFirstName(coachName) {
   const coachNameText = String(coachName || 'Your coach').trim();
   return coachNameText.split(/\s+/)[0] || coachNameText;
+}
+
+function initialsFromName(name) {
+  const parts = String(name || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (parts.length === 0) return '?';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0] || ''}${parts[1][0] || ''}`.toUpperCase();
 }
 
 function sessionDurationMinutes(session) {
@@ -40,8 +56,13 @@ function sessionTimeLabel(session) {
   return formatTime12(session.time) || '—';
 }
 
-function isReminderMode(mode) {
-  return mode === REMINDER_MODE;
+function sessionTypeLabel(session) {
+  return session?.title || session?.focus || session?.type || session?.workoutName || 'Training';
+}
+
+function whereLabel(session) {
+  if (session?.zoomLink) return 'Video link attached';
+  return 'In person';
 }
 
 function passOnThisInvite(onRespond, sessionId) {
@@ -54,25 +75,19 @@ function acceptThisInvite(onRespond, sessionId) {
   onRespond({ sessionId, status: SESSION_STATUS_ACCEPTED });
 }
 
-function InviteActionButtons({ colors, sessionId, onRespond }) {
+function InviteActionButtons({ sessionId, onRespond }) {
   return (
     <View style={styles.actions}>
-      <TouchableOpacity
-        activeOpacity={0.8}
-        onPress={() => passOnThisInvite(onRespond, sessionId)}
-        style={[styles.outlineBtn, { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface }]}
-        hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-      >
-        <Text style={[styles.outlineBtnText, { color: colors.nbInk }]}>Pass</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        activeOpacity={0.92}
-        onPress={() => acceptThisInvite(onRespond, sessionId)}
-        style={[styles.primaryBtn, { backgroundColor: colors.nbFill, borderColor: colors.nbBorder }]}
-      >
-        <Text style={[styles.primaryBtnText, { color: colors.nbOnFill }]}>I’m in</Text>
-        <Ionicons name="arrow-forward" size={18} color={colors.nbOnFill} />
-      </TouchableOpacity>
+      <View style={styles.actionHalf}>
+        <NbButton variant="ghost" sm onPress={() => passOnThisInvite(onRespond, sessionId)}>
+          Decline
+        </NbButton>
+      </View>
+      <View style={styles.actionHalf}>
+        <NbButton variant="fill" sm onPress={() => acceptThisInvite(onRespond, sessionId)}>
+          Confirm
+        </NbButton>
+      </View>
     </View>
   );
 }
@@ -81,17 +96,17 @@ function ReminderWorkoutButton({ onPressViewWorkout }) {
   if (!onPressViewWorkout) return null;
   return (
     <View style={{ marginTop: 4 }}>
-      <NbButton variant="brand" onPress={onPressViewWorkout}>
+      <NbButton variant="fill" onPress={onPressViewWorkout}>
         View / Log Workout
       </NbButton>
     </View>
   );
 }
 
-// ===== MAIN FUNCTION =====
+// ===== MAIN =====
 
 /**
- * Session card. mode "invite" shows Pass and I'm in. mode "reminder" can show View / Log Workout.
+ * Session card. mode "invite" shows Decline and Confirm. mode "reminder" can show View / Log Workout.
  * @param {object} props
  * @param {'invite'|'reminder'} [props.mode]
  * @param {boolean} props.isDark
@@ -116,39 +131,66 @@ export function UpcomingSessionCard({
   const durationMinutes = sessionDurationMinutes(session);
   const dateHuman = sessionDateLabel(session);
   const timeLabel = sessionTimeLabel(session);
-  const isReminder = isReminderMode(mode);
+  const isReminder = mode === REMINDER_MODE;
   const timeParts = String(timeLabel).split(' ');
   const clock = timeParts[0] || '—';
   const meridiem = timeParts[1] || '';
+  const typeLabel = sessionTypeLabel(session);
+  const status = session.status || 'pending';
+  const isConfirmed = status === SESSION_STATUS_ACCEPTED;
+  const isPending = !isConfirmed && status !== SESSION_STATUS_DECLINED;
 
   return (
     <NbCard style={styles.card}>
       <View style={styles.row}>
         <View style={[styles.when, { borderRightColor: colors.nbBorder }]}>
           <Text style={[styles.whenNum, { color: colors.nbInk }]}>{clock}</Text>
+          {meridiem ? (
+            <Text style={[styles.whenMeridiem, { color: colors.nbInk }]}>{meridiem}</Text>
+          ) : null}
           <Text style={[styles.whenSub, { color: colors.nbMuted }]}>
-            {`${meridiem}${meridiem ? ' · ' : ''}${durationMinutes} min`}
+            {`${durationMinutes} min`}
           </Text>
         </View>
-        <View style={{ flex: 1, minWidth: 0, gap: 8 }}>
-          <Text style={[styles.badge, { color: colors.nbMuted }]}>
-            {isReminder ? 'UP NEXT' : 'NEW INVITE'}
-          </Text>
-          <Text style={[styles.title, { color: colors.nbInk }]} numberOfLines={2}>
-            {isReminder
-              ? `${coachFirst} · here’s your time`
-              : `${coachFirst} invited you to a session`}
-          </Text>
-          <Text style={{ fontSize: 13, color: colors.nbMuted }} numberOfLines={2}>
+
+        <View style={styles.body}>
+          <View style={styles.nameRow}>
+            <NbAvatar initials={initialsFromName(coachName)} size={AVATAR_SIZE} />
+            <View style={styles.nameStack}>
+              <Text style={[styles.title, { color: colors.nbInk }]} numberOfLines={1}>
+                {isReminder ? 'Your trainer' : `${coachFirst} invited you`}
+              </Text>
+              <Text style={[styles.subtitle, { color: colors.nbMuted }]} numberOfLines={1}>
+                {typeLabel}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.chipRow}>
+            <NbChip
+              selected={isConfirmed}
+              variant={isConfirmed ? 'default' : 'dashed'}
+              contentStyle={styles.statusChip}
+            >
+              {isConfirmed ? 'Confirmed' : isPending ? 'Pending' : 'Declined'}
+            </NbChip>
+            <NbChip variant="outline" contentStyle={styles.statusChip}>
+              {whereLabel(session)}
+            </NbChip>
+          </View>
+
+          <Text style={[styles.meta, { color: colors.nbMuted }]} numberOfLines={1}>
             {dateHuman}
           </Text>
+
           {session.notes ? (
-            <Text style={{ fontSize: 13, color: colors.nbMuted }} numberOfLines={3}>
+            <Text style={[styles.notes, { color: colors.nbMuted }]} numberOfLines={2}>
               {session.notes}
             </Text>
           ) : null}
+
           {mode === INVITE_MODE ? (
-            <InviteActionButtons colors={colors} sessionId={session.id} onRespond={onRespond} />
+            <InviteActionButtons sessionId={session.id} onRespond={onRespond} />
           ) : (
             <ReminderWorkoutButton onPressViewWorkout={onPressViewWorkout} />
           )}
@@ -165,28 +207,70 @@ const styles = StyleSheet.create({
   },
   row: {
     flexDirection: 'row',
-    gap: 12,
-    padding: 12,
+    alignItems: 'stretch',
   },
   when: {
-    minWidth: 92,
-    paddingRight: 12,
-    borderRightWidth: nb.borderWidth,
+    width: TIME_COL_WIDTH,
+    paddingVertical: 14,
+    paddingHorizontal: 10,
+    borderRightWidth: nb.borderWidthDivider,
     justifyContent: 'center',
   },
-  whenNum: { fontSize: 30, fontWeight: '900', letterSpacing: -1, lineHeight: 32 },
-  whenSub: { fontSize: 13, marginTop: 4, fontWeight: '600' },
-  badge: {
-    fontSize: 11,
-    fontWeight: '900',
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-  },
-  title: {
-    fontSize: 17,
-    fontWeight: '900',
+  whenNum: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 16,
     letterSpacing: -0.3,
-    lineHeight: 22,
+  },
+  whenMeridiem: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 12,
+    marginTop: 1,
+  },
+  whenSub: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 12,
+    marginTop: 6,
+  },
+  body: {
+    flex: 1,
+    minWidth: 0,
+    padding: 12,
+    gap: 8,
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  nameStack: { flex: 1, minWidth: 0, gap: 2 },
+  title: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 16,
+    letterSpacing: -0.2,
+  },
+  subtitle: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 13,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  statusChip: {
+    minHeight: 28,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+  },
+  meta: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 12,
+  },
+  notes: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 12,
+    fontStyle: 'italic',
+    lineHeight: 16,
   },
   actions: {
     flexDirection: 'row',
@@ -194,25 +278,5 @@ const styles = StyleSheet.create({
     gap: 10,
     marginTop: 4,
   },
-  outlineBtn: {
-    minHeight: 44,
-    paddingHorizontal: 14,
-    borderRadius: 10,
-    borderWidth: nb.borderWidth,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  outlineBtnText: { fontSize: 14, fontWeight: '900' },
-  primaryBtn: {
-    flex: 1,
-    minHeight: 44,
-    borderRadius: 10,
-    borderWidth: nb.borderWidth,
-    paddingHorizontal: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  primaryBtnText: { fontSize: 14, fontWeight: '900' },
+  actionHalf: { flex: 1 },
 });

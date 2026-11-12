@@ -1,32 +1,32 @@
-// WeeklyReportBody.jsx
-//
-// This is the scrollable middle of the weekly report: sleep/water/steps/calories cards,
-// the sleep chart, trainer tips, each day the client logged, and wins vs things to work on.
-// It does not talk to the database. WeeklyReportScreen already loaded the weeks and passes them in.
-//
-// How to read this file:
-//   1. Small pieces (labels, glow, sleep card, skipped days)
-//   2. WeeklyReportScrollLayout — the whole screen laid out
-//   3. WeeklyReportBody at the bottom — only remembers what you tapped (popup open, skipped days open)
+// Design Law weekly report body — client (progress PNG) + trainer (trainees PNG) layouts.
+// Flow: week picker → summary/averages → sleep bars → days or wins/priorities → export.
+// Used by WeeklyReportScreen after weeks are loaded. No Firestore here.
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { StatusBar } from 'expo-status-bar';
 import Ionicons from '@expo/vector-icons/Ionicons';
-
-import { GRADIENTS, useTheme } from './reportColorSettings';
+import HardShadow from '../../look-and-feel/HardShadow';
+import NbButton from '../../look-and-feel/NbButton';
+import NbPill from '../../look-and-feel/NbPill';
+import { accentGradients, borderRadius, nb, spacing } from '../../look-and-feel/colorPalette';
+import { useTheme } from './reportColorSettings';
 import { WeekPicker } from './WeekPicker';
 import { StatCard } from './StatCard';
-import { WeeklyChart } from './WeeklyChart';
+import { WeeklyChart, SLEEP_GOAL_HOURS } from './WeeklyChart';
 import { DayCard } from './DayCard';
 import { TrainerTipsForWeek } from './TrainerTipsForWeek';
 import { WinsAndWorkOnsSection } from './WinsAndWorkOnsSection';
+import { TipRow } from './TipRow';
 import { ReportOptionsPopup } from './ReportOptionsPopup';
+import { pickBestTips } from './pickBestTips';
 
 // ===== NAMED CONSTANTS =====
 
 const DARK_MODE = 'dark';
+const ENERGY_MAX = '8';
+const SECTION_GAP = 24;
+const MAX_FOCUS = 5;
 
 // ===== HELPER FUNCTIONS =====
 
@@ -34,189 +34,221 @@ function reportIsUsingDarkColors(colorMode) {
   return colorMode === DARK_MODE;
 }
 
-function checkInCountLabel(loggedDayCount) {
-  if (loggedDayCount === 1) {
-    return '1 check-in logged';
-  }
-  return `${loggedDayCount} check-ins logged`;
+function weekPickerTitle(weekIndex) {
+  return weekIndex === 0 ? 'This week' : 'Earlier week';
 }
 
-function skippedDayCountLabel(skippedDayCount) {
-  if (skippedDayCount === 1) {
-    return '1 day without check-in';
-  }
-  return `${skippedDayCount} days without check-in`;
-}
-
-// Turns a stored date like "2026-03-15" into "03/15" so a skipped-day row can show the month and day.
-function formatSkippedMonthDay(dateKey) {
-  return dateKey.slice(5).replace('-', '/');
-}
-
-function DarkModeGlow() {
+function EyebrowRow({ left, right, colors }) {
   return (
-    <>
-      <View style={[styles.orb, styles.orbTop]}>
-        <LinearGradient
-          colors={['#ff1493', 'transparent']}
-          style={StyleSheet.absoluteFill}
-          start={{ x: 0.5, y: 0 }}
-          end={{ x: 0.5, y: 1 }}
-        />
-      </View>
-      <View style={[styles.orb, styles.orbBottom]}>
-        <LinearGradient
-          colors={['#00bfff', 'transparent']}
-          style={StyleSheet.absoluteFill}
-          start={{ x: 0.5, y: 0 }}
-          end={{ x: 0.5, y: 1 }}
-        />
-      </View>
-    </>
+    <View style={styles.eyebrowRow}>
+      <Text style={[styles.eyebrow, { color: colors.textMuted }]}>{left}</Text>
+      {right ? <Text style={[styles.eyebrowRight, { color: colors.textMuted }]}>{right}</Text> : null}
+    </View>
   );
 }
 
-function SleepTrendCard({ week, colors, colorMode }) {
-  const usingDarkColors = reportIsUsingDarkColors(colorMode);
-  const cardBackgroundColor = usingDarkColors ? 'rgba(20,20,30,0.55)' : 'rgba(255,255,255,0.7)';
-  const cardStyle = [
-    styles.chartCard,
-    { backgroundColor: cardBackgroundColor, borderColor: colors.border },
-  ];
-  const smallLabelStyle = [styles.sectionLabel, { color: colors.textMuted }];
-  const titleStyle = [styles.sectionTitle, { color: colors.textPrimary }];
-  const legendTextStyle = [styles.legendText, { color: colors.textSecondary }];
-
+function SleepTrendCard({ week, colors }) {
   return (
-    <View style={cardStyle}>
-      <View intensity={25} tint={colors.blurTint} style={StyleSheet.absoluteFill} />
-      <View style={styles.chartHeader}>
-        <View>
-          <Text style={smallLabelStyle}>SLEEP TREND</Text>
-          <Text style={titleStyle}>This week</Text>
+    <View style={styles.sectionPad}>
+      <EyebrowRow left="Sleep trend" right={`Goal ${SLEEP_GOAL_HOURS} h`} colors={colors} />
+      <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard}>
+        <View
+          style={[
+            styles.chartCard,
+            { borderColor: colors.border, backgroundColor: colors.surfacePrimary },
+          ]}
+        >
+          <WeeklyChart days={week.days} metricKey="sleepHours" valueSuffix="h" />
         </View>
-        <View style={styles.legendChip}>
-          <View style={styles.legendDot}>
-            <LinearGradient
-              colors={GRADIENTS.g1}
-              style={StyleSheet.absoluteFill}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            />
-          </View>
-          <Text style={legendTextStyle}>Hours / night</Text>
-        </View>
-      </View>
-      <WeeklyChart
-        days={week.days}
-        metricKey="sleepHours"
-        legend="Hours / night"
-        valueSuffix="h"
+      </HardShadow>
+    </View>
+  );
+}
+
+function ClientStatGrid({ week }) {
+  const display = week.stats?.display || {};
+  return (
+    <View style={styles.statsGrid}>
+      <StatCard testID="stat-card-sleep" label="Sleep" value={display.sleep} suffix="h" />
+      <StatCard
+        testID="stat-card-energy"
+        label="Energy"
+        value={display.energy}
+        max={ENERGY_MAX}
       />
+      <StatCard label="Soreness" value={display.soreness} max={ENERGY_MAX} />
+      <StatCard label="Stress" value={display.stress} max={ENERGY_MAX} />
+      <StatCard label="Weight" value={display.weight} suffix="lb" />
+      <StatCard label="Workout adherence" value={display.adherence} suffix="%" />
     </View>
   );
 }
 
-function SkippedDayRow({ skippedDay, colors }) {
-  const rowStyle = [styles.skippedRow, { borderColor: colors.border }];
-  const dayNameStyle = [styles.skippedDay, { color: colors.textSecondary }];
-  const noLogStyle = [styles.skippedHint, { color: colors.textMuted }];
-  const dayName = skippedDay.fullDayName || skippedDay.dayName;
-  const monthAndDay = formatSkippedMonthDay(skippedDay.date);
-
+function TrainerStatGrid({ week }) {
+  const display = week.stats?.display || {};
   return (
-    <View style={rowStyle}>
-      <Text style={dayNameStyle}>{dayName} · {monthAndDay}</Text>
-      <Text style={noLogStyle}>No log</Text>
+    <View style={styles.statsGrid}>
+      <StatCard testID="stat-card-sleep" label="Avg sleep" value={display.sleep} suffix="h" />
+      <StatCard testID="stat-card-water" label="Avg water" value={display.waterCups || display.water} suffix="cups" />
+      <StatCard testID="stat-card-energy" label="Avg energy" value={display.energy} max={ENERGY_MAX} />
+      <StatCard testID="stat-card-steps" label="Avg steps" value={display.steps} />
     </View>
   );
 }
 
-function SkippedDaysSection({ skippedDays, skippedListIsOpen, onToggleSkippedList, colors, colorMode }) {
-  if (skippedDays.length === 0) {
-    return null;
-  }
-
-  const usingDarkColors = reportIsUsingDarkColors(colorMode);
-  const buttonBackgroundColor = usingDarkColors ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)';
-  const buttonStyle = [
-    styles.skippedToggle,
-    { backgroundColor: buttonBackgroundColor, borderColor: colors.border },
-  ];
-  const buttonLabelStyle = [styles.skippedText, { color: colors.textSecondary }];
-  const buttonLabel = skippedDayCountLabel(skippedDays.length);
-  const arrowIconName = skippedListIsOpen ? 'chevron-up' : 'chevron-down';
-
+function DailyBreakdownCard({ days, colors }) {
+  if (!days?.length) return null;
   return (
-    <View>
-      <Pressable testID="toggle-skipped" onPress={onToggleSkippedList} style={buttonStyle}>
-        <Ionicons name="time-outline" size={14} color={colors.textMuted} />
-        <Text style={buttonLabelStyle}>{buttonLabel}</Text>
-        <Ionicons name={arrowIconName} size={14} color={colors.textMuted} />
-      </Pressable>
-      {skippedListIsOpen ? (
-        <View style={styles.skippedList}>
-          {skippedDays.map((skippedDay) => (
-            <SkippedDayRow key={skippedDay.date} skippedDay={skippedDay} colors={colors} />
+    <View style={styles.sectionPad}>
+      <EyebrowRow left="Daily breakdown" colors={colors} />
+      <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard}>
+        <View
+          style={[
+            styles.listCard,
+            { borderColor: colors.border, backgroundColor: colors.surfacePrimary },
+          ]}
+        >
+          {days.map((day, dayIndex) => (
+            <DayCard
+              key={day.date || `day-${dayIndex}`}
+              day={day}
+              index={dayIndex}
+              showDivider={dayIndex < days.length - 1}
+            />
           ))}
         </View>
-      ) : null}
+      </HardShadow>
     </View>
   );
 }
 
-function AverageStatCards({ week, colorMode }) {
-  const sleep = week.stats.display.sleep;
-  const water = week.stats.display.water;
-  const steps = week.stats.display.steps;
-  const calories = week.stats.display.calories;
-
+function ReadyBanner({ colors }) {
   return (
-    <View key={`stats-${week.id}-${colorMode}`} style={styles.statsGrid}>
-      <StatCard
-        testID="stat-card-sleep"
-        label="Avg Sleep"
-        value={sleep}
-        suffix="h"
-        trend={week.stats.sleepTrend}
-        icon="moon"
-        gradient={GRADIENTS.g1}
-      />
-      <StatCard
-        testID="stat-card-water"
-        label="Avg Water"
-        value={water}
-        suffix="oz"
-        trend={week.stats.waterTrend}
-        icon="water"
-        gradient={GRADIENTS.g4}
-      />
-      <StatCard
-        testID="stat-card-steps"
-        label="Avg Steps"
-        value={steps}
-        trend={week.stats.stepsTrend}
-        icon="footsteps"
-        gradient={GRADIENTS.g3}
-      />
-      <StatCard
-        testID="stat-card-calories"
-        label="Avg Calories"
-        value={calories}
-        suffix="cal"
-        trend={week.stats.caloriesTrend}
-        icon="restaurant"
-        gradient={GRADIENTS.g3}
-      />
+    <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard} style={styles.readyWrap}>
+      <View style={[styles.readyCard, { backgroundColor: colors.fill, borderColor: colors.border }]}>
+        <View style={styles.readyLeft}>
+          <View style={[styles.readyDot, { backgroundColor: colors.onFill }]} />
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.readyTitle, { color: colors.onFill }]}>Week in review</Text>
+            <Text style={[styles.readySub, { color: colors.onFill, opacity: 0.75 }]}>
+              Updated automatically after check-ins each week
+            </Text>
+          </View>
+        </View>
+        <View style={[styles.readyPill, { backgroundColor: accentGradients[2][0] }]}>
+          <Text style={styles.readyPillText}>Ready</Text>
+        </View>
+      </View>
+    </HardShadow>
+  );
+}
+
+function TrainerWinsAndPriorities({ week, colors }) {
+  const wins = pickBestTips(week.pros || [], MAX_FOCUS);
+  const priorities = pickBestTips(week.cons || week.focus || [], MAX_FOCUS);
+  return (
+    <View style={{ gap: SECTION_GAP }}>
+      {wins.length ? (
+        <View style={styles.sectionPad}>
+          <View style={styles.eyebrowRow}>
+            <Text style={[styles.eyebrow, { color: colors.textMuted }]}>What went well</Text>
+            <NbPill variant="plain">Wins</NbPill>
+          </View>
+          <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard}>
+            <View
+              style={[
+                styles.listCard,
+                { borderColor: colors.border, backgroundColor: colors.surfacePrimary, gap: spacing.sm + 2 },
+              ]}
+            >
+              {wins.map((text, i) => (
+                <View key={`win-${i}`} style={styles.bulletRow}>
+                  <View style={[styles.bullet, { backgroundColor: colors.fill, borderColor: colors.border }]} />
+                  <Text style={[styles.bulletText, { color: colors.textPrimary }]}>{text}</Text>
+                </View>
+              ))}
+            </View>
+          </HardShadow>
+        </View>
+      ) : null}
+
+      <View style={styles.sectionPad}>
+        <EyebrowRow left="Coaching priorities" right="Your focus" colors={colors} />
+        <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard}>
+          <View
+            style={[
+              styles.listCard,
+              { borderColor: colors.border, backgroundColor: colors.surfacePrimary, gap: spacing.md },
+            ]}
+          >
+            {priorities.map((text, i) => (
+              <TipRow key={`pri-${i}`} index={i + 1} text={text} />
+            ))}
+            <Pressable
+              style={[
+                styles.addPriority,
+                { borderColor: colors.border, backgroundColor: colors.surfacePrimary },
+              ]}
+            >
+              <Ionicons name="add" size={18} color={colors.textPrimary} />
+              <Text style={[styles.addPriorityText, { color: colors.textPrimary }]}>Add a priority</Text>
+            </Pressable>
+          </View>
+        </HardShadow>
+      </View>
     </View>
   );
 }
 
-// ===== SCREEN LAYOUT (what the user sees — read this first) =====
+function TrainerSignOff({ week, clientName, colors, onExport }) {
+  const signOff = String(week.signOff || '').trim();
+  const firstName = String(clientName || week.clientName || 'client').split(' ')[0] || 'client';
+  return (
+    <View style={[styles.sectionPad, { gap: spacing.md }]}>
+      <EyebrowRow left="Sign-off" colors={colors} />
+      {signOff ? (
+        <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard}>
+          <View
+            style={[
+              styles.listCard,
+              { borderColor: colors.border, backgroundColor: colors.surfacePrimary },
+            ]}
+          >
+            <Text style={[styles.signOff, { color: colors.textPrimary }]}>{signOff}</Text>
+          </View>
+        </HardShadow>
+      ) : null}
+      <Text style={[styles.generated, { color: colors.textMuted }]}>
+        Generated from logged check-ins (no AI). Keep logging daily for sharper trends next week.
+      </Text>
+      <NbButton variant="fill" onPress={onExport}>
+        {`Send to ${firstName}`}
+      </NbButton>
+      <NbButton variant="ghost" onPress={onExport}>
+        Open weekly report
+      </NbButton>
+    </View>
+  );
+}
 
-// Lays out the whole report you scroll: week arrows, the four stat cards, sleep chart,
-// trainer tips, each logged day, skipped days, and the export popup.
-// It does not load anything. WeeklyReportBody (below) hands it a week that is already ready.
+function ClientExportButton({ onExport, onOpenSettings }) {
+  return (
+    <View style={[styles.sectionPad, { marginTop: SECTION_GAP, gap: spacing.sm }]}>
+      <NbButton
+        variant="ghost"
+        onPress={() => {
+          if (typeof onExport === 'function') onExport();
+          else onOpenSettings?.();
+        }}
+      >
+        Export weekly report
+      </NbButton>
+    </View>
+  );
+}
+
+// ===== SCREEN LAYOUT =====
+
 function WeeklyReportScrollLayout({
   week,
   weeks,
@@ -224,10 +256,7 @@ function WeeklyReportScrollLayout({
   colors,
   colorMode,
   clientDisplayName,
-  loggedDays,
-  skippedDays,
-  skippedListIsOpen,
-  onToggleSkippedList,
+  isClientSelfView,
   onPreviousWeek,
   onNextWeek,
   onOpenSettings,
@@ -238,35 +267,22 @@ function WeeklyReportScrollLayout({
 }) {
   const usingDarkColors = reportIsUsingDarkColors(colorMode);
   const phoneStatusBarStyle = usingDarkColors ? 'light' : 'dark';
-  const screenStyle = [styles.root, { backgroundColor: colors.background }];
   const canGoToOlderWeek = weekIndex < weeks.length - 1;
   const canGoToNewerWeek = weekIndex > 0;
   const scrollContentStyle = [styles.scrollContent, { paddingBottom: contentBottomPad }];
-  const clientNameStyle = [styles.clientLine, { color: colors.textSecondary }];
-  const smallLabelStyle = [styles.sectionLabel, { color: colors.textMuted }];
-  const titleStyle = [styles.sectionTitle, { color: colors.textPrimary }];
-  const loggedDayHeading = checkInCountLabel(loggedDays.length);
+  const allDays = week.days || [];
 
   return (
-    <View style={screenStyle} testID="weekly-report-screen">
+    <View style={[styles.root, { backgroundColor: colors.background }]} testID="weekly-report-screen">
       <StatusBar style={phoneStatusBarStyle} />
-
-      <LinearGradient
-        colors={colors.backgroundGradient}
-        style={StyleSheet.absoluteFill}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 0, y: 1 }}
-      />
-
-      {usingDarkColors ? <DarkModeGlow /> : null}
 
       <WeekPicker
         label={week.label}
+        title={weekPickerTitle(weekIndex)}
         canPrev={canGoToOlderWeek}
         canNext={canGoToNewerWeek}
         onPrev={onPreviousWeek}
         onNext={onNextWeek}
-        onSettings={onOpenSettings}
       />
 
       <ScrollView
@@ -274,40 +290,54 @@ function WeeklyReportScrollLayout({
         contentContainerStyle={scrollContentStyle}
         showsVerticalScrollIndicator={false}
       >
-        {clientDisplayName ? (
-          <Text style={clientNameStyle}>{`${clientDisplayName}'s week`}</Text>
-        ) : null}
-
-        <AverageStatCards week={week} colorMode={colorMode} />
-
-        <View key={`chart-${week.id}-${colorMode}`} style={styles.section}>
-          <SleepTrendCard week={week} colors={colors} colorMode={colorMode} />
-        </View>
-
-        <TrainerTipsForWeek week={week} />
-
-        <View key={`days-${week.id}-${colorMode}`} style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <View>
-              <Text style={smallLabelStyle}>DAILY BREAKDOWN</Text>
-              <Text style={titleStyle}>{loggedDayHeading}</Text>
+        {isClientSelfView ? (
+          <>
+            <TrainerTipsForWeek week={week} />
+            <ClientStatGrid week={week} />
+            <SleepTrendCard week={week} colors={colors} />
+            <DailyBreakdownCard days={allDays} colors={colors} />
+            <WinsAndWorkOnsSection week={week} animationKey={`coaching-${week.id}-${colorMode}`} />
+            <ClientExportButton onExport={onOpenSettings} onOpenSettings={onOpenSettings} />
+          </>
+        ) : (
+          <>
+            {clientDisplayName ? (
+              <Text style={[styles.clientLine, { color: colors.textMuted }]}>
+                {`${clientDisplayName} · ${week.label}`}
+              </Text>
+            ) : null}
+            <View style={styles.sectionPad}>
+              <ReadyBanner colors={colors} />
             </View>
-          </View>
-
-          {loggedDays.map((day, dayIndex) => (
-            <DayCard key={day.date || `day-${dayIndex}`} day={day} index={dayIndex} />
-          ))}
-
-          <SkippedDaysSection
-            skippedDays={skippedDays}
-            skippedListIsOpen={skippedListIsOpen}
-            onToggleSkippedList={onToggleSkippedList}
-            colors={colors}
-            colorMode={colorMode}
-          />
-        </View>
-
-        <WinsAndWorkOnsSection week={week} animationKey={`coaching-${week.id}-${colorMode}`} />
+            <View style={styles.sectionPad}>
+              <EyebrowRow left="Week averages" colors={colors} />
+            </View>
+            <TrainerStatGrid week={week} />
+            <View style={styles.sectionPad}>
+              <EyebrowRow left="Weekly trends" right="Sleep rhythm" colors={colors} />
+              <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard}>
+                <View
+                  style={[
+                    styles.chartCard,
+                    { borderColor: colors.border, backgroundColor: colors.surfacePrimary },
+                  ]}
+                >
+                  <WeeklyChart days={week.days} metricKey="sleepHours" valueSuffix="h" />
+                  <Text style={[styles.chartCaption, { color: colors.textMuted }]}>
+                    Seven-day breakdown from their daily check-ins. Dashed line is 8 hours.
+                  </Text>
+                </View>
+              </HardShadow>
+            </View>
+            <TrainerWinsAndPriorities week={week} colors={colors} />
+            <TrainerSignOff
+              week={week}
+              clientName={clientDisplayName}
+              colors={colors}
+              onExport={onExport}
+            />
+          </>
+        )}
       </ScrollView>
 
       <ReportOptionsPopup
@@ -320,49 +350,40 @@ function WeeklyReportScrollLayout({
 }
 
 // ===== MAIN FUNCTION =====
-// (week index + “show skipped days” toggles — read this last; WeeklyReportScrollLayout above is the UI)
 
-// What other screens import. It only remembers two taps:
-// whether the options popup is open, and whether the skipped-days list is open.
-// Then it sends the current week plus those taps up to WeeklyReportScrollLayout.
 export function WeeklyReportBody({
   weeks,
   weekIndex,
   onWeekIndexChange,
   clientName = '',
+  isClientSelfView = true,
   onExport,
+  openOptionsSignal = 0,
   contentBottomPad = 32,
 }) {
   const { colors, mode } = useTheme();
   const [settingsPopupIsOpen, setSettingsPopupIsOpen] = useState(false);
-  const [skippedListIsOpen, setSkippedListIsOpen] = useState(false);
+
+  // Header “…” bumps openOptionsSignal — open the same Design Law options sheet
+  useEffect(() => {
+    if (!openOptionsSignal) return undefined;
+    setSettingsPopupIsOpen(true);
+    return undefined;
+  }, [openOptionsSignal]);
 
   const week = weeks[weekIndex];
-  if (!week) {
-    return null;
-  }
+  if (!week) return null;
 
-  const loggedDays = week.loggedDays || [];
-  const skippedDays = week.skippedDays || [];
   const clientDisplayName = clientName || week.clientName || '';
   const olderWeekExists = weekIndex < weeks.length - 1;
   const newerWeekExists = weekIndex > 0;
 
   function showOlderWeek() {
-    if (olderWeekExists) {
-      onWeekIndexChange(weekIndex + 1);
-    }
+    if (olderWeekExists) onWeekIndexChange(weekIndex + 1);
   }
 
   function showNewerWeek() {
-    if (newerWeekExists) {
-      onWeekIndexChange(weekIndex - 1);
-    }
-  }
-
-  function openSkippedDayList() {
-    const listIsCurrentlyOpen = skippedListIsOpen;
-    setSkippedListIsOpen(!listIsCurrentlyOpen);
+    if (newerWeekExists) onWeekIndexChange(weekIndex - 1);
   }
 
   return (
@@ -373,10 +394,7 @@ export function WeeklyReportBody({
       colors={colors}
       colorMode={mode}
       clientDisplayName={clientDisplayName}
-      loggedDays={loggedDays}
-      skippedDays={skippedDays}
-      skippedListIsOpen={skippedListIsOpen}
-      onToggleSkippedList={openSkippedDayList}
+      isClientSelfView={isClientSelfView}
       onPreviousWeek={showOlderWeek}
       onNextWeek={showNewerWeek}
       onOpenSettings={() => setSettingsPopupIsOpen(true)}
@@ -388,88 +406,151 @@ export function WeeklyReportBody({
   );
 }
 
-// Fixed sizes, spacing, and card shapes for the layout above — colors come from reportColorSettings.
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  orb: {
-    position: 'absolute',
-    width: 360,
-    height: 360,
-    borderRadius: 180,
-    opacity: 0.18,
-    overflow: 'hidden',
-  },
-  orbTop: { top: -180, right: -120 },
-  orbBottom: { bottom: -200, left: -160, opacity: 0.12 },
   scroll: { flex: 1 },
-  scrollContent: { paddingTop: 20 },
+  scrollContent: { paddingTop: spacing.xs, gap: 0 },
   clientLine: {
-    paddingHorizontal: 20,
-    fontSize: 14,
+    paddingHorizontal: nb.screenGutter,
+    fontSize: 13,
     fontWeight: '600',
-    marginBottom: 4,
+    marginBottom: spacing.sm,
+  },
+  sectionPad: {
+    paddingHorizontal: nb.screenGutter,
+    marginTop: SECTION_GAP,
+    gap: spacing.sm,
+  },
+  eyebrowRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  eyebrow: {
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 1.3,
+    textTransform: 'uppercase',
+  },
+  eyebrowRight: {
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
   },
   statsGrid: {
-    paddingHorizontal: 20,
+    paddingHorizontal: nb.screenGutter,
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    rowGap: 12,
-  },
-  section: { paddingHorizontal: 20, marginTop: 32 },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
-    marginBottom: 16,
-  },
-  sectionLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 1.5,
-    marginBottom: 4,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    letterSpacing: -0.5,
+    rowGap: spacing.sm + 2,
+    marginTop: spacing.sm,
   },
   chartCard: {
-    borderRadius: 24,
-    borderWidth: StyleSheet.hairlineWidth,
-    padding: 18,
-    paddingBottom: 8,
+    borderRadius: borderRadius.nbCard,
+    borderWidth: nb.borderWidth,
+    padding: nb.cardPadding,
     overflow: 'hidden',
   },
-  chartHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 4,
+  chartCaption: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '500',
+    marginTop: spacing.sm,
   },
-  legendChip: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  legendDot: { width: 10, height: 10, borderRadius: 5, overflow: 'hidden' },
-  legendText: { fontSize: 11, fontWeight: '600', letterSpacing: 0.3 },
-  skippedToggle: {
+  listCard: {
+    borderRadius: borderRadius.nbCard,
+    borderWidth: nb.borderWidth,
+    paddingHorizontal: nb.cardPadding,
+    paddingVertical: spacing.xs,
+    overflow: 'hidden',
+  },
+  readyWrap: { width: '100%' },
+  readyCard: {
+    borderRadius: borderRadius.nbCard,
+    borderWidth: nb.borderWidth,
+    padding: nb.cardPadding,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderRadius: 14,
-    borderWidth: StyleSheet.hairlineWidth,
-    marginTop: 4,
+    gap: spacing.sm,
   },
-  skippedText: { fontSize: 13, fontWeight: '600', flex: 1 },
-  skippedList: { marginTop: 8, gap: 6 },
-  skippedRow: {
+  readyLeft: {
+    flex: 1,
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    gap: spacing.sm,
+    minWidth: 0,
   },
-  skippedDay: { fontSize: 13, fontWeight: '600' },
-  skippedHint: { fontSize: 12 },
+  readyDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  readyTitle: {
+    fontSize: 16,
+    fontWeight: '900',
+    letterSpacing: -0.2,
+  },
+  readySub: {
+    fontSize: 12,
+    fontWeight: '500',
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  readyPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    borderWidth: nb.borderWidthPill,
+    borderColor: '#0A0A0A',
+  },
+  readyPillText: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: '#0A0A0A',
+  },
+  bulletRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm + 2,
+    paddingVertical: 4,
+  },
+  bullet: {
+    width: 14,
+    height: 14,
+    borderRadius: 3,
+    borderWidth: nb.borderWidth,
+    marginTop: 3,
+  },
+  bulletText: {
+    flex: 1,
+    fontSize: 15,
+    lineHeight: 21,
+    fontWeight: '600',
+  },
+  addPriority: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    minHeight: nb.minTouchTarget,
+    borderRadius: borderRadius.nbButton,
+    borderWidth: nb.borderWidth,
+  },
+  addPriorityText: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  signOff: {
+    fontSize: 15,
+    lineHeight: 22,
+    fontWeight: '700',
+    paddingVertical: spacing.sm,
+  },
+  generated: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '500',
+  },
 });

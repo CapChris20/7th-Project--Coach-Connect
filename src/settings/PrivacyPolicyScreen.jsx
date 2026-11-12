@@ -260,7 +260,11 @@ export default function PrivacyPolicyScreen({ onClose, embedShellBottomNav = fal
   return (
     <SafeAreaView style={styles.container} edges={SHELL_SAFE_AREA_EDGES}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.nbBackground} />
-      <NbPageHeader title="Privacy policy" onBack={onClose} />
+      <NbPageHeader
+        title="Privacy policy"
+        subtitle={`Updated ${LAST_UPDATED}`}
+        onBack={onClose}
+      />
 
       <ScrollView
         style={{ flex: 1 }}

@@ -8,10 +8,11 @@ import React from 'react';
 import { View, Text, Image, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { nb, gradients } from './colorPalette';
+import { useTheme } from './lightDarkMode';
 
 /**
  * Circular avatar with image or initials on gradient.
- * 
+ *
  * @param {object} props
  * @param {string} [props.source] - image URI
  * @param {string} [props.initials] - fallback initials (1-2 chars)
@@ -19,8 +20,11 @@ import { nb, gradients } from './colorPalette';
  * @param {object} [props.style] - additional container styles
  */
 export default function NbAvatar({ source, initials, size = 40, style }) {
+  const { colors } = useTheme();
   const radius = size / 2;
-  
+  // Design Law: outline follows theme border (white in dark), never a fixed purple stroke
+  const borderColor = colors.nbBorder;
+
   if (source) {
     return (
       <View
@@ -30,7 +34,7 @@ export default function NbAvatar({ source, initials, size = 40, style }) {
             width: size,
             height: size,
             borderRadius: radius,
-            borderColor: '#0A0A0F',
+            borderColor,
           },
           style,
         ]}
@@ -45,7 +49,7 @@ export default function NbAvatar({ source, initials, size = 40, style }) {
       </View>
     );
   }
-  
+
   return (
     <LinearGradient
       colors={gradients.brand.colors}
@@ -57,7 +61,7 @@ export default function NbAvatar({ source, initials, size = 40, style }) {
           width: size,
           height: size,
           borderRadius: radius,
-          borderColor: '#0A0A0F',
+          borderColor,
         },
         style,
       ]}

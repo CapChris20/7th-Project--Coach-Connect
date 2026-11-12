@@ -1,204 +1,80 @@
-// One week as a smooth line chart (sleep, steps, calories, or any numeric day field).
-// Flow: measure the width → scale each day onto the chart → draw the curve → tap a point for the value.
-// Used by the weekly report sleep card. The parent supplies the days and which field to plot.
+// Design Law sleep-trend bar chart — solid fill bars, dashed empty day, goal line (progress PNG).
+// Flow: measure width → scale each day’s sleepHours → draw bars + Goal 8 h line.
+// Used by WeeklyReportBody sleep-trend card. Parent supplies days[].
 
-import React, { useMemo, useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
-import Svg, {
-  Defs,
-  LinearGradient as SvgLinearGradient,
-  Stop,
-  Path,
-  Circle,
-  Line,
-} from 'react-native-svg';
-import Animated, {
-  useAnimatedProps,
-  useSharedValue,
-  withTiming,
-  Easing,
-} from 'react-native-reanimated';
-import * as Haptics from 'expo-haptics';
-import { GRADIENTS, useTheme } from '../weekly-report/reportColorSettings';
+import React, { useMemo, useState } from 'react';
+import { View, Text, StyleSheet } from 'react-native';
+import Svg, { Rect, Line, Text as SvgText } from 'react-native-svg';
+import { nb, spacing } from '../../look-and-feel/colorPalette';
+import { useTheme } from '../weekly-report/reportColorSettings';
 
 // ===== NAMED CONSTANTS =====
 
-const CHART_HEIGHT = 200;
-const CHART_PAD_X = 24;
-const CHART_PAD_TOP = 24;
-const CHART_PAD_BOTTOM = 32;
-// Manipulate here: how long the line takes to draw in when the week changes.
-const CHART_DRAW_MS = 1100;
-const SLEEP_AXIS_FLOOR = 10;
-const CALORIE_AXIS_FLOOR = 2500;
-const CALORIE_AXIS_STEP = 100;
-const OTHER_METRIC_HEADROOM = 1.15;
-// Manipulate here: smaller divisor = tighter curves. 6 is the Catmull-Rom-style tension used here.
-const SMOOTH_CURVE_DIVISOR = 6;
-const PATH_LENGTH_FUDGE = 1.4;
-const STEPS_THOUSAND_CUTOFF = 1000;
-const SLEEP_METRIC_KEY = 'sleepHours';
-const CALORIE_METRIC_KEY = 'calories';
-const STEPS_METRIC_KEY = 'steps';
-
-const AnimatedPath = Animated.createAnimatedComponent(Path);
-const DARK_MODE = 'dark';
-const DARK_POINT_FILL = '#12121c';
-const LIGHT_POINT_FILL = '#ffffff';
-const ACTIVE_POINT_RADIUS = 8;
-const IDLE_POINT_RADIUS = 5;
-const ACTIVE_POINT_STROKE = 3;
-const IDLE_POINT_STROKE = 2;
+const CHART_HEIGHT = 170;
+const PAD_LEFT = 28;
+const PAD_RIGHT = 8;
+const PAD_TOP = 16;
+const PAD_BOTTOM = 28;
+const SLEEP_AXIS_MAX = 9;
+const SLEEP_GOAL_HOURS = 8;
+const BAR_RX = 2;
+const EMPTY_BAR_HEIGHT = 18;
+const SHORT_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
 // ===== HELPER FUNCTIONS =====
 
-function mapDaysToChartValues(days, metricKey) {
-  return days.map((day) => ({
-    ...day,
-    chartValue: Number(day[metricKey]) || 0,
-  }));
+function daySleepHours(day) {
+  return Number(day?.sleepHours) || 0;
 }
 
-function pointFillColor(mode) {
-  if (mode === DARK_MODE) return DARK_POINT_FILL;
-  return LIGHT_POINT_FILL;
-}
-
-function pointRadius(isActivePoint) {
-  if (isActivePoint) return ACTIVE_POINT_RADIUS;
-  return IDLE_POINT_RADIUS;
-}
-
-function pointStrokeWidth(isActivePoint) {
-  if (isActivePoint) return ACTIVE_POINT_STROKE;
-  return IDLE_POINT_STROKE;
-}
-
-function resolveChartMaxValue(metricKey, chartDays, maxValueProp) {
-  if (maxValueProp) return maxValueProp;
-  const peak = Math.max(...chartDays.map((day) => day.chartValue), 0);
-  if (metricKey === SLEEP_METRIC_KEY) return Math.max(SLEEP_AXIS_FLOOR, Math.ceil(peak));
-  if (metricKey === CALORIE_METRIC_KEY) {
-    return Math.max(CALORIE_AXIS_FLOOR, Math.ceil(peak / CALORIE_AXIS_STEP) * CALORIE_AXIS_STEP);
-  }
-  return Math.max(peak * OTHER_METRIC_HEADROOM, 1);
-}
-
-function mapChartPoints(chartDays, width, maxValue) {
-  if (!width) return [];
-  const innerWidth = width - CHART_PAD_X * 2;
-  const innerHeight = CHART_HEIGHT - CHART_PAD_TOP - CHART_PAD_BOTTOM;
-  const lastIndex = Math.max(1, chartDays.length - 1);
-  return chartDays.map((day, index) => {
-    const x = CHART_PAD_X + (innerWidth * index) / lastIndex;
-    const y = CHART_PAD_TOP + innerHeight - (day.chartValue / maxValue) * innerHeight;
-    return { x, y, day };
-  });
-}
-
-// Smooth cubic segments between points. Endpoints reuse the nearest point when a neighbor is missing.
-function buildSmoothLinePath(points) {
-  if (points.length < 2) return '';
-  let pathCommand = `M ${points[0].x} ${points[0].y}`;
-  for (let index = 0; index < points.length - 1; index++) {
-    const previousPoint = points[index - 1] ?? points[index];
-    const currentPoint = points[index];
-    const nextPoint = points[index + 1];
-    const pointAfterNext = points[index + 2] ?? nextPoint;
-    const firstControlX = currentPoint.x + (nextPoint.x - previousPoint.x) / SMOOTH_CURVE_DIVISOR;
-    const firstControlY = currentPoint.y + (nextPoint.y - previousPoint.y) / SMOOTH_CURVE_DIVISOR;
-    const secondControlX = nextPoint.x - (pointAfterNext.x - currentPoint.x) / SMOOTH_CURVE_DIVISOR;
-    const secondControlY = nextPoint.y - (pointAfterNext.y - currentPoint.y) / SMOOTH_CURVE_DIVISOR;
-    pathCommand += ` C ${firstControlX} ${firstControlY}, ${secondControlX} ${secondControlY}, ${nextPoint.x} ${nextPoint.y}`;
-  }
-  return pathCommand;
-}
-
-function buildAreaFillPath(linePath, points) {
-  if (!linePath || points.length < 2) return '';
-  const firstPoint = points[0];
-  const lastPoint = points[points.length - 1];
-  const baselineY = CHART_HEIGHT - CHART_PAD_BOTTOM;
-  return `${linePath} L ${lastPoint.x} ${baselineY} L ${firstPoint.x} ${baselineY} Z`;
-}
-
-function formatTooltipValue(metricKey, value) {
-  if (metricKey === STEPS_METRIC_KEY && value >= STEPS_THOUSAND_CUTOFF) {
-    return `${(value / STEPS_THOUSAND_CUTOFF).toFixed(1)}k`;
-  }
-  return String(value);
-}
-
-function estimatedPathLength(width) {
-  return (width - CHART_PAD_X * 2) * PATH_LENGTH_FUDGE;
+function yForHours(hours, maxHours, plotTop, plotHeight) {
+  const clamped = Math.max(0, Math.min(maxHours, hours));
+  return plotTop + plotHeight - (clamped / maxHours) * plotHeight;
 }
 
 // ===== MAIN FUNCTION =====
 
 /**
- * Smooth weekly line chart.
- * @param {object} props
- * @param {object[]} props.days
- * @param {string} [props.metricKey] day field to plot (sleepHours, steps, calories)
- * @param {string} [props.title] chart header title (kept for callers; the parent draws the title)
- * @param {string} [props.legend] legend label (kept for callers; the parent draws the legend)
- * @param {string} [props.valueSuffix] tooltip suffix (h, cal, and so on)
- * @param {number} [props.maxValue] Y-axis max; auto if omitted
+ * @param {{
+ *   days: object[],
+ *   metricKey?: string,
+ *   valueSuffix?: string,
+ *   maxValue?: number,
+ *   goalHours?: number,
+ * }} props
  */
 export function WeeklyChart({
   days,
   metricKey = 'sleepHours',
-  title: _title = 'This week',
-  legend: _legend = 'Sleep / h',
-  valueSuffix = 'h',
-  maxValue: maxValueProp,
+  valueSuffix: _valueSuffix = 'h',
+  maxValue,
+  goalHours = SLEEP_GOAL_HOURS,
 }) {
-  const { colors, mode } = useTheme();
+  const { colors } = useTheme();
   const [width, setWidth] = useState(0);
-  const [activePointIndex, setActivePointIndex] = useState(null);
-  const progress = useSharedValue(0);
-
-  // Restart the draw animation when the week or the plotted field changes.
-  // vocab: useSharedValue = a Reanimated value the UI thread can read without a React render.
-  useEffect(() => {
-    progress.value = 0;
-    progress.value = withTiming(1, { duration: CHART_DRAW_MS, easing: Easing.out(Easing.cubic) });
-  }, [days, metricKey, progress]);
 
   const chartDays = useMemo(
-    () => mapDaysToChartValues(days, metricKey),
+    () =>
+      (days || []).map((day, index) => ({
+        ...day,
+        chartValue: Number(day[metricKey]) || 0,
+        shortLabel: day.shortLabel || SHORT_LABELS[index] || '',
+      })),
     [days, metricKey],
   );
 
-  const maxValue = useMemo(
-    () => resolveChartMaxValue(metricKey, chartDays, maxValueProp),
-    [chartDays, maxValueProp, metricKey],
-  );
+  const axisMax = maxValue || Math.max(SLEEP_AXIS_MAX, ...chartDays.map((d) => d.chartValue), goalHours);
 
-  const points = useMemo(
-    () => mapChartPoints(chartDays, width, maxValue),
-    [chartDays, width, maxValue],
-  );
+  const plotWidth = Math.max(0, width - PAD_LEFT - PAD_RIGHT);
+  const plotHeight = CHART_HEIGHT - PAD_TOP - PAD_BOTTOM;
+  const plotBottom = PAD_TOP + plotHeight;
+  const barCount = Math.max(chartDays.length, 1);
+  const slot = plotWidth / barCount;
+  // Manipulate here: bar width relative to day slot
+  const barWidth = Math.max(12, slot * 0.55);
 
-  const linePath = useMemo(() => buildSmoothLinePath(points), [points]);
-
-  const fillPath = useMemo(
-    () => buildAreaFillPath(linePath, points),
-    [linePath, points],
-  );
-
-  const [pathLength, setPathLength] = useState(0);
-  // vocab: useAnimatedProps = drive an SVG prop from the shared progress value.
-  const animatedProps = useAnimatedProps(() => ({
-    strokeDashoffset: pathLength * (1 - progress.value),
-  }));
-
-  const handlePointPress = (pointIndex) => {
-    Haptics.selectionAsync().catch(() => {});
-    setActivePointIndex((previousIndex) => (previousIndex === pointIndex ? null : pointIndex));
-  };
-
-  const activePoint = activePointIndex !== null ? points[activePointIndex] : null;
+  const goalY = yForHours(goalHours, axisMax, PAD_TOP, plotHeight);
+  const ticks = [0, 3, 6, 9].filter((t) => t <= axisMax);
 
   return (
     <View
@@ -206,118 +82,107 @@ export function WeeklyChart({
       onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
       testID="weekly-chart"
     >
-      {width > 0 && (
+      {width > 0 ? (
         <Svg width={width} height={CHART_HEIGHT}>
-          <Defs>
-            <SvgLinearGradient id="lineGrad" x1="0" y1="0" x2="1" y2="0">
-              <Stop offset="0" stopColor={GRADIENTS.g1[0]} />
-              <Stop offset="1" stopColor={GRADIENTS.g1[1]} />
-            </SvgLinearGradient>
-            <SvgLinearGradient id="fillGrad" x1="0" y1="0" x2="0" y2="1">
-              <Stop offset="0" stopColor={GRADIENTS.g1[1]} stopOpacity="0.35" />
-              <Stop offset="1" stopColor={GRADIENTS.g1[0]} stopOpacity="0" />
-            </SvgLinearGradient>
-          </Defs>
+          {ticks.map((tick) => {
+            const y = yForHours(tick, axisMax, PAD_TOP, plotHeight);
+            return (
+              <React.Fragment key={`tick-${tick}`}>
+                <Line
+                  x1={PAD_LEFT}
+                  x2={width - PAD_RIGHT}
+                  y1={y}
+                  y2={y}
+                  stroke={colors.border}
+                  strokeWidth={1}
+                  strokeDasharray="4 4"
+                  opacity={0.35}
+                />
+                <SvgText
+                  x={PAD_LEFT - 6}
+                  y={y + 4}
+                  fill={colors.textMuted}
+                  fontSize="11"
+                  fontWeight="700"
+                  textAnchor="end"
+                >
+                  {String(tick)}
+                </SvgText>
+              </React.Fragment>
+            );
+          })}
 
-          <Path d={fillPath} fill="url(#fillGrad)" />
-
-          <AnimatedPath
-            d={linePath}
-            stroke="url(#lineGrad)"
-            strokeWidth={3}
-            fill="none"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeDasharray={pathLength || 1}
-            animatedProps={animatedProps}
-            onLayout={() => setPathLength(estimatedPathLength(width))}
+          {/* Goal line — dashed, Design Law “Goal 8 h” */}
+          <Line
+            x1={PAD_LEFT}
+            x2={width - PAD_RIGHT}
+            y1={goalY}
+            y2={goalY}
+            stroke={colors.border}
+            strokeWidth={nb.borderWidthDivider}
+            strokeDasharray="6 5"
           />
 
-          {activePoint && (
-            <Line
-              x1={activePoint.x}
-              y1={CHART_PAD_TOP}
-              x2={activePoint.x}
-              y2={CHART_HEIGHT - CHART_PAD_BOTTOM}
-              stroke={colors.textMuted}
-              strokeWidth={1}
-              strokeDasharray="3 3"
-              opacity={0.4}
-            />
-          )}
-
-          {points.map((point, pointIndex) => {
-            const isActivePoint = activePointIndex === pointIndex;
+          {chartDays.map((day, index) => {
+            const cx = PAD_LEFT + slot * index + slot / 2;
+            const x = cx - barWidth / 2;
+            const hasValue = day.chartValue > 0;
+            if (!hasValue) {
+              // Empty / rest day — dashed hollow box near baseline
+              const y = plotBottom - EMPTY_BAR_HEIGHT;
+              return (
+                <React.Fragment key={`bar-${index}`}>
+                  <Rect
+                    x={x}
+                    y={y}
+                    width={barWidth}
+                    height={EMPTY_BAR_HEIGHT}
+                    rx={BAR_RX}
+                    fill="transparent"
+                    stroke={colors.border}
+                    strokeWidth={nb.borderWidthDivider}
+                    strokeDasharray="4 3"
+                  />
+                  <SvgText
+                    x={cx}
+                    y={CHART_HEIGHT - 8}
+                    fill={colors.textMuted}
+                    fontSize="12"
+                    fontWeight="700"
+                    textAnchor="middle"
+                  >
+                    {day.shortLabel}
+                  </SvgText>
+                </React.Fragment>
+              );
+            }
+            const y = yForHours(day.chartValue, axisMax, PAD_TOP, plotHeight);
+            const height = Math.max(2, plotBottom - y);
             return (
-              <Circle
-                key={pointIndex}
-                cx={point.x}
-                cy={point.y}
-                r={pointRadius(isActivePoint)}
-                fill={pointFillColor(mode)}
-                stroke={isActivePoint ? GRADIENTS.g1[1] : GRADIENTS.g1[0]}
-                strokeWidth={pointStrokeWidth(isActivePoint)}
-              />
+              <React.Fragment key={`bar-${index}`}>
+                <Rect
+                  x={x}
+                  y={y}
+                  width={barWidth}
+                  height={height}
+                  rx={BAR_RX}
+                  fill={colors.fill}
+                />
+                <SvgText
+                  x={cx}
+                  y={CHART_HEIGHT - 8}
+                  fill={colors.textMuted}
+                  fontSize="12"
+                  fontWeight="700"
+                  textAnchor="middle"
+                >
+                  {day.shortLabel}
+                </SvgText>
+              </React.Fragment>
             );
           })}
         </Svg>
-      )}
-
-      <View style={[StyleSheet.absoluteFill, styles.pressLayer]} pointerEvents="box-none">
-        {points.map((point, pointIndex) => (
-          <Pressable
-            key={pointIndex}
-            testID={`chart-data-point-${pointIndex}`}
-            onPress={() => handlePointPress(pointIndex)}
-            style={{
-              position: 'absolute',
-              left: point.x - 22,
-              top: point.y - 22,
-              width: 44,
-              height: 44,
-            }}
-          />
-        ))}
-      </View>
-
-      {activePoint && (
-        <View
-          style={[
-            styles.tooltip,
-            {
-              left: Math.max(8, Math.min(width - 140, activePoint.x - 70)),
-              top: Math.max(0, activePoint.y - 64),
-              backgroundColor: mode === 'dark' ? 'rgba(30,30,45,0.95)' : 'rgba(255,255,255,0.98)',
-              borderColor: colors.border,
-            },
-          ]}
-        >
-          <Text style={[styles.tooltipDay, { color: colors.textMuted }]}>
-            {activePoint.day.dayName}
-          </Text>
-          <Text style={[styles.tooltipValue, { color: colors.textPrimary }]}>
-            {formatTooltipValue(metricKey, activePoint.day.chartValue)}
-            <Text style={{ color: colors.textMuted, fontSize: 12 }}> {valueSuffix}</Text>
-          </Text>
-        </View>
-      )}
-
-      <View style={styles.xAxis}>
-        {chartDays.map((day, pointIndex) => (
-          <Text
-            key={pointIndex}
-            style={[
-              styles.xLabel,
-              {
-                color: activePointIndex === pointIndex ? colors.textPrimary : colors.textMuted,
-                fontWeight: activePointIndex === pointIndex ? '700' : '500',
-              },
-            ]}
-          >
-            {day.shortLabel}
-          </Text>
-        ))}
-      </View>
+      ) : null}
     </View>
   );
 }
@@ -325,28 +190,12 @@ export function WeeklyChart({
 export { WeeklyChart as default };
 
 const styles = StyleSheet.create({
-  container: { height: 230, width: '100%' },
-  pressLayer: {},
-  tooltip: {
-    position: 'absolute',
-    width: 140,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-    shadowColor: '#000',
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
+  container: {
+    width: '100%',
+    height: CHART_HEIGHT,
+    marginTop: spacing.xs,
   },
-  tooltipDay: { fontSize: 10, fontWeight: '700', letterSpacing: 1.2 },
-  tooltipValue: { fontSize: 16, fontWeight: '700', marginTop: 2 },
-  xAxis: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: 18,
-    marginTop: 4,
-  },
-  xLabel: { fontSize: 12, width: 24, textAlign: 'center' },
 });
+
+// Keep helper export for callers that still import daySleepHours indirectly
+export { daySleepHours, SLEEP_GOAL_HOURS };

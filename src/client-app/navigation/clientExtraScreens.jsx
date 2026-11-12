@@ -16,6 +16,7 @@ import TermsOfServiceScreen from '../../settings/TermsOfServiceScreen';
 import PrivacyPolicyScreen from '../../settings/PrivacyPolicyScreen';
 import ContactSupportScreen from '../../settings/ContactSupportScreen';
 import BugReportScreen from '../../settings/BugReportScreen';
+import PrivacyDataRightsScreen from '../../settings/PrivacyDataRightsScreen';
 import DailyLogContent from '../../nutrition/daily-log/DailyLogContent';
 import AddFilePopup from '../../for-both/files-and-notes/viewers/AddFilePopup';
 import SearchTrainersScreen, { TrainerProfileSheet } from '../find-a-trainer/SearchTrainersScreen';
@@ -309,6 +310,22 @@ export function ClientContactSupportScreen() {
 export function ClientBugReportScreen() {
   const shell = useClientAppStartShell();
   return withNav(<BugReportScreen onClose={shell.rootGoBack} embedShellBottomNav />, shell);
+}
+
+/**
+ * @returns {import('react').ReactElement}
+ */
+export function ClientPrivacyDataRightsScreen() {
+  const shell = useClientAppStartShell();
+  const onNavigate = buildNavigateFromShell(shell);
+  return withNav(
+    <PrivacyDataRightsScreen
+      onClose={shell.rootGoBack}
+      onNavigate={onNavigate}
+      embedShellBottomNav
+    />,
+    shell,
+  );
 }
 
 /**

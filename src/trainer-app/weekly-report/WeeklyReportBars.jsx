@@ -360,8 +360,13 @@ export function formatDateRange(report) {
   const me = end.toLocaleDateString('en-US', { month: 'short' });
   const mLongS = start.toLocaleDateString('en-US', { month: 'long' });
   const mLongE = end.toLocaleDateString('en-US', { month: 'long' });
+  // Design Law week picker / trainer subtitle: "Nov 10 to 16" (same month drops second month)
+  const compact =
+    ms === me
+      ? `${ms} ${start.getDate()} to ${end.getDate()}`
+      : `${ms} ${start.getDate()} to ${me} ${end.getDate()}`;
   return {
-    compact: `${ms} ${start.getDate()} – ${me} ${end.getDate()}`,
+    compact,
     full: `${mLongS} ${start.getDate()} – ${mLongE} ${end.getDate()}, ${end.getFullYear()}`
   };
 }

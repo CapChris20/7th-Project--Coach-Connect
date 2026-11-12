@@ -159,7 +159,7 @@ Screens: `screens/progress/`
 
 - [ ] Progress charts
 - [~] Photos / viewer / compare (`MyProgressPhotosScreen.jsx` — grid + fullscreen viewer PNG 07/08 [~]; compare slider [ ])
-- [ ] Weekly report (client)
+- [x] Weekly report (client) — `WeeklyReportScreen` / body Design Law; `WeeklyReportBars` legacy helpers only
 - [ ] Spreadsheet viewer chrome
 - [!] Empty gallery / no-data charts
 
@@ -169,16 +169,16 @@ Screens: `screens/progress/`
 
 Screens: `screens/settings-and-profile/`
 
-- [~] Edit profile list screen (`MyProfileScreen.jsx`)
+- [x] Edit profile list screen (`MyProfileScreen.jsx` — NbPageHeader / Save)
 - [x] Field edit popup (weight/name/etc.) → Design Law bottom sheet (client + trainer share this)
-- [ ] Settings root (client + trainer)
-- [ ] FAQ / Contact / Bug / Terms / Privacy
-- [ ] Delete account hold-to-confirm
-- [ ] Blocked users / report-or-block
-- [ ] Remove trainer popup
-- [!] Change password screen
+- [x] Settings root (client + trainer) — Batch F
+- [x] FAQ / Contact / Bug / Terms / Privacy (+ `PrivacyDataRightsScreen`)
+- [x] Delete account hold-to-confirm (`HoldToConfirmPopup`)
+- [~] Blocked users [x]; report-or-block still native Alert/ActionSheet (PNG 29)
+- [x] Remove trainer popup (Design Law sheet)
+- [x] Change password (3-field reauth on Settings)
 - [!] Certification upload sheet on trainer profile
-- [!] Any remaining gradient Save buttons in settings popups
+- [!] Coaching payment detail page vs PNG 07/09; bug screenshot picker visual-only
 
 ---
 
@@ -214,11 +214,11 @@ Screens: `screens/files-and-notes/`
 
 Screens: `screens/scheduling/`
 
-- [~] Trainer home Sessions agenda (simplified to Design Law list)
-- [ ] Full calendar / month / list screens
-- [ ] New session / detail / delete
-- [ ] Client book / request session
-- [!] Upcoming session home card
+- [x] Trainer Sessions tab → `BookSessionScreen` (calendar/list) + `CalendarTab` mount
+- [x] Full calendar / month / list (`BookSessionScreen`, `MonthCalendar`, `SessionCard`)
+- [~] New session form (`ScheduleSessionScreen` — PNG chips); detail / delete sheets still [ ]
+- [~] Client invite Decline/Confirm on home (`UpcomingSessionCard`); dedicated My sessions / Request screens still [ ]
+- [!] Session detail + delete NbSheets (PNG 13–16)
 
 ---
 
@@ -229,7 +229,7 @@ Screens: `screens/trainees-and-records/`
 - [ ] Clients roster
 - [ ] Manage trainee / client record tabs (separate from trainer-home tabs)
 - [ ] Remove client flow
-- [ ] Trainer weekly report screens
+- [x] Trainer weekly report screens (shared `WeeklyReportScreen` + trainer layout); Add-a-priority still visual-only
 - [!] Roster search, empty roster, remove confirm popup
 
 ---
@@ -304,11 +304,11 @@ These are the pieces that usually stay “old shit” after a screen pass:
 |---|---|---|---|
 | **D** | **DONE** | **Files & notes** | `AddFilePopup`, `FilesHeaderCard`, `FilesSection`, `FilesScreen`, `MyFilesSection`, trainer shared files popup, `DeleteFileSheet` · PNGs `screens/files-and-notes/` · Viewer chrome polish (PDF/media) can tighten later |
 | **E** | **DONE** | **Marketplace (Find a trainer)** | List / search / empty, filter popup, trainer card, profile, request / confirm / sent, home banner · PNGs `screens/marketplace-new/` · Map deferred (no repo screen) |
-| **F** | Queued | **Settings & profile** | Settings root (client + trainer), FAQ / Contact / Bug / Terms / Privacy, delete account hold-to-confirm, blocked users, remove trainer, change password · PNGs `screens/settings-and-profile/` |
+| **F** | **MOSTLY DONE** | **Settings & profile** | Root + support + hold/remove + privacy rights landed · ReportOrBlock sheet + payment detail still open · PNGs `screens/settings-and-profile/` |
 | **G** | Queued | **Client home + empty states** | Card-by-card vs `screens/client-home/`, Find trainer banner polish, empty-vs-data audit for home / trainer home / plan / coach |
-| **H** | Queued | **Scheduling** | Full calendar / month / list, new session / detail / delete, client book / request, upcoming session home card · PNGs `screens/scheduling/` |
-| **I** | Queued | **Progress** | Charts, photos compare slider, weekly report (client), spreadsheet viewer chrome · PNGs `screens/progress/` |
-| **J** | Queued | **Trainees & records** | Clients roster, manage trainee / record tabs (outside trainer-home), remove client, trainer weekly report · PNGs `screens/trainees-and-records/` |
+| **H** | **MOSTLY DONE** | **Scheduling** | Calendar/list/new session/cards landed · detail/delete sheets + client My sessions/Request still open · PNGs `screens/scheduling/` |
+| **I** | **PARTIAL** | **Progress** | Weekly report [x]; charts / photos compare / spreadsheet chrome still open · PNGs `screens/progress/` |
+| **J** | **PARTIAL** | **Trainees & records** | Trainer weekly report [x]; roster / manage trainee / remove client still open · PNGs `screens/trainees-and-records/` |
 | **K** | Queued | **Messages leftovers + Pro + loading/errors** | Chat attach sheet + session cards, notifications, trial / upgrade / expired, skeletons / crash / offline / sign-out, Alert→Nb sheet sweep · PNGs `screens/inbox-and-money/`, `screens/loading-and-errors/` |
 
 ### Batch rules

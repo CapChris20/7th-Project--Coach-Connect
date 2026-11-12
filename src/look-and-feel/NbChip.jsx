@@ -1,16 +1,16 @@
-// Neobrutalist chip — HardShadow outline, fill or brand gradient when selected.
-// Flow: press → optional selected gradient → label (string) or custom children (date stacks).
-// Where used: filters, date pickers, time grids, option lists, tags.
+// Neobrutalist chip — HardShadow outline; selected = solid fill + onFill (Design Law, not gradient).
+// Flow: press → selected fill OR dashed/outline variant → label (string) or custom children (date stacks).
+// Where used: filters, date pickers, time grids, option lists, status tags.
 //
-// vocab: neobrutalist = thick border, hard offset shadow, gradient only when active
+// vocab: neobrutalist = thick border, hard offset shadow; fill = nbFill/nbOnFill (never brand gradient on chips)
 // Fix: do NOT wrap React-element children in <Text> — that blanks View-based date stacks
+// Manipulate here: dashed = pending status; outline = location tags; selected = black/white fill
 
 import React from 'react';
 import { Text, StyleSheet, Pressable, View } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 
 import HardShadow from './HardShadow';
-import { borderRadius, nb, gradients } from './colorPalette';
+import { borderRadius, nb } from './colorPalette';
 import { useTheme } from './lightDarkMode';
 
 /**
@@ -19,6 +19,8 @@ import { useTheme } from './lightDarkMode';
  * @param {boolean} [props.selected]
  * @param {Function} [props.onPress]
  * @param {boolean} [props.disabled]
+ * @param {'default'|'dashed'|'outline'} [props.variant] - dashed = Pending; outline = In person / Video
+ * @param {boolean} [props.strike] - Declined: strikethrough label
  * @param {object} [props.style] - outer HardShadow / width helpers (e.g. time grid 31%)
  * @param {object} [props.contentStyle] - inner chip padding / minHeight overrides
  */
@@ -27,42 +29,43 @@ export default function NbChip({
   selected = false,
   onPress,
   disabled = false,
+  variant = 'default',
+  strike = false,
   style,
   contentStyle,
 }) {
   const { colors } = useTheme();
-  // Design Law: text on brand gradient is nbInk, not white
-  const textColor = selected ? colors.nbInk : colors.nbInk;
+  const isDashed = variant === 'dashed';
+  const isOutline = variant === 'outline';
+  // Design Law: selected chip = fill + onFill (solid), never a purple/brand gradient
+  const filled = selected && !isDashed && !isOutline;
+  const bg = filled ? colors.nbFill : colors.nbSurface;
+  const textColor = filled ? colors.nbOnFill : colors.nbInk;
   const isPlainLabel = typeof children === 'string' || typeof children === 'number';
 
   const label = isPlainLabel ? (
-    <Text style={[styles.text, { color: textColor }]} numberOfLines={1}>
+    <Text
+      style={[
+        styles.text,
+        { color: textColor },
+        strike && styles.strike,
+      ]}
+      numberOfLines={1}
+    >
       {children}
     </Text>
   ) : (
     children
   );
 
-  const chipBody = selected ? (
-    <LinearGradient
-      colors={gradients.brand.colors}
-      start={gradients.brand.start}
-      end={gradients.brand.end}
-      style={[
-        styles.chip,
-        { borderColor: colors.nbBorder },
-        contentStyle,
-      ]}
-    >
-      {label}
-    </LinearGradient>
-  ) : (
+  const chipBody = (
     <View
       style={[
         styles.chip,
         {
           borderColor: colors.nbBorder,
-          backgroundColor: colors.nbSurface,
+          backgroundColor: bg,
+          borderStyle: isDashed ? 'dashed' : 'solid',
         },
         contentStyle,
       ]}
@@ -71,16 +74,37 @@ export default function NbChip({
     </View>
   );
 
+  // Selected (or pressable) chips lift with HardShadow; flat status tags stay flush
+  const useShadow = filled || Boolean(onPress);
+
+  const pressable = (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled || !onPress}
+      accessibilityRole={onPress ? 'button' : 'text'}
+      accessibilityState={{ selected, disabled }}
+      style={({ pressed }) => [
+        style,
+        disabled && styles.disabled,
+        pressed && onPress && !disabled && styles.pressed,
+      ]}
+    >
+      {chipBody}
+    </Pressable>
+  );
+
+  if (!useShadow) return pressable;
+
   return (
     <HardShadow offset={nb.shadowOffsetSmall} radius={borderRadius.nbChip} style={style}>
       <Pressable
         onPress={onPress}
-        disabled={disabled}
-        accessibilityRole="button"
+        disabled={disabled || !onPress}
+        accessibilityRole={onPress ? 'button' : 'text'}
         accessibilityState={{ selected, disabled }}
         style={({ pressed }) => [
           disabled && styles.disabled,
-          pressed && !disabled && styles.pressed,
+          pressed && onPress && !disabled && styles.pressed,
         ]}
       >
         {chipBody}
@@ -101,6 +125,9 @@ const styles = StyleSheet.create({
   text: {
     fontFamily: 'SpaceGrotesk_700Bold',
     fontSize: 13,
+  },
+  strike: {
+    textDecorationLine: 'line-through',
   },
   disabled: { opacity: 0.45 },
   pressed: { opacity: 0.92 },

@@ -2,7 +2,7 @@
 // Flow: fade in → POST /api/support/contact with a "Bug report" subject → open Mail as a backup.
 // Used from Settings. Field order (expected, happened, steps, device) is what the email body uses.
 
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Animated, View, Text, StyleSheet, ScrollView, StatusBar, Alert, Pressable, TextInput } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../look-and-feel/lightDarkMode';
@@ -13,7 +13,6 @@ import { getAuth } from 'firebase/auth';
 import NbPageHeader from '../look-and-feel/NbPageHeader';
 import { SHELL_SAFE_AREA_EDGES, FORM_SCROLL_PROPS, useShellBottomNavInset } from '../navigation/bottomMenuSpacing';
 import { Ionicons } from '@expo/vector-icons';
-import NbCard from '../look-and-feel/NbCard';
 import NbButton from '../look-and-feel/NbButton';
 import { nb, spacing } from '../look-and-feel/colorPalette';
 
@@ -56,11 +55,11 @@ function bugScrollBottomPad(embedShellBottomNav, shellNavInset, bottomInset) {
  * @param {{ expectedText: string, happenedText: string, stepsText: string, deviceText: string }} fields
  * @returns {string}
  */
-function buildBugMessage({ expectedText, happenedText, stepsText, deviceText }) {
+function buildBugMessage({ expectedText, happenedText, whenText, deviceText }) {
   return (
-    `What I expected:\n${expectedText}\n\n` +
-    `What happened:\n${happenedText}\n\n` +
-    (stepsText ? `Steps:\n${stepsText}\n\n` : '') +
+    `What I was trying to do:\n${expectedText}\n\n` +
+    `What happened instead:\n${happenedText}\n\n` +
+    (whenText ? `Rough date and time:\n${whenText}\n\n` : '') +
     (deviceText ? `Device:\n${deviceText}\n\n` : '')
   );
 }
@@ -223,7 +222,7 @@ function buildBugStyles(scrollBottomPad, colors) {
       marginTop: spacing.sm,
       lineHeight: 17,
     },
-    buttonWrap: { marginTop: spacing.sm },
+    buttonWrap: { marginTop: spacing.md },
     footer: {
       marginTop: spacing.sm,
       padding: spacing.md,
@@ -234,36 +233,22 @@ function buildBugStyles(scrollBottomPad, colors) {
       color: colors.nbMuted,
       lineHeight: 20,
     },
+    // Manipulate here: dashed screenshot zone border style
+    dashZone: {
+      marginTop: spacing.md,
+      padding: spacing.md,
+      borderRadius: 10,
+      borderWidth: nb.borderWidth,
+      borderStyle: 'dashed',
+      flexDirection: 'row',
+      alignItems: 'center',
+      minHeight: nb.minTouchTarget,
+    },
+    dashTitle: {
+      fontFamily: 'SpaceGrotesk_700Bold',
+      fontSize: 14,
+    },
   });
-}
-
-function BugHero({ styles: cardStyles, colors }) {
-  return (
-    <NbCard style={cardStyles.heroCard}>
-      <View style={[cardStyles.heroIcon, { backgroundColor: colors.nbSurfaceChip }]}>
-        <Ionicons name="bug-outline" size={34} color={colors.nbInk} />
-      </View>
-      <Text style={cardStyles.heroTitle}>Report a Bug</Text>
-      <Text style={cardStyles.heroSub}>Help us make it better.</Text>
-    </NbCard>
-  );
-}
-
-function SectionHeader({ title, styles: cardStyles }) {
-  return (
-    <View style={cardStyles.sectionHeaderRow}>
-      <Text style={cardStyles.sectionHeader}>{title}</Text>
-    </View>
-  );
-}
-
-function InfoCard({ title, body, styles: cardStyles }) {
-  return (
-    <NbCard style={cardStyles.card}>
-      <Text style={cardStyles.cardTitle}>{title}</Text>
-      <Text style={cardStyles.body}>{body}</Text>
-    </NbCard>
-  );
 }
 
 // ===== MAIN FUNCTION =====
@@ -289,33 +274,12 @@ export default function BugReportScreen({ onClose, embedShellBottomNav = false }
     ]).start();
   }, [fade, rise]);
 
-  const includeList = useMemo(
-    () => [
-      '1. What you expected',
-      '2. What you got',
-      '3. Steps: “I opened… then I tapped…”',
-      '4. How often: once or every time',
-      '5. Device: iPhone or Android',
-    ],
-    [],
-  );
-
-  const templateList = useMemo(
-    () => [
-      'What I was doing:',
-      'What went wrong:',
-      'Device (iPhone / Android):',
-      'Rough date/time:',
-    ],
-    [],
-  );
-
   async function submitBug() {
     const expectedText = String(whatExpected || '').trim();
     const happenedText = String(whatHappened || '').trim();
-    const stepsText = String(steps || '').trim();
+    const whenText = String(steps || '').trim();
     if (!expectedText || !happenedText) {
-      Alert.alert('Missing details', 'Please fill in what you expected and what happened.');
+      Alert.alert('Missing details', 'Please fill in what you were trying to do and what happened.');
       return;
     }
 
@@ -330,7 +294,7 @@ export default function BugReportScreen({ onClose, embedShellBottomNav = false }
     const message = buildBugMessage({
       expectedText,
       happenedText,
-      stepsText,
+      whenText,
       deviceText: deviceInfo,
     });
 
@@ -357,7 +321,11 @@ export default function BugReportScreen({ onClose, embedShellBottomNav = false }
   return (
     <SafeAreaView style={styles.container} edges={SHELL_SAFE_AREA_EDGES}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.nbBackground} />
-      <NbPageHeader title="Report a bug" onBack={onClose} />
+      <NbPageHeader
+        title="Report a bug"
+        subtitle="Help us make it better."
+        onBack={onClose}
+      />
 
       <ScrollView
         style={{ flex: 1 }}
@@ -366,101 +334,77 @@ export default function BugReportScreen({ onClose, embedShellBottomNav = false }
         showsVerticalScrollIndicator
       >
         <Animated.View style={{ opacity: fade, transform: [{ translateY: rise }] }}>
-          <BugHero styles={styles} colors={colors} />
-
-          <Text style={styles.intro}>
-            If something broke or feels wrong, we want to know. Your report helps everyone.
-          </Text>
-
-          <SectionHeader title="Report details" styles={styles} />
-
-          <InfoCard
-            title="What counts as a bug"
-            body="Buttons that don’t respond, screens that won’t load, data that disappears, videos that never play, or anything that used to work and suddenly doesn’t."
-            styles={styles}
+          <Text style={styles.label}>WHAT YOU WERE TRYING TO DO</Text>
+          <TextInput
+            value={whatExpected}
+            onChangeText={setWhatExpected}
+            placeholder="Log my lunch with a barcode."
+            placeholderTextColor={colors.nbMuted}
+            style={[styles.input, styles.inputMultiline]}
+            multiline
+            editable={!submitting}
           />
 
-          <NbCard style={styles.card}>
-            <Text style={styles.cardTitle}>Please include</Text>
-            {includeList.map((line) => (
-              <Text key={line} style={styles.bullet}>
-                • {line.replace(/^\d+\.\s*/, '')}
+          <Text style={styles.label}>WHAT HAPPENED INSTEAD</Text>
+          <TextInput
+            value={whatHappened}
+            onChangeText={setWhatHappened}
+            placeholder="The scanner opened, found the product, then the app closed."
+            placeholderTextColor={colors.nbMuted}
+            style={[styles.input, styles.inputMultiline]}
+            multiline
+            editable={!submitting}
+          />
+
+          <Text style={styles.label}>ROUGH DATE AND TIME</Text>
+          <TextInput
+            value={steps}
+            onChangeText={setSteps}
+            placeholder="Today, about 12:30 PM"
+            placeholderTextColor={colors.nbMuted}
+            style={styles.input}
+            editable={!submitting}
+          />
+
+          <Text style={styles.label}>DEVICE (OPTIONAL)</Text>
+          <TextInput
+            value={deviceInfo}
+            onChangeText={setDeviceInfo}
+            placeholder="iPhone 15"
+            placeholderTextColor={colors.nbMuted}
+            style={styles.input}
+            editable={!submitting}
+          />
+
+          {/* Design Law dashed drop zone — screenshots stay optional; no picker wired yet */}
+          <View
+            style={[
+              styles.dashZone,
+              { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface },
+            ]}
+          >
+            <Ionicons name="images-outline" size={28} color={colors.nbInk} />
+            <View style={{ flex: 1, marginLeft: spacing.sm }}>
+              <Text style={[styles.dashTitle, { color: colors.nbInk }]}>
+                Screenshots if something looks wrong
               </Text>
-            ))}
-          </NbCard>
-
-          <InfoCard
-            title="Don’t send"
-            body="Passwords, full card numbers, or private health details you don’t want stored in email."
-            styles={styles}
-          />
-
-          <SectionHeader title="Send a bug report" styles={styles} />
-
-          <NbCard style={styles.card}>
-            <Text style={styles.formTitle}>Send a bug report</Text>
-            <Text style={styles.formSub}>Tell us what you expected, what happened, and steps if you can.</Text>
-
-            <Text style={styles.label}>What you expected</Text>
-            <TextInput
-              value={whatExpected}
-              onChangeText={setWhatExpected}
-              placeholder="Example: “I expected the workout to save.”"
-              placeholderTextColor={colors.nbMuted}
-              style={[styles.input, styles.inputMultiline]}
-              multiline
-              editable={!submitting}
-            />
-
-            <Text style={styles.label}>What happened instead</Text>
-            <TextInput
-              value={whatHappened}
-              onChangeText={setWhatHappened}
-              placeholder="Example: “It froze and kicked me out.”"
-              placeholderTextColor={colors.nbMuted}
-              style={[styles.input, styles.inputMultiline]}
-              multiline
-              editable={!submitting}
-            />
-
-            <Text style={styles.label}>Steps (optional)</Text>
-            <TextInput
-              value={steps}
-              onChangeText={setSteps}
-              placeholder="Example: “Open Training → Planner → Generate…”"
-              placeholderTextColor={colors.nbMuted}
-              style={[styles.input, styles.inputMultiline]}
-              multiline
-              editable={!submitting}
-            />
-
-            <Text style={styles.label}>Device (optional)</Text>
-            <TextInput
-              value={deviceInfo}
-              onChangeText={setDeviceInfo}
-              placeholder="Example: “iPhone 14, iOS 18”"
-              placeholderTextColor={colors.nbMuted}
-              style={styles.input}
-              editable={!submitting}
-            />
-            <Text style={styles.helper}>Don’t include passwords or payment details.</Text>
-
-            <View style={styles.buttonWrap}>
-              <NbButton variant="fill" onPress={submitBug} disabled={submitting}>
-                {submitting ? 'Sending…' : 'Send bug report'}
-              </NbButton>
+              <Text style={[styles.helper, { marginTop: 2 }]}>Optional. Up to 3 images</Text>
             </View>
+          </View>
 
-            {supportEmail ? (
-              <Pressable onPress={openBugMail}>
-                <Text style={[styles.helper, { marginTop: spacing.sm }]}>Or email instead</Text>
-              </Pressable>
-            ) : null}
-          </NbCard>
+          <View style={styles.buttonWrap}>
+            <NbButton variant="fill" onPress={submitBug} disabled={submitting}>
+              {submitting ? 'Sending…' : 'Send bug report'}
+            </NbButton>
+          </View>
 
-          <NbCard style={styles.footer}>
-            <Text style={styles.footerText}>{footerCopy}</Text>
-          </NbCard>
+          {supportEmail ? (
+            <Pressable onPress={openBugMail}>
+              <Text style={[styles.helper, { marginTop: spacing.sm }]}>Or email instead</Text>
+            </Pressable>
+          ) : null}
+
+          <Text style={[styles.footerText, { marginTop: spacing.lg }]}>{footerCopy}</Text>
         </Animated.View>
       </ScrollView>
     </SafeAreaView>

@@ -1,83 +1,38 @@
-// Single color source for the trainer's session calendar and booking form.
-// Flow: screens import the brand colors, or call getSessionSchedulingColors for light versus dark.
-// Used by: the scheduling screens. One list of hex values keeps the pinks from drifting.
+// Theme tokens for any leftover scheduling helpers that still import this module.
+// Flow: screens should prefer useTheme()/nb tokens; this file only remaps to those names.
+// Used by: older scheduling call sites. Design Law: no purple borders, no green.
+//
+// Manipulate here: only if a legacy screen still reads these keys — new UI uses colorPalette nb*
 
-// ===== NAMED CONSTANTS =====
+import { lightColors, darkColors } from '../../look-and-feel/colorPalette';
 
-// Manipulate here: change a hex once. Every scheduling screen reads these names.
-import { lightColors } from '../../look-and-feel/colorPalette';
-const DARK_ORANGE = '#EA580C';
-const DARK_PINK = '#D91E63';
-const DARK_PURPLE = '#BE185D';
-const GOLD = '#F59E0B';
-
-const SESSION_GRADIENT = [DARK_PINK, DARK_PURPLE];
-const ACCENT_GRADIENT = [GOLD, DARK_ORANGE];
-
-const DARK_THEME_COLORS = {
-  bg: lightColors.nbInk,
-  cardBg: '#1A1A1F',
-  text: lightColors.white,
-  label: lightColors.white,
-  muted: 'rgba(255,255,255,0.62)',
-  divider: 'rgba(255,255,255,0.12)',
-  wheelShell: 'rgba(255,255,255,0.04)',
-  wheelInactive: 'rgba(255,255,255,0.5)',
-  inputBg: 'rgba(255,255,255,0.04)',
-};
-
-const LIGHT_THEME_COLORS = {
-  bg: '#FAFAF9',
-  cardBg: '#F5F5F3',
-  text: lightColors.nbInk,
-  label: lightColors.nbInk,
-  muted: 'rgba(10,10,15,0.55)',
-  divider: 'rgba(10,10,15,0.1)',
-  wheelShell: 'rgba(10,10,15,0.04)',
-  wheelInactive: 'rgba(10,10,15,0.45)',
-  inputBg: 'rgba(255,255,255,0.9)',
-};
-
-// ===== HELPER FUNCTIONS =====
+// ===== HELPERS =====
 
 /**
- * Pick the dark or light palette object. Border always stays brand pink.
- * @param {boolean} isDark
- * @returns {object}
- */
-function themePalette(isDark) {
-  if (isDark) return DARK_THEME_COLORS;
-  return LIGHT_THEME_COLORS;
-}
-
-// ===== MAIN FUNCTION =====
-
-/**
- * Returned keys are the names the scheduling screens already read (bg, cardBg, text, …).
+ * Pick dark or light nb-aligned palette. Border is always nbBorder (never purple).
  * @param {boolean} isDark
  * @returns {object}
  */
 export function getSessionSchedulingColors(isDark) {
-  const palette = themePalette(isDark);
+  const c = isDark ? darkColors : lightColors;
   return {
-    bg: palette.bg,
-    cardBg: palette.cardBg,
-    text: palette.text,
-    label: palette.label,
-    muted: palette.muted,
-    divider: palette.divider,
-    border: DARK_PINK,
-    wheelShell: palette.wheelShell,
-    wheelInactive: palette.wheelInactive,
-    inputBg: palette.inputBg,
+    bg: c.nbBackground,
+    cardBg: c.nbSurface,
+    text: c.nbInk,
+    label: c.nbInk,
+    muted: c.nbMuted,
+    divider: c.nbBorder,
+    border: c.nbBorder,
+    wheelShell: c.nbSoft,
+    wheelInactive: c.nbMuted,
+    inputBg: c.nbSurface,
   };
 }
 
-export {
-  DARK_ORANGE,
-  DARK_PINK,
-  DARK_PURPLE,
-  GOLD,
-  SESSION_GRADIENT,
-  ACCENT_GRADIENT,
-};
+// Legacy named exports kept so old imports do not crash — values are nb tokens, not pink/purple
+export const DARK_ORANGE = lightColors.nbInk;
+export const DARK_PINK = lightColors.nbInk;
+export const DARK_PURPLE = lightColors.nbInk;
+export const GOLD = lightColors.nbInk;
+export const SESSION_GRADIENT = [lightColors.nbFill, lightColors.nbFill];
+export const ACCENT_GRADIENT = [lightColors.nbFill, lightColors.nbFill];

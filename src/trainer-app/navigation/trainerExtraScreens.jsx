@@ -15,6 +15,7 @@ import TermsOfServiceScreen from '../../settings/TermsOfServiceScreen';
 import PrivacyPolicyScreen from '../../settings/PrivacyPolicyScreen';
 import ContactSupportScreen from '../../settings/ContactSupportScreen';
 import BugReportScreen from '../../settings/BugReportScreen';
+import PrivacyDataRightsScreen from '../../settings/PrivacyDataRightsScreen';
 import DailyLogContent from '../../nutrition/daily-log/DailyLogContent';
 import SearchTrainersScreen from '../../client-app/find-a-trainer/SearchTrainersScreen';
 import VoiceCoachScreen from '../../ai-coach/home-screen/CoachHomeScreen';
@@ -277,6 +278,18 @@ export function TrainerContactSupportScreen() {
 export function TrainerBugReportScreen() {
   const shell = useTrainerAppStartShell();
   return withNav(<BugReportScreen onClose={shell.rootGoBack} />, shell);
+}
+
+/**
+ * @returns {import('react').ReactElement}
+ */
+export function TrainerPrivacyDataRightsScreen() {
+  const shell = useTrainerAppStartShell();
+  const onNavigate = buildNavigateFromShell(shell);
+  return withNav(
+    <PrivacyDataRightsScreen onClose={shell.rootGoBack} onNavigate={onNavigate} />,
+    shell,
+  );
 }
 
 /**

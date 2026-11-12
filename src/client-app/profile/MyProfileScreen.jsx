@@ -20,7 +20,6 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { auth, db } from '../../app-start/cloudConnection';
 import { signOut } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
@@ -51,6 +50,7 @@ import { syncTrainerMarketplaceDoc } from '../../for-both/trainer-listing/keepTr
 import NbCard from '../../look-and-feel/NbCard';
 import NbButton from '../../look-and-feel/NbButton';
 import NbListRow from '../../look-and-feel/NbListRow';
+import NbPageHeader from '../../look-and-feel/NbPageHeader';
 import HardShadow from '../../look-and-feel/HardShadow';
 import {
   Camera,
@@ -104,17 +104,9 @@ const BIO_PREVIEW_MAX_CHARS = 180;
 const BIO_PREVIEW_CUT_CHARS = 177;
 const USERS_COLLECTION = 'users';
 const PROFILE_PHOTO_FOLDER = 'profile_photos';
-const CERT_STATUS_SUCCESS = 'success';
-const CERT_STATUS_DANGER = 'danger';
-const CERT_SUCCESS_BORDER = 'rgba(22,163,74,0.35)';
-const CERT_DANGER_BORDER = 'rgba(220,38,38,0.35)';
-const CERT_SUCCESS_FILL = 'rgba(22,163,74,0.08)';
-const CERT_DANGER_FILL = 'rgba(220,38,38,0.08)';
-const CERT_SUCCESS_TEXT = '#16a34a';
-const CERT_DANGER_TEXT = '#dc2626';
 const EMPTY_PROFILE_MARK = '—';
 
-// Manipulate here: accent only — pink→orange brand (no purple / no yellow)
+// Manipulate here: icon accent only (avatar chips). No green / purple borders.
 const PROFILE = {
   accentSoft: '#FB923C',
   icon: '#FB923C',
@@ -255,40 +247,6 @@ function SectionTitle({ title, theme }) {
   return (
     <View style={styles.sectionTitleRow}>
       <Text style={[styles.sectionTitleText, { color: theme.muted }]}>{title}</Text>
-    </View>
-  );
-}
-
-/**
- * Design Law page chrome: hard-shadow back square + title.
- */
-function ProfilePageHeader({ title, subtitle, onBack, theme, topInset = 0 }) {
-  return (
-    <View style={[styles.pageHeader, { paddingTop: topInset + spacing.sm }]}>
-      {typeof onBack === 'function' ? (
-        <TouchableOpacity
-          onPress={onBack}
-          style={[
-            styles.backSq,
-            {
-              borderColor: theme.border,
-              backgroundColor: theme.card,
-              shadowColor: theme.shadow,
-            },
-          ]}
-          accessibilityRole="button"
-          accessibilityLabel="Go back"
-          activeOpacity={0.85}
-        >
-          <Ionicons name="chevron-back" size={22} color={theme.text} />
-        </TouchableOpacity>
-      ) : (
-        <View style={styles.backSqSpacer} />
-      )}
-      <View style={styles.pageHeaderText}>
-        <Text style={[styles.pageTitle, { color: theme.text }]}>{title}</Text>
-        {subtitle ? <Text style={[styles.pageSubtitle, { color: theme.muted }]}>{subtitle}</Text> : null}
-      </View>
     </View>
   );
 }
@@ -556,29 +514,23 @@ function paymentButtonLabel(status) {
 function TrainerPaymentCard({ status, onPress, theme }) {
   const label = paymentStatusLabel(status);
   const cta = paymentButtonLabel(status);
+  // Design Law: solid fill card — no gradient Save / payment block
   return (
     <Pressable onPress={onPress} disabled={!onPress}>
-      <HardShadow offset={nb.shadowOffsetCard} radius={14}>
-        <LinearGradient
-          colors={gradients.brand.colors}
-          start={gradients.brand.start}
-          end={gradients.brand.end}
-          style={[styles.paymentCard, { borderColor: theme.border }]}
-        >
-          <View style={styles.paymentCardInner}>
-            <Wallet size={18} color={lightColors.nbInk} strokeWidth={2} />
-            <View style={{ flex: 1, marginLeft: 10 }}>
-              <Text style={[styles.paymentKicker, { color: lightColors.nbInk }]}>PAYMENTS</Text>
-              <Text style={[styles.paymentStatus, { color: lightColors.nbInk }]}>{label}</Text>
-            </View>
-            {onPress ? (
-              <View style={[styles.paymentCta, { borderColor: lightColors.nbInk }]}>
-                <Text style={[styles.paymentCtaText, { color: lightColors.nbInk }]}>{cta}</Text>
-              </View>
-            ) : null}
+      <NbCard style={[styles.paymentCard, { backgroundColor: theme.fill, borderColor: theme.border }]}>
+        <View style={styles.paymentCardInner}>
+          <Wallet size={18} color={theme.onFill} strokeWidth={2} />
+          <View style={{ flex: 1, marginLeft: 10 }}>
+            <Text style={[styles.paymentKicker, { color: theme.onFill }]}>PAYMENTS</Text>
+            <Text style={[styles.paymentStatus, { color: theme.onFill }]}>{label}</Text>
           </View>
-        </LinearGradient>
-      </HardShadow>
+          {onPress ? (
+            <View style={[styles.paymentCta, { borderColor: theme.onFill }]}>
+              <Text style={[styles.paymentCtaText, { color: theme.onFill }]}>{cta}</Text>
+            </View>
+          ) : null}
+        </View>
+      </NbCard>
     </Pressable>
   );
 }
@@ -600,22 +552,6 @@ function TrainerContactRow({ label, value, Icon, onPress, editable, theme }) {
   return (
     <Pressable onPress={onPress} style={({ pressed }) => ({ opacity: pressed ? 0.88 : 1 })}>
       {row}
-    </Pressable>
-  );
-}
-
-function GradientSwitch({ value, onValueChange }) {
-  return (
-    <Pressable onPress={() => onValueChange(!value)} hitSlop={8}>
-      {value ? (
-        <LinearGradient colors={PROFILE.borderGradient} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={styles.gradSwitchTrack}>
-          <View style={[styles.gradSwitchThumb, styles.gradSwitchThumbOn]} />
-        </LinearGradient>
-      ) : (
-        <View style={[styles.gradSwitchTrack, styles.gradSwitchTrackOff]}>
-          <View style={styles.gradSwitchThumb} />
-        </View>
-      )}
     </Pressable>
   );
 }
@@ -820,7 +756,6 @@ export function ViewMyMyProfileScreen({
 }) {
   const isTrainer = String(userRole || '').toLowerCase() === 'trainer';
   const { isDark: themeIsDark } = useTheme();
-  const insets = useSafeAreaInsets();
   const shellNavInset = useShellBottomNavInset(SHELL_NAV_EXTRA_INSET);
   const isDark = typeof isDarkProp === 'boolean' ? isDarkProp : themeIsDark;
   const theme = profileThemeFromMode(isDark);
@@ -1306,12 +1241,10 @@ function formatWeight(weightValue) {
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
       <View style={{ flex: 1 }}>
-        <ProfilePageHeader
+        <NbPageHeader
           title="Edit profile"
           subtitle="Keep your details current for a tailored experience."
           onBack={onBack || nav.home}
-          theme={theme}
-          topInset={insets.top}
         />
 
         <ScrollView
@@ -1503,21 +1436,10 @@ function formatWeight(weightValue) {
                           marginBottom: 12,
                           padding: 12,
                           borderRadius: 12,
-                          borderWidth: 1,
-                          borderColor:
-                            certificationStatusTone(certVerifyStatus) === 'success'
-                              ? 'rgba(22,163,74,0.35)'
-                              : certificationStatusTone(certVerifyStatus) === 'danger'
-                                ? 'rgba(220,38,38,0.35)'
-                                : theme.border,
-                          backgroundColor:
-                            certificationStatusTone(certVerifyStatus) === 'success'
-                              ? 'rgba(22,163,74,0.08)'
-                              : certificationStatusTone(certVerifyStatus) === 'danger'
-                                ? 'rgba(220,38,38,0.08)'
-                                : isDark
-                                  ? 'rgba(255,255,255,0.04)'
-                                  : 'rgba(0,0,0,0.03)',
+                          // Design Law: 3px ink border — no green / purple status chrome
+                          borderWidth: nb.borderWidth,
+                          borderColor: theme.border,
+                          backgroundColor: theme.card,
                         }}
                       >
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -1527,12 +1449,7 @@ function formatWeight(weightValue) {
                           <Text
                             style={{
                               flex: 1,
-                              color:
-                                certificationStatusTone(certVerifyStatus) === 'success'
-                                  ? '#16a34a'
-                                  : certificationStatusTone(certVerifyStatus) === 'danger'
-                                    ? '#dc2626'
-                                    : theme.text,
+                              color: theme.text,
                               fontSize: 13,
                               fontWeight: '700',
                             }}

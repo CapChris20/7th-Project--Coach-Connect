@@ -1,27 +1,33 @@
-// Month grid for picking a session date. Days with sessions get a dot; the selected day fills with the accent.
+// Design Law month grid: bordered day tiles, session dots, selected = solid fill (not gradient).
 // Flow: build week rows for the cursor month → tap a day → onSelectDate(YYYY-MM-DD) → chevrons move the month.
-// Used by: the trainer scheduling screen.
+// Used by: BookSessionScreen month view (PNG 05/06).
 //
-// vocab: neobrutalist = thick outlines (2.5px), hard shadows, nb tokens for colors
+// vocab: HardShadow = solid offset shadow on nav squares; out-of-month = dashed muted tiles
+// Manipulate here: cell minHeight (44), nav button 36, session-dot size 5
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, useColorScheme } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { ChevronLeft, ChevronRight } from 'lucide-react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { lightColors, darkColors, gradients, nb, borderRadius } from '../../look-and-feel/colorPalette';
+import HardShadow from '../../look-and-feel/HardShadow';
+import { useTheme } from '../../look-and-feel/lightDarkMode';
+import { nb, borderRadius, spacing } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
-const THEME_DARK = 'dark';
 const DAYS_IN_WEEK = 7;
 const NOON_LOCAL_SUFFIX = 'T12:00:00';
 const DATE_KEY_LENGTH = 10;
 const WEEKDAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+// Manipulate here: day cell height (Design Law min touch 44)
+const DAY_CELL_MIN = 44;
 
-// ===== HELPER FUNCTIONS =====
+// ===== HELPERS =====
 
 function dateKeyFromDate(dateValue) {
-  return dateValue.toISOString().slice(0, DATE_KEY_LENGTH);
+  const y = dateValue.getFullYear();
+  const m = String(dateValue.getMonth() + 1).padStart(2, '0');
+  const d = String(dateValue.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
 
 function selectedDateAtNoon(selectedDate) {
@@ -37,27 +43,21 @@ function collectSessionDayKeys(sessions) {
   return daysWithSessions;
 }
 
-function padLeadingEmptyCells(startWeekday) {
-  const emptyCells = [];
-  for (let index = 0; index < startWeekday; index += 1) emptyCells.push(null);
-  return emptyCells;
-}
-
-function monthDayCells(year, monthIndex, daysInMonth) {
-  const dayCells = [];
-  for (let dayNumber = 1; dayNumber <= daysInMonth; dayNumber += 1) {
-    dayCells.push(new Date(year, monthIndex, dayNumber));
+function buildMonthWeeks(year, monthIndex, startWeekday, daysInMonth) {
+  // Include trailing/leading days from adjacent months so the grid is a full rectangle (PNG dashed cells)
+  const daysInPrevMonth = new Date(year, monthIndex, 0).getDate();
+  const cells = [];
+  for (let i = 0; i < startWeekday; i += 1) {
+    const dayNum = daysInPrevMonth - startWeekday + 1 + i;
+    cells.push({ date: new Date(year, monthIndex - 1, dayNum), inMonth: false });
   }
-  return dayCells;
-}
-
-function padTrailingEmptyCells(cells) {
-  const padded = [...cells];
-  while (padded.length % DAYS_IN_WEEK !== 0) padded.push(null);
-  return padded;
-}
-
-function chunkIntoWeeks(cells) {
+  for (let dayNumber = 1; dayNumber <= daysInMonth; dayNumber += 1) {
+    cells.push({ date: new Date(year, monthIndex, dayNumber), inMonth: true });
+  }
+  while (cells.length % DAYS_IN_WEEK !== 0) {
+    const nextDay = cells.length - (startWeekday + daysInMonth) + 1;
+    cells.push({ date: new Date(year, monthIndex + 1, nextDay), inMonth: false });
+  }
   const rows = [];
   for (let index = 0; index < cells.length; index += DAYS_IN_WEEK) {
     rows.push(cells.slice(index, index + DAYS_IN_WEEK));
@@ -65,53 +65,54 @@ function chunkIntoWeeks(cells) {
   return rows;
 }
 
-function buildMonthWeeks(year, monthIndex, startWeekday, daysInMonth) {
-  const leading = padLeadingEmptyCells(startWeekday);
-  const days = monthDayCells(year, monthIndex, daysInMonth);
-  const padded = padTrailingEmptyCells([...leading, ...days]);
-  return chunkIntoWeeks(padded);
-}
-
-function DayCell({ cell, columnIndex, selectedDate, sessionDays, accent, textColor, onSelectDate }) {
-  if (!cell) return <View key={`empty-${columnIndex}`} style={styles.cell} />;
-  const key = dateKeyFromDate(cell);
+function DayCell({ cell, selectedDate, sessionDays, onSelectDate, colors }) {
+  const key = dateKeyFromDate(cell.date);
   const isSelected = key === selectedDate;
   const hasSession = sessionDays.has(key);
-  
+  const inMonth = cell.inMonth;
+
+  const fillBg = isSelected ? colors.nbFill : colors.nbSurface;
+  const ink = isSelected ? colors.nbOnFill : inMonth ? colors.nbInk : colors.nbMuted;
+
   return (
     <TouchableOpacity
-      key={`d-${columnIndex}`}
       onPress={() => onSelectDate?.(key)}
-      style={[
-        styles.cell,
-        styles.dayBtn,
-        hasSession && styles.dayBtnWithSession,
-      ]}
+      style={styles.cell}
       activeOpacity={0.85}
+      accessibilityRole="button"
+      accessibilityState={{ selected: isSelected }}
     >
-      {isSelected ? (
-        <LinearGradient
-          colors={gradients.brand.colors}
-          start={gradients.brand.start}
-          end={gradients.brand.end}
-          style={[StyleSheet.absoluteFill, { borderRadius: borderRadius.nbChip }]}
-        />
-      ) : null}
-      <Text style={[styles.dayText, { color: isSelected ? lightColors.nbInk : textColor }]}>
-        {cell.getDate()}
-      </Text>
-      {hasSession ? (
-        <View style={[styles.dot, { backgroundColor: isSelected ? lightColors.nbInk : accent }]} />
-      ) : (
-        <View style={styles.dotSpacer} />
-      )}
+      <View
+        style={[
+          styles.dayBtn,
+          {
+            backgroundColor: fillBg,
+            borderColor: inMonth || isSelected ? colors.nbBorder : colors.nbMuted,
+            borderStyle: inMonth || isSelected ? 'solid' : 'dashed',
+          },
+          isSelected && { shadowColor: colors.nbShadow },
+        ]}
+      >
+        <Text style={[styles.dayText, { color: ink }]}>{cell.date.getDate()}</Text>
+        {/* Solid dot = day has sessions; hollow ring = empty (PNG week strip language) */}
+        {hasSession ? (
+          <View style={[styles.dot, { backgroundColor: isSelected ? colors.nbOnFill : colors.nbInk }]} />
+        ) : (
+          <View
+            style={[
+              styles.dotHollow,
+              { borderColor: isSelected ? colors.nbOnFill : colors.nbMuted },
+            ]}
+          />
+        )}
+      </View>
     </TouchableOpacity>
   );
 }
 
-function WeekdayHeader({ colors, borderless }) {
+function WeekdayHeader({ colors }) {
   return (
-    <View style={[styles.weekdays, borderless && styles.weekdaysBorderless]}>
+    <View style={styles.weekdays}>
       {WEEKDAY_LABELS.map((label, index) => (
         <View key={`${label}-${index}`} style={styles.weekdayCell}>
           <Text style={[styles.weekday, { color: colors.nbMuted }]}>{label}</Text>
@@ -121,7 +122,25 @@ function WeekdayHeader({ colors, borderless }) {
   );
 }
 
-// ===== MAIN FUNCTION =====
+function NavSquare({ onPress, children, colors }) {
+  return (
+    <HardShadow offset={nb.shadowOffsetSmall} radius={borderRadius.nbChip}>
+      <TouchableOpacity
+        onPress={onPress}
+        style={[
+          styles.navBtn,
+          { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface },
+        ]}
+        activeOpacity={0.75}
+        accessibilityRole="button"
+      >
+        {children}
+      </TouchableOpacity>
+    </HardShadow>
+  );
+}
+
+// ===== MAIN =====
 
 /**
  * Month calendar. `selectedDate` is a YYYY-MM-DD string. `sessions[].date` uses the same shape.
@@ -132,19 +151,22 @@ export const MonthCalendar = ({
   selectedDate,
   onSelectDate,
   onMonthChange,
-  theme,
+  theme: _themeIgnored,
   borderless = false,
 }) => {
-  const colorScheme = useColorScheme();
-  const isDark = theme === 'dark' || (theme == null && colorScheme === 'dark');
-  const colors = isDark ? darkColors : lightColors;
-  const accent = gradients.brand.colors[0];
+  const { colors, isDark: _isDark } = useTheme();
   const selected = selectedDateAtNoon(selectedDate);
   const [cursor, setCursor] = useState(() => selected || new Date());
 
   useEffect(() => {
     onMonthChange?.(cursor);
   }, [cursor, onMonthChange]);
+
+  // Keep the grid on the selected day when the parent changes selectedDate
+  useEffect(() => {
+    if (!selected) return;
+    setCursor(selected);
+  }, [selectedDate]);
 
   const year = cursor.getFullYear();
   const monthIndex = cursor.getMonth();
@@ -154,7 +176,6 @@ export const MonthCalendar = ({
   const monthTitle = cursor.toLocaleString(undefined, { month: 'long', year: 'numeric' });
 
   const sessionDays = useMemo(() => collectSessionDayKeys(sessions), [sessions]);
-
   const weeks = useMemo(
     () => buildMonthWeeks(year, monthIndex, startWeekday, daysInMonth),
     [year, monthIndex, startWeekday, daysInMonth],
@@ -165,32 +186,30 @@ export const MonthCalendar = ({
       style={[
         styles.card,
         borderless && styles.cardBorderless,
-        {
-          backgroundColor: borderless ? 'transparent' : colors.nbSurface,
-          borderColor: borderless ? 'transparent' : colors.nbBorder,
-          borderWidth: borderless ? 0 : nb.borderWidth,
+        !borderless && {
+          backgroundColor: colors.nbSurface,
+          borderColor: colors.nbBorder,
+          borderWidth: nb.borderWidth,
         },
       ]}
     >
       <View style={styles.header}>
-        <TouchableOpacity
+        <NavSquare
+          colors={colors}
           onPress={() => setCursor(new Date(year, monthIndex - 1, 1))}
-          style={[styles.navBtn, { borderColor: colors.nbBorder }]}
-          activeOpacity={0.75}
         >
-          <ChevronLeft size={16} color={colors.nbMuted} />
-        </TouchableOpacity>
+          <ChevronLeft size={18} color={colors.nbInk} />
+        </NavSquare>
         <Text style={[styles.title, { color: colors.nbInk }]}>{monthTitle}</Text>
-        <TouchableOpacity
+        <NavSquare
+          colors={colors}
           onPress={() => setCursor(new Date(year, monthIndex + 1, 1))}
-          style={[styles.navBtn, { borderColor: colors.nbBorder }]}
-          activeOpacity={0.75}
         >
-          <ChevronRight size={16} color={colors.nbMuted} />
-        </TouchableOpacity>
+          <ChevronRight size={18} color={colors.nbInk} />
+        </NavSquare>
       </View>
 
-      <WeekdayHeader colors={colors} borderless={borderless} />
+      <WeekdayHeader colors={colors} />
 
       {weeks.map((row, rowIndex) => (
         <View key={`wk-${rowIndex}`} style={styles.row}>
@@ -198,12 +217,10 @@ export const MonthCalendar = ({
             <DayCell
               key={`cell-${rowIndex}-${columnIndex}`}
               cell={cell}
-              columnIndex={columnIndex}
               selectedDate={selectedDate}
               sessionDays={sessionDays}
-              accent={accent}
-              textColor={colors.nbInk}
               onSelectDate={onSelectDate}
+              colors={colors}
             />
           ))}
         </View>
@@ -211,6 +228,8 @@ export const MonthCalendar = ({
     </View>
   );
 };
+
+export default MonthCalendar;
 
 const styles = StyleSheet.create({
   card: {
@@ -226,62 +245,65 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    marginBottom: spacing.sm,
   },
   title: {
-    fontSize: 14,
+    fontSize: 16,
     fontFamily: 'SpaceGrotesk_700Bold',
-    fontWeight: '700',
     letterSpacing: -0.2,
   },
   navBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: borderRadius.nbChip,
+    width: 36,
+    height: 36,
+    borderRadius: 12,
     borderWidth: nb.borderWidth,
     alignItems: 'center',
     justifyContent: 'center',
   },
   weekdays: {
     flexDirection: 'row',
-    marginBottom: 4,
-  },
-  weekdaysBorderless: {
-    marginBottom: 2,
+    marginBottom: 6,
   },
   weekdayCell: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  weekday: { 
-    fontSize: 11, 
+  weekday: {
+    fontSize: 12,
     fontFamily: 'SpaceGrotesk_700Bold',
-    fontWeight: '700', 
-    textAlign: 'center' 
   },
-  row: { flexDirection: 'row', marginBottom: 4 },
+  row: { flexDirection: 'row', marginBottom: 6, gap: 4 },
   cell: {
     flex: 1,
-    minHeight: 36,
+    minHeight: DAY_CELL_MIN,
+  },
+  dayBtn: {
+    flex: 1,
+    minHeight: DAY_CELL_MIN,
+    borderRadius: 10,
+    borderWidth: nb.borderWidth,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 2,
+    paddingVertical: 4,
   },
-  dayBtn: { 
-    borderRadius: borderRadius.nbChip,
-    overflow: 'hidden',
-  },
-  dayBtnWithSession: {
-    borderWidth: nb.borderWidth,
-  },
-  dayText: { 
-    fontSize: 13, 
+  dayText: {
+    fontSize: 13,
     fontFamily: 'SpaceGrotesk_700Bold',
-    fontWeight: '700', 
     lineHeight: 16,
-    zIndex: 1,
   },
-  dot: { width: 4, height: 4, borderRadius: 2, marginTop: 2, zIndex: 1 },
-  dotSpacer: { width: 4, height: 4, marginTop: 2 },
+  dot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    marginTop: 3,
+  },
+  dotHollow: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    borderWidth: 1.5,
+    marginTop: 3,
+    backgroundColor: 'transparent',
+  },
 });

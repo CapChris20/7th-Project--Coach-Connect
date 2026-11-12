@@ -1,6 +1,6 @@
-// Neobrutalist destructive confirmation: the user must press and hold until the progress bar fills.
-// Flow: press in → animate 0→1 → if they hold to the end, run onHoldComplete; release early → bar resets.
-// Used by: delete / unlink / other irreversible actions. Release early never fires the action.
+// Design Law hold-to-confirm sheet — destructive actions need a full press-and-hold.
+// Flow: open sheet → press Hold → bar fills with nbFill → onHoldComplete; release early resets.
+// Used by: Settings delete account (and any other irreversible confirm). Theme tokens only.
 
 import React, { useRef, useEffect, useCallback, useState } from 'react';
 import {
@@ -13,49 +13,26 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
-import NbCard from '../../look-and-feel/NbCard';
-import { lightColors } from '../../look-and-feel/colorPalette';
+import NbButton from '../../look-and-feel/NbButton';
+import NbPill from '../../look-and-feel/NbPill';
+import { nb, spacing } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
 const DEFAULT_HOLD_DURATION_MS = 1200;
 const RESET_DURATION_MS = 180;
-const DEFAULT_BAR_GRADIENT = ['#E25588', '#DB7093'];
-const DEFAULT_TRACK_COLOR = 'rgba(255,255,255,0.12)';
 const DEFAULT_PILL_LABEL = 'Hold to confirm';
 const DEFAULT_TITLE = 'Confirm';
-const SPINNER_COLOR = '#FDA4AF';
-
-const DARK_TEXT = lightColors.white;
-const LIGHT_TEXT = '#1a0a2e';
-const DARK_MUTED = 'rgba(255,255,255,0.55)';
-const LIGHT_MUTED = 'rgba(26,10,46,0.55)';
-const DARK_CARD = 'rgba(14,14,20,0.98)';
-const LIGHT_CARD = lightColors.white;
-const DARK_PILL_BORDER = 'rgba(255,255,255,0.14)';
-const LIGHT_PILL_BORDER = 'rgba(0,0,0,0.1)';
-
+const DEFAULT_WARNING_PILL = 'Cannot be undone.';
 const FILL_COMPLETE = 1;
 const FILL_EMPTY = 0;
+// Manipulate here: hold track height / corner radius
+const TRACK_HEIGHT = 52;
+const TRACK_RADIUS = 10;
 
 // ===== HELPER FUNCTIONS =====
-
-function confirmPalette(isDark) {
-  return {
-    textColor: isDark ? DARK_TEXT : LIGHT_TEXT,
-    muted: isDark ? DARK_MUTED : LIGHT_MUTED,
-    cardBg: isDark ? DARK_CARD : LIGHT_CARD,
-    pillBorder: isDark ? DARK_PILL_BORDER : LIGHT_PILL_BORDER,
-  };
-}
-
-function holdPillOpacity(isSubmitting, isPressed) {
-  if (isSubmitting) return 0.65;
-  if (isPressed) return 0.92;
-  return 1;
-}
 
 function completeErrorMessage(error) {
   return error?.message || error?.code || 'Something went wrong. Try again.';
@@ -68,7 +45,7 @@ function stopHoldAnimation(animRef, runningRef, progress) {
   progress.setValue(FILL_EMPTY);
 }
 
-// vocab: Animated.timing fills 0→1 over holdDurationMs. useNativeDriver: false because we animate width.
+// vocab: Animated.timing fills 0→1 over holdDurationMs. useNativeDriver: false because we animate width %.
 function startHoldFill({ progress, holdDurationMs, animRef, runningRef, holdLockedRef, runComplete }) {
   runningRef.current = true;
   const anim = Animated.timing(progress, {
@@ -97,10 +74,17 @@ function cancelHoldFill({ progress, animRef, runningRef }) {
   }).start();
 }
 
+function holdPillOpacity(isSubmitting, isPressed) {
+  if (isSubmitting) return 0.65;
+  if (isPressed) return 0.92;
+  return 1;
+}
+
 // ===== MAIN FUNCTION =====
 
 /**
- * Hold-to-confirm modal. `onHoldComplete` should throw on failure so the bar can reset.
+ * Bottom sheet: warning pill + title + hold track (solid fill, not a gradient Save bar).
+ * `onHoldComplete` should throw on failure so the bar can reset.
  * @param {object} props
  */
 export default function HoldToConfirmPopup({
@@ -109,19 +93,21 @@ export default function HoldToConfirmPopup({
   title = DEFAULT_TITLE,
   message = '',
   holdDurationMs = DEFAULT_HOLD_DURATION_MS,
-  barGradient = DEFAULT_BAR_GRADIENT,
-  trackColor = DEFAULT_TRACK_COLOR,
+  // kept for call-site compat — Design Law fill uses nbFill, never a pink/purple bar
+  barGradient: _barGradient,
+  trackColor: _trackColor,
   pillLabel = DEFAULT_PILL_LABEL,
+  warningPill = DEFAULT_WARNING_PILL,
   onHoldComplete,
-  isDark = true,
+  isDark: _isDark = true,
 }) {
+  const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const progress = useRef(new Animated.Value(0)).current;
   const animRef = useRef(null);
   const runningRef = useRef(false);
   const holdLockedRef = useRef(false);
   const [submitting, setSubmitting] = useState(false);
-
-  const palette = confirmPalette(isDark);
 
   const resetBar = useCallback(() => {
     stopHoldAnimation(animRef, runningRef, progress);
@@ -136,13 +122,12 @@ export default function HoldToConfirmPopup({
   }, [visible, resetBar]);
 
   const runComplete = useCallback(async () => {
-    // 1. Lock the pill so a second hold cannot fire while the action runs.
+    // 1. Lock so a second hold cannot fire while the action runs.
     setSubmitting(true);
     try {
       await onHoldComplete();
       onClose();
     } catch (error) {
-      // 2. Action threw → tell them, reset the bar, unlock the pill.
       Alert.alert('Could not complete', String(completeErrorMessage(error)));
       resetBar();
     } finally {
@@ -152,7 +137,6 @@ export default function HoldToConfirmPopup({
   }, [onHoldComplete, onClose, resetBar]);
 
   const onPressIn = useCallback(() => {
-    // 1. Already submitting → ignore. Otherwise reset and fill 0→1.
     if (submitting) return;
     resetBar();
     startHoldFill({
@@ -166,7 +150,6 @@ export default function HoldToConfirmPopup({
   }, [submitting, resetBar, progress, holdDurationMs, runComplete]);
 
   const onPressOut = useCallback(() => {
-    // 1. Release early → bar resets. After a finished hold, leave the bar full.
     if (submitting || holdLockedRef.current) return;
     if (!runningRef.current) return;
     cancelHoldFill({ progress, animRef, runningRef });
@@ -177,46 +160,75 @@ export default function HoldToConfirmPopup({
     outputRange: ['0%', '100%'],
   });
 
-  const { colors } = useTheme();
-  
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={submitting ? undefined : onClose}>
-      <Pressable style={styles.overlay} onPress={submitting ? undefined : onClose}>
-        <Pressable style={styles.cardWrap} onPress={(event) => event.stopPropagation?.()}>
-          <NbCard>
-            <Text style={[styles.title, { color: colors.nbInk }]}>{title}</Text>
-            {message ? <Text style={[styles.message, { color: colors.nbMuted }]}>{message}</Text> : null}
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={submitting ? undefined : onClose}>
+      <Pressable style={styles.scrim} onPress={submitting ? undefined : onClose}>
+        <Pressable
+          style={[
+            styles.sheet,
+            {
+              backgroundColor: colors.nbSurface,
+              borderColor: colors.nbBorder,
+              paddingBottom: Math.max(insets.bottom, spacing.md) + spacing.sm,
+            },
+          ]}
+          onPress={(event) => event.stopPropagation?.()}
+        >
+          {/* Design Law sheet grab bar */}
+          <View style={styles.handleWrap}>
+            <View style={[styles.handle, { backgroundColor: colors.nbBorder }]} />
+          </View>
 
-            <View style={[styles.track, { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder }]}>
-              <Animated.View style={[styles.fillWrap, { width: fillWidth }]}>
-                <LinearGradient colors={barGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
-              </Animated.View>
+          {/* Warning accent pill — Design Law allows small gradient pills, not Save buttons */}
+          {warningPill ? (
+            <View style={styles.warningRow}>
+              <NbPill variant="energy">{warningPill}</NbPill>
             </View>
+          ) : null}
 
-            <Pressable
-              onPressIn={onPressIn}
-              onPressOut={onPressOut}
-              disabled={submitting}
-              style={({ pressed }) => [
-                styles.holdPill,
+          <Text style={[styles.title, { color: colors.nbInk }]}>{title}</Text>
+          {message ? <Text style={[styles.message, { color: colors.nbMuted }]}>{message}</Text> : null}
+
+          {/* Hold track: press-and-hold fills with solid nbFill (no brand gradient bar) */}
+          <Pressable
+            onPressIn={onPressIn}
+            onPressOut={onPressOut}
+            disabled={submitting}
+            style={({ pressed }) => [
+              styles.holdTrack,
+              {
+                opacity: holdPillOpacity(submitting, pressed),
+                borderColor: colors.nbBorder,
+                backgroundColor: colors.nbSurface,
+                shadowColor: colors.nbShadow,
+              },
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel={pillLabel}
+          >
+            <Animated.View
+              style={[
+                styles.fillWrap,
                 {
-                  opacity: holdPillOpacity(submitting, pressed),
-                  borderColor: colors.nbBorder,
-                  backgroundColor: colors.nbSurfaceChip,
+                  width: fillWidth,
+                  backgroundColor: colors.nbFill,
                 },
               ]}
-            >
+            />
+            <View style={styles.holdLabelWrap} pointerEvents="none">
               {submitting ? (
-                <ActivityIndicator color={SPINNER_COLOR} />
+                <ActivityIndicator color={colors.nbInk} />
               ) : (
                 <Text style={[styles.holdLabel, { color: colors.nbInk }]}>{pillLabel}</Text>
               )}
-            </Pressable>
+            </View>
+          </Pressable>
 
-            <Pressable onPress={submitting ? undefined : onClose} style={styles.cancelWrap} disabled={submitting}>
-              <Text style={[styles.cancel, { color: colors.nbMuted }]}>Cancel</Text>
-            </Pressable>
-          </NbCard>
+          <View style={styles.cancelWrap}>
+            <NbButton variant="ghost" onPress={submitting ? undefined : onClose} disabled={submitting}>
+              Cancel
+            </NbButton>
+          </View>
         </Pressable>
       </Pressable>
     </Modal>
@@ -224,59 +236,71 @@ export default function HoldToConfirmPopup({
 }
 
 const styles = StyleSheet.create({
-  overlay: {
+  scrim: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    justifyContent: 'center',
-    padding: 24,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
   },
-  cardWrap: {
-    maxWidth: 400,
-    alignSelf: 'center',
-    width: '100%',
+  sheet: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderTopWidth: nb.borderWidth,
+    borderLeftWidth: nb.borderWidth,
+    borderRightWidth: nb.borderWidth,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+  },
+  handleWrap: {
+    alignItems: 'center',
+    marginBottom: spacing.md,
+  },
+  handle: {
+    width: 40,
+    height: 4,
+    borderRadius: 999,
+  },
+  warningRow: {
+    marginBottom: spacing.sm,
   },
   title: {
-    fontSize: 20,
-    fontWeight: '900',
-    letterSpacing: -0.3,
-    marginBottom: 10,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 22,
+    letterSpacing: -0.4,
+    marginBottom: spacing.sm,
   },
   message: {
+    fontFamily: 'Inter_400Regular',
     fontSize: 14,
     lineHeight: 21,
-    fontWeight: '500',
-    marginBottom: 18,
+    marginBottom: spacing.lg,
   },
-  track: {
-    height: 8,
-    borderRadius: 6,
-    borderWidth: 2.5,
+  // Manipulate here: hold button height / hard shadow
+  holdTrack: {
+    height: TRACK_HEIGHT,
+    borderRadius: TRACK_RADIUS,
+    borderWidth: nb.borderWidth,
     overflow: 'hidden',
-    marginBottom: 16,
+    justifyContent: 'center',
+    marginBottom: spacing.sm,
+    shadowOffset: { width: nb.shadowOffset, height: nb.shadowOffset },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 4,
   },
   fillWrap: {
-    height: '100%',
-    borderRadius: 6,
-    overflow: 'hidden',
+    ...StyleSheet.absoluteFillObject,
+    right: undefined,
   },
-  holdPill: {
-    minHeight: 52,
-    borderRadius: 14,
-    borderWidth: 2.5,
+  holdLabelWrap: {
+    ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
   },
   holdLabel: {
+    fontFamily: 'SpaceGrotesk_700Bold',
     fontSize: 15,
-    fontWeight: '800',
   },
   cancelWrap: {
-    marginTop: 14,
-    alignItems: 'center',
-    paddingVertical: 6,
-  },
-  cancel: {
-    fontSize: 15,
-    fontWeight: '700',
+    marginTop: spacing.xs,
   },
 });

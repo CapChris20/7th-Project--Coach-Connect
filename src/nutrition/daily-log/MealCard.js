@@ -134,6 +134,7 @@ export default function MealCard({
             ))}
           </View>
         ) : (
+          // Design Law empty meal = dashed “No items logged” only (no Scan row — barcode lives in add/search)
           <View style={[styles.emptyState, { borderTopColor: colors.nbBorder }]}>
             <Text style={[styles.emptyText, { color: colors.nbMuted }]} selectable>
               No items logged
@@ -141,7 +142,8 @@ export default function MealCard({
           </View>
         )}
 
-        {onAddScanner ? (
+        {/* Scan stays as a filled-meal shortcut; empty days keep the lighter Design Law shell */}
+        {hasItems && onAddScanner ? (
           <TouchableOpacity
             onPress={() => onAddScanner(mealKey)}
             style={[styles.scanLink, { borderColor: colors.nbBorder }]}
@@ -156,8 +158,10 @@ export default function MealCard({
 }
 
 const styles = StyleSheet.create({
-  cardOuter: { marginBottom: 16 },
+  // Manipulate here: gap under each meal card (Design Law block gap; empty days feel less stacked at 20)
+  cardOuter: { marginBottom: 20 },
   card: {
+    // Design Law card padding stays 14 — empty breathing comes from emptyState, not outer pad
     padding: 14,
     borderRadius: borderRadius.nbCard,
     borderWidth: nb.borderWidth,
@@ -190,8 +194,11 @@ const styles = StyleSheet.create({
   },
   itemsList: { marginBottom: 4 },
   rowDivider: { height: StyleSheet.hairlineWidth * 2, width: '100%', opacity: 0.35 },
+  // Manipulate here: empty-day breathing room inside the dashed “No items logged” band
   emptyState: {
-    paddingVertical: 16,
+    paddingVertical: 22,
+    minHeight: 56,
+    justifyContent: 'center',
     alignItems: 'center',
     borderTopWidth: nb.borderWidthDivider,
     borderStyle: 'dashed',
@@ -201,7 +208,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   scanLink: {
-    marginTop: 10,
+    marginTop: 12,
     minHeight: nb.minTouchTarget,
     borderRadius: borderRadius.nbButton,
     borderWidth: nb.borderWidth,
