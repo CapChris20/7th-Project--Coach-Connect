@@ -16,6 +16,7 @@ Logo: `assets/cc-logo-transparent.png` (made from `src/assets/logo/Logo.PNG`, bl
 - The hero is ONLY: small label, "Welcome to Coach Connect" (Coach Connect on a gradient highlight), the lifter (client) or boxer (trainer) Lottie on a gradient ring, and the tagline strip along the bottom.
 - Do NOT show a streak pill, week dots, session counts, "Lower body", a countdown, or stats in the hero. The owner rejected all of that.
 - The trainer hero is the mirror image of the client hero (animation on the left).
+- Home heroes use **surface + ink** (white card in light, dark surface in dark) — not the inverted `fill`/`blk` stage. The welcome logo stage stays black/fill.
 - Everything below the hero (Up next, trainer card, Your week, Needs you, clients carousel and so on) keeps the layout from `client-home` and `trainer-home` mockups.
 - Labels "Your training home" and "Your coaching home" are placeholder wording.
 

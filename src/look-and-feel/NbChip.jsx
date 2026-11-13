@@ -58,6 +58,7 @@ export default function NbChip({
     children
   );
 
+  // Design Law: selected chip shows a white/onFill check beside the label (PNG ticks).
   const chipBody = (
     <View
       style={[
@@ -66,11 +67,16 @@ export default function NbChip({
           borderColor: colors.nbBorder,
           backgroundColor: bg,
           borderStyle: isDashed ? 'dashed' : 'solid',
+          flexDirection: 'row',
+          gap: 6,
         },
         contentStyle,
       ]}
     >
       {label}
+      {filled && isPlainLabel ? (
+        <Text style={[styles.check, { color: textColor }]}>✓</Text>
+      ) : null}
     </View>
   );
 
@@ -125,6 +131,11 @@ const styles = StyleSheet.create({
   text: {
     fontFamily: 'SpaceGrotesk_700Bold',
     fontSize: 13,
+  },
+  check: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 14,
+    fontWeight: '900',
   },
   strike: {
     textDecorationLine: 'line-through',

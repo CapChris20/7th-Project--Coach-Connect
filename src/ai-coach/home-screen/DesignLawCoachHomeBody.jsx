@@ -1,5 +1,6 @@
 // Design Law AI Coach home body — matches screens/ai-coach/01–02 structure 1:1.
 // Flow: hero → “sees today” chips → one-tap 2×2 → photo/web rows → pick up → try asking.
+// Trainer variant (missing-screens 17/18): “Who needs you today?” + trainer Do-it-for-me tools.
 // Used by CoachHomeScreen IdleCoachHome. Data keys unchanged; taps open chats via onStartChat.
 
 import React, { useMemo } from 'react';
@@ -54,6 +55,48 @@ const ONE_TAP = [
   },
 ];
 
+// Manipulate here: trainer Do-it-for-me starters (missing-screens 17/18)
+const TRAINER_ONE_TAP = [
+  {
+    id: 'spot',
+    title: 'Spot who has not logged',
+    subtitle: 'This week',
+    icon: require('../../assets/icons/handoff/supp.png'),
+    gradient: accentGradients[1],
+    starter: 'Help me spot clients who have not logged food or workouts this week.',
+  },
+  {
+    id: 'notes',
+    title: 'Draft weekly notes',
+    subtitle: 'For every client',
+    icon: require('../../assets/icons/handoff/schedule.png'),
+    gradient: accentGradients[3],
+    starter: 'Draft weekly notes for every client based on their logs.',
+  },
+  {
+    id: 'plan',
+    title: 'Build a plan',
+    subtitle: 'From a client profile',
+    icon: require('../../assets/icons/handoff/workout.png'),
+    gradient: accentGradients[2],
+    starter: 'Help me build a plan from a client profile.',
+  },
+  {
+    id: 'group',
+    title: 'Message a group',
+    subtitle: 'With your wording',
+    icon: require('../../assets/icons/handoff/people.png'),
+    gradient: accentGradients[0],
+    starter: 'Help me message a group of clients with my wording.',
+  },
+];
+
+const TRAINER_SUGGESTIONS = [
+  'Help me spot clients who have not logged food or workouts this week.',
+  'Which clients should I check in on today?',
+  'Summarize how my clients slept this week.',
+];
+
 const PHOTO_STARTER = 'Can you analyze a photo for me?';
 const WEB_STARTER = 'Search the web: what does research say about this for lifters?';
 
@@ -70,8 +113,9 @@ function tap(fn) {
 
 function formatSleepChip(metrics) {
   const hours = metrics?.sleepHours;
-  if (hours == null || !Number.isFinite(Number(hours))) return 'Sleep —';
-  return `Sleep ${Number(hours).toFixed(1)} h`;
+  if (hours == null || !Number.isFinite(Number(hours))) return null;
+  // Design Law empty-vs-data PNG 08: “Sleep 5.8 h avg”
+  return `Sleep ${Number(hours).toFixed(1)} h avg`;
 }
 
 function formatProteinChip(nutrition, userData) {
@@ -81,22 +125,32 @@ function formatProteinChip(nutrition, userData) {
     userData?.macroGoals?.protein ||
     userData?.nutritionGoals?.proteinTarget ||
     null;
-  if (protein == null && target == null) return 'Protein —';
+  if (protein == null && target == null) return null;
   if (target != null) return `Protein ${Math.round(protein || 0)} / ${Math.round(target)} g`;
   return `Protein ${Math.round(protein || 0)} g`;
 }
 
 function formatWaterChip(metrics) {
   const oz = metrics?.waterIntake;
-  if (oz == null || !Number.isFinite(Number(oz))) return 'Water —';
+  if (oz == null || !Number.isFinite(Number(oz))) return null;
   const cups = Math.round(Number(oz) / 8);
   return `Water ${cups} cups`;
 }
 
 function formatSorenessChip(metrics) {
   const s = metrics?.soreness;
-  if (s == null || s === '') return 'Soreness —';
+  if (s == null || s === '') return null;
   return `Soreness ${s}`;
+}
+
+/** empty-vs-data PNG 07: true when the coach has nothing logged to show. */
+function hasAnyCoachMetric(dailyMetrics, nutritionToday, userData) {
+  return (
+    formatSleepChip(dailyMetrics) != null ||
+    formatProteinChip(nutritionToday, userData) != null ||
+    formatWaterChip(dailyMetrics) != null ||
+    formatSorenessChip(dailyMetrics) != null
+  );
 }
 
 function sessionTitle(session) {
@@ -170,15 +224,23 @@ function IconChip({ source, gradient, colors, size = 40 }) {
   );
 }
 
-function HeroBlock({ colors, onPress }) {
+function HeroBlock({ colors, onPress, isTrainer, clientCount, isEmpty }) {
+  // Same nbFill hero chrome as client; only copy changes for trainer (PNG 17/18)
+  // empty-vs-data PNG 07: “Log something and I can start using it.”
+  const eyebrow = isTrainer ? 'TRAINER COACH • FITNESS ONLY' : 'FITNESS ONLY';
+  const title = isTrainer ? 'Who needs you today?' : 'What should we work on?';
+  const sub = isTrainer
+    ? `I see all ${clientCount} clients and their logs.`
+    : isEmpty
+      ? 'Log something and I can start using it.'
+      : 'I can see your logs, your plan and your goals.';
+
   return (
     <HardCard colors={colors} fill={colors.nbFill} onPress={onPress} style={styles.hero}>
       <View style={{ flex: 1, paddingRight: 10 }}>
-        <Text style={[styles.heroEyebrow, { color: colors.nbOnFill }]}>FITNESS ONLY</Text>
-        <Text style={[styles.heroTitle, { color: colors.nbOnFill }]}>What should we work on?</Text>
-        <Text style={[styles.heroSub, { color: colors.nbOnFill }]}>
-          I can see your logs, your plan and your goals.
-        </Text>
+        <Text style={[styles.heroEyebrow, { color: colors.nbOnFill }]}>{eyebrow}</Text>
+        <Text style={[styles.heroTitle, { color: colors.nbOnFill }]}>{title}</Text>
+        <Text style={[styles.heroSub, { color: colors.nbOnFill }]}>{sub}</Text>
       </View>
       <View style={[styles.heroArt, { borderColor: colors.nbBorder, backgroundColor: colors.nbOnFill }]}>
         <LottieView
@@ -192,41 +254,68 @@ function HeroBlock({ colors, onPress }) {
   );
 }
 
-function SeesTodayRow({ chips, colors }) {
-  if (!chips.length) return null;
+function SeesTodayRow({ chips, colors, isEmpty }) {
   return (
     <View style={{ marginTop: spacing.lg }}>
       <SectionLabel text="THE COACH SEES TODAY" colors={colors} />
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
-        {chips.map((chip) => (
-          <View
-            key={chip.id}
-            style={[
-              styles.statPill,
-              {
-                borderColor: colors.nbBorder,
-                backgroundColor: colors.nbSurface,
-                shadowColor: colors.nbShadow,
-              },
-            ]}
-          >
-            <IconChip source={chip.icon} gradient={chip.gradient} colors={colors} size={28} />
-            <Text style={[styles.statPillText, { color: colors.nbInk }]} numberOfLines={1}>
-              {chip.label}
-            </Text>
-          </View>
-        ))}
-      </ScrollView>
+      {isEmpty ? (
+        <View
+          style={[
+            styles.emptySeesPill,
+            {
+              borderColor: colors.nbBorder,
+              backgroundColor: colors.nbSurface,
+              borderStyle: 'dashed',
+            },
+          ]}
+        >
+          <Text style={[styles.statPillText, { color: colors.nbMuted }]}>Nothing logged yet</Text>
+        </View>
+      ) : (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
+          {chips.map((chip) => (
+            <View
+              key={chip.id}
+              style={[
+                styles.statPill,
+                {
+                  borderColor: colors.nbBorder,
+                  backgroundColor: colors.nbSurface,
+                  shadowColor: colors.nbShadow,
+                },
+              ]}
+            >
+              <IconChip source={chip.icon} gradient={chip.gradient} colors={colors} size={28} />
+              <Text style={[styles.statPillText, { color: colors.nbInk }]} numberOfLines={1}>
+                {chip.label}
+              </Text>
+            </View>
+          ))}
+        </ScrollView>
+      )}
     </View>
   );
 }
 
-function OneTapGrid({ onStartChat, colors }) {
+function OneTapGrid({ onStartChat, colors, isTrainer }) {
+  const items = isTrainer ? TRAINER_ONE_TAP : ONE_TAP;
   return (
     <View style={{ marginTop: spacing.lg }}>
-      <SectionLabel text="DO IT FOR ME / ONE TAP" colors={colors} />
+      <View
+        style={{
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: 0,
+        }}
+      >
+        <Text style={[styles.sectionLabel, { color: colors.nbMuted, marginBottom: 10 }]}>DO IT FOR ME</Text>
+        {isTrainer ? null : (
+          <Text style={[styles.sectionLabel, { color: colors.nbMuted, marginBottom: 10 }]}>ONE TAP</Text>
+        )}
+      </View>
       <View style={styles.grid2}>
-        {ONE_TAP.map((item) => (
+        {items.map((item) => (
           <HardCard
             key={item.id}
             colors={colors}
@@ -341,7 +430,8 @@ function TryAskingCarousel({ suggestions, onStartChat, colors }) {
 // ===== MAIN =====
 
 /**
- * Full Design Law coach home scroll body (PNG 01).
+ * Full Design Law coach home scroll body (PNG 01 client / missing-screens 17 trainer).
+ * @param {{ viewerRole?: 'client'|'trainer', clientCount?: number }} props
  */
 export default function DesignLawCoachHomeBody({
   isDark,
@@ -353,11 +443,33 @@ export default function DesignLawCoachHomeBody({
   onStartChat,
   onContinueSession,
   onPhotoPress,
+  viewerRole = 'client',
+  clientCount = 0,
 }) {
   const colors = themeColors(isDark);
+  // vocab: viewerRole = shell-passed role; trainers get roster tools, not personal log one-taps
+  const isTrainer = String(viewerRole || '').toLowerCase() === 'trainer';
+  const safeClientCount = Math.max(0, Number(clientCount) || 0);
+
+  // empty-vs-data PNG 07/08: SeesToday empty when no metrics (even if a past session exists).
+  const hasMetrics = hasAnyCoachMetric(dailyMetrics, nutritionToday, userData);
+  const isEmptySeesToday = !isTrainer && !hasMetrics;
+  const isEmptyClientHome = !isTrainer && !hasMetrics && !latestSession;
 
   const chips = useMemo(() => {
-    const list = [
+    if (isTrainer) {
+      // Honest roster chip only — never invent a “quiet clients” count without real data
+      if (safeClientCount <= 0) return [];
+      return [
+        {
+          id: 'clients',
+          label: `${safeClientCount} client${safeClientCount === 1 ? '' : 's'}`,
+          icon: require('../../assets/icons/handoff/people.png'),
+          gradient: accentGradients[0],
+        },
+      ];
+    }
+    return [
       {
         id: 'sleep',
         label: formatSleepChip(dailyMetrics),
@@ -382,18 +494,32 @@ export default function DesignLawCoachHomeBody({
         icon: require('../../assets/icons/handoff/injury.png'),
         gradient: accentGradients[4],
       },
-    ];
-    return list;
-  }, [dailyMetrics, nutritionToday, userData]);
+    ].filter((chip) => chip.label != null);
+  }, [dailyMetrics, nutritionToday, userData, isTrainer, safeClientCount]);
+
+  const askSuggestions = isTrainer
+    ? TRAINER_SUGGESTIONS
+    : suggestions;
 
   return (
     <View style={{ width: '100%' }}>
-      <HeroBlock colors={colors} onPress={() => onStartChat?.({})} />
-      <SeesTodayRow chips={chips} colors={colors} />
-      <OneTapGrid onStartChat={onStartChat} colors={colors} />
-      <PhotoWebRows onStartChat={onStartChat} onPhoto={onPhotoPress} colors={colors} />
-      <PickUpCard session={latestSession} onContinue={onContinueSession} colors={colors} />
-      <TryAskingCarousel suggestions={suggestions} onStartChat={onStartChat} colors={colors} />
+      <HeroBlock
+        colors={colors}
+        onPress={() => onStartChat?.({})}
+        isTrainer={isTrainer}
+        clientCount={safeClientCount}
+        isEmpty={isEmptyClientHome}
+      />
+      <SeesTodayRow chips={chips} colors={colors} isEmpty={isEmptySeesToday} />
+      <OneTapGrid onStartChat={onStartChat} colors={colors} isTrainer={isTrainer} />
+      {/* Photo/web rows when metrics exist (PNG 08); PickUp only when there is a session */}
+      {isTrainer || isEmptySeesToday ? null : (
+        <PhotoWebRows onStartChat={onStartChat} onPhoto={onPhotoPress} colors={colors} />
+      )}
+      {latestSession ? (
+        <PickUpCard session={latestSession} onContinue={onContinueSession} colors={colors} />
+      ) : null}
+      <TryAskingCarousel suggestions={askSuggestions} onStartChat={onStartChat} colors={colors} />
     </View>
   );
 }
@@ -448,6 +574,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
+  },
+  emptySeesPill: {
+    alignSelf: 'flex-start',
+    borderWidth: nb.borderWidth,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    minHeight: 40,
+    justifyContent: 'center',
   },
   iconChip: {
     borderRadius: 10,

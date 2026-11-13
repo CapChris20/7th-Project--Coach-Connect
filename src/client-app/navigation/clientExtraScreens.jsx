@@ -34,6 +34,10 @@ import CoachHomeScreen from '../../ai-coach/home-screen/CoachHomeScreen';
 import CoachConversationScreen from '../../ai-coach/conversation/CoachConversationScreen';
 import MySessionsScreen from '../scheduling/MySessionsScreen';
 import RequestSessionScreen from '../scheduling/RequestSessionScreen';
+import LogWorkoutScreen from '../check-in/LogWorkoutScreen';
+import DailyCheckInScreen from '../check-in/DailyCheckInScreen';
+import MoodCheckInScreen from '../check-in/MoodCheckInScreen';
+import WeeklyMomentumScreen from '../../nutrition/momentum/WeeklyMomentumScreen';
 import ClientBottomMenu from './ClientBottomMenu';
 import TopHeader from '../../for-both/loading-and-header/TopHeader';
 import { doc, getDoc } from 'firebase/firestore';
@@ -357,6 +361,7 @@ export function ClientDailyFoodLogScreen() {
         onNutritionPress={shell.openNutrition}
         onWorkoutPress={shell.openWorkout}
         onMessagesPress={shell.handleOpenConversations}
+        onOpenWeeklyMomentum={() => shell.openWeeklyMomentum?.()}
       />
       {addFilePopupForShell(shell)}
     </>,
@@ -608,6 +613,83 @@ export function ClientProgressChartsScreen() {
       navigation={{ goBack: shell.rootGoBack }}
     />,
     shell,
+  );
+}
+
+/**
+ * Design Law Log workout (missing-screens 03–06).
+ * @returns {import('react').ReactElement}
+ */
+export function ClientLogWorkoutScreen() {
+  const shell = useClientAppStartShell();
+  return withNav(
+    <LogWorkoutScreen
+      onBack={shell.rootGoBack}
+      onOpenPlan={() => {
+        shell.rootGoBack();
+        shell.openWorkoutPlan?.();
+      }}
+    />,
+    shell,
+  );
+}
+
+/**
+ * Design Law Daily check-in (missing-screens 07/08).
+ * @returns {import('react').ReactElement}
+ */
+export function ClientDailyCheckInScreen() {
+  const shell = useClientAppStartShell();
+  const trainerName =
+    shell.trainerData?.name ||
+    shell.trainerData?.displayName ||
+    shell.userData?.trainerName ||
+    '';
+  return withNav(
+    <DailyCheckInScreen
+      userId={shell.user?.uid}
+      trainerFirstName={String(trainerName).split(' ')[0] || ''}
+      onBack={shell.rootGoBack}
+    />,
+    shell,
+  );
+}
+
+/**
+ * Design Law Mood check-in (missing-screens 09/10).
+ * @returns {import('react').ReactElement}
+ */
+export function ClientMoodCheckInScreen() {
+  const shell = useClientAppStartShell();
+  return withNav(
+    <MoodCheckInScreen userId={shell.user?.uid} onBack={shell.rootGoBack} />,
+    shell,
+  );
+}
+
+/**
+ * Design Law Weekly Momentum (missing-screens 11/12).
+ * @returns {import('react').ReactElement}
+ */
+export function ClientWeeklyMomentumScreen() {
+  const shell = useClientAppStartShell();
+  const calorieGoal =
+    shell.nutritionGoals?.calories ||
+    shell.userData?.calorieGoal ||
+    shell.userData?.caloriesTarget ||
+    2300;
+  return withNav(
+    <WeeklyMomentumScreen
+      userId={shell.user?.uid}
+      calorieGoal={calorieGoal}
+      onBack={shell.rootGoBack}
+      onLogMeal={() => {
+        shell.rootGoBack();
+        shell.openNutrition?.();
+      }}
+    />,
+    shell,
+    { activeTabKey: 'nutrition' },
   );
 }
 

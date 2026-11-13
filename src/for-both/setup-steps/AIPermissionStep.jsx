@@ -1,6 +1,6 @@
-// Design Law AI opt-in step — hero Lottie, feature list, Turn on / Not now.
+// Design Law AI opt-in step — hero Lottie, feature list, Turn on / Not now (PNG 13/14).
 // Flow: show features → Turn on sets aiEnabled true → Not now skips. Does not spend monthly switch allowance.
-// Used by NewUserSetupScreen client step 9. PNG: client-onboarding 13/14.
+// Used by NewUserSetupScreen client step 7 (AI coach). Footer owns the buttons when hideActions.
 
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, Image } from 'react-native';
@@ -119,7 +119,8 @@ export function AIPermissionStep({
 
 const styles = StyleSheet.create({
   heroFrame: {
-    height: 180,
+    // Manipulate here: PNG 13 hero height — keep tall enough for robot Lottie
+    height: 200,
     borderWidth: nb.borderWidth,
     borderRadius: borderRadius.nbHero,
     overflow: 'hidden',

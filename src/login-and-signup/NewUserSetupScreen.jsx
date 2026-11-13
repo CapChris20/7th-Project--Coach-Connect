@@ -54,8 +54,6 @@ import { useSubscription } from '../trainer-pro-plan/ProPlanSetup';
 import { TRAINER_PLATFORM_SUBSCRIPTION_ENABLED } from '../trainer-pro-plan/proPlanSwitches';
 import DislikedExercisesPicker from '../workouts/exercise-videos/DislikedExercisesPicker';
 import LottieView from 'lottie-react-native';
-import GlassBackgroundDark from '../look-and-feel/GlassBackgroundDark';
-import GlassBackgroundLight from '../look-and-feel/GlassBackgroundLight';
 import { getOnboardingIconSource } from '../for-both/setup-icons/onboardingIconRegistry';
 import {
   formatHeightInputDisplay,
@@ -95,6 +93,8 @@ import {
 } from '../for-both/setup-steps/setupStepPieces';
 import NbProgressSteps from '../look-and-feel/NbProgressSteps';
 import NbButton from '../look-and-feel/NbButton';
+import NbSheet from '../look-and-feel/NbSheet';
+import HardShadow from '../look-and-feel/HardShadow';
 import ClientOnboardingStep, {
   CLIENT_ONBOARDING_STEPS,
   getClientChapterMeta,
@@ -120,7 +120,15 @@ import NbSegmented from '../look-and-feel/NbSegmented';
 import NbOptionRow, { NbOptionGrid } from '../look-and-feel/NbOptionRow';
 import NbScreen from '../look-and-feel/NbScreen';
 import { useColorScheme as useRNColorScheme } from 'react-native';
-import { lightColors, darkColors, spacing, gradients } from '../look-and-feel/colorPalette';
+import {
+  accentGradients,
+  borderRadius,
+  darkColors,
+  gradients,
+  lightColors,
+  nb,
+  spacing,
+} from '../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
@@ -1674,6 +1682,9 @@ export default function NewUserSetupScreen({
   const [trainerPlanId, setTrainerPlanId] = useState('pro_annual');
   const [faceCamOpen, setFaceCamOpen] = useState(false);
   const [faceCapturing, setFaceCapturing] = useState(false);
+  // Design Law sheets: camera ask (PNG part-2 05) + payout skip warning (PNG 17)
+  const [cameraPermissionSheetOpen, setCameraPermissionSheetOpen] = useState(false);
+  const [payoutSkipSheetOpen, setPayoutSkipSheetOpen] = useState(false);
   const [certUploading, setCertUploading] = useState(false);
   const faceCamRef = useRef(null);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
@@ -1724,6 +1735,8 @@ export default function NewUserSetupScreen({
     trainerProfileBio: '',
     /** 'available' | 'waitlist' */
     trainerAvailabilityStatus: null,
+    // Design Law availability chips (morning/afternoon/evening/weekends) — optional
+    preferredSessionTimes: [],
   }));
 
   // Design Law trainer step: Yes / Not yet segmented (not two separate old cards).
@@ -2451,23 +2464,18 @@ export default function NewUserSetupScreen({
         onEditReviewStep={(s) => setCurrentStep(s)}
         onReviewGoLive={handleNext}
         onReviewSaveLater={() => handleFinish()}
-        onStartFace={async () => {
+        onStartFace={() => {
+          // PNG: camera permission is an NbSheet first; OS prompt only after Allow.
           if (!cameraPermission?.granted) {
-            const res = await requestCameraPermission();
-            if (!res.granted) {
-              Alert.alert(
-                'Allow camera access',
-                'Allow camera access to verify your face for your trainer profile. The photo is used for review only.',
-              );
-              return;
-            }
+            setCameraPermissionSheetOpen(true);
+            return;
           }
           setFaceCamOpen(true);
         }}
         faceCapturing={faceCapturing}
         payoutEmail={auth?.currentUser?.email}
         identitySubmitted={!!onboardingData.faceVerificationPhotoURL}
-        onPayoutSkip={() => setCurrentStep(TRAINER_PRO_STEP)}
+        onPayoutSkip={() => setPayoutSkipSheetOpen(true)}
         onPayoutComplete={() => setCurrentStep(TRAINER_PRO_STEP)}
         isDark={isDark}
         trainerPlanId={trainerPlanId}
@@ -2752,83 +2760,271 @@ export default function NewUserSetupScreen({
         </KeyboardAvoidingView>
       </View>
 
-      <Modal visible={faceCamOpen} animationType="slide" onRequestClose={() => setFaceCamOpen(false)}>
-        <View style={{ flex: 1, backgroundColor: lightColors.nbInk }}>
-          <CameraView
-            ref={faceCamRef}
-            style={{ flex: 1 }}
-            facing="front"
-          />
+      {/* Design Law camera permission sheet (trainer-setup-part-2 PNG 05) */}
+      <NbSheet
+        visible={cameraPermissionSheetOpen}
+        onClose={() => setCameraPermissionSheetOpen(false)}
+      >
+        <View style={{ gap: 14, paddingBottom: 8 }}>
           <View
-            pointerEvents="none"
             style={{
-              ...StyleSheet.absoluteFillObject,
-              alignItems: 'center',
-              justifyContent: 'center',
+              alignSelf: 'flex-start',
+              overflow: 'hidden',
+              borderWidth: nb.borderWidth,
+              borderColor: ot.cardBorder,
+              borderRadius: 999,
+              paddingHorizontal: 12,
+              paddingVertical: 6,
             }}
           >
-            <View
-              style={{
-                width: 240,
-                height: 300,
-                borderRadius: 140,
-                borderWidth: 3,
-                borderColor: 'rgba(255,107,157,0.9)',
-                backgroundColor: 'transparent',
-              }}
+            <LinearGradient
+              colors={accentGradients[0]}
+              start={{ x: 0, y: 0.5 }}
+              end={{ x: 1, y: 0.5 }}
+              style={StyleSheet.absoluteFillObject}
             />
-            <Text style={{ color: '#fff', marginTop: 24, fontWeight: '700', textAlign: 'center', paddingHorizontal: 32 }}>
-              Center your face in the oval
-            </Text>
+            <Text style={{ fontSize: 12, fontWeight: '900', color: lightColors.nbInk }}>Camera needed</Text>
           </View>
-          <View style={{ position: 'absolute', bottom: 40, left: 0, right: 0, alignItems: 'center', gap: 12 }}>
-            <TouchableOpacity
-              disabled={faceCapturing}
+          <Text style={{ fontSize: 24, fontWeight: '900', color: ot.textPrimary, letterSpacing: -0.4 }}>
+            Allow camera access
+          </Text>
+          <Text style={{ fontSize: 14, fontWeight: '600', color: ot.textSecondary, lineHeight: 20 }}>
+            Allow camera access to verify your face for your trainer profile. The photo is used for review only.
+          </Text>
+          <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
+            <NbButton
+              variant="ghost"
+              style={{ flex: 1 }}
+              onPress={() => setCameraPermissionSheetOpen(false)}
+            >
+              Cancel
+            </NbButton>
+            <NbButton
+              variant="fill"
+              style={{ flex: 1 }}
               onPress={async () => {
-                const tid = auth?.currentUser?.uid;
-                if (!tid) {
-                  Alert.alert('Sign in required', 'Complete signup first.');
-                  return;
-                }
-                try {
-                  setFaceCapturing(true);
-                  const photo = await faceCamRef.current?.takePictureAsync?.({
-                    quality: 0.7,
-                    skipProcessing: false,
-                  });
-                  if (!photo?.uri) throw new Error('Could not capture photo');
-                  const { url } = await uploadTrainerFaceVerification(tid, { localUri: photo.uri });
-                  setOnboardingData((prev) => ({
-                    ...prev,
-                    faceVerificationPhotoURL: url,
-                    faceVerificationStatus: 'pending',
-                    isVerified: false,
-                    faceVerificationSubmittedAt: new Date().toISOString(),
-                  }));
-                  setFaceCamOpen(false);
-                  Alert.alert('Submitted', 'Face photo uploaded for manual review.');
-                } catch (e) {
-                  Alert.alert('Capture failed', e?.message || 'Could not save face verification.');
-                } finally {
-                  setFaceCapturing(false);
-                }
-              }}
-              style={{
-                width: 72,
-                height: 72,
-                borderRadius: 36,
-                backgroundColor: lightColors.primary,
-                alignItems: 'center',
-                justifyContent: 'center',
+                setCameraPermissionSheetOpen(false);
+                const res = await requestCameraPermission();
+                if (!res?.granted) return;
+                setFaceCamOpen(true);
               }}
             >
-              {faceCapturing ? <ActivityIndicator color="#fff" /> : <Ionicons name="camera" size={28} color="#fff" />}
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => setFaceCamOpen(false)}>
-              <Text style={{ color: 'rgba(255,255,255,0.7)', fontWeight: '600' }}>Cancel</Text>
-            </TouchableOpacity>
+              Allow camera
+            </NbButton>
           </View>
         </View>
+      </NbSheet>
+
+      {/* Design Law payout skip warning (trainer-setup-part-2 PNG 17) */}
+      <NbSheet
+        visible={payoutSkipSheetOpen}
+        onClose={() => setPayoutSkipSheetOpen(false)}
+      >
+        <View style={{ gap: 14, paddingBottom: 8 }}>
+          <View
+            style={{
+              alignSelf: 'flex-start',
+              overflow: 'hidden',
+              borderWidth: nb.borderWidth,
+              borderColor: ot.cardBorder,
+              borderRadius: 999,
+              paddingHorizontal: 12,
+              paddingVertical: 6,
+            }}
+          >
+            <LinearGradient
+              colors={accentGradients[0]}
+              start={{ x: 0, y: 0.5 }}
+              end={{ x: 1, y: 0.5 }}
+              style={StyleSheet.absoluteFillObject}
+            />
+            <Text style={{ fontSize: 12, fontWeight: '900', color: lightColors.nbInk }}>Clients wait</Text>
+          </View>
+          <Text style={{ fontSize: 22, fontWeight: '900', color: ot.textPrimary, letterSpacing: -0.4 }}>
+            Complete payout setup to accept clients
+          </Text>
+          <Text style={{ fontSize: 14, fontWeight: '600', color: ot.textSecondary, lineHeight: 20 }}>
+            You can finish this any time from Settings. Until then you can build plans and share your code, but new
+            client requests wait.
+          </Text>
+          <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
+            <NbButton
+              variant="ghost"
+              style={{ flex: 1 }}
+              onPress={() => {
+                setPayoutSkipSheetOpen(false);
+                setCurrentStep(TRAINER_PRO_STEP);
+              }}
+            >
+              Skip anyway
+            </NbButton>
+            <NbButton
+              variant="fill"
+              style={{ flex: 1 }}
+              onPress={() => setPayoutSkipSheetOpen(false)}
+            >
+              Finish setup
+            </NbButton>
+          </View>
+        </View>
+      </NbSheet>
+
+      {/* Design Law face capture (trainer-setup-part-2 PNG 07) — Verify your face */}
+      <Modal visible={faceCamOpen} animationType="slide" onRequestClose={() => setFaceCamOpen(false)}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: ot.bg }}>
+          <View style={{ flex: 1, paddingHorizontal: 16, paddingTop: 8 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+              <TouchableOpacity
+                onPress={() => setFaceCamOpen(false)}
+                activeOpacity={0.85}
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 12,
+                  borderWidth: 3,
+                  borderColor: ot.cardBorder,
+                  backgroundColor: ot.cardBg,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  shadowColor: ot.shadow || ot.cardBorder,
+                  shadowOffset: { width: 3, height: 3 },
+                  shadowOpacity: 1,
+                  shadowRadius: 0,
+                  elevation: 3,
+                }}
+                accessibilityLabel="Back"
+              >
+                <Ionicons name="chevron-back" size={22} color={ot.textPrimary} />
+              </TouchableOpacity>
+              <Text style={{ flex: 1, fontSize: 24, fontWeight: '900', color: ot.textPrimary, letterSpacing: -0.5 }}>
+                Verify your face
+              </Text>
+            </View>
+
+            <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbHero} style={{ marginBottom: 16 }}>
+              <View
+                style={{
+                  height: 320,
+                  borderWidth: nb.borderWidth,
+                  borderRadius: borderRadius.nbHero,
+                  overflow: 'hidden',
+                  borderColor: ot.cardBorder,
+                  backgroundColor: ot.cardBg,
+                }}
+              >
+                <CameraView ref={faceCamRef} style={StyleSheet.absoluteFillObject} facing="front" />
+                <View
+                  pointerEvents="none"
+                  style={{
+                    ...StyleSheet.absoluteFillObject,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <View
+                    style={{
+                      width: 180,
+                      height: 230,
+                      borderRadius: 115,
+                      borderWidth: 3,
+                      borderStyle: 'dashed',
+                      borderColor: ot.cardBorder,
+                      backgroundColor: 'transparent',
+                    }}
+                  />
+                </View>
+              </View>
+            </HardShadow>
+
+            {[
+              'Face the camera in good light.',
+              'Take off hats and sunglasses.',
+              'Fill the oval with your face.',
+            ].map((tip) => (
+              <View key={tip} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+                <View
+                  style={{
+                    width: 16,
+                    height: 16,
+                    borderRadius: 3,
+                    backgroundColor: ot.textPrimary,
+                  }}
+                />
+                <Text style={{ flex: 1, fontSize: 15, fontWeight: '700', color: ot.textPrimary }}>{tip}</Text>
+              </View>
+            ))}
+
+            <View style={{ flex: 1 }} />
+
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 10,
+                paddingBottom: Math.max(insets.bottom, 12),
+              }}
+            >
+              <TouchableOpacity
+                onPress={() => setFaceCamOpen(false)}
+                activeOpacity={0.85}
+                style={{
+                  width: 56,
+                  height: 56,
+                  borderRadius: 12,
+                  borderWidth: 3,
+                  borderColor: ot.cardBorder,
+                  backgroundColor: ot.cardBg,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  shadowColor: ot.shadow || ot.cardBorder,
+                  shadowOffset: { width: 3, height: 3 },
+                  shadowOpacity: 1,
+                  shadowRadius: 0,
+                  elevation: 3,
+                }}
+                accessibilityLabel="Back"
+              >
+                <Ionicons name="chevron-back" size={22} color={ot.textPrimary} />
+              </TouchableOpacity>
+              <View style={{ flex: 1 }}>
+                <NbButton
+                  variant="fill"
+                  disabled={faceCapturing}
+                  onPress={async () => {
+                    const tid = auth?.currentUser?.uid;
+                    if (!tid) {
+                      Alert.alert('Sign in required', 'Complete signup first.');
+                      return;
+                    }
+                    try {
+                      setFaceCapturing(true);
+                      const photo = await faceCamRef.current?.takePictureAsync?.({
+                        quality: 0.7,
+                        skipProcessing: false,
+                      });
+                      if (!photo?.uri) throw new Error('Could not capture photo');
+                      const { url } = await uploadTrainerFaceVerification(tid, { localUri: photo.uri });
+                      setOnboardingData((prev) => ({
+                        ...prev,
+                        faceVerificationPhotoURL: url,
+                        faceVerificationStatus: 'pending',
+                        isVerified: false,
+                        faceVerificationSubmittedAt: new Date().toISOString(),
+                      }));
+                      setFaceCamOpen(false);
+                    } catch (e) {
+                      Alert.alert('Capture failed', e?.message || 'Could not save face verification.');
+                    } finally {
+                      setFaceCapturing(false);
+                    }
+                  }}
+                >
+                  {faceCapturing ? 'Saving…' : 'Take photo'}
+                </NbButton>
+              </View>
+            </View>
+          </View>
+        </SafeAreaView>
       </Modal>
     </ScreenRoot>
   );

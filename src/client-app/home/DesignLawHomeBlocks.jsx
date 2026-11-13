@@ -800,13 +800,54 @@ export function DesignLawLogSheet({
   );
 }
 
-// ===== TRAINER SHEET =====
+// ===== TRAINER SHEET (client-home PNG 11/12) =====
+
+// Manipulate here: subtitles match Design Law copy; icon indices cycle accentGradients
+const TRAINER_SHEET_ROWS = [
+  {
+    key: 'message',
+    label: 'Message',
+    subtitle: 'Usually replies within a few hours',
+    ion: 'chatbubble-outline',
+    accentIndex: 0,
+  },
+  {
+    key: 'profile',
+    label: 'View profile',
+    subtitle: 'Rates, specialties, credentials',
+    ion: 'person-outline',
+    accentIndex: 2,
+  },
+  {
+    key: 'notes',
+    label: 'Notes and files',
+    subtitle: 'Shared between you and your coach',
+    ion: 'folder-outline',
+    accentIndex: 4,
+  },
+  {
+    key: 'pay',
+    label: 'Manage coaching payment',
+    subtitle: 'Next charge on the 1st',
+    ion: 'card-outline',
+    accentIndex: 3,
+    paymentOnly: true,
+  },
+  {
+    key: 'review',
+    label: 'Write a review',
+    subtitle: 'Tell other clients how it went',
+    ion: 'star-outline',
+    accentIndex: 1,
+  },
+];
 
 export function DesignLawTrainerSheet({
   visible,
   onClose,
   trainerName,
   trainerInitials,
+  trainerSpecialty,
   themeColors,
   onMessage,
   onProfile,
@@ -814,30 +855,64 @@ export function DesignLawTrainerSheet({
   onPayment,
   onReview,
   showPayment,
+  notesSubtitle,
+  paymentSubtitle,
 }) {
-  const rows = useMemo(
-    () =>
-      [
-        { key: 'message', label: 'Message', icon: 'chatbubble-outline', onPress: onMessage },
-        { key: 'profile', label: 'View profile', icon: 'person-outline', onPress: onProfile },
-        { key: 'notes', label: 'Notes and files', icon: 'folder-outline', onPress: onNotesFiles },
-        showPayment
-          ? { key: 'pay', label: 'Manage coaching payment', icon: 'card-outline', onPress: onPayment }
-          : null,
-        { key: 'review', label: 'Write a review', icon: 'star-outline', onPress: onReview },
-      ].filter(Boolean),
-    [onMessage, onProfile, onNotesFiles, onPayment, onReview, showPayment],
+  const handlers = useMemo(
+    () => ({
+      message: onMessage,
+      profile: onProfile,
+      notes: onNotesFiles,
+      pay: onPayment,
+      review: onReview,
+    }),
+    [onMessage, onProfile, onNotesFiles, onPayment, onReview],
   );
 
+  const rows = useMemo(
+    () =>
+      TRAINER_SHEET_ROWS.filter((row) => !row.paymentOnly || showPayment).map((row) => {
+        let subtitle = row.subtitle;
+        if (row.key === 'notes' && notesSubtitle) subtitle = notesSubtitle;
+        if (row.key === 'pay' && paymentSubtitle) subtitle = paymentSubtitle;
+        return { ...row, subtitle, onPress: handlers[row.key] };
+      }),
+    [handlers, showPayment, notesSubtitle, paymentSubtitle],
+  );
+
+  const specialtyLine = trainerSpecialty || 'Your coach';
+
   return (
-    <NbSheet visible={!!visible} onClose={onClose} title={trainerName || 'Your trainer'}>
-      <View style={{ gap: 4, paddingBottom: 28 }}>
-        <View style={[styles.trainerHead, { borderColor: themeColors.cardBorder }]}>
-          <View style={[styles.av, { backgroundColor: accentGradients[0][0], borderColor: themeColors.cardBorder }]}>
+    <NbSheet visible={!!visible} onClose={onClose}>
+      <View style={{ gap: 6, paddingBottom: 28 }}>
+        {/* Header: avatar + name + specialty + Your trainer pill (PNG 11) */}
+        <View style={styles.trainerHeadRow}>
+          <View
+            style={[
+              styles.av,
+              { backgroundColor: accentGradients[0][0], borderColor: themeColors.cardBorder },
+            ]}
+          >
             <Text style={{ fontWeight: '900', color: lightColors.nbInk }}>{trainerInitials}</Text>
           </View>
-          <Text style={{ flex: 1, fontSize: 18, fontWeight: '900', color: themeColors.text }}>{trainerName}</Text>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={{ fontSize: 20, fontWeight: '900', color: themeColors.text }} numberOfLines={1}>
+              {trainerName || 'Your trainer'}
+            </Text>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: themeColors.textMuted, marginTop: 2 }}>
+              {specialtyLine}
+            </Text>
+          </View>
+          <View
+            style={[
+              styles.yourTrainerPill,
+              { borderColor: themeColors.cardBorder, backgroundColor: themeColors.pillBg },
+            ]}
+          >
+            <Text style={{ fontSize: 11, fontWeight: '900', color: themeColors.text }}>Your trainer</Text>
+          </View>
         </View>
+
         {rows.map((row) => (
           <TouchableOpacity
             key={row.key}
@@ -846,11 +921,18 @@ export function DesignLawTrainerSheet({
               row.onPress?.();
             }}
             style={[styles.sheetRow, { borderColor: themeColors.cardBorder }]}
+            accessibilityRole="button"
+            accessibilityLabel={row.label}
           >
-            <View style={[styles.sheetIcon, { borderColor: themeColors.cardBorder, backgroundColor: themeColors.pillBg }]}>
-              <Ionicons name={row.icon} size={18} color={themeColors.text} />
+            <NbIconChip index={row.accentIndex} size={44}>
+              <Ionicons name={row.ion} size={20} color={lightColors.nbInk} />
+            </NbIconChip>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={{ fontSize: 16, fontWeight: '800', color: themeColors.text }}>{row.label}</Text>
+              <Text style={{ fontSize: 12, fontWeight: '600', color: themeColors.textMuted, marginTop: 2 }}>
+                {row.subtitle}
+              </Text>
             </View>
-            <Text style={{ flex: 1, fontSize: 16, fontWeight: '800', color: themeColors.text }}>{row.label}</Text>
             <Ionicons name="chevron-forward" size={18} color={themeColors.textMuted} />
           </TouchableOpacity>
         ))}
@@ -859,39 +941,61 @@ export function DesignLawTrainerSheet({
   );
 }
 
-// ===== REVIEW SHEET (stars + tags) =====
+// ===== REVIEW SHEET (client-home PNG 13/14) — look-only; Firestore write is WriteTrainerReviewPopup =====
 
-const REVIEW_TAGS = ['Supportive', 'Knowledgeable', 'On time', 'Clear plans', 'Motivating'];
+// Manipulate here: tag list matches Design Law review sheet chips
+const REVIEW_TAGS = ['Clear plans', 'Responsive', 'Pushes me', 'Great with injuries', 'On time'];
 
-export function DesignLawReviewSheet({ visible, onClose, themeColors, trainerName, onSubmit }) {
-  const [stars, setStars] = useState(5);
-  const [tags, setTags] = useState([]);
+export function DesignLawReviewSheet({ visible, onClose, themeColors, trainerName, trainerInitials, onSubmit }) {
+  const [stars, setStars] = useState(4);
+  const [tags, setTags] = useState(['Clear plans', 'Responsive']);
   const [body, setBody] = useState('');
 
   useEffect(() => {
     if (!visible) return;
-    setStars(5);
-    setTags([]);
+    setStars(4);
+    setTags(['Clear plans', 'Responsive']);
     setBody('');
   }, [visible]);
 
+  const firstName = String(trainerName || '').split(/\s+/)[0] || 'trainer';
+
   return (
-    <NbSheet visible={!!visible} onClose={onClose} title="Write a review">
+    <NbSheet visible={!!visible} onClose={onClose}>
       <View style={{ gap: 14, paddingBottom: 28 }}>
-        <Text style={{ fontSize: 15, color: themeColors.textMuted }}>
-          {trainerName ? `How was coaching with ${trainerName}?` : 'How was coaching?'}
-        </Text>
-        <View style={{ flexDirection: 'row', gap: 8 }}>
+        <View style={styles.trainerHeadRow}>
+          <View
+            style={[
+              styles.av,
+              { backgroundColor: accentGradients[1][0], borderColor: themeColors.cardBorder },
+            ]}
+          >
+            <Text style={{ fontWeight: '900', color: lightColors.nbInk }}>
+              {trainerInitials || firstName.slice(0, 2).toUpperCase()}
+            </Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 20, fontWeight: '900', color: themeColors.text }}>
+              {`Review ${firstName}`}
+            </Text>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: themeColors.textMuted, marginTop: 2 }}>
+              Visible on their profile.
+            </Text>
+          </View>
+        </View>
+
+        <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'center' }}>
           {[1, 2, 3, 4, 5].map((n) => (
             <TouchableOpacity key={n} onPress={() => setStars(n)} hitSlop={6}>
               <Ionicons
                 name={n <= stars ? 'star' : 'star-outline'}
-                size={32}
-                color={n <= stars ? accentGradients[1][0] : themeColors.textMuted}
+                size={36}
+                color={n <= stars ? themeColors.fill : themeColors.textMuted}
               />
             </TouchableOpacity>
           ))}
         </View>
+
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           {REVIEW_TAGS.map((tag) => {
             const on = tags.includes(tag);
@@ -912,26 +1016,41 @@ export function DesignLawReviewSheet({ visible, onClose, themeColors, trainerNam
             );
           })}
         </View>
-        <TextInput
-          style={[
-            styles.noteBox,
-            { minHeight: 100, borderColor: themeColors.cardBorder, backgroundColor: themeColors.pillBg, color: themeColors.text },
-          ]}
-          multiline
-          placeholder="Share a few details…"
-          placeholderTextColor={themeColors.textMuted}
-          value={body}
-          onChangeText={setBody}
-        />
-        <NbButton
-          variant="fill"
-          onPress={() => {
-            onSubmit?.({ stars, tags, body });
-            onClose?.();
-          }}
-        >
-          Submit review
-        </NbButton>
+
+        <HardShadow>
+          <TextInput
+            style={[
+              styles.noteBox,
+              {
+                minHeight: 100,
+                borderColor: themeColors.cardBorder,
+                backgroundColor: themeColors.surface || themeColors.pillBg,
+                color: themeColors.text,
+              },
+            ]}
+            multiline
+            placeholder="Built around my knee from week one, and checks in without nagging."
+            placeholderTextColor={themeColors.textMuted}
+            value={body}
+            onChangeText={setBody}
+          />
+        </HardShadow>
+
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <NbButton variant="ghost" onPress={onClose} style={{ flex: 1 }}>
+            Not now
+          </NbButton>
+          <NbButton
+            variant="fill"
+            style={{ flex: 1 }}
+            onPress={() => {
+              onSubmit?.({ stars, tags, body });
+              onClose?.();
+            }}
+          >
+            Post review
+          </NbButton>
+        </View>
       </View>
     </NbSheet>
   );
@@ -1128,6 +1247,20 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     borderBottomWidth: nb.borderWidthDivider,
   },
+  trainerHeadRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 10,
+  },
+  yourTrainerPill: {
+    height: 26,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    borderWidth: nb.borderWidthPill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   av: {
     width: 44,
     height: 44,
@@ -1137,12 +1270,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   sheetRow: {
-    minHeight: 56,
+    // PNG 11 rows carry subtitle — taller than a single-line list row
+    minHeight: 64,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    paddingVertical: 8,
+    borderBottomWidth: nb.borderWidthDivider,
+    paddingVertical: 10,
   },
   sheetIcon: {
     width: 40,

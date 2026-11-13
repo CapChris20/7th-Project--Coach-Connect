@@ -8,7 +8,6 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Platform,
   ScrollView,
   StyleSheet,
@@ -186,7 +185,8 @@ const ClientsListScreen = ({
   const confirmRemove = useCallback(async () => {
     if (!deletePending?.id || !trainerId) return;
     if (!functions) {
-      Alert.alert('Unavailable', 'Cloud Functions are not configured.');
+      setToast({ title: 'Unavailable', body: 'Cloud Functions are not configured.' });
+      setTimeout(() => setToast(null), 4200);
       return;
     }
     const clientId = deletePending.id;
@@ -210,7 +210,8 @@ const ClientsListScreen = ({
       setTimeout(() => setToast(null), 4200);
     } catch (e) {
       const msg = e?.message || e?.code || 'Could not remove this client. Try again.';
-      Alert.alert('Remove failed', String(msg));
+      setToast({ title: 'Remove failed', body: String(msg) });
+      setTimeout(() => setToast(null), 4200);
     } finally {
       setRemoveBusy(false);
     }
@@ -236,7 +237,8 @@ const ClientsListScreen = ({
       setToast({ title: 'Copied', body: formatInviteDisplay(inviteCode) });
       setTimeout(() => setToast(null), 2500);
     } catch (_e) {
-      Alert.alert('Copy failed', 'Could not copy invite code.');
+      setToast({ title: 'Copy failed', body: 'Could not copy invite code.' });
+      setTimeout(() => setToast(null), 2500);
     }
   }, [inviteCode]);
 

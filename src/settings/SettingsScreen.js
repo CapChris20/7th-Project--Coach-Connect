@@ -52,6 +52,7 @@ import NbSwitch from '../look-and-feel/NbSwitch';
 import NbButton from '../look-and-feel/NbButton';
 import NbPageHeader from '../look-and-feel/NbPageHeader';
 import NbSheet from '../look-and-feel/NbSheet';
+import NbNoticeSheet from '../look-and-feel/NbNoticeSheet';
 import { nb, gradients, spacing } from '../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
@@ -83,9 +84,13 @@ const ROLE_CLIENT = 'client';
  * @param {Function} onNavigate
  * @returns {void}
  */
-function openSettingsSubScreen(screen, onNavigate) {
+function openSettingsSubScreen(screen, onNavigate, onUnavailable) {
   if (typeof onNavigate === 'function') {
     onNavigate(screen);
+    return;
+  }
+  if (typeof onUnavailable === 'function') {
+    onUnavailable('Unavailable', 'This screen could not be opened.');
     return;
   }
   Alert.alert('Unavailable', 'This screen could not be opened.');
@@ -684,7 +689,7 @@ export default function SettingsScreen({
 }) {
   const onNavigate = useShellNavigate(onNavigateProp);
   const onBack = onBackProp || onClose;
-  const go = (screen) => openSettingsSubScreen(screen, onNavigate);
+  const go = (screen) => openSettingsSubScreen(screen, onNavigate, showNotice);
   const { colors, isDark, themeMode, toggleTheme } = useTheme();
   const shellNavInset = useShellBottomNavInset(SHELL_NAV_INSET);
   // Design Law Appearance has Light / Dark / System — selected value is the saved themeMode itself.
@@ -700,6 +705,8 @@ export default function SettingsScreen({
   const [passwordUpdatedNote, setPasswordUpdatedNote] = useState(false);
   const [showDeleteHoldModal, setShowDeleteHoldModal] = useState(false);
   const [showSignOutSheet, setShowSignOutSheet] = useState(false);
+  const [notice, setNotice] = useState(null);
+  const showNotice = (title, message) => setNotice({ title, message });
   const [signingOut, setSigningOut] = useState(false);
   const [showBlockedUsers, setShowBlockedUsers] = useState(false);
   const [aiDetailsOpen, setAiDetailsOpen] = useState(false);
@@ -807,29 +814,29 @@ export default function SettingsScreen({
         { workoutReminder: { enabled: true, ...workoutReminderClockFromDate(currentTime) } },
         { merge: true },
       );
-      Alert.alert('Reminders set', `You'll be notified daily at ${currentTime.toLocaleTimeString()}.`);
+      showNotice('Reminders set', `You'll be notified daily at ${currentTime.toLocaleTimeString()}.`);
     } catch (error) {
       console.error('Error setting reminder: ', error);
-      Alert.alert('Error', 'Could not set reminder. Please try again.');
+      showNotice('Could not set reminder', 'Please try again.');
     }
   };
 
   // 3. Re-auth with current password, then update Firebase Auth password (Design Law: 3 fields).
   const handleChangePassword = async () => {
     if (!user) {
-      Alert.alert('Error', 'Please sign in again and retry.');
+      showNotice('Sign in required', 'Please sign in again and retry.');
       return;
     }
     if (!currentPassword || !newPassword || !confirmPassword) {
-      Alert.alert('Error', 'Fill in current, new, and confirm password.');
+      showNotice('Missing fields', 'Fill in current, new, and confirm password.');
       return;
     }
     if (newPassword !== confirmPassword) {
-      Alert.alert('Error', 'New password and confirmation do not match.');
+      showNotice('Passwords do not match', 'New password and confirmation must match.');
       return;
     }
     if (newPassword.length < 6) {
-      Alert.alert('Error', 'New password must be at least 6 characters.');
+      showNotice('Password too short', 'New password must be at least 6 characters.');
       return;
     }
     try {
@@ -844,7 +851,7 @@ export default function SettingsScreen({
       setConfirmPassword('');
       setPasswordUpdatedNote(true);
     } catch (error) {
-      Alert.alert('Error', error?.message || 'Could not update password.');
+      showNotice('Could not update password', error?.message || 'Please try again.');
     }
   };
 
@@ -885,7 +892,7 @@ export default function SettingsScreen({
       await deleteViaCallableOrHttp();
       await deleteAuthUserQuietly();
       await signOut(auth);
-      Alert.alert('Account deleted', 'Your account and data have been permanently deleted.');
+      showNotice('Account deleted', 'Your account and data have been permanently deleted.');
     } catch (error) {
       const message = error?.message || 'Failed to delete account. Please try again.';
       throw new Error(message);
@@ -921,7 +928,7 @@ export default function SettingsScreen({
       await onUserSignOut();
       setShowSignOutSheet(false);
     } catch (error) {
-      Alert.alert('Sign out failed', error?.message || 'Please try again.');
+      showNotice('Sign out failed', error?.message || 'Please try again.');
     } finally {
       setSigningOut(false);
     }
@@ -1225,42 +1232,42 @@ export default function SettingsScreen({
             title="Contact support"
             colors={colors}
             showChevron
-            onPress={() => openSettingsSubScreen('contactSupport', onNavigate)}
+            onPress={() => openSettingsSubScreen('contactSupport', onNavigate, showNotice)}
           />
           <GroupDivider colors={colors} />
           <SettingsGroupRow
             title="Report a bug"
             colors={colors}
             showChevron
-            onPress={() => openSettingsSubScreen('bugReport', onNavigate)}
+            onPress={() => openSettingsSubScreen('bugReport', onNavigate, showNotice)}
           />
           <GroupDivider colors={colors} />
           <SettingsGroupRow
             title="FAQ"
             colors={colors}
             showChevron
-            onPress={() => openSettingsSubScreen('helpFaq', onNavigate)}
+            onPress={() => openSettingsSubScreen('helpFaq', onNavigate, showNotice)}
           />
           <GroupDivider colors={colors} />
           <SettingsGroupRow
             title="Terms of service"
             colors={colors}
             showChevron
-            onPress={() => openSettingsSubScreen('terms', onNavigate)}
+            onPress={() => openSettingsSubScreen('terms', onNavigate, showNotice)}
           />
           <GroupDivider colors={colors} />
           <SettingsGroupRow
             title="Privacy policy"
             colors={colors}
             showChevron
-            onPress={() => openSettingsSubScreen('privacy', onNavigate)}
+            onPress={() => openSettingsSubScreen('privacy', onNavigate, showNotice)}
           />
           <GroupDivider colors={colors} />
           <SettingsGroupRow
             title="Privacy and data rights"
             colors={colors}
             showChevron
-            onPress={() => openSettingsSubScreen('privacyDataRights', onNavigate)}
+            onPress={() => openSettingsSubScreen('privacyDataRights', onNavigate, showNotice)}
           />
           <GroupDivider colors={colors} />
           <SettingsGroupRow
@@ -1423,6 +1430,14 @@ export default function SettingsScreen({
           Cancel
         </NbButton>
       </NbSheet>
+
+      <NbNoticeSheet
+        visible={!!notice}
+        onClose={() => setNotice(null)}
+        title={notice?.title || ''}
+        message={notice?.message}
+        confirmLabel="OK"
+      />
 
       <Modal visible={showBlockedUsers} animationType="slide" presentationStyle="fullScreen">
         <BlockedUsersScreen onClose={() => setShowBlockedUsers(false)} />

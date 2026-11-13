@@ -1,8 +1,8 @@
-// Design Law signed-out stack: welcome poster → create account → sign in (one component, no navigator).
-// Flow: `currentView` swaps the three screens → email / Google / Apple auth → users/{uid} →
+// Design Law signed-out stack: welcome → choose role → create account → sign in (one component).
+// Flow: `currentView` swaps screens → email / Google / Apple auth → users/{uid} →
 //       onSignupSuccess or onLoginSuccess so LoginGate routes into the app.
 // Used by LoginGate when nobody is signed in.
-// Visual law: screens/hero-and-welcome-redesign (welcome) + screens/welcome-and-sign-in (auth).
+// Visual law: hero-and-welcome + welcome-and-sign-in + missing-screens Choose role (01/02).
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
@@ -33,17 +33,13 @@ import { uploadProfileImage } from '../for-both/cloud-database/uploadAndDownload
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Crypto from 'expo-crypto';
-import GlassBackgroundDark from '../look-and-feel/GlassBackgroundDark';
-import GlassBackgroundLight from '../look-and-feel/GlassBackgroundLight';
-import GlassCard from '../look-and-feel/GlassCard';
 import ErrorPopup from '../for-both/popups/ErrorPopup';
-import GlassButton from '../look-and-feel/GlassButton';
-import { Liquid } from '../look-and-feel/glassSettings';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import AppLogo from '../for-both/icons/AppLogo';
 import { cachePendingSignupProfile } from './decideTraineeOrTrainer';
 import DesignLawWelcomeStage from './DesignLawWelcomeStage';
+import ChooseRoleScreen from './ChooseRoleScreen';
 import NbButton from '../look-and-feel/NbButton';
 import NbCard from '../look-and-feel/NbCard';
 import NbPageHeader from '../look-and-feel/NbPageHeader';
@@ -116,7 +112,7 @@ function buildAppleDisplayName(appleCredential) {
 }
 
 /** Auth + onboarding CTA (dark pink → dark orange) */
-const AUTH_CTA_GRADIENT = ['#C1265A', '#D84315'];
+const AUTH_CTA_GRADIENT = ['#0A0A0A', '#D84315'];
 
 /** After role mismatch we reopen sign-in (NbSheet on login view) instead of a legacy popup */
 const ROLE_MISMATCH_NEXT_VIEW_KEY = 'auth_role_mismatch_next_view';
@@ -1285,122 +1281,6 @@ function LiquidRolePill({ selected, onPress, label, iconSource, isDark }) {
   );
 }
 
-function LiquidAuthField({
-  label,
-  value,
-  onChangeText,
-  placeholder,
-  placeholderTextColor,
-  secureTextEntry,
-  keyboardType,
-  autoCapitalize = 'none',
-  textContentType,
-  returnKeyType,
-  multiline,
-  numberOfLines,
-  isDark,
-  focused,
-  onFocus,
-  onBlur,
-}) {
-  return (
-    <View style={stylesLiquidAuth.fieldWrap}>
-      <LinearGradient
-        colors={isDark ? ['rgba(255,255,255,0.18)', 'rgba(255,255,255,0.00)'] : ['rgba(0,0,0,0.10)', 'rgba(0,0,0,0.00)']}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 1 }}
-        style={[stylesLiquidAuth.fieldStroke, focused && { borderColor: 'transparent' }]}
-      >
-        <View
-          style={[
-            stylesLiquidAuth.fieldSurface,
-            {
-              backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.72)',
-              shadowColor: focused ? Liquid.colors.cyan : '#000',
-              shadowOpacity: focused ? (isDark ? 0.35 : 0.18) : 0,
-            },
-          ]}
-        >
-          {/* inner shadow for "carved" feel */}
-          <LinearGradient
-            pointerEvents="none"
-            colors={isDark ? ['rgba(0,0,0,0.32)', 'rgba(0,0,0,0.00)'] : ['rgba(15,23,42,0.10)', 'rgba(15,23,42,0.00)']}
-            start={{ x: 0.5, y: 0 }}
-            end={{ x: 0.5, y: 1 }}
-            style={stylesLiquidAuth.fieldInnerShadow}
-          />
-
-          <Text style={[stylesLiquidAuth.fieldLabel, { color: isDark ? 'rgba(255,255,255,0.78)' : 'rgba(15,23,42,0.72)' }]}>
-            {label}
-          </Text>
-          <TextInput
-            value={value}
-            onChangeText={onChangeText}
-            placeholder={placeholder}
-            placeholderTextColor={placeholderTextColor}
-            secureTextEntry={secureTextEntry}
-            keyboardType={keyboardType}
-            autoCapitalize={autoCapitalize}
-            autoCorrect={false}
-            textContentType={textContentType}
-            returnKeyType={returnKeyType}
-            multiline={multiline}
-            numberOfLines={numberOfLines}
-            onFocus={onFocus}
-            onBlur={onBlur}
-            style={[stylesLiquidAuth.fieldInput, { color: isDark ? 'rgba(255,255,255,0.87)' : 'rgba(15,23,42,0.92)' }]}
-          />
-        </View>
-      </LinearGradient>
-    </View>
-  );
-}
-
-function SocialGlassButton({
-  title,
-  iconSource,
-  onPress,
-  isDark,
-  preserveColors = true,
-  iconHalo = null, // { bg: 'rgba(...)', border: 'rgba(...)', opacity: number }
-}) {
-  return (
-    <GlassCard
-      onPress={onPress}
-      radius={Liquid.radius.inner}
-      blurIntensity={28}
-      strokeColors={isDark ? ['rgba(255,255,255,0.18)', 'rgba(255,255,255,0.00)'] : ['rgba(0,0,0,0.10)', 'rgba(0,0,0,0.00)']}
-      contentStyle={[
-        stylesLiquidAuth.socialSurface,
-        { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.80)' },
-      ]}
-      style={stylesLiquidAuth.socialHit}
-    >
-      <View style={stylesLiquidAuth.socialRow}>
-        <View style={stylesLiquidAuth.socialIconSlot}>
-          {iconHalo ? (
-            <View
-              pointerEvents="none"
-              style={[
-                stylesLiquidAuth.iconHalo,
-                {
-                  backgroundColor: iconHalo.bg,
-                  borderColor: iconHalo.border,
-                  opacity: typeof iconHalo.opacity === 'number' ? iconHalo.opacity : 1,
-                },
-              ]}
-            />
-          ) : null}
-          <Image source={iconSource} style={stylesLiquidAuth.socialIcon} />
-        </View>
-        <Text style={[stylesLiquidAuth.socialText, { color: isDark ? 'rgba(255,255,255,0.86)' : 'rgba(15,23,42,0.90)' }]}>
-          {title}
-        </Text>
-      </View>
-    </GlassCard>
-  );
-}
-
 // ===== MAIN FUNCTION =====
 
 export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotPasswordFlowPress }) {
@@ -1416,7 +1296,8 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
   }, []);
 
   const [focusedField, setFocusedField] = useState(null);
-  const [currentView, setCurrentView] = useState(() => roleMismatchNextViewInMemory || 'welcome'); // 'welcome' | 'signup' | 'login'
+  // vocab: chooseRole = Design Law missing-screens 01/02 before Create account
+  const [currentView, setCurrentView] = useState(() => roleMismatchNextViewInMemory || 'welcome'); // 'welcome' | 'chooseRole' | 'signup' | 'login'
   const [selectedRole, setSelectedRole] = useState('client'); // 'trainer' | 'client'
   // First paint / first login: light — Design Law pops harder in light; user can flip to dark.
   const [isDarkLanding, setIsDarkLanding] = useState(false);
@@ -1464,8 +1345,15 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
     outputRange: [LIGHT.bg, DARK.bg],
   });
 
-  const onGetStarted = () => setCurrentView('signup');
+  // Get Started → Choose role (tiles) → Create account. Role is required before signup fields.
+  const onGetStarted = () => setCurrentView('chooseRole');
   const onSignIn = () => setCurrentView('login');
+  const onChooseRoleContinue = (pickedRole) => {
+    const next = pickedRole === 'trainer' ? 'trainer' : 'client';
+    setRole(next);
+    setSelectedRole(next);
+    setCurrentView('signup');
+  };
 
   // Signup state
   const [name, setName] = useState('');
@@ -1931,7 +1819,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
       },
       subtitle: {
         fontSize: 16,
-        color: isDarkLanding ? '#C1265A' : (colors.accent ?? '#C1265A'),
+        color: isDarkLanding ? '#0A0A0A' : (colors.accent ?? '#0A0A0A'),
         textAlign: 'center',
       },
       form: {
@@ -1940,8 +1828,8 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
         borderRadius: 16,
         marginBottom: spacing.lg,
         borderWidth: 1,
-        borderColor: isDarkLanding ? 'rgba(255,255,255,0.12)' : 'rgba(88, 86, 214, 0.2)',
-        shadowColor: lightColors.primary,
+        borderColor: isDarkLanding ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.12)',
+        shadowColor: lightColors.nbShadow,
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: isDarkLanding ? 0.15 : 0.3,
         shadowRadius: 8,
@@ -1970,7 +1858,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
         borderColor:
           signupErrors.name || signupErrors.email || signupErrors.password || signupErrors.confirmPassword
             ? '#F87171'
-            : (isDarkLanding ? 'rgba(255,255,255,0.14)' : 'rgba(88, 86, 214, 0.3)'),
+            : (isDarkLanding ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.18)'),
         borderRadius: 12,
         padding: spacing.md,
         fontSize: 16,
@@ -2001,31 +1889,31 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
         padding: spacing.md,
         borderRadius: 12,
         borderWidth: 2,
-        borderColor: isDarkLanding ? 'rgba(255,255,255,0.14)' : 'rgba(88, 86, 214, 0.3)',
+        borderColor: isDarkLanding ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.18)',
         backgroundColor: isDarkLanding ? 'rgba(255,255,255,0.06)' : '#F9F9F9',
         alignItems: 'center',
       },
       roleButtonActive: {
-        borderColor: lightColors.primary,
-        backgroundColor: 'rgba(88, 86, 214, 0.2)',
+        borderColor: lightColors.nbBorder,
+        backgroundColor: 'rgba(0,0,0,0.12)',
       },
       roleButtonText: {
         fontSize: 14,
-        color: '#C1265A',
+        color: '#0A0A0A',
         fontWeight: '600',
       },
       roleButtonTextActive: {
-        color: lightColors.primary,
+        color: lightColors.nbInk,
         fontWeight: '700',
       },
       signupButton: {
-        backgroundColor: lightColors.primary,
+        backgroundColor: lightColors.nbFill,
         padding: spacing.md,
         borderRadius: 12,
         alignItems: 'center',
         marginTop: spacing.md,
         marginBottom: spacing.md,
-        shadowColor: lightColors.primary,
+        shadowColor: lightColors.nbShadow,
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.4,
         shadowRadius: 8,
@@ -2044,12 +1932,12 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
       dividerLine: {
         flex: 1,
         height: 1,
-        backgroundColor: isDarkLanding ? 'rgba(255,255,255,0.12)' : 'rgba(88, 86, 214, 0.2)',
+        backgroundColor: isDarkLanding ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.12)',
       },
       dividerText: {
         marginHorizontal: spacing.md,
         fontSize: 14,
-        color: '#C1265A',
+        color: '#0A0A0A',
       },
       googleButton: {
         flexDirection: 'row',
@@ -2060,7 +1948,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
         justifyContent: 'center',
         marginBottom: spacing.md,
         borderWidth: 1,
-        borderColor: isDarkLanding ? 'rgba(255,255,255,0.12)' : 'rgba(88, 86, 214, 0.2)',
+        borderColor: isDarkLanding ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.12)',
       },
       appleButton: {
         flexDirection: 'row',
@@ -2104,12 +1992,12 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
       },
       footerText: {
         fontSize: 14,
-        color: isDarkLanding ? 'rgba(255,255,255,0.60)' : '#C1265A',
+        color: isDarkLanding ? 'rgba(255,255,255,0.60)' : '#0A0A0A',
         marginRight: spacing.sm,
       },
       loginLink: {
         fontSize: 14,
-        color: lightColors.primary,
+        color: lightColors.nbInk,
         fontWeight: '700',
       },
       textArea: {
@@ -2125,14 +2013,14 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
         borderRadius: 50,
         backgroundColor: isDarkLanding ? 'rgba(255,255,255,0.06)' : '#F9F9F9',
         borderWidth: 2,
-        borderColor: isDarkLanding ? 'rgba(255,255,255,0.18)' : 'rgba(255,45,206,0.30)',
+        borderColor: isDarkLanding ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.18)',
         borderStyle: 'dashed',
         alignItems: 'center',
         justifyContent: 'center',
       },
       imagePickerText: {
         fontSize: 12,
-        color: isDarkLanding ? 'rgba(255,255,255,0.65)' : '#FF00D4',
+        color: isDarkLanding ? 'rgba(255,255,255,0.65)' : '#0A0A0A',
         textAlign: 'center',
       },
       profileImagePreview: {
@@ -2472,7 +2360,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
       },
       subtitle: {
         fontSize: 16,
-        color: isDarkLanding ? '#C1265A' : (colors.accent ?? '#C1265A'),
+        color: isDarkLanding ? '#0A0A0A' : (colors.accent ?? '#0A0A0A'),
         textAlign: 'center',
       },
       form: {
@@ -2481,8 +2369,8 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
         borderRadius: 16,
         marginBottom: spacing.lg,
         borderWidth: 1,
-        borderColor: isDarkLanding ? 'rgba(255,255,255,0.12)' : 'rgba(88, 86, 214, 0.2)',
-        shadowColor: lightColors.primary,
+        borderColor: isDarkLanding ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.12)',
+        shadowColor: lightColors.nbShadow,
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: isDarkLanding ? 0.15 : 0.3,
         shadowRadius: 8,
@@ -2508,7 +2396,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
       },
       input: {
         borderWidth: 1,
-        borderColor: loginErrors.email || loginErrors.password ? '#F87171' : (isDarkLanding ? 'rgba(255,255,255,0.14)' : 'rgba(88, 86, 214, 0.3)'),
+        borderColor: loginErrors.email || loginErrors.password ? '#F87171' : (isDarkLanding ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.18)'),
         borderRadius: 12,
         padding: spacing.md,
         fontSize: 16,
@@ -2521,13 +2409,13 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
         marginTop: spacing.xs,
       },
       loginButton: {
-        backgroundColor: lightColors.primary,
+        backgroundColor: lightColors.nbFill,
         padding: spacing.md,
         borderRadius: 12,
         alignItems: 'center',
         marginTop: spacing.md,
         marginBottom: spacing.md,
-        shadowColor: lightColors.primary,
+        shadowColor: lightColors.nbShadow,
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.4,
         shadowRadius: 8,
@@ -2546,12 +2434,12 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
       dividerLine: {
         flex: 1,
         height: 1,
-        backgroundColor: isDarkLanding ? 'rgba(255,255,255,0.12)' : 'rgba(88, 86, 214, 0.2)',
+        backgroundColor: isDarkLanding ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.12)',
       },
       dividerText: {
         marginHorizontal: spacing.md,
         fontSize: 14,
-        color: '#C1265A',
+        color: '#0A0A0A',
       },
       googleButton: {
         flexDirection: 'row',
@@ -2562,7 +2450,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
         justifyContent: 'center',
         marginBottom: spacing.md,
         borderWidth: 1,
-        borderColor: isDarkLanding ? 'rgba(255,255,255,0.12)' : 'rgba(88, 86, 214, 0.2)',
+        borderColor: isDarkLanding ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.12)',
       },
       googleButtonText: {
         fontSize: 16,
@@ -2581,7 +2469,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
       },
       forgotPasswordText: {
         fontSize: 14,
-        color: lightColors.primary,
+        color: lightColors.nbInk,
         fontWeight: '600',
       },
       footer: {
@@ -2593,12 +2481,12 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
       },
       footerText: {
         fontSize: 14,
-        color: isDarkLanding ? 'rgba(255,255,255,0.60)' : '#C1265A',
+        color: isDarkLanding ? 'rgba(255,255,255,0.60)' : '#0A0A0A',
         marginRight: spacing.sm,
       },
       signupLink: {
         fontSize: 14,
-        color: lightColors.primary,
+        color: lightColors.nbInk,
         fontWeight: '700',
       },
     });
@@ -2748,7 +2636,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
           style={{ flex: 1 }}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
-          <NbPageHeader title="Create your account" onBack={() => setCurrentView('welcome')} />
+          <NbPageHeader title="Create your account" onBack={() => setCurrentView('chooseRole')} />
           <ScrollView
             contentContainerStyle={{
               paddingBottom: insets.bottom + 32,
@@ -2760,18 +2648,36 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
-            <RoleToggle role={role} onRoleChange={setRole} theme={landingTheme} />
-            <Text
+            {/* Role already picked on Choose role — tap Change to reopen the tile screen */}
+            <TouchableOpacity
+              onPress={() => setCurrentView('chooseRole')}
+              activeOpacity={0.88}
               style={{
-                fontSize: 13,
-                fontWeight: '600',
-                color: landingTheme.muted,
                 marginBottom: spacing.md,
-                lineHeight: 18,
+                borderWidth: nb.borderWidth,
+                borderColor: landingTheme.border,
+                backgroundColor: landingTheme.surface,
+                borderRadius: borderRadius.nbCard,
+                padding: 14,
+                shadowColor: landingTheme.shadow,
+                shadowOffset: { width: 3, height: 3 },
+                shadowOpacity: 1,
+                shadowRadius: 0,
+                elevation: 3,
               }}
+              accessibilityRole="button"
+              accessibilityLabel="Change role"
             >
-              {roleHint}
-            </Text>
+              <Text style={{ fontSize: 12, fontWeight: '900', color: landingTheme.muted, letterSpacing: 1 }}>
+                ROLE
+              </Text>
+              <Text style={{ fontSize: 16, fontWeight: '900', color: landingTheme.ink, marginTop: 4 }}>
+                {role === 'trainer' ? 'I am a coach' : 'I want a coach'}
+              </Text>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: landingTheme.muted, marginTop: 4 }}>
+                {roleHint} Tap to change.
+              </Text>
+            </TouchableOpacity>
 
             <AuthField
               label="Full name"
@@ -3035,9 +2941,17 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
     <>
       {currentView === 'welcome'
         ? renderWelcomeView()
-        : currentView === 'signup'
-          ? renderSignupViewLiquid()
-          : renderLoginViewLiquid()}
+        : currentView === 'chooseRole'
+          ? (
+            <ChooseRoleScreen
+              initialRole={role}
+              onBack={() => setCurrentView('welcome')}
+              onContinue={onChooseRoleContinue}
+            />
+          )
+          : currentView === 'signup'
+            ? renderSignupViewLiquid()
+            : renderLoginViewLiquid()}
       <NbSheet
         visible={!!roleMismatchSheet && currentView === 'login'}
         onClose={() => setRoleMismatchSheet(null)}
@@ -3137,7 +3051,7 @@ const welcomeStyles = StyleSheet.create({
   primaryButton: {
     borderRadius: 16,
     overflow: 'hidden',
-    shadowColor: lightColors.primary,
+    shadowColor: lightColors.nbShadow,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
@@ -3382,9 +3296,6 @@ const stylesLiquidAuth = StyleSheet.create({
   socialText: { fontFamily: AUTH_FONT_ROUNDED, fontSize: 14, fontWeight: '800', letterSpacing: 0.3 },
   forgotHit: { alignSelf: 'center', paddingVertical: 8, marginBottom: 8 },
   forgotText: { fontFamily: AUTH_FONT_ROUNDED, color: 'rgba(255,255,255,0.62)', fontWeight: '700' },
-  footerRow: { flexDirection: 'row', justifyContent: 'center', gap: 6, marginTop: 6 },
-  footerText: { fontFamily: AUTH_FONT_ROUNDED, color: 'rgba(255,255,255,0.55)', fontWeight: '600' },
-  footerLink: { fontFamily: AUTH_FONT_ROUNDED, color: Liquid.colors.cyan, fontWeight: '900' },
 });
 
 const stylesWelcomeLiquid = StyleSheet.create({
@@ -3407,11 +3318,12 @@ const stylesWelcomeLiquid = StyleSheet.create({
   heroIconSlot: { width: 200, height: 200, alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent' },
   heroIcon: { width: 180, height: 180, resizeMode: 'contain', opacity: 0.98 },
   cardHit: { width: '100%' },
-  cardSurface: { 
-    padding: 20, 
-    backgroundColor: 'rgba(255,255,255,0.03)', 
-    borderWidth: 1, 
-    borderColor: 'rgba(255,107,157,0.15)' 
+  cardSurface: {
+    padding: 20,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderWidth: 1,
+    // Manipulate here: was pink glass stroke — Design Law uses ink/white only
+    borderColor: 'rgba(255,255,255,0.18)',
   },
   cardSurfaceLight: { padding: 20, backgroundColor: 'rgba(255,255,255,0.95)' },
   headline: {
@@ -3420,7 +3332,7 @@ const stylesWelcomeLiquid = StyleSheet.create({
     letterSpacing: 4,
     color: 'rgba(255,255,255,0.87)',
     lineHeight: 56,
-    textShadowColor: lightColors.primary,
+    textShadowColor: lightColors.nbShadow,
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 20,
   },
@@ -3430,7 +3342,7 @@ const stylesWelcomeLiquid = StyleSheet.create({
     letterSpacing: 4,
     color: 'rgba(0,0,0,0.87)',
     lineHeight: 56,
-    textShadowColor: lightColors.primary,
+    textShadowColor: lightColors.nbShadow,
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 20,
   },

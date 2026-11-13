@@ -36,20 +36,23 @@ CSS3 = r'''
 .mk{background:linear-gradient(135deg,#FCD34D,#F472B6);color:#0A0A0A;padding:0 8px;border:3px solid var(--bd);border-radius:8px;display:inline-block;transform:rotate(-1.5deg)}
 
 /* home hero: welcome + tagline + animation */
-.hero4{position:relative;background:var(--blk);color:var(--on);border:3px solid var(--bd);border-radius:6px 30px 6px 6px;box-shadow:6px 6px 0 var(--sh);overflow:hidden}
+/* Surface hero (follows theme) — not inverted fill/blk. Welcome .stage stays blk. */
+.hero4{position:relative;background:var(--sf);color:var(--ink);border:3px solid var(--bd);border-radius:6px 30px 6px 6px;box-shadow:6px 6px 0 var(--sh);overflow:hidden}
 .hero4.rev{border-radius:30px 6px 6px 6px}
-.hero4 .grid{position:absolute;inset:0;background-image:linear-gradient(var(--on) 1.5px,transparent 1.5px),linear-gradient(90deg,var(--on) 1.5px,transparent 1.5px);background-size:28px 28px;opacity:.08;-webkit-mask-image:radial-gradient(circle at 70% 40%,#000 10%,transparent 70%);mask-image:radial-gradient(circle at 70% 40%,#000 10%,transparent 70%)}
+.hero4 .grid{position:absolute;inset:0;background-image:linear-gradient(var(--ink) 1.5px,transparent 1.5px),linear-gradient(90deg,var(--ink) 1.5px,transparent 1.5px);background-size:28px 28px;opacity:.08;-webkit-mask-image:radial-gradient(circle at 70% 40%,#000 10%,transparent 70%);mask-image:radial-gradient(circle at 70% 40%,#000 10%,transparent 70%)}
 .hero4 .row4{position:relative;display:grid;grid-template-columns:1fr 128px;gap:0;align-items:center;padding:18px 0 12px 16px}
 .hero4.rev .row4{grid-template-columns:128px 1fr;padding:18px 16px 12px 0}
 .hero4.rev .row4 .tx{order:2}
-.hero4 .eyb{color:var(--on);opacity:.75}
+.hero4 .eyb{color:var(--ink);opacity:.75}
 .hero4 .wl{font-size:29px;line-height:1;letter-spacing:-1.1px;font-weight:900;margin:8px 0 0}
 .hero4 .wl .mk{padding:0 6px;margin-left:-2px;font-size:29px;margin-top:6px}
 .hero4 .art{position:relative;width:128px;height:138px}
-.hero4 .art .disc{position:absolute;right:-6px;bottom:-14px;width:118px;height:118px;border-radius:50%;border:3px solid var(--on);opacity:.9}
+.hero4 .art .disc{position:absolute;right:-6px;bottom:-14px;width:118px;height:118px;border-radius:50%;border:3px solid var(--ink);opacity:.9}
 .hero4.rev .art .disc{right:auto;left:-6px}
 .hero4 .art .lot{position:absolute;right:2px;bottom:0;width:122px;height:122px}
 .hero4.rev .art .lot{right:auto;left:2px}
+.hero4 .mq{border-top-color:var(--ink)}
+.hero4 .mq span{color:var(--ink)}
 '''.replace('__LOGO__', LOGO)
 
 JS3 = r'''

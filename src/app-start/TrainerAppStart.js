@@ -116,7 +116,6 @@ import SpreadsheetViewer from "../for-both/files-and-notes/viewers/SpreadsheetVi
 import DocumentEditor from "../trainer-app/documents/DocumentEditor";
 import QuickActionCard from '../for-both/home-cards/QuickActionCard';
 import ShareDocumentPopup from "../trainer-app/documents/ShareDocumentPopup";
-import SpreadsheetEditor from "../trainer-app/documents/SpreadsheetEditor";
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
 import * as XLSX from 'xlsx';
@@ -1147,7 +1146,6 @@ function TrainerAppStartContent({ user }) {
   // supplies what it should show.
   const [pdfViewer, setPdfViewer] = useState({ visible: false, url: null, name: null });
   const [documentEditor, setDocumentEditor] = useState({ visible: false, documentId: null });
-  const [spreadsheetEditor, setSpreadsheetEditor] = useState({ visible: false, documentId: null, title: '', rows: null });
   // A counter used as a manual cache-buster: bumping it makes the documents list re-fetch. Simpler
   // than threading a refresh callback through every editor that might save a document.
   const [trainerDocsRefreshKey, setTrainerDocsRefreshKey] = useState(0);
@@ -1422,17 +1420,14 @@ function TrainerAppStartContent({ user }) {
     );
   };
 
-  // Builds the nav-bar handlers used WHILE a document/spreadsheet editor is open.
+  // Builds the nav-bar handlers used WHILE a document editor is open.
   // The problem it solves: editors are full-screen modals over the shell, so tapping a nav icon
   // would navigate underneath one and leave the editor floating on top. Every handler here closes
   // the editors first, then performs the normal action.
   const getTrainerEditorNavChrome = useCallback((closeDashboardEditors) => {
     const closeEditors = () => {
-      // The caller passes its own closer for dashboard-level editors; these two clear the ones this
-      // component owns. Both are needed — neither knows about the other's editors.
       closeDashboardEditors?.();
       setDocumentEditor({ visible: false, documentId: null });
-      setSpreadsheetEditor({ visible: false, documentId: null, title: '', rows: null });
     };
     return {
       // Forces the nav highlight onto Files while an editor is open — editors are reached from the
@@ -1571,8 +1566,6 @@ function TrainerAppStartContent({ user }) {
     setPdfViewer,
     documentEditor,
     setDocumentEditor,
-    spreadsheetEditor,
-    setSpreadsheetEditor,
     trainerDocsRefreshKey,
     setTrainerDocsRefreshKey,
     getTrainerEditorNavChrome,
@@ -1601,7 +1594,6 @@ function TrainerAppStartContent({ user }) {
     weeklyReportScreen,
     pdfViewer,
     documentEditor,
-    spreadsheetEditor,
     trainerDocsRefreshKey,
   ]);
 

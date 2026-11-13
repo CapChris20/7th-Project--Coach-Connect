@@ -155,6 +155,8 @@ export function OnboardingPrimaryButton({
 }) {
   // Keep pressable while “invalid” so onDisabledPress can explain blockers (NbButton
   // would swallow taps if we passed disabled={true}).
+  // Design Law footer Continue: stretch to fill remaining width beside the back square
+  // (PNG Continue is never a narrow centered pill — width: 100% + alignSelf stretch).
   return (
     <NbButton
       variant="fill"
@@ -165,8 +167,12 @@ export function OnboardingPrimaryButton({
         }
         onPress?.();
       }}
-      // Design Law footer Continue fills the bar (beside the back square). Do not cap width.
-      style={{ width: '100%', opacity: disabled ? 0.45 : 1 }}
+      style={{
+        width: '100%',
+        alignSelf: 'stretch',
+        flexGrow: 1,
+        opacity: disabled ? 0.45 : 1,
+      }}
     >
       {label}
     </NbButton>

@@ -155,7 +155,8 @@ function PayoutActionButtons({
   palette,
   designLaw,
 }) {
-  const primaryLabel = error ? 'Retry' : designLaw ? 'Finish setup' : 'CONNECT WITH STRIPE';
+  // PNG part-2 11/15: idle = “Connect with Stripe”; error = “Retry”; skip opens warning sheet in parent.
+  const primaryLabel = error ? 'Retry' : designLaw ? 'Connect with Stripe' : 'CONNECT WITH STRIPE';
   const primaryPress = error ? retry : startConnect;
   const skipLabel = designLaw ? 'Skip for now' : 'SKIP FOR NOW';
   return (

@@ -11,7 +11,6 @@ import {
   Modal,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   ActivityIndicator,
   Animated,
 } from 'react-native';
@@ -35,6 +34,7 @@ import {
 import { lightColors, darkColors, nb, borderRadius, spacing } from '../../look-and-feel/colorPalette';
 import NbCard from '../../look-and-feel/NbCard';
 import NbButton from '../../look-and-feel/NbButton';
+import NbNoticeSheet from '../../look-and-feel/NbNoticeSheet';
 
 // ===== NAMED CONSTANTS =====
 
@@ -314,6 +314,8 @@ const TrainerListingPopup = ({
   const { isDark } = useTheme();
   const [acceptBusy, setAcceptBusy] = useState(false);
   const [rejectBusy, setRejectBusy] = useState(false);
+  // vocab: notice = NbNoticeSheet payload — Design Law instead of Alert.alert
+  const [notice, setNotice] = useState(null);
 
   const hasRequest = !!clientRequest;
   const request = clientRequest || {};
@@ -382,10 +384,16 @@ const TrainerListingPopup = ({
       });
     } catch (acceptError) {
       console.error('Error adding client:', acceptError);
-      Alert.alert(ACCEPT_ERROR_TITLE, ACCEPT_ERROR_BODY, [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Retry', onPress: handleAddClient },
-      ]);
+      setNotice({
+        title: ACCEPT_ERROR_TITLE,
+        message: ACCEPT_ERROR_BODY,
+        cancelLabel: 'Cancel',
+        confirmLabel: 'Retry',
+        onConfirm: () => {
+          setNotice(null);
+          handleAddClient();
+        },
+      });
     } finally {
       setAcceptBusy(false);
     }
@@ -393,7 +401,7 @@ const TrainerListingPopup = ({
 
   const handleRejectClient = async () => {
     if (!request.messageId) {
-      Alert.alert(MISSING_MESSAGE_ID_TITLE, MISSING_MESSAGE_ID_BODY);
+      setNotice({ title: MISSING_MESSAGE_ID_TITLE, message: MISSING_MESSAGE_ID_BODY });
       return;
     }
 
@@ -419,7 +427,7 @@ const TrainerListingPopup = ({
       onClose();
     } catch (rejectError) {
       console.error('Error rejecting client:', rejectError);
-      Alert.alert(REJECT_ERROR_TITLE, REJECT_ERROR_BODY);
+      setNotice({ title: REJECT_ERROR_TITLE, message: REJECT_ERROR_BODY });
     } finally {
       setRejectBusy(false);
     }
@@ -494,6 +502,15 @@ const TrainerListingPopup = ({
           </NbCard>
         </Animated.View>
       </View>
+      <NbNoticeSheet
+        visible={!!notice}
+        onClose={() => setNotice(null)}
+        title={notice?.title || ''}
+        message={notice?.message}
+        confirmLabel={notice?.confirmLabel || 'OK'}
+        cancelLabel={notice?.cancelLabel}
+        onConfirm={notice?.onConfirm}
+      />
     </Modal>
   );
 };

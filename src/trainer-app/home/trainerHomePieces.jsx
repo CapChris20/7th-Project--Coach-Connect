@@ -6,7 +6,6 @@
 
 import React, { useState, useMemo, useCallback, createContext, useContext, useEffect, useRef } from 'react';
 import {
-  Alert,
   Modal,
   SafeAreaView,
   ScrollView,
@@ -25,6 +24,7 @@ import FilesSection from '../../for-both/files-and-notes/viewers/FilesSection';
 import AddFilePopup from '../../for-both/files-and-notes/viewers/AddFilePopup';
 import PhotoVideoViewer from '../../for-both/files-and-notes/viewers/PhotoVideoViewer';
 import WebPageViewer from '../../for-both/files-and-notes/viewers/WebPageViewer';
+import NbNoticeSheet from '../../look-and-feel/NbNoticeSheet';
 import { deleteNotesAndFilesItem } from '../../for-both/files-and-notes/saveNotesAndFiles';
 import {
   isImageFile as isNotesImageFile,
@@ -122,10 +122,10 @@ function hexToRgbTriple(hex) {
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 // ─────────────────────────────────────────────
-// YOUR COLOR SYSTEM: #E25588 #FF6B9D #F97316 #06B6D4 — different combo per section
+// Accent letters kept for barrel exports — chrome prefers nb ink/orange/cyan (never pink borders)
 // ─────────────────────────────────────────────
-const PURPLE = '#E25588';
-const PINK = lightColors.primary;
+const PURPLE = '#64D2FF';
+const PINK = '#F97316';
 const ORANGE = '#F97316';
 const CYAN = '#06B6D4';
 
@@ -180,13 +180,13 @@ const PROGRESS_VALUE_STEPS = [D_GRAY_MID, S_P];
 const PROGRESS_VALUE_BODYFAT = [S_P, S_K];
 const PROGRESS_VALUE_DAY = [S_P, S_C];
 
-// Card borders — different combo per section (not one neon purple everywhere)
-const CARD_BORDER_PINK_ORANGE = 'rgba(255,107,157,0.32)';   // client selector
+// Card borders — Design Law: black/white/gray + orange accents only (never pink chrome)
+const CARD_BORDER_PINK_ORANGE = 'rgba(249,115,22,0.28)';    // client selector (orange, not pink)
 const CARD_BORDER_PURPLE_CYAN = 'rgba(6,182,212,0.28)';    // tab pills inactive
-const CARD_BORDER_PROGRESS = 'rgba(192,132,252,0.22)';     // Progress tab cards
+const CARD_BORDER_PROGRESS = 'rgba(100,210,255,0.22)';     // Progress tab cards
 const CARD_BORDER_NUTRITION = 'rgba(6,182,212,0.24)';      // Nutrition tab cards
 const CARD_BORDER_CALENDAR = 'rgba(249,115,22,0.22)';      // Calendar tab cards
-const CARD_BORDER_NOTES = 'rgba(255,107,157,0.26)';        // Notes & Files tab cards
+const CARD_BORDER_NOTES = 'rgba(0,0,0,0.18)';              // Notes & Files tab cards
 const CARD_BORDER_DEFAULT = 'rgba(255,255,255,0.1)';       // neutral, not neon
 const CARD_SHADOW_NEUTRAL = 'rgba(0,0,0,0.22)';            // neutral shadow, not purple
 
@@ -629,13 +629,13 @@ const TrainerNotesFilesHeroAndWorkspace = ({
   onRefetchTrainerDocuments,
   onOpenDocumentEditor,
   onOpenShareModal,
-  onOpenSpreadsheetEditor,
-  onImportSpreadsheet,
 }) => {
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [mediaViewer, setMediaViewer] = useState({ visible: false, url: null, kind: 'image', name: null });
   const [embedViewer, setEmbedViewer] = useState({ visible: false, uri: null, title: null });
+  // vocab: notice = NbNoticeSheet payload — Design Law sheets instead of Alert.alert
+  const [notice, setNotice] = useState(null);
 
   const items = clientData?.notesAndFiles || [];
   const fileCount = items.length + (Array.isArray(trainerDocuments) ? trainerDocuments.length : 0);
@@ -648,13 +648,16 @@ const TrainerNotesFilesHeroAndWorkspace = ({
     if (!f) return;
     const isSpreadsheet = f.type === 'spreadsheet';
     const isDoc = f.type === 'document';
-    const isTrainerSpreadsheet = isSpreadsheet && f.documentId;
-    if (isTrainerSpreadsheet && onOpenSpreadsheetEditor) {
-      onOpenSpreadsheetEditor(f);
-      return;
-    }
+    // Native in-app sheets are retired — only uploaded file URLs open in SpreadsheetViewer.
     if (isSpreadsheet && f.url) {
       setSpreadsheetViewer?.({ visible: true, url: f.url, name: f.name || 'Spreadsheet' });
+      return;
+    }
+    if (isSpreadsheet && f.documentId && !f.url) {
+      setNotice({
+        title: 'Spreadsheet editor removed',
+        message: 'Use Google Sheets, then upload a .xlsx or CSV here to share it.',
+      });
       return;
     }
     if (isDoc && onOpenDocumentEditor) {
@@ -676,7 +679,7 @@ const TrainerNotesFilesHeroAndWorkspace = ({
     if (f.url) {
       setEmbedViewer({ visible: true, uri: getEmbedViewerUri(f, f.url), title: f.name || f.title || 'Document' });
     }
-  }, [onOpenDocumentEditor, onOpenSpreadsheetEditor, setPdfViewer, setSpreadsheetViewer]);
+  }, [onOpenDocumentEditor, setPdfViewer, setSpreadsheetViewer]);
 
   const deleteTrainerFile = useCallback(async (file) => {
     if (!clientId || !file?.id || file.addedBy !== 'trainer') return;
@@ -685,7 +688,7 @@ const TrainerNotesFilesHeroAndWorkspace = ({
       onRefetchNotesAndFiles?.();
     } catch (e) {
       console.error('Trainer delete notes/file failed:', e);
-      Alert.alert('Could not delete', e?.message || 'Please try again.');
+      setNotice({ title: 'Could not delete', message: e?.message || 'Please try again.' });
     }
   }, [clientId, onRefetchNotesAndFiles]);
 
@@ -718,6 +721,19 @@ const TrainerNotesFilesHeroAndWorkspace = ({
   return (
     <>
       <View style={{ gap: 16, paddingTop: 4 }}>
+        {/* Design Law eyebrow — matches files-and-notes section labels */}
+        <Text
+          style={{
+            color: palette.nbMuted,
+            fontSize: 11,
+            fontWeight: '800',
+            letterSpacing: 0.7,
+            textTransform: 'uppercase',
+          }}
+        >
+          Shared with {clientName || 'client'}
+          {newCount > 0 ? ` · ${newCount} new` : ''}
+        </Text>
         <NbCard style={{ paddingVertical: 4, paddingHorizontal: 12 }}>
           {previewRows.length === 0 ? (
             <View style={{ paddingVertical: 16, gap: 6 }}>
@@ -767,10 +783,19 @@ const TrainerNotesFilesHeroAndWorkspace = ({
               backgroundColor: palette.nbSurface,
             }}
           >
-            <Text style={{ color: palette.nbInk, fontSize: 15, fontWeight: '900', marginBottom: 6 }}>
+            <Text
+              style={{
+                color: palette.nbMuted,
+                fontSize: 11,
+                fontWeight: '800',
+                letterSpacing: 0.6,
+                textTransform: 'uppercase',
+                marginBottom: 6,
+              }}
+            >
               {clientName ? `Note from ${clientName}` : 'Note from client'}
             </Text>
-            <Text style={{ color: palette.nbMuted, fontSize: 14, fontWeight: '600', lineHeight: 20 }}>
+            <Text style={{ color: palette.nbInk, fontSize: 14, fontWeight: '600', lineHeight: 20 }}>
               {String(clientNote.content || clientNote.text || clientNote.body)}
             </Text>
           </View>
@@ -825,8 +850,6 @@ const TrainerNotesFilesHeroAndWorkspace = ({
         clientId={clientId}
         addedBy="trainer"
         onNewDocument={() => onOpenDocumentEditor?.({})}
-        onNewSpreadsheet={() => onOpenDocumentEditor?.({ type: 'spreadsheet' })}
-        onImportSpreadsheet={() => onOpenDocumentEditor?.({ type: 'spreadsheet' })}
       />
       <PhotoVideoViewer
         visible={mediaViewer.visible}
@@ -842,6 +865,13 @@ const TrainerNotesFilesHeroAndWorkspace = ({
         title={embedViewer.title}
         isDark={isDark}
         onClose={() => setEmbedViewer({ visible: false, uri: null, title: null })}
+      />
+      <NbNoticeSheet
+        visible={!!notice}
+        onClose={() => setNotice(null)}
+        title={notice?.title || ''}
+        message={notice?.message}
+        confirmLabel="OK"
       />
     </>
   );

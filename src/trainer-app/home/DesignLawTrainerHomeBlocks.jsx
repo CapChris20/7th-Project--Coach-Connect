@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import HardShadow from '../../look-and-feel/HardShadow';
 import NbAvatar from '../../look-and-feel/NbAvatar';
+import NbButton from '../../look-and-feel/NbButton';
 import NbIconChip from '../../look-and-feel/NbIconChip';
 import NbProgressBar from '../../look-and-feel/NbProgressBar';
 import {
@@ -32,7 +33,6 @@ import { getClientInitials, getClientRosterStats } from './trainerHomePieces';
 const HANDOFF_WORKOUT = require('../../assets/icons/handoff/workout.png');
 const HANDOFF_PEOPLE = require('../../assets/icons/handoff/people.png');
 const HANDOFF_CHECKIN = require('../../assets/icons/handoff/checkin.png');
-const HANDOFF_WEEK = require('../../assets/icons/handoff/week.png');
 const HANDOFF_PICTURE = require('../../assets/icons/handoff/picture.png');
 const HANDOFF_JOURNEY = require('../../assets/icons/handoff/journey.png');
 
@@ -280,6 +280,14 @@ export function DesignLawTrainerNeedsYou({
 
 // ===== CLIENT CAROUSEL (PNG 01, 03 — .hs3 .chip.cc) =====
 
+function formatInviteDisplay(code) {
+  const raw = String(code || '').trim().toUpperCase();
+  if (!raw) return '';
+  // Show COACH-XXXX when the stored code is the short token only.
+  if (raw.includes('-')) return raw;
+  return `COACH-${raw}`;
+}
+
 export function DesignLawTrainerClientCarousel({
   themeColors,
   clients,
@@ -288,6 +296,9 @@ export function DesignLawTrainerClientCarousel({
   dailyHints = {},
   onSelectClient,
   onRemoveClient,
+  inviteCode = null,
+  onCopyInvite,
+  onListMe,
 }) {
   const { width: windowWidth } = useWindowDimensions();
   // Leave gutter + peek of the next card (PNG 01/03 carousel feel).
@@ -296,21 +307,58 @@ export function DesignLawTrainerClientCarousel({
     Math.min(CLIENT_CHIP_MAX_WIDTH, Math.round(windowWidth - nb.screenGutter * 2 - CLIENT_CHIP_PEEK)),
   );
   const total = clients?.length || 0;
-  const sub = total > 0 ? `${total} active · swipe` : '';
+  // empty-vs-data PNG 03: “0 OF 0”; filled PNG 04: “4 OF 9 • SWIPE”
+  const sub = total > 0 ? `${total} of ${total} · swipe` : '0 of 0';
 
   if (total === 0) {
+    const codeLabel = formatInviteDisplay(inviteCode);
     return (
       <View style={{ marginBottom: nb.blockGap }}>
-        <DesignLawTrainerSectionHeader label="Your clients" right={<Text style={{ fontSize: 12, color: themeColors.textMuted }}>{sub}</Text>} themeColors={themeColors} />
-        <HardShadow offset={nb.shadowOffsetCard} radius={10}>
-          <View style={[styles.emptyClients, { borderColor: themeColors.cardBorder, backgroundColor: themeColors.cardBg }]}>
-            <NbIconChip source={HANDOFF_PEOPLE} index={2} size={44} />
-            <Text style={{ fontSize: 16, fontWeight: '900', color: themeColors.text }}>No clients yet</Text>
-            <Text style={{ fontSize: 13, color: themeColors.textMuted, textAlign: 'center', lineHeight: 18 }}>
-              Approve requests from Client Requests — each client appears here.
-            </Text>
+        <DesignLawTrainerSectionHeader
+          label="Your clients"
+          right={<Text style={{ fontSize: 12, fontWeight: '800', color: themeColors.textMuted }}>{sub}</Text>}
+          themeColors={themeColors}
+        />
+        <View
+          style={[
+            styles.emptyClients,
+            {
+              borderColor: themeColors.cardBorder,
+              backgroundColor: themeColors.cardBg,
+              borderStyle: 'dashed',
+            },
+          ]}
+        >
+          <Text style={{ fontSize: 17, fontWeight: '900', color: themeColors.text, alignSelf: 'stretch' }}>
+            No clients yet
+          </Text>
+          <Text style={{ fontSize: 13, color: themeColors.textMuted, lineHeight: 18, alignSelf: 'stretch' }}>
+            Clients you already train join with your invite code. New clients find you in the marketplace.
+          </Text>
+          {codeLabel ? (
+            <View
+              style={[
+                styles.inviteCodeBox,
+                { borderColor: themeColors.cardBorder, backgroundColor: themeColors.pillBg },
+              ]}
+            >
+              <Text style={[styles.inviteCodeText, { color: themeColors.text }]}>{codeLabel}</Text>
+            </View>
+          ) : null}
+          <View style={{ flexDirection: 'row', gap: 8, alignSelf: 'stretch' }}>
+            <NbButton
+              variant="ghost"
+              sm
+              style={{ flex: 1 }}
+              onPress={() => onCopyInvite?.(inviteCode)}
+            >
+              Copy code
+            </NbButton>
+            <NbButton variant="fill" sm style={{ flex: 1 }} onPress={() => onListMe?.()}>
+              List me
+            </NbButton>
           </View>
-        </HardShadow>
+        </View>
       </View>
     );
   }
@@ -443,11 +491,11 @@ export function DesignLawTrainerClientTodayLabel({ clientName, themeColors }) {
 
 // ===== TOOLS GRID (PNG 01, 03 — .tools) =====
 
+// Spreadsheet creator removed — use Google Sheets / upload .xlsx; keep doc maker.
 const TOOL_DEFS = [
   { key: 'aiPlans', label: 'Workout plans', icon: HANDOFF_WORKOUT },
   { key: 'messages', label: 'Messages', icon: HANDOFF_PEOPLE },
   { key: 'document', label: 'Document maker', icon: HANDOFF_CHECKIN },
-  { key: 'spreadsheet', label: 'Spreadsheet creator', icon: HANDOFF_WEEK },
   { key: 'photos', label: 'Progress photos', icon: HANDOFF_PICTURE },
   { key: 'notes', label: 'Client notes & files', icon: HANDOFF_JOURNEY },
 ];
@@ -491,6 +539,44 @@ export function DesignLawTrainerToolsGrid({ themeColors, onToolPress, messageBad
 }
 
 // ===== WEEKLY REPORT (PNG 01, 03 — .wr grid + adherence) =====
+
+/** empty-vs-data PNG 03 — dashed weekly report before any client exists. */
+export function DesignLawTrainerWeeklyReportEmpty({ themeColors }) {
+  return (
+    <View style={{ marginBottom: nb.blockGap }}>
+      <DesignLawTrainerSectionHeader label="Weekly report" themeColors={themeColors} />
+      <View
+        style={[
+          styles.wrEmpty,
+          {
+            borderColor: themeColors.cardBorder,
+            backgroundColor: themeColors.cardBg,
+            borderStyle: 'dashed',
+          },
+        ]}
+      >
+        <Text style={{ fontSize: 17, fontWeight: '900', color: themeColors.text }}>Starts after your first week</Text>
+        <Text style={{ fontSize: 13, color: themeColors.textMuted, lineHeight: 18 }}>
+          Sessions, client logs and plan adherence show up here once a client is training with you.
+        </Text>
+        <View style={styles.wrEmptyGrid}>
+          {[
+            { value: '0', label: 'Sessions done' },
+            { value: '0/0', label: 'Clients logged' },
+          ].map((cell) => (
+            <View
+              key={cell.label}
+              style={[styles.wrCell, { borderColor: themeColors.cardBorder, backgroundColor: themeColors.pillBg, flex: 1 }]}
+            >
+              <Text style={[styles.wrValue, { color: themeColors.text }]}>{cell.value}</Text>
+              <Text style={[styles.wrCap, { color: themeColors.textMuted }]}>{cell.label}</Text>
+            </View>
+          ))}
+        </View>
+      </View>
+    </View>
+  );
+}
 
 export function DesignLawTrainerWeeklyReportPanel({
   themeColors,
@@ -753,8 +839,32 @@ const styles = StyleSheet.create({
     borderWidth: nb.borderWidth,
     borderRadius: 10,
     padding: 16,
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  inviteCodeBox: {
+    alignSelf: 'stretch',
+    borderWidth: nb.borderWidth,
+    borderRadius: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
     alignItems: 'center',
-    gap: 8,
+  },
+  inviteCodeText: {
+    fontSize: 20,
+    fontWeight: '900',
+    letterSpacing: 1.4,
+    fontVariant: ['tabular-nums'],
+  },
+  wrEmpty: {
+    borderWidth: nb.borderWidth,
+    borderRadius: 10,
+    padding: 16,
+    gap: 12,
+  },
+  wrEmptyGrid: {
+    flexDirection: 'row',
+    gap: 10,
   },
   todayEyebrow: {
     fontSize: 12,

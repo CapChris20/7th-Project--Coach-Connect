@@ -119,6 +119,7 @@ function TrainerCoachConversation({ shell }) {
       sessionId={shell.aiChatState.sessionId}
       enableHistorySidebar
       hideBottomNav={false}
+      viewerRole="trainer"
       onSessionSwitch={(session) =>
         shell.openAIChatSession({ sessionId: session.sessionId || session.id })
       }
@@ -144,6 +145,9 @@ function TrainerCoachHome({ shell }) {
       <VoiceCoachScreen
         userId={shell.user?.uid}
         hideBottomNav={false}
+        // Design Law missing-screens 17/18 — trainer coach home copy + Do-it-for-me tools
+        viewerRole="trainer"
+        clientCount={shell.clients?.length ?? 0}
         onStartChat={({ prefill } = {}) => shell.openAIChatSession({ prefill })}
         onSessionPress={(session) =>
           shell.openAIChatSession({ sessionId: session.sessionId || session.id })

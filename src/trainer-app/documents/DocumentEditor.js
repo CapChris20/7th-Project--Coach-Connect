@@ -5,7 +5,7 @@
 // KEEP: Firebase keys (users/{trainerId}/documents), bodyHtml/body/title, projectId anatrox-auth.
 
 import React, { useMemo, useRef, useState, useEffect, useCallback } from 'react';
-import { Modal, View, Text, TouchableOpacity, TextInput, StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator, Alert, ScrollView, Pressable, Share, Keyboard } from 'react-native';
+import { Modal, View, Text, TouchableOpacity, TextInput, StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView, Pressable, Share, Keyboard } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { WebView } from 'react-native-webview';
@@ -23,6 +23,8 @@ import { computeStats, schoolGradeFromStats, readingEaseCopy } from './readingLe
 import { lightColors, nb, borderRadius, spacing } from '../../look-and-feel/colorPalette';
 import HardShadow from '../../look-and-feel/HardShadow';
 import NbButton from '../../look-and-feel/NbButton';
+import NbSheet from '../../look-and-feel/NbSheet';
+import NbNoticeSheet from '../../look-and-feel/NbNoticeSheet';
 
 // ===== NAMED CONSTANTS =====
 
@@ -650,6 +652,12 @@ export default function DocumentEditor({
     kind: null,
     value: ''
   });
+  // vocab: menuSheet = Design Law NbSheet for Document / Text style / Insert (replaces Alert.alert menus)
+  const [menuSheet, setMenuSheet] = useState(null); // 'more' | 'style' | 'insert' | null
+  // vocab: notice = one-button NbNoticeSheet; confirmLeave / confirmDelete = two-button leave/delete
+  const [notice, setNotice] = useState(null);
+  const [confirmLeave, setConfirmLeave] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   // Manipulate here: default page style chip (Clean | Bold | Handout)
   const [pageStyle, setPageStyle] = useState(PAGE_STYLE_CLEAN);
@@ -805,16 +813,13 @@ export default function DocumentEditor({
       // Malformed WebView JSON is ignored — keep editing.
     }
   }, [queueSave]);
+  const showNotice = useCallback((title, message) => {
+    setNotice({ title, message });
+  }, []);
+
   const handleBackPress = () => {
     if (status === 'unsaved' || status === 'saving') {
-      Alert.alert('Unsaved changes', 'Leave without saving?', [{
-        text: 'Cancel',
-        style: 'cancel'
-      }, {
-        text: 'Leave',
-        style: 'destructive',
-        onPress: onClose
-      }]);
+      setConfirmLeave(true);
       return;
     }
     onClose();
@@ -842,7 +847,7 @@ export default function DocumentEditor({
         });
       }
     } catch (e) {
-      Alert.alert('Export failed', e?.message || 'Could not export document.');
+      showNotice('Export failed', e?.message || 'Could not export document.');
     }
   };
   const handleDuplicate = async () => {
@@ -854,125 +859,47 @@ export default function DocumentEditor({
         body: htmlToPlainText(lastUpdateHtml.current),
         bodyHtml: lastUpdateHtml.current || EMPTY_HTML
       });
-      Alert.alert('Duplicated', 'A copy was saved to your documents.');
+      showNotice('Duplicated', 'A copy was saved to your documents.');
       if (res?.id) setDocId(res.id);
       setStatus('saved');
       setLastSaved(now());
       onSaved?.();
     } catch (e) {
       setStatus('unsaved');
-      Alert.alert('Duplicate failed', e?.message || 'Could not duplicate document.');
+      showNotice('Duplicate failed', e?.message || 'Could not duplicate document.');
     }
   };
   const handleDelete = () => {
     if (!trainerId || !docId) {
-      Alert.alert('Save first', 'Save the document before deleting.');
+      showNotice('Save first', 'Save the document before deleting.');
       return;
     }
-    Alert.alert('Delete document?', 'This cannot be undone.', [{
-      text: 'Cancel',
-      style: 'cancel'
-    }, {
-      text: 'Delete',
-      style: 'destructive',
-      onPress: async () => {
-        try {
-          await deleteDoc(doc(db, 'users', String(trainerId), 'documents', String(docId)));
-          onClose();
-          onSaved?.();
-        } catch (e) {
-          Alert.alert('Delete failed', e?.message || 'Could not delete document.');
-        }
-      }
-    }]);
+    setConfirmDelete(true);
+  };
+  const runDeleteDocument = async () => {
+    try {
+      await deleteDoc(doc(db, 'users', String(trainerId), 'documents', String(docId)));
+      onClose();
+      onSaved?.();
+    } catch (e) {
+      showNotice('Delete failed', e?.message || 'Could not delete document.');
+    }
   };
   const handleSharePress = () => {
     if (!docId) {
-      Alert.alert('Save first', 'Type a bit so the document is saved before sharing.');
+      showNotice('Save first', 'Type a bit so the document is saved before sharing.');
       return;
     }
     setShowShare(true);
   };
-  const openMoreMenu = () => {
-    Alert.alert('Document', undefined, [{
-      text: 'Rename',
-      onPress: handleRename
-    }, {
-      text: 'Text style',
-      onPress: openStyleMenu
-    }, {
-      text: 'Insert…',
-      onPress: openInsertMenu
-    }, {
-      text: favorite ? 'Remove favorite' : 'Add favorite',
-      onPress: () => setFavorite((wasFavorite) => !wasFavorite)
-    }, {
-      text: isEditorDark ? 'Light mode' : 'Dark mode',
-      onPress: () => setEditorThemeMode((mode) => (mode === 'dark' ? 'light' : 'dark'))
-    }, {
-      text: `Word count (${counts.words} words)`,
-      onPress: () => Alert.alert('Word count', `${counts.words} words · ${counts.chars} characters`)
-    }, {
-      text: 'Export',
-      onPress: handleExportPdf
-    }, {
-      text: 'Duplicate',
-      onPress: handleDuplicate
-    }, {
-      text: 'Delete',
-      style: 'destructive',
-      onPress: handleDelete
-    }, {
-      text: 'Cancel',
-      style: 'cancel'
-    }]);
-  };
-  const openStyleMenu = () => {
-    Alert.alert('Text style', undefined, [{
-      text: 'Normal',
-      onPress: () => postCmd('heading', 0)
-    }, {
-      text: 'Title',
-      onPress: () => postCmd('heading', 1)
-    }, {
-      text: 'Subtitle',
-      onPress: () => postCmd('heading', 2)
-    }, {
-      text: 'Heading',
-      onPress: () => postCmd('heading', 3)
-    }, {
-      text: 'Cancel',
-      style: 'cancel'
-    }]);
-  };
-  const openInsertMenu = () => {
-    Alert.alert('Insert', undefined, [{
-      text: 'Link',
-      onPress: () => setPrompt({
-        visible: true,
-        kind: 'link',
-        value: 'https://'
-      })
-    }, {
-      text: 'Image',
-      onPress: () => setPrompt({
-        visible: true,
-        kind: 'image',
-        value: ''
-      })
-    }, {
-      text: 'Bulleted list',
-      onPress: () => postCmd('ul')
-    }, {
-      text: 'Numbered list',
-      onPress: () => postCmd('ol')
-    }, {
-      text: 'Quote',
-      onPress: () => postCmd('blockquote')
-    }, {
-      text: 'Cancel',
-      style: 'cancel'
-    }]);
+  const openMoreMenu = () => setMenuSheet('more');
+  const openStyleMenu = () => setMenuSheet('style');
+  const openInsertMenu = () => setMenuSheet('insert');
+
+  // Run a menu row action after closing the sheet so two modals never stack.
+  const runMenuAction = (action) => {
+    setMenuSheet(null);
+    setTimeout(() => action?.(), 80);
   };
   const nav = trainerNavChrome;
 
@@ -1317,12 +1244,173 @@ export default function DocumentEditor({
               }
             }}
           />
+
+          {/* Design Law document menus — replace Alert.alert action sheets */}
+          <NbSheet
+            visible={menuSheet === 'more'}
+            onClose={() => setMenuSheet(null)}
+            title="Document"
+          >
+            <DocMenuRow theme={theme} label="Rename" onPress={() => runMenuAction(handleRename)} />
+            <DocMenuRow theme={theme} label="Text style" onPress={() => runMenuAction(openStyleMenu)} />
+            <DocMenuRow theme={theme} label="Insert…" onPress={() => runMenuAction(openInsertMenu)} />
+            <DocMenuRow
+              theme={theme}
+              label={favorite ? 'Remove favorite' : 'Add favorite'}
+              onPress={() => runMenuAction(() => setFavorite((wasFavorite) => !wasFavorite))}
+            />
+            <DocMenuRow
+              theme={theme}
+              label={isEditorDark ? 'Light mode' : 'Dark mode'}
+              onPress={() =>
+                runMenuAction(() =>
+                  setEditorThemeMode((mode) => (mode === 'dark' ? 'light' : 'dark')),
+                )
+              }
+            />
+            <DocMenuRow
+              theme={theme}
+              label={`Word count (${counts.words} words)`}
+              onPress={() =>
+                runMenuAction(() =>
+                  showNotice('Word count', `${counts.words} words · ${counts.chars} characters`),
+                )
+              }
+            />
+            <DocMenuRow theme={theme} label="Export" onPress={() => runMenuAction(handleExportPdf)} />
+            <DocMenuRow theme={theme} label="Duplicate" onPress={() => runMenuAction(handleDuplicate)} />
+            <DocMenuRow
+              theme={theme}
+              label="Delete"
+              destructive
+              onPress={() => runMenuAction(handleDelete)}
+            />
+            <View style={{ height: 8 }} />
+            <NbButton variant="ghost" onPress={() => setMenuSheet(null)}>
+              Cancel
+            </NbButton>
+          </NbSheet>
+
+          <NbSheet
+            visible={menuSheet === 'style'}
+            onClose={() => setMenuSheet(null)}
+            title="Text style"
+          >
+            <DocMenuRow theme={theme} label="Normal" onPress={() => runMenuAction(() => postCmd('heading', 0))} />
+            <DocMenuRow theme={theme} label="Title" onPress={() => runMenuAction(() => postCmd('heading', 1))} />
+            <DocMenuRow theme={theme} label="Subtitle" onPress={() => runMenuAction(() => postCmd('heading', 2))} />
+            <DocMenuRow theme={theme} label="Heading" onPress={() => runMenuAction(() => postCmd('heading', 3))} />
+            <View style={{ height: 8 }} />
+            <NbButton variant="ghost" onPress={() => setMenuSheet(null)}>
+              Cancel
+            </NbButton>
+          </NbSheet>
+
+          <NbSheet
+            visible={menuSheet === 'insert'}
+            onClose={() => setMenuSheet(null)}
+            title="Insert"
+          >
+            <DocMenuRow
+              theme={theme}
+              label="Link"
+              onPress={() =>
+                runMenuAction(() => setPrompt({ visible: true, kind: 'link', value: 'https://' }))
+              }
+            />
+            <DocMenuRow
+              theme={theme}
+              label="Image"
+              onPress={() =>
+                runMenuAction(() => setPrompt({ visible: true, kind: 'image', value: '' }))
+              }
+            />
+            <DocMenuRow theme={theme} label="Bulleted list" onPress={() => runMenuAction(() => postCmd('ul'))} />
+            <DocMenuRow theme={theme} label="Numbered list" onPress={() => runMenuAction(() => postCmd('ol'))} />
+            <DocMenuRow theme={theme} label="Quote" onPress={() => runMenuAction(() => postCmd('blockquote'))} />
+            <View style={{ height: 8 }} />
+            <NbButton variant="ghost" onPress={() => setMenuSheet(null)}>
+              Cancel
+            </NbButton>
+          </NbSheet>
+
+          <NbNoticeSheet
+            visible={!!notice}
+            onClose={() => setNotice(null)}
+            title={notice?.title || ''}
+            message={notice?.message}
+            confirmLabel="OK"
+          />
+          <NbNoticeSheet
+            visible={confirmLeave}
+            onClose={() => setConfirmLeave(false)}
+            title="Unsaved changes"
+            message="Leave without saving?"
+            confirmLabel="Leave"
+            cancelLabel="Cancel"
+            onConfirm={onClose}
+            destructive
+          />
+          <NbNoticeSheet
+            visible={confirmDelete}
+            onClose={() => setConfirmDelete(false)}
+            title="Delete document?"
+            message="This cannot be undone."
+            confirmLabel="Delete"
+            cancelLabel="Cancel"
+            onConfirm={runDeleteDocument}
+            destructive
+          />
         </SafeAreaView>
       </KeyboardAvoidingView>
     </Modal>
   );
 }
+
+/**
+ * One Design Law menu row inside Document NbSheets.
+ * @param {{ theme: object, label: string, onPress: Function, destructive?: boolean }} props
+ */
+function DocMenuRow({ theme, label, onPress, destructive = false }) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.88}
+      style={[
+        styles.docMenuRow,
+        { borderBottomColor: theme.chromeBorder || theme.border },
+      ]}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+    >
+      <Text
+        style={[
+          styles.docMenuRowText,
+          { color: destructive ? theme.text : theme.text },
+          destructive ? { fontWeight: '900' } : null,
+        ]}
+      >
+        {label}
+      </Text>
+      <Ionicons name="chevron-forward" size={18} color={theme.textMuted} />
+    </TouchableOpacity>
+  );
+}
 const styles = StyleSheet.create({
+  docMenuRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: 48,
+    paddingVertical: 12,
+    borderBottomWidth: 2,
+  },
+  docMenuRowText: {
+    fontSize: 15,
+    fontWeight: '800',
+    flex: 1,
+    paddingRight: 8,
+  },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',

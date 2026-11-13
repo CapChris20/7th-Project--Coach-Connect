@@ -42,6 +42,8 @@ import CreateWorkoutPlanScreen from '../../workouts/create-plan/CreateWorkoutPla
 import CoachHomeScreen from '../../ai-coach/home-screen/CoachHomeScreen';
 import CoachConversationScreen from '../../ai-coach/conversation/CoachConversationScreen';
 import NbPageHeader from '../../look-and-feel/NbPageHeader';
+import OfflineBanner from '../../for-both/loading-and-header/OfflineBanner';
+import useNetworkStatus from '../../for-both/online-connection/useNetworkStatus';
 import { useIsFocused } from '@react-navigation/native';
 import { CLIENT_MAIN_TABS } from './goToClientScreen';
 import { useClientAppStartShell } from './ClientOpenScreenTracker';
@@ -198,6 +200,7 @@ function notesFileCount(notesAndFiles) {
  */
 export default function ClientMainScreen() {
   const shell = useClientAppStartShell();
+  const { isOffline, refreshing: offlineRetrying, refresh: retryOffline } = useNetworkStatus();
   const {
     navProviderProps,
     isDark,
@@ -244,6 +247,10 @@ export default function ClientMainScreen() {
     setDay6Client,
     openPhotoGallery,
     openProgressCharts,
+    openLogWorkout,
+    openDailyCheckIn,
+    openMoodCheckIn,
+    openWeeklyMomentum,
     openAIWorkouts,
     openWeeklyReport,
     openNotifications,
@@ -323,6 +330,11 @@ export default function ClientMainScreen() {
       edges={SHELL_SAFE_AREA_EDGES}
     >
       <StatusBar barStyle={!isDark ? 'dark-content' : 'light-content'} />
+      <OfflineBanner
+        visible={isOffline}
+        retrying={offlineRetrying}
+        onRetry={retryOffline}
+      />
       <View style={{ flex: 1 }}>
 
       {showTrainerMessaging ? (
@@ -400,6 +412,7 @@ export default function ClientMainScreen() {
           onNutritionPress={openNutrition}
           onWorkoutPress={openWorkout}
           onMessagesPress={handleOpenConversations}
+          onOpenWeeklyMomentum={() => openWeeklyMomentum?.()}
         />
       ) : mainTab === CLIENT_MAIN_TABS.ai ? null : mainTab === CLIENT_MAIN_TABS.workout ? null : (
         // Home tab = Design Law client-home + Design Law TopHeader (profile + settings chips).
@@ -480,6 +493,9 @@ export default function ClientMainScreen() {
               openPhotoGallery();
             }}
             onOpenProgressCharts={() => openProgressCharts()}
+            onOpenLogWorkout={() => openLogWorkout?.()}
+            onOpenDailyCheckIn={() => openDailyCheckIn?.()}
+            onOpenMoodCheckIn={() => openMoodCheckIn?.()}
             onOpenAIWorkouts={() => {
               setDay6Client({ id: user?.uid, name: userData?.firstName || user?.displayName || DEFAULT_SELF_NAME });
               openAIWorkouts();

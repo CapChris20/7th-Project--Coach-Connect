@@ -6,7 +6,6 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 // vocab: useState / useEffect / useRef / useMemo = React hooks for state, side effects, mutable boxes, cached derived lists
 import {
   Animated,
-  Alert,
   Dimensions,
   FlatList,
   Image,
@@ -30,11 +29,13 @@ import { Ionicons } from '@expo/vector-icons';
 import LottieView from 'lottie-react-native';
 // vocab: LottieView = plays a JSON animation (empty-state cloud robot)
 import { lightColors, darkColors, spacing, borderRadius, nb, gradients, accentGradients } from '../../look-and-feel/colorPalette';
-import GradientFrame from '../../look-and-feel/GradientFrame';
 import NbButton from '../../look-and-feel/NbButton';
+import NbNoticeSheet from '../../look-and-feel/NbNoticeSheet';
 import CoachAttachSheet from './CoachAttachSheet';
 import DeleteChatSheet from '../past-chats/DeleteChatSheet';
+import TrainerQuietClientsCard from './TrainerQuietClientsCard';
 import {
+  COACH_MAX_ATTACH_PHOTOS,
   pickCoachDocuments,
   pickCoachPhotoFromCamera,
   pickCoachPhotosFromLibrary,
@@ -85,7 +86,6 @@ import { a11yButton, MIN_TOUCH_HIT_SLOP } from '../../for-both/screenReaderLabel
 // vocab: a11yProps helper for accessibility standards
 const a11yProps = a11yButton;
 import { AI_COACH_UI } from '../coachColors';
-import CoachGlassCard from '../reply-display/CoachGlassCard';
 import { stripCoachToolJsonFromReply, readActionsFromReply } from '../coach-actions/readActionsFromReply';
 // vocab: readActionsFromReply = peel hidden tool JSON out of the AI text
 // vocab: stripCoachToolJsonFromReply = user-visible bubble text without that JSON
@@ -1120,6 +1120,7 @@ function MessageBubble({
   showFollowUps = false,
   onFollowUpPress = null,
   userProfile = null,
+  viewerRole = 'client',
 }) {
   // sent=true → right-aligned user bubble; false → full-width coach reply.
   const sent = message.role === 'user';
@@ -1236,24 +1237,23 @@ function MessageBubble({
   return (
     <View style={{ width: '100%', marginBottom: 24, alignSelf: 'stretch' }}>
       <CoachReplyHeader palette={palette} />
+      {/* Design Law PNG 05 — bordered pill (surface + 3px ink), not a gradient fill chip */}
       {showWebResearchChip ? (
-        <View style={{ alignSelf: 'flex-start', marginBottom: 10 }}>
-          <LinearGradient
-            colors={accentGradients[0]}
-            start={{ x: 0, y: 0.5 }}
-            end={{ x: 1, y: 0.5 }}
-            style={{
-              borderRadius: 999,
-              paddingHorizontal: 12,
-              paddingVertical: 6,
-              borderWidth: nb.borderWidth,
-              borderColor: palette.cardBorder,
-            }}
-          >
-            <Text style={{ fontSize: 12, fontWeight: '900', color: lightColors.nbInk }}>
-              Fitness web research
-            </Text>
-          </LinearGradient>
+        <View
+          style={{
+            alignSelf: 'flex-start',
+            marginBottom: 10,
+            borderRadius: 999,
+            paddingHorizontal: 12,
+            paddingVertical: 6,
+            borderWidth: nb.borderWidth,
+            borderColor: palette.cardBorder,
+            backgroundColor: palette.cardBg,
+          }}
+        >
+          <Text style={{ fontSize: 12, fontWeight: '900', color: palette.text }}>
+            Fitness web research
+          </Text>
         </View>
       ) : null}
       {/* Design Law coach body — flat text on canvas (not a pink gradient bubble) */}
@@ -1292,6 +1292,22 @@ function MessageBubble({
           onSkip={onSkipTool}
           palette={palette}
           userMessage={lastUserText}
+        />
+      ) : null}
+      {/* Design Law missing-screens 19/20 — quiet clients list + draft Review (trainer only) */}
+      {!sent && String(viewerRole).toLowerCase() === 'trainer' ? (
+        <TrainerQuietClientsCard
+          messageText={displayText}
+          userMessage={lastUserText}
+          palette={palette}
+          onReview={() => {
+            // Reuse Needs-your-OK path when a tool call exists; otherwise no-op (draft is display-only)
+            if (coachActionPromptVisible(message, lastUserText)) {
+              const toolCall = resolveMessageToolCall(message, lastUserText);
+              if (toolCall) onToolPress?.(toolCall, message.id);
+            }
+          }}
+          onEdit={() => {}}
         />
       ) : null}
       {showFollowUps && Array.isArray(message.followUpPrompts) && message.followUpPrompts.length ? (
@@ -1497,6 +1513,7 @@ async function executeConfirmedCoachTool({
   setPendingToolMessageId,
   scrollToBottom,
   sessionId,
+  showNotice,
 }) {
   // Step 1: actually mutate logs / open plan / notify trainer.
   const result = await carryOutAction({
@@ -1550,7 +1567,8 @@ async function executeConfirmedCoachTool({
       onNutritionDataChanged,
     });
   } else {
-    Alert.alert('Action failed', result.message || 'Could not complete that action.');
+    // Design Law notice sheet — avoid native Alert for in-app tool failures
+    showNotice?.('Action failed', result.message || 'Could not complete that action.');
   }
 
   // Step 4: always close the modal + clear pending tool so the chip can reappear if needed.
@@ -1833,6 +1851,8 @@ export default function CoachConversationScreen({
   enableHistorySidebar = false,
   onSessionSwitch,
   onNewChat,
+  // vocab: viewerRole = 'trainer' enables quiet-clients reply card (missing-screens 19/20)
+  viewerRole = 'client',
 }) {
   // ── Layout / theme / refs ──
   const insets = useSafeAreaInsets();
@@ -1897,8 +1917,10 @@ export default function CoachConversationScreen({
   // Sidebar starts collapsed on narrow screens; expanded on wide when docked.
   const [sidebarCollapsed, setSidebarCollapsed] = useState(!isWideLayout);
   const [historyOverlayOpen, setHistoryOverlayOpen] = useState(false);
-  // Design Law sheets — replace native ActionSheet / Alert for attach + delete
+  // Design Law sheets — replace native ActionSheet / Alert for attach + delete + notices
   const [attachSheetOpen, setAttachSheetOpen] = useState(false);
+  const [notice, setNotice] = useState(null);
+  const showNotice = (title, message) => setNotice({ title, message });
   const [deleteSheetSession, setDeleteSheetSession] = useState(null);
   // Live list of past sessions for PastChatsPanel (docked or overlay).
   const coachSessions = chatHistoryList(userId);
@@ -2010,7 +2032,7 @@ export default function CoachConversationScreen({
   const openToolModal = (toolCall, messageId = null) => {
     const normalized = guardCoachToolProposal(normalizeToolCall(toolCall));
     if (!normalized) {
-      Alert.alert('Action unavailable', 'This coach action could not be loaded. Try asking again.');
+      showNotice('Action unavailable', 'This coach action could not be loaded. Try asking again.');
       return;
     }
     try {
@@ -2042,11 +2064,11 @@ export default function CoachConversationScreen({
     const { inline = false, messageId: runMessageId = null } = runOptions;
     const baseTool = toolOverride || pendingToolCall;
     if (!userId) {
-      Alert.alert('Sign in required', 'Please sign in again to run coach actions.');
+      showNotice('Sign in required', 'Please sign in again to run coach actions.');
       return;
     }
     if (!baseTool) {
-      Alert.alert('Nothing to confirm', 'Tap Confirm Action on the coach message first.');
+      showNotice('Nothing to confirm', 'Tap Confirm Action on the coach message first.');
       return;
     }
     // Re-entry guard: ignore a second Confirm while the first is still writing.
@@ -2060,7 +2082,7 @@ export default function CoachConversationScreen({
     // Final safety gate before any Firestore write.
     const merged = guardCoachToolProposal(mergedRaw);
     if (!merged) {
-      Alert.alert('Action unavailable', 'This coach action could not be validated. Try asking again.');
+      showNotice('Action unavailable', 'This coach action could not be validated. Try asking again.');
       return;
     }
 
@@ -2086,6 +2108,7 @@ export default function CoachConversationScreen({
         setPendingToolMessageId,
         scrollToBottom,
         sessionId,
+        showNotice,
       });
     } catch (error) {
       // Unexpected throw (network mid-write, etc.) → paint an error bubble in-thread.
@@ -2193,7 +2216,7 @@ export default function CoachConversationScreen({
     // Block PDF-only / unreadable attachments before we paint an optimistic bubble.
     const gate = coachAttachmentGateMessage(atts);
     if (!gate.ok) {
-      Alert.alert(gate.title, gate.message);
+      showNotice(gate.title, gate.message);
       return;
     }
     const imageAtts = gate.imageAtts;
@@ -2293,20 +2316,27 @@ export default function CoachConversationScreen({
     setTimeout(() => sendMessage(text, atts), 350);
   }, [prefill, loadedSession]);
 
+  // Append attachments but never exceed Design Law’s 4-photo READY TO SEND cap.
+  const appendAttachments = (newAtts) => {
+    if (!Array.isArray(newAtts) || newAtts.length === 0) return;
+    setAttachments((prev) => {
+      const room = Math.max(0, COACH_MAX_ATTACH_PHOTOS - prev.length);
+      if (room <= 0) return prev;
+      return [...prev, ...newAtts.slice(0, room)];
+    });
+  };
+
   // Attach menu actions — append to the pending strip (user still has to hit Send).
   const handlePhotoLibrary = async () => {
-    const newAtts = await pickCoachPhotosFromLibrary();
-    if (newAtts.length > 0) setAttachments((prev) => [...prev, ...newAtts]);
+    appendAttachments(await pickCoachPhotosFromLibrary());
   };
 
   const handleCamera = async () => {
-    const newAtts = await pickCoachPhotoFromCamera();
-    if (newAtts.length > 0) setAttachments((prev) => [...prev, ...newAtts]);
+    appendAttachments(await pickCoachPhotoFromCamera());
   };
 
   const handleFile = async () => {
-    const newAtts = await pickCoachDocuments();
-    if (newAtts.length > 0) setAttachments((prev) => [...prev, ...newAtts]);
+    appendAttachments(await pickCoachDocuments());
   };
 
   // Design Law attach sheet (camera / library / analyze / paste).
@@ -2575,6 +2605,7 @@ export default function CoachConversationScreen({
                 showFollowUps={item.isLastAssistant}
                 onFollowUpPress={sendMessage}
                 userProfile={userProfile}
+                viewerRole={viewerRole}
               />
             )}
             style={{ flex: 1 }}
@@ -2735,6 +2766,66 @@ export default function CoachConversationScreen({
                   );
                 })}
               </ScrollView>
+
+              {/* Design Law 09 — two prompt rows under READY TO SEND thumbs. */}
+              <View
+                style={{
+                  marginTop: 12,
+                  borderRadius: 14,
+                  borderWidth: nb.borderWidth,
+                  borderColor: palette.cardBorder,
+                  backgroundColor: palette.cardBg,
+                  overflow: 'hidden',
+                }}
+              >
+                {[
+                  {
+                    id: 'form',
+                    label: 'Check my form in this photo and give coaching cues',
+                  },
+                  {
+                    id: 'physique',
+                    label: 'Give me physique feedback from this progress photo',
+                  },
+                ].map((row, idx) => (
+                  <TouchableOpacity
+                    key={row.id}
+                    onPress={() => {
+                      setInput(row.label);
+                      try {
+                        Haptics.selectionAsync();
+                      } catch (_) {
+                        /* haptics optional */
+                      }
+                    }}
+                    {...a11yButton(row.label)}
+                    style={{
+                      minHeight: 52,
+                      paddingHorizontal: 14,
+                      paddingVertical: 12,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 10,
+                      borderTopWidth: idx === 0 ? 0 : nb.borderWidth,
+                      borderTopColor: palette.cardBorder,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        flex: 1,
+                        fontSize: 14,
+                        fontWeight: '700',
+                        color: palette.textPrimary,
+                        lineHeight: 19,
+                      }}
+                    >
+                      {row.label}
+                    </Text>
+                    <Ionicons name="chevron-forward" size={18} color={palette.textSecondary} />
+                  </TouchableOpacity>
+                ))}
+              </View>
+
               <Text
                 style={{
                   marginTop: 10,
@@ -2931,6 +3022,13 @@ export default function CoachConversationScreen({
           insets={insets}
         />
       ) : null}
+      <NbNoticeSheet
+        visible={!!notice}
+        onClose={() => setNotice(null)}
+        title={notice?.title || ''}
+        message={notice?.message}
+        confirmLabel="OK"
+      />
       </View>
     </View>
   );

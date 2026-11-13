@@ -22,9 +22,9 @@ const DEFAULT_PHOTO_NAME = 'photo.jpg';
 const IMAGE_ATTACHMENT_TYPE = 'image';
 const FILE_ATTACHMENT_TYPE = 'file';
 
-// The library picker is single-select today. The cap stays so a future multi-select
-// still can't attach a whole camera roll in one message.
-const MAX_LIBRARY_PHOTOS = 3;
+// Design Law attach sheet: “Pick up to 4 photos” — multi-select capped here.
+const MAX_LIBRARY_PHOTOS = 4;
+export const COACH_MAX_ATTACH_PHOTOS = MAX_LIBRARY_PHOTOS;
 
 // vocab: toString(36) is base 36 (digits plus a-z). slice drops the "0." and keeps 6 characters.
 const RANDOM_ID_RADIX = 36;
@@ -219,7 +219,8 @@ export async function pickCoachPhotosFromLibrary() {
 
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: MEDIA_IMAGES,
-      allowsMultipleSelection: false,
+      allowsMultipleSelection: true,
+      selectionLimit: MAX_LIBRARY_PHOTOS,
       quality: PICKER_IMAGE_QUALITY,
     });
     if (result.canceled) return [];

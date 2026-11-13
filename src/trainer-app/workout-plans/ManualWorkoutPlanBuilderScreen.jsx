@@ -32,9 +32,15 @@ import {
   getManualWorkoutPlan,
   draftFromTrainerPlanDoc,
   searchExercisesForBuilder,
+  inferExerciseEquipment,
 } from './manualPlanToWorkoutPlan';
 
 // ===== NAMED CONSTANTS =====
+
+// Design Law PNG 21 — muscle segment + equipment pills on the Exercise library sheet
+const LIBRARY_MUSCLE_CHIPS = ['Chest', 'Back', 'Shoulders', 'Biceps'];
+const LIBRARY_EQUIPMENT_CHIPS = ['Barbell', 'Dumbbell', 'Bodyweight', 'Cable', 'Machine'];
+const LIBRARY_SEARCH_LIMIT = 20;
 
 const DEFAULT_SET_COUNT = 3;
 const DEFAULT_REPS = 10;
@@ -385,6 +391,9 @@ export default function ManualWorkoutPlanBuilderScreen({
   const [modalOpen, setModalOpen] = useState(false);
   const [editExerciseId, setEditExerciseId] = useState(null);
   const [searchQ, setSearchQ] = useState('');
+  // vocab: libraryMuscle = single PNG 21 segment (null = all); libraryEquipments = multi-select pills
+  const [libraryMuscle, setLibraryMuscle] = useState(null);
+  const [libraryEquipments, setLibraryEquipments] = useState([]);
   const [pickedLibrary, setPickedLibrary] = useState(null);
   const [customName, setCustomName] = useState('');
   const [sets, setSets] = useState(3);
@@ -445,7 +454,20 @@ export default function ManualWorkoutPlanBuilderScreen({
     setSetEditOpen(false);
   };
 
-  const searchResults = useMemo(() => searchExercisesForBuilder(searchQ, 20), [searchQ]);
+  const searchResults = useMemo(
+    () =>
+      searchExercisesForBuilder(searchQ, LIBRARY_SEARCH_LIMIT, {
+        muscle: libraryMuscle,
+        equipments: libraryEquipments,
+      }),
+    [searchQ, libraryMuscle, libraryEquipments],
+  );
+
+  const toggleLibraryEquipment = useCallback((label) => {
+    setLibraryEquipments((prev) =>
+      prev.includes(label) ? prev.filter((item) => item !== label) : [...prev, label],
+    );
+  }, []);
 
   useEffect(() => {
     if (!editPlanId || !trainerId) return;
@@ -491,6 +513,8 @@ export default function ManualWorkoutPlanBuilderScreen({
   const resetModal = () => {
     setEditExerciseId(null);
     setSearchQ('');
+    setLibraryMuscle(null);
+    setLibraryEquipments([]);
     setPickedLibrary(null);
     setCustomName('');
     setSets(3);
@@ -1157,41 +1181,124 @@ export default function ManualWorkoutPlanBuilderScreen({
               scrollEventThrottle={16}
               keyboardDismissMode="on-drag"
             >
-            <FieldLabel>Search library</FieldLabel>
-            <FormField style={{ marginBottom: 8 }}>
+            {/* Design Law PNG 21 — search + muscle segment + equipment pills */}
+            <FormField style={{ marginBottom: 10 }}>
               <View style={styles.searchRow}>
                 <Ionicons name="search" size={18} color={palette.textTertiary} />
                 <TextInput
                   style={styles.searchInput}
-                  placeholder="Bench press, RDL, curls…"
+                  placeholder="Search exercises"
                   placeholderTextColor={palette.textTertiary}
                   value={searchQ}
                   onChangeText={setSearchQ}
                 />
               </View>
             </FormField>
+            <View
+              style={[
+                styles.muscleSegment,
+                { borderColor: palette.border, backgroundColor: palette.surface },
+              ]}
+            >
+              {LIBRARY_MUSCLE_CHIPS.map((label, index) => {
+                const active = libraryMuscle === label;
+                return (
+                  <TouchableOpacity
+                    key={label}
+                    onPress={() => setLibraryMuscle((prev) => (prev === label ? null : label))}
+                    style={[
+                      styles.muscleSegmentCell,
+                      index > 0 ? { borderLeftWidth: nb.borderWidth, borderLeftColor: palette.border } : null,
+                      active ? { backgroundColor: palette.textPrimary } : null,
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                  >
+                    <Text
+                      style={[
+                        styles.muscleSegmentText,
+                        { color: active ? palette.surface : palette.textPrimary },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            <View style={styles.equipWrap}>
+              {LIBRARY_EQUIPMENT_CHIPS.map((label) => (
+                <Pill
+                  key={label}
+                  label={label}
+                  active={libraryEquipments.includes(label)}
+                  onPress={() => toggleLibraryEquipment(label)}
+                />
+              ))}
+            </View>
             {searchResults.length > 0 ? (
               <View style={styles.suggestList}>
-                {searchResults.map((item) => (
-                  <TouchableOpacity
-                    key={item.id}
-                    style={[styles.suggestRow, pickedLibrary?.id === item.id && styles.suggestRowActive]}
-                    onPress={() => {
-                      setPickedLibrary(item);
-                      setCustomName('');
-                    }}
-                  >
-                    <Text style={styles.exTitle}>{item.name}</Text>
-                    <Text style={styles.suggestMuscles}>{(item.muscleGroups || []).join(' · ')}</Text>
-                  </TouchableOpacity>
-                ))}
+                {searchResults.map((item) => {
+                  const equip = inferExerciseEquipment(item);
+                  const muscleLine = (item.muscleGroups || []).slice(0, 1).join('');
+                  const sub = [muscleLine, equip].filter(Boolean).join(' · ');
+                  const selected = pickedLibrary?.id === item.id;
+                  return (
+                    <View
+                      key={item.id}
+                      style={[
+                        styles.suggestRow,
+                        selected && styles.suggestRowActive,
+                        { borderBottomColor: palette.border },
+                      ]}
+                    >
+                      <TouchableOpacity
+                        style={{ flex: 1, minWidth: 0, paddingVertical: 4 }}
+                        onPress={() => {
+                          setPickedLibrary(item);
+                          setCustomName('');
+                        }}
+                      >
+                        <Text style={styles.exTitle}>{item.name}</Text>
+                        {sub ? <Text style={styles.suggestMuscles}>{sub}</Text> : null}
+                      </TouchableOpacity>
+                      <HardShadow offset={nb.shadowOffsetSmall} radius={borderRadius.nbIconChip}>
+                        <TouchableOpacity
+                          onPress={() => {
+                            setPickedLibrary(item);
+                            setCustomName('');
+                          }}
+                          style={[
+                            styles.libraryAddSq,
+                            {
+                              borderColor: palette.border,
+                              backgroundColor: selected ? palette.textPrimary : palette.surface,
+                            },
+                          ]}
+                          accessibilityLabel={`Add ${item.name}`}
+                        >
+                          <Ionicons
+                            name="add"
+                            size={20}
+                            color={selected ? palette.surface : palette.textPrimary}
+                          />
+                        </TouchableOpacity>
+                      </HardShadow>
+                    </View>
+                  );
+                })}
               </View>
-            ) : null}
+            ) : (
+              <Text style={[styles.suggestMuscles, { marginBottom: 12 }]}>
+                No exercises match these filters.
+              </Text>
+            )}
             <FieldLabel>Or custom name</FieldLabel>
             <FormField>
               <TextInput
                 style={styles.inputBare}
-                placeholder="Type any exercise name"
+                placeholder="Use a custom name"
                 placeholderTextColor={palette.textTertiary}
                 value={customName}
                 onChangeText={(t) => {
@@ -1660,6 +1767,29 @@ function createBuilderStyles(c) {
   },
   searchRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   searchInput: { flex: 1, fontSize: 16, color: c.textPrimary, fontWeight: '600', paddingVertical: 2 },
+  // Manipulate here: PNG 21 muscle segment height / cell padding
+  muscleSegment: {
+    flexDirection: 'row',
+    borderWidth: nb.borderWidth,
+    borderRadius: borderRadius.nbCard,
+    overflow: 'hidden',
+    marginBottom: 10,
+    minHeight: 44,
+  },
+  muscleSegmentCell: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+  },
+  muscleSegmentText: { fontSize: 12, fontWeight: '800' },
+  equipWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 12,
+  },
   suggestList: {
     borderRadius: borderRadius.nbCard,
     overflow: 'hidden',
@@ -1669,6 +1799,9 @@ function createBuilderStyles(c) {
     backgroundColor: c.surface,
   },
   suggestRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
     paddingVertical: 12,
     paddingHorizontal: 14,
     borderBottomWidth: nb.borderWidthDivider,
@@ -1676,6 +1809,14 @@ function createBuilderStyles(c) {
   },
   suggestRowActive: { backgroundColor: c.soft },
   suggestMuscles: { color: c.textTertiary, fontSize: 12, marginTop: 3, fontWeight: '500' },
+  libraryAddSq: {
+    width: 40,
+    height: 40,
+    borderRadius: borderRadius.nbIconChip,
+    borderWidth: nb.borderWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   stepper: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -22,6 +22,10 @@ import {
   ClientWeeklyReportScreen,
   ClientMyProgressPhotosScreen,
   ClientProgressChartsScreen,
+  ClientLogWorkoutScreen,
+  ClientDailyCheckInScreen,
+  ClientMoodCheckInScreen,
+  ClientWeeklyMomentumScreen,
   ClientNotificationsScreen,
   ClientAIWorkoutsScreen,
   ClientMyWorkoutPlanScreen,
@@ -79,6 +83,10 @@ export default function ClientScreenList() {
       {pushedClientScreen(CLIENT_ROUTES.WeeklyReport, ClientWeeklyReportScreen)}
       {pushedClientScreen(CLIENT_ROUTES.PhotoGallery, ClientMyProgressPhotosScreen)}
       {pushedClientScreen(CLIENT_ROUTES.ProgressCharts, ClientProgressChartsScreen)}
+      {pushedClientScreen(CLIENT_ROUTES.LogWorkout, ClientLogWorkoutScreen)}
+      {pushedClientScreen(CLIENT_ROUTES.DailyCheckIn, ClientDailyCheckInScreen)}
+      {pushedClientScreen(CLIENT_ROUTES.MoodCheckIn, ClientMoodCheckInScreen)}
+      {pushedClientScreen(CLIENT_ROUTES.WeeklyMomentum, ClientWeeklyMomentumScreen)}
       {pushedClientScreen(CLIENT_ROUTES.Notifications, ClientNotificationsScreen)}
       {pushedClientScreen(CLIENT_ROUTES.AIWorkouts, ClientAIWorkoutsScreen)}
       {pushedClientScreen(CLIENT_ROUTES.PlanViewer, ClientMyWorkoutPlanScreen)}

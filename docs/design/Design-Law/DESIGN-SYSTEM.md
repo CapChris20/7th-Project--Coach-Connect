@@ -27,7 +27,7 @@ This file is the contract for the new look. The mockups in `mockups/` show it in
 | `muted` | `#575757` | `#A6A6A6` | secondary text (contrast checked) |
 | `border` (`bd`) | `#0A0A0A` | `#F2F2F2` | every outline |
 | `shadow` (`sh`) | `#0A0A0A` | `#8A8A8A` | hard offset shadows |
-| `fill` (`blk`) | `#0A0A0A` | `#F2F2F2` | primary buttons, selected states, active nav, hero blocks |
+| `fill` (`blk`) | `#0A0A0A` | `#F2F2F2` | primary buttons, selected states, active nav, welcome logo stage |
 | `onFill` (`on`) | `#FFFFFF` | `#0A0A0A` | text and icons on `fill` |
 
 Selected and primary elements are solid `fill` (black in light, white in dark) with `onFill` text.
@@ -98,7 +98,7 @@ The repo already has `Nb*` components in `src/look-and-feel/`. Restyle those to 
 | Skeleton | hatched soft fill, same layout as the real screen, soft pulse (no shimmer). | (new) |
 | Empty state | dashed card, large icon chip, h1, one sentence, one or two buttons. | (new) |
 | Screen shell | status area, scroll area, optional bottom bar | `NbScreen.jsx` |
-| Hero block | black block with big type and a Lottie | `NbHero.jsx` |
+| Hero block | home: surface card + ink + Lottie; welcome stage: fill block + logo | `NbHero.jsx` / `DesignLawHomeWelcomeHero.jsx` |
 | List row | 56–64 tall, 2px dividers | `NbListRow.jsx`, `NbOptionRow.jsx` |
 | Steps | chapter bar, 3 segments | `NbProgressSteps.jsx` |
 | Bottom bar | see section 7 | `NbBottomNav.jsx` and `src/navigation/BottomMenuBar.js` |

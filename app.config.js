@@ -44,10 +44,12 @@ module.exports = {
         'expo-notifications',
         {
           icon: './assets/icon.png',
-          color: '#FF6B9D',
+          // Manipulate here: Design Law notification accent — ink, never pink
+          color: '#0A0A0A',
           defaultChannel: 'default',
         }
       ],
+      '@react-native-community/netinfo',
       'expo-iap',
       'expo-apple-authentication',
       [

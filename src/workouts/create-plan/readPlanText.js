@@ -9,25 +9,27 @@
 
 /** Colors the plan viewer / builder share — letters stay so screens keep matching. */
 import { lightColors } from '../../look-and-feel/colorPalette';
+// Design Law: chrome = ink/muted; never green; brand pink only as tiny accents elsewhere.
 const PLAN_BUILDER_COLORS = {
   bgDark: lightColors.nbInk,
   bgLight: '#F5F5F5',
   cardDark: '#12131A',
   cardLight: lightColors.white,
-  pink: lightColors.primary,
+  // Manipulate here: was brand pink (#E25588) — chrome spinners/CTAs use ink now
+  pink: lightColors.nbInk,
   /** Secondary accent for row icons (replaces old purple). */
   purple: '#64D2FF',
   cyan: '#06B6D4',
   orange: '#F97316',
-  green: '#10B981',
+  green: lightColors.nbMuted,
 };
 
 /** Day-type tint on viewer cards — key letters (Push/Pull/Legs/…) stay frozen. */
 const DAY_TYPE_COLORS = {
-  Push: lightColors.primary,
+  Push: '#F97316',
   Pull: '#06B6D4',
   Legs: '#F97316',
-  'Full Body': '#10B981',
+  'Full Body': '#64D2FF',
   Rest: '#555',
 };
 

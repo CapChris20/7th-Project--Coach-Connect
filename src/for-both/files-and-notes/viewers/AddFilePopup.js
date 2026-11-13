@@ -1,9 +1,9 @@
-// Design Law “Add files” sheet (files-and-notes PNG 05 / 06) — NbSheet list rows + Cancel.
- // Flow: pick Photo/Video/Doc → picker → upload → close; note step → addNote; trainer create/import below.
- // Used by Notes & Files + button on client and trainer screens.
- //
- // vocab: NbSheet = Design Law bottom sheet; HardShadow = solid offset shadow (no blur)
- // KEEP upload/import handlers + Firebase keys. No LinearGradient option cards. Never green.
+// Design Law “Add files” sheet (files-and-notes PNG 05/06) + PNG 07 attach composer.
+// Flow: pick Photo/Video/Doc → upload; note step → optional attachments → addNote + files.
+// Used by Notes & Files + button on client and trainer screens.
+//
+// vocab: NbSheet = Design Law bottom sheet; HardShadow = solid offset shadow (no blur)
+// KEEP upload/import handlers + Firebase keys. No LinearGradient option cards. Never green.
 
 import React, { useState } from 'react';
 import {
@@ -13,7 +13,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
@@ -34,6 +33,7 @@ import { useTheme } from '../../../look-and-feel/lightDarkMode';
 import NbSheet from '../../../look-and-feel/NbSheet';
 import NbButton from '../../../look-and-feel/NbButton';
 import NbIconChip from '../../../look-and-feel/NbIconChip';
+import NbNoticeSheet from '../../../look-and-feel/NbNoticeSheet';
 import HardShadow from '../../../look-and-feel/HardShadow';
 import { accentGradients, borderRadius, nb, spacing } from '../../../look-and-feel/colorPalette';
 
@@ -55,9 +55,7 @@ const OPTION_DOC = 'doc';
 const OPTION_NOTE = 'note';
 const OPTION_SPREADSHEET = 'spreadsheet';
 const OPTION_NEW_DOC = 'newDoc';
-const OPTION_NEW_SHEET = 'newSheet';
 const OPTION_IMPORT = 'import';
-const OPTION_IMPORT_SHEET = 'importSheet';
 const DEFAULT_OCTET_STREAM = 'application/octet-stream';
 
 // Manipulate here: how many times we re-read importedData before giving up.
@@ -122,6 +120,7 @@ const CLIENT_ROWS = [
 ];
 
 // Trainer-only create/import — rendered as HardShadow rows below the primary list
+// In-app SpreadsheetEditor is retired — trainers upload .xlsx/CSV (CLIENT_EXTRA style) or use Google Sheets.
 const TRAINER_EXTRA_ROWS = [
   {
     key: OPTION_NEW_DOC,
@@ -131,13 +130,6 @@ const TRAINER_EXTRA_ROWS = [
     accentIndex: 2,
   },
   {
-    key: OPTION_NEW_SHEET,
-    label: 'New Spreadsheet',
-    subtitle: 'Blank sheet for this client',
-    icon: PROGRESS_ICON,
-    accentIndex: 5,
-  },
-  {
     key: OPTION_IMPORT,
     label: 'Import & Parse',
     subtitle: 'Upload a PDF/Word and extract text',
@@ -145,9 +137,9 @@ const TRAINER_EXTRA_ROWS = [
     accentIndex: 6,
   },
   {
-    key: OPTION_IMPORT_SHEET,
-    label: 'Import Sheet',
-    subtitle: 'Bring in a spreadsheet file',
+    key: OPTION_SPREADSHEET,
+    label: 'Spreadsheet file',
+    subtitle: 'Upload .xlsx or CSV (view only)',
     icon: PROGRESS_ICON,
     accentIndex: 7,
   },
@@ -189,22 +181,43 @@ function optionalFileSize(size) {
   return typeof size === 'number' ? size : undefined;
 }
 
-async function requestLibraryPermission(message) {
+async function requestLibraryPermission() {
   const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-  if (status !== 'granted') {
-    Alert.alert('Permission needed', message);
-    return false;
-  }
-  return true;
+  return status === 'granted';
 }
 
-async function requestCameraPermission(message) {
+async function requestCameraPermission() {
   const { status } = await ImagePicker.requestCameraPermissionsAsync();
-  if (status !== 'granted') {
-    Alert.alert('Permission needed', message);
-    return false;
-  }
-  return true;
+  return status === 'granted';
+}
+
+function formatBytes(size) {
+  const n = Number(size);
+  if (!Number.isFinite(n) || n <= 0) return '';
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function pendingAttachmentMeta(asset, kind) {
+  const uri = asset?.uri;
+  if (!uri) return null;
+  const name =
+    asset.fileName ||
+    asset.name ||
+    uri.split('/').pop() ||
+    (kind === 'video' ? `video_${Date.now()}.mp4` : `photo_${Date.now()}.jpg`);
+  return {
+    id: `${kind}_${uri}_${Date.now()}`,
+    uri,
+    name,
+    kind,
+    mimeType:
+      asset.mimeType ||
+      (kind === 'video' ? 'video/mp4' : kind === 'doc' ? asset.mimeType || DEFAULT_OCTET_STREAM : 'image/jpeg'),
+    size: optionalFileSize(asset.fileSize ?? asset.size),
+    type: kind === 'doc' ? notesTypeForDocument(asset) : kind,
+  };
 }
 
 async function pickLibraryAsset(mediaTypes, extraOptions = {}) {
@@ -235,8 +248,7 @@ async function pickPdfOrWordDocument() {
   if (result.canceled) return null;
   const file = result.assets[0];
   if (!isPdfOrWordFile(file)) {
-    Alert.alert('Unsupported file', 'Please choose a PDF or Word document (.pdf, .doc, .docx).');
-    return null;
+    return { unsupported: true };
   }
   return file;
 }
@@ -365,8 +377,6 @@ export default function AddFilePopup({
   clientId: clientIdProp,
   addedBy: addedByProp = ADDED_BY_CLIENT,
   onNewDocument,
-  onNewSpreadsheet,
-  onImportSpreadsheet,
   onAddNote,
 }) {
   const { colors } = useTheme();
@@ -377,10 +387,18 @@ export default function AddFilePopup({
   const [extractedText, setExtractedText] = useState('');
   const [importError, setImportError] = useState('');
   const [noteText, setNoteText] = useState('');
+  // PNG 07 composer: files staged with the note before upload
+  const [pendingAttachments, setPendingAttachments] = useState([]);
+  const [notice, setNotice] = useState(null);
+  const [photoSourceOpen, setPhotoSourceOpen] = useState(false);
+  const [photoForComposer, setPhotoForComposer] = useState(false);
+  const [attachMoreOpen, setAttachMoreOpen] = useState(false);
   const uid = clientIdProp ?? auth?.currentUser?.uid;
   const addedBy = addedByProp;
   const trainerId = auth?.currentUser?.uid;
   const isTrainer = addedBy === ADDED_BY_TRAINER;
+
+  const showNotice = (title, message) => setNotice({ title, message });
 
   const handleClose = () => {
     setStep(STEP_PICKER);
@@ -390,6 +408,10 @@ export default function AddFilePopup({
     setExtractedText('');
     setImportError('');
     setNoteText('');
+    setPendingAttachments([]);
+    setPhotoSourceOpen(false);
+    setPhotoForComposer(false);
+    setAttachMoreOpen(false);
     onClose();
   };
 
@@ -415,48 +437,65 @@ export default function AddFilePopup({
       handleClose();
     } catch (error) {
       console.warn('Add photo error:', error);
-      Alert.alert('Upload failed', error?.message || 'Could not add photo.');
+      showNotice('Upload failed', error?.message || 'Could not add photo.');
     } finally {
       setUploading(false);
     }
   };
 
-  // PNG subtitle “Camera or library” — offer both sources before ImagePicker opens.
-  const handlePhoto = () => {
-    if (!uid) return;
-    Alert.alert('Add photo', 'Choose a source', [
-      {
-        text: 'Camera',
-        onPress: async () => {
-          const ok = await requestCameraPermission('Allow camera access to take a photo.');
-          if (!ok) return;
-          const asset = await pickCameraPhoto();
-          if (asset) await uploadPhotoAsset(asset);
-        },
-      },
-      {
-        text: 'Library',
-        onPress: async () => {
-          const ok = await requestLibraryPermission(
-            'Allow access to your photo library to add photos.',
-          );
-          if (!ok) return;
-          const asset = await pickLibraryAsset(['images'], { quality: PHOTO_PICKER_QUALITY });
-          if (asset) await uploadPhotoAsset(asset);
-        },
-      },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
+  const stageOrUploadPhoto = async (asset) => {
+    if (photoForComposer || step === STEP_NOTE) {
+      const meta = pendingAttachmentMeta(asset, 'photo');
+      if (meta) setPendingAttachments((prev) => [...prev, meta]);
+      setPhotoForComposer(false);
+      return;
+    }
+    await uploadPhotoAsset(asset);
   };
 
-  const handleVideo = async () => {
+  const pickPhotoFromCamera = async () => {
+    setPhotoSourceOpen(false);
+    const ok = await requestCameraPermission();
+    if (!ok) {
+      showNotice('Permission needed', 'Allow camera access to take a photo.');
+      return;
+    }
+    const asset = await pickCameraPhoto();
+    if (asset) await stageOrUploadPhoto(asset);
+  };
+
+  const pickPhotoFromLibrary = async () => {
+    setPhotoSourceOpen(false);
+    const ok = await requestLibraryPermission();
+    if (!ok) {
+      showNotice('Permission needed', 'Allow access to your photo library to add photos.');
+      return;
+    }
+    const asset = await pickLibraryAsset(['images'], { quality: PHOTO_PICKER_QUALITY });
+    if (asset) await stageOrUploadPhoto(asset);
+  };
+
+  // PNG subtitle “Camera or library” — NbNoticeSheet with Camera / Library (not Alert.alert).
+  const handlePhoto = () => {
     if (!uid) return;
-    const hasPermission = await requestLibraryPermission(
-      'Allow access to your library to add videos.',
-    );
-    if (!hasPermission) return;
+    setPhotoForComposer(false);
+    setPhotoSourceOpen(true);
+  };
+
+  const handleVideo = async (forComposer = false) => {
+    if (!uid) return;
+    const hasPermission = await requestLibraryPermission();
+    if (!hasPermission) {
+      showNotice('Permission needed', 'Allow access to your library to add videos.');
+      return;
+    }
     const asset = await pickLibraryAsset(['videos']);
     if (!asset) return;
+    if (forComposer || step === STEP_NOTE) {
+      const meta = pendingAttachmentMeta(asset, 'video');
+      if (meta) setPendingAttachments((prev) => [...prev, meta]);
+      return;
+    }
     setUploading(true);
     try {
       const { uri, fileSize } = asset;
@@ -476,23 +515,32 @@ export default function AddFilePopup({
       handleClose();
     } catch (error) {
       console.warn('Add video error:', error);
-      Alert.alert('Upload failed', error?.message || 'Could not add video.');
+      showNotice('Upload failed', error?.message || 'Could not add video.');
     } finally {
       setUploading(false);
     }
   };
 
-  const handleDoc = async () => {
+  const handleDoc = async (forComposer = false) => {
     if (!uid) return;
     let file;
     try {
       file = await pickPdfOrWordDocument();
     } catch (error) {
       console.warn('Document picker error:', error);
-      Alert.alert('Picker failed', error?.message || 'Could not open the document picker.');
+      showNotice('Picker failed', error?.message || 'Could not open the document picker.');
       return;
     }
     if (!file) return;
+    if (file.unsupported) {
+      showNotice('Unsupported file', 'Please choose a PDF or Word document (.pdf, .doc, .docx).');
+      return;
+    }
+    if (forComposer || step === STEP_NOTE) {
+      const meta = pendingAttachmentMeta(file, 'doc');
+      if (meta) setPendingAttachments((prev) => [...prev, meta]);
+      return;
+    }
     setUploading(true);
     try {
       await addFile(
@@ -510,11 +558,14 @@ export default function AddFilePopup({
       handleClose();
     } catch (error) {
       console.warn('Add doc error:', error);
-      Alert.alert('Upload failed', error?.message || 'Could not add file. The file may be corrupted.');
+      showNotice('Upload failed', error?.message || 'Could not add file. The file may be corrupted.');
     } finally {
       setUploading(false);
     }
   };
+
+  // PNG 07 “Add another file” — stage photo/video/doc onto the note composer.
+  const handleAddAnotherFile = () => setAttachMoreOpen(true);
 
   const handleSpreadsheet = async () => {
     if (!uid) return;
@@ -548,7 +599,7 @@ export default function AddFilePopup({
       handleClose();
     } catch (error) {
       console.warn('Add spreadsheet error:', error);
-      Alert.alert('Upload failed', error?.message || 'Could not add spreadsheet.');
+      showNotice('Upload failed', error?.message || 'Could not add spreadsheet.');
     } finally {
       setUploading(false);
       setUploadProgress(0);
@@ -558,7 +609,7 @@ export default function AddFilePopup({
   const handleImportParse = async () => {
     // Trainers only — client role never sees this row.
     if (!trainerId || addedBy !== ADDED_BY_TRAINER) {
-      Alert.alert('Trainers only', 'Import & parse is available on the trainer Notes & Files flow.');
+      showNotice('Trainers only', 'Import & parse is available on the trainer Notes & Files flow.');
       return;
     }
     let file;
@@ -566,10 +617,14 @@ export default function AddFilePopup({
       file = await pickPdfOrWordDocument();
     } catch (error) {
       console.warn('Document picker error:', error);
-      Alert.alert('Picker failed', error?.message || 'Could not open the document picker.');
+      showNotice('Picker failed', error?.message || 'Could not open the document picker.');
       return;
     }
     if (!file) return;
+    if (file.unsupported) {
+      showNotice('Unsupported file', 'Please choose a PDF or Word document (.pdf, .doc, .docx).');
+      return;
+    }
     setUploading(true);
     setImportStatus(IMPORT_STATUS_UPLOADING);
     setImportError('');
@@ -603,22 +658,37 @@ export default function AddFilePopup({
     }
   };
 
-  // PNG 07 path: write a note into notes_and_files (type:note). Parent may own a richer composer via onAddNote.
+  // PNG 07 path: write note + upload any staged attachments into notes_and_files.
   const handleSaveNote = async () => {
     const content = String(noteText || '').trim();
-    if (!content) {
-      Alert.alert('Empty note', 'Write something for your coach first.');
+    if (!content && pendingAttachments.length === 0) {
+      showNotice('Empty note', 'Write something or attach a file first.');
       return;
     }
     if (!uid) return;
     setUploading(true);
     try {
-      await addNote(uid, content, addedBy);
+      for (const file of pendingAttachments) {
+        await addFile(
+          uid,
+          {
+            localUri: file.uri,
+            filename: file.name,
+            mimeType: file.mimeType || DEFAULT_OCTET_STREAM,
+            type: file.type || file.kind,
+            size: file.size,
+          },
+          addedBy,
+        );
+      }
+      if (content) {
+        await addNote(uid, content, addedBy);
+      }
       onAdded?.();
       handleClose();
     } catch (error) {
       console.warn('Add note error:', error);
-      Alert.alert('Could not save note', error?.message || 'Please try again.');
+      showNotice('Could not save note', error?.message || 'Please try again.');
     } finally {
       setUploading(false);
     }
@@ -644,16 +714,6 @@ export default function AddFilePopup({
     if (key === OPTION_NEW_DOC) {
       handleClose();
       setTimeout(() => onNewDocument?.(), ACTION_OPEN_DELAY_MS);
-      return;
-    }
-    if (key === OPTION_NEW_SHEET) {
-      handleClose();
-      setTimeout(() => onNewSpreadsheet?.(), ACTION_OPEN_DELAY_MS);
-      return;
-    }
-    if (key === OPTION_IMPORT_SHEET) {
-      handleClose();
-      setTimeout(() => onImportSpreadsheet?.(), ACTION_OPEN_DELAY_MS);
     }
   };
 
@@ -667,6 +727,7 @@ export default function AddFilePopup({
     step === STEP_NOTE ? 'Add note or file' : step === STEP_IMPORT_RESULT ? 'Import' : 'Add files';
 
   return (
+    <>
     <NbSheet visible={visible} onClose={handleClose} title={sheetTitle}>
       {uploading ? (
         <View style={styles.loadingBlock}>
@@ -719,7 +780,7 @@ export default function AddFilePopup({
           </View>
         </View>
       ) : step === STEP_NOTE ? (
-        // PNG 07 composer lives in-sheet; pass onAddNote for a full-screen NbPageHeader composer.
+        // PNG 07 attach-files composer: note field + attachment rows + Add another file + primary CTA.
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={{ paddingBottom: spacing.md }}
@@ -747,6 +808,86 @@ export default function AddFilePopup({
               ]}
             />
           </HardShadow>
+
+          {pendingAttachments.length > 0 ? (
+            <HardShadow
+              radius={borderRadius.nbCard}
+              offset={nb.shadowOffsetCard}
+              style={{ marginTop: 14 }}
+            >
+              <View
+                style={[
+                  styles.attachList,
+                  { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder },
+                ]}
+              >
+                {pendingAttachments.map((file, index) => (
+                  <View
+                    key={file.id}
+                    style={[
+                      styles.attachRow,
+                      index < pendingAttachments.length - 1 && {
+                        borderBottomWidth: nb.borderWidthDivider,
+                        borderBottomColor: colors.nbBorder,
+                      },
+                    ]}
+                  >
+                    <NbIconChip
+                      source={
+                        file.kind === 'video'
+                          ? WORKOUT_ICON
+                          : file.kind === 'doc'
+                            ? MUSCLE_ICON
+                            : PICTURE_ICON
+                      }
+                      size={44}
+                      index={file.kind === 'video' ? 3 : 0}
+                    />
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={[styles.rowLabel, { color: colors.nbInk }]} numberOfLines={1}>
+                        {file.name}
+                      </Text>
+                      <Text style={[styles.rowSub, { color: colors.nbMuted }]} numberOfLines={1}>
+                        {formatBytes(file.size) || (file.kind === 'video' ? 'Video' : 'Attachment')}
+                      </Text>
+                    </View>
+                    <HardShadow offset={nb.shadowOffsetSmall} radius={10}>
+                      <TouchableOpacity
+                        onPress={() =>
+                          setPendingAttachments((prev) => prev.filter((item) => item.id !== file.id))
+                        }
+                        style={[
+                          styles.removeAttach,
+                          { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface },
+                        ]}
+                        accessibilityLabel={`Remove ${file.name}`}
+                      >
+                        <Ionicons name="close" size={18} color={colors.nbInk} />
+                      </TouchableOpacity>
+                    </HardShadow>
+                  </View>
+                ))}
+              </View>
+            </HardShadow>
+          ) : null}
+
+          <HardShadow offset={nb.shadowOffsetSmall} radius={borderRadius.nbCard} style={{ marginTop: 14 }}>
+            <TouchableOpacity
+              onPress={handleAddAnotherFile}
+              style={[
+                styles.addAnother,
+                { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Add another file"
+            >
+              <Ionicons name="add" size={20} color={colors.nbInk} />
+              <Text style={{ fontSize: 15, fontWeight: '800', color: colors.nbInk }}>
+                Add another file
+              </Text>
+            </TouchableOpacity>
+          </HardShadow>
+
           <NbButton variant="fill" onPress={handleSaveNote} style={{ marginTop: 16 }}>
             Add to Notes & Files
           </NbButton>
@@ -799,6 +940,82 @@ export default function AddFilePopup({
         </View>
       )}
     </NbSheet>
+
+    <NbNoticeSheet
+      visible={!!notice}
+      onClose={() => setNotice(null)}
+      title={notice?.title || ''}
+      message={notice?.message}
+      confirmLabel="OK"
+    />
+
+    {/* Camera vs library — Design Law sheet instead of Alert.alert action sheet */}
+    <NbSheet
+      visible={photoSourceOpen}
+      onClose={() => {
+        setPhotoSourceOpen(false);
+        setPhotoForComposer(false);
+      }}
+      title="Add photo"
+    >
+      <View style={{ gap: 10, paddingBottom: spacing.md }}>
+        <Text style={{ fontSize: 14, fontWeight: '600', color: colors.nbMuted, marginBottom: 4 }}>
+          Choose a source
+        </Text>
+        <NbButton variant="fill" onPress={pickPhotoFromCamera}>
+          Camera
+        </NbButton>
+        <NbButton variant="ghost" onPress={pickPhotoFromLibrary}>
+          Library
+        </NbButton>
+        <NbButton
+          variant="ghost"
+          onPress={() => {
+            setPhotoSourceOpen(false);
+            setPhotoForComposer(false);
+          }}
+        >
+          Cancel
+        </NbButton>
+      </View>
+    </NbSheet>
+
+    <NbSheet visible={attachMoreOpen} onClose={() => setAttachMoreOpen(false)} title="Add another file">
+      <View style={{ gap: 10, paddingBottom: spacing.md }}>
+        <NbButton
+          variant="fill"
+          onPress={() => {
+            setAttachMoreOpen(false);
+            setPhotoForComposer(true);
+            setPhotoSourceOpen(true);
+          }}
+        >
+          Photo
+        </NbButton>
+        <NbButton
+          variant="ghost"
+          onPress={() => {
+            setAttachMoreOpen(false);
+            handleVideo(true);
+          }}
+        >
+          Video
+        </NbButton>
+        <NbButton
+          variant="ghost"
+          onPress={() => {
+            setAttachMoreOpen(false);
+            handleDoc(true);
+          }}
+        >
+          PDF / Doc
+        </NbButton>
+        <NbButton variant="ghost" onPress={() => setAttachMoreOpen(false)}>
+          Cancel
+        </NbButton>
+      </View>
+    </NbSheet>
+    </>
   );
 }
 
@@ -891,5 +1108,35 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_400Regular',
     fontSize: 15,
     lineHeight: 22,
+  },
+  attachList: {
+    borderWidth: nb.borderWidth,
+    borderRadius: borderRadius.nbCard,
+    overflow: 'hidden',
+  },
+  attachRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    minHeight: 64,
+  },
+  removeAttach: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    borderWidth: nb.borderWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addAnother: {
+    minHeight: 50,
+    borderWidth: nb.borderWidth,
+    borderRadius: borderRadius.nbCard,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
   },
 });

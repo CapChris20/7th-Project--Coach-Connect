@@ -134,6 +134,8 @@ export const DailyLogContent = ({
   onOnboardingActiveChange,
   /** Notify parent when nutrition settings modal is open (hide tab bar). */
   onSettingsOverlayChange,
+  /** Design Law Weekly Momentum (missing-screens 11/12). */
+  onOpenWeeklyMomentum,
 } = {}) => {
   const [loading, setLoading] = useState(true);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
@@ -675,6 +677,7 @@ export const DailyLogContent = ({
         onPillSearch={handlePillSearch}
         onOpenSettings={() => setShowNutritionSettings(true)}
         onOpenDailyFacts={() => setShowDailyFacts(true)}
+        onOpenWeeklyMomentum={onOpenWeeklyMomentum}
         viewDate={viewDate}
         onSelectViewDate={setViewDate}
         datesWithLogs={datesWithLogs}

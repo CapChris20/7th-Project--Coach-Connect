@@ -12,13 +12,13 @@ import {
   ActivityIndicator,
   ScrollView,
   Dimensions,
-  Alert,
   Share,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import NbPageHeader from '../../../look-and-feel/NbPageHeader';
 import NbButton from '../../../look-and-feel/NbButton';
+import NbNoticeSheet from '../../../look-and-feel/NbNoticeSheet';
 import HardShadow from '../../../look-and-feel/HardShadow';
 import { useTheme } from '../../../look-and-feel/lightDarkMode';
 import { borderRadius, nb, spacing } from '../../../look-and-feel/colorPalette';
@@ -243,6 +243,8 @@ export default function SpreadsheetViewer({
   const [error, setError] = useState(null);
   const [sortCol, setSortCol] = useState(null);
   const [sortAsc, setSortAsc] = useState(true);
+  // vocab: notice = NbNoticeSheet payload — Design Law instead of Alert.alert
+  const [notice, setNotice] = useState(null);
 
   useEffect(() => {
     if (!visible) {
@@ -290,9 +292,9 @@ export default function SpreadsheetViewer({
     // 1. Copy the visible table as CSV text.
     try {
       await Clipboard.setStringAsync(rowsToCsv(displayRows));
-      Alert.alert('Copied', 'Table copied to clipboard as CSV.');
+      setNotice({ title: 'Copied', message: 'Table copied to clipboard as CSV.' });
     } catch (caughtError) {
-      Alert.alert('Copy failed', caughtError?.message || 'Could not copy');
+      setNotice({ title: 'Copy failed', message: caughtError?.message || 'Could not copy' });
     }
   };
 
@@ -306,7 +308,7 @@ export default function SpreadsheetViewer({
       });
     } catch (caughtError) {
       if (caughtError?.message && !/User did not share/i.test(caughtError.message)) {
-        Alert.alert('Share failed', caughtError.message);
+        setNotice({ title: 'Share failed', message: caughtError.message });
       }
     }
   };
@@ -461,6 +463,13 @@ export default function SpreadsheetViewer({
             </NbButton>
           </View>
         ) : null}
+        <NbNoticeSheet
+          visible={!!notice}
+          onClose={() => setNotice(null)}
+          title={notice?.title || ''}
+          message={notice?.message}
+          confirmLabel="OK"
+        />
       </View>
     </Modal>
   );

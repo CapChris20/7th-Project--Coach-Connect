@@ -66,7 +66,6 @@ import {
   DesignLawLogSheet,
   DesignLawNumberTiles,
   DesignLawNutritionCard,
-  DesignLawReviewSheet,
   DesignLawTrainerSheet,
   DesignLawWorkoutCard,
   HANDOFF_PROGRESS,
@@ -1669,6 +1668,9 @@ function TrainingHomeScreenLayout({
   unreadMessageCount,
   onOpenPhotoGallery,
   onOpenProgressCharts,
+  onOpenLogWorkout,
+  onOpenDailyCheckIn,
+  onOpenMoodCheckIn,
   trainerClientId,
   trainerClientName,
   photoGalleryBadgeCount,
@@ -2095,15 +2097,38 @@ function TrainingHomeScreenLayout({
           onOpenNutrition={typeof onPressCalories === 'function' ? onPressCalories : undefined}
         />
 
-        {/* Workouts today — set chips */}
+        {/* Workouts today — set chips; Open → standalone Log workout (missing-screens 03–06) */}
         <View style={dash.eybRow}>
           <Text style={[dash.eyb, { color: themeColors.textMuted }]}>Workouts today</Text>
+          {typeof onOpenLogWorkout === 'function' ? (
+            <TouchableOpacity onPress={onOpenLogWorkout}>
+              <Text style={{ fontSize: 13, fontWeight: '800', color: themeColors.text, textDecorationLine: 'underline' }}>
+                Log workout
+              </Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
         <DesignLawWorkoutCard themeColors={themeColors} state={workoutLogState} />
 
-        {/* Daily check-in — sliders + mood chips (not 1–8 boxes) */}
+        {/* Daily check-in — sliders + mood chips; Open → standalone screens */}
         <View style={[dash.eybRow, { marginTop: 8 }]}>
           <Text style={[dash.eyb, { color: themeColors.textMuted }]}>Daily check-in</Text>
+          <View style={{ flexDirection: 'row', gap: 12 }}>
+            {typeof onOpenMoodCheckIn === 'function' ? (
+              <TouchableOpacity onPress={onOpenMoodCheckIn}>
+                <Text style={{ fontSize: 13, fontWeight: '800', color: themeColors.text, textDecorationLine: 'underline' }}>
+                  Mood
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+            {typeof onOpenDailyCheckIn === 'function' ? (
+              <TouchableOpacity onPress={onOpenDailyCheckIn}>
+                <Text style={{ fontSize: 13, fontWeight: '800', color: themeColors.text, textDecorationLine: 'underline' }}>
+                  Open
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
         </View>
         <DesignLawCheckInCard
           themeColors={themeColors}
@@ -2202,31 +2227,29 @@ function TrainingHomeScreenLayout({
         onClose={() => setTrainerSheetOpen(false)}
         trainerName={trainerName}
         trainerInitials={trainerInitials}
+        trainerSpecialty={
+          trainer?.specialty ||
+          trainer?.specialties?.[0] ||
+          trainer?.title ||
+          undefined
+        }
         themeColors={themeColors}
         showPayment={!!showCoachingPaymentOnCard}
         onMessage={onPressMessage}
         onProfile={handleViewProfile}
         onNotesFiles={typeof onOpenNotesFiles === 'function' ? () => onOpenNotesFiles() : undefined}
         onPayment={handleOpenPayment}
-        onReview={() => setReviewSheetOpen(true)}
+        onReview={() => setLegacyReviewOpen(true)}
       />
 
-      <DesignLawReviewSheet
-        visible={reviewSheetOpen}
-        onClose={() => setReviewSheetOpen(false)}
-        themeColors={themeColors}
-        trainerName={trainerName}
-        onSubmit={() => {
-          // Design Law sheet for look; Firestore write uses the existing review popup
-          setReviewSheetOpen(false);
-          setLegacyReviewOpen(true);
-        }}
-      />
-
-      {legacyReviewOpen && trainer ? (
+      {/* Design Law review NbSheet writes Firestore — no legacy Modal hop */}
+      {trainer ? (
         <WriteTrainerReviewPopup
-          visible={legacyReviewOpen}
-          onClose={() => setLegacyReviewOpen(false)}
+          visible={legacyReviewOpen || reviewSheetOpen}
+          onClose={() => {
+            setLegacyReviewOpen(false);
+            setReviewSheetOpen(false);
+          }}
           trainerName={trainerName}
           trainerId={trainer?.id || trainer?.uid || trainer?.userId}
           clientId={currentUser?.uid}
@@ -2255,6 +2278,10 @@ export const TrainingHomeScreen = ({
   onOpenPhotoGallery,
   /** Design Law Progress charts (Weight / Body fat / Lifts) — not the photo gallery. */
   onOpenProgressCharts,
+  /** Design Law Batch 1 gap screens — standalone log / check-in / mood. */
+  onOpenLogWorkout,
+  onOpenDailyCheckIn,
+  onOpenMoodCheckIn,
   onOpenAIWorkouts,
   /** Opens full-screen weekly report for the signed-in client (`users/{uid}/weeklySummaries`). */
   onOpenWeeklyReport,
@@ -2521,6 +2548,7 @@ export const TrainingHomeScreen = ({
         }
       } catch (e) {
         console.error('Dashboard respond to session failed:', e);
+        // Session confirm failures stay as a quick OS alert (rare); NbNotice sheet is used on Settings/Chat/Files.
         Alert.alert('Could not update', e?.message || 'Please try again.');
       }
     },
@@ -2685,6 +2713,9 @@ export const TrainingHomeScreen = ({
     unreadMessageCount,
     onOpenPhotoGallery,
     onOpenProgressCharts,
+    onOpenLogWorkout,
+    onOpenDailyCheckIn,
+    onOpenMoodCheckIn,
     trainerClientId,
     trainerClientName,
     photoGalleryBadgeCount,

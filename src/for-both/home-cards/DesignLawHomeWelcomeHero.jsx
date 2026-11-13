@@ -2,6 +2,7 @@
 // Flow: eyebrow → “Welcome to” + gradient “Coach Connect” → Lottie on disc → tagline strip.
 // Used by TrainingHomeScreen (client) and DesignLawTrainerHomeBlocks (trainer).
 // Owner rule: NO streak, week dots, session counts, countdown, or stats in this card.
+// Surface card (cardBg + ink) follows light/dark with the rest of home — not the inverted fill block.
 
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
@@ -30,7 +31,13 @@ const TRAINER_EYEBROW = 'Your coaching home';
 
 /**
  * @param {{
- *   themeColors: { fill: string, onFill: string, cardBorder: string },
+ *   themeColors: {
+ *     cardBg?: string,
+ *     text?: string,
+ *     fill: string,
+ *     onFill: string,
+ *     cardBorder: string,
+ *   },
  *   variant?: 'client' | 'trainer',
  *   eyebrow?: string,
  * }} props
@@ -45,6 +52,11 @@ export default function DesignLawHomeWelcomeHero({
   const label = eyebrow || (mirrored ? TRAINER_EYEBROW : CLIENT_EYEBROW);
   const lottieSource = mirrored ? HANDOFF_BOXER : HANDOFF_LIFTER;
   const discColors = mirrored ? TRAINER_HERO_DISC_GRADIENT : CLIENT_HERO_DISC_GRADIENT;
+
+  // Light → white surface + dark ink; dark → dark surface + light ink.
+  // Why not fill/onFill: those invert (black hero in light), which fights the rest of home.
+  const cardBg = themeColors.cardBg ?? themeColors.fill;
+  const ink = themeColors.text ?? themeColors.onFill;
 
   // Asymmetric radii: client opens top-right; trainer opens top-left.
   const radii = mirrored
@@ -63,9 +75,9 @@ export default function DesignLawHomeWelcomeHero({
 
   const copy = (
     <View style={styles.copy}>
-      <Text style={[styles.eyebrow, { color: themeColors.onFill }]}>{label}</Text>
+      <Text style={[styles.eyebrow, { color: ink }]}>{label}</Text>
       <View style={styles.welcomeBlock}>
-        <Text style={[styles.welcomeLead, { color: themeColors.onFill }]}>Welcome to</Text>
+        <Text style={[styles.welcomeLead, { color: ink }]}>Welcome to</Text>
         <DesignLawBrandHighlight
           style={styles.brandMark}
           borderColor={themeColors.cardBorder}
@@ -84,7 +96,7 @@ export default function DesignLawHomeWelcomeHero({
         end={{ x: 1, y: 1 }}
         style={[
           styles.disc,
-          { borderColor: themeColors.onFill },
+          { borderColor: ink },
           mirrored ? styles.discMirrored : null,
         ]}
       />
@@ -104,12 +116,12 @@ export default function DesignLawHomeWelcomeHero({
           styles.card,
           radii,
           {
-            backgroundColor: themeColors.fill,
+            backgroundColor: cardBg,
             borderColor: themeColors.cardBorder,
           },
         ]}
       >
-        <DesignLawFaintGrid lineColor={themeColors.onFill} opacity={0.08} />
+        <DesignLawFaintGrid lineColor={ink} opacity={0.08} />
 
         {/* row-reverse puts art on the left for trainer without duplicating markup */}
         <View
@@ -123,10 +135,7 @@ export default function DesignLawHomeWelcomeHero({
           {art}
         </View>
 
-        <DesignLawTaglineStrip
-          textColor={themeColors.onFill}
-          borderColor={themeColors.onFill}
-        />
+        <DesignLawTaglineStrip textColor={ink} borderColor={ink} />
       </View>
     </HardShadow>
   );

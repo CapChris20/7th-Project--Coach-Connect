@@ -5,7 +5,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  Alert,
   Animated,
   Dimensions,
   FlatList,
@@ -39,6 +38,7 @@ import BottomMenuBar from '../../navigation/BottomMenuBar';
 import { ShellBottomNavAnchor } from '../../navigation/bottomMenuSpacing';
 import TopHeader from '../../for-both/loading-and-header/TopHeader';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
+import NbNoticeSheet from '../../look-and-feel/NbNoticeSheet';
 import { lightColors, darkColors, spacing, borderRadius, nb, gradients } from '../../look-and-feel/colorPalette';
 import { useCoachSpeech, COACH_VOICE_INPUT_AVAILABLE } from '../conversation/_voiceStub';
 import { keyboardBehavior, COACH_COMPOSER_TEXT_INPUT_PROPS } from '../conversation/keyboardBehavior';
@@ -1046,6 +1046,8 @@ function CoachHomeScreenLayout({
   onAttachCamera,
   onAttachLibrary,
   onAttachAnalyze,
+  viewerRole = 'client',
+  clientCount = 0,
 }) {
   void listeningMicBackground(listening, isDark);
 
@@ -1135,6 +1137,8 @@ function CoachHomeScreenLayout({
             latestSession={latestSession}
             onContinueSession={onContinueSession}
             onPhotoPress={onPhotoPress}
+            viewerRole={viewerRole}
+            clientCount={clientCount}
           />
         </ScrollView>
 
@@ -1267,6 +1271,8 @@ function IdleCoachHome({
   latestSession,
   onContinueSession,
   onPhotoPress,
+  viewerRole = 'client',
+  clientCount = 0,
 }) {
   if (keyboardVisible) return null;
 
@@ -1293,6 +1299,8 @@ function IdleCoachHome({
         onStartChat={handleStartChat}
         onContinueSession={onContinueSession}
         onPhotoPress={onPhotoPress}
+        viewerRole={viewerRole}
+        clientCount={clientCount}
       />
     </Animated.View>
   );
@@ -1548,6 +1556,9 @@ export default function CoachHomeScreen({
   onSettingsPress,
   onOpenTestSuite,
   hideBottomNav = false,
+  // vocab: viewerRole = 'trainer' shows Who-needs-you + Do-it-for-me (missing-screens 17/18)
+  viewerRole = 'client',
+  clientCount = 0,
 }) {
   const insets = useSafeAreaInsets();
   const { isDark } = useTheme();
@@ -1607,6 +1618,8 @@ export default function CoachHomeScreen({
   const [deleteSheetSession, setDeleteSheetSession] = useState(null);
   const [attachSheetOpen, setAttachSheetOpen] = useState(false);
   const [pasteOpen, setPasteOpen] = useState(false);
+  // vocab: notice = NbNoticeSheet payload — Design Law sheet instead of Alert.alert
+  const [notice, setNotice] = useState(null);
 
   const latestSession = Array.isArray(sessions) && sessions.length ? sessions[0] : null;
 
@@ -1772,10 +1785,11 @@ export default function CoachHomeScreen({
     const hasFilesOnly = attachments.some((attachment) => attachment?.type === 'file') && imageAtts.length === 0;
     if (!text && attachments.length === 0) return;
     if (hasFilesOnly) {
-      Alert.alert(
-        'Photos work best',
-        'The coach can analyze progress photos right now. Attach a photo instead of a document.'
-      );
+      setNotice({
+        title: 'Photos work best',
+        message:
+          'The coach can analyze progress photos right now. Attach a photo instead of a document.',
+      });
       return;
     }
     const prefill = text || photoOnlyPrefill(imageAtts.length);
@@ -1790,65 +1804,76 @@ export default function CoachHomeScreen({
   void inputBorderAnim;
 
   return (
-    <CoachHomeScreenLayout
-      t={theme}
-      screenOpacity={screenOpacity}
-      headerOpacity={headerOpacity}
-      isDark={isDark}
-      setSidebarOpen={setSidebarOpen}
-      onOpenTestSuite={onOpenTestSuite}
-      insets={insets}
-      keyboardVisible={keyboardVisible}
-      listBottomPad={listBottomPad}
-      idleGroupOpacity={idleGroupOpacity}
-      idleGroupTranslateY={idleGroupTranslateY}
-      handleStartChat={handleStartChat}
-      suggestions={suggestions}
-      dailyMetrics={dailyMetrics}
-      nutritionToday={nutritionToday}
-      userData={userData}
-      latestSession={latestSession}
-      onContinueSession={(session) => onSessionPress?.(session)}
-      onPhotoPress={() => {
-        setAttachSheetOpen(true);
-      }}
-      inputOpacity={inputOpacity}
-      inputTranslateY={inputTranslateY}
-      attachments={attachments}
-      composerKeyboardPad={composerKeyboardPad}
-      removeAttachment={removeAttachment}
-      openAttachMenu={openAttachMenu}
-      inputText={inputText}
-      setInputText={setInputText}
-      handleSend={handleSend}
-      toggleListen={toggleListen}
-      listening={listening}
-      canSend={canSend}
-      sidebarOpen={sidebarOpen}
-      sessions={sessions}
-      onSessionPress={onSessionPress}
-      handleDeleteSession={handleDeleteSession}
-      deleteSheetSession={deleteSheetSession}
-      setDeleteSheetSession={setDeleteSheetSession}
-      confirmDeleteSession={confirmDeleteSession}
-      onStartChat={onStartChat}
-      hideBottomNav={hideBottomNav}
-      onHomePress={onHomePress}
-      onPlusPress={onPlusPress}
-      onVoicePress={onVoicePress}
-      onNutritionPress={onNutritionPress}
-      onWorkoutPress={onWorkoutPress}
-      onMessagesPress={onMessagesPress}
-      onProfilePress={onProfilePress}
-      onSettingsPress={onSettingsPress}
-      attachSheetOpen={attachSheetOpen}
-      setAttachSheetOpen={setAttachSheetOpen}
-      pasteOpen={pasteOpen}
-      setPasteOpen={setPasteOpen}
-      onPasteConfirm={handlePasteConfirm}
-      onAttachCamera={handleCamera}
-      onAttachLibrary={handlePhotoLibrary}
-      onAttachAnalyze={handleAnalyze}
-    />
+    <>
+      <CoachHomeScreenLayout
+        t={theme}
+        screenOpacity={screenOpacity}
+        headerOpacity={headerOpacity}
+        isDark={isDark}
+        setSidebarOpen={setSidebarOpen}
+        onOpenTestSuite={onOpenTestSuite}
+        insets={insets}
+        keyboardVisible={keyboardVisible}
+        listBottomPad={listBottomPad}
+        idleGroupOpacity={idleGroupOpacity}
+        idleGroupTranslateY={idleGroupTranslateY}
+        handleStartChat={handleStartChat}
+        suggestions={suggestions}
+        dailyMetrics={dailyMetrics}
+        nutritionToday={nutritionToday}
+        userData={userData}
+        latestSession={latestSession}
+        onContinueSession={(session) => onSessionPress?.(session)}
+        onPhotoPress={() => {
+          setAttachSheetOpen(true);
+        }}
+        inputOpacity={inputOpacity}
+        inputTranslateY={inputTranslateY}
+        attachments={attachments}
+        composerKeyboardPad={composerKeyboardPad}
+        removeAttachment={removeAttachment}
+        openAttachMenu={openAttachMenu}
+        inputText={inputText}
+        setInputText={setInputText}
+        handleSend={handleSend}
+        toggleListen={toggleListen}
+        listening={listening}
+        canSend={canSend}
+        sidebarOpen={sidebarOpen}
+        sessions={sessions}
+        onSessionPress={onSessionPress}
+        handleDeleteSession={handleDeleteSession}
+        deleteSheetSession={deleteSheetSession}
+        setDeleteSheetSession={setDeleteSheetSession}
+        confirmDeleteSession={confirmDeleteSession}
+        onStartChat={onStartChat}
+        hideBottomNav={hideBottomNav}
+        onHomePress={onHomePress}
+        onPlusPress={onPlusPress}
+        onVoicePress={onVoicePress}
+        onNutritionPress={onNutritionPress}
+        onWorkoutPress={onWorkoutPress}
+        onMessagesPress={onMessagesPress}
+        onProfilePress={onProfilePress}
+        onSettingsPress={onSettingsPress}
+        viewerRole={viewerRole}
+        clientCount={clientCount}
+        attachSheetOpen={attachSheetOpen}
+        setAttachSheetOpen={setAttachSheetOpen}
+        pasteOpen={pasteOpen}
+        setPasteOpen={setPasteOpen}
+        onPasteConfirm={handlePasteConfirm}
+        onAttachCamera={handleCamera}
+        onAttachLibrary={handlePhotoLibrary}
+        onAttachAnalyze={handleAnalyze}
+      />
+      <NbNoticeSheet
+        visible={!!notice}
+        onClose={() => setNotice(null)}
+        title={notice?.title || ''}
+        message={notice?.message}
+        confirmLabel="OK"
+      />
+    </>
   );
 }

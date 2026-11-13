@@ -4,15 +4,11 @@
 
 import React from 'react';
 import {
-  Alert,
   StatusBar,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { SHELL_SAFE_AREA_EDGES, ShellBottomNavAnchor } from '../../navigation/bottomMenuSpacing';
-import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system/legacy';
-import * as XLSX from 'xlsx';
 import TopHeader from '../../for-both/loading-and-header/TopHeader';
 import BottomMenuBar from '../../navigation/BottomMenuBar';
 import ChatWithTraineeScreen from '../../messaging/ChatScreen';
@@ -25,12 +21,13 @@ import SavedWorkoutsScreen from '../../for-both/workout-plans/SavedWorkoutsScree
 import CreateWorkoutPlanScreen from '../../workouts/create-plan/CreateWorkoutPlanScreen';
 import AddFilePopup from '../../for-both/files-and-notes/viewers/AddFilePopup';
 import PdfViewer from '../../for-both/files-and-notes/viewers/PdfViewer';
-import SpreadsheetEditor from '../documents/SpreadsheetEditor';
 import DocumentEditor from '../documents/DocumentEditor';
 import { darkColors, lightColors } from '../../look-and-feel/colorPalette';
 import { useTrainerAppStartShell } from './TrainerOpenScreenTracker';
 import ProAccessCheck from '../../trainer-pro-plan/ProAccessCheck';
 import FreeTrialBanner from '../../trainer-pro-plan/FreeTrialBanner';
+import OfflineBanner from '../../for-both/loading-and-header/OfflineBanner';
+import useNetworkStatus from '../../for-both/online-connection/useNetworkStatus';
 
 // ===== NAMED CONSTANTS =====
 
@@ -43,6 +40,7 @@ import FreeTrialBanner from '../../trainer-pro-plan/FreeTrialBanner';
  */
 export default function TrainerMainScreen() {
   const shell = useTrainerAppStartShell();
+  const { isOffline, refreshing: offlineRetrying, refresh: retryOffline } = useNetworkStatus();
   return (
     <ProAccessCheck
       onOpenSettings={shell.openSettings}
@@ -53,6 +51,11 @@ export default function TrainerMainScreen() {
         <FreeTrialBanner onSubscribe={() => shell.openSettings?.()} />
       <SafeAreaView style={{ flex: 1 }} edges={SHELL_SAFE_AREA_EDGES}>
         <StatusBar barStyle={shell.isDark ? 'light-content' : 'dark-content'} />
+        <OfflineBanner
+          visible={isOffline}
+          retrying={offlineRetrying}
+          onRetry={retryOffline}
+        />
         {!shell.showWorkoutGenerator &&
           !shell.showPlanViewer &&
           !shell.showTrainerMessaging &&
@@ -167,6 +170,12 @@ export default function TrainerMainScreen() {
             onClientRequestsPress={() => shell.setShowClientRequests(true)}
             onOpenNotifications={() => shell.openNotifications?.()}
             onClientsPress={() => shell.setShowClientsList(true)}
+            inviteCode={
+              shell.trainerProfileDoc?.inviteCode ||
+              shell.userData?.inviteCode ||
+              null
+            }
+            onListMe={() => shell.openProfile?.()}
             onMessagesPress={(clientId) => { shell.setSelectedClientIdForMessages(clientId); shell.setShowTrainerMessaging(false); shell.setShowConversationsList(true); }}
             onOpenPhotoGallery={(client) => {
               if (!client?.id) return;
@@ -200,14 +209,6 @@ export default function TrainerMainScreen() {
             userEmail={shell.user?.email || ''}
             onOpenDocumentEditor={({ documentId = null } = {}) => {
               shell.setDocumentEditor({ visible: true, documentId: documentId || null });
-            }}
-            onOpenSpreadsheetEditor={({ documentId = null, title = '', rows = null } = {}) => {
-              shell.setSpreadsheetEditor({
-                visible: true,
-                documentId: documentId || null,
-                title: title || '',
-                rows: rows ?? null,
-              });
             }}
           />
         )}
@@ -336,38 +337,6 @@ export default function TrainerMainScreen() {
           clientId={shell.addNotesFilesClientId}
           addedBy="trainer"
           onNewDocument={() => shell.setDocumentEditor({ visible: true, documentId: null, title: '' })}
-          onNewSpreadsheet={() => shell.setSpreadsheetEditor({ visible: true, documentId: null, title: '', rows: null })}
-          onImportSpreadsheet={async () => {
-            try {
-              const result = await DocumentPicker.getDocumentAsync({
-                type: [
-                  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                  'text/csv',
-                ],
-                copyToCacheDirectory: true,
-              });
-              if (result.canceled) return;
-              const file = result.assets[0];
-              const base64 = await FileSystem.readAsStringAsync(file.uri, {
-                encoding: FileSystem.EncodingType.Base64,
-              });
-              const wb = XLSX.read(base64, { type: 'base64' });
-              const firstSheetName = wb.SheetNames[0];
-              const ws = firstSheetName ? wb.Sheets[firstSheetName] : null;
-              const data = ws ? XLSX.utilshell.sheet_to_json(ws, { header: 1 }) : [];
-              const rows = (data || []).map((row) =>
-                (row || []).map((val) => (val != null ? String(val) : '')),
-              );
-              shell.setSpreadsheetEditor({
-                visible: true,
-                documentId: null,
-                title: file.name || 'Imported Spreadsheet',
-                rows,
-              });
-            } catch (e) {
-              Alert.alert('Import failed', e?.message || 'Could not import spreadsheet.');
-            }
-          }}
         />
         
         <PdfViewer
@@ -376,20 +345,6 @@ export default function TrainerMainScreen() {
           name={shell.pdfViewer.name}
           isDark={shell.isDark}
           onClose={() => shell.setPdfViewer({ visible: false, url: null, name: null })}
-        />
-        <SpreadsheetEditor
-          visible={shell.spreadsheetEditor.visible}
-          trainerId={shell.user?.uid}
-          documentId={shell.spreadsheetEditor.documentId}
-          isDark={shell.isDark}
-          initialTitle={shell.spreadsheetEditor.title}
-          initialRows={shell.spreadsheetEditor.rows}
-          onClose={() => shell.setSpreadsheetEditor({ visible: false, documentId: null, title: '', rows: null })}
-          onSaved={() => {
-            shell.refreshClients();
-            shell.setTrainerDocsRefreshKey((k) => k + 1);
-          }}
-          trainerNavChrome={shell.getTrainerEditorNavChrome()}
         />
         <DocumentEditor
           visible={shell.documentEditor.visible}

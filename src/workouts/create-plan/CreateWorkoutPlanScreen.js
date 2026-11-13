@@ -44,6 +44,7 @@ import HardShadow from '../../look-and-feel/HardShadow';
 import NbPill from '../../look-and-feel/NbPill';
 import NbPageHeader from '../../look-and-feel/NbPageHeader';
 import NbSegmented from '../../look-and-feel/NbSegmented';
+import NbNoticeSheet from '../../look-and-feel/NbNoticeSheet';
 import NewPlanDesignLawPanel from './NewPlanDesignLawPanel';
 import BuildingYourPlanView from './BuildingYourPlanView';
 import { lightColors, darkColors, gradients, nb, borderRadius, accentGradients, spacing } from '../../look-and-feel/colorPalette';
@@ -273,17 +274,19 @@ function tryParseJsonObject(str) {
   }
 }
 
+// Design Law chrome: ink for spinners/CTAs; never green; brand gradient only as tiny accents.
 const PLAN_BUILDER_COLORS = {
   bgDark: darkColors.nbBackground,
   bgLight: lightColors.nbBackground,
   cardDark: darkColors.nbSurface,
   cardLight: lightColors.nbSurface,
-  pink: gradients.brand.colors[0],
+  // Manipulate here: was brand pink — chrome uses ink so generate/load screens aren’t pink
+  pink: lightColors.nbInk,
   /** Secondary accent for row icons (replaces old purple). */
-  purple: gradients.brand.colors[1],
+  purple: gradients.water.colors[0],
   cyan: gradients.water.colors[0],
   orange: gradients.brand.colors[1],
-  green: gradients.energy.colors[0],
+  green: lightColors.nbMuted,
 };
 
 const WORKOUT_PLAN_BUILDER_SECTIONS = [
@@ -804,7 +807,7 @@ function normalizePlanMarkdown(text) {
 }
 
 const WP = {
-  sectionLabel: lightColors.primary,
+  sectionLabel: lightColors.nbInk,
   exerciseName: lightColors.white,
   setsReps: '#64D2FF',
   startWeight: '#F97316',
@@ -818,12 +821,12 @@ const WP = {
   cardBorder: 'rgba(255,255,255,0.08)',
 };
 
-// Design Law — never green (#10B981). Full Body uses brand pink→orange accent stop.
+// Design Law — never green. Day-type accents stay small (orange / cyan), not pink chrome.
 const TYPE_COLORS = {
-  Push: WP.sectionLabel,
+  Push: WP.startWeight,
   Pull: '#06B6D4',
   Legs: WP.startWeight,
-  'Full Body': accentGradients[0][0],
+  'Full Body': '#64D2FF',
   Rest: '#555',
 };
 
@@ -1522,7 +1525,7 @@ function mapStructuredDaysToPlanViewerRows(structured) {
 function PlanViewerAnimatedBorderCard({ children, radius = 20, bg, restDay = false }) {
   const colors = restDay
     ? ['#374151', '#4B5563', '#6B7280', '#4B5563', '#374151']
-    : [lightColors.primaryDark, '#C2410C', lightColors.primaryDark, '#C2410C', lightColors.primaryDark];
+    : ['#C2410C', '#F97316', '#C2410C', '#F97316', '#C2410C'];
   return (
     <View style={[planViewerRefStyles.borderCardContainer, { borderRadius: radius }]}>
       <LinearGradient
@@ -2561,6 +2564,7 @@ async function handleWorkoutPlanGenerationError({
   setGenerationError,
   mountedRef,
   generateWorkoutPlan,
+  showNotice,
 }) {
   console.error('Error generating workout plan:', error);
   const failUid = profileSubjectUid || auth.currentUser?.uid;
@@ -2574,20 +2578,26 @@ async function handleWorkoutPlanGenerationError({
       ui,
       setGenerationError,
       mountedRef,
+      showNotice,
     });
     return;
   }
 
   ui(() => setGenerationError(error.message || 'Failed to generate workout plan'));
   if (!mountedRef.current) return;
-  Alert.alert(
-    'Generation Failed',
-    error.message || "We couldn't generate your workout plan. Please try again.",
-    [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Retry', onPress: () => generateWorkoutPlan() },
-    ],
-  );
+  const failMessage = error.message || "We couldn't generate your workout plan. Please try again.";
+  if (typeof showNotice === 'function') {
+    showNotice('Generation Failed', failMessage, {
+      cancelLabel: 'Cancel',
+      confirmLabel: 'Retry',
+      onConfirm: () => generateWorkoutPlan(),
+    });
+    return;
+  }
+  Alert.alert('Generation Failed', failMessage, [
+    { text: 'Cancel', style: 'cancel' },
+    { text: 'Retry', onPress: () => generateWorkoutPlan() },
+  ]);
 }
 
 /**
@@ -2601,6 +2611,7 @@ function applyMonthlyLimitError({
   ui,
   setGenerationError,
   mountedRef,
+  showNotice,
 }) {
   if (error.limitPayload) {
     setWorkoutGenUsage({
@@ -2611,7 +2622,11 @@ function applyMonthlyLimitError({
   }
   ui(() => setGenerationError(error.message));
   if (mountedRef.current) {
-    Alert.alert('Monthly limit reached', error.message);
+    if (typeof showNotice === 'function') {
+      showNotice('Monthly limit reached', error.message);
+    } else {
+      Alert.alert('Monthly limit reached', error.message);
+    }
   }
 }
 
@@ -2664,6 +2679,10 @@ export default function CreateWorkoutPlanScreen({
   const coachPlanGenerationBlocked = isCoachViewingClientProfile && !coachCanGeneratePlans;
 
   // State
+  // vocab: notice = NbNoticeSheet payload — Design Law instead of Alert.alert
+  const [notice, setNotice] = useState(null);
+  const showNotice = (title, message, extras = {}) => setNotice({ title, message, ...extras });
+
   const [onboardingData, setOnboardingData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -2913,7 +2932,7 @@ export default function CreateWorkoutPlanScreen({
 
       const subjectUid = (userId && String(userId).trim()) || auth.currentUser?.uid;
       if (!subjectUid) {
-        Alert.alert('Error', 'User not found');
+        showNotice('Error', 'User not found');
         if (onBack) onBack();
         setLoading(false);
         return;
@@ -3012,22 +3031,22 @@ export default function CreateWorkoutPlanScreen({
 
   const handleSendTrainerRequest = async () => {
     if (isCoachViewingClientProfile) {
-      Alert.alert('Client app only', 'Clients send plan requests from their account.');
+      showNotice('Client app only', 'Clients send plan requests from their account.');
       return;
     }
     const clientId = auth?.currentUser?.uid;
     const trainerId = resolvedTrainerId;
     if (!clientId) {
-      Alert.alert('Not logged in', 'Please log in to send a request.');
+      showNotice('Not logged in', 'Please log in to send a request.');
       return;
     }
     if (!trainerId) {
-      Alert.alert('No trainer', 'Connect with a trainer first to request a workout plan.');
+      showNotice('No trainer', 'Connect with a trainer first to request a workout plan.');
       return;
     }
     const text = String(requestText || '').trim();
     if (!text) {
-      Alert.alert('Message required', 'Tell your trainer what kind of plan you want.');
+      showNotice('Message required', 'Tell your trainer what kind of plan you want.');
       return;
     }
 
@@ -3044,13 +3063,13 @@ export default function CreateWorkoutPlanScreen({
         clientEquipment: onboardingData?.equipment || onboardingData?.availableEquipment || 'Not specified',
         clientLimitations: onboardingData?.injuries || onboardingData?.limitations || 'None',
       });
-      Alert.alert(
+      showNotice(
         'Request sent',
         'Your trainer will see this in Client Requests — not as a chat message. They can acknowledge it from their dashboard.',
       );
     } catch (e) {
       console.error('Send trainer request failed:', e);
-      Alert.alert('Send failed', e?.message || 'Could not send your request.');
+      showNotice('Send failed', e?.message || 'Could not send your request.');
     } finally {
       setSendingRequest(false);
     }
@@ -3058,7 +3077,7 @@ export default function CreateWorkoutPlanScreen({
 
   const saveData = async (updatedData) => {
     if (isCoachViewingClientProfile) {
-      Alert.alert(
+      showNotice(
         'View only',
         "You're seeing this client's onboarding context. They edit their own profile in the client app."
       );
@@ -3141,14 +3160,14 @@ export default function CreateWorkoutPlanScreen({
   // Generate workout plan
   const generateWorkoutPlan = async () => {
     if (coachPlanGenerationBlocked) {
-      Alert.alert(
+      showNotice(
         'Open AI Workouts',
         'To generate a plan for this client, go to Home, select them on your roster, then use Quick actions → AI Workouts. Plans are saved to their library there.'
       );
       return;
     }
     if (plansRemaining <= 0) {
-      Alert.alert(
+      showNotice(
         'Monthly limit reached',
         `You've used all your workout generations for this month. Resets ${formatWorkoutLimitResetLabel(workoutGenUsage?.resets_at)}.`,
       );
@@ -3161,7 +3180,7 @@ export default function CreateWorkoutPlanScreen({
         triggerShake,
         scrollViewRef,
       });
-      Alert.alert('Validation Error', 'Please complete all required information');
+      showNotice('Validation Error', 'Please complete all required information');
       return;
     }
 
@@ -3209,6 +3228,7 @@ export default function CreateWorkoutPlanScreen({
         setGenerationError,
         mountedRef,
         generateWorkoutPlan,
+        showNotice,
       });
     } finally {
       workoutPlanGenerationInFlight = false;
@@ -3235,10 +3255,10 @@ export default function CreateWorkoutPlanScreen({
       if (result.success) {
         setAddedToCollection(true);
       } else {
-        Alert.alert('Could not save', result.error || 'Failed to add plan to collection.');
+        showNotice('Could not save', result.error || 'Failed to add plan to collection.');
       }
     } catch (e) {
-      Alert.alert('Error', e.message || 'Failed to save plan.');
+      showNotice('Error', e.message || 'Failed to save plan.');
     } finally {
       setSavingToCollection(false);
     }
@@ -3246,26 +3266,27 @@ export default function CreateWorkoutPlanScreen({
 
   const handleRegeneratePlan = () => {
     if (coachPlanGenerationBlocked) {
-      Alert.alert(
+      showNotice(
         'Open AI Workouts',
         'Regenerate plans for clients from Home → select client → AI Workouts.'
       );
       return;
     }
     if (plansRemaining <= 0) {
-      Alert.alert(
+      showNotice(
         'Monthly limit reached',
         `You've used all your workout generations for this month. Resets ${formatWorkoutLimitResetLabel(workoutGenUsage?.resets_at)}.`,
       );
       return;
     }
-    Alert.alert(
+    showNotice(
       'Regenerate plan?',
       'This will replace your current plan with a new one based on your profile.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Regenerate', onPress: () => generateWorkoutPlan() },
-      ]
+      {
+        cancelLabel: 'Cancel',
+        confirmLabel: 'Regenerate',
+        onConfirm: () => generateWorkoutPlan(),
+      },
     );
   };
 
@@ -3494,7 +3515,7 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
       <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? darkColors.nbBackground : lightColors.nbBackground }} edges={SHELL_SAFE_AREA_EDGES}>
         {renderWorkoutChromeHeader()}
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <ActivityIndicator size="small" color="#FF6B9D" />
+          <ActivityIndicator size="small" color={lightColors.nbInk} />
         </View>
         {!hideBottomNav && (
           <ShellBottomNavAnchor>
@@ -3567,7 +3588,7 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
     const leftLabel = plansRemaining <= 0 ? '0 left' : `${plansRemaining} left`;
     const onGeneratePress = () => {
       if (plansRemaining <= 0) {
-        Alert.alert(
+        showNotice(
           'Monthly limit reached',
           `You've used all your workout generations for this month. Resets ${resetLabel}.`,
         );
@@ -3908,7 +3929,7 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
 
   const onGeneratePress = () => {
     if (plansRemaining <= 0) {
-      Alert.alert(
+      showNotice(
         'Monthly limit reached',
         `You've used all your workout generations for this month. Resets ${resetLabel}.`,
       );
@@ -4170,6 +4191,16 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
         </KeyboardAvoidingView>
       </Modal>
 
+      <NbNoticeSheet
+        visible={!!notice}
+        onClose={() => setNotice(null)}
+        title={notice?.title || ''}
+        message={notice?.message}
+        confirmLabel={notice?.confirmLabel || 'OK'}
+        cancelLabel={notice?.cancelLabel}
+        onConfirm={notice?.onConfirm}
+      />
+
     </SafeAreaView>
 
       {!hideBottomNav && (
@@ -4384,7 +4415,7 @@ const styles = StyleSheet.create({
     minHeight: 76,
     marginBottom: 16,
     ...(Platform.OS === 'ios' ? {
-      shadowColor: lightColors.primary,
+      shadowColor: lightColors.nbInk,
       shadowRadius: 12,
       shadowOpacity: 0.25,
       shadowOffset: { width: 0, height: 4 },
@@ -4591,7 +4622,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     overflow: 'hidden',
     ...(Platform.OS === 'ios' ? {
-      shadowColor: lightColors.primary,
+      shadowColor: lightColors.nbInk,
       shadowRadius: 20,
       shadowOpacity: 0.45,
       shadowOffset: { width: 0, height: 8 },
@@ -4805,7 +4836,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.1)',
     padding: 20,
     ...(Platform.OS === 'ios' ? {
-      shadowColor: lightColors.primary,
+      shadowColor: lightColors.nbInk,
       shadowRadius: 20,
       shadowOpacity: 0.35,
       shadowOffset: { width: 0, height: 8 },
@@ -4844,7 +4875,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
     borderTopWidth: 3,
-    borderTopColor: lightColors.primary,
+    borderTopColor: lightColors.nbInk,
   },
   planOverviewLabel: {
     color: '#ffffff',

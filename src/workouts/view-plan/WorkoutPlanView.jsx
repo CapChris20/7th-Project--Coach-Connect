@@ -26,7 +26,13 @@ import {
   mapStructuredDaysToPlanViewerRows,
   PLAN_BUILDER_COLORS,
 } from '../create-plan/readPlanText';
-import { lightColors, darkColors, gradients } from '../../look-and-feel/colorPalette';
+import { lightColors, darkColors, gradients, nb, spacing, accentGradients } from '../../look-and-feel/colorPalette';
+import HardShadow from '../../look-and-feel/HardShadow';
+import NbButton from '../../look-and-feel/NbButton';
+import NbIconChip from '../../look-and-feel/NbIconChip';
+
+const HANDOFF_WORKOUT = require('../../assets/icons/handoff/workout.png');
+const HANDOFF_JOURNEY = require('../../assets/icons/handoff/journey.png');
 
 // ===== NAMED CONSTANTS =====
 
@@ -194,24 +200,138 @@ function PlanStructureErrorScreen({ styles, palette, hasRouteWorkoutPlanParam, o
   );
 }
 
-function EmptyPlanScreen({ styles, palette, onBack }) {
+/** empty-vs-data PNG 05 — Design Law empty “My workout plan” shell. */
+function EmptyPlanScreen({ styles, palette, onBack, onNavigate }) {
+  // vocab: onNavigate keys match BottomMenuBar / shell (“create” opens plan builder)
+  const buildWithAi = () => {
+    if (typeof onNavigate === 'function') onNavigate('create');
+    else onBack?.();
+  };
+  const askTrainer = () => {
+    if (typeof onNavigate === 'function') onNavigate('messages');
+    else onBack?.();
+  };
+  const browseVideos = () => {
+    if (typeof onNavigate === 'function') onNavigate('workout');
+    else onBack?.();
+  };
+
   return (
     <View style={[styles.container, { flex: 1, backgroundColor: palette.background }]}>
-      <View style={{ flex: 1 }}>
-        <View style={[planViewerRefStyles.emptyContainer, { backgroundColor: palette.surface }]}>
-          <Ionicons name="fitness" size={48} color={PLAN_BUILDER_COLORS.cyan} />
-          <Text style={[planViewerRefStyles.emptyTitle, { color: palette.text }]}>No Plan Yet</Text>
-          <Text style={[planViewerRefStyles.emptyMessage, { color: palette.muted }]}>
-            Generate a workout plan from the home screen
-          </Text>
+      <View style={{ flex: 1, paddingHorizontal: nb.screenGutter, paddingTop: 8 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 }}>
           <TouchableOpacity
             onPress={() => onBack?.()}
-            style={[planViewerRefStyles.emptyButton, { backgroundColor: PLAN_BUILDER_COLORS.cyan }]}
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 12,
+              borderWidth: nb.borderWidth,
+              borderColor: palette.text,
+              backgroundColor: palette.surface,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+            accessibilityLabel="Back"
           >
-            <Text style={planViewerRefStyles.emptyButtonText}>Go Back</Text>
+            <Ionicons name="chevron-back" size={22} color={palette.text} />
           </TouchableOpacity>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 22, fontWeight: '900', color: palette.text }}>My workout plan</Text>
+            <Text style={{ fontSize: 14, fontWeight: '600', color: palette.muted, marginTop: 2 }}>No plan yet</Text>
+          </View>
         </View>
+
+        <View
+          style={{
+            borderWidth: nb.borderWidth,
+            borderStyle: 'dashed',
+            borderColor: palette.text,
+            borderRadius: 12,
+            padding: 16,
+            gap: 12,
+            backgroundColor: palette.surface,
+            marginBottom: spacing.md,
+          }}
+        >
+          <NbIconChip source={HANDOFF_WORKOUT} index={0} size={56} />
+          <Text style={{ fontSize: 22, fontWeight: '900', color: palette.text }}>No plan saved yet.</Text>
+          <Text style={{ fontSize: 14, fontWeight: '600', color: palette.muted, lineHeight: 20 }}>
+            Build one from your profile with AI, or ask your trainer to write it.
+          </Text>
+          <NbButton variant="fill" onPress={buildWithAi}>
+            Build with AI
+          </NbButton>
+          <NbButton variant="ghost" onPress={askTrainer}>
+            Ask my trainer
+          </NbButton>
+        </View>
+
+        <View
+          style={{
+            borderWidth: nb.borderWidth,
+            borderColor: palette.text,
+            borderRadius: 10,
+            padding: 14,
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 12,
+            backgroundColor: palette.surface,
+            marginBottom: 12,
+          }}
+        >
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 15, fontWeight: '900', color: palette.text }}>3 AI plans a month</Text>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: palette.muted, marginTop: 2 }}>
+              You have used 0 so far
+            </Text>
+          </View>
+          <View
+            style={{
+              overflow: 'hidden',
+              borderWidth: nb.borderWidth,
+              borderColor: palette.text,
+              borderRadius: 999,
+              paddingHorizontal: 10,
+              paddingVertical: 5,
+            }}
+          >
+            <LinearGradient
+              colors={accentGradients[2]}
+              start={{ x: 0, y: 0.5 }}
+              end={{ x: 1, y: 0.5 }}
+              style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }}
+            />
+            <Text style={{ fontSize: 12, fontWeight: '900', color: lightColors.nbInk }}>3 left</Text>
+          </View>
+        </View>
+
+        <HardShadow offset={nb.shadowOffsetSmall} radius={10}>
+          <TouchableOpacity
+            onPress={browseVideos}
+            activeOpacity={0.88}
+            style={{
+              borderWidth: nb.borderWidth,
+              borderColor: palette.text,
+              borderRadius: 10,
+              padding: 12,
+              minHeight: 64,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 12,
+              backgroundColor: palette.surface,
+            }}
+          >
+            <NbIconChip source={HANDOFF_JOURNEY} index={1} size={44} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 15, fontWeight: '900', color: palette.text }}>Browse exercise videos</Text>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: palette.muted }}>Works without a plan</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={palette.muted} />
+          </TouchableOpacity>
+        </HardShadow>
       </View>
+      <WorkoutPlanBottomNav onNavigate={onNavigate} onBack={onBack} />
     </View>
   );
 }
@@ -366,7 +486,7 @@ export default function WorkoutPlanView({
   }
 
   if (viewerEmpty) {
-    return <EmptyPlanScreen styles={styles} palette={palette} onBack={onBack} />;
+    return <EmptyPlanScreen styles={styles} palette={palette} onBack={onBack} onNavigate={onNavigate} />;
   }
 
   return (

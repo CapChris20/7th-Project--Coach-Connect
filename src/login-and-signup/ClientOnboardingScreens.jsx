@@ -187,6 +187,15 @@ const TIME_LABELS = {
   no_preference: 'Anytime',
 };
 const PLACE_LABELS = { home: 'at home', gym: 'at the gym', both: 'at home and gym' };
+// All set hero meta (PNG 15): “Evenings, at home, for building muscle.”
+const GOAL_PHRASE = {
+  lose_fat: 'losing fat',
+  build_muscle: 'building muscle',
+  maintain_health: 'maintaining health',
+  athletic_performance: 'athletic performance',
+  improve_mental_health: 'mental health',
+  build_habits: 'building habits',
+};
 
 // ===== HELPER FUNCTIONS =====
 
@@ -415,6 +424,16 @@ function SelectTile({
   colors,
   gradient,
 }) {
+  // Wide experience rows (PNG 03): check sits on the far right, not top-right of a square tile.
+  const tick = selected ? (
+    <Ionicons
+      name="checkmark"
+      size={wide ? 20 : 18}
+      color={colors.nbOnFill}
+      style={wide ? undefined : styles.tick}
+    />
+  ) : null;
+
   return (
     <TouchableOpacity
       activeOpacity={0.88}
@@ -432,15 +451,7 @@ function SelectTile({
       accessibilityRole="button"
       accessibilityState={{ selected }}
     >
-      {selected ? (
-        // Design Law: white check on the black tile — no white disc badge (PNG 03/05).
-        <Ionicons
-          name="checkmark"
-          size={18}
-          color={colors.nbOnFill}
-          style={styles.tick}
-        />
-      ) : null}
+      {!wide ? tick : null}
       {iconKey ? <IconWell iconKey={iconKey} gradient={gradient} size={wide ? 36 : 40} /> : null}
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text style={[styles.tileLabel, { color: selected ? colors.nbOnFill : colors.nbInk }]}>
@@ -452,11 +463,13 @@ function SelectTile({
           </Text>
         ) : null}
       </View>
+      {wide ? tick : null}
     </TouchableOpacity>
   );
 }
 
 function GenderChip({ label, iconKey, selected, onPress, colors }) {
+  // PNG 01: pill chips in a 2×2 grid — selected = fill + onFill text (no checkmark on gender).
   return (
     <TouchableOpacity
       activeOpacity={0.88}
@@ -473,7 +486,7 @@ function GenderChip({ label, iconKey, selected, onPress, colors }) {
       accessibilityState={{ selected }}
     >
       <IconWell iconKey={iconKey} gradient={accentGradients[selected ? 0 : 2]} size={28} />
-      <Text style={[styles.genderLabel, { color: selected ? colors.nbOnFill : colors.nbInk }]} numberOfLines={1}>
+      <Text style={[styles.genderLabel, { color: selected ? colors.nbOnFill : colors.nbInk }]} numberOfLines={2}>
         {label}
       </Text>
     </TouchableOpacity>
@@ -1063,18 +1076,23 @@ function SituationScreen({ data, setData, colors }) {
 }
 
 function AllSetScreen({ data, colors, matchedTrainerName }) {
-  const days = data.daysPerWeek != null ? data.daysPerWeek : '—';
-  const goal = prettyGoal(Array.isArray(data.goals) ? data.goals[0] : data.primaryGoal);
+  // All set meta (PNG 15): days hero + one-line place/time/goal phrase under it.
+  const goalKey = Array.isArray(data.goals) && data.goals.length ? data.goals[0] : data.primaryGoal;
+  const days = data.daysPerWeek != null ? data.daysPerWeek : DAYS_DEFAULT;
+  const goal = prettyGoal(goalKey);
+  const goalPhrase = GOAL_PHRASE[goalKey] || (goal ? String(goal).toLowerCase() : 'your goal');
   const level = titleCase(data.fitnessLevel) || 'Ready';
   const equip = prettyEquip(data.equipmentAccess);
   const place = PLACE_LABELS[data.trainingEnvironment] || 'ready to train';
   const time = TIME_LABELS[data.preferredWorkoutTime] || 'flexible timing';
   const skips = parseSkipList(data.exercisesDislike);
+  // PNG sample: “Left knee flagged” when the injuries field has free text.
+  const injuryRaw = data.injuries === null ? '' : String(data.injuries || '').trim();
   const injuryTitle =
     data.injuries === null
       ? 'No limitations flagged'
-      : data.injuries
-        ? String(data.injuries).slice(0, 42)
+      : injuryRaw
+        ? (injuryRaw.length > 36 ? `${injuryRaw.slice(0, 36)}…` : injuryRaw)
         : 'Limits noted';
   const injurySub = skips.length
     ? `${skips.slice(0, 2).join(' and ')} skipped`
@@ -1090,13 +1108,13 @@ function AllSetScreen({ data, colors, matchedTrainerName }) {
     <View>
       <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbHero} style={{ marginBottom: 16 }}>
         <View style={[styles.heroSlab, { backgroundColor: colors.nbFill, borderColor: colors.nbBorder }]}>
-          <Text style={[styles.heroEyebrow, { color: colors.nbOnFill }]}>YOUR PLAN STARTS WITH</Text>
+          <Text style={[styles.heroEyebrow, { color: colors.nbOnFill, opacity: 0.72 }]}>YOUR PLAN STARTS WITH</Text>
           <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
             <Text style={[styles.heroNum, { color: colors.nbOnFill }]}>{days}</Text>
             <Text style={[styles.heroUnit, { color: colors.nbOnFill }]}>days a week</Text>
           </View>
-          <Text style={[styles.heroSub, { color: colors.nbOnFill }]}>
-            {`${time}, ${place}, for ${goal || 'your goal'}.`}
+          <Text style={[styles.heroSub, { color: colors.nbOnFill, opacity: 0.92 }]}>
+            {`${time}, ${place}, for ${goalPhrase}.`}
           </Text>
         </View>
       </HardShadow>
@@ -1286,12 +1304,15 @@ const styles = StyleSheet.create({
   genderGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    // Manipulate here: 2×2 gender chip gap (PNG 01)
     gap: 10,
   },
   genderChip: {
+    // 2×2 grid: each chip ≈ half row minus gap
     width: '47%',
     flexGrow: 1,
-    minHeight: 48,
+    flexBasis: '47%',
+    minHeight: 52,
     borderWidth: nb.borderWidth,
     borderRadius: 999,
     paddingHorizontal: 12,
@@ -1308,6 +1329,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 13,
     fontWeight: '800',
+    lineHeight: 16,
   },
   tileGrid: {
     flexDirection: 'row',

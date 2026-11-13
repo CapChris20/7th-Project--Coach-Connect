@@ -10,7 +10,6 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
   TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,6 +17,7 @@ import { useTheme } from '../look-and-feel/lightDarkMode';
 import NbCard from '../look-and-feel/NbCard';
 import NbAvatar from '../look-and-feel/NbAvatar';
 import NbButton from '../look-and-feel/NbButton';
+import NbNoticeSheet from '../look-and-feel/NbNoticeSheet';
 import HardShadow from '../look-and-feel/HardShadow';
 import { nb, borderRadius } from '../look-and-feel/colorPalette';
 import { auth, db } from '../app-start/cloudConnection';
@@ -348,6 +348,9 @@ export default function InboxScreen({
   const [listError, setListError] = useState(null);
   const [listRefreshKey, setListRefreshKey] = useState(0);
   const [startingChat, setStartingChat] = useState(false);
+  // vocab: notice = NbNoticeSheet payload — Design Law sheet instead of Alert.alert
+  const [notice, setNotice] = useState(null);
+  const showNotice = (title, message) => setNotice({ title, message });
   const lastConversationDocRef = useRef(null);
   const currentUser = auth.currentUser;
   const { blockedIds } = blockedList(currentUser?.uid);
@@ -470,14 +473,14 @@ export default function InboxScreen({
     try {
       const existingClients = await getTrainerClients(currentUser.uid);
       if (existingClients.some((client) => client.id === clientId)) {
-        Alert.alert('Info', 'This person is already your client');
+        showNotice('Info', 'This person is already your client');
         setAddingClient((prev) => ({ ...prev, [clientId]: false }));
         return;
       }
       const userSnap = await getDoc(doc(db, 'users', clientId));
       const fullUserData = userSnap.exists() ? userSnap.data() : null;
       if (!fullUserData) {
-        Alert.alert('Error', 'Could not load user data');
+        showNotice('Error', 'Could not load user data');
         setAddingClient((prev) => ({ ...prev, [clientId]: false }));
         return;
       }
@@ -488,10 +491,10 @@ export default function InboxScreen({
       );
       const updatedClients = await getTrainerClients(currentUser.uid);
       setTrainerClients(updatedClients);
-      Alert.alert('Success', 'Client added successfully!');
+      showNotice('Success', 'Client added successfully!');
     } catch (error) {
       console.error('Error adding client:', error);
-      Alert.alert('Error', error?.message || 'Failed to add client.');
+      showNotice('Error', error?.message || 'Failed to add client.');
     } finally {
       setAddingClient((prev) => ({ ...prev, [clientId]: false }));
     }
@@ -504,7 +507,7 @@ export default function InboxScreen({
       const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
       const trainerId = userSnap.exists() ? userSnap.data()?.trainerId : null;
       if (!trainerId) {
-        Alert.alert('No coach yet', 'Find a trainer in the app to start messaging.');
+        showNotice('No coach yet', 'Find a trainer in the app to start messaging.');
         return;
       }
       const conversationId = await getOrCreateConversation(currentUser.uid, trainerId);
@@ -517,7 +520,7 @@ export default function InboxScreen({
       onSelectConversation?.(conversation, { id: trainerId, ...trainerData });
     } catch (error) {
       console.error('handleMessageCoach failed:', error);
-      Alert.alert('Could not open chat', error?.message || 'Please try again.');
+      showNotice('Could not open chat', error?.message || 'Please try again.');
     } finally {
       setStartingChat(false);
     }
@@ -822,6 +825,13 @@ export default function InboxScreen({
       {pageHeader}
       {searchBlock}
       {listBody}
+      <NbNoticeSheet
+        visible={!!notice}
+        onClose={() => setNotice(null)}
+        title={notice?.title || ''}
+        message={notice?.message}
+        confirmLabel="OK"
+      />
     </View>
   );
 }

@@ -11,35 +11,41 @@ import { Ionicons } from '@expo/vector-icons';
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 import NbCard from '../../look-and-feel/NbCard';
 import NbButton from '../../look-and-feel/NbButton';
-import GradientFrame from '../../look-and-feel/GradientFrame';
-import { lightColors, darkColors, gradients, borderRadius } from '../../look-and-feel/colorPalette';
+import HardShadow from '../../look-and-feel/HardShadow';
+import { lightColors, darkColors, gradients, borderRadius, nb } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
-/** Dark pink → dark orange — trainer card shell and CTAs (hex only — safe at module init). */
+/** Kept for callers that still pass accent ramps — shell itself is HardShadow now (no GradientFrame). */
 export const TRAINER_BORDER_GRADIENT = ['#BE185D', '#C2410C'];
 
 /**
- * Gradient rim around a home card (trainer section, empty-trainer CTA).
- * vocab: GradientFrame = cool border ring + hard ink shadow — used by TrainingHomeScreenLayout.
+ * Design Law card shell for trainer / empty-trainer CTAs (HardShadow + 3px border).
+ * Replaces the old GradientFrame rim so home stays black/white/gray chrome.
  * @param {{ isDark?: boolean, children?: import('react').ReactNode, style?: object, borderColors?: string[] }} props
  */
 export function ColorBorderShell({
   isDark = false,
   children,
   style,
-  borderColors = TRAINER_BORDER_GRADIENT,
+  borderColors: _borderColors = TRAINER_BORDER_GRADIENT,
 }) {
   const fill = isDark ? darkColors.nbSurface : lightColors.nbSurface;
+  const border = isDark ? darkColors.nbBorder : lightColors.nbBorder;
   return (
-    <GradientFrame
-      colors={borderColors}
-      fill={fill}
-      radius={borderRadius.nbHero}
-      style={style}
-    >
-      <View style={{ padding: 14 }}>{children}</View>
-    </GradientFrame>
+    <HardShadow radius={borderRadius.nbHero} offset={nb.shadowOffsetCard} style={style}>
+      <View
+        style={{
+          backgroundColor: fill,
+          borderColor: border,
+          borderWidth: nb.borderWidth,
+          borderRadius: borderRadius.nbHero,
+          padding: 14,
+        }}
+      >
+        {children}
+      </View>
+    </HardShadow>
   );
 }
 

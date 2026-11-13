@@ -129,6 +129,8 @@ export const DailyFoodLogScreen = ({
   onOpenSettings,
   // vocab: onOpenDailyFacts = opens NutritionFactsScreen (full-day totals, not ConfirmFoodPopup)
   onOpenDailyFacts,
+  // Design Law Weekly Momentum (missing-screens 11/12)
+  onOpenWeeklyMomentum,
   onQuickAdd = () => {},
   viewDate,
   onSelectViewDate,
@@ -171,13 +173,27 @@ export const DailyFoodLogScreen = ({
         ]}
         {...FORM_SCROLL_PROPS}
       >
-        {/* Header: date + Nutrition + settings gear (PNG) */}
+        {/* Header: date + Nutrition + Weekly Momentum + settings gear (PNG) */}
         <View style={styles.headerRow}>
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={[styles.dateSub, { color: colors.nbMuted }]}>
               {formatDateSubtitle(viewDate)}
             </Text>
             <Text style={[styles.title, { color: colors.nbInk }]}>Nutrition</Text>
+            {typeof onOpenWeeklyMomentum === 'function' ? (
+              <TouchableOpacity onPress={onOpenWeeklyMomentum} hitSlop={8} style={{ marginTop: 4 }}>
+                <Text
+                  style={{
+                    fontSize: 13,
+                    fontWeight: '800',
+                    color: colors.nbInk,
+                    textDecorationLine: 'underline',
+                  }}
+                >
+                  Weekly Momentum
+                </Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
           {onOpenSettings ? (
             <HardShadow offset={nb.shadowOffsetSmall} radius={borderRadius.nbIconChip}>

@@ -6,6 +6,7 @@ import React from 'react';
 import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import NbButton from '../../look-and-feel/NbButton';
+import HardShadow from '../../look-and-feel/HardShadow';
 import { borderRadius, nb } from '../../look-and-feel/colorPalette';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
 
@@ -30,42 +31,50 @@ export default function OfflineBanner({
   if (!visible) return null;
 
   return (
-    <View
-      style={[
-        styles.banner,
-        {
-          backgroundColor: colors.nbFill,
-          borderColor: colors.nbBorder,
-        },
-      ]}
+    <HardShadow
+      offset={nb.shadowOffsetCard}
+      radius={borderRadius.nbCard}
+      style={styles.wrap}
     >
-      {retrying ? (
-        <ActivityIndicator size="small" color={colors.nbOnFill} />
-      ) : (
-        <Ionicons name="cloud-offline-outline" size={18} color={colors.nbOnFill} />
-      )}
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={[styles.title, { color: colors.nbOnFill }]}>{title}</Text>
-        <Text style={[styles.sub, { color: colors.nbOnFill }]}>{subtitle}</Text>
+      <View
+        style={[
+          styles.banner,
+          {
+            backgroundColor: colors.nbFill,
+            borderColor: colors.nbBorder,
+          },
+        ]}
+      >
+        {retrying ? (
+          <ActivityIndicator size="small" color={colors.nbOnFill} />
+        ) : (
+          <Ionicons name="cloud-offline-outline" size={18} color={colors.nbOnFill} />
+        )}
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={[styles.title, { color: colors.nbOnFill }]}>{title}</Text>
+          <Text style={[styles.sub, { color: colors.nbOnFill }]}>{subtitle}</Text>
+        </View>
+        {typeof onRetry === 'function' ? (
+          <NbButton
+            variant="ghost"
+            sm
+            onPress={onRetry}
+            style={[styles.retry, { backgroundColor: colors.nbSurface }]}
+          >
+            Retry
+          </NbButton>
+        ) : null}
       </View>
-      {typeof onRetry === 'function' ? (
-        <NbButton
-          variant="ghost"
-          sm
-          onPress={onRetry}
-          style={[styles.retry, { backgroundColor: colors.nbSurface }]}
-        >
-          Retry
-        </NbButton>
-      ) : null}
-    </View>
+    </HardShadow>
   );
 }
 
 const styles = StyleSheet.create({
-  banner: {
+  wrap: {
     marginHorizontal: nb.screenGutter,
     marginBottom: 10,
+  },
+  banner: {
     borderWidth: nb.borderWidth,
     borderRadius: borderRadius.nbCard,
     paddingHorizontal: 12,

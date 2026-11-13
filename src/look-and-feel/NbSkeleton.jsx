@@ -1,9 +1,11 @@
 // Design Law hatched skeleton block (loading-and-errors PNG 05).
-// Flow: SVG diagonal hatch → rounded rect placeholders for avatars / text bars.
+// Flow: SVG diagonal hatch → soft opacity pulse (no shimmer) → same layout as the real screen.
 // Used by inbox and list loading states. Prefer this over ActivityIndicator for layout shells.
+//
+// vocab: soft pulse = opacity loop only — Design Law forbids sliding shimmer bars
 
-import React, { useId, useMemo } from 'react';
-import { View, StyleSheet } from 'react-native';
+import React, { useEffect, useId, useMemo, useRef } from 'react';
+import { Animated, View, StyleSheet } from 'react-native';
 import Svg, { Defs, Pattern, Rect } from 'react-native-svg';
 import { useTheme } from './lightDarkMode';
 import { borderRadius, nb } from './colorPalette';
@@ -13,11 +15,15 @@ import { borderRadius, nb } from './colorPalette';
 // Manipulate here: hatch stripe width (mockup ~10px soft + 10px chip)
 const STRIPE_PX = 10;
 const PATTERN_SIZE = STRIPE_PX * 2;
+// Manipulate here: pulse duration — slower = calmer; Design Law is soft, not flashy
+const PULSE_MS = 1100;
+const PULSE_MIN = 0.55;
+const PULSE_MAX = 1;
 
 // ===== MAIN FUNCTION =====
 
 /**
- * @param {{ width?: number|string, height?: number, radius?: number, circle?: boolean, style?: object }} props
+ * @param {{ width?: number|string, height?: number, radius?: number, circle?: boolean, style?: object, pulse?: boolean }} props
  */
 export default function NbSkeleton({
   width = '100%',
@@ -25,6 +31,7 @@ export default function NbSkeleton({
   radius = borderRadius.nbChip,
   circle = false,
   style,
+  pulse = true,
 }) {
   const { colors } = useTheme();
   const reactId = useId();
@@ -32,16 +39,38 @@ export default function NbSkeleton({
     () => `nbSkel_${String(reactId).replace(/[^a-zA-Z0-9]/g, '')}`,
     [reactId],
   );
+  const opacity = useRef(new Animated.Value(PULSE_MAX)).current;
+
+  useEffect(() => {
+    if (!pulse) return undefined;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(opacity, {
+          toValue: PULSE_MIN,
+          duration: PULSE_MS,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacity, {
+          toValue: PULSE_MAX,
+          duration: PULSE_MS,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [opacity, pulse]);
+
   const sizeStyle = circle
     ? { width: height, height, borderRadius: height / 2 }
     : { width, height, borderRadius: radius };
 
   return (
-    <View
+    <Animated.View
       style={[
         styles.shell,
         sizeStyle,
-        { borderColor: colors.nbBorder, backgroundColor: colors.nbSoft },
+        { borderColor: colors.nbBorder, backgroundColor: colors.nbSoft, opacity },
         style,
       ]}
     >
@@ -60,7 +89,7 @@ export default function NbSkeleton({
         </Defs>
         <Rect x="0" y="0" width="100%" height="100%" fill={`url(#${patternId})`} />
       </Svg>
-    </View>
+    </Animated.View>
   );
 }
 

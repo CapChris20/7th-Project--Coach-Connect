@@ -10,7 +10,6 @@ import {
   StyleSheet,
   ScrollView,
   StatusBar,
-  Alert,
   TextInput,
   Pressable,
 } from 'react-native';
@@ -27,6 +26,7 @@ import {
   useShellBottomNavInset,
 } from '../navigation/bottomMenuSpacing';
 import NbButton from '../look-and-feel/NbButton';
+import NbNoticeSheet from '../look-and-feel/NbNoticeSheet';
 import { nb, spacing } from '../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
@@ -89,15 +89,22 @@ async function postSupportContact({ subjectText, messageText }) {
   return json;
 }
 
-function alertAfterSupportSend(supportEmail, json) {
+/**
+ * @param {string} supportEmail
+ * @param {object} json
+ * @returns {{ title: string, message: string }}
+ */
+function noticeAfterSupportSend(supportEmail, json) {
   if (json?.delivery === DELIVERY_FIRESTORE) {
-    Alert.alert(
-      'Almost done',
-      `We saved your ticket and opened email to ${supportEmail || 'support'}. Tap Send in Mail so it hits the inbox.`,
-    );
-    return;
+    return {
+      title: 'Almost done',
+      message: `We saved your ticket and opened email to ${supportEmail || 'support'}. Tap Send in Mail so it hits the inbox.`,
+    };
   }
-  Alert.alert('Sent', 'Thanks — we received your message (and opened email as a backup).');
+  return {
+    title: 'Sent',
+    message: 'Thanks — we received your message (and opened email as a backup).',
+  };
 }
 
 // ===== MAIN FUNCTION =====
@@ -112,6 +119,8 @@ export default function ContactSupportScreen({ onClose, embedShellBottomNav = fa
   const [subject, setSubject] = useState('');
   const [message, setMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  // vocab: notice = NbNoticeSheet payload — Design Law sheet instead of Alert.alert
+  const [notice, setNotice] = useState(null);
 
   const fade = useRef(new Animated.Value(0)).current;
   const rise = useRef(new Animated.Value(RISE_FROM)).current;
@@ -126,17 +135,23 @@ export default function ContactSupportScreen({ onClose, embedShellBottomNav = fa
     const subjectText = String(subject || '').trim();
     const messageText = String(message || '').trim();
     if (!subjectText) {
-      Alert.alert('Missing subject', 'Please add a short subject so we can route your message.');
+      setNotice({
+        title: 'Missing subject',
+        message: 'Please add a short subject so we can route your message.',
+      });
       return;
     }
     if (!messageText) {
-      Alert.alert('Missing message', 'Please describe what you need help with.');
+      setNotice({
+        title: 'Missing message',
+        message: 'Please describe what you need help with.',
+      });
       return;
     }
 
     const auth = getAuth();
     if (!auth.currentUser) {
-      Alert.alert('Not signed in', 'Please sign in again and retry.');
+      setNotice({ title: 'Not signed in', message: 'Please sign in again and retry.' });
       return;
     }
 
@@ -153,7 +168,7 @@ export default function ContactSupportScreen({ onClose, embedShellBottomNav = fa
       setSubject('');
       setMessage('');
       openSupportMailto({ subject: routedSubject, body: routedMessage });
-      alertAfterSupportSend(supportEmail, json);
+      setNotice(noticeAfterSupportSend(supportEmail, json));
     } catch (error) {
       offerSupportMailtoFallback({
         subject: routedSubject,
@@ -274,6 +289,13 @@ export default function ContactSupportScreen({ onClose, embedShellBottomNav = fa
           </View>
         </Animated.View>
       </ScrollView>
+      <NbNoticeSheet
+        visible={!!notice}
+        onClose={() => setNotice(null)}
+        title={notice?.title || ''}
+        message={notice?.message}
+        confirmLabel="OK"
+      />
     </SafeAreaView>
   );
 }

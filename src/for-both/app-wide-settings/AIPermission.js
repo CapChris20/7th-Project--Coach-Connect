@@ -389,7 +389,8 @@ export function AIProvider({ children }) {
     setAiEnabled(true);
   };
 
-  /** Onboarding / programmatic — no monthly meter, no disclaimer. */
+  // Design Law AI permission step (client-onboarding PNG 13/14): Turn on / Not now
+  // must NOT burn the Settings monthly flip meter or show the disclaimer alert.
   const setAIFromOnboarding = useCallback(async (enabled) => {
     try {
       const nextEnabled = !!enabled;

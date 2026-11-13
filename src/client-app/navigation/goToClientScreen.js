@@ -209,6 +209,11 @@ export function goToClientScreen({ refetchNutritionData } = {}) {
   const openRequestSession = useCallback(() => rootNavigate(CLIENT_ROUTES.RequestSession), []);
   const openPhotoGallery = useCallback(() => rootNavigate(CLIENT_ROUTES.PhotoGallery), []);
   const openProgressCharts = useCallback(() => rootNavigate(CLIENT_ROUTES.ProgressCharts), []);
+  // Design Law Batch 1 gap screens
+  const openLogWorkout = useCallback(() => rootNavigate(CLIENT_ROUTES.LogWorkout), []);
+  const openDailyCheckIn = useCallback(() => rootNavigate(CLIENT_ROUTES.DailyCheckIn), []);
+  const openMoodCheckIn = useCallback(() => rootNavigate(CLIENT_ROUTES.MoodCheckIn), []);
+  const openWeeklyMomentum = useCallback(() => rootNavigate(CLIENT_ROUTES.WeeklyMomentum), []);
   const openNotifications = useCallback(() => rootNavigate(CLIENT_ROUTES.Notifications), []);
   const openAIWorkouts = useCallback(() => rootNavigate(CLIENT_ROUTES.AIWorkouts), []);
   const openPlanViewer = useCallback(() => rootNavigate(CLIENT_ROUTES.PlanViewer), []);
@@ -399,6 +404,10 @@ export function goToClientScreen({ refetchNutritionData } = {}) {
     openRequestSession,
     openPhotoGallery,
     openProgressCharts,
+    openLogWorkout,
+    openDailyCheckIn,
+    openMoodCheckIn,
+    openWeeklyMomentum,
     openNotifications,
     openAIWorkouts,
     openPlanViewer,

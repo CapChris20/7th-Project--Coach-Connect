@@ -136,3 +136,75 @@ export function searchManualExerciseLibrary(query, limit = MANUAL_LIBRARY_SEARCH
     .sort(highestScoreThenName);
   return scored.slice(0, limit).map((scoredEntry) => scoredEntry.exercise);
 }
+
+/**
+ * Infer equipment from the exercise name (catalog has no equipment field).
+ * Design Law PNG 21 pills: Barbell · Dumbbell · Bodyweight · Cable · Machine.
+ * @param {{ name?: string }} exercise
+ * @returns {string|null}
+ */
+export function inferExerciseEquipment(exercise) {
+  const name = String(exercise?.name || '').toLowerCase();
+  if (!name) return null;
+  if (/\b(barbell|bb |ez[- ]?bar|landmine|t-bar)\b/.test(name) || name.startsWith('bb ')) {
+    return 'Barbell';
+  }
+  if (/\b(dumbbell|db |kettlebell|kb |hammer curl|goblet)\b/.test(name) || name.startsWith('db ')) {
+    return 'Dumbbell';
+  }
+  if (/\b(cable|pulldown|pushdown|face pull|woodchopper|pallof)\b/.test(name)) {
+    return 'Cable';
+  }
+  if (
+    /\b(machine|smith|leg press|leg extension|leg curl|pec deck|hack squat|ergometer|assault bike|rower)\b/.test(
+      name,
+    )
+  ) {
+    return 'Machine';
+  }
+  if (
+    /\b(push-?up|pull-?up|chin-?up|plank|burpee|mountain climber|jump rope|dip|glute bridge|hanging|ab wheel|box jump)\b/.test(
+      name,
+    )
+  ) {
+    return 'Bodyweight';
+  }
+  return null;
+}
+
+/**
+ * Text search + optional muscle / equipment chip filters (PNG 21).
+ * @param {{
+ *   query?: string,
+ *   muscle?: string|null,
+ *   equipments?: string[],
+ *   limit?: number,
+ * }} opts
+ * @returns {Array}
+ */
+export function filterManualExerciseLibrary({
+  query = '',
+  muscle = null,
+  equipments = [],
+  limit = MANUAL_LIBRARY_SEARCH_LIMIT_DEFAULT,
+} = {}) {
+  const muscleKey = String(muscle || '').trim().toLowerCase();
+  const equipmentKeys = (Array.isArray(equipments) ? equipments : [])
+    .map((item) => String(item || '').trim().toLowerCase())
+    .filter(Boolean);
+
+  let rows = searchManualExerciseLibrary(query, MANUAL_EXERCISE_LIBRARY.length);
+  if (muscleKey) {
+    rows = rows.filter((exercise) =>
+      (exercise.muscleGroups || []).some((group) => String(group).toLowerCase() === muscleKey),
+    );
+  }
+  if (equipmentKeys.length) {
+    rows = rows.filter((exercise) => {
+      const inferred = String(inferExerciseEquipment(exercise) || '').toLowerCase();
+      if (!inferred) return false;
+      return equipmentKeys.includes(inferred);
+    });
+  }
+  return rows.slice(0, limit);
+}

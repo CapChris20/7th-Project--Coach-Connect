@@ -28,6 +28,7 @@ import {
   getOrCreateConversation,
   sendMessage,
   sendAttachmentMessage,
+  updateMessageStatus,
   subscribeToMessages,
   loadEarlierMessages,
   markMessagesAsRead,
@@ -55,6 +56,7 @@ import {
 import NbAvatar from '../look-and-feel/NbAvatar';
 import NbButton from '../look-and-feel/NbButton';
 import NbSheet from '../look-and-feel/NbSheet';
+import NbNoticeSheet from '../look-and-feel/NbNoticeSheet';
 import NbIconChip from '../look-and-feel/NbIconChip';
 import HardShadow from '../look-and-feel/HardShadow';
 import { accentGradients, borderRadius, nb } from '../look-and-feel/colorPalette';
@@ -201,6 +203,8 @@ function buildThreadRenderList(messages, currentUserUid, extras = {}) {
       fileUrl: m.fileUrl,
       fileName: m.fileName,
       fileSize: m.fileSize,
+      // Image caption overlay (Design Law PNG “Squat, set 2”)
+      caption: m.caption || (m.type === 'image' ? m.text : null) || null,
       // Session card fields (Design Law PNG session scheduled bubble)
       sessionTitle: m.sessionTitle || m.title || null,
       sessionWhen: m.sessionWhen || m.whenLabel || null,
@@ -273,7 +277,19 @@ const bubbleStyles = StyleSheet.create({
   bubbleInner: { borderRadius: borderRadius.nbCard, paddingHorizontal: 14, paddingVertical: 12, maxWidth: '100%' },
   text: { fontSize: 14, lineHeight: 20, fontWeight: '600' },
   timestamp: { fontSize: 11, marginTop: 4, fontWeight: '700' },
-  attachmentImage: { width: 232, height: 168 },
+  attachmentImage: { width: 232, height: 168, borderRadius: borderRadius.nbCard },
+  attachmentImageWrap: { width: 232, overflow: 'hidden', borderRadius: borderRadius.nbCard },
+  attachmentCaption: {
+    position: 'absolute',
+    left: 8,
+    bottom: 8,
+    maxWidth: 200,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 2,
+  },
+  attachmentCaptionText: { fontSize: 12, fontWeight: '800' },
   fileCard: { width: 248, padding: 12, gap: 10 },
   fileRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   attachmentFileName: { fontSize: 14, fontWeight: '800', flex: 1 },
@@ -295,7 +311,7 @@ function formatFileSize(bytes) {
   return `${(bytes / (BYTES_PER_KB * BYTES_PER_KB)).toFixed(1)} MB`;
 }
 
-function ChatSessionCard({ message, colors, peerFirstName }) {
+function ChatSessionCard({ message, colors, peerFirstName, onConfirmSession, onChangeSessionTime }) {
   const title = message.sessionTitle || message.text || 'Training session';
   const when = message.sessionWhen || '';
   const meta = message.sessionMeta || '';
@@ -349,12 +365,12 @@ function ChatSessionCard({ message, colors, peerFirstName }) {
         {status === 'scheduled' && !message.sent ? (
           <View style={{ flexDirection: 'row', gap: 8 }}>
             <View style={{ flex: 1 }}>
-              <NbButton variant="ghost" sm onPress={() => {}}>
+              <NbButton variant="ghost" sm onPress={() => onChangeSessionTime?.(message)}>
                 Change time
               </NbButton>
             </View>
             <View style={{ flex: 1 }}>
-              <NbButton variant="fill" sm onPress={() => {}}>
+              <NbButton variant="fill" sm onPress={() => onConfirmSession?.(message)}>
                 Confirm
               </NbButton>
             </View>
@@ -365,7 +381,14 @@ function ChatSessionCard({ message, colors, peerFirstName }) {
   );
 }
 
-function ChatBubble({ message, colors, onLongPress, peerFirstName }) {
+function ChatBubble({
+  message,
+  colors,
+  onLongPress,
+  peerFirstName,
+  onConfirmSession,
+  onChangeSessionTime,
+}) {
   const isImage = message.type === 'image';
   const isFile = message.type === 'file';
   const isSession = message.type === 'session' || message.sessionTitle || message.sessionWhen;
@@ -373,6 +396,7 @@ function ChatBubble({ message, colors, onLongPress, peerFirstName }) {
   const bubbleBg = sent ? colors.nbFill : colors.nbSurface;
   const bubbleText = sent ? colors.nbOnFill : colors.nbInk;
   const padless = isImage || isFile || isSession;
+  const imageCaption = String(message.caption || '').trim();
 
   const openFile = () => {
     if (message.fileUrl) Linking.openURL(message.fileUrl);
@@ -380,12 +404,40 @@ function ChatBubble({ message, colors, onLongPress, peerFirstName }) {
 
   const renderBubbleBody = () => {
     if (isSession) {
-      return <ChatSessionCard message={message} colors={colors} peerFirstName={peerFirstName} />;
+      return (
+        <ChatSessionCard
+          message={message}
+          colors={colors}
+          peerFirstName={peerFirstName}
+          onConfirmSession={onConfirmSession}
+          onChangeSessionTime={onChangeSessionTime}
+        />
+      );
     }
     if (isImage && message.fileUrl) {
       return (
-        <TouchableOpacity activeOpacity={0.9} onPress={() => message.onPreview?.()} onLongPress={onLongPress}>
+        <TouchableOpacity
+          activeOpacity={0.9}
+          onPress={() => message.onPreview?.()}
+          onLongPress={onLongPress}
+          style={bubbleStyles.attachmentImageWrap}
+        >
           <Image source={{ uri: message.fileUrl }} style={bubbleStyles.attachmentImage} resizeMode="cover" />
+          {imageCaption ? (
+            <View
+              style={[
+                bubbleStyles.attachmentCaption,
+                { backgroundColor: colors.nbFill, borderColor: colors.nbBorder },
+              ]}
+            >
+              <Text
+                style={[bubbleStyles.attachmentCaptionText, { color: colors.nbOnFill }]}
+                numberOfLines={2}
+              >
+                {imageCaption}
+              </Text>
+            </View>
+          ) : null}
         </TouchableOpacity>
       );
     }
@@ -621,6 +673,8 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
   const [attachOpen, setAttachOpen] = useState(false);
   const [peerBlocked, setPeerBlocked] = useState(false);
   const [unblocking, setUnblocking] = useState(false);
+  const [notice, setNotice] = useState(null);
+  const showNotice = (title, message, onOk) => setNotice({ title, message, onOk });
   const scrollRef = useRef(null);
   const oldestTimestampRef = useRef(null);
   const currentUser = auth.currentUser;
@@ -740,7 +794,7 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
       return () => unsubscribe();
     } catch (error) {
       console.error('Error initializing conversation:', error);
-      Alert.alert('Error', error.message || 'Failed to load conversation.');
+      showNotice('Could not load', error.message || 'Failed to load conversation.');
     } finally {
       setLoading(false);
     }
@@ -776,7 +830,7 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
     } catch (error) {
       console.error('Error sending message:', error);
       setMessageText(text);
-      Alert.alert('Error', error.message || 'Failed to send message.');
+      showNotice('Could not send', error.message || 'Failed to send message.');
     } finally {
       setSending(false);
     }
@@ -801,10 +855,10 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
         goals: trainerData.goals || '',
       });
       setIsAlreadyClient(true);
-      Alert.alert('Success', 'Client added successfully!');
+      showNotice('Client added', 'Client added successfully!');
     } catch (error) {
       console.error('Error adding client:', error);
-      Alert.alert('Error', 'Failed to add client.');
+      showNotice('Could not add client', 'Failed to add client.');
     } finally {
       setAddingClient(false);
     }
@@ -857,7 +911,7 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission needed', 'Please allow access to your photo library to send photos.');
+        showNotice('Permission needed', 'Please allow access to your photo library to send photos.');
         return;
       }
       const result = await ImagePicker.launchImageLibraryAsync({
@@ -868,16 +922,47 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
       if (result.canceled || !result.assets?.[0]?.uri) return;
       const { uri } = result.assets[0];
       const filename = uri.split('/').pop() || `photo_${Date.now()}.jpg`;
+      // Composer text becomes the Design Law caption overlay on the image bubble.
+      const caption = String(messageText || '').trim() || null;
       setUploadingFileName(filename);
       const downloadUrl = await uploadToStorage(uri, filename, 'image/jpeg');
-      await sendAttachmentMessage(conversationId, currentUser.uid, { type: 'image', fileUrl: downloadUrl, fileName: filename });
+      await sendAttachmentMessage(conversationId, currentUser.uid, {
+        type: 'image',
+        fileUrl: downloadUrl,
+        fileName: filename,
+        caption,
+      });
+      if (caption) setMessageText('');
       scrollRef.current?.scrollToEnd({ animated: true });
     } catch (err) {
       console.error('Photo send error:', err?.code, err?.message, err?.serverResponse);
-      Alert.alert('Upload failed', err?.message || 'Failed to send photo.');
+      showNotice('Upload failed', err?.message || 'Failed to send photo.');
     } finally {
       setUploadingFileName(null);
     }
+  };
+
+  // Session card Confirm — write sessionStatus so the badge flips to confirmed.
+  const handleConfirmSession = async (message) => {
+    if (!message?.id) return;
+    try {
+      await updateMessageStatus(message.id, { sessionStatus: 'confirmed', status: 'confirmed' });
+      setMessages((prev) =>
+        prev.map((row) =>
+          row.id === message.id ? { ...row, sessionStatus: 'confirmed', status: 'confirmed' } : row,
+        ),
+      );
+    } catch (err) {
+      showNotice('Could not confirm', err?.message || 'Please try again.');
+    }
+  };
+
+  // Change time — recipient asks for a new slot; we prefill composer (no silent calendar rewrite).
+  const handleChangeSessionTime = (message) => {
+    const when = message?.sessionWhen ? ` (${message.sessionWhen})` : '';
+    const draft = `Can we change the time for ${message?.sessionTitle || 'this session'}${when}?`;
+    setMessageText(draft);
+    showNotice('Suggest a new time', 'We put a note in the composer — send it, or edit the wording first.');
   };
 
   const handlePickFile = async () => {
@@ -898,7 +983,7 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
       scrollRef.current?.scrollToEnd({ animated: true });
     } catch (err) {
       console.error('File send error:', err?.code, err?.message, err?.serverResponse);
-      Alert.alert('Upload failed', err?.message || 'Failed to send file.');
+      showNotice('Upload failed', err?.message || 'Failed to send file.');
     } finally {
       setUploadingFileName(null);
     }
@@ -925,7 +1010,7 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
       await unblockUser(currentUser.uid, peerUid);
       setPeerBlocked(false);
     } catch (e) {
-      Alert.alert('Unblock failed', e?.message || 'Try again.');
+      showNotice('Unblock failed', e?.message || 'Try again.');
     } finally {
       setUnblocking(false);
     }
@@ -957,15 +1042,15 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
         await blockUser(currentUser.uid, peerUid, { displayName });
       }
       setReportSheet(null);
-      Alert.alert(
+      showNotice(
         alsoBlock ? 'Reported and blocked' : 'Report sent',
         alsoBlock
           ? `${displayName} is blocked. You can unblock in Settings → Blocked users.`
           : 'Thanks — we’ll review this as soon as we can.',
-        alsoBlock ? [{ text: 'OK', onPress: () => onClose?.() }] : undefined,
+        alsoBlock ? () => onClose?.() : undefined,
       );
     } catch (e) {
-      Alert.alert('Report failed', e?.message || 'Try again.');
+      showNotice('Report failed', e?.message || 'Try again.');
     } finally {
       setReportBusy(false);
     }
@@ -978,11 +1063,13 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
       onConfirm: async () => {
         try {
           await blockUser(currentUser.uid, peerUid, { displayName });
-          Alert.alert('Blocked', `${displayName} is blocked. You can unblock in Settings → Blocked users.`, [
-            { text: 'OK', onPress: () => onClose?.() },
-          ]);
+          showNotice(
+            'Blocked',
+            `${displayName} is blocked. You can unblock in Settings → Blocked users.`,
+            () => onClose?.(),
+          );
         } catch (e) {
-          Alert.alert('Block failed', e?.message || 'Try again.');
+          showNotice('Block failed', e?.message || 'Try again.');
         }
       },
     });
@@ -1178,6 +1265,8 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
                   colors={colors}
                   onLongPress={item.onLongPress}
                   peerFirstName={peerFirstName}
+                  onConfirmSession={handleConfirmSession}
+                  onChangeSessionTime={handleChangeSessionTime}
                 />
               ),
             )}
@@ -1388,11 +1477,26 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
     </NbSheet>
   );
 
+  const noticeSheetEl = (
+    <NbNoticeSheet
+      visible={!!notice}
+      onClose={() => {
+        const next = notice?.onOk;
+        setNotice(null);
+        if (typeof next === 'function') next();
+      }}
+      title={notice?.title || ''}
+      message={notice?.message}
+      confirmLabel="OK"
+    />
+  );
+
   const inner = (
     <View style={{ flex: 1, backgroundColor: colors.nbBackground }}>
       {chatBody}
       {reportSheetEl}
       {attachSheetEl}
+      {noticeSheetEl}
     </View>
   );
 

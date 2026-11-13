@@ -1,6 +1,6 @@
-// Design Law bottom dock — flat surface, 3px top border, gradient icons, soft active chip, centered +.
+// Design Law bottom dock — production path (Batch 3 chose this over a parallel NbBottomNav shell).
 // Flow: resolve handlers → remember active tab → paint slots + center + → shell navigates.
-// Used by client/trainer shells via ShellBottomNavAnchor. Screens reserve space with useShellBottomNavInset.
+// Used by client/trainer shells via ShellBottomNavAnchor. NbBottomNav.jsx is the preview twin only.
 //
 // vocab: navAccentGradient = brand pink→orange for tab icons + the + button
 // Active chip hugs the icon only (never the label) — soft fill + border, not a black slab over the text.

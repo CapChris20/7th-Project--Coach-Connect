@@ -20,6 +20,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { Swipeable } from 'react-native-gesture-handler';
 import { lightColors, darkColors, spacing, borderRadius, nb } from '../../look-and-feel/colorPalette';
 import NbButton from '../../look-and-feel/NbButton';
+import NbEmptyState from '../../look-and-feel/NbEmptyState';
+import HardShadow from '../../look-and-feel/HardShadow';
 import {
   formatSessionDisplayTitle,
   groupSessionsForSidebar,
@@ -135,60 +137,25 @@ function SessionRow({
 }
 
 function EmptyHistory({ colors }) {
+  // Design Law empty shell — dashed card + icon chip (PNG past-chats drawer)
   return (
-    <View
-      style={[
-        styles.emptyCard,
-        {
-          backgroundColor: colors.nbSurface,
-          borderColor: colors.nbBorder,
-          borderWidth: nb.borderWidth,
-        },
-      ]}
-    >
-      <Ionicons name="time-outline" size={24} color={colors.nbMuted} style={{ marginBottom: 8 }} />
-      <Text style={{ color: colors.nbInk, fontSize: 15, fontFamily: 'SpaceGrotesk_700Bold' }}>
-        No history yet
-      </Text>
-      <Text
-        style={{
-          color: colors.nbMuted,
-          fontSize: 13,
-          fontFamily: 'Inter_400Regular',
-          marginTop: 6,
-          lineHeight: 18,
-        }}
-      >
-        Start a conversation — your chats will appear here.
-      </Text>
-    </View>
+    <NbEmptyState
+      title="No history yet"
+      subtitle="Start a conversation — your chats will appear here."
+      iconChildren={<Ionicons name="time-outline" size={28} color={colors.nbInk} />}
+      iconIndex={2}
+    />
   );
 }
 
 function NoSearchMatches({ colors }) {
   return (
-    <View
-      style={[
-        styles.emptyCard,
-        {
-          backgroundColor: colors.nbSurface,
-          borderColor: colors.nbBorder,
-          borderWidth: nb.borderWidth,
-        },
-      ]}
-    >
-      <Text style={{ color: colors.nbInk, fontSize: 14, fontFamily: 'SpaceGrotesk_700Bold' }}>No matches</Text>
-      <Text
-        style={{
-          color: colors.nbMuted,
-          fontSize: 12,
-          fontFamily: 'Inter_400Regular',
-          marginTop: 4,
-        }}
-      >
-        Try a different search term.
-      </Text>
-    </View>
+    <NbEmptyState
+      title="No matches"
+      subtitle="Try a different search term."
+      iconChildren={<Ionicons name="search-outline" size={28} color={colors.nbInk} />}
+      iconIndex={4}
+    />
   );
 }
 
@@ -301,37 +268,34 @@ function SidebarPanel({
       </View>
 
       <View style={{ paddingHorizontal: spacing.md, marginBottom: spacing.sm + 2 }}>
-        <View
-          style={[
-            styles.searchWrap,
-            {
-              borderColor: colors.nbBorder,
-              backgroundColor: colors.nbSurface,
-              borderWidth: nb.borderWidth,
-              shadowColor: colors.nbShadow,
-              shadowOffset: { width: 3, height: 3 },
-              shadowOpacity: 1,
-              shadowRadius: 0,
-              elevation: 3,
-            },
-          ]}
-        >
-          <Ionicons name="search-outline" size={16} color={colors.nbMuted} />
-          <TextInput
-            value={searchQuery}
-            onChangeText={onSearchChange}
-            placeholder="Search your chats"
-            placeholderTextColor={colors.nbMuted}
-            style={[styles.searchInput, { color: colors.nbInk }]}
-            autoCorrect={false}
-            clearButtonMode="while-editing"
-          />
-          {searchQuery ? (
-            <TouchableOpacity onPress={() => onSearchChange('')} hitSlop={8}>
-              <Ionicons name="close-circle" size={16} color={colors.nbMuted} />
-            </TouchableOpacity>
-          ) : null}
-        </View>
+        <HardShadow offset={nb.shadowOffsetSmall} radius={borderRadius.nbInput}>
+          <View
+            style={[
+              styles.searchWrap,
+              {
+                borderColor: colors.nbBorder,
+                backgroundColor: colors.nbSurface,
+                borderWidth: nb.borderWidth,
+              },
+            ]}
+          >
+            <Ionicons name="search-outline" size={16} color={colors.nbMuted} />
+            <TextInput
+              value={searchQuery}
+              onChangeText={onSearchChange}
+              placeholder="Search your chats"
+              placeholderTextColor={colors.nbMuted}
+              style={[styles.searchInput, { color: colors.nbInk }]}
+              autoCorrect={false}
+              clearButtonMode="while-editing"
+            />
+            {searchQuery ? (
+              <TouchableOpacity onPress={() => onSearchChange('')} hitSlop={8}>
+                <Ionicons name="close-circle" size={16} color={colors.nbMuted} />
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        </HardShadow>
       </View>
 
       <ScrollView

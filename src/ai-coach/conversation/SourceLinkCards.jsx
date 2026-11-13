@@ -136,10 +136,11 @@ function SourceCard({ source, colors, gradient }) {
           end={{ x: 1, y: 1 }}
           style={StyleSheet.absoluteFillObject}
         />
+        {/* PNG 05 uses pin-dot tiles; favicon when it loads, else location pin */}
         {favicon && !failed ? (
           <Image source={{ uri: favicon }} style={styles.favicon} onError={() => setFailed(true)} />
         ) : (
-          <Ionicons name="link-outline" size={16} color={lightColors.nbInk} />
+          <Ionicons name="location" size={16} color={lightColors.nbInk} />
         )}
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>

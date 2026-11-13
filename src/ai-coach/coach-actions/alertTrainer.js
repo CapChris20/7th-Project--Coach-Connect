@@ -205,7 +205,7 @@ export async function sendMessage(conversationId, senderId, messageText) {
  * Flow: 1. refuse missing file  2. read conversation  3. write  4. push (no unread bump)
  * @param {string} conversationId
  * @param {string} senderId
- * @param {{ type: 'image'|'file', fileUrl: string, fileName: string, fileSize?: number }} payload
+ * @param {{ type: 'image'|'file', fileUrl: string, fileName: string, fileSize?: number, text?: string, caption?: string }} payload
  * @returns {Promise<string>} Message ID
  */
 export async function sendAttachmentMessage(conversationId, senderId, payload) {
@@ -221,6 +221,8 @@ export async function sendAttachmentMessage(conversationId, senderId, payload) {
 
     const messageId = makeMessageId();
     const lastMessagePreview = attachmentLastMessagePreview(payload);
+    // Design Law PNG image bubbles show a short caption overlay (“Squat, set 2”).
+    const captionText = String(payload.caption || payload.text || '').trim() || null;
     const messageData = {
       id: messageId,
       conversationId,
@@ -229,6 +231,8 @@ export async function sendAttachmentMessage(conversationId, senderId, payload) {
       fileUrl: payload.fileUrl,
       fileName: payload.fileName || null,
       fileSize: payload.fileSize ?? null,
+      text: captionText,
+      caption: captionText,
       timestamp: serverTimestamp(),
       read: false,
       sent: true,

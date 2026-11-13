@@ -7,7 +7,6 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Platform,
   SafeAreaView,
   ScrollView,
@@ -30,8 +29,8 @@ import {
 import PdfViewer from '../../for-both/files-and-notes/viewers/PdfViewer';
 import SpreadsheetViewer from '../../for-both/files-and-notes/viewers/SpreadsheetViewer';
 import DocumentEditor from '../documents/DocumentEditor';
-import SpreadsheetEditor from '../documents/SpreadsheetEditor';
 import ShareDocumentPopup from '../documents/ShareDocumentPopup';
+import NbNoticeSheet from '../../look-and-feel/NbNoticeSheet';
 import RemoveClientSheet from '../my-trainees/RemoveClientSheet';
 import CalendarTab from '../scheduling/CalendarTab';
 import ProgressTab from '../progress-tab/TrainerProgressTab';
@@ -342,7 +341,15 @@ function screenColorsForTheme(isDark) {
 
 /**
  * Trainer — single-client detail (sessions + notes/files).
- * @param {{ client: object, trainerId: string, onBack: Function, onRemoveClient?: Function, trainerName?: string, getTrainerEditorNavChrome?: Function }} props
+ * @param {{
+ *   client: object,
+ *   trainerId: string,
+ *   onBack: Function,
+ *   onRemoveClient?: Function,
+ *   trainerName?: string,
+ *   getTrainerEditorNavChrome?: Function,
+ *   onMessagesPress?: (clientId: string) => void,
+ * }} props
  */
 const ClientDetailScreen = ({
   client,
@@ -351,6 +358,7 @@ const ClientDetailScreen = ({
   onRemoveClient,
   trainerName: _trainerName,
   getTrainerEditorNavChrome,
+  onMessagesPress,
 }) => {
   const { isDark } = useTrainerTheme();
   const scrollBottomPad = useEmbeddedScrollBottomPad(SCROLL_BOTTOM_PAD);
@@ -365,22 +373,18 @@ const ClientDetailScreen = ({
   const [refreshNotesAndFilesTrigger, setRefreshNotesAndFilesTrigger] = useState(0);
   const [pdfViewer, setPdfViewer] = useState({ visible: false, url: null, name: null });
   const [spreadsheetViewer, setSpreadsheetViewer] = useState({ visible: false, url: null, name: null });
-  const [spreadsheetEditor, setSpreadsheetEditor] = useState({
-    visible: false,
-    documentId: null,
-    title: '',
-    rows: null,
-  });
   const [trainerDocuments, setTrainerDocuments] = useState([]);
   const [documentEditor, setDocumentEditor] = useState({ visible: false, documentId: null });
   const [shareModal, setShareModal] = useState({ visible: false, documentId: null, sharedWith: [] });
+  // vocab: notice = NbNoticeSheet payload — Design Law sheet instead of Alert.alert
+  const [notice, setNotice] = useState(null);
+  const showNotice = useCallback((title, message) => setNotice({ title, message }), []);
 
   const trainerEditorNav = useMemo(
     () =>
       typeof getTrainerEditorNavChrome === 'function'
         ? getTrainerEditorNavChrome(() => {
             setDocumentEditor({ visible: false, documentId: null });
-            setSpreadsheetEditor({ visible: false, documentId: null, title: '', rows: null });
           })
         : null,
     [getTrainerEditorNavChrome],
@@ -573,7 +577,7 @@ const ClientDetailScreen = ({
 
   const confirmRemoveClient = useCallback(async () => {
     if (!trainerId || !client?.id || !functions) {
-      Alert.alert('Unavailable', 'Cloud Functions are not configured.');
+      showNotice('Unavailable', 'Cloud Functions are not configured.');
       return;
     }
     setRemoveBusy(true);
@@ -589,11 +593,11 @@ const ClientDetailScreen = ({
       setShowRemoveSheet(false);
       onRemoveClient?.();
     } catch (e) {
-      Alert.alert('Remove failed', e?.message || 'Could not remove this client.');
+      showNotice('Remove failed', e?.message || 'Could not remove this client.');
     } finally {
       setRemoveBusy(false);
     }
-  }, [client?.id, onRemoveClient, trainerId]);
+  }, [client?.id, onRemoveClient, showNotice, trainerId]);
 
   const clientDisplayName = client?.name || DEFAULT_CLIENT_LABEL;
   const clientSubtitle = getClientSubtext(client);
@@ -735,7 +739,7 @@ const ClientDetailScreen = ({
                   clientName={clientDisplayName}
                   onRemindLog={() => {
                     const first = String(clientDisplayName || 'Client').split(/\s+/)[0];
-                    Alert.alert(
+                    showNotice(
                       'Reminder sent',
                       `${first} will get a nudge to log today’s meals.`,
                     );
@@ -746,6 +750,7 @@ const ClientDetailScreen = ({
                 <CalendarTab
                   clientId={client?.id}
                   clientName={client?.name || DEFAULT_CLIENT_LABEL}
+                  onMessageClient={() => onMessagesPress?.(client?.id)}
                 />
               ) : null}
               {activeTab === TAB_NOTES_FILES ? (
@@ -778,24 +783,6 @@ const ClientDetailScreen = ({
                       sharedWith: initialSharedWith || [],
                     })
                   }
-                  onOpenSpreadsheetEditor={(fileItem) => {
-                    if (!fileItem) return;
-                    const documentId = fileItem?.documentId || fileItem?.id || null;
-                    setSpreadsheetEditor({
-                      visible: true,
-                      documentId,
-                      title: fileItem?.title || fileItem?.name || '',
-                      rows: null,
-                    });
-                  }}
-                  onImportSpreadsheet={(item) => {
-                    if (!item?.url) return;
-                    setSpreadsheetViewer({
-                      visible: true,
-                      url: item.url,
-                      name: item?.name || 'Spreadsheet',
-                    });
-                  }}
                 />
               ) : null}
             </View>
@@ -819,19 +806,6 @@ const ClientDetailScreen = ({
         isDark={isDark}
         onClose={() => setSpreadsheetViewer({ visible: false, url: null, name: null })}
       />
-      <SpreadsheetEditor
-        visible={spreadsheetEditor.visible}
-        trainerId={trainerId}
-        documentId={spreadsheetEditor.documentId}
-        isDark={isDark}
-        initialTitle={spreadsheetEditor.title}
-        initialRows={spreadsheetEditor.rows}
-        onClose={() =>
-          setSpreadsheetEditor({ visible: false, documentId: null, title: '', rows: null })
-        }
-        onSaved={() => getTrainerDocuments(trainerId).then(setTrainerDocuments).catch(() => {})}
-        trainerNavChrome={trainerEditorNav}
-      />
       <DocumentEditor
         visible={documentEditor.visible}
         trainerId={trainerId}
@@ -852,6 +826,13 @@ const ClientDetailScreen = ({
           getTrainerDocuments(trainerId).then(setTrainerDocuments);
           setRefreshNotesAndFilesTrigger((previous) => previous + 1);
         }}
+      />
+      <NbNoticeSheet
+        visible={!!notice}
+        onClose={() => setNotice(null)}
+        title={notice?.title || ''}
+        message={notice?.message}
+        confirmLabel="OK"
       />
     </SafeAreaView>
   );

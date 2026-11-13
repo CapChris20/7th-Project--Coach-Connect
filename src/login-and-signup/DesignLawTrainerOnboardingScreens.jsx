@@ -4,7 +4,7 @@
 //
 // Priority: PNG > DESIGN-SYSTEM > mockups/trainer-setup*.html
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -782,10 +782,16 @@ function ReviewStep({ data, inviteCode, onEditStep, onGoLive, onSaveLater }) {
 
 function AvailabilityStep({ data, setData }) {
   const { colors } = useTheme();
-  const [times, setTimes] = useState([]);
+  // Persist best-times on onboardingData (was local-only useState — lost on Continue).
+  // vocab: preferredSessionTimes = string[] of TIME_CHIPS ids saved with the trainer profile
+  const times = Array.isArray(data.preferredSessionTimes) ? data.preferredSessionTimes : [];
 
   const toggleTime = (id) => {
-    setTimes((prev) => (prev.includes(id) ? prev.filter((t) => t !== id) : [...prev, id]));
+    setData((prev) => {
+      const cur = Array.isArray(prev.preferredSessionTimes) ? prev.preferredSessionTimes : [];
+      const next = cur.includes(id) ? cur.filter((t) => t !== id) : [...cur, id];
+      return { ...prev, preferredSessionTimes: next };
+    });
   };
 
   return (
@@ -870,6 +876,83 @@ function AlmostDoneStep({
       .slice(0, 2)
       .toUpperCase() || 'JR';
 
+  // PNG 09: after capture, show submitted card + striped oval preview (form stays above for edits).
+  const submittedBlock = faceSubmitted ? (
+    <>
+      <HardShadow>
+        <NbCard style={styles.faceCard}>
+          <LinearGradient colors={accentGradients[2]} style={styles.summaryIcon}>
+            <Ionicons name="time-outline" size={18} color={colors.nbInk} />
+          </LinearGradient>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <Text style={[styles.summaryTitle, { color: colors.nbInk }]}>
+                Identity Verification submitted
+              </Text>
+              <View
+                style={{
+                  borderWidth: nb.borderWidth,
+                  borderColor: colors.nbBorder,
+                  borderRadius: 999,
+                  paddingHorizontal: 10,
+                  paddingVertical: 4,
+                  backgroundColor: colors.nbSoft,
+                }}
+              >
+                <Text style={{ fontSize: 11, fontWeight: '900', color: colors.nbInk }}>In review</Text>
+              </View>
+            </View>
+            <Text style={[styles.summarySub, { color: colors.nbMuted, marginTop: 4 }]}>
+              Face photo uploaded for manual review. You can keep going. We will tell you when it is approved.
+            </Text>
+          </View>
+        </NbCard>
+      </HardShadow>
+      <HardShadow>
+        <View
+          style={[
+            styles.facePreviewFrame,
+            { borderColor: colors.nbBorder, backgroundColor: colors.nbSoft },
+          ]}
+        >
+          {data.faceVerificationPhotoURL ? (
+            <Image
+              source={{ uri: data.faceVerificationPhotoURL }}
+              style={StyleSheet.absoluteFillObject}
+              resizeMode="cover"
+            />
+          ) : null}
+          <View
+            pointerEvents="none"
+            style={[
+              styles.faceOvalGuide,
+              { borderColor: colors.nbBorder },
+            ]}
+          />
+        </View>
+      </HardShadow>
+    </>
+  ) : (
+    <HardShadow>
+      <NbCard style={styles.faceCard}>
+        <LinearGradient colors={accentGradients[2]} style={styles.summaryIcon}>
+          <Ionicons name="scan-outline" size={18} color={colors.nbInk} />
+        </LinearGradient>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.summaryTitle, { color: colors.nbInk }]}>
+            Identity verification (Face ID)
+          </Text>
+          <Text style={[styles.summarySub, { color: colors.nbMuted }]}>
+            Takes 30 seconds. Reviewed by a person.
+          </Text>
+        </View>
+        <NbButton variant="plain" onPress={onStartFace} disabled={faceCapturing}>
+          Start
+        </NbButton>
+      </NbCard>
+    </HardShadow>
+  );
+
   return (
     <View style={styles.stack}>
       <Text style={[styles.h1, { color: colors.nbInk }]}>A few last details</Text>
@@ -935,24 +1018,7 @@ function AlmostDoneStep({
         </NbCard>
       </HardShadow>
 
-      <HardShadow>
-        <NbCard style={styles.faceCard}>
-          <LinearGradient colors={accentGradients[2]} style={styles.summaryIcon}>
-            <Ionicons name="scan-outline" size={18} color={colors.nbInk} />
-          </LinearGradient>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.summaryTitle, { color: colors.nbInk }]}>
-              {faceSubmitted ? 'Identity Verification submitted' : 'Identity verification (Face ID)'}
-            </Text>
-            <Text style={[styles.summarySub, { color: colors.nbMuted }]}>
-              {faceSubmitted ? 'In review — you can keep going.' : 'Takes 30 seconds. Reviewed by a person.'}
-            </Text>
-          </View>
-          <NbButton variant="plain" onPress={onStartFace} disabled={faceCapturing}>
-            {faceSubmitted ? 'Done' : 'Start'}
-          </NbButton>
-        </NbCard>
-      </HardShadow>
+      {submittedBlock}
     </View>
   );
 }
@@ -1475,6 +1541,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+  },
+  // PNG 09 verification submitted: striped/soft frame with oval face guide
+  facePreviewFrame: {
+    height: 220,
+    borderWidth: nb.borderWidth,
+    borderRadius: borderRadius.nbHero,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  faceOvalGuide: {
+    width: 140,
+    height: 180,
+    borderRadius: 90,
+    borderWidth: 3,
+    borderStyle: 'dashed',
+    backgroundColor: 'transparent',
   },
   tagPill: {
     borderRadius: 999,

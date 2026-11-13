@@ -1,5 +1,5 @@
 // Design Law full-screen PDF viewer (PNG 09–12).
-// Flow: parent sets visible + url → NbPageHeader chrome → WebView → Download / Share / Delete actions.
+// Flow: parent sets visible + url → NbPageHeader (back + next) → WebView card → page label → actions.
 // Used by FilesScreen and Notes & Files openers. Missing url returns null so an empty modal never mounts.
 // vocab: HardShadow = solid offset; shell SafeArea is L/R only so NbPageHeader owns top inset
 
@@ -11,6 +11,7 @@ import {
   StyleSheet,
   ActivityIndicator,
   Platform,
+  TouchableOpacity,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -26,6 +27,8 @@ const DEFAULT_DOCUMENT_NAME = 'Document';
 const TITLE_MAX_LENGTH = 40;
 const TITLE_TRIM_LENGTH = 37;
 const WEBVIEW_ORIGIN_WHITELIST = ['*'];
+// Manipulate here: fallback page total when the PDF itself does not report one
+const DEFAULT_PAGE_TOTAL = 1;
 
 // ===== HELPER FUNCTIONS =====
 
@@ -35,15 +38,45 @@ function shortenDocumentTitle(name) {
   return rawTitle;
 }
 
+/**
+ * Strip an existing #page= fragment, then pin the requested page for many PDF hosts.
+ * @param {string} url
+ * @param {number} page
+ * @returns {string}
+ */
+function pdfUrlForPage(url, page) {
+  const raw = String(url || '').trim();
+  if (!raw) return raw;
+  const withoutHash = raw.replace(/#.*$/, '');
+  const safePage = Math.max(1, Number(page) || 1);
+  return `${withoutHash}#page=${safePage}`;
+}
+
+/**
+ * @param {string} subtitle
+ * @param {number|null|undefined} fileSizeLabel
+ * @param {string|null|undefined} fromLabel
+ * @returns {string}
+ */
+function buildPdfSubtitle(subtitle, fileSizeLabel, fromLabel) {
+  const parts = [subtitle || 'PDF'];
+  if (fileSizeLabel) parts.push(String(fileSizeLabel));
+  if (fromLabel) parts.push(String(fromLabel));
+  return parts.join(' · ');
+}
+
 // ===== MAIN FUNCTION =====
 
 /**
- * Full-screen PDF preview with Design Law header + action row.
+ * Full-screen PDF preview with Design Law header + page chrome + action row.
  * @param {{
  *   visible: boolean,
  *   url?: string,
  *   name?: string,
  *   subtitle?: string,
+ *   fileSizeLabel?: string,
+ *   fromLabel?: string,
+ *   pageCount?: number,
  *   isDark?: boolean,
  *   onClose: Function,
  *   onDownload?: Function,
@@ -56,6 +89,9 @@ export default function PdfViewer({
   url,
   name,
   subtitle = 'PDF',
+  fileSizeLabel,
+  fromLabel,
+  pageCount,
   isDark: _isDarkIgnored = true,
   onClose,
   onDownload,
@@ -66,17 +102,52 @@ export default function PdfViewer({
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const [isLoading, setIsLoading] = useState(true);
+  // vocab: pageIndex = 1-based page the header forward chip advances
+  const [pageIndex, setPageIndex] = useState(1);
+
+  const totalPages = Math.max(DEFAULT_PAGE_TOTAL, Number(pageCount) || DEFAULT_PAGE_TOTAL);
 
   useEffect(() => {
-    if (visible && url) setIsLoading(true);
+    if (visible && url) {
+      setIsLoading(true);
+      setPageIndex(1);
+    }
   }, [visible, url]);
 
   const title = useMemo(() => shortenDocumentTitle(name), [name]);
+  const headerSubtitle = useMemo(
+    () => buildPdfSubtitle(subtitle, fileSizeLabel, fromLabel),
+    [subtitle, fileSizeLabel, fromLabel],
+  );
+  const webSource = useMemo(
+    () => ({ uri: pdfUrlForPage(url, pageIndex) }),
+    [url, pageIndex],
+  );
+
+  const goPrevPage = () => {
+    setPageIndex((prev) => Math.max(1, prev - 1));
+    setIsLoading(true);
+  };
+
+  const goNextPage = () => {
+    setPageIndex((prev) => Math.min(totalPages, prev + 1));
+    setIsLoading(true);
+  };
+
+  // When we do not know the real page count, still allow advancing a few pages via #page=
+  const canGoNext = pageCount ? pageIndex < totalPages : pageIndex < 20;
+  const canGoPrev = pageIndex > 1;
 
   return (
     <Modal visible={visible} animationType="slide" transparent={false} onRequestClose={onClose}>
       <View style={[styles.container, { backgroundColor: colors.nbBackground }]}>
-        <NbPageHeader title={title} subtitle={subtitle} onBack={onClose} />
+        <NbPageHeader
+          title={title}
+          subtitle={headerSubtitle}
+          onBack={onClose}
+          onForward={goNextPage}
+          forwardDisabled={!canGoNext}
+        />
 
         <View style={styles.previewWrap}>
           <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard} style={styles.previewShadow}>
@@ -87,7 +158,8 @@ export default function PdfViewer({
               ]}
             >
               <WebView
-                source={{ uri: url }}
+                key={`pdf-page-${pageIndex}`}
+                source={webSource}
                 style={styles.webview}
                 onLoadEnd={() => setIsLoading(false)}
                 onError={() => setIsLoading(false)}
@@ -105,6 +177,39 @@ export default function PdfViewer({
               ) : null}
             </View>
           </HardShadow>
+
+          {/* Design Law PNG 09 — page label under the preview card */}
+          <View style={styles.pageRow}>
+            {canGoPrev ? (
+              <TouchableOpacity
+                onPress={goPrevPage}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityRole="button"
+                accessibilityLabel="Previous page"
+              >
+                <Text style={[styles.pageNav, { color: colors.nbInk }]}>Prev</Text>
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.pageNavSpacer} />
+            )}
+            <Text style={[styles.pageLabel, { color: colors.nbMuted }]}>
+              {pageCount
+                ? `Page ${pageIndex} of ${totalPages}`
+                : `Page ${pageIndex}`}
+            </Text>
+            {canGoNext ? (
+              <TouchableOpacity
+                onPress={goNextPage}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityRole="button"
+                accessibilityLabel="Next page"
+              >
+                <Text style={[styles.pageNav, { color: colors.nbInk }]}>Next</Text>
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.pageNavSpacer} />
+            )}
+          </View>
         </View>
 
         <View
@@ -163,6 +268,25 @@ const styles = StyleSheet.create({
   },
   loadingTitle: { fontSize: 16, fontWeight: '800', marginTop: 8 },
   loadingSubtitle: { fontSize: 13, textAlign: 'center', fontWeight: '500' },
+  pageRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    minHeight: 44,
+  },
+  pageLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  pageNav: {
+    fontSize: 13,
+    fontWeight: '800',
+    minWidth: 44,
+    textAlign: 'center',
+  },
+  pageNavSpacer: { minWidth: 44 },
   actions: {
     paddingHorizontal: nb.screenGutter,
     paddingTop: spacing.md,

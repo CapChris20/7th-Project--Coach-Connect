@@ -43,9 +43,9 @@ const MARKDOWN_STYLES = {
 };
 
 export const LOVABLE_ACCENTS = [
-  { key: 'warm-a', gradient: [lightColors.primaryDark, '#C2410C'], text: lightColors.primaryDark },
-  { key: 'warm-b', gradient: ['#C2410C', lightColors.primaryDark], text: '#C2410C' },
-  { key: 'warm-c', gradient: [lightColors.primaryDark, '#9A3412'], text: lightColors.primaryDark },
+  { key: 'warm-a', gradient: ['#C2410C', '#F97316'], text: '#C2410C' },
+  { key: 'warm-b', gradient: ['#F97316', '#C2410C'], text: '#F97316' },
+  { key: 'warm-c', gradient: ['#C2410C', '#9A3412'], text: '#C2410C' },
   { key: 'warm-d', gradient: ['#9A3412', '#C2410C'], text: '#C2410C' },
 ];
 

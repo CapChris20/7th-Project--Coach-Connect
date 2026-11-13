@@ -32,7 +32,14 @@ function parseQuery(path) {
 
 // ===== MAIN =====
 
-const CalendarTab = ({ clientId, clientName }) => {
+/**
+ * @param {{
+ *   clientId?: string,
+ *   clientName?: string,
+ *   onMessageClient?: (session: object) => void,
+ * }} props
+ */
+const CalendarTab = ({ clientId, clientName, onMessageClient }) => {
   const [route, setRoute] = useState(HOME_ROUTE);
   const onNavigate = (path) => setRoute(path || HOME_ROUTE);
 
@@ -73,6 +80,7 @@ const CalendarTab = ({ clientId, clientName }) => {
         clientId={clientId}
         clientName={clientName}
         onNavigate={onNavigate}
+        onMessageClient={onMessageClient}
       />
     </View>
   );

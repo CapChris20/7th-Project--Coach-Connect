@@ -42,6 +42,11 @@ export const CLIENT_ROUTES = {
   MySessions: 'ClientMySessions',
   RequestSession: 'ClientRequestSession',
   AIChat: 'ClientAIChat',
+  // Design Law Batch 1 gap screens (missing-screens)
+  LogWorkout: 'ClientLogWorkout',
+  DailyCheckIn: 'ClientDailyCheckIn',
+  MoodCheckIn: 'ClientMoodCheckIn',
+  WeeklyMomentum: 'ClientWeeklyMomentum',
 };
 
 export const TRAINER_ROUTES = {

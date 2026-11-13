@@ -16,7 +16,13 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import { db } from '../../app-start/cloudConnection';
-import { searchManualExerciseLibrary } from './builtInExerciseList';
+import {
+  searchManualExerciseLibrary,
+  filterManualExerciseLibrary,
+  inferExerciseEquipment,
+} from './builtInExerciseList';
+
+export { inferExerciseEquipment };
 
 // ===== NAMED CONSTANTS =====
 
@@ -756,7 +762,16 @@ export async function deleteManualWorkoutPlan(trainerId, planId) {
  * @param {number} limit
  * @returns {Array}
  */
-export function searchExercisesForBuilder(query, limit) {
+export function searchExercisesForBuilder(query, limit, filters = {}) {
+  // Prefer filtered search when muscle/equipment chips are set (Design Law PNG 21).
+  if (filters?.muscle || (Array.isArray(filters?.equipments) && filters.equipments.length)) {
+    return filterManualExerciseLibrary({
+      query,
+      muscle: filters.muscle || null,
+      equipments: filters.equipments || [],
+      limit,
+    });
+  }
   return searchManualExerciseLibrary(query, limit);
 }
 

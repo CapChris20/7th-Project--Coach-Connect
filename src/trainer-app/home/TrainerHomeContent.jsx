@@ -9,11 +9,11 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
-  Alert,
   Modal,
   Share,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Clipboard from 'expo-clipboard';
 import * as Notifications from 'expo-notifications';
 import { Ionicons } from '@expo/vector-icons';
 import { doc, getDoc, onSnapshot, collection, getDocs, setDoc, serverTimestamp, query, where } from 'firebase/firestore';
@@ -48,6 +48,7 @@ import {
 } from './trainerHomePieces';
 import {
   DesignLawTrainerClientCarousel,
+  DesignLawTrainerWeeklyReportEmpty,
   DesignLawTrainerClientTodayLabel,
   DesignLawTrainerHeader,
   DesignLawTrainerMotivationCard,
@@ -55,11 +56,10 @@ import {
   DesignLawTrainerToolsGrid,
   trainerHomeThemeColors,
 } from './DesignLawTrainerHomeBlocks';
-import DesignLawTrainerCreateSheet, {
-  buildCustomProgramStarterRows,
-} from './DesignLawTrainerCreateSheet';
+import DesignLawTrainerCreateSheet from './DesignLawTrainerCreateSheet';
 import { PayoutSetupReminderPopup } from '../../for-both/payments/PayoutSetupReminderPopup';
 import { shouldShowPayoutSetupReminderPopup } from '../../for-both/payments/whenToAskForPayoutSetup';
+import NbNoticeSheet from '../../look-and-feel/NbNoticeSheet';
 import { lightColors, nb } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
@@ -336,7 +336,6 @@ const DashboardContent = ({
   onOpenPhotoGallery,
   onOpenAIWorkouts,
   onOpenDocumentEditor: openDocumentEditor,
-  onOpenSpreadsheetEditor: openSpreadsheetEditor,
   onRefreshClients,
   userName,
   trainerId,
@@ -351,6 +350,9 @@ const DashboardContent = ({
   onOpenPayments,
   appSessionId,
   userEmail = '',
+  // empty-vs-data PNG 03: invite code + List me on the empty clients shell
+  inviteCode = null,
+  onListMe,
 }) => {
   const shellBottomPad = useShellBottomNavInset(28);
   const themeColors = trainerHomeThemeColors(isDark);
@@ -375,6 +377,11 @@ const DashboardContent = ({
   const [payoutNudgeDismissed, setPayoutNudgeDismissed] = useState(false);
   const [showPaymentPopup, setShowPaymentPopup] = useState(false);
   const [paymentPopupStripeAccountId, setPaymentPopupStripeAccountId] = useState('');
+  // vocab: notice = Design Law NbNoticeSheet payload ({ title, message }) — replaces Alert.alert
+  const [notice, setNotice] = useState(null);
+  const showNotice = useCallback((title, message) => {
+    setNotice({ title, message });
+  }, []);
 
   const PAYOUT_NUDGE_KEY = '@coachconnect_payout_nudge_dismissed_session';
 
@@ -925,8 +932,8 @@ const DashboardContent = ({
         onMessagesPress?.(currentClient?.id);
         return;
       }
-      // PNG 05: Document maker and Spreadsheet creator share one “Create something” launcher.
-      if (action === 'document' || action === 'spreadsheet') {
+      // PNG 05: Document maker opens the “Create something” launcher (spreadsheet editor retired).
+      if (action === 'document') {
         setShowCreateSheet(true);
         return;
       }
@@ -950,8 +957,6 @@ const DashboardContent = ({
     [
       currentClient,
       onMessagesPress,
-      openDocumentEditor,
-      openSpreadsheetEditor,
       onOpenAIWorkouts,
       onOpenPhotoGallery,
     ],
@@ -1065,6 +1070,24 @@ const DashboardContent = ({
         dailyHints={clientDailyHints}
         onSelectClient={setSelectedClientId}
         onRemoveClient={promptRemoveClientFromDashboard}
+        inviteCode={inviteCode}
+        onCopyInvite={async (code) => {
+          const raw = String(code || '').trim();
+          if (!raw) {
+            showNotice('Invite code', 'Your invite code is not ready yet.');
+            return;
+          }
+          try {
+            await Clipboard.setStringAsync(raw);
+            showNotice('Copied', 'Invite code copied.');
+          } catch (_) {
+            showNotice('Copy failed', 'Could not copy the invite code.');
+          }
+        }}
+        onListMe={() => {
+          if (typeof onListMe === 'function') onListMe();
+          else onClientsPress?.();
+        }}
       />
 
       {clients.length > 0 && currentClient?.id ? (
@@ -1105,7 +1128,7 @@ const DashboardContent = ({
                   currentClient?.name || currentClient?.displayName || 'Client',
                 )
                   .split(/\s+/)[0];
-                Alert.alert('Reminder sent', `${first} will get a nudge to log today’s meals.`);
+                showNotice('Reminder sent', `${first} will get a nudge to log today’s meals.`);
               }}
             />
           )}
@@ -1117,6 +1140,8 @@ const DashboardContent = ({
               clientId={currentClient?.id}
               clientName={currentClient?.name || 'Client'}
               trainerName={userName}
+              // Design Law session Message CTA → open inbox chat for this client
+              onMessageClient={() => onMessagesPress?.(currentClient?.id)}
             />
           )}
           {activeTab === 'Notes & Files' && (
@@ -1145,21 +1170,6 @@ const DashboardContent = ({
               onOpenShareModal={({ documentId, initialSharedWith }) =>
                 setShareModal({ visible: true, documentId, sharedWith: initialSharedWith || [] })
               }
-              onOpenSpreadsheetEditor={(f) => {
-                if (!f) {
-                  openSpreadsheetEditor?.({ documentId: null, title: '', rows: null });
-                  return;
-                }
-                openSpreadsheetEditor?.({
-                  documentId: f?.documentId || f?.id || null,
-                  title: f?.title || f?.name || '',
-                  rows: null,
-                });
-              }}
-              onImportSpreadsheet={(item) => {
-                if (!item?.url) return;
-                setSpreadsheetViewer({ visible: true, url: item.url, name: item?.name || 'Spreadsheet' });
-              }}
             />
           )}
         </View>
@@ -1181,7 +1191,9 @@ const DashboardContent = ({
           clientsTotal={clients.length}
           onOpenWeeklyReport={onOpenWeeklyReport}
         />
-      ) : null}
+      ) : (
+        <DesignLawTrainerWeeklyReportEmpty themeColors={themeColors} />
+      )}
 
       <View style={{ height: 16 }} />
       <SpreadsheetViewer
@@ -1214,7 +1226,7 @@ const DashboardContent = ({
         const client = removeClientHold;
         if (!client?.id || !trainerId) return;
         if (!functions) {
-          Alert.alert('Unavailable', 'Cloud Functions are not configured.');
+          showNotice('Unavailable', 'Cloud Functions are not configured.');
           return;
         }
         setRemoveClientBusy(true);
@@ -1236,9 +1248,9 @@ const DashboardContent = ({
             return remaining[0]?.id ?? null;
           });
           onTrainerClientRemoved?.(removedId);
-          Alert.alert('Client removed', `${displayName} is no longer on your roster.`);
+          showNotice('Client removed', `${displayName} is no longer on your roster.`);
         } catch (e) {
-          Alert.alert('Remove failed', e?.message || 'Could not remove this client.');
+          showNotice('Remove failed', e?.message || 'Could not remove this client.');
         } finally {
           setRemoveClientBusy(false);
         }
@@ -1257,16 +1269,13 @@ const DashboardContent = ({
       onClose={() => setShowCreateSheet(false)}
       isDark={isDark}
       onRichText={() => openDocumentEditor?.({ documentId: null })}
-      onBlankGrid={() =>
-        openSpreadsheetEditor?.({ documentId: null, title: '', rows: null })
-      }
-      onCustomProgram={() =>
-        openSpreadsheetEditor?.({
-          documentId: null,
-          title: 'Custom program',
-          rows: buildCustomProgramStarterRows(),
-        })
-      }
+    />
+    <NbNoticeSheet
+      visible={!!notice}
+      onClose={() => setNotice(null)}
+      title={notice?.title || ''}
+      message={notice?.message}
+      confirmLabel="OK"
     />
     </>
   );

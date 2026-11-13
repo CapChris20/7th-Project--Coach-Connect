@@ -1,5 +1,5 @@
 // Sheet for pasting coach-chat text (neobrutalist design).
-// Flow: open → focus the field after a short delay → confirm sends the draft, cancel just closes.
+// Flow: open → try clipboard prefill → focus field → confirm sends the draft, cancel just closes.
 // Used by: CoachConversationScreen. Uses NbSheet and NbButton components.
 //
 // vocab: NbSheet = neobrutalist bottom sheet with thick border
@@ -13,6 +13,7 @@ import {
   View,
 } from 'react-native';
 import { useColorScheme } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { lightColors, darkColors, spacing, borderRadius, nb } from '../../look-and-feel/colorPalette';
 import NbSheet from '../../look-and-feel/NbSheet';
 import NbButton from '../../look-and-feel/NbButton';
@@ -28,9 +29,10 @@ const DRAFT_LABEL = 'TEXT';
 const DRAFT_PLACEHOLDER = 'Paste your text…';
 const CANCEL_LABEL = 'Cancel';
 const CONFIRM_LABEL = 'Add to message';
+// Manipulate here: hard cap so a huge clipboard dump cannot blow the composer
+const PASTE_MAX_CHARS = 4000;
 
 // ===== HELPER FUNCTIONS =====
-
 
 /**
  * Empty or whitespace-only drafts cannot be added.
@@ -42,6 +44,17 @@ function hasPasteDraftText(draft) {
   return Boolean(String(draft).trim());
 }
 
+/**
+ * Soft-trim clipboard so we never prefill noise or overflow the field.
+ * @param {string} raw
+ * @returns {string}
+ */
+function clipboardPrefillText(raw) {
+  const trimmed = String(raw || '').trim();
+  if (!trimmed) return '';
+  if (trimmed.length <= PASTE_MAX_CHARS) return trimmed;
+  return trimmed.slice(0, PASTE_MAX_CHARS);
+}
 
 function focusPasteField(inputRef) {
   const input = inputRef.current;
@@ -83,7 +96,7 @@ function PasteSheetActions({ canConfirmPaste, onClose, onConfirmDraft }) {
 // ===== MAIN FUNCTION =====
 
 /**
- * Dedicated paste surface using NbSheet — avoids stale Simulator clipboard reads.
+ * Dedicated paste surface using NbSheet — prefers clipboard prefill, then manual edit.
  * @param {{ visible: boolean, onClose: Function, onConfirm?: Function, t?: object, isDark?: boolean }} props
  */
 export default function PasteTextPopup({ visible, onClose, onConfirm, t, isDark: isDarkProp }) {
@@ -100,11 +113,27 @@ export default function PasteTextPopup({ visible, onClose, onConfirm, t, isDark:
       setDraft('');
       return undefined;
     }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        // vocab: getStringAsync = Expo clipboard read (Simulator may still return empty)
+        const fromClipboard = clipboardPrefillText(await Clipboard.getStringAsync());
+        if (!cancelled && fromClipboard) setDraft(fromClipboard);
+      } catch (_) {
+        /* clipboard optional — user can still type */
+      }
+    })();
+
     const focusTimeoutId = setTimeout(() => focusPasteField(inputRef), FOCUS_AFTER_OPEN_MS);
-    return () => clearTimeout(focusTimeoutId);
+    return () => {
+      cancelled = true;
+      clearTimeout(focusTimeoutId);
+    };
   }, [visible]);
 
   const canConfirmPaste = hasPasteDraftText(draft);
+  const overLimit = String(draft || '').length >= PASTE_MAX_CHARS;
 
   function handleConfirmPaste() {
     sendPastedDraft(onConfirm, draft);
@@ -135,8 +164,9 @@ export default function PasteTextPopup({ visible, onClose, onConfirm, t, isDark:
       <TextInput
         ref={inputRef}
         value={draft}
-        onChangeText={setDraft}
+        onChangeText={(next) => setDraft(String(next || '').slice(0, PASTE_MAX_CHARS))}
         multiline
+        maxLength={PASTE_MAX_CHARS}
         placeholder={DRAFT_PLACEHOLDER}
         placeholderTextColor={colors.nbMuted}
         style={[
@@ -150,6 +180,11 @@ export default function PasteTextPopup({ visible, onClose, onConfirm, t, isDark:
           },
         ]}
       />
+      {overLimit ? (
+        <Text style={[styles.limitHint, { color: colors.nbMuted }]}>
+          Max {PASTE_MAX_CHARS.toLocaleString()} characters
+        </Text>
+      ) : null}
       <PasteSheetActions
         canConfirmPaste={canConfirmPaste}
         onClose={onClose}
@@ -176,6 +211,11 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.nbCard,
     padding: spacing.md,
     fontSize: 15,
+  },
+  limitHint: {
+    marginTop: 6,
+    fontSize: 12,
+    fontWeight: '600',
   },
   actionsRow: {
     flexDirection: 'row',
