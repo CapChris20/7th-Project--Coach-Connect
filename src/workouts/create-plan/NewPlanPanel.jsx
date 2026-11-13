@@ -240,7 +240,7 @@ function ProfileFactRow({
  * @param {Function} props.onRetryGenerate
  * @param {object} [props.contentContainerStyle]
  */
-export default function NewPlanDesignLawPanel({
+export default function NewPlanPanel({
   sourceTab,
   onSourceTabChange,
   onboardingData,

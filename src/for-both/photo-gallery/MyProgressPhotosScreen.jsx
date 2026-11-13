@@ -6,7 +6,6 @@ import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react'
 import {
   ActionSheetIOS,
   ActivityIndicator,
-  Alert,
   Animated,
   FlatList,
   Image,
@@ -28,6 +27,8 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useTheme } from '../../look-and-feel/lightDarkMode';
 import NbCard from '../../look-and-feel/NbCard';
 import NbButton from '../../look-and-feel/NbButton';
+import NbNoticeSheet from '../../look-and-feel/NbNoticeSheet';
+import NbSheet from '../../look-and-feel/NbSheet';
 import HardShadow from '../../look-and-feel/HardShadow';
 import { borderRadius, gradients, nb } from '../../look-and-feel/colorPalette';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -684,6 +685,12 @@ export default function MyProgressPhotosScreen({
   const [compareOpen, setCompareOpen] = useState(false);
   const [fullscreenZoomed, setFullscreenZoomed] = useState(false);
   const [galleryReloadKey, setGalleryReloadKey] = useState(0);
+  const [notice, setNotice] = useState(null);
+  const [photoActionsPhoto, setPhotoActionsPhoto] = useState(null);
+  const showNotice = useCallback(
+    (title, message, extras = {}) => setNotice({ title, message, ...extras }),
+    [],
+  );
   const listRef = useRef(null);
 
   const isDark = appIsDark;
@@ -729,19 +736,25 @@ export default function MyProgressPhotosScreen({
   const handleAddPhoto = useCallback(async () => {
     // 1. Trainers in view-only mode cannot upload.
     if (!allowUpload) {
-      Alert.alert('View only', 'Your trainer can add photos here when upload is enabled for this view.');
+      showNotice('View only', 'Your trainer can add photos here when upload is enabled for this view.');
       return;
     }
 
     // 2. Need a client id to know which profile folder to write.
     if (!clientId) {
-      Alert.alert('Something went wrong', 'We could not tell which profile to save this photo to. Go back and open Progress Photos again.');
+      showNotice(
+        'Something went wrong',
+        'We could not tell which profile to save this photo to. Go back and open Progress Photos again.',
+      );
       return;
     }
 
     // 3. Need Firestore and Storage. Offline / misconfigured installs stop here.
     if (!db || !storage) {
-      Alert.alert('Upload unavailable', 'Photo backup is not available right now. Check your internet connection and that the app is configured with Firebase Storage, then try again.');
+      showNotice(
+        'Upload unavailable',
+        'Photo backup is not available right now. Check your internet connection and that the app is configured with Firebase Storage, then try again.',
+      );
       return;
     }
 
@@ -749,7 +762,7 @@ export default function MyProgressPhotosScreen({
     // vocab: ImagePicker = Expo photo library. status !== 'granted' means they tapped Don't Allow.
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission needed', 'Allow access to your photos to add progress pictures.');
+      showNotice('Permission needed', 'Allow access to your photos to add progress pictures.');
       return;
     }
 
@@ -771,9 +784,9 @@ export default function MyProgressPhotosScreen({
         uploadedByUid: auth?.currentUser?.uid,
       });
     } catch (uploadError) {
-      Alert.alert('Upload failed', uploadError?.message || 'Could not add photo.');
+      showNotice('Upload failed', uploadError?.message || 'Could not add photo.');
     }
-  }, [allowUpload, clientId, db, storage]);
+  }, [allowUpload, clientId, db, storage, showNotice]);
 
   useEffect(() => {
     if (typeof onRegisterAddHandler !== 'function') return undefined;
@@ -826,21 +839,19 @@ export default function MyProgressPhotosScreen({
     if (!photo) return;
 
     // 2. Confirm, then remove Storage + the Firestore row. The live listener drops the card.
-    Alert.alert('Delete photo', 'Are you sure you want to delete this photo?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await deleteProgressPhoto({ photo, clientId });
-            closeModal();
-          } catch (deleteError) {
-            Alert.alert('Error', deleteError?.message || 'Could not delete photo.');
-          }
-        },
+    showNotice('Delete photo', 'Are you sure you want to delete this photo?', {
+      cancelLabel: 'Cancel',
+      confirmLabel: 'Delete',
+      destructive: true,
+      onConfirm: async () => {
+        try {
+          await deleteProgressPhoto({ photo, clientId });
+          closeModal();
+        } catch (deleteError) {
+          showNotice('Error', deleteError?.message || 'Could not delete photo.');
+        }
       },
-    ]);
+    });
   };
 
   const handleShare = async (photoUrl) => {
@@ -865,11 +876,7 @@ export default function MyProgressPhotosScreen({
         (buttonIndex) => handlers[buttonIndex]?.()
       );
     } else {
-      Alert.alert('Photo', undefined, [
-        { text: 'Share', onPress: handlers[0] },
-        { text: 'Delete', style: 'destructive', onPress: handlers[1] },
-        { text: 'Cancel', style: 'cancel', onPress: handlers[2] },
-      ]);
+      setPhotoActionsPhoto(photo);
     }
   };
 
@@ -1326,6 +1333,49 @@ export default function MyProgressPhotosScreen({
         photos={processed}
         colors={colors}
         theme={theme}
+      />
+
+      <NbSheet
+        visible={!!photoActionsPhoto}
+        onClose={() => setPhotoActionsPhoto(null)}
+        title="Photo"
+      >
+        <View style={{ gap: 10, paddingHorizontal: 16, paddingBottom: 24 }}>
+          <NbButton
+            variant="fill"
+            onPress={() => {
+              const photo = photoActionsPhoto;
+              setPhotoActionsPhoto(null);
+              handleShare(photo?.url);
+            }}
+          >
+            Share
+          </NbButton>
+          <NbButton
+            variant="plain"
+            onPress={() => {
+              const photo = photoActionsPhoto;
+              setPhotoActionsPhoto(null);
+              if (photo) void handleDeletePhoto(photo);
+            }}
+          >
+            Delete
+          </NbButton>
+          <NbButton variant="ghost" onPress={() => setPhotoActionsPhoto(null)}>
+            Cancel
+          </NbButton>
+        </View>
+      </NbSheet>
+
+      <NbNoticeSheet
+        visible={!!notice}
+        onClose={() => setNotice(null)}
+        title={notice?.title || ''}
+        message={notice?.message}
+        confirmLabel={notice?.confirmLabel || 'OK'}
+        cancelLabel={notice?.cancelLabel}
+        onConfirm={notice?.onConfirm}
+        destructive={!!notice?.destructive}
       />
     </SafeAreaView>
   );

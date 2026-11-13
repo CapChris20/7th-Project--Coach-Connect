@@ -3,7 +3,7 @@
 // Used by: the coach conversation when a tool wants to update the goal.
 
 import React from 'react';
-import { ToolModalBody, DetailRow, ConfirmCancelRow } from './sharedPopupParts';
+import { ToolModalBody, InfoTable, ConfirmCancelRow } from './sharedPopupParts';
 import { showSetupAnswers } from '../../helpers/showSetupAnswers';
 
 // ===== NAMED CONSTANTS =====
@@ -60,8 +60,12 @@ export default function UpdateGoalPopup({ params, reasoning, onConfirm, onCancel
 
   return (
     <ToolModalBody badge="Coach wants to update your goal" title={POPUP_TITLE} reasoning={reasoning}>
-      <DetailRow label={GOAL_ROW_LABEL} value={goalLabel} />
-      <DetailRow label={REASON_ROW_LABEL} value={changeReason} />
+      <InfoTable
+        rows={[
+          { label: GOAL_ROW_LABEL, value: goalLabel },
+          { label: REASON_ROW_LABEL, value: changeReason },
+        ]}
+      />
       <ConfirmCancelRow
         onConfirm={handleConfirmUpdateGoal}
         onCancel={onCancel}

@@ -23,7 +23,7 @@ const EDITOR_TEXT_COLORS = [
   lightColors.nbMuted,
   '#FBBF24',
   '#FB7185',
-  '#E25588',
+  '#0A0A0A',
 ];
 
 const EDITOR_HIGHLIGHT_COLORS = [

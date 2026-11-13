@@ -9,7 +9,7 @@ import { lightColors } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
-export const BRAND_GRADIENT = ['#BE185D', '#C2410C'];
+export const BRAND_GRADIENT = ['#FF6B9D', '#FB923C'];
 
 const DEFAULT_FONT_SIZE = 17;
 const DEFAULT_FONT_WEIGHT = '800';

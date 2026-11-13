@@ -1,6 +1,6 @@
 // Shared Design Law brand chrome for the welcome stage and home heroes.
 // Flow: faint grid + scrolling “One Day or Day One!” strip + gradient “Coach Connect” mark.
-// Used by DesignLawHomeWelcomeHero and the LoginScreen welcome view.
+// Used by HomeWelcomeHero and the LoginScreen welcome view.
 // Visual law: docs/design/Design-Law/screens/hero-and-welcome-redesign/
 
 import React, { useEffect, useMemo, useState } from 'react';
@@ -46,7 +46,7 @@ function uniquePatternId(prefix) {
  * Why SVG: RN Views can’t do a clean repeating 28px grid without dozens of children.
  * vocab: patternUnits userSpaceOnUse = tile size is device px, not % of the SVG.
  */
-export function DesignLawFaintGrid({ lineColor, opacity = 0.08, style }) {
+export function FaintGrid({ lineColor, opacity = 0.08, style }) {
   const patternId = useMemo(() => uniquePatternId('heroGrid'), []);
 
   return (
@@ -76,7 +76,7 @@ export function DesignLawFaintGrid({ lineColor, opacity = 0.08, style }) {
  * Small gradient sticker behind brand words — the only colorful chrome on the hero.
  * @param {{ children: React.ReactNode, style?: object, textStyle?: object, borderColor?: string }} props
  */
-export function DesignLawBrandHighlight({
+export function BrandHighlight({
   children,
   style,
   textStyle,
@@ -100,7 +100,7 @@ export function DesignLawBrandHighlight({
  * Scrolling italic tagline with gradient diamond separators (mockup `.mq`).
  * Why duplicate the row: seamless loop = translate by exactly half the measured width.
  */
-export function DesignLawTaglineStrip({ textColor, borderColor }) {
+export function TaglineStrip({ textColor, borderColor }) {
   const progress = useSharedValue(0);
   const [halfWidth, setHalfWidth] = useState(0);
 
@@ -157,7 +157,7 @@ export function DesignLawTaglineStrip({ textColor, borderColor }) {
 /**
  * Two concentric dashed rings that rotate opposite ways (28s / 40s in the HTML mockup).
  */
-export function DesignLawOrbitRings({ color, size = 182 }) {
+export function OrbitRings({ color, size = 182 }) {
   const spinA = useSharedValue(0);
   const spinB = useSharedValue(0);
 

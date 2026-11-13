@@ -21,17 +21,27 @@ function parseCalorieTargetFromMessage(text, fallback) {
 
 function parseSleepHoursFromMessage(text) {
   const raw = String(text || '').toLowerCase();
-  if (!/\b(sleep|slept)\b/.test(raw)) return null;
+  // Coach prose often says "Logging 10 hours for last night" without the word sleep
+  // next to the number — still count it when the surrounding text is a sleep log.
   const patterns = [
     /(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)\s*(?:of\s*)?sleep/,
     /sleep(?:ed)?\s*(?:for\s*|as\s*)?(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)/,
     /(?:put|add|log)\s+(?:in\s+)?(?:that\s+)?(?:i\s+)?slept\s+(?:for\s*)?(\d+(?:\.\d+)?)/,
     /(?:put|add|log)\s+(?:in\s+)?(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)\s*(?:of\s*)?sleep/,
     /(?:put|add|log)\s+my\s+sleep\s+as\s+(\d+(?:\.\d+)?)/,
+    // vocab: "logging N hours" = coach prose that invents a value then says Tap Confirm
+    /log(?:ging|ged)?\s+(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)/,
+    /(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)\s*(?:for\s+)?(?:last\s+night|tonight|today|yesterday)/,
   ];
+  const mentionsSleep = /\b(sleep|slept|last night|tonight)\b/.test(raw);
   for (const re of patterns) {
     const m = raw.match(re);
-    if (m && Number(m[1]) > 0 && Number(m[1]) <= 24) return Number(m[1]);
+    if (!m) continue;
+    const hours = Number(m[1]);
+    if (!(hours > 0 && hours <= 24)) continue;
+    // Bare "logging N hours" only counts when the sentence is clearly about sleep.
+    if (!mentionsSleep && !/sleep/.test(re.source)) continue;
+    return hours;
   }
   return null;
 }
@@ -442,6 +452,93 @@ function serverNormalizeToolCall(raw) {
   return remapRestDayToolCall({ ...raw, params }) || { ...raw, params };
 }
 
+/**
+ * When the model says "Tap Confirm" / "Logging N hours" but forgot the tool call,
+ * rebuild a guarded proposal from assistant prose + the user's log intent.
+ * vocab: Tap-Confirm gap = prose promises Confirm with empty toolCalls[] (Nov 2026 screenshot).
+ */
+function inferToolCallFromAssistantProse(modelText, userMessage, weeklyContext = {}) {
+  const reply = String(modelText || '');
+  const user = String(userMessage || '').trim();
+  if (!user || !reply.trim()) return null;
+
+  // Amount-only follow-ups ("90oz") are not "explicit log verbs" but still commit a number.
+  const { metricFollowUpFromUserText } = require('../../src/ai-coach/coach-actions/shouldAskFirst');
+  const followUpMetric = metricFollowUpFromUserText(user);
+  if (!userExplicitlyRequestsAction(user) && !followUpMetric) return null;
+
+  const replyLower = reply.toLowerCase();
+  const saysConfirm =
+    /\b(tap confirm|confirm in the app|confirm action)\b/i.test(reply) ||
+    /\b(logging|logged|saving|recording)\b/i.test(replyLower);
+
+  // Prefer hours from the coach sentence (it often invents them), then the user.
+  if (
+    userWantsExplicitDashboardLog(user, 'sleep') ||
+    followUpMetric === 'sleep' ||
+    (saysConfirm && /\b(sleep|slept|last night|hours?|hrs?)\b/i.test(`${user}\n${reply}`))
+  ) {
+    const hours =
+      parseSleepHoursFromMessage(reply) ||
+      parseSleepHoursFromMessage(user) ||
+      parseSleepHoursFromMessage(`${user}\n${reply}`);
+    if (hours != null) {
+      return {
+        name: 'logSleep',
+        params: { hours },
+        reasoning: `Log ${hours} hours of sleep on your dashboard.`,
+      };
+    }
+    // Incomplete: still open the chip so they can fill hours (params stay empty → chip-only).
+    if (saysConfirm || userWantsExplicitDashboardLog(user, 'sleep')) {
+      return {
+        name: 'logSleep',
+        params: {},
+        reasoning: 'Log sleep on your dashboard — confirm the hours.',
+      };
+    }
+  }
+
+  // Water: coach "Logging 90oz…" + user "90oz" — do not require the word "water".
+  if (userWantsExplicitDashboardLog(user, 'water') || followUpMetric === 'water' || (saysConfirm && /\d+\s*(?:oz|ounces?)\b/i.test(`${user}\n${reply}`))) {
+    const waterMatch =
+      reply.match(/(\d+)\s*(?:oz|ounces?)\b/i) ||
+      user.match(/(\d+)\s*(?:oz|ounces?)\b/i);
+    if (waterMatch) {
+      return {
+        name: 'logWater',
+        params: { amount_oz: Number(waterMatch[1]) },
+        reasoning: `Log ${waterMatch[1]}oz of water.`,
+      };
+    }
+  }
+
+  if (userWantsExplicitDashboardLog(user, 'steps') || followUpMetric === 'steps') {
+    const stepsMatch =
+      reply.match(/(\d[\d,]*)\s*steps/i) ||
+      user.match(/(\d[\d,]*)\s*steps/i);
+    if (stepsMatch) {
+      return {
+        name: 'logSteps',
+        params: { step_count: Number(String(stepsMatch[1]).replace(/,/g, '')) },
+        reasoning: 'Log steps on your dashboard.',
+      };
+    }
+  }
+
+  const moodFromReply = findMoodInText(reply) || findMoodInText(user);
+  if (moodFromReply && (/\b(log|track|record|mood)\b/i.test(user) || saysConfirm)) {
+    return {
+      name: 'logMood',
+      params: { mood: moodFromReply },
+      reasoning: `Log your mood as ${moodFromReply}.`,
+    };
+  }
+
+  // Fall back to user-only inference (unchanged path).
+  return inferCoachToolCall(userMessage, weeklyContext);
+}
+
 function mergeCoachToolCalls(modelText, userMessage, weeklyContext, nativeToolCalls = []) {
   const user = String(userMessage || '').trim();
   if (isInformationalUserMessage(user)) return [];
@@ -471,9 +568,21 @@ function mergeCoachToolCalls(modelText, userMessage, weeklyContext, nativeToolCa
     add(coerceMisroutedDeleteTool(c, userMessage, modelText, serverNormalizeToolCall));
   }
 
+  // 3. User-message inference, then assistant-prose recovery when Confirm was promised
+  //    without a structured call (Tap-Confirm gap).
   if (!parsed.length) {
-    const inferred = guardCoachToolProposal(inferCoachToolCall(userMessage, weeklyContext));
+    const inferred =
+      guardCoachToolProposal(inferCoachToolCall(userMessage, weeklyContext)) ||
+      guardCoachToolProposal(inferToolCallFromAssistantProse(modelText, userMessage, weeklyContext));
     if (inferred) add(inferred);
+  }
+
+  // Checkpoint: empty tools + Confirm prose = the bug class from the sleep screenshot.
+  if (!parsed.length && /\btap confirm\b/i.test(String(modelText || ''))) {
+    console.warn(
+      '[AI Coach] Tap Confirm prose with zero toolCalls after merge',
+      { user: user.slice(0, 120), reply: String(modelText || '').slice(0, 160) },
+    );
   }
 
   return parsed;
@@ -481,6 +590,7 @@ function mergeCoachToolCalls(modelText, userMessage, weeklyContext, nativeToolCa
 
 module.exports = {
   inferCoachToolCall,
+  inferToolCallFromAssistantProse,
   mergeCoachToolCalls,
   parseCalorieTargetFromMessage,
   parseSleepHoursFromMessage,

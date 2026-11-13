@@ -316,7 +316,16 @@ export default function ClientMainScreen() {
   const aiChatPayload = aiChatState && typeof aiChatState === 'object' ? aiChatState : null;
   const isMainFocused = useIsFocused();
   const [nutritionOnboardingActive, setNutritionOnboardingActive] = useState(false);
+  // Keep nutrition mounted after first open so Home ↔ Nutrition does not remount-flash.
+  const [keepNutritionMounted, setKeepNutritionMounted] = useState(false);
+  useEffect(() => {
+    if (mainTab === CLIENT_MAIN_TABS.nutrition) setKeepNutritionMounted(true);
+  }, [mainTab]);
   const keepAiCoachMounted = mainTab === CLIENT_MAIN_TABS.ai || Boolean(aiChatPayload);
+  const showHomeTab =
+    mainTab !== CLIENT_MAIN_TABS.nutrition &&
+    mainTab !== CLIENT_MAIN_TABS.ai &&
+    mainTab !== CLIENT_MAIN_TABS.workout;
   // Keep shell BottomMenuBar on Dashboard, Messages list, Goals, etc.
   // Only hide for focused flows: nutrition onboarding, or an open chat thread.
   const hideBottomNav =
@@ -395,28 +404,15 @@ export default function ClientMainScreen() {
             />
           </ScrollView>
         </View>
-      ) : mainTab === CLIENT_MAIN_TABS.nutrition ? (
-        <DailyLogContent
-          hideBottomNav
-          onOnboardingActiveChange={setNutritionOnboardingActive}
-          onBack={() => {
-            handleHomePress();
-            refetchNutritionData?.();
-          }}
-          onNutritionDataChanged={refetchNutritionData}
-          onProfilePress={openProfile}
-          onSettingsPress={openSettings}
-          onHomePress={handleHomePress}
-          onPlusPress={() => setShowAddFilePopup(true)}
-          onVoicePress={openAIChatHome}
-          onNutritionPress={openNutrition}
-          onWorkoutPress={openWorkout}
-          onMessagesPress={handleOpenConversations}
-          onOpenWeeklyMomentum={() => openWeeklyMomentum?.()}
-        />
-      ) : mainTab === CLIENT_MAIN_TABS.ai ? null : mainTab === CLIENT_MAIN_TABS.workout ? null : (
-        // Home tab = Design Law client-home + Design Law TopHeader (profile + settings chips).
-        <View style={{ flex: 1, backgroundColor: isDark ? darkColors.nbBackground : lightColors.nbBackground }}>
+      ) : mainTab === CLIENT_MAIN_TABS.ai || mainTab === CLIENT_MAIN_TABS.workout ? null : (
+        // Home stays mounted under nutrition (absolute overlay) so Home ↔ Nutrition does not remount.
+        <View
+          style={[
+            { flex: 1, backgroundColor: isDark ? darkColors.nbBackground : lightColors.nbBackground },
+            mainTab === CLIENT_MAIN_TABS.nutrition && { opacity: 0 },
+          ]}
+          pointerEvents={showHomeTab ? 'auto' : 'none'}
+        >
           <TopHeader
             isDark={isDark}
             onProfilePress={() => openProfile()}
@@ -510,6 +506,36 @@ export default function ClientMainScreen() {
           />
         </View>
       )}
+
+      {(mainTab === CLIENT_MAIN_TABS.nutrition || keepNutritionMounted) ? (
+        <View
+          style={[
+            { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
+            mainTab !== CLIENT_MAIN_TABS.nutrition && { opacity: 0, zIndex: -1 },
+          ]}
+          pointerEvents={mainTab === CLIENT_MAIN_TABS.nutrition ? 'auto' : 'none'}
+          collapsable={false}
+        >
+          <DailyLogContent
+            hideBottomNav
+            onOnboardingActiveChange={setNutritionOnboardingActive}
+            onBack={() => {
+              handleHomePress();
+              refetchNutritionData?.();
+            }}
+            onNutritionDataChanged={refetchNutritionData}
+            onProfilePress={openProfile}
+            onSettingsPress={openSettings}
+            onHomePress={handleHomePress}
+            onPlusPress={() => setShowAddFilePopup(true)}
+            onVoicePress={openAIChatHome}
+            onNutritionPress={openNutrition}
+            onWorkoutPress={openWorkout}
+            onMessagesPress={handleOpenConversations}
+            onOpenWeeklyMomentum={() => openWeeklyMomentum?.()}
+          />
+        </View>
+      ) : null}
 
       {(mainTab === CLIENT_MAIN_TABS.workout || workoutGenInFlight) ? (
         <View

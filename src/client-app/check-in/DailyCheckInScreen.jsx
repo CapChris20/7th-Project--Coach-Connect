@@ -31,7 +31,7 @@ const USERS_COLLECTION = 'users';
 const DAILY_LOGS_COLLECTION = 'dailyLogs';
 const TOTAL_SLOTS = 5;
 const MOOD_CHIPS = ['Happy', 'Okay', 'Tired', 'Stressed', 'Anxious'];
-// Same index map DesignLawHomeBlocks uses so home + this screen stay in sync
+// Same index map ClientHomeBlocks uses so home + this screen stay in sync
 const MOOD_CHIP_TO_INDEX = { Happy: 4, Okay: 2, Tired: 1, Stressed: 0, Anxious: 0 };
 
 // ===== HELPERS =====

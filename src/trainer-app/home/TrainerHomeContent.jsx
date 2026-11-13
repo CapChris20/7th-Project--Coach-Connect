@@ -1,6 +1,6 @@
 // Trainer home — Design Law layout (docs/design/Design-Law/screens/trainer-home).
 // Flow: greeting → motivation → needs you → client carousel → today tabs → tools → weekly report.
-// Data/Firebase unchanged. Chrome lives in DesignLawTrainerHomeBlocks.jsx + trainerHomePieces.jsx.
+// Data/Firebase unchanged. Chrome lives in TrainerHomeBlocks.jsx + trainerHomePieces.jsx.
 
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import {
@@ -47,16 +47,16 @@ import {
   TrainerNotesFilesHeroAndWorkspace,
 } from './trainerHomePieces';
 import {
-  DesignLawTrainerClientCarousel,
-  DesignLawTrainerWeeklyReportEmpty,
-  DesignLawTrainerClientTodayLabel,
-  DesignLawTrainerHeader,
-  DesignLawTrainerMotivationCard,
-  DesignLawTrainerNeedsYou,
-  DesignLawTrainerToolsGrid,
+  TrainerClientCarousel,
+  TrainerWeeklyReportEmpty,
+  TrainerClientTodayLabel,
+  TrainerHeader,
+  TrainerMotivationCard,
+  TrainerNeedsYou,
+  TrainerToolsGrid,
   trainerHomeThemeColors,
-} from './DesignLawTrainerHomeBlocks';
-import DesignLawTrainerCreateSheet from './DesignLawTrainerCreateSheet';
+} from './TrainerHomeBlocks';
+import TrainerCreateSheet from './TrainerCreateSheet';
 import { PayoutSetupReminderPopup } from '../../for-both/payments/PayoutSetupReminderPopup';
 import { shouldShowPayoutSetupReminderPopup } from '../../for-both/payments/whenToAskForPayoutSetup';
 import NbNoticeSheet from '../../look-and-feel/NbNoticeSheet';
@@ -1033,7 +1033,7 @@ const DashboardContent = ({
       }}
       {...FORM_SCROLL_PROPS}
     >
-      <DesignLawTrainerHeader
+      <TrainerHeader
         themeColors={themeColors}
         userName={userName}
         greetingPeriod={timeOfDay}
@@ -1043,9 +1043,9 @@ const DashboardContent = ({
         }}
       />
 
-      <DesignLawTrainerMotivationCard themeColors={themeColors} />
+      <TrainerMotivationCard themeColors={themeColors} />
 
-      <DesignLawTrainerNeedsYou
+      <TrainerNeedsYou
         themeColors={themeColors}
         needsCount={needsYouCount}
         showPayoutBlock={showPayoutNudge}
@@ -1062,7 +1062,7 @@ const DashboardContent = ({
         onMessagesPress={() => onMessagesPress?.(currentClient?.id)}
       />
 
-      <DesignLawTrainerClientCarousel
+      <TrainerClientCarousel
         themeColors={themeColors}
         clients={clients}
         selectedClientId={currentClient?.id}
@@ -1092,7 +1092,7 @@ const DashboardContent = ({
 
       {clients.length > 0 && currentClient?.id ? (
         <>
-          <DesignLawTrainerClientTodayLabel
+          <TrainerClientTodayLabel
             clientName={currentClient.name || currentClient.displayName || 'Client'}
             themeColors={themeColors}
           />
@@ -1176,7 +1176,7 @@ const DashboardContent = ({
         )
       ) : null}
 
-      <DesignLawTrainerToolsGrid
+      <TrainerToolsGrid
         themeColors={themeColors}
         onToolPress={runTrainerTool}
         messageBadge={clientUnreadCount}
@@ -1192,7 +1192,7 @@ const DashboardContent = ({
           onOpenWeeklyReport={onOpenWeeklyReport}
         />
       ) : (
-        <DesignLawTrainerWeeklyReportEmpty themeColors={themeColors} />
+        <TrainerWeeklyReportEmpty themeColors={themeColors} />
       )}
 
       <View style={{ height: 16 }} />
@@ -1264,7 +1264,7 @@ const DashboardContent = ({
         stripeAccountId={paymentPopupStripeAccountId}
       />
     ) : null}
-    <DesignLawTrainerCreateSheet
+    <TrainerCreateSheet
       visible={showCreateSheet}
       onClose={() => setShowCreateSheet(false)}
       isDark={isDark}

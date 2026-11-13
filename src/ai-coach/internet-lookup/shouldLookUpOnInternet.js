@@ -111,6 +111,16 @@ export function isPersonalDataLookup(userText) {
   const lowerText = String(userText || '').toLowerCase().trim();
   if (!lowerText) return false;
   if (hasExplicitWebIntent(lowerText)) return false;
+  // "Help me log my sleep for last night" is a dashboard write, not a data lookup —
+  // but it must still stay OFF the public web (handled by callers via this return true
+  // only for read/check phrasing, not explicit log verbs).
+  const isExplicitLog =
+    /\b(log|track|record|add|save|enter|put|mark)\b/i.test(lowerText) &&
+    /\b(sleep|slept|water|steps|energy|mood|food|meal|nutrition|workout|rest)\b/i.test(lowerText);
+  if (isExplicitLog) {
+    // Still personal (local) — never route to Serper for a log request.
+    return true;
+  }
   return (
     /\blook up\b.*\b(my|log|logs|data|food|nutrition|meal|sleep|slept|water|steps|weight|workout|dashboard|history)\b/.test(
       lowerText,

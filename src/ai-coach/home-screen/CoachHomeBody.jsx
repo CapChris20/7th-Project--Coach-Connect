@@ -433,7 +433,7 @@ function TryAskingCarousel({ suggestions, onStartChat, colors }) {
  * Full Design Law coach home scroll body (PNG 01 client / missing-screens 17 trainer).
  * @param {{ viewerRole?: 'client'|'trainer', clientCount?: number }} props
  */
-export default function DesignLawCoachHomeBody({
+export default function CoachHomeBody({
   isDark,
   suggestions,
   dailyMetrics,

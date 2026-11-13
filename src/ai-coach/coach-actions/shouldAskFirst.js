@@ -150,7 +150,8 @@ const EXPLICIT_LOG_RE = /\b(log|track|record|add|save|enter|put|mark|rate)\b/i;
 
 const DASHBOARD_METRIC_PATTERNS = {
   sleep: /\b(sleep|slept|hours?|hrs?)\b/i,
-  water: /\b(water|oz|ounce|hydrat|drank)\b/i,
+  // "90oz" has no word-boundary before oz (digit sticks to unit) — match glued forms too.
+  water: /\b(water|hydrat|drank)\b|\d+\s*(?:oz|ounces?)\b/i,
   steps: /\b(steps?|step count|walked)\b/i,
   energy: /\b(energy|fatigue)\b/i,
   mood: /\b(mood|feel|feeling)\b/i,
@@ -160,13 +161,14 @@ const DASHBOARD_METRIC_PATTERNS = {
 
 // Used when the tool is not a delete. Delete has its own matcher below.
 const TOOL_ALIGNMENT_PATTERNS = {
-  logSleep: /\b(sleep|slept|hour|hrs?)\b/,
-  logWater: /\b(water|oz|ounce|hydrat|drank)\b/,
+  logSleep: /\b(sleep|slept|hours?|hrs?)\b|\d+(?:\.\d+)?\s*(?:hours?|hrs?)\b/,
+  // Same glued-unit hole as DASHBOARD_METRIC_PATTERNS.water ("90oz").
+  logWater: /\b(water|hydrat|drank)\b|\d+\s*(?:oz|ounces?)\b/,
   logNutrition: /\b(egg|food|meal|ate|breakfast|lunch|dinner|snack|nutrition|protein|chicken|rice)\b/,
   rateWorkout: /\b(workout|session|training)\b/,
   adjustMacroTargets: /\b(calor(?:ie)?s?|macros?|goal|target|protein|carb|fat|kcal|cals?)\b/,
   logRestDay: /\b(rest)\b/,
-  logSteps: /\b(steps?|walked)\b/,
+  logSteps: /\b(steps?|walked)\b|\d[\d,]*\s*steps?\b/,
   rateEnergy: /\b(energy|fatigue)\b/,
   // Mood words count too: "Log that I'm happy" aligns with logMood even
   // though the user never said the word "mood" (Oct 21 screenshot bug).
@@ -176,6 +178,16 @@ const TOOL_ALIGNMENT_PATTERNS = {
   openWorkoutPlan: /\b(workout|plan|program)\b/,
   bookSession: /\b(book|schedule|session|trainer|appointment)\b/,
   notifyTrainer: /\b(trainer|coach|notify|tell|message|knee|hurt|injur)\b/,
+};
+
+// Follow-up turns often reply with only the amount ("90oz") after "help me log water".
+// Map that short answer onto the tool it belongs with.
+const METRIC_FOLLOW_UP_TOOLS = {
+  water: 'logWater',
+  sleep: 'logSleep',
+  steps: 'logSteps',
+  energy: 'rateEnergy',
+  workout: 'rateWorkout',
 };
 
 // ===== MAIN FUNCTION =====
@@ -258,6 +270,21 @@ function userWantsExplicitDashboardLog(userText, metric) {
 }
 
 /**
+ * Short amount-only replies after the coach asked "how much?" — e.g. "90oz", "8 hours", "12k steps".
+ * @param {string} userText
+ * @returns {'water'|'sleep'|'steps'|'energy'|'workout'|null}
+ */
+function metricFollowUpFromUserText(userText) {
+  const messageText = String(userText || '').trim();
+  if (!messageText) return null;
+  if (/^\d+(?:\.\d+)?\s*(?:oz|ounces?)$/i.test(messageText)) return 'water';
+  if (/^\d+(?:\.\d+)?\s*(?:hours?|hrs?)$/i.test(messageText)) return 'sleep';
+  if (/^\d[\d,]*\s*steps?$/i.test(messageText)) return 'steps';
+  if (/^\d{1,2}\s*(?:\/\s*10|out of 10)?$/i.test(messageText)) return 'energy';
+  return null;
+}
+
+/**
  * Questions, web lookups, and "is this too much?" stay as chat. They do not become buttons.
  * Case is kept on purpose: a few checks below are case-sensitive.
  * @param {string} userText
@@ -303,6 +330,13 @@ function isValidCoachToolProposal(rawCall, userText) {
     return toolAlignsWithUserMessage(guarded, userText);
   }
 
+  // Multi-turn: user already asked to log water, then answered "90oz".
+  // Without this, Tap Confirm prose never gets a chip (Nov 2026 screenshot).
+  const followUpMetric = metricFollowUpFromUserText(userText);
+  if (followUpMetric && METRIC_FOLLOW_UP_TOOLS[followUpMetric] === guarded.name) {
+    return true;
+  }
+
   if (isInformationalUserMessage(userText)) return false;
 
   return false;
@@ -342,6 +376,7 @@ module.exports = {
   userWantsExplicitDashboardLog,
   userExplicitlyRequestsAction,
   isInformationalUserMessage,
+  metricFollowUpFromUserText,
 };
 
 // ===== HELPER FUNCTIONS =====
@@ -395,8 +430,9 @@ function copyPlainObject(input) {
  * @returns {object|null}
  */
 function sanitizeLogSleepParams(params) {
+  // Missing hours is OK — LogSleepPopup lets them fill before Confirm (Tap-Confirm gap recovery).
   const hours = clamp(params.hours ?? params.sleepHours, SLEEP_HOURS_MIN, SLEEP_HOURS_MAX);
-  return hours == null ? null : { hours, date: sanitizeString(params.date, DATE_MAX_LENGTH) };
+  return { hours, date: sanitizeString(params.date, DATE_MAX_LENGTH) };
 }
 
 /**
@@ -512,7 +548,25 @@ function sanitizeLogNutritionParams(params) {
  * @returns {object}
  */
 function sanitizeOpenWorkoutPlanParams(params) {
-  return { planId: sanitizeString(params.planId, PLAN_ID_MAX_LENGTH) || DEFAULT_PLAN_ID };
+  // planId drives the opener; the extra strings are display-only for the confirm sheet (PNG 17).
+  return {
+    planId: sanitizeString(params.planId, PLAN_ID_MAX_LENGTH) || DEFAULT_PLAN_ID,
+    planName: sanitizeString(params.planName || params.title, FOOD_NAME_MAX_LENGTH),
+    split: sanitizeString(params.split || params.planLabel || params.planSummary, REASON_MAX_LENGTH),
+    todayFocus: sanitizeString(
+      params.todayFocus || params.dayName || params.today || params.focus,
+      FOOD_NAME_MAX_LENGTH,
+    ),
+    exercises: sanitizeString(
+      Array.isArray(params.exercises)
+        ? params.exercises
+            .map((item) => (typeof item === 'string' ? item : item?.name))
+            .filter(Boolean)
+            .join(', ')
+        : params.exercises || params.exerciseList,
+      REASON_MAX_LENGTH,
+    ),
+  };
 }
 
 /**

@@ -94,8 +94,11 @@ import {
   guardCoachToolProposal,
   isValidCoachToolProposal,
   isInformationalUserMessage,
+  userExplicitlyRequestsAction,
+  metricFollowUpFromUserText,
 } from '../coach-actions/shouldAskFirst';
 // vocab: guardCoachToolProposal = final safety gate before showing/running a tool
+// vocab: metricFollowUpFromUserText = "90oz" / "8 hours" after a prior log request
 import {
   shouldAutoExecuteCoachTool,
   shouldAutoOpenCoachToolModal,
@@ -206,6 +209,14 @@ function coachToolCallKey(toolCall) {
 function resolveIncomingCoachTools(coachResponse, userText = '') {
   const user = String(userText || '').trim();
   const rawReply = coachResponse?.message || '';
+  // Web answers are research — never attach Confirm chips (even if the model hallucinated a tool).
+  if (
+    coachResponse?.searchedWeb === true ||
+    coachResponse?.route === 'web-search' ||
+    coachResponse?.route === 'web-search-failed'
+  ) {
+    return [];
+  }
   const rawTools = Array.isArray(coachResponse?.toolCalls) && coachResponse.toolCalls.length
     ? coachResponse.toolCalls
     : [coachResponse?.toolCall || readActionsFromReply(rawReply)[0] || null];
@@ -1008,7 +1019,14 @@ function CoachReplyHeader({ palette }) {
 }
 
 // Clipboard control for a bubble. compact=true = icon-only (used in headers / under user bubbles).
-function CoachMessageCopyButton({ text, palette, isDark = false, align = 'flex-end', compact = false }) {
+function CoachMessageCopyButton({
+  text,
+  palette,
+  isDark = false,
+  align = 'flex-end',
+  compact = false,
+  presentNotice = null,
+}) {
   // Flash "Copied" check for COPY_FEEDBACK_MS, then revert.
   // Manipulate here: COPY_FEEDBACK_MS controls how long the success chrome sticks.
   const [copied, setCopied] = useState(false);
@@ -1026,8 +1044,8 @@ function CoachMessageCopyButton({ text, palette, isDark = false, align = 'flex-e
 
   // Copy → haptic → show success chrome → schedule revert.
   const handleCopy = async () => {
-    // announce:false — we handle a11y label swap ourselves instead of a system toast.
-    const ok = await copyCoachText(text, { announce: false });
+    // announce:false — inline checkmark for success; presentNotice for Design Law failure sheets.
+    const ok = await copyCoachText(text, { announce: false, presentNotice });
     if (!ok) return;
     try {
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -1121,6 +1139,7 @@ function MessageBubble({
   onFollowUpPress = null,
   userProfile = null,
   viewerRole = 'client',
+  presentNotice = null,
 }) {
   // sent=true → right-aligned user bubble; false → full-width coach reply.
   const sent = message.role === 'user';
@@ -1282,6 +1301,7 @@ function MessageBubble({
             isDark={isDark}
             align="flex-start"
             compact={false}
+            presentNotice={presentNotice}
           />
         </View>
       ) : null}
@@ -1678,21 +1698,8 @@ async function finishCoachSendSuccess({
     isError: !coachResponse.success,
   };
 
-  // Dev-only turn logs — helps debug routing / web / tool issues without UI noise.
-  const debugMeta = {
-    sessionId,
-    route: aiMsg.route,
-    searchedWeb: aiMsg.searchedWeb,
-    webProvider: aiMsg.webProvider,
-    source: aiMsg.source,
-    success: coachResponse.success,
-    toolCall: resolvedTool,
-    webSources: aiMsg.webSources,
-  };
-  logCoachAssistantMessage(aiMsg.text, debugMeta);
-  logCoachTurnBundle({ userText: text.trim(), coachText: aiMsg.text, meta: debugMeta });
-
   // Paint the AI bubble and tear down the waiting chrome (typing dots + feature cards).
+  // Must happen BEFORE auto-run/open so handleToolConfirm can find aiMsg.id in state.
   const finalMessages = [...updatedMessages, aiMsg];
   setMessages(finalMessages);
   setTyping(false);
@@ -1701,7 +1708,8 @@ async function finishCoachSendSuccess({
   setActiveFeatureCards([]);
 
   // Maybe auto-run, auto-open modal, or just leave the chip for a tap.
-  maybeAutoRunOrOpenCoachTool({
+  // Capture the branch so Metro logs show why Confirm did/didn't appear.
+  const toolBranch = maybeAutoRunOrOpenCoachTool({
     resolvedTool,
     coachResponse,
     text,
@@ -1709,6 +1717,31 @@ async function finishCoachSendSuccess({
     handleToolConfirm,
     openToolModal,
   });
+
+  // Dev-only turn logs — helps debug routing / web / tool issues without UI noise.
+  // vocab: tapConfirmProse = coach said "Tap Confirm" — must have a tool or this is the gap bug
+  const tapConfirmProse = /\btap confirm\b/i.test(aiMsg.text || '');
+  const debugMeta = {
+    sessionId,
+    route: aiMsg.route,
+    searchedWeb: aiMsg.searchedWeb,
+    webProvider: aiMsg.webProvider,
+    source: aiMsg.source,
+    success: coachResponse.success,
+    toolCall: resolvedTool,
+    toolCount: resolvedTools.length,
+    toolBranch,
+    tapConfirmProse,
+    webSources: aiMsg.webSources,
+  };
+  logCoachAssistantMessage(aiMsg.text, debugMeta);
+  logCoachTurnBundle({ userText: text.trim(), coachText: aiMsg.text, meta: debugMeta });
+  if (__DEV__ && tapConfirmProse && !resolvedTool) {
+    logger.debug('AI Coach: Tap Confirm prose with no resolved toolCall', {
+      user: text.trim().slice(0, 120),
+      serverTools: Array.isArray(coachResponse?.toolCalls) ? coachResponse.toolCalls.length : 0,
+    });
+  }
 
   // Persist the full thread once the AI reply is in (title generation may run here).
   if (db && userId) {
@@ -1732,26 +1765,33 @@ function maybeAutoRunOrOpenCoachTool({
   if (resolvedTool && shouldAutoExecuteCoachTool(resolvedTool, { userText: text.trim() })) {
     // inline:true → messagesAfterToolRun adds a short "done" bubble instead of using the modal.
     handleToolConfirm({}, resolvedTool, { inline: true, messageId: aiMsgId });
-    return;
+    return 'auto-execute';
   }
   // Branch B: open ConfirmActionPopup immediately (user still has to tap Confirm inside).
+  // fromServer: true when the API (or recovery) attached any tool — not only singular toolCall.
+  const fromServer = !!(
+    coachResponse?.toolCall ||
+    (Array.isArray(coachResponse?.toolCalls) && coachResponse.toolCalls.length)
+  );
   if (
     resolvedTool &&
     shouldAutoOpenCoachToolModal(resolvedTool, {
-      fromServer: !!coachResponse?.toolCall,
+      fromServer,
       userText: text.trim(),
     })
   ) {
     openToolModal(resolvedTool, aiMsgId);
-    return;
+    return 'auto-open-modal';
   }
-  // Branch C: user sounded action-y but model returned no tool — log for debugging.
+  // Branch C: chip stays tappable under the bubble (or nothing if no tool).
   const looksLikeAction =
     coachResponse.success &&
     /\b(log|swap|bump|schedule|deload|notify|adjust)\b/i.test(text.trim());
   if (!resolvedTool && looksLikeAction) {
     logger.debug('AI Coach: action-like message but no toolCall returned');
+    return 'missing-tool';
   }
+  return resolvedTool ? 'chip-only' : 'none';
 }
 
 /**
@@ -2328,11 +2368,11 @@ export default function CoachConversationScreen({
 
   // Attach menu actions — append to the pending strip (user still has to hit Send).
   const handlePhotoLibrary = async () => {
-    appendAttachments(await pickCoachPhotosFromLibrary());
+    appendAttachments(await pickCoachPhotosFromLibrary({ presentNotice: showNotice }));
   };
 
   const handleCamera = async () => {
-    appendAttachments(await pickCoachPhotoFromCamera());
+    appendAttachments(await pickCoachPhotoFromCamera({ presentNotice: showNotice }));
   };
 
   const handleFile = async () => {
@@ -2446,9 +2486,20 @@ export default function CoachConversationScreen({
   // vocab: useMemo = recompute only when messages / typing / toolExecuting change
   const messagesWithContext = useMemo(() => {
     let lastUserText = '';
+    let priorUserIntent = '';
     return messages.map((m, index) => {
       // Running "last user text" so each AI bubble knows what question it answered.
-      if (m.role === 'user') lastUserText = m.text || '';
+      // Amount-only follow-ups ("90oz") keep the prior intent so Confirm chips still gate.
+      if (m.role === 'user') {
+        const text = m.text || '';
+        const followUp = metricFollowUpFromUserText(text);
+        if (followUp && priorUserIntent) {
+          lastUserText = `${priorUserIntent}\n${text}`.trim();
+        } else {
+          lastUserText = text;
+          if (userExplicitlyRequestsAction(text)) priorUserIntent = text;
+        }
+      }
       // Prefix of the thread up to this row — shaped for shouldShowWebSearchUI.
       const threadMessages = messages.slice(0, index + 1).map((row) => ({
         role: row.role === 'ai' ? 'assistant' : 'user',
@@ -2606,6 +2657,7 @@ export default function CoachConversationScreen({
                 onFollowUpPress={sendMessage}
                 userProfile={userProfile}
                 viewerRole={viewerRole}
+                presentNotice={showNotice}
               />
             )}
             style={{ flex: 1 }}

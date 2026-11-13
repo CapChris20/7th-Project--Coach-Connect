@@ -1,14 +1,24 @@
-// Confirm card when the coach wants to change daily calories and macros.
-// Flow: load saved nutrition goals → fill any macro the coach left out →
-// estimate calories when the coach's number isn't usable → show the card.
-// Used by ConfirmActionPopup when the coach tool is a nutrition-target change.
+// Design Law nutrition-target confirm — DiffTable old→new + reason (screens/ai-coach-popups/23).
+// Flow: load saved goals → fill blanks from coach → show strikethrough before → Update targets.
+// Used by ConfirmActionPopup when the coach tool is adjustMacroTargets.
 
-import React, { useState, useEffect } from 'react';
-import { ToolModalBody, DetailRow, ConfirmCancelRow } from './sharedPopupParts';
+import React, { useState, useEffect, useMemo } from 'react';
+import {
+  ToolModalBody,
+  FieldLabel,
+  PopupTextField,
+  DiffTable,
+  ConfirmCancelRow,
+} from './sharedPopupParts';
 import { doc, getDoc } from 'firebase/firestore';
 import { db, auth } from '../../app-start/cloudConnection';
 
 // ===== NAMED CONSTANTS =====
+
+const BADGE = 'Coach wants to change your targets';
+const TITLE = 'Update nutrition targets?';
+const CONFIRM_LABEL = 'Update targets';
+const REASON_LABEL = 'REASON';
 
 // vocab: Firestore collection — one nutrition-goals document per user id.
 const NUTRITION_GOALS_COLLECTION = 'nutrition_goals';
@@ -32,20 +42,21 @@ const CALORIES_PER_GRAM_FAT = 9;
 /**
  * Older goal docs stored `protein`. Newer ones store `protein_target`.
  * @param {object} goalData
- * @returns {{ protein: number, carbs: number, fat: number }}
+ * @returns {{ protein: number, carbs: number, fat: number, calories?: number }}
  */
 function macroTargetsFromFirestoreGoal(goalData) {
   return {
     protein: goalData.protein_target || goalData.protein || DEFAULT_PROTEIN_GRAMS,
     carbs: goalData.carbs_target || goalData.carbs || DEFAULT_CARBS_GRAMS,
     fat: goalData.fat_target || goalData.fat || DEFAULT_FAT_GRAMS,
+    calories: goalData.calorie_target || goalData.calories || undefined,
   };
 }
 
 /**
  * Null means "no saved targets" — the card then uses the defaults above.
  * @param {object|null} currentUser
- * @returns {Promise<{ protein: number, carbs: number, fat: number }|null>}
+ * @returns {Promise<{ protein: number, carbs: number, fat: number, calories?: number }|null>}
  */
 async function fetchSavedMacroTargetsForUser(currentUser) {
   if (!currentUser) return null;
@@ -108,7 +119,7 @@ function chooseDailyCalorieTarget(params, proteinGrams, carbGrams, fatGrams) {
 /**
  * @param {object|null} savedTargets
  * @param {object|undefined} params
- * @returns {{ proteinGrams: number, carbGrams: number, fatGrams: number, dailyCalories: number, mergedParams: object }}
+ * @returns {{ proteinGrams: number, carbGrams: number, fatGrams: number, dailyCalories: number, mergedParams: object, before: object }}
  */
 function mergeCoachParamsWithSavedTargets(savedTargets, params) {
   const defaultProteinGrams = savedTargets?.protein ?? DEFAULT_PROTEIN_GRAMS;
@@ -129,6 +140,11 @@ function mergeCoachParamsWithSavedTargets(savedTargets, params) {
   );
   const dailyCalories = chooseDailyCalorieTarget(params, proteinGrams, carbGrams, fatGrams);
 
+  const beforeCalories =
+    Number.isFinite(Number(savedTargets?.calories)) && Number(savedTargets.calories) > 0
+      ? Number(savedTargets.calories)
+      : estimateCaloriesFromMacroGrams(defaultProteinGrams, defaultCarbGrams, defaultFatGrams);
+
   const mergedParams = {
     ...params,
     protein: proteinGrams,
@@ -137,26 +153,88 @@ function mergeCoachParamsWithSavedTargets(savedTargets, params) {
     calories: dailyCalories,
   };
 
-  return { proteinGrams, carbGrams, fatGrams, dailyCalories, mergedParams };
+  return {
+    proteinGrams,
+    carbGrams,
+    fatGrams,
+    dailyCalories,
+    mergedParams,
+    before: {
+      calories: beforeCalories,
+      protein: defaultProteinGrams,
+      carbs: defaultCarbGrams,
+      fat: defaultFatGrams,
+    },
+  };
 }
 
-function ChangeFoodTargetsLayout({ reasoning, resolved, params, onConfirm, onCancel, loading }) {
-  const handleConfirmSave = () => onConfirm(resolved.mergedParams);
+function formatKcal(n) {
+  return Number(n).toLocaleString();
+}
+
+function formatGrams(n) {
+  return `${n} g`;
+}
+
+function ChangeFoodTargetsLayout({
+  reasoning,
+  resolved,
+  reasonDraft,
+  setReasonDraft,
+  onConfirm,
+  onCancel,
+  loading,
+}) {
+  const handleConfirmSave = () => {
+    const reason = String(reasonDraft || '').trim();
+    onConfirm({
+      ...resolved.mergedParams,
+      reason: reason || undefined,
+    });
+  };
+
+  // Design Law PNG 23: strikethrough current → bold next inside one bordered card
+  const diffRows = useMemo(
+    () => [
+      {
+        label: 'Calories',
+        before: formatKcal(resolved.before.calories),
+        after: formatKcal(resolved.dailyCalories),
+      },
+      {
+        label: 'Protein',
+        before: formatGrams(resolved.before.protein),
+        after: formatGrams(resolved.proteinGrams),
+      },
+      {
+        label: 'Carbs',
+        before: formatGrams(resolved.before.carbs),
+        after: formatGrams(resolved.carbGrams),
+      },
+      {
+        label: 'Fats',
+        before: formatGrams(resolved.before.fat),
+        after: formatGrams(resolved.fatGrams),
+      },
+    ],
+    [resolved],
+  );
+
   return (
-    <ToolModalBody
-      badge="Coach wants to change food targets"
-      title="Update nutrition targets?"
-      reasoning={reasoning}
-    >
-      <DetailRow label="Daily calories" value={`${resolved.dailyCalories} kcal`} />
-      <DetailRow label="Protein" value={`${resolved.proteinGrams}g`} />
-      <DetailRow label="Carbs" value={`${resolved.carbGrams}g`} />
-      <DetailRow label="Fat" value={`${resolved.fatGrams}g`} />
-      <DetailRow label="Reason" value={params?.reason} />
+    <ToolModalBody badge={BADGE} title={TITLE} reasoning={reasoning}>
+      <DiffTable rows={diffRows} />
+      <FieldLabel label={REASON_LABEL} />
+      <PopupTextField
+        value={reasonDraft}
+        onChangeText={setReasonDraft}
+        placeholder="Why these targets…"
+        multiline
+      />
       <ConfirmCancelRow
         onConfirm={handleConfirmSave}
         onCancel={onCancel}
         loading={loading}
+        confirmLabel={CONFIRM_LABEL}
       />
     </ToolModalBody>
   );
@@ -176,6 +254,7 @@ function ChangeFoodTargetsLayout({ reasoning, resolved, params, onConfirm, onCan
 export default function ChangeFoodTargetsPopup({ params, reasoning, onConfirm, onCancel, loading }) {
   // 1. Load saved targets so a blank coach field can fall back to what is already on the profile.
   const [savedMacroTargets, setSavedMacroTargets] = useState(null);
+  const [reasonDraft, setReasonDraft] = useState(() => String(params?.reason || ''));
 
   useEffect(() => {
     // Saved targets fill any macro the coach left blank. Read once on open —
@@ -191,12 +270,13 @@ export default function ChangeFoodTargetsPopup({ params, reasoning, onConfirm, o
   // 2. Fill blank coach fields from saved targets (or the defaults).
   const resolved = mergeCoachParamsWithSavedTargets(savedMacroTargets, params);
 
-  // 3. The layout shows those numbers. Confirm still sends the merged targets.
+  // 3. DiffTable + editable reason. Confirm still sends the merged targets.
   return (
     <ChangeFoodTargetsLayout
       reasoning={reasoning}
       resolved={resolved}
-      params={params}
+      reasonDraft={reasonDraft}
+      setReasonDraft={setReasonDraft}
       onConfirm={onConfirm}
       onCancel={onCancel}
       loading={loading}

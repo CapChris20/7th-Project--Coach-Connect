@@ -20,12 +20,14 @@ const CORE_FILES = [
     ],
   },
   {
+    // Design Law confirm row uses Not now / dynamic confirm labels (not Cancel/Confirm).
     file: 'src/ai-coach/confirm-popups/sharedPopupParts.js',
-    mustInclude: ['accessibilityLabel="Cancel"', 'accessibilityLabel="Confirm"'],
+    mustInclude: ['accessibilityLabel={cancelLabel}', 'accessibilityLabel={confirmLabel}'],
   },
   {
+    // Back chrome lives on NbPageHeader (label "Go back"); search field labels stay here.
     file: 'src/nutrition/food-search/FoodSearchScreen.js',
-    mustInclude: ['Go back', 'Search foods', 'Clear search'],
+    mustInclude: ['NbPageHeader', 'Search foods', 'Clear search'],
   },
   {
     file: 'src/for-both/home-cards/QuickActionCard.jsx',

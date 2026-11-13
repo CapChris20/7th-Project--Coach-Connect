@@ -7,6 +7,7 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, Switch as RNSwitch } from 'react-native';
 import { useColorScheme } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { lightColors, darkColors, spacing } from './colorPalette';
 import NbScreen from './NbScreen';
 import NbCard from './NbCard';
@@ -317,13 +318,14 @@ export default function NbComponentsPreview() {
         <Text style={[styles.label, { color: colors.nbInk }]}>Bottom Navigation</Text>
         <NbBottomNav
           tabs={[
-            { id: 'home', icon: <Text>🏠</Text>, activeIcon: <Text>🏠</Text>, label: 'Home' },
-            { id: 'workout', icon: <Text>💪</Text>, activeIcon: <Text>💪</Text>, label: 'Workout' },
-            { id: 'nutrition', icon: <Text>🥗</Text>, activeIcon: <Text>🥗</Text>, label: 'Nutrition' },
-            { id: 'profile', icon: <Text>👤</Text>, activeIcon: <Text>👤</Text>, label: 'Profile' },
+            { id: 'home', icon: <Ionicons name="home-outline" size={22} color={colors.nbInk} />, label: 'Home' },
+            { id: 'workout', icon: <Ionicons name="barbell-outline" size={24} color={colors.nbInk} />, label: 'Workout' },
+            { id: 'nutrition', icon: <Ionicons name="restaurant-outline" size={22} color={colors.nbInk} />, label: 'Nutrition' },
+            { id: 'profile', icon: <Ionicons name="person-outline" size={22} color={colors.nbInk} />, label: 'Profile' },
           ]}
           active={navActive}
           onSelect={setNavActive}
+          onPlusPress={() => {}}
         />
       </View>
       

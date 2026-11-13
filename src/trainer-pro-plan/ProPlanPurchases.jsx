@@ -3,7 +3,7 @@
 // Used by ProPlanSetup. Product ids stay in proPlanSwitches (com.coachconnect.month / com.coachconnect.year).
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Platform } from 'react-native';
+import { Platform } from 'react-native';
 import { doc, onSnapshot } from 'firebase/firestore';
 import {
   useIAP,
@@ -22,6 +22,7 @@ import {
   verifyAppleSubscriptionOnServer,
 } from './verifyProPurchase';
 import { SubscriptionContext } from './proPlanStatus';
+import NbNoticeSheet from '../look-and-feel/NbNoticeSheet';
 
 // ===== NAMED CONSTANTS =====
 
@@ -247,6 +248,11 @@ export function IapProPlanSetup({ userId, children }) {
   const [actionLoading, setActionLoading] = useState(false);
   const [lastError, setLastError] = useState(null);
   const [productsAttempted, setProductsAttempted] = useState(false);
+  const [notice, setNotice] = useState(null);
+  const showNotice = useCallback(
+    (title, message, extras = {}) => setNotice({ title, message, ...extras }),
+    [],
+  );
   const processingRef = useRef(new Set());
 
   const {
@@ -360,7 +366,7 @@ export function IapProPlanSetup({ userId, children }) {
   const startFreeTrial = useCallback(async (productId) => {
     const sku = skuForPurchaseRequest(productId);
     if (Platform.OS !== IOS_PLATFORM) {
-      Alert.alert(UNAVAILABLE_TITLE, 'Subscriptions are available on iOS.');
+      showNotice(UNAVAILABLE_TITLE, 'Subscriptions are available on iOS.');
       return;
     }
     if (!connected) {
@@ -407,11 +413,11 @@ export function IapProPlanSetup({ userId, children }) {
     } finally {
       setActionLoading(false);
     }
-  }, [connected, requestPurchase, storeProducts, loadStoreProducts, subscriptions]);
+  }, [connected, requestPurchase, storeProducts, loadStoreProducts, subscriptions, showNotice]);
 
   const restorePurchases = useCallback(async () => {
     if (Platform.OS !== IOS_PLATFORM) {
-      Alert.alert(UNAVAILABLE_TITLE, 'Restore is available on iOS.');
+      showNotice(UNAVAILABLE_TITLE, 'Restore is available on iOS.');
       return false;
     }
 
@@ -424,18 +430,18 @@ export function IapProPlanSetup({ userId, children }) {
       });
       const relevant = relevantSubscriptionPurchases(purchases);
       if (!relevant.length) {
-        Alert.alert(
+        showNotice(
           NO_SUBSCRIPTION_TITLE,
           'We could not find an active Coach Connect Pro subscription for this Apple ID.',
         );
         return false;
       }
       await restoreAppleSubscriptionOnServer(relevant);
-      Alert.alert(RESTORED_TITLE, 'Your subscription has been restored.');
+      showNotice(RESTORED_TITLE, 'Your subscription has been restored.');
       return true;
     } catch (error) {
       if (error?.code === ERROR_NOT_FOUND) {
-        Alert.alert(NO_SUBSCRIPTION_TITLE, error.message || 'No active subscription to restore.');
+        showNotice(NO_SUBSCRIPTION_TITLE, error.message || 'No active subscription to restore.');
         return false;
       }
       setLastError(restoreErrorState(error));
@@ -443,7 +449,7 @@ export function IapProPlanSetup({ userId, children }) {
     } finally {
       setActionLoading(false);
     }
-  }, []);
+  }, [showNotice]);
 
   const clearError = useCallback(() => setLastError(null), []);
 
@@ -481,5 +487,18 @@ export function IapProPlanSetup({ userId, children }) {
     ],
   );
 
-  return <SubscriptionContext.Provider value={value}>{children}</SubscriptionContext.Provider>;
+  return (
+    <SubscriptionContext.Provider value={value}>
+      {children}
+      <NbNoticeSheet
+        visible={!!notice}
+        onClose={() => setNotice(null)}
+        title={notice?.title || ''}
+        message={notice?.message}
+        confirmLabel={notice?.confirmLabel || 'OK'}
+        cancelLabel={notice?.cancelLabel}
+        onConfirm={notice?.onConfirm}
+      />
+    </SubscriptionContext.Provider>
+  );
 }

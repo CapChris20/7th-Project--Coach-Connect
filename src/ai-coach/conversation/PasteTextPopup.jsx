@@ -12,9 +12,9 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useColorScheme } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
-import { lightColors, darkColors, spacing, borderRadius, nb } from '../../look-and-feel/colorPalette';
+import { spacing, borderRadius, nb } from '../../look-and-feel/colorPalette';
+import { useTheme } from '../../look-and-feel/lightDarkMode';
 import NbSheet from '../../look-and-feel/NbSheet';
 import NbButton from '../../look-and-feel/NbButton';
 
@@ -100,10 +100,11 @@ function PasteSheetActions({ canConfirmPaste, onClose, onConfirmDraft }) {
  * @param {{ visible: boolean, onClose: Function, onConfirm?: Function, t?: object, isDark?: boolean }} props
  */
 export default function PasteTextPopup({ visible, onClose, onConfirm, t, isDark: isDarkProp }) {
-  // Prefer the app theme prop; fall back to OS scheme only when the parent omitted it.
-  const colorScheme = useColorScheme();
-  const isDark = typeof isDarkProp === 'boolean' ? isDarkProp : colorScheme === 'dark';
-  const colors = isDark ? darkColors : lightColors;
+  // Prefer app theme (Design Law light/dark), not the OS scheme alone.
+  const { colors: themeColors, isDark: themeIsDark } = useTheme();
+  const colors = themeColors;
+  void isDarkProp;
+  void themeIsDark;
   void t;
   const [draft, setDraft] = useState('');
   const inputRef = useRef(null);
@@ -176,6 +177,7 @@ export default function PasteTextPopup({ visible, onClose, onConfirm, t, isDark:
             borderWidth: nb.borderWidth,
             color: colors.nbInk,
             backgroundColor: colors.nbSurface,
+            shadowColor: colors.nbShadow,
             fontFamily: 'SpaceGrotesk_700Bold',
           },
         ]}
@@ -211,6 +213,11 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.nbCard,
     padding: spacing.md,
     fontSize: 15,
+    // Design Law: hard offset shadow on the TEXT field (same as meal food input)
+    shadowOffset: { width: 3, height: 3 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 3,
   },
   limitHint: {
     marginTop: 6,

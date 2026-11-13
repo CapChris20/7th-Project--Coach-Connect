@@ -15,7 +15,7 @@ const JUNK_TITLE_RE =
 
 /** Concatenated web/menu-page titles and tracker noise that must never top search. */
 const MENU_PAGE_JUNK_RE =
-  /\bmenu\s*items?\b|breadmenu|menuitems?|\bgs1\b|\bupc\s*tracker\b|\bbarcode\s*tracker\b|\bnutritionix\s*track|\bcalorie\s*content\b|\ballergen\s*(guide|sheet)\b|\bsearch\s+results?\b|\bproduct\s+list\b|\bhomepage\b|\b14\s*million\s+foods\b|\bfood\s+search\s+results?\b|\bmenu\s+with\s+prices\b|\bpdf\s+download\b|\btrack(er|ing)?\s+your\s+calories\b/i;
+  /\bmenu\s*items?\b|breadmenu|menuitems?|\bgs1\b|\bupc\s*tracker\b|\bbarcode\s*tracker\b|\bnutritionix\s*track|\bcalorie\s*content\b|\ballergen\s*(guide|sheet)\b|\bsearch\s+results?\b|\bproduct\s+list\b|\bhomepage\b|\b14\s*million\s+foods\b|\bfood\s+search\s+results?\b|\bmenu\s+with\s+prices\b|\bpdf\s+download\b|\btrack(er|ing)?\s+your\s+calories\b|\bclick\s+here\b|\bsee\s+full\s+(nutrition|label)\b|\bhow\s+many\s+calories\s+in\b|\bcalories?\s+and\s+nutrition\s+facts?\b|\bshop\s+now\b|\bbuy\s+online\b/i;
 
 /** Site / pipeline names that must never become the food card title. */
 const SOURCE_NAME_JUNK = new Set([

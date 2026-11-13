@@ -7,9 +7,9 @@
 import { lightColors } from '../../look-and-feel/colorPalette';
 export const FOOD_CARD_BRAND = {
   orangePink: ['#9A3412', '#FF3D8A'],
-  orangePurple: ['#9A3412', '#E25588'],
+  orangePurple: ['#FF6B9D', '#FB923C'],
   goldPink: ['#A67C00', lightColors.primary],
-  cyanPurple: ['#0891B2', '#E25588'],
+  cyanPurple: ['#06B6D4', '#FB923C'],
 };
 
 export const FOOD_CARD_MACRO_GRADIENTS = {

@@ -23,7 +23,15 @@ import { useTheme } from './lightDarkMode';
  * @param {boolean} [props.sm]
  * @param {object} [props.style]
  */
-export default function NbButton({ variant = 'brand', children, onPress, disabled = false, sm = false, style }) {
+export default function NbButton({
+  variant = 'brand',
+  children,
+  onPress,
+  disabled = false,
+  sm = false,
+  style,
+  accessibilityLabel,
+}) {
   const { colors } = useTheme();
 
   const translateAnim = useRef(new Animated.Value(0)).current;
@@ -149,12 +157,19 @@ export default function NbButton({ variant = 'brand', children, onPress, disable
     );
   };
   
+  // Prefer explicit a11y label; fall back to string children so VoiceOver still names the button.
+  const resolvedA11yLabel =
+    accessibilityLabel ||
+    (typeof children === 'string' || typeof children === 'number' ? String(children) : undefined);
+
   return (
     <Pressable
       onPress={onPress}
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
       disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={resolvedA11yLabel}
       style={[
         styles.container,
         disabled && styles.disabled,

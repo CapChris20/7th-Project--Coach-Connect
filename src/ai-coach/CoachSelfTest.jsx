@@ -28,7 +28,7 @@ const COLORS = {
   cardBg: darkColors.nbSurface,
   textPrimary: lightColors.white,
   textSecondary: darkColors.nbMuted,
-  pink: '#E25588',
+  pink: '#FB923C',
   orange: '#F97316',
   green: '#10B981',
   red: '#FF6B6B',

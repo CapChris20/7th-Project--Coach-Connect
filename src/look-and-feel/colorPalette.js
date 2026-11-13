@@ -88,10 +88,11 @@ const LIGHT_INDIGO_HEX = {
   300: '#B8B8FF',
   [PALETTE_STEP_400]: '#9F9FFF',
   [PALETTE_STEP_500]: '#8686FF',
-  600: '#E25588',
-  700: '#BE185D',
-  800: '#3C3BA8',
-  900: '#2E2D89',
+  // Design Law: no pink chrome in indigo ramp — cool blue only
+  600: '#06B6D4',
+  700: '#0284C7',
+  800: '#0369A1',
+  900: '#0C4A6E',
 };
 
 const LIGHT_GRAY_HEX = {
@@ -114,8 +115,9 @@ const DARK_INDIGO_HEX = {
   300: '#4C4C52',
   [PALETTE_STEP_400]: '#5C5C63',
   [PALETTE_STEP_500]: '#6C6C74',
-  600: '#E25588',
-  700: '#FF6B9D',
+  // Design Law: no pink chrome in indigo ramp — cool blue only
+  600: '#22D3EE',
+  700: '#38BDF8',
   800: '#7F7FFF',
   900: '#9393FF',
 };
@@ -135,29 +137,31 @@ const DARK_GRAY_HEX = {
 
 // ===== MAIN FUNCTION =====
 
-/** Light mode colors (Modern Neutral theme). Keep these keys — screens import them by name. */
+/** Light mode colors. Keep these keys — screens import them by name. */
 export const lightColors = {
-  // Strip pass: no purple primary/accent chrome — brand pink / ink neutrals until handoff tokens land.
-  primary: '#E25588',
-  primaryDark: '#BE185D',
-  secondary: '#6B7280',
-  accent: '#E25588',
-  background: '#F2F2F7', // iOS light gray background
-  surface: '#FFFFFF', // White surface
-  surfaceSecondary: '#F9F9F9',
-  text: '#000000', // Black text for light mode
-  textSecondary: '#3C3C43',
-  success: '#30D158', // iOS green
-  warning: '#FF9F0A', // iOS orange
-  error: '#FF3B30', // iOS red
-  info: '#E25588',
-  border: '#E5E5E7',
+  // Design Law: chrome primary = fill/ink (never solid pink/purple/green).
+  // Tiny pink→orange gradients stay in accentGradients only — not these chrome keys.
+  primary: '#0A0A0A',
+  primaryDark: '#0A0A0A',
+  secondary: '#575757',
+  accent: '#0A0A0A',
+  background: '#F2F2F0',
+  surface: '#FFFFFF',
+  surfaceSecondary: '#E3E3DF',
+  text: '#0A0A0A',
+  textSecondary: '#575757',
+  // Manipulate here: was iOS green — Design Law forbids green chrome
+  success: '#F97316',
+  warning: '#FF9F0A',
+  error: '#FF3B30',
+  info: '#06B6D4',
+  border: '#0A0A0A',
   white: '#FFFFFF',
   black: '#000000',
   indigo: indigoRamp(LIGHT_INDIGO_HEX),
   gray: grayRamp(LIGHT_GRAY_HEX),
   
-  // Handoff tokens (docs/design/DESIGN.md) — B/W/gray neo-brutalist
+  // Handoff tokens (Design-Law DESIGN-SYSTEM.md) — B/W/gray neo-brutalist
   nbBackground: '#F2F2F0',
   nbSurface: '#FFFFFF',
   nbSurfaceChip: '#FFFFFF',
@@ -172,27 +176,28 @@ export const lightColors = {
 
 /** Dark mode colors. Gray is flipped so 50 is the darkest step. */
 export const darkColors = {
-  // Strip pass: no purple primary/accent chrome.
-  primary: '#E25588',
-  primaryDark: '#FF6B9D',
-  secondary: '#8E8E93',
-  accent: '#E25588',
-  background: '#000000', // Pure black background
-  surface: '#1C1C1E', // iOS dark gray surface
-  surfaceSecondary: '#2C2C2E',
-  text: '#FFFFFF', // White text for dark mode
-  textSecondary: '#AEAEB2',
-  success: '#30D158', // iOS green (brighter for dark mode)
-  warning: '#FF9F0A', // iOS orange
-  error: '#FF453A', // iOS red
-  info: '#E25588',
-  border: '#38383A',
+  // Design Law: chrome primary = fill/ink (never solid pink/purple/green).
+  primary: '#F2F2F2',
+  primaryDark: '#F2F2F2',
+  secondary: '#A6A6A6',
+  accent: '#F2F2F2',
+  background: '#0B0B0B',
+  surface: '#161616',
+  surfaceSecondary: '#262626',
+  text: '#F2F2F2',
+  textSecondary: '#A6A6A6',
+  // Manipulate here: was iOS green — Design Law forbids green chrome
+  success: '#FB923C',
+  warning: '#FF9F0A',
+  error: '#FF453A',
+  info: '#7DD3FC',
+  border: '#F2F2F2',
   white: '#FFFFFF',
   black: '#000000',
   indigo: indigoRamp(DARK_INDIGO_HEX),
   gray: grayRamp(DARK_GRAY_HEX),
   
-  // Handoff tokens (docs/design/DESIGN.md) — B/W/gray neo-brutalist
+  // Handoff tokens (Design-Law DESIGN-SYSTEM.md) — B/W/gray neo-brutalist
   nbBackground: '#0B0B0B',
   nbSurface: '#161616',
   nbSurfaceChip: '#1F1F1F',
@@ -338,31 +343,31 @@ export const accentGradients = [
   ['#FF6B9D', '#F472B6'],
 ];
 
-/** Nav + button — brand pink→orange (no yellow/gold). */
-export const navAccentGradient = ['#FF6B9D', '#FB923C'];
+/** Nav + button — Design Law gold→pink (the one allowed place for that pair). */
+export const navAccentGradient = ['#FCD34D', '#F472B6'];
 
 // Gradient definitions for expo-linear-gradient
 // All use 115deg diagonal, start {x:0,y:0} end {x:1,y:1}
 export const gradients = {
   // Primary buttons, plus button, active chips, progress rings, avatars
-  // Text on brand gradient is always nbInk (#0A0A0F)
+  // Text on brand gradient is always nbInk (#0A0A0A)
   brand: {
     colors: ['#FF6B9D', '#FB923C'],
     start: { x: 0, y: 0 },
     end: { x: 1, y: 1 },
   },
   
-  // Strip: was purple→magenta — now brand pink→orange (no purple chrome).
+  // Selected chrome accents — same brand pair (never solid purple).
   ink: {
     colors: ['#FF6B9D', '#FB923C'],
     start: { x: 0, y: 0 },
     end: { x: 1, y: 1 },
   },
   
-  // Hero titles only (masked text) - changes by theme
+  // Hero titles only (masked text) - brand pink→orange both themes
   title: {
     light: {
-      colors: ['#BE185D', '#C2410C'],
+      colors: ['#FF6B9D', '#FB923C'],
       start: { x: 0, y: 0 },
       end: { x: 1, y: 1 },
     },

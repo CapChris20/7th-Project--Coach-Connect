@@ -13,13 +13,13 @@ import {
   ActivityIndicator,
   Platform,
   Share,
-  Alert,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import * as Sharing from 'expo-sharing';
 import { Ionicons } from '@expo/vector-icons';
 import { addFile } from '../../for-both/files-and-notes/saveNotesAndFiles';
 import { auth } from '../../app-start/cloudConnection';
+import NbNoticeSheet from '../../look-and-feel/NbNoticeSheet';
 
 // ===== NAMED CONSTANTS =====
 
@@ -55,37 +55,37 @@ function pdfShareOptions() {
   return { mimeType: PDF_MIME_TYPE, dialogTitle: SHARE_DIALOG_TITLE };
 }
 
-async function saveRemotePdfToFiles(pdfDownloadUrl) {
+async function saveRemotePdfToFiles(pdfDownloadUrl, showNotice) {
   if (!pdfDownloadUrl) return;
   const canShare = await Sharing.isAvailableAsync();
   if (!canShare) {
-    Alert.alert('Share', 'Use Share below to save or open the PDF.');
+    showNotice('Share', 'Use Share below to save or open the PDF.');
     return;
   }
   try {
     await Sharing.shareAsync(pdfDownloadUrl, pdfShareOptions());
   } catch (_error) {
-    Alert.alert('Share', 'Use Share to save or open the PDF.');
+    showNotice('Share', 'Use Share to save or open the PDF.');
   }
 }
 
-async function saveLocalPdfToFiles(pdfLocalUri, setSaving) {
+async function saveLocalPdfToFiles(pdfLocalUri, setSaving, showNotice) {
   try {
     setSaving(true);
     const canShare = await Sharing.isAvailableAsync();
     if (!canShare) {
-      Alert.alert('Not available', 'Sharing is not available on this device.');
+      showNotice('Not available', 'Sharing is not available on this device.');
       return;
     }
     await Sharing.shareAsync(pdfLocalUri, pdfShareOptions());
   } catch (error) {
-    Alert.alert('Error', error.message || 'Could not save PDF.');
+    showNotice('Error', error.message || 'Could not save PDF.');
   } finally {
     setSaving(false);
   }
 }
 
-async function shareWorkoutPlan(shareUri, planTitle) {
+async function shareWorkoutPlan(shareUri, planTitle, showNotice) {
   if (!shareUri) return;
   try {
     await Share.share({
@@ -95,7 +95,7 @@ async function shareWorkoutPlan(shareUri, planTitle) {
       type: PDF_MIME_TYPE,
     });
   } catch (error) {
-    if (error.code !== 'ERR_CANCELED') Alert.alert('Error', error.message || 'Could not share.');
+    if (error.code !== 'ERR_CANCELED') showNotice('Error', error.message || 'Could not share.');
   }
 }
 
@@ -103,10 +103,10 @@ function workoutPlanFileName() {
   return `workout-plan-${Date.now()}.pdf`;
 }
 
-async function sendPdfToTrainerFiles(fileUri, setSendingToTrainer) {
+async function sendPdfToTrainerFiles(fileUri, setSendingToTrainer, showNotice) {
   const uid = auth.currentUser?.uid;
   if (!uid) {
-    Alert.alert('Error', 'You must be logged in to send to trainer.');
+    showNotice('Error', 'You must be logged in to send to trainer.');
     return;
   }
   if (!fileUri) return;
@@ -118,9 +118,9 @@ async function sendPdfToTrainerFiles(fileUri, setSendingToTrainer) {
       mimeType: PDF_MIME_TYPE,
       type: FILE_TYPE_DOC,
     }, ADDED_BY_CLIENT);
-    Alert.alert('Sent', 'PDF has been added to your Notes & Files. Your trainer will see it.');
+    showNotice('Sent', 'PDF has been added to your Notes & Files. Your trainer will see it.');
   } catch (error) {
-    Alert.alert('Error', error.message || 'Could not send to trainer.');
+    showNotice('Error', error.message || 'Could not send to trainer.');
   } finally {
     setSendingToTrainer(false);
   }
@@ -153,24 +153,26 @@ export default function PlanPdfViewer({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [sendingToTrainer, setSendingToTrainer] = useState(false);
+  const [notice, setNotice] = useState(null);
+  const showNotice = (title, message, extras = {}) => setNotice({ title, message, ...extras });
 
   const uri = pdfDownloadUrl || pdfLocalUri;
   const palette = viewerPalette(isDark);
 
   const handleSaveToFiles = async () => {
     if (!pdfLocalUri) {
-      await saveRemotePdfToFiles(pdfDownloadUrl);
+      await saveRemotePdfToFiles(pdfDownloadUrl, showNotice);
       return;
     }
-    await saveLocalPdfToFiles(pdfLocalUri, setSaving);
+    await saveLocalPdfToFiles(pdfLocalUri, setSaving, showNotice);
   };
 
   const handleShare = async () => {
-    await shareWorkoutPlan(pdfLocalUri || pdfDownloadUrl, planTitle);
+    await shareWorkoutPlan(pdfLocalUri || pdfDownloadUrl, planTitle, showNotice);
   };
 
   const handleSendToTrainer = async () => {
-    await sendPdfToTrainerFiles(pdfDownloadUrl || pdfLocalUri, setSendingToTrainer);
+    await sendPdfToTrainerFiles(pdfDownloadUrl || pdfLocalUri, setSendingToTrainer, showNotice);
   };
 
   if (!uri) return null;
@@ -224,6 +226,15 @@ export default function PlanPdfViewer({
             textColor={palette.textColor}
           />
         </View>
+        <NbNoticeSheet
+          visible={!!notice}
+          onClose={() => setNotice(null)}
+          title={notice?.title || ''}
+          message={notice?.message}
+          confirmLabel={notice?.confirmLabel || 'OK'}
+          cancelLabel={notice?.cancelLabel}
+          onConfirm={notice?.onConfirm}
+        />
       </SafeAreaView>
     </Modal>
   );

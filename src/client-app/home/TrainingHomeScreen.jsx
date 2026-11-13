@@ -61,20 +61,20 @@ import NbRing from '../../look-and-feel/NbRing';
 import { lightColors, darkColors, accentGradients, navAccentGradient, nb } from '../../look-and-feel/colorPalette';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
-  DesignLawCheckInCard,
-  DesignLawGoToGrid,
-  DesignLawLogSheet,
-  DesignLawNumberTiles,
-  DesignLawNutritionCard,
-  DesignLawTrainerSheet,
-  DesignLawWorkoutCard,
+  ClientCheckInCard,
+  ClientGoToGrid,
+  ClientLogSheet,
+  ClientNumberTiles,
+  ClientNutritionCard,
+  ClientTrainerSheet,
+  ClientWorkoutCard,
   HANDOFF_PROGRESS,
   HANDOFF_SCHEDULE,
   HANDOFF_WORKOUT,
-} from './DesignLawHomeBlocks';
+} from './ClientHomeBlocks';
 import WriteTrainerReviewPopup from './WriteTrainerReviewPopup';
 import FindTrainerBanner from '../../for-both/home-cards/FindTrainerBanner';
-import DesignLawHomeWelcomeHero from '../../for-both/home-cards/DesignLawHomeWelcomeHero';
+import HomeWelcomeHero from '../../for-both/home-cards/HomeWelcomeHero';
 
 // ===== NAMED CONSTANTS =====
 
@@ -1873,7 +1873,7 @@ function TrainingHomeScreenLayout({
         </View>
 
         {/* .hero4 — welcome + lifter + tagline only (no streak / stats / countdown) */}
-        <DesignLawHomeWelcomeHero themeColors={themeColors} variant="client" />
+        <HomeWelcomeHero themeColors={themeColors} variant="client" />
 
         {/* Up next */}
         <View style={dash.eybRow}>
@@ -2062,7 +2062,7 @@ function TrainingHomeScreenLayout({
           <Text style={[dash.eyb, { color: themeColors.textMuted }]}>Today&apos;s numbers</Text>
           <Text style={{ fontSize: 13, color: themeColors.textMuted }}>Tap to log</Text>
         </View>
-        <DesignLawNumberTiles
+        <ClientNumberTiles
           themeColors={themeColors}
           sleepHours={
             typeof sleepHoursValue === 'number'
@@ -2084,7 +2084,7 @@ function TrainingHomeScreenLayout({
             <Text style={{ fontSize: 13, fontWeight: '800', color: themeColors.text, textDecorationLine: 'underline' }}>Log a meal</Text>
           </TouchableOpacity>
         </View>
-        <DesignLawNutritionCard
+        <ClientNutritionCard
           themeColors={themeColors}
           todayCalories={todayCalories}
           calorieGoal={calorieGoal || DEFAULT_CALORIE_GOAL}
@@ -2108,7 +2108,7 @@ function TrainingHomeScreenLayout({
             </TouchableOpacity>
           ) : null}
         </View>
-        <DesignLawWorkoutCard themeColors={themeColors} state={workoutLogState} />
+        <ClientWorkoutCard themeColors={themeColors} state={workoutLogState} />
 
         {/* Daily check-in — sliders + mood chips; Open → standalone screens */}
         <View style={[dash.eybRow, { marginTop: 8 }]}>
@@ -2130,7 +2130,7 @@ function TrainingHomeScreenLayout({
             ) : null}
           </View>
         </View>
-        <DesignLawCheckInCard
+        <ClientCheckInCard
           themeColors={themeColors}
           trainerFirstName={String(trainerName || '').split(' ')[0] || ''}
           values={{
@@ -2154,7 +2154,7 @@ function TrainingHomeScreenLayout({
         <View style={[dash.eybRow, { marginTop: 8 }]}>
           <Text style={[dash.eyb, { color: themeColors.textMuted }]}>Go to</Text>
         </View>
-        <DesignLawGoToGrid
+        <ClientGoToGrid
           themeColors={themeColors}
           items={[
             {
@@ -2201,7 +2201,7 @@ function TrainingHomeScreenLayout({
         />
       </ScrollView>
 
-      <DesignLawLogSheet
+      <ClientLogSheet
         visible={!!logMetricKey}
         metricKey={logMetricKey}
         themeColors={themeColors}
@@ -2222,7 +2222,7 @@ function TrainingHomeScreenLayout({
         onSaveSteps={(n) => stepsState.save(String(n))}
       />
 
-      <DesignLawTrainerSheet
+      <ClientTrainerSheet
         visible={trainerSheetOpen}
         onClose={() => setTrainerSheetOpen(false)}
         trainerName={trainerName}

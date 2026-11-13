@@ -5,7 +5,7 @@
 // vocab: HardShadow = solid offset shadow (no blur); nbFill = selected / primary solid (black light, white dark)
 // vocab: basket = foods toggled with +; Log-to-Meal opens ConfirmFoodPopup sequentially for each pick
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -584,13 +584,20 @@ function FoodSearchScreen({
     loadFavorites();
   }, [uid]);
 
+  // vocab: searchRaceId = increments per typed search so a slow older response cannot overwrite newer results
+  const searchRaceIdRef = useRef(0);
+
   // Ask the server, drop junk titles, normalize for the confirm sheet
   const handleSearch = useCallback(async (searchQuery) => {
     if (!searchQuery.trim()) {
+      searchRaceIdRef.current += 1;
       setResults([]);
       setHasSearched(false);
+      setLoading(false);
       return;
     }
+    const raceId = searchRaceIdRef.current + 1;
+    searchRaceIdRef.current = raceId;
     setLoading(true);
     setSearchError(null);
     setEmptyHint(null);
@@ -598,15 +605,28 @@ function FoodSearchScreen({
     setBrowseTab('results');
     try {
       const rawHits = await searchFoods(searchQuery, SEARCH_RESULT_LIMIT);
+      // Stale response from an earlier keystroke — drop it.
+      if (raceId !== searchRaceIdRef.current) return;
       const trimmedQuery = searchQuery.trim();
-      setResults(normalizeSearchHits(rawHits, trimmedQuery));
+      const cleaned = normalizeSearchHits(rawHits, trimmedQuery);
+      if (__DEV__) {
+        console.log('[FoodSearch]', {
+          raceId,
+          query: trimmedQuery,
+          raw: Array.isArray(rawHits) ? rawHits.length : 0,
+          afterJunkFilter: cleaned.length,
+          hint: getFoodSearchHint(),
+        });
+      }
+      setResults(cleaned);
       setEmptyHint(getFoodSearchHint());
     } catch (err) {
+      if (raceId !== searchRaceIdRef.current) return;
       console.error('Food search error:', err);
       setSearchError('Search failed. Make sure the server is running.');
       setResults([]);
     } finally {
-      setLoading(false);
+      if (raceId === searchRaceIdRef.current) setLoading(false);
     }
   }, []);
 

@@ -7,7 +7,6 @@
 
 import React, { useMemo, useState } from 'react';
 import {
-  Alert,
   ScrollView,
   StyleSheet,
   Text,
@@ -21,6 +20,7 @@ import NbPageHeader from '../../look-and-feel/NbPageHeader';
 import NbButton from '../../look-and-feel/NbButton';
 import NbChip from '../../look-and-feel/NbChip';
 import NbSegmented from '../../look-and-feel/NbSegmented';
+import NbNoticeSheet from '../../look-and-feel/NbNoticeSheet';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
 import { FORM_SCROLL_PROPS, useShellBottomNavInset } from '../../navigation/bottomMenuSpacing';
 import { nb, spacing } from '../../look-and-feel/colorPalette';
@@ -99,6 +99,8 @@ export default function RequestSessionScreen({
   const [whereOption, setWhereOption] = useState('in-person');
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [notice, setNotice] = useState(null);
+  const showNotice = (title, message, extras = {}) => setNotice({ title, message, ...extras });
 
   const dayLabel = useMemo(() => {
     try {
@@ -112,7 +114,7 @@ export default function RequestSessionScreen({
 
   const handleSubmit = async () => {
     if (!clientId || !trainerId || !db) {
-      Alert.alert('No trainer', 'Link a trainer before requesting a session.');
+      showNotice('No trainer', 'Link a trainer before requesting a session.');
       return;
     }
     setSubmitting(true);
@@ -137,7 +139,7 @@ export default function RequestSessionScreen({
       onSubmitted?.();
       onBack?.();
     } catch (e) {
-      Alert.alert('Could not send', e?.message || 'Please try again.');
+      showNotice('Could not send', e?.message || 'Please try again.');
     } finally {
       setSubmitting(false);
     }
@@ -233,6 +235,15 @@ export default function RequestSessionScreen({
           {`${coachFirst} confirms or suggests another time. You are told either way.`}
         </Text>
       </ScrollView>
+      <NbNoticeSheet
+        visible={!!notice}
+        onClose={() => setNotice(null)}
+        title={notice?.title || ''}
+        message={notice?.message}
+        confirmLabel={notice?.confirmLabel || 'OK'}
+        cancelLabel={notice?.cancelLabel}
+        onConfirm={notice?.onConfirm}
+      />
     </View>
   );
 }

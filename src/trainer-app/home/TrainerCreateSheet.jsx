@@ -8,7 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import NbSheet from '../../look-and-feel/NbSheet';
 import NbIconChip from '../../look-and-feel/NbIconChip';
 import { spacing } from '../../look-and-feel/colorPalette';
-import { trainerHomeThemeColors } from './DesignLawTrainerHomeBlocks';
+import { trainerHomeThemeColors } from './TrainerHomeBlocks';
 
 // ===== NAMED CONSTANTS =====
 
@@ -37,7 +37,7 @@ const DOCUMENT_ROWS = [
  *   onRichText?: Function,
  * }} props
  */
-export default function DesignLawTrainerCreateSheet({
+export default function TrainerCreateSheet({
   visible,
   onClose,
   isDark,

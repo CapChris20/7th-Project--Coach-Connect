@@ -8,7 +8,6 @@ import {
   StyleSheet,
   Text,
   View,
-  Alert,
   Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -26,6 +25,7 @@ import {
   ShellBottomNavAnchor,
 } from '../../navigation/bottomMenuSpacing';
 import HardShadow from '../../look-and-feel/HardShadow';
+import NbNoticeSheet from '../../look-and-feel/NbNoticeSheet';
 import { borderRadius, nb, spacing } from '../../look-and-feel/colorPalette';
 import { useTheme as useAppTheme } from '../../look-and-feel/lightDarkMode';
 import {
@@ -365,6 +365,8 @@ export default function WeeklyReportScreen({
   const [nutritionByDay, setNutritionByDay] = useState({});
   const [dailyLogsByDay, setDailyLogsByDay] = useState({});
   const [clientMeta, setClientMeta] = useState({});
+  const [notice, setNotice] = useState(null);
+  const showNotice = (title, message, extras = {}) => setNotice({ title, message, ...extras });
 
   const load = useCallback(async () => {
     if (!clientId || !db) {
@@ -424,13 +426,13 @@ export default function WeeklyReportScreen({
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: 'Export weekly report' });
       } else {
-        Alert.alert('Export ready', 'PDF saved — sharing is not available on this device.');
+        showNotice('Export ready', 'PDF saved — sharing is not available on this device.');
       }
     } catch (error) {
       console.warn('[WeeklyReportScreen] export failed', error?.message || error);
-      Alert.alert('Export failed', 'Could not create PDF for this report.');
+      showNotice('Export failed', 'Could not create PDF for this report.');
     }
-  }, [activeWeek, clientName]);
+  }, [activeWeek, clientName, showNotice]);
 
   const themeMode = isDark ? 'dark' : 'light';
 
@@ -454,6 +456,15 @@ export default function WeeklyReportScreen({
         onWorkoutPress={onWorkoutPress}
         onMessagesPress={onMessagesPress}
         onProfilePressForNav={onProfilePress}
+      />
+      <NbNoticeSheet
+        visible={!!notice}
+        onClose={() => setNotice(null)}
+        title={notice?.title || ''}
+        message={notice?.message}
+        confirmLabel={notice?.confirmLabel || 'OK'}
+        cancelLabel={notice?.cancelLabel}
+        onConfirm={notice?.onConfirm}
       />
     </WeeklyReportThemeProvider>
   );

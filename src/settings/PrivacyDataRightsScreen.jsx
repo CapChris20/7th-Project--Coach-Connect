@@ -8,7 +8,6 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  Alert,
   Platform,
   TouchableOpacity,
 } from 'react-native';
@@ -22,6 +21,7 @@ import NbPageHeader from '../look-and-feel/NbPageHeader';
 import NbCard from '../look-and-feel/NbCard';
 import NbSwitch from '../look-and-feel/NbSwitch';
 import HoldToConfirmPopup from '../for-both/popups/HoldToConfirmPopup';
+import NbNoticeSheet from '../look-and-feel/NbNoticeSheet';
 import {
   SHELL_SAFE_AREA_EDGES,
   FORM_SCROLL_PROPS,
@@ -106,6 +106,8 @@ export default function PrivacyDataRightsScreen({
   const shellNavInset = useShellBottomNavInset(SHELL_NAV_INSET);
   const { aiEnabled, toggleAI } = useAI();
   const [showDeleteHoldModal, setShowDeleteHoldModal] = useState(false);
+  const [notice, setNotice] = useState(null);
+  const showNotice = (title, message, extras = {}) => setNotice({ title, message, ...extras });
   const auth = getAuth();
   const user = auth.currentUser;
 
@@ -130,20 +132,21 @@ export default function PrivacyDataRightsScreen({
         // backend already performed canonical deletion
       }
       await signOut(auth);
-      Alert.alert('Account deleted', 'Your account and data have been permanently deleted.');
+      showNotice('Account deleted', 'Your account and data have been permanently deleted.');
     } catch (error) {
       throw new Error(error?.message || 'Failed to delete account. Please try again.');
     }
   }
 
   const onExport = () => {
-    Alert.alert(
+    showNotice(
       'Export my data',
       'Request a copy of your logs and plans through Contact support. We may ask you to verify your identity.',
-      [
-        { text: 'Contact support', onPress: () => go('contactSupport') },
-        { text: 'Close', style: 'cancel' },
-      ],
+      {
+        cancelLabel: 'Close',
+        confirmLabel: 'Contact support',
+        onConfirm: () => go('contactSupport'),
+      },
     );
   };
 
@@ -228,6 +231,15 @@ export default function PrivacyDataRightsScreen({
         holdDurationMs={HOLD_TO_DELETE_MS}
         pillLabel="Hold to confirm"
         onHoldComplete={performDeleteAccount}
+      />
+      <NbNoticeSheet
+        visible={!!notice}
+        onClose={() => setNotice(null)}
+        title={notice?.title || ''}
+        message={notice?.message}
+        confirmLabel={notice?.confirmLabel || 'OK'}
+        cancelLabel={notice?.cancelLabel}
+        onConfirm={notice?.onConfirm}
       />
     </SafeAreaView>
   );

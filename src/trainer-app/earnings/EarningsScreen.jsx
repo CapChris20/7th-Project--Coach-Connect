@@ -13,7 +13,6 @@ import {
   Pressable,
   Platform,
   StyleSheet,
-  Alert,
   Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -26,6 +25,7 @@ import NbCard from '../../look-and-feel/NbCard';
 import NbButton from '../../look-and-feel/NbButton';
 import NbAvatar from '../../look-and-feel/NbAvatar';
 import NbSlider from '../../look-and-feel/NbSlider';
+import NbNoticeSheet from '../../look-and-feel/NbNoticeSheet';
 import HardShadow from '../../look-and-feel/HardShadow';
 import TopHeader from '../../for-both/loading-and-header/TopHeader';
 import BottomMenuBar from '../../navigation/BottomMenuBar';
@@ -182,6 +182,8 @@ export default function EarningsScreen() {
     stripeConnectStatus === 'active' ? trainerUid : null,
   );
   const [stripeBalance, setStripeBalance] = useState({ pending: null, available: null });
+  const [notice, setNotice] = useState(null);
+  const showNotice = (title, message, extras = {}) => setNotice({ title, message, ...extras });
   const profileGrossCents = Number(profile.earningsGrossCents) || 0;
   const profileFeesCents =
     Number(profile.earningsPlatformFeesCents) || Math.round(profileGrossCents * PLATFORM_FEE_RATE);
@@ -292,7 +294,7 @@ export default function EarningsScreen() {
       await verifyStripeConnectStatus();
       await shell.refreshTrainerUserDoc?.();
     } catch (e) {
-      Alert.alert('Couldn’t refresh', e?.message || 'Try Finish setup if Stripe still needs info.');
+      showNotice('Couldn’t refresh', e?.message || 'Try Finish setup if Stripe still needs info.');
     } finally {
       setRefreshingStripe(false);
     }
@@ -414,7 +416,7 @@ export default function EarningsScreen() {
             await handleSetClientRate(client.id, rateCents, { billingEnabled: true });
           }
         } catch (e) {
-          Alert.alert('Couldn’t enable billing', e?.message || 'Please try again.');
+          showNotice('Couldn’t enable billing', e?.message || 'Please try again.');
         }
         return;
       }
@@ -425,7 +427,7 @@ export default function EarningsScreen() {
           await handleSetClientRate(client.id, rateCents, { billingEnabled: false });
         }
       } catch (e) {
-        Alert.alert('Couldn’t turn off billing', e?.message || 'Please try again.');
+        showNotice('Couldn’t turn off billing', e?.message || 'Please try again.');
       }
     },
     [clients, globalRateCents, openRateModal, handleSetClientRate, rateOverrides],
@@ -452,7 +454,7 @@ export default function EarningsScreen() {
     if (!rateModalOpen || savingRate) return;
     const dollars = Number(rateSliderDollars);
     if (!Number.isFinite(dollars) || dollars < 1) {
-      Alert.alert('Invalid rate', 'Enter a rate of at least $1.');
+      showNotice('Invalid rate', 'Enter a rate of at least $1.');
       return;
     }
     const amountInCents = Math.round(dollars * CENTS_PER_DOLLAR);
@@ -470,7 +472,7 @@ export default function EarningsScreen() {
       setRateModalOpen(false);
       setRateModalClient(null);
     } catch (e) {
-      Alert.alert('Couldn’t save rate', e?.message || 'Please try again.');
+      showNotice('Couldn’t save rate', e?.message || 'Please try again.');
     } finally {
       setSavingRate(false);
     }
@@ -718,6 +720,16 @@ export default function EarningsScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      <NbNoticeSheet
+        visible={!!notice}
+        onClose={() => setNotice(null)}
+        title={notice?.title || ''}
+        message={notice?.message}
+        confirmLabel={notice?.confirmLabel || 'OK'}
+        cancelLabel={notice?.cancelLabel}
+        onConfirm={notice?.onConfirm}
+      />
 
       <TrainerPayoutSetupPopup
         visible={!!stripeConnect.webViewUrl}

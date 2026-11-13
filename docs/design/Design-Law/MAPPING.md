@@ -21,9 +21,9 @@ Screens: `screens/hero-and-welcome-redesign/` · See `UPDATE-WELCOME-AND-HEROES.
 
 | Mockup screens | Existing code to change |
 |---|---|
-| Welcome (01/02) | `src/login-and-signup/LoginScreen.js`<br>`src/login-and-signup/DesignLawWelcomeStage.jsx`<br>`src/for-both/icons/AppLogo.jsx`<br>`src/assets/logo/brandLogo.js`<br>`src/for-both/brand-chrome/DesignLawHeroChrome.jsx` |
-| Client home hero (03/04) | `src/client-app/home/TrainingHomeScreen.jsx`<br>`src/for-both/home-cards/DesignLawHomeWelcomeHero.jsx` |
-| Trainer home hero (05/06) | `src/trainer-app/home/DesignLawTrainerHomeBlocks.jsx`<br>`src/trainer-app/home/TrainerHomeContent.jsx`<br>`src/for-both/home-cards/DesignLawHomeWelcomeHero.jsx` |
+| Welcome (01/02) | `src/login-and-signup/LoginScreen.js`<br>`src/login-and-signup/WelcomeStage.jsx`<br>`src/for-both/icons/AppLogo.jsx`<br>`src/assets/logo/brandLogo.js`<br>`src/for-both/brand-chrome/HeroChrome.jsx` |
+| Client home hero (03/04) | `src/client-app/home/TrainingHomeScreen.jsx`<br>`src/for-both/home-cards/HomeWelcomeHero.jsx` |
+| Trainer home hero (05/06) | `src/trainer-app/home/TrainerHomeBlocks.jsx`<br>`src/trainer-app/home/TrainerHomeContent.jsx`<br>`src/for-both/home-cards/HomeWelcomeHero.jsx` |
 
 ## Client onboarding (8 screens)
 

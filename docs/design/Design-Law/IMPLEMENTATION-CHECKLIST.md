@@ -29,7 +29,7 @@ Last updated: 2026-11-12 (AI coach PNG 05 chip; workout library PNG 21 filters; 
 
 Screens: `screens/welcome-and-sign-in/` + `screens/hero-and-welcome-redesign/` (welcome wins)
 
-- [x] Welcome stage (`DesignLawWelcomeStage` + LoginScreen — CC logo, rings, 3 tiles, in sync.)
+- [x] Welcome stage (`WelcomeStage` + LoginScreen — CC logo, rings, 3 tiles, in sync.)
 - [x] Create account / Sign in (`LoginScreen.js` — role toggle, AuthField, social, Design Law chrome)
 - [x] Sign-in error states (`LoginScreen` — `AuthField` dashed border + ! row, `AuthBannerErrorCard`, role-mismatch `NbSheet` — PNG 07/08)
 - [x] Forgot password + Check your inbox (`ForgotPasswordFlow.js` — PNG 09–12)
@@ -52,7 +52,7 @@ Screens: `screens/client-onboarding/`
 
 Screens: `screens/trainer-setup/`, `screens/trainer-setup-part-2/`
 
-- [x] Specialties, credentials, rates, invite, review (`DesignLawTrainerOnboardingScreens.jsx`)
+- [x] Specialties, credentials, rates, invite, review (`TrainerOnboardingScreens.jsx`)
 - [x] Payout connect / skip / pro offer (`TrainerPayoutSetupStep.jsx`, `TrainerProOfferStep.jsx` + `designLaw`)
 - [x] Face capture step (Design Law “Verify your face” + camera permission NbSheet)
 - [x] Payout skip sheet (NbSheet — Clients wait / Skip anyway / Finish setup)
@@ -66,9 +66,9 @@ Screens: `screens/trainer-setup/`, `screens/trainer-setup-part-2/`
 
 Screens: `screens/client-home/` + hero from `screens/hero-and-welcome-redesign/03-04`
 
-- [x] Welcome hero (`DesignLawHomeWelcomeHero` — Welcome to Coach Connect + lifter + tagline; no stats)
-- [x] Dashboard blocks (`DesignLawHomeBlocks.jsx` + `TrainingHomeScreen.jsx`) — empty shells + week Build a plan + invite CTA
-- [x] My trainer sheet / review sheet (`DesignLawTrainerSheet` PNG 11/12 + `WriteTrainerReviewPopup` NbSheet PNG 13/14)
+- [x] Welcome hero (`HomeWelcomeHero` — Welcome to Coach Connect + lifter + tagline; no stats)
+- [x] Dashboard blocks (`ClientHomeBlocks.jsx` + `TrainingHomeScreen.jsx`) — empty shells + week Build a plan + invite CTA
+- [x] My trainer sheet / review sheet (`ClientTrainerSheet` PNG 11/12 + `WriteTrainerReviewPopup` NbSheet PNG 13/14)
 - [x] Log / check-in sheets on home (empty check-in collapsed shell)
 - [x] Every home card vs PNG (welcome, up next, week ring, number tiles, nutrition, workout, go-to) — device QA still open
 - [x] Empty vs filled home (`screens/empty-vs-data/`) — nutrition / workout / check-in / week / Find trainer
@@ -80,8 +80,8 @@ Screens: `screens/client-home/` + hero from `screens/hero-and-welcome-redesign/0
 
 Screens: `screens/trainer-home/` + hero from `screens/hero-and-welcome-redesign/05-06`
 
-- [x] Welcome hero (mirrored boxer via `DesignLawTrainerMotivationCard` → `DesignLawHomeWelcomeHero`)
-- [x] Shell: greeting, Needs you, client carousel, tools, weekly report (`DesignLawTrainerHomeBlocks.jsx`)
+- [x] Welcome hero (mirrored boxer via `TrainerMotivationCard` → `HomeWelcomeHero`)
+- [x] Shell: greeting, Needs you, client carousel, tools, weekly report (`TrainerHomeBlocks.jsx`)
 - [x] Client tab pills (segmented; Notes label no longer clips)
 - [x] Progress tab interior → metric list (PNG 01/02)
 - [x] Nutrition tab interior → ring + bars + meals (PNG 03/04), empty day = Design Law shell (not old Lottie)
@@ -89,7 +89,7 @@ Screens: `screens/trainer-home/` + hero from `screens/hero-and-welcome-redesign/
 - [x] Spacing between client tabs block and Tools section
 - [x] Sessions tab interior → agenda + Schedule CTA
 - [x] Notes tab interior → inline rows + note card
-- [x] Create something sheet (Tools document + spreadsheet → `DesignLawTrainerCreateSheet.jsx`, PNG 09/10)
+- [x] Create something sheet (Tools document + spreadsheet → `TrainerCreateSheet.jsx`, PNG 09/10)
 - [x] Payout sheet over home (`PayoutSetupReminderPopup.jsx`, PNG 07/08)
 - [x] New requests screen (`NewTraineeRequestsScreen.jsx`) — PNG 11/12; payout nudge wired to Money
 - [x] Money / Edit rate (`EarningsScreen.jsx`) — PNG 13–16; history UI not on PNG (deferred)
@@ -104,7 +104,7 @@ Screens: `screens/trainer-home/` + hero from `screens/hero-and-welcome-redesign/
 - [x] Chat: Design Law attach sheet + session Confirm/Change + image caption overlay
 - [x] Compare photos flow (`MyProgressPhotosScreen` Compare slider — progress PNG 09/10)
 - [x] CreateWorkoutPlanScreen generate/building/viewer chrome uses nb ink (PLAN_BUILDER_COLORS.pink → ink; edit forms nb borders; user notices → NbNoticeSheet)
-- [!] Spot-check light+dark vs PNGs on device before calling any of the above “final”
+- [x] Spot-check trainer home light vs PNG structure on device (Needs You / clients / Nb nav); full light+dark sweep still incremental
 
 ---
 
@@ -130,9 +130,9 @@ Screens: `screens/ai-coach/`, `screens/ai-coach-popups/`
 Screens: `screens/workouts/`
 
 - [x] My plan / Notes / Videos shell (`MyWorkoutPlanScreen.jsx` — PNG 01 Plan|Notes|Videos + Start session → `openWorkoutSession`)
-- [x] Session mode log + rest (`DesignLawWorkoutSessionScreen.jsx` — PNG 09–12)
+- [x] Session mode log + rest (`WorkoutSessionScreen.jsx` — PNG 09–12)
 - [x] Videos tab + Avoid sheet (`ExerciseVideosTab.jsx`, ShortVideoCard, ExerciseCard, DislikedExercisesPicker — PNG 05–08 HardShadow filters / journey / grid)
-- [x] New plan / building (`NewPlanDesignLawPanel.jsx` + `BuildingYourPlanView.jsx` via `CreateWorkoutPlanScreen.js` — PNG 13–16 list rows, Build with AI | Ask my trainer, full building screen)
+- [x] New plan / building (`NewPlanPanel.jsx` + `BuildingYourPlanView.jsx` via `CreateWorkoutPlanScreen.js` — PNG 13–16 list rows, Build with AI | Ask my trainer, full building screen)
 - [x] Workout root tabs restored: **Workout Plans | Exercise Library** (`CreateWorkoutPlanScreen` → `ExerciseVideosTab`)
 - [x] Saved plans (`SavedWorkoutsScreen.jsx` — PNG 17 list + PNG 18 delete NbSheet)
 - [x] Trainer builder chrome (`ManualWorkoutPlanBuilderScreen.jsx` — PNG 19–24)
@@ -279,7 +279,7 @@ Screens: `screens/missing-screens/`, `screens/empty-vs-data/`
 - [x] Log workout / daily check-in / mood (non–AI-coach paths) — stack screens + home links (`LogWorkoutScreen`, `DailyCheckInScreen`, `MoodCheckInScreen`)
 - [x] Weekly Momentum (`WeeklyMomentumScreen` — wired from Nutrition header)
 - [x] Spreadsheet editor vs missing-screens 13–16 — **RETIRED** (editor deleted; upload .xlsx/CSV / Google Sheets only; tools grid no longer shows Spreadsheet creator)
-- [x] Trainer AI coach variant (`DesignLawCoachHomeBody` viewerRole=trainer + `TrainerQuietClientsCard` in conversation)
+- [x] Trainer AI coach variant (`CoachHomeBody` viewerRole=trainer + `TrainerQuietClientsCard` in conversation)
 - [x] Empty vs filled audit for **client** dashboard (`empty-vs-data` nutrition/workout/check-in/week/banner)
 - [x] Empty vs filled audit for trainer home, plan, coach home (`empty-vs-data` 03–08 — invite empty clients, dashed weekly report, plan empty shell, coach “Nothing logged yet”)
 - [!] Device PNG QA light+dark for Batch 1 gap screens (01–12, 17–20) + Batch 2 empty-vs-data trainer lines

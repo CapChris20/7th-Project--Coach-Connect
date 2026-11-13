@@ -3,13 +3,14 @@
 // Used by: client navigation when the dedicated generator screen is opened. The full plan viewer lives elsewhere.
 
 import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, ActivityIndicator, Alert, useColorScheme } from 'react-native';
+import { View, Text, TouchableOpacity, ActivityIndicator, useColorScheme } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
 import { generateWorkoutPlanWithClaude, loadOnboardingAndPlanArtifacts, loadWorkoutGenerationUsage } from '../create-plan/CreateWorkoutPlanScreen';
 import NbCard from '../../look-and-feel/NbCard';
 import NbButton from '../../look-and-feel/NbButton';
+import NbNoticeSheet from '../../look-and-feel/NbNoticeSheet';
 import { lightColors, darkColors, gradients } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
@@ -49,18 +50,26 @@ function applyGeneratedPlan(plan, setGenUsage, setGeneratedPlan) {
   setGeneratedPlan(plan);
 }
 
-function applyGenerationFailure(error, setGenUsage) {
+function applyGenerationFailure(error, setGenUsage, showNotice) {
   if (error?.code === WORKOUT_MONTHLY_LIMIT_ERROR_CODE) {
     if (error.limitPayload) setGenUsage(usageFromLimitPayload(error.limitPayload));
-    Alert.alert(MONTHLY_LIMIT_TITLE, error.message);
+    showNotice(MONTHLY_LIMIT_TITLE, error.message);
     return;
   }
-  Alert.alert(GENERATE_FAIL_TITLE, error?.message || GENERATE_FAIL_FALLBACK);
+  showNotice(GENERATE_FAIL_TITLE, error?.message || GENERATE_FAIL_FALLBACK);
 }
 
-async function generatePlanForUser({ onboardingData, userId, setIsGenerating, setError, setGenUsage, setGeneratedPlan }) {
+async function generatePlanForUser({
+  onboardingData,
+  userId,
+  setIsGenerating,
+  setError,
+  setGenUsage,
+  setGeneratedPlan,
+  showNotice,
+}) {
   if (!onboardingData) {
-    Alert.alert(MISSING_ONBOARDING_TITLE, MISSING_ONBOARDING_MESSAGE);
+    showNotice(MISSING_ONBOARDING_TITLE, MISSING_ONBOARDING_MESSAGE);
     return;
   }
   setIsGenerating(true);
@@ -68,9 +77,9 @@ async function generatePlanForUser({ onboardingData, userId, setIsGenerating, se
   try {
     const plan = await generateWorkoutPlanWithClaude({ onboardingData, userId });
     applyGeneratedPlan(plan, setGenUsage, setGeneratedPlan);
-    Alert.alert(GENERATE_SUCCESS_TITLE, GENERATE_SUCCESS_MESSAGE);
+    showNotice(GENERATE_SUCCESS_TITLE, GENERATE_SUCCESS_MESSAGE);
   } catch (error) {
-    applyGenerationFailure(error, setGenUsage);
+    applyGenerationFailure(error, setGenUsage, showNotice);
   } finally {
     setIsGenerating(false);
   }
@@ -158,6 +167,8 @@ export default function GenerateMyWorkoutPlanScreen({
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState(null);
   const [genUsage, setGenUsage] = useState(null);
+  const [notice, setNotice] = useState(null);
+  const showNotice = (title, message, extras = {}) => setNotice({ title, message, ...extras });
 
   useEffect(() => {
     let mounted = true;
@@ -245,11 +256,21 @@ export default function GenerateMyWorkoutPlanScreen({
                   setError,
                   setGenUsage,
                   setGeneratedPlan,
+                  showNotice,
                 })}
               />
             </>
           ) : null}
         </NbCard>
+        <NbNoticeSheet
+          visible={!!notice}
+          onClose={() => setNotice(null)}
+          title={notice?.title || ''}
+          message={notice?.message}
+          confirmLabel={notice?.confirmLabel || 'OK'}
+          cancelLabel={notice?.cancelLabel}
+          onConfirm={notice?.onConfirm}
+        />
       </SafeAreaView>
     </View>
   );

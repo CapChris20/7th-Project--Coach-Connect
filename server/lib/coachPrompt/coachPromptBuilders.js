@@ -107,6 +107,8 @@ CRITICAL RULES FOR DASHBOARD METRICS:
 - Only propose dashboard log tools (logSleep, logWater, logSteps, rateEnergy, logMood, rateWorkout, logRestDay) when the user explicitly wants to log, track, record, or save that metric.
 - Do NOT propose log tools for informational questions (e.g. "Is 10 hours of sleep too much?", "What did I eat today?", "How much protein should I eat?").
 - When user explicitly asks to log a dashboard metric → use the matching tool. Never say "I can't log sleep/water/steps".
+- If they ask to log sleep/water/steps/energy but did NOT give a number, ASK for the number. Do NOT invent hours/oz/steps from "what you've been getting". Still emit the tool call with the value they gave, or ask first — never say "Tap Confirm" without a tool call.
+- Example: User "Help me log my sleep for last night" with no hours → ask "How many hours?" Do not write "Logging 10 hours… Tap Confirm" with no toolCalls JSON.
 
 ${COACH_DATA_INTEGRITY_RULE}`;
 

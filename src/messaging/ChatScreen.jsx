@@ -1060,6 +1060,7 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
     if (!currentUser?.uid || !peerUid) return;
     confirmBlockUser({
       peerName: displayName,
+      presentNotice: (title, message, extras = {}) => setNotice({ title, message, ...extras }),
       onConfirm: async () => {
         try {
           await blockUser(currentUser.uid, peerUid, { displayName });
@@ -1487,7 +1488,10 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
       }}
       title={notice?.title || ''}
       message={notice?.message}
-      confirmLabel="OK"
+      confirmLabel={notice?.confirmLabel || 'OK'}
+      cancelLabel={notice?.cancelLabel}
+      onConfirm={notice?.onConfirm}
+      destructive={!!notice?.destructive}
     />
   );
 

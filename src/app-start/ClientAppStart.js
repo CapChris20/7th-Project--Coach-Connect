@@ -5,7 +5,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Animated,
   Dimensions,
   Easing,
@@ -130,6 +129,7 @@ import {
 import { postRemotePushNotify } from '../for-both/online-connection/sendPhoneAlert';
 import { deleteNotesAndFilesItem, getNotesAndFiles, markNotesAndFilesItemRead, resolveTrainerSpreadsheetView, packSpreadsheetRowsHaveContent } from '../for-both/files-and-notes/saveNotesAndFiles';
 import { useTheme } from '../look-and-feel/lightDarkMode';
+import NbNoticeSheet from '../look-and-feel/NbNoticeSheet';
 import { trainerPhotoUri } from '../helpers/trainerProfilePhoto';
 import {
   getEmbedViewerUri,
@@ -684,6 +684,16 @@ function ClientAppShellLayout({
 
       {/* Remove-trainer sheet lives outside the navigator (same idea as PayTrainerPopup) so Dashboard
           and Settings can both open it without fighting the stack. */}
+      <NbNoticeSheet
+        visible={!!shell.notice}
+        onClose={() => shell.dismissNotice?.()}
+        title={shell.notice?.title || ''}
+        message={shell.notice?.message}
+        confirmLabel={shell.notice?.confirmLabel || 'OK'}
+        cancelLabel={shell.notice?.cancelLabel}
+        onConfirm={shell.notice?.onConfirm}
+      />
+
       <RemoveTrainerPopup
         visible={!!shell.showRemoveTrainerPopup}
         onClose={() => shell.setShowRemoveTrainerPopup?.(false)}
@@ -737,6 +747,12 @@ export default function ClientAppStart({ user, userData, onRefetchUserData }) {
   const [showRemoveTrainerPopup, setShowRemoveTrainerPopup] = useState(false);
   const [reviewPromptTrainer, setReviewPromptTrainer] = useState(null);
   const [showReviewSheetForPrompt, setShowReviewSheetForPrompt] = useState(false);
+  const [notice, setNotice] = useState(null);
+  const showNotice = useCallback(
+    (title, message, extras = {}) => setNotice({ title, message, ...extras }),
+    [],
+  );
+  const dismissNotice = useCallback(() => setNotice(null), []);
 
   // Inverted callback: the photo gallery screen registers its own "add photo" function here so the
   // bottom nav's "+" can trigger the gallery's picker. A ref (not state) because storing it must not
@@ -1264,9 +1280,9 @@ export default function ClientAppStart({ user, userData, onRefetchUserData }) {
       });
     } catch (sessionError) {
       console.error('Respond to session failed:', sessionError);
-      Alert.alert('Could not update', sessionError?.message || 'Please try again.');
+      showNotice('Could not update', sessionError?.message || 'Please try again.');
     }
-  }, [trainerData?.id, trainerData?.uid, user?.uid, user?.displayName]);
+  }, [trainerData?.id, trainerData?.uid, user?.uid, user?.displayName, showNotice]);
 
   const refreshNotesAndFiles = () => {
     if (user?.uid) getNotesAndFiles(user.uid).then(setNotesAndFiles).catch(() => {});
@@ -1321,11 +1337,11 @@ export default function ClientAppStart({ user, userData, onRefetchUserData }) {
       refreshNotesAndFiles();
     } catch (e) {
       console.error('Delete notes/file failed:', e);
-      Alert.alert('Could not delete', e?.message || 'Please try again.');
+      showNotice('Could not delete', e?.message || 'Please try again.');
     } finally {
       setDeletingMyFiles(false);
     }
-  }, [user?.uid, refreshNotesAndFiles]);
+  }, [user?.uid, refreshNotesAndFiles, showNotice]);
 
   const deleteAllMyFiles = useCallback(async () => {
     if (!user?.uid) return;
@@ -1342,12 +1358,15 @@ export default function ClientAppStart({ user, userData, onRefetchUserData }) {
       refreshNotesAndFiles();
     } catch (e) {
       console.error('Delete all notes/files failed:', e);
-      Alert.alert('Could not delete all', e?.message || 'Some files may not have been deleted. Try again.');
+      showNotice(
+        'Could not delete all',
+        e?.message || 'Some files may not have been deleted. Try again.',
+      );
       refreshNotesAndFiles();
     } finally {
       setDeletingMyFiles(false);
     }
-  }, [user?.uid, myOwnFiles, refreshNotesAndFiles]);
+  }, [user?.uid, myOwnFiles, refreshNotesAndFiles, showNotice]);
 
   // Router for "the user tapped a file". Every branch ends in a `return`, so the order below IS the
   // precedence: trainer-authored content first (it needs a server lookup to resolve), then explicit
@@ -1367,7 +1386,7 @@ export default function ClientAppStart({ user, userData, onRefetchUserData }) {
                 title: file.title || 'Document',
               });
             } else {
-              Alert.alert('Spreadsheet unavailable', 'Your coach may have removed this spreadsheet.');
+              showNotice('Spreadsheet unavailable', 'Your coach may have removed this spreadsheet.');
             }
             return;
           }
@@ -1393,10 +1412,10 @@ export default function ClientAppStart({ user, userData, onRefetchUserData }) {
             });
             return;
           }
-          Alert.alert('Spreadsheet unavailable', 'Your coach may have removed this spreadsheet.');
+          showNotice('Spreadsheet unavailable', 'Your coach may have removed this spreadsheet.');
         })
         .catch(() => {
-          Alert.alert('Spreadsheet unavailable', 'Could not load this spreadsheet.');
+          showNotice('Spreadsheet unavailable', 'Could not load this spreadsheet.');
         });
       return;
     }
@@ -1434,7 +1453,7 @@ export default function ClientAppStart({ user, userData, onRefetchUserData }) {
         title: file.name || file.title || 'Document',
       });
     }
-  }, []);
+  }, [showNotice]);
 
   // Pull-to-refresh on the home screen.
   const onRefresh = async () => {
@@ -1829,6 +1848,9 @@ export default function ClientAppStart({ user, userData, onRefetchUserData }) {
     setSleepHours,
     setTodayWorkout,
     setDashboardWorkoutSummary,
+    notice,
+    dismissNotice,
+    showNotice,
   }), [
     user,
     userData,
@@ -1875,6 +1897,9 @@ export default function ClientAppStart({ user, userData, onRefetchUserData }) {
     showRemoveTrainerPopup,
     reviewPromptTrainer,
     showReviewSheetForPrompt,
+    notice,
+    showNotice,
+    dismissNotice,
   ]);
 
   return (

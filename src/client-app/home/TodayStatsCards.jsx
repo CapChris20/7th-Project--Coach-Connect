@@ -17,7 +17,7 @@ import { lightColors, darkColors, gradients, borderRadius, nb } from '../../look
 // ===== NAMED CONSTANTS =====
 
 /** Kept for callers that still pass accent ramps — shell itself is HardShadow now (no GradientFrame). */
-export const TRAINER_BORDER_GRADIENT = ['#BE185D', '#C2410C'];
+export const TRAINER_BORDER_GRADIENT = ['#FF6B9D', '#FB923C'];
 
 /**
  * Design Law card shell for trainer / empty-trainer CTAs (HardShadow + 3px border).

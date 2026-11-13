@@ -44,6 +44,9 @@ function metaPartsFromTurn(meta = {}) {
   if (meta.source) parts.push(`source=${meta.source}`);
   if (meta.success != null) parts.push(`ok=${meta.success}`);
   if (meta.toolCall?.name) parts.push(`tool=${meta.toolCall.name}`);
+  if (meta.toolCount != null) parts.push(`tools=${meta.toolCount}`);
+  if (meta.toolBranch) parts.push(`branch=${meta.toolBranch}`);
+  if (meta.tapConfirmProse) parts.push('tapConfirmProse=1');
   if (Array.isArray(meta.webSources) && meta.webSources.length) {
     parts.push(`sources=${meta.webSources.length}`);
   }
@@ -143,6 +146,9 @@ export function logCoachTurnBundle({ userText, coachText, meta = {} }) {
       source: meta.source ?? null,
       success: meta.success ?? null,
       tool: meta.toolCall?.name ?? null,
+      toolCount: meta.toolCount ?? null,
+      toolBranch: meta.toolBranch ?? null,
+      tapConfirmProse: meta.tapConfirmProse === true,
       sources: bundleSourcesForPaste(meta),
       sessionId: meta.sessionId ?? null,
       error: meta.error ?? null,

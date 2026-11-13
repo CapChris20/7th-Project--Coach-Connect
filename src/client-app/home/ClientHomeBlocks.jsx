@@ -124,7 +124,7 @@ function NumberTile({ tile, themeColors, sleepHours, onOpenLog, compact }) {
  * Design Law “Today’s numbers” — Sleep + Water as the hero pair; Weight/Steps secondary.
  * Tap opens the parent log sheet.
  */
-export function DesignLawNumberTiles({
+export function ClientNumberTiles({
   themeColors,
   sleepHours,
   waterOz,
@@ -216,7 +216,7 @@ export function DesignLawNumberTiles({
  * Nutrition today — calorie ring + protein/carbs/fats bars (Design Law).
  * Macro totals are optional; when missing we show 0 / goal placeholders from calorieGoal.
  */
-export function DesignLawNutritionCard({
+export function ClientNutritionCard({
   themeColors,
   todayCalories,
   calorieGoal,
@@ -325,7 +325,7 @@ export function DesignLawNutritionCard({
 /**
  * Workouts today — exercise rows with set chips (Design Law), still driven by workoutDiary state.
  */
-export function DesignLawWorkoutCard({ themeColors, state }) {
+export function ClientWorkoutCard({ themeColors, state }) {
   if (!state?.loaded) return null;
   const {
     workoutName,
@@ -459,7 +459,7 @@ export function DesignLawWorkoutCard({ themeColors, state }) {
  * One Daily check-in card: sliders + mood chips + post-workout (Design Law).
  * saveFn(storageKey, stringValue) must write the same keys RatingCard used.
  */
-export function DesignLawCheckInCard({
+export function ClientCheckInCard({
   themeColors,
   values,
   onSave,
@@ -614,7 +614,7 @@ export function DesignLawCheckInCard({
 
 // ===== GO TO =====
 
-export function DesignLawGoToGrid({ themeColors, items, notesFilesItem }) {
+export function ClientGoToGrid({ themeColors, items, notesFilesItem }) {
   return (
     <View style={{ marginBottom: 24, gap: 10 }}>
       <View style={styles.goGrid}>
@@ -654,7 +654,7 @@ export function DesignLawGoToGrid({ themeColors, items, notesFilesItem }) {
 
 // ===== LOG SHEET (water cups + generic) =====
 
-export function DesignLawLogSheet({
+export function ClientLogSheet({
   visible,
   metricKey,
   themeColors,
@@ -842,7 +842,7 @@ const TRAINER_SHEET_ROWS = [
   },
 ];
 
-export function DesignLawTrainerSheet({
+export function ClientTrainerSheet({
   visible,
   onClose,
   trainerName,
@@ -946,7 +946,7 @@ export function DesignLawTrainerSheet({
 // Manipulate here: tag list matches Design Law review sheet chips
 const REVIEW_TAGS = ['Clear plans', 'Responsive', 'Pushes me', 'Great with injuries', 'On time'];
 
-export function DesignLawReviewSheet({ visible, onClose, themeColors, trainerName, trainerInitials, onSubmit }) {
+export function ClientReviewSheet({ visible, onClose, themeColors, trainerName, trainerInitials, onSubmit }) {
   const [stars, setStars] = useState(4);
   const [tags, setTags] = useState(['Clear plans', 'Responsive']);
   const [body, setBody] = useState('');

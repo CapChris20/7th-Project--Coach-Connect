@@ -8,7 +8,6 @@
 
 import React, { useContext, useEffect, useMemo, useState } from 'react';
 import {
-  Alert,
   ScrollView,
   StyleSheet,
   Text,
@@ -33,6 +32,7 @@ import NbChip from '../../look-and-feel/NbChip';
 import NbSegmented from '../../look-and-feel/NbSegmented';
 import NbButton from '../../look-and-feel/NbButton';
 import NbPageHeader from '../../look-and-feel/NbPageHeader';
+import NbNoticeSheet from '../../look-and-feel/NbNoticeSheet';
 import HardShadow from '../../look-and-feel/HardShadow';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
 import { nb, borderRadius, spacing } from '../../look-and-feel/colorPalette';
@@ -149,6 +149,8 @@ export function ScheduleSessionScreen(props = {}) {
   const today = useMemo(() => new Date(), []);
   const [showDeleteSheet, setShowDeleteSheet] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
+  const [notice, setNotice] = useState(null);
+  const showNotice = (title, message, extras = {}) => setNotice({ title, message, ...extras });
 
   const initDate = useMemo(() => {
     if (editing?.date) return new Date(`${editing.date}T12:00:00`);
@@ -228,7 +230,7 @@ export function ScheduleSessionScreen(props = {}) {
 
   const handleSubmit = async () => {
     if (!selectedClientId) {
-      Alert.alert('Pick a client', 'Choose who this session is for.');
+      showNotice('Pick a client', 'Choose who this session is for.');
       return;
     }
 
@@ -269,7 +271,7 @@ export function ScheduleSessionScreen(props = {}) {
       else await createSession(payload);
       goBack();
     } catch (e) {
-      Alert.alert('Error', e?.message || 'Failed to save session');
+      showNotice('Error', e?.message || 'Failed to save session');
     } finally {
       setSubmitting(false);
     }
@@ -285,7 +287,7 @@ export function ScheduleSessionScreen(props = {}) {
       setShowDeleteSheet(false);
       goBack();
     } catch (e) {
-      Alert.alert('Error', e?.message || 'Failed to delete session');
+      showNotice('Error', e?.message || 'Failed to delete session');
     } finally {
       setDeleteBusy(false);
     }
@@ -482,6 +484,18 @@ export function ScheduleSessionScreen(props = {}) {
     />
   );
 
+  const noticeSheet = (
+    <NbNoticeSheet
+      visible={!!notice}
+      onClose={() => setNotice(null)}
+      title={notice?.title || ''}
+      message={notice?.message}
+      confirmLabel={notice?.confirmLabel || 'OK'}
+      cancelLabel={notice?.cancelLabel}
+      onConfirm={notice?.onConfirm}
+    />
+  );
+
   const deleteSheet = (
     <DeleteSessionSheet
       visible={showDeleteSheet}
@@ -505,6 +519,7 @@ export function ScheduleSessionScreen(props = {}) {
         </ScrollView>
         {stickyFooter}
         {deleteSheet}
+        {noticeSheet}
       </View>
     );
   }
@@ -521,6 +536,7 @@ export function ScheduleSessionScreen(props = {}) {
       </ScrollView>
       {stickyFooter}
       {deleteSheet}
+      {noticeSheet}
     </View>
   );
 }

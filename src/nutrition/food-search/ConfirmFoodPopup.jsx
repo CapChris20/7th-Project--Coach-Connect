@@ -592,7 +592,19 @@ export default function FoodConfirmSheet({
           ) : null}
         </ScrollView>
 
-        <View style={[styles.footer, { backgroundColor: screenBg, paddingBottom: spacing.md }]}>
+        {/* When the shell bottom nav is visible, lift Confirm above it — otherwise only
+            “Wrong item” (in the scroll) is reachable and Confirm looks missing. */}
+        <View
+          style={[
+            styles.footer,
+            {
+              backgroundColor: screenBg,
+              paddingBottom: reserveShellBottomNav
+                ? Math.max(shellBottomPad, spacing.md)
+                : spacing.md,
+            },
+          ]}
+        >
           <NbButton variant="fill" onPress={handleConfirm}>
             Confirm and log
           </NbButton>

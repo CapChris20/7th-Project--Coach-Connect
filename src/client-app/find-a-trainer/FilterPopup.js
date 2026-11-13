@@ -221,7 +221,7 @@ export function FilterPopup({
               <SectionLabel colors={colors}>SORT BY</SectionLabel>
               <NbSegmented
                 segments={sortSegments}
-                selected={draft.sort || 'Newest'}
+                selected={draft.sort || 'Best match'}
                 onSelect={(id) => setDraft({ ...draft, sort: id })}
               />
             </View>

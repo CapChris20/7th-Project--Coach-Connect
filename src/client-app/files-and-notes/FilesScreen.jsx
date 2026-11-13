@@ -5,7 +5,7 @@
 // vocab: FilesSection owns NbSegmented + HardShadow 2-col cards (PNG 01); shell SafeArea is left/right only
 
 import React, { useCallback, useState } from 'react';
-import { Alert, Linking, Platform, Share, StyleSheet, View } from 'react-native';
+import { Linking, Platform, Share, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   deleteNotesAndFilesItem,
@@ -29,6 +29,7 @@ import NbPageHeader from '../../look-and-feel/NbPageHeader';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
 import { SHELL_SAFE_AREA_EDGES } from '../../navigation/bottomMenuSpacing';
 import { spacing } from '../../look-and-feel/colorPalette';
+import NbNoticeSheet from '../../look-and-feel/NbNoticeSheet';
 
 // ===== NAMED CONSTANTS =====
 
@@ -83,24 +84,24 @@ async function shareFileOrName(item) {
   }
 }
 
-async function openFileUrlOrWarn(item) {
+async function openFileUrlOrWarn(item, showNotice) {
   const url = item?.url;
   if (!url) {
-    Alert.alert('Download', 'No download link for this file.');
+    showNotice('Download', 'No download link for this file.');
     return;
   }
   try {
     await Linking.openURL(url);
   } catch (_e) {
-    Alert.alert('Download failed', 'Could not open this file.');
+    showNotice('Download failed', 'Could not open this file.');
   }
 }
 
-async function deleteFileOrShowError(clientId, item) {
+async function deleteFileOrShowError(clientId, item, showNotice) {
   try {
     await deleteNotesAndFilesItem(clientId, item.id);
   } catch (error) {
-    Alert.alert('Delete failed', error?.message || 'Try again.');
+    showNotice('Delete failed', error?.message || 'Try again.');
   }
 }
 
@@ -117,6 +118,11 @@ export default function FilesScreen({ clientId, items, isDark = true, onBack, on
   const [documentViewer, setDocumentViewer] = useState(CLOSED_DOCUMENT);
   const [mediaViewer, setMediaViewer] = useState(CLOSED_MEDIA);
   const [embedWebViewer, setEmbedWebViewer] = useState(CLOSED_WEB);
+  const [notice, setNotice] = useState(null);
+  const showNotice = useCallback(
+    (title, message, extras = {}) => setNotice({ title, message, ...extras }),
+    [],
+  );
 
   const openItem = useCallback(async (file) => {
     if (!file) return;
@@ -175,9 +181,9 @@ export default function FilesScreen({ clientId, items, isDark = true, onBack, on
   const deleteItem = useCallback(
     async (item) => {
       if (!clientId || !item?.id) return;
-      await deleteFileOrShowError(clientId, item);
+      await deleteFileOrShowError(clientId, item, showNotice);
     },
-    [clientId],
+    [clientId, showNotice],
   );
 
   const shareItem = useCallback(async (item) => {
@@ -185,8 +191,8 @@ export default function FilesScreen({ clientId, items, isDark = true, onBack, on
   }, []);
 
   const downloadItem = useCallback(async (item) => {
-    await openFileUrlOrWarn(item);
-  }, []);
+    await openFileUrlOrWarn(item, showNotice);
+  }, [showNotice]);
 
   return (
     <SafeAreaView
@@ -251,6 +257,15 @@ export default function FilesScreen({ clientId, items, isDark = true, onBack, on
         title={embedWebViewer.title}
         isDark={isDark}
         onClose={() => setEmbedWebViewer(CLOSED_WEB)}
+      />
+      <NbNoticeSheet
+        visible={!!notice}
+        onClose={() => setNotice(null)}
+        title={notice?.title || ''}
+        message={notice?.message}
+        confirmLabel={notice?.confirmLabel || 'OK'}
+        cancelLabel={notice?.cancelLabel}
+        onConfirm={notice?.onConfirm}
       />
     </SafeAreaView>
   );

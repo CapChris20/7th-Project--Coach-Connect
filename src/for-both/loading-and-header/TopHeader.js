@@ -1,20 +1,19 @@
-// Design Law top chrome — flush page surface, thin strip, profile + settings icon chips.
+// Design Law top chrome — flush page surface, thin strip, profile + settings outline chips.
 // Flow: safe-area inset → optional left slot → profile chip → settings chip.
 // Used by client/trainer shells. Parent shells should use SHELL_SAFE_AREA_EDGES (left/right only).
 //
 // vocab: flush = same bg as the screen so the bar doesn’t read as a second “frosted” header
+// vocab: outline chip = surface + 3px border + hard offset shadow (same language as NbPageHeader backSq)
 
 import React from 'react';
-import { View, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import { View, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useMergedNavigation } from '../../navigation/whichScreenIsOpen';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
 import {
   lightColors,
   darkColors,
-  navAccentGradient,
   nb,
 } from '../../look-and-feel/colorPalette';
 
@@ -22,15 +21,11 @@ import {
 
 // Manipulate here: keep this tight so .hi (avatar/greeting) still owns the first viewport
 const HEADER_TOP_GAP = 4;
-const CHIP_SIZE = 40;
-const SETTINGS_ICON = require('../../assets/icons/settings.png');
-const HANDOFF_SETTINGS = (() => {
-  try {
-    return require('../../assets/icons/handoff/settings.png');
-  } catch (_) {
-    return SETTINGS_ICON;
-  }
-})();
+// Manipulate here: 44 matches Design Law min touch + NbPageHeader backSq
+const CHIP_SIZE = nb.minTouchTarget;
+const ICON_SIZE = 22;
+const PROFILE_ICON = 'person-outline';
+const SETTINGS_ICON = 'settings-outline';
 
 // ===== HELPERS =====
 
@@ -48,18 +43,23 @@ function shouldShowHeaderSideActions(showHeaderActions) {
 }
 
 /**
- * Design Law header chip — pink→orange fill, 3px border (no hard shadow so it doesn’t fight .hi).
+ * Black/white (ink on surface) square chip — no gradient fill, no sticker PNGs.
+ * Matches NbPageHeader backSq so the top strip reads as the same chrome family.
  */
-function HeaderIconChip({ children, borderColor }) {
+function HeaderOutlineChip({ icon, borderColor, surfaceColor, shadowColor, inkColor }) {
   return (
-    <LinearGradient
-      colors={navAccentGradient}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-      style={[styles.chip, { borderColor }]}
+    <View
+      style={[
+        styles.chip,
+        {
+          borderColor,
+          backgroundColor: surfaceColor,
+          shadowColor,
+        },
+      ]}
     >
-      {children}
-    </LinearGradient>
+      <Ionicons name={icon} size={ICON_SIZE} color={inkColor} />
+    </View>
   );
 }
 
@@ -84,7 +84,10 @@ export default function TopHeader({
   const isDark = isAppearanceDark(appearanceIsDark, theme);
   // Same as screen bg so the strip doesn’t look like a separate frosted plate
   const surface = isDark ? darkColors.nbBackground : lightColors.nbBackground;
+  const chipSurface = isDark ? darkColors.nbSurface : lightColors.nbSurface;
   const border = isDark ? darkColors.nbBorder : lightColors.nbBorder;
+  const shadow = isDark ? darkColors.nbShadow : lightColors.nbShadow;
+  const ink = isDark ? darkColors.nbInk : lightColors.nbInk;
 
   const { onProfilePress, onSettingsPress } = useMergedNavigation({
     onProfilePress: onProfilePressProp,
@@ -114,9 +117,13 @@ export default function TopHeader({
             accessibilityLabel="Open profile"
             activeOpacity={0.85}
           >
-            <HeaderIconChip borderColor={border}>
-              <Ionicons name="people" size={22} color={lightColors.nbInk} />
-            </HeaderIconChip>
+            <HeaderOutlineChip
+              icon={PROFILE_ICON}
+              borderColor={border}
+              surfaceColor={chipSurface}
+              shadowColor={shadow}
+              inkColor={ink}
+            />
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -126,9 +133,13 @@ export default function TopHeader({
             accessibilityLabel="Open settings"
             activeOpacity={0.85}
           >
-            <HeaderIconChip borderColor={border}>
-              <Image source={HANDOFF_SETTINGS} style={styles.settingsGlyph} resizeMode="contain" />
-            </HeaderIconChip>
+            <HeaderOutlineChip
+              icon={SETTINGS_ICON}
+              borderColor={border}
+              surfaceColor={chipSurface}
+              shadowColor={shadow}
+              inkColor={ink}
+            />
           </TouchableOpacity>
         </View>
       </View>
@@ -166,6 +177,7 @@ const styles = StyleSheet.create({
     width: CHIP_SIZE,
     height: CHIP_SIZE,
   },
+  // Manipulate here: chip radius / hard-shadow offset (keep in lockstep with NbPageHeader backSq)
   chip: {
     width: CHIP_SIZE,
     height: CHIP_SIZE,
@@ -173,10 +185,9 @@ const styles = StyleSheet.create({
     borderWidth: nb.borderWidth,
     alignItems: 'center',
     justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  settingsGlyph: {
-    width: 22,
-    height: 22,
+    shadowOffset: { width: nb.shadowOffsetSmall, height: nb.shadowOffsetSmall },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 3,
   },
 });

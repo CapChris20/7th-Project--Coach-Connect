@@ -2,7 +2,8 @@
 // Flow: resolve handlers → remember active tab → paint slots + center + → shell navigates.
 // Used by client/trainer shells via ShellBottomNavAnchor. NbBottomNav.jsx is the preview twin only.
 //
-// vocab: navAccentGradient = brand pink→orange for tab icons + the + button
+// Tab glyphs are ink/muted outline Ionicons (same black/white language as TopHeader).
+// vocab: navAccentGradient = brand pink→orange — kept ONLY on the center + button
 // Active chip hugs the icon only (never the label) — soft fill + border, not a black slab over the text.
 
 import React, { useEffect, useRef, useState } from 'react';
@@ -20,7 +21,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '../look-and-feel/lightDarkMode';
 import { useMergedNavigation } from './whichScreenIsOpen';
 import { useAI } from '../for-both/app-wide-settings/AIPermission';
-import ColorfulIcon from '../for-both/icons/ColorfulIcon';
 import HardShadow from '../look-and-feel/HardShadow';
 import {
   lightColors,
@@ -46,6 +46,15 @@ const PLUS_SIZE = 58;
 // Manipulate here: how far the + peeks above the bar top (was 30 — felt too high)
 const PLUS_OVERHANG = 8;
 
+// Friendly slot names → outline Ionicons (match ColorfulIcon’s old map, minus the gradient fill)
+const TAB_IONICON_BY_NAME = {
+  home: 'home-outline',
+  barbell: 'barbell-outline',
+  restaurant: 'restaurant-outline',
+  'document-text': 'document-text-outline',
+  sparkles: 'sparkles',
+};
+
 // ===== HELPERS =====
 
 function springHighlight(animValue, isActive) {
@@ -58,7 +67,7 @@ function springHighlight(animValue, isActive) {
 
 function TabSlot({
   label,
-  colorfulName,
+  iconName,
   iconSize,
   active,
   anim,
@@ -69,6 +78,9 @@ function TabSlot({
 }) {
   // Chip size = glyph + pad. Label stays outside so the highlight never covers text.
   const chipSize = iconSize + ICON_CHIP_PAD * 2;
+  // Match label: ink when active, muted when idle — no gradient on tab glyphs
+  const glyphColor = active ? themeColors.ink : themeColors.muted;
+  const ioniconName = TAB_IONICON_BY_NAME[iconName] || 'ellipse-outline';
 
   return (
     <TouchableOpacity
@@ -98,13 +110,7 @@ function TabSlot({
               />
             </HardShadow>
           </Animated.View>
-          {/* Always gradient icon — active is the soft chip + bolder label, not a color swap. */}
-          <ColorfulIcon
-            name={colorfulName}
-            size={iconSize}
-            colors={navAccentGradient}
-            locations={[0, 1]}
-          />
+          <Ionicons name={ioniconName} size={iconSize} color={glyphColor} />
           {badge ? <View style={styles.tabBadgeDot} /> : null}
         </View>
         <Text
@@ -169,6 +175,7 @@ export default function BottomMenuBar({
     muted: isDark ? darkColors.nbMuted : lightColors.nbMuted,
   };
 
+  // Prefer the controlled prop immediately so remounts never flash the AsyncStorage tab first.
   const [activeKey, setActiveKey] = useState(activeTabKeyProp || DEFAULT_ACTIVE_TAB);
   const homeAnim = useRef(new Animated.Value(0)).current;
   const workoutAnim = useRef(new Animated.Value(0)).current;
@@ -191,6 +198,7 @@ export default function BottomMenuBar({
       setActiveKey(activeTabKeyProp);
       return undefined;
     }
+    // Uncontrolled only: restore last highlight. Skip when parent drives activeTabKey.
     let cancelled = false;
     (async () => {
       try {
@@ -234,7 +242,7 @@ export default function BottomMenuBar({
       <View style={styles.row}>
         <TabSlot
           label="Home"
-          colorfulName="home"
+          iconName="home"
           iconSize={ICON_SIZE}
           active={activeKey === 'home'}
           anim={homeAnim}
@@ -244,7 +252,7 @@ export default function BottomMenuBar({
         />
         <TabSlot
           label="Workout"
-          colorfulName="barbell"
+          iconName="barbell"
           iconSize={ICON_SIZE_WORKOUT}
           active={activeKey === 'workout'}
           anim={workoutAnim}
@@ -256,7 +264,7 @@ export default function BottomMenuBar({
         <View style={{ width: PLUS_SIZE, flexShrink: 0 }} />
         <TabSlot
           label={thirdLabel}
-          colorfulName={thirdName}
+          iconName={thirdName}
           iconSize={ICON_SIZE}
           active={activeKey === thirdKey}
           anim={thirdAnim}
@@ -266,7 +274,7 @@ export default function BottomMenuBar({
         />
         <TabSlot
           label="Nutrition"
-          colorfulName="restaurant"
+          iconName="restaurant"
           iconSize={ICON_SIZE}
           active={activeKey === 'nutrition'}
           anim={nutritionAnim}
@@ -276,6 +284,7 @@ export default function BottomMenuBar({
         />
       </View>
 
+      {/* Center + stays gradient — the only accent left on the dock. */}
       <View style={[styles.plusWrap, { top: plusTop }]} pointerEvents="box-none">
         <HardShadow offset={nb.shadowOffsetCard} radius={PLUS_SIZE / 2}>
           <TouchableOpacity

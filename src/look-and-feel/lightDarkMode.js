@@ -27,8 +27,17 @@ const themeContext = createContext();
  */
 async function loadSavedThemeMode(setThemeMode) {
   try {
-    const savedTheme = await AsyncStorage.getItem(THEME_STORAGE_KEY);
-    if (savedTheme) setThemeMode(savedTheme);
+    // Prefer the ThemeProvider key; fall back to the old onboarding-only key once.
+    const savedTheme =
+      (await AsyncStorage.getItem(THEME_STORAGE_KEY)) ||
+      (await AsyncStorage.getItem('themeMode'));
+    if (savedTheme === LIGHT_MODE || savedTheme === DARK_MODE || savedTheme === SYSTEM_MODE) {
+      setThemeMode(savedTheme);
+      if (savedTheme !== (await AsyncStorage.getItem(THEME_STORAGE_KEY))) {
+        await AsyncStorage.setItem(THEME_STORAGE_KEY, savedTheme);
+      }
+    }
+    // First launch / unknown → leave DEFAULT_THEME_MODE (light)
   } catch (loadError) {
     console.error('Error loading theme preference:', loadError);
   }

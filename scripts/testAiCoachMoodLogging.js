@@ -80,10 +80,12 @@ check(
   'next Tuesday at 10am',
 );
 check('guard bookSession {} → dropped', guardCoachToolProposal({ name: 'bookSession', params: {} }), null);
+// Incomplete sleep is allowed so "Help me log my sleep" + Tap Confirm can open
+// the chip/sheet for the user to fill hours (Nov 2026 Tap-Confirm gap fix).
 check(
-  'guard logSleep {} still dropped (pre-existing rule)',
-  guardCoachToolProposal({ name: 'logSleep', params: {} }),
-  null,
+  'guard logSleep {} kept for incomplete chip (Tap-Confirm gap)',
+  guardCoachToolProposal({ name: 'logSleep', params: {} })?.name,
+  'logSleep',
 );
 
 // ── 6. Helpers directly ─────────────────────────────────────────────────────

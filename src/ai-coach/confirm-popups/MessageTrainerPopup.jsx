@@ -5,7 +5,7 @@
 import React, { useMemo, useState } from 'react';
 import {
   ToolModalBody,
-  DetailRow,
+  InfoTable,
   FieldLabel,
   PopupTextField,
   ConfirmCancelRow,
@@ -50,9 +50,13 @@ export default function MessageTrainerPopup({ params, reasoning, onConfirm, onCa
 
   return (
     <ToolModalBody title={TITLE} badge={BADGE} reasoning={reasoning}>
-      <DetailRow label="Type" value={issueLabel} />
-      <DetailRow label="Severity" value={severityLabel} />
-      <DetailRow label="To" value="Your linked trainer" />
+      <InfoTable
+        rows={[
+          { label: 'Type', value: issueLabel },
+          { label: 'Severity', value: severityLabel },
+          { label: 'To', value: 'Your linked trainer' },
+        ]}
+      />
       <FieldLabel label={MESSAGE_LABEL} />
       <PopupTextField
         value={message}

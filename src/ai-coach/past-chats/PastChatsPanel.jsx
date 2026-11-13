@@ -388,7 +388,7 @@ function CollapsedChatRail({ colors, insets, onToggleCollapse, onNewChat }) {
         ]}
         accessibilityLabel="Open chat history"
       >
-        <Ionicons name="chatbubbles-outline" size={20} color="#FF6B9D" />
+        <Ionicons name="chatbubbles-outline" size={20} color={colors.nbInk} />
       </TouchableOpacity>
       <TouchableOpacity
         onPress={onNewChat}

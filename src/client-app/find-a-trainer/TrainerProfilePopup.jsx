@@ -7,7 +7,6 @@
 
 import React, { useState } from 'react';
 import {
-  Alert,
   Modal,
   Pressable,
   ScrollView,
@@ -36,6 +35,7 @@ import {
 } from '../../block-and-report';
 import NbAvatar from '../../look-and-feel/NbAvatar';
 import NbButton from '../../look-and-feel/NbButton';
+import NbNoticeSheet from '../../look-and-feel/NbNoticeSheet';
 import NbIconChip from '../../look-and-feel/NbIconChip';
 import HardShadow from '../../look-and-feel/HardShadow';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
@@ -93,7 +93,15 @@ function readProfileFields(display, trainer) {
   };
 }
 
-async function sendTrainerProfileReport(reporterUid, trainerUid, trainerName, reasonId, alsoBlock, onClose) {
+async function sendTrainerProfileReport(
+  reporterUid,
+  trainerUid,
+  trainerName,
+  reasonId,
+  alsoBlock,
+  onClose,
+  showNotice,
+) {
   try {
     await submitContentReport({
       reporterId: reporterUid,
@@ -104,23 +112,29 @@ async function sendTrainerProfileReport(reporterUid, trainerUid, trainerName, re
     });
     if (alsoBlock) {
       await blockUser(reporterUid, String(trainerUid), { displayName: trainerName });
-      Alert.alert('Reported and blocked', `${trainerName} is blocked. Unblock anytime in Settings → Blocked users.`);
-      onClose?.();
+      showNotice?.(
+        'Reported and blocked',
+        `${trainerName} is blocked. Unblock anytime in Settings → Blocked users.`,
+        { onConfirm: () => onClose?.() },
+      );
       return;
     }
-    Alert.alert('Report sent', 'Thanks — we’ll review this trainer listing.');
+    showNotice?.('Report sent', 'Thanks — we’ll review this trainer listing.');
   } catch (error) {
-    Alert.alert('Report failed', error?.message || 'Try again.');
+    showNotice?.('Report failed', error?.message || 'Try again.');
   }
 }
 
-async function blockThisTrainer(reporterUid, trainerUid, trainerName, onClose) {
+async function blockThisTrainer(reporterUid, trainerUid, trainerName, onClose, showNotice) {
   try {
     await blockUser(reporterUid, String(trainerUid), { displayName: trainerName });
-    Alert.alert('Blocked', `${trainerName} is blocked. Unblock anytime in Settings → Blocked users.`);
-    onClose?.();
+    showNotice?.(
+      'Blocked',
+      `${trainerName} is blocked. Unblock anytime in Settings → Blocked users.`,
+      { onConfirm: () => onClose?.() },
+    );
   } catch (error) {
-    Alert.alert('Block failed', error?.message || 'Try again.');
+    showNotice?.('Block failed', error?.message || 'Try again.');
   }
 }
 
@@ -315,6 +329,8 @@ export function TrainerProfileSheet({
   const [safetyOpen, setSafetyOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [reportBusy, setReportBusy] = useState(false);
+  const [notice, setNotice] = useState(null);
+  const showNotice = (title, message, extras = {}) => setNotice({ title, message, ...extras });
   // On nbFill: light theme = white wash; dark theme flips fill so muted must follow on-fill ink
   const trialMuted = isDark ? 'rgba(10,10,10,0.55)' : 'rgba(255,255,255,0.55)';
   // vocab: useShellTopPad clears the status bar when this sheet is embedded in the shell
@@ -335,7 +351,7 @@ export function TrainerProfileSheet({
   const openSafety = () => {
     const signedInUid = getAuth()?.currentUser?.uid;
     if (!signedInUid || !fields.trainerUid || signedInUid === fields.trainerUid) {
-      Alert.alert('Report', 'You can’t report this profile.');
+      showNotice('Report', 'You can’t report this profile.');
       return;
     }
     setSafetyOpen(true);
@@ -356,6 +372,7 @@ export function TrainerProfileSheet({
         reasonId,
         alsoBlock,
         onClose,
+        showNotice,
       );
       setReportOpen(false);
     } finally {
@@ -367,12 +384,14 @@ export function TrainerProfileSheet({
     setSafetyOpen(false);
     confirmBlockUser({
       peerName: fields.trainerName,
+      presentNotice: showNotice,
       onConfirm: () =>
         blockThisTrainer(
           getAuth()?.currentUser?.uid,
           fields.trainerUid,
           fields.trainerName,
           onClose,
+          showNotice,
         ),
     });
   };
@@ -613,6 +632,16 @@ export function TrainerProfileSheet({
         onClose={() => setSafetyOpen(false)}
         onReport={onSafetyReport}
         onBlock={onSafetyBlock}
+      />
+      <NbNoticeSheet
+        visible={!!notice}
+        onClose={() => setNotice(null)}
+        title={notice?.title || ''}
+        message={notice?.message}
+        confirmLabel={notice?.confirmLabel || 'OK'}
+        cancelLabel={notice?.cancelLabel}
+        onConfirm={notice?.onConfirm}
+        destructive={!!notice?.destructive}
       />
     </View>
   );

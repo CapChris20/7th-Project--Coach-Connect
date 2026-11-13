@@ -179,37 +179,52 @@ async function attachmentsFromChosenAssets(chosenAssets) {
   return attachments;
 }
 
-function alertIfNoneEncoded(chosenAssets, attachments) {
+/**
+ * Design Law notice when the host passed presentNotice; OS Alert otherwise.
+ * Permission denials stay on Alert (system Settings path) — see requestAccessOrAlert.
+ * @param {((title: string, message: string) => void)|undefined} presentNotice
+ * @param {string} title
+ * @param {string} message
+ */
+function presentPhotoNotice(presentNotice, title, message) {
+  if (typeof presentNotice === 'function') {
+    presentNotice(title, message);
+    return;
+  }
+  Alert.alert(title, message);
+}
+
+function alertIfNoneEncoded(chosenAssets, attachments, presentNotice) {
   if (chosenAssets.length === 0) return;
   if (attachments.length > 0) return;
-  Alert.alert('Could not read photo', UNREADABLE_PHOTO_MESSAGE);
+  presentPhotoNotice(presentNotice, 'Could not read photo', UNREADABLE_PHOTO_MESSAGE);
 }
 
 /**
  * @param {Error|*} error
- * @param {string} logTag
- * @param {string} alertTitle
- * @returns {[]}
+ * @returns {string}
  */
 function alertTextFromPickerError(error) {
   if (error && error.message) return error.message;
   return 'Try again.';
 }
 
-function handlePickerFailure(error, logTag, alertTitle) {
+function handlePickerFailure(error, logTag, alertTitle, presentNotice) {
   console.warn(logTag, messageFromCaughtError(error));
-  Alert.alert(alertTitle, alertTextFromPickerError(error));
+  presentPhotoNotice(presentNotice, alertTitle, alertTextFromPickerError(error));
   return [];
 }
 
 // ===== MAIN FUNCTION =====
 
 /**
- * Open the photo library and return up to three JPEG attachments.
+ * Open the photo library and return up to four JPEG attachments.
  * Returns [] when permission is denied, the user cancels, or every file fails to encode.
+ * @param {{ presentNotice?: (title: string, message: string) => void }} [options]
  * @returns {Promise<Array<{id: string, preview: string, base64: string, type: string, mimeType: string, name: string}>>}
  */
-export async function pickCoachPhotosFromLibrary() {
+export async function pickCoachPhotosFromLibrary(options = {}) {
+  const presentNotice = options?.presentNotice;
   try {
     const isGranted = await requestAccessOrAlert(
       () => ImagePicker.requestMediaLibraryPermissionsAsync(),
@@ -227,18 +242,25 @@ export async function pickCoachPhotosFromLibrary() {
 
     const chosenAssets = assetsFromPickerResult(result).slice(0, MAX_LIBRARY_PHOTOS);
     const attachments = await attachmentsFromChosenAssets(chosenAssets);
-    alertIfNoneEncoded(chosenAssets, attachments);
+    alertIfNoneEncoded(chosenAssets, attachments, presentNotice);
     return attachments;
   } catch (error) {
-    return handlePickerFailure(error, '[pickCoachPhotosFromLibrary]', 'Could not open photos');
+    return handlePickerFailure(
+      error,
+      '[pickCoachPhotosFromLibrary]',
+      'Could not open photos',
+      presentNotice,
+    );
   }
 }
 
 /**
  * Open the camera and return a one-item list, or [] if the shot can't be read.
+ * @param {{ presentNotice?: (title: string, message: string) => void }} [options]
  * @returns {Promise<Array<{id: string, preview: string, base64: string, type: string, mimeType: string, name: string}>>}
  */
-export async function pickCoachPhotoFromCamera() {
+export async function pickCoachPhotoFromCamera(options = {}) {
+  const presentNotice = options?.presentNotice;
   try {
     const isGranted = await requestAccessOrAlert(
       () => ImagePicker.requestCameraPermissionsAsync(),
@@ -258,12 +280,17 @@ export async function pickCoachPhotoFromCamera() {
 
     const normalized = await normalizePickedImage(asset, DEFAULT_PHOTO_NAME);
     if (!normalized) {
-      Alert.alert('Could not read photo', UNREADABLE_CAMERA_PHOTO_MESSAGE);
+      presentPhotoNotice(presentNotice, 'Could not read photo', UNREADABLE_CAMERA_PHOTO_MESSAGE);
       return [];
     }
     return [normalized];
   } catch (error) {
-    return handlePickerFailure(error, '[pickCoachPhotoFromCamera]', 'Could not open camera');
+    return handlePickerFailure(
+      error,
+      '[pickCoachPhotoFromCamera]',
+      'Could not open camera',
+      presentNotice,
+    );
   }
 }
 

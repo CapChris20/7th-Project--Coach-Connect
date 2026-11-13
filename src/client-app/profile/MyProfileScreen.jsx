@@ -10,7 +10,6 @@ import {
   TouchableOpacity,
   Image,
   ActivityIndicator,
-  Alert,
   Modal,
   TextInput,
   KeyboardAvoidingView,
@@ -37,6 +36,7 @@ import {
   certificationStatusTone,
 } from '../../for-both/online-connection/checkTrainerCertificate';
 import CertificationUploadSheet from './CertificationUploadSheet';
+import NbNoticeSheet from '../../look-and-feel/NbNoticeSheet';
 import BottomMenuBar from '../../navigation/BottomMenuBar';
 import { ShellBottomNavAnchor, FORM_SCROLL_PROPS, useShellBottomNavInset } from '../../navigation/bottomMenuSpacing';
 import ProfileIcon from '../../for-both/icons/ProfileIcon';
@@ -660,7 +660,7 @@ function profilePayloadForField(editKey, raw) {
   return payload;
 }
 
-async function pickCertificationFile() {
+async function pickCertificationFile(showNotice) {
   const result = await DocumentPicker.getDocumentAsync({
     type: CERT_FILE_TYPES,
     copyToCacheDirectory: true,
@@ -668,11 +668,11 @@ async function pickCertificationFile() {
   if (result.canceled) return null;
   const file = result.assets?.[0];
   if (!file?.uri) {
-    Alert.alert('Upload failed', 'Could not read the selected file.');
+    showNotice('Upload failed', 'Could not read the selected file.');
     return null;
   }
   if (file.size != null && file.size > MAX_CERT_FILE_BYTES) {
-    Alert.alert('File too large', 'Certification sheets must be 10MB or smaller.');
+    showNotice('File too large', 'Certification sheets must be 10MB or smaller.');
     return null;
   }
   return file;
@@ -781,6 +781,8 @@ export function ViewMyMyProfileScreen({
   const [certVerifyStatus, setCertVerifyStatus] = useState(null); // local + live status key
   const [certVerifyBusy, setCertVerifyBusy] = useState(false);
   const [certSheetOpen, setCertSheetOpen] = useState(false);
+  const [notice, setNotice] = useState(null);
+  const showNotice = (title, message, extras = {}) => setNotice({ title, message, ...extras });
 
   // Subtle entrance animations (fade + slight lift)
   const heroAnim = useMemo(() => new Animated.Value(0), []);
@@ -821,11 +823,11 @@ export function ViewMyMyProfileScreen({
   const handleAddCertification = async () => {
     const trainerId = auth?.currentUser?.uid;
     if (!trainerId) {
-      Alert.alert('Sign in required', 'Sign in again to upload certifications.');
+      showNotice('Sign in required', 'Sign in again to upload certifications.');
       return;
     }
     try {
-      const file = await pickCertificationFile();
+      const file = await pickCertificationFile(showNotice);
       if (!file) return;
       setCertSheetOpen(true);
       setCertUploading(true);
@@ -858,10 +860,10 @@ export function ViewMyMyProfileScreen({
         setCertVerifyStatus,
       });
 
-      Alert.alert('Certification', verifyMessage);
+      showNotice('Certification', verifyMessage);
       setCertSheetOpen(false);
     } catch (uploadError) {
-      Alert.alert('Upload failed', uploadError?.message || 'Could not upload certification. Try again.');
+      showNotice('Upload failed', uploadError?.message || 'Could not upload certification. Try again.');
     } finally {
       setCertUploading(false);
       setCertProgress(0);
@@ -869,24 +871,22 @@ export function ViewMyMyProfileScreen({
   };
 
   const handleDeleteCertification = (meta) => {
-    Alert.alert('Remove certification', `Delete ${meta?.fileName || 'this file'}?`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          const tid = auth?.currentUser?.uid;
-          if (!tid) return;
-          try {
-            await deleteTrainerCertificationSheet(tid, meta);
-            setCertSheets((prev) => prev.filter((x) => x.storagePath !== meta.storagePath));
-            onProfileSaved?.();
-          } catch (e) {
-            Alert.alert('Delete failed', e?.message || 'Could not remove file.');
-          }
-        },
+    showNotice('Remove certification', `Delete ${meta?.fileName || 'this file'}?`, {
+      cancelLabel: 'Cancel',
+      confirmLabel: 'Delete',
+      destructive: true,
+      onConfirm: async () => {
+        const tid = auth?.currentUser?.uid;
+        if (!tid) return;
+        try {
+          await deleteTrainerCertificationSheet(tid, meta);
+          setCertSheets((prev) => prev.filter((x) => x.storagePath !== meta.storagePath));
+          onProfileSaved?.();
+        } catch (e) {
+          showNotice('Delete failed', e?.message || 'Could not remove file.');
+        }
       },
-    ]);
+    });
   };
 
   const clientProfile = useMemo(
@@ -923,22 +923,20 @@ export function ViewMyMyProfileScreen({
   }, [isTrainer, trainerDoc?.trainerProfileBio, clientProfile?.primaryGoal, onboardingData?.primaryGoal]);
 
   const handleSignOut = () => {
-    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Sign Out',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await onUserSignOut();
-            await signOut(auth);
-          } catch (error) {
-            console.error('Sign out error:', error);
-            Alert.alert('Error', error?.message || 'Failed to sign out.');
-          }
-        },
+    showNotice('Sign Out', 'Are you sure you want to sign out?', {
+      cancelLabel: 'Cancel',
+      confirmLabel: 'Sign Out',
+      destructive: true,
+      onConfirm: async () => {
+        try {
+          await onUserSignOut();
+          await signOut(auth);
+        } catch (error) {
+          console.error('Sign out error:', error);
+          showNotice('Error', error?.message || 'Failed to sign out.');
+        }
       },
-    ]);
+    });
   };
 
   const pickAndUploadPhoto = async () => {
@@ -947,7 +945,7 @@ export function ViewMyMyProfileScreen({
     try {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!perm.granted) {
-        Alert.alert('Permission required', 'Please allow photo library access to change your profile picture.');
+        showNotice('Permission required', 'Please allow photo library access to change your profile picture.');
         return;
       }
 
@@ -983,7 +981,7 @@ export function ViewMyMyProfileScreen({
       setPhotoURL(downloadURL);
     } catch (e) {
       console.error('Profile photo update failed:', e);
-      Alert.alert('Upload failed', e?.message || 'Please try again.');
+      showNotice('Upload failed', e?.message || 'Please try again.');
     } finally {
       setUploading(false);
     }
@@ -1078,7 +1076,7 @@ function formatWeight(weightValue) {
       closeEdit();
     } catch (e) {
       console.error('Failed saving profile field:', e);
-      Alert.alert('Save failed', e?.message || 'Please try again.');
+      showNotice('Save failed', e?.message || 'Please try again.');
       setSavingField(false);
     }
   };
@@ -1236,7 +1234,7 @@ function formatWeight(weightValue) {
       );
       await onProfileSaved?.();
     } catch (error) {
-      Alert.alert('Save failed', error?.message || 'Please try again.');
+      showNotice('Save failed', error?.message || 'Please try again.');
     } finally {
       setSavingField(false);
     }
@@ -1744,6 +1742,17 @@ function formatWeight(weightValue) {
           />
         </ShellBottomNavAnchor>
       ) : null}
+
+      <NbNoticeSheet
+        visible={!!notice}
+        onClose={() => setNotice(null)}
+        title={notice?.title || ''}
+        message={notice?.message}
+        confirmLabel={notice?.confirmLabel || 'OK'}
+        cancelLabel={notice?.cancelLabel}
+        onConfirm={notice?.onConfirm}
+        destructive={!!notice?.destructive}
+      />
     </View>
   );
 }

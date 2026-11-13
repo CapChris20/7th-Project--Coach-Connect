@@ -71,10 +71,27 @@ function parseToolCalls(aiResponse) {
 }
 
 function resolveCoachToolCalls(aiText, userMessage, weeklyContext, nativeToolCalls = []) {
-  return filterValidCoachToolProposals(
-    mergeCoachToolCalls(aiText, userMessage, weeklyContext || {}, nativeToolCalls),
-    userMessage,
-  );
+  const nativeCount = Array.isArray(nativeToolCalls) ? nativeToolCalls.length : 0;
+  const merged = mergeCoachToolCalls(aiText, userMessage, weeklyContext || {}, nativeToolCalls);
+  const filtered = filterValidCoachToolProposals(merged, userMessage);
+  // Checkpoint for the Tap-Confirm gap: prose promises Confirm but filters wiped every tool.
+  const tapConfirmProse = /\btap confirm\b/i.test(String(aiText || ''));
+  if (tapConfirmProse && !filtered.length) {
+    console.warn('[AI Coach] resolveCoachToolCalls: Tap Confirm prose, zero tools after filter', {
+      nativeCount,
+      mergedCount: merged.length,
+      user: String(userMessage || '').slice(0, 120),
+    });
+  } else if (process.env.NODE_ENV !== 'production') {
+    console.log('[AI Coach] resolveCoachToolCalls', {
+      nativeCount,
+      mergedCount: merged.length,
+      filteredCount: filtered.length,
+      tools: filtered.map((t) => t?.name).filter(Boolean),
+      tapConfirmProse,
+    });
+  }
+  return filtered;
 }
 
 async function buildCoachPromptForUser(

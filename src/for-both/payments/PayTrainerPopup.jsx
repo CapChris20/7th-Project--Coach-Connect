@@ -250,7 +250,7 @@ function PayTrainerPopup({ trainerId, trainerName, onClose, onSuccess }) {
     return (
       <NbSheet>
         <View style={styles.successIconWrap}>
-          <Ionicons name="checkmark-circle" size={52} color="#30D158" />
+          <Ionicons name="checkmark-circle" size={52} color="#F97316" />
         </View>
         <Text style={styles.successTitle}>Payment successful</Text>
         <Text style={styles.successLine}>You paid {formatMoney(success.amount)}</Text>
@@ -288,7 +288,7 @@ function PayTrainerPopup({ trainerId, trainerName, onClose, onSuccess }) {
             placeholder="0.00"
             placeholderTextColor={isDark ? '#636366' : '#8E8E93'}
             editable={!loading}
-            selectionColor="#BE185D"
+            selectionColor="#0A0A0A"
           />
         </View>
 
@@ -349,7 +349,7 @@ function PayTrainerPopup({ trainerId, trainerName, onClose, onSuccess }) {
 
         {cardReady && cardMeta?.last4 ? (
           <View style={styles.readyRow}>
-            <Ionicons name="shield-checkmark" size={14} color="#30D158" />
+            <Ionicons name="shield-checkmark" size={14} color="#F97316" />
             <Text style={styles.readyText}>
               {cardMeta.brand ? `${String(cardMeta.brand)} ` : ''}···· {cardMeta.last4}
             </Text>

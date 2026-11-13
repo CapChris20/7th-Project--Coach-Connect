@@ -21,6 +21,7 @@ const {
   mapNutritionSearchToFoodRows,
   mergeNutritionSearchWithLegacy,
   keepCloseMacroRows,
+  presentFoodSearchRows,
   enrichSearchRowMicros,
 } = require('./combineFoodSources');
 const { applyFoodCardPresentationToRows } = require('./tidyFoodTitles');
@@ -61,12 +62,11 @@ const HTTP_UNAUTHORIZED = 401;
 const HTTP_FORBIDDEN = 403;
 const HTTP_TOO_MANY = 429;
 const HTTP_SERVER_ERROR = 500;
-const FILTERED_CARD_CAP = 8;
 const CLOSE_MACRO_CAP = 5;
 const TRUSTED_SEED_LIMIT = 2;
-const TRUSTED_ONLY_CAP = 3;
 const FOOD_CACHE_STORAGE_KEY = 'COACHCONNECT_FOOD_CACHE';
-const SEARCH_CACHE_PREFIX = 'search_v51_';
+// Manipulate here: bump when filter/ranker / never-blank / trusted catalog changes so stale caches die
+const SEARCH_CACHE_PREFIX = 'search_v55_';
 const BARCODE_CACHE_PREFIX = 'barcode_v8_';
 
 const MENU_EMPTY_HINT =
@@ -400,7 +400,9 @@ function getFromCache(key) {
 }
 
 // Remembers a search result in memory with the time it was saved.
+// Never cache an empty list — that poisons the next few minutes after a blip.
 function setCache(key, data) {
+  if (!Array.isArray(data) || data.length === 0) return;
   foodSearchCache.set(key, { data, timestamp: Date.now() });
 }
 
@@ -655,29 +657,21 @@ async function askServerForBothLists(typedText, limit, authHeaders) {
 }
 
 // Mixes famous menu items (like a Big Mac) into the server lists so they are not dropped.
+// Consensus / nutrition rows stay ahead; curated catalog only fills gaps behind them.
 function mergeTrustedIntoSearch(nutritionRows, legacyResults, trusted, limit) {
-  let merged = mergeNutritionSearchWithLegacy(nutritionRows, legacyResults, limit);
-  if (trusted.length === 0) return merged;
+  if (trusted.length === 0) {
+    return mergeNutritionSearchWithLegacy(nutritionRows, legacyResults, limit);
+  }
   return mergeNutritionSearchWithLegacy(
     nutritionRows.length ? nutritionRows : trusted,
-    nutritionRows.length ? [...trusted, ...legacyResults] : legacyResults,
+    nutritionRows.length ? [...legacyResults, ...trusted] : legacyResults,
     limit,
   );
 }
 
-// Drops foods that do not match the words typed, and drops rows whose macros are wildly off.
+// Name-filter + close-macro + never-blank recovery — shared with live tests via combineFoodSources.
 function filterAndKeepClose(typedText, merged, trusted, limit) {
-  let filtered = filterFoodSearchRows(typedText, merged, Math.min(limit, FILTERED_CARD_CAP));
-  filtered = keepCloseMacroRows(filtered, Math.min(limit, CLOSE_MACRO_CAP));
-  if (trusted.length === 0) return filtered;
-  if (filtered.length === 0) {
-    return keepCloseMacroRows(filterFoodSearchRows(typedText, trusted, TRUSTED_ONLY_CAP), TRUSTED_ONLY_CAP);
-  }
-  const trustedClose = filterFoodSearchRows(typedText, trusted, TRUSTED_SEED_LIMIT);
-  if (trustedClose.length > 0) {
-    return keepCloseMacroRows([...trustedClose, ...filtered], Math.min(limit, CLOSE_MACRO_CAP));
-  }
-  return filtered;
+  return presentFoodSearchRows(typedText, merged, trusted, limit);
 }
 
 // If filtering left zero foods, try the phone cache and Open Food Facts before giving up.
@@ -686,10 +680,13 @@ async function refillFromOfflineIfEmpty(typedText, filtered, limit) {
   const offline = await offlineFoodFallback(typedText, limit);
   if (offline.length === 0) return filtered;
   const merged = mergeNutritionSearchWithLegacy(filtered, offline, limit);
-  return keepCloseMacroRows(
+  const refiltered = keepCloseMacroRows(
     filterFoodSearchRows(typedText, merged.length ? merged : offline, Math.min(limit, CLOSE_MACRO_CAP)),
     Math.min(limit, CLOSE_MACRO_CAP),
   );
+  // Ranker can wipe every OFF row for a vague query — keep the raw offline list rather than empty.
+  if (refiltered.length > 0) return refiltered;
+  return offline.slice(0, Math.min(limit, CLOSE_MACRO_CAP));
 }
 
 // True when the failure is "could not reach the server" (timeout or no connection), not a bad food name.
@@ -793,24 +790,36 @@ async function loginHeadersForSearch() {
 
 async function searchFoods(query, limit = DEFAULT_SEARCH_LIMIT) {
   const cacheKey = `${SEARCH_CACHE_PREFIX}${query}_${limit}`;
+  const startedAt = Date.now();
+  // vocab: raceId = per-call id so Metro logs can match a late response to its query
+  const raceId = `fs_${startedAt.toString(36)}_${Math.floor(Math.random() * 1e4)}`;
   try {
     lastSearchHint = null;
-    logger.debug('🍔 Searching foods for', query);
     const typedText = String(query || '').trim();
+    logger.debug('🍔 Searching foods', {
+      raceId,
+      query: typedText,
+      limit,
+      apiBase: getServerUrlCached() || null,
+    });
     if (!typedText) {
       return [];
     }
 
     const cachedFoods = getFromCache(cacheKey);
     if (cachedFoods) {
-      logger.debug('🍔 Returning cached search results');
+      logger.debug('🍔 Returning cached search results', {
+        raceId,
+        count: cachedFoods.length,
+        ms: Date.now() - startedAt,
+      });
       return presentSearchResults(cachedFoods, typedText);
     }
 
     const trustedMenuFoods = lookupTrustedFoods(typedText, TRUSTED_SEED_LIMIT);
 
     if (!hasUsableServerUrl()) {
-      logger.warn('🍔 API base URL missing. Using cached + Open Food Facts only.');
+      logger.warn('🍔 API base URL missing. Using cached + Open Food Facts only.', { raceId });
       return presentOfflineSearch(typedText, limit, trustedMenuFoods, cacheKey, MISSING_API_HINT);
     }
 
@@ -822,23 +831,40 @@ async function searchFoods(query, limit = DEFAULT_SEARCH_LIMIT) {
     const { consensusResult, legacyResults } = await askServerForBothLists(typedText, limit, loginHeaders);
     const nutritionRows = consensusResult?.rows || [];
     const mergedFoods = mergeTrustedIntoSearch(nutritionRows, legacyResults, trustedMenuFoods, limit);
+    const rawMergedCount = Array.isArray(mergedFoods) ? mergedFoods.length : 0;
     let foodsToShow = filterAndKeepClose(typedText, mergedFoods, trustedMenuFoods, limit);
+    const postFilterCount = foodsToShow.length;
     foodsToShow = await refillFromOfflineIfEmpty(typedText, foodsToShow, limit);
 
     const presented = presentSearchResults(foodsToShow, typedText);
     if (presented.length === 0) {
       lastSearchHint = lastSearchHint || FOOD_SEARCH_OFFLINE_HINT;
+      setEmptySearchHint(typedText, findConsumerBrandInQuery(typedText));
     }
     if (presented.length > 0) setCache(cacheKey, presented);
-    logger.debug(
-      `✅ Food search success: trusted=${trustedMenuFoods.length} nutrition_rows=${nutritionRows.length} legacy=${legacyResults.length} merged=${presented.length}`,
-    );
+    logger.debug('✅ Food search success', {
+      raceId,
+      query: typedText,
+      trusted: trustedMenuFoods.length,
+      nutritionRows: nutritionRows.length,
+      legacy: legacyResults.length,
+      rawMerged: rawMergedCount,
+      postFilter: postFilterCount,
+      presented: presented.length,
+      hint: lastSearchHint,
+      ms: Date.now() - startedAt,
+    });
     return presented;
   } catch (error) {
     if (isNetworkSearchError(error)) {
+      logger.warn('🍔 Food search network failure', {
+        raceId,
+        ms: Date.now() - startedAt,
+        message: error?.message || String(error),
+      });
       return recoverFromNetworkFailure(String(query || '').trim(), limit, cacheKey, error);
     }
-    logger.error('🍔 Error searching foods', error);
+    logger.error('🍔 Error searching foods', { raceId, error });
     return [];
   }
 }

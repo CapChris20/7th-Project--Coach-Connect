@@ -1,6 +1,6 @@
 // Scores and filters food-search rows so only the typed name (or a near-exact title) is kept.
-// Flow: split the query into tokens → drop cousins (diet Coke, Philly steak) → rank what remains.
-// Used by client search and the server. Empty is better than junk. CommonJS for the food tests.
+// Flow: tokens → drop cousins → soft-keep consensus/trusted → rank what remains.
+// Used by client search and the server. CommonJS for the food tests.
 
 const { inferFoodServingCategory } = require('./guessServingLabel');
 
@@ -39,6 +39,9 @@ const QUERY_STOP_WORDS = new Set([
   'classic',
 ]);
 
+// Form-factor / size words — nice to have in the query, but must not wipe a real menu hit
+// when the catalog title says "Footlong Turkey Breast" and the user typed "... sandwich".
+// Manipulate here: add words that describe HOW the food is ordered, not WHAT it is.
 const OPTIONAL_CATEGORY_TOKENS = new Set([
   'cereal',
   'snack',
@@ -63,8 +66,23 @@ const OPTIONAL_CATEGORY_TOKENS = new Set([
   'personal',
   'family',
   'grand',
+  'grande',
   'venti',
   'tall',
+  'sandwich',
+  'sandwiches',
+  'wrap',
+  'wraps',
+  'sub',
+  'subs',
+  'hoagie',
+  'hoagies',
+  'serving',
+  'order',
+  'piece',
+  'pieces',
+  'pc',
+  'pcs',
 ]);
 
 const MENU_STYLE_PATTERN =
@@ -484,13 +502,26 @@ function hasUnrequestedBeverageMismatch(itemText, query) {
   return hasUnrequestedVariantMismatch(itemText, query);
 }
 
+// Milk drinks legitimately have fat/protein — soda absurdity rules must not kill lattes.
+// vocab: milk-based = espresso + dairy (or similar) drinks, not cola/juice
+function isMilkBasedBeverageQuery(query) {
+  const queryNorm = normalizeQueryText(query);
+  return /\b(latte|cappuccino|macchiato|flat\s*white|mocha|frappuccino|frappe|chai|cortado|breve|steamer|hot\s*chocolate|milkshake|cold\s*foam|espresso\s*con\s*panna)\b/i.test(
+    queryNorm,
+  );
+}
+
 function isAbsurdBeverageNutrition(row, query) {
   if (!isBeverageStyleQuery(query)) return false;
   const queryNorm = normalizeQueryText(query);
-  const isShakeOrSmoothie = /\b(shake|smoothie|protein)\b/i.test(queryNorm);
   const calories = Number(row?.calories) || 0;
   const fat = Number(row?.fat) || 0;
   const protein = Number(row?.protein) || 0;
+  const isShakeOrSmoothie = /\b(shake|smoothie|protein)\b/i.test(queryNorm);
+  // Lattes / mochas: only reject extreme calorie outliers (same bar as shakes).
+  if (isMilkBasedBeverageQuery(query)) {
+    return calories >= ABSURD_SHAKE_CALORIES;
+  }
   if (!isShakeOrSmoothie) {
     if (fat >= ABSURD_SODA_FAT_G) return true;
     if (protein >= ABSURD_SODA_PROTEIN_G) return true;
@@ -509,6 +540,60 @@ function isCloseNameMatch(itemText, query, nameBrandText = '') {
   if (hasUnrequestedVariantMismatch(itemText, query)) return false;
   if (hasUnrequestedFoodFamilyMismatch(nameBrandText || itemText, query)) return false;
   return true;
+}
+
+/**
+ * Soft name match — allow one missing token so "Footlong Turkey Breast" still matches
+ * "Subway turkey breast sandwich" after optional tokens are stripped.
+ * Still rejects unrequested modifiers / family mismatches (keeps junk out).
+ */
+function isSoftNameMatch(itemText, query, nameBrandText = '') {
+  const need = requiredQueryTokens(query);
+  if (!need.length) return true;
+  // Manipulate here: need.length - 1 = tolerate one missing required token
+  const minHits = Math.max(1, need.length - 1);
+  if (countTokenHits(itemText, need) < minHits) return false;
+  if (hasUnrequestedMenuModifiers(itemText, query)) return false;
+  if (hasUnrequestedVariantMismatch(itemText, query)) return false;
+  if (hasUnrequestedFoodFamilyMismatch(nameBrandText || itemText, query)) return false;
+  return true;
+}
+
+function isConsensusSourceRow(row) {
+  return String(row?.source || '').toLowerCase() === 'nutrition_consensus';
+}
+
+function isTrustedCatalogRow(row) {
+  return String(row?.source || '').toLowerCase() === 'trusted_catalog';
+}
+
+// FatSecret / USDA / Open Food Facts — the path that covers Apple Jacks, bananas, Quest bars, etc.
+// Soft-match these so a title quirk ("Kellogg's Apple Jacks Cereal") does not wipe a real hit.
+function isTrustedDatabaseSourceRow(row) {
+  const sourceLower = String(row?.source || '').toLowerCase().replace(/\s+/g, '');
+  return (
+    sourceLower === 'fatsecret' ||
+    sourceLower === 'usda' ||
+    sourceLower === 'usdafdc' ||
+    sourceLower === 'usdafooddatacentral' ||
+    sourceLower === 'openfoodfacts' ||
+    sourceLower === 'open_food_facts' ||
+    sourceLower === 'off' ||
+    sourceLower === 'calorieking' ||
+    sourceLower === 'foodfacto'
+  );
+}
+
+/**
+ * Soft name matching is for *all foods*, not just chain catalog hits.
+ * Menu scrapes stay strict (lots of junk cousins). Grocery / DB hits get one-token slack.
+ */
+function shouldSoftMatchRow(row, query, hasConsensus) {
+  if (isTrustedCatalogRow(row) || hasConsensus) return true;
+  if (isTrustedDatabaseSourceRow(row)) return true;
+  // Non-restaurant queries (cereal, fruit, chicken breast, protein powder) — soft for everyone.
+  if (!isMenuStyleQuery(query)) return true;
+  return false;
 }
 
 function countTokenHits(text, tokens) {
@@ -688,7 +773,10 @@ function itemMatchesQuery(itemText, query) {
 }
 
 /**
- * Strict close-name filter for ALL query types. Better empty than unrelated cousins.
+ * Close-name filter for food search — works for ANY food, not just chain menus.
+ * Consensus always survives. FatSecret/USDA/OFF + non-menu queries get soft matching
+ * so "Apple Jacks" is not wiped because the DB title says "Kellogg's Apple Jacks Cereal".
+ * Menu web scrapes stay stricter (cousin junk is common there).
  * @param {string} query
  * @param {object[]} rows
  * @param {number} [limit]
@@ -701,15 +789,28 @@ function filterFoodSearchRows(query, rows, limit = DEFAULT_FILTER_LIMIT) {
   const requiredBrand = getConsumerBrandInQuery(query);
   const need = requiredQueryTokens(query);
   const cap = Math.min(Math.max(limit, 1), DEFAULT_FILTER_LIMIT);
+  const hasConsensus = list.some(isConsensusSourceRow);
 
   const candidates = list.filter((row) => {
     const text = rowSearchText(row);
     const nameBrand = rowNameBrandText(row);
-    if (isRetailFoodNoise(text)) return false;
+
+    // Agreed multi-source card — never delete for a title quirk.
+    if (isConsensusSourceRow(row)) {
+      if (isAbsurdBeverageNutrition(row, query)) return false;
+      return true;
+    }
+
+    if (isRetailFoodNoise(text) && isMenuStyleQuery(query)) return false;
     if (requiredBrand && !textIncludesBrand(text, requiredBrand)) return false;
-    if (!isCloseNameMatch(text, query, nameBrand)) return false;
     if (isAbsurdBeverageNutrition(row, query)) return false;
-    return true;
+
+    if (isCloseNameMatch(text, query, nameBrand)) return true;
+
+    if (shouldSoftMatchRow(row, query, hasConsensus)) {
+      return isSoftNameMatch(text, query, nameBrand);
+    }
+    return false;
   });
 
   if (!candidates.length) return [];
@@ -748,6 +849,8 @@ module.exports = {
   hasUnrequestedFoodFamilyMismatch,
   rowNameBrandText,
   isBeverageStyleQuery,
+  isMilkBasedBeverageQuery,
   isCloseNameMatch,
+  isSoftNameMatch,
   requiredQueryTokens,
 };

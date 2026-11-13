@@ -19,10 +19,10 @@ import { nb, gradients, lightColors, darkColors, borderRadius, spacing } from '.
 
 // ===== NAMED CONSTANTS =====
 
-const IDENTITY_ICON_COLOR = '#E25588';
+const IDENTITY_ICON_COLOR = '#0A0A0A';
 const PAYMENT_ICON_COLOR = lightColors.primary;
 const SPINNER_CONNECTING_COLOR = lightColors.primary;
-const SPINNER_PENDING_COLOR = '#E25588';
+const SPINNER_PENDING_COLOR = '#0A0A0A';
 const PHASE_IDLE = 'idle';
 const PHASE_ERROR = 'error';
 const PHASE_CONNECTING = 'connecting';
@@ -182,7 +182,7 @@ function PayoutActionButtons({
 }
 
 /** Design Law checklist rows (trainer-setup-part-2 PNG 13–19). */
-function DesignLawPayoutBody({ palette, phase, error, identityDone }) {
+function PayoutSetupBody({ palette, phase, error, identityDone }) {
   const rows = [
     {
       title: 'Identity verification',
@@ -413,7 +413,7 @@ export function TrainerPayoutSetupStep({
   return (
     <View style={[styles.container, designLaw ? { alignItems: 'stretch', paddingTop: 0 } : null]}>
       {designLaw ? (
-        <DesignLawPayoutBody
+        <PayoutSetupBody
           palette={palette}
           phase={phase}
           error={error}

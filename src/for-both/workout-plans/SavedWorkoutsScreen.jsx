@@ -7,6 +7,7 @@ import NbButton from '../../look-and-feel/NbButton';
 import HardShadow from '../../look-and-feel/HardShadow';
 import NbPill from '../../look-and-feel/NbPill';
 import NbSheet from '../../look-and-feel/NbSheet';
+import NbNoticeSheet from '../../look-and-feel/NbNoticeSheet';
 import {
   View,
   Text,
@@ -14,7 +15,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
   TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -670,6 +670,9 @@ export default function SavedWorkoutsScreen({
   const [libraryQuery, setLibraryQuery] = useState('');
   // vocab: planPendingDelete = plan waiting on PNG 18 NbSheet confirm (null = sheet closed)
   const [planPendingDelete, setPlanPendingDelete] = useState(null);
+  const [planPendingOptions, setPlanPendingOptions] = useState(null);
+  const [notice, setNotice] = useState(null);
+  const showNotice = (title, message, extras = {}) => setNotice({ title, message, ...extras });
   const { plans: rawPlans, loading, error, reload } = useClientWorkoutPlans(clientId, trainerId);
 
   // Normalize all Firestore docs into UI-friendly shape
@@ -726,7 +729,7 @@ export default function SavedWorkoutsScreen({
       await writeAssignedFlag(plan, !plan._raw.assigned);
       reload();
     } catch (error) {
-      Alert.alert('Error', error?.message || 'Could not update plan.');
+      showNotice('Error', error?.message || 'Could not update plan.');
     }
   }, [clientId, reload, writeAssignedFlag]);
 
@@ -736,7 +739,7 @@ export default function SavedWorkoutsScreen({
       setPlanPendingDelete(null);
       reload();
     } catch (error) {
-      Alert.alert('Error', error?.message || 'Could not delete plan.');
+      showNotice('Error', error?.message || 'Could not delete plan.');
     }
   }, [deletePlanDocuments, reload]);
 
@@ -748,16 +751,8 @@ export default function SavedWorkoutsScreen({
 
   const showPlanOptions = useCallback((plan) => {
     if (viewerRole !== 'trainer') return;
-    const raw = plan._raw;
-    Alert.alert('Plan options', '', [
-      {
-        text: raw.assigned ? 'Unassign from client' : 'Assign to client',
-        onPress: () => handleToggleAssigned(plan),
-      },
-      { text: 'Delete', style: 'destructive', onPress: () => handleDeletePlan(plan) },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
-  }, [viewerRole, handleToggleAssigned, handleDeletePlan]);
+    setPlanPendingOptions(plan);
+  }, [viewerRole]);
 
   const deleteSheetMeta = planPendingDelete
     ? `${planPendingDelete.name || 'Plan'}${
@@ -870,6 +865,48 @@ export default function SavedWorkoutsScreen({
         </View>
       </View>
     </NbSheet>
+
+    <NbSheet
+      visible={!!planPendingOptions}
+      onClose={() => setPlanPendingOptions(null)}
+      title="Plan options"
+    >
+      <View style={{ paddingHorizontal: spacing.md, paddingBottom: spacing.lg, gap: 10 }}>
+        <NbButton
+          variant="fill"
+          onPress={() => {
+            const plan = planPendingOptions;
+            setPlanPendingOptions(null);
+            if (plan) void handleToggleAssigned(plan);
+          }}
+        >
+          {planPendingOptions?._raw?.assigned ? 'Unassign from client' : 'Assign to client'}
+        </NbButton>
+        <NbButton
+          variant="plain"
+          onPress={() => {
+            const plan = planPendingOptions;
+            setPlanPendingOptions(null);
+            if (plan) handleDeletePlan(plan);
+          }}
+        >
+          Delete plan
+        </NbButton>
+        <NbButton variant="ghost" onPress={() => setPlanPendingOptions(null)}>
+          Cancel
+        </NbButton>
+      </View>
+    </NbSheet>
+
+    <NbNoticeSheet
+      visible={!!notice}
+      onClose={() => setNotice(null)}
+      title={notice?.title || ''}
+      message={notice?.message}
+      confirmLabel={notice?.confirmLabel || 'OK'}
+      cancelLabel={notice?.cancelLabel}
+      onConfirm={notice?.onConfirm}
+    />
     </>
   );
 }
@@ -931,7 +968,7 @@ const styles = StyleSheet.create({
   libraryHeroTitle: { fontSize: 25, fontWeight: '900', letterSpacing: -0.6, lineHeight: 30 },
   libraryHeroKicker: { fontSize: 13, fontWeight: '600', marginTop: 4 },
   libraryHeroAccentLine: { width: 56, height: 3, borderRadius: 2, marginTop: 10 },
-  libraryHeroCount: { fontSize: 56, fontWeight: '900', color: '#FF6B9D', marginTop: 14, letterSpacing: -2 },
+  libraryHeroCount: { fontSize: 56, fontWeight: '900', color: '#0A0A0A', marginTop: 14, letterSpacing: -2 },
   libraryHeroFooter: { fontSize: 11, fontWeight: '800', letterSpacing: 1.4, marginTop: 10, textAlign: 'center' },
 
   librarySearchBorder: { borderRadius: 16, padding: 2 },
@@ -1013,7 +1050,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     marginTop: 4,
     overflow: 'hidden',
-    shadowColor: '#FF6B9D',
+    shadowColor: '#0A0A0A',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.28,
     shadowRadius: 10,
@@ -1164,6 +1201,6 @@ const styles = StyleSheet.create({
   centeredFeedback:  { alignItems: 'center', justifyContent: 'center', paddingVertical: 40 },
   feedbackText:      { marginTop: 10, fontSize: 14 },
   errorText:         { color: '#F97373', textAlign: 'center', marginBottom: 8 },
-  retryButton:       { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 999, backgroundColor: '#FF6B9D' },
+  retryButton:       { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 999, backgroundColor: '#0A0A0A' },
   retryButtonLabel:  { color: '#FFFFFF', fontWeight: '600' },
 });

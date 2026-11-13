@@ -1,17 +1,22 @@
-// Confirm popup before the coach swaps one exercise for another.
-// Flow: read the exercise to remove and the one to add → show the reason → confirm or cancel.
-// Used by: the coach conversation when a tool wants to edit a workout.
+// Design Law workout-edit confirm — DiffTable / InfoTable + Apply changes (screens/ai-coach-popups/15).
+// Flow: read swap OR set/rep/weight edits from tool params → show bordered card → confirm.
+// Used by: ConfirmActionPopup when tool = updateWorkout.
+//
+// vocab: updateWorkout params today are mostly swap-shaped (newExercise); display-only
+//        sets/reps/weight/position keys still render when the model sends them.
 
 import React from 'react';
-import { ToolModalBody, DetailRow, ConfirmCancelRow } from './sharedPopupParts';
+import {
+  ToolModalBody,
+  DiffTable,
+  InfoTable,
+  ConfirmCancelRow,
+} from './sharedPopupParts';
 
 // ===== NAMED CONSTANTS =====
 
-const POPUP_TITLE = 'Swap exercise?';
-const REMOVE_ROW_LABEL = 'Remove';
-const ADD_ROW_LABEL = 'Add';
-const REASON_ROW_LABEL = 'Reason';
-const CURRENT_EXERCISE_LABEL = 'Current exercise';
+const BADGE = 'Coach wants to edit your workout';
+const CONFIRM_LABEL = 'Apply changes';
 const MISSING_VALUE = '—';
 const PARAM_KEYS_FOR_REMOVED = ['exerciseId', 'oldExercise', 'exerciseName'];
 
@@ -34,18 +39,26 @@ function readFirstStringParam(params, keyNames, fallbackLabel) {
   return fallbackLabel;
 }
 
-/**
- * @param {object|undefined} params
- * @returns {string}
- */
-function readRemovedExercise(params) {
-  return readFirstStringParam(params, PARAM_KEYS_FOR_REMOVED, CURRENT_EXERCISE_LABEL);
-}
-
 function nameFromExerciseObject(newExercise) {
   if (typeof newExercise !== 'object' || newExercise === null) return '';
   if (!newExercise.name) return '';
   return String(newExercise.name);
+}
+
+/**
+ * Title prefers the exercise being edited (PNG: “Box squat”), then the add name.
+ * @param {object|undefined} params
+ * @returns {string}
+ */
+function readPopupTitle(params) {
+  const named =
+    params?.exerciseName ||
+    params?.oldExercise ||
+    params?.exerciseId ||
+    nameFromExerciseObject(params?.newExercise);
+  if (named) return String(named);
+  if (typeof params?.newExercise === 'string' && params.newExercise) return params.newExercise;
+  return 'Edit workout?';
 }
 
 /**
@@ -63,27 +76,84 @@ function readAddedExercise(params) {
   return MISSING_VALUE;
 }
 
-function readSwapReason(params) {
-  if (!params) return undefined;
-  return params.reason;
+function readRemovedExercise(params) {
+  return readFirstStringParam(params, PARAM_KEYS_FOR_REMOVED, '');
+}
+
+function optionalNumberish(value) {
+  if (value == null || value === '') return undefined;
+  return String(value);
 }
 
 /**
- * Where in the plan the swap lands ("Day 2 · Exercise 3"), 1-based for humans.
- * The model usually identifies the old exercise only by dayIndex/exerciseIndex
- * — without this row the popup said Remove: "Current exercise" and the user
- * could not tell WHICH exercise was about to be replaced.
+ * Build DiffTable rows when the coach proposed numeric edits (PNG 15).
  * @param {object|undefined} params
- * @returns {string|undefined}
+ * @returns {Array<{label:string,before?:string,after?:string}>}
  */
-function readSwapPosition(params) {
-  if (!params) return undefined;
-  const dayIndex = Number(params.dayIndex);
-  const exerciseIndex = Number(params.exerciseIndex);
-  const parts = [];
-  if (Number.isFinite(dayIndex)) parts.push(`Day ${dayIndex + 1}`);
-  if (Number.isFinite(exerciseIndex)) parts.push(`Exercise ${exerciseIndex + 1}`);
-  return parts.length ? parts.join(' · ') : undefined;
+function readNumericDiffRows(params) {
+  if (!params) return [];
+  const rows = [];
+
+  const beforePos = optionalNumberish(params.oldPosition ?? params.oldExerciseIndex);
+  const afterPos = optionalNumberish(
+    params.position ?? params.newPosition ?? (Number.isFinite(Number(params.exerciseIndex))
+      ? Number(params.exerciseIndex) + 1
+      : undefined),
+  );
+  if (beforePos || afterPos) {
+    rows.push({ label: 'Position', before: beforePos, after: afterPos });
+  }
+
+  const beforeSets = optionalNumberish(params.oldSets);
+  const afterSets = optionalNumberish(params.sets ?? params.newSets);
+  if (beforeSets || afterSets) {
+    rows.push({ label: 'Sets', before: beforeSets, after: afterSets });
+  }
+
+  const beforeReps = optionalNumberish(params.oldReps);
+  const afterReps = optionalNumberish(params.reps ?? params.newReps);
+  if (beforeReps || afterReps) {
+    rows.push({ label: 'Reps', before: beforeReps, after: afterReps });
+  }
+
+  const beforeWeight = optionalNumberish(params.oldWeight);
+  const afterWeight = optionalNumberish(params.weight ?? params.newWeight);
+  if (beforeWeight || afterWeight) {
+    const withUnit = (v) => {
+      if (!v) return v;
+      return /lb|kg/i.test(v) ? v : `${v} lb`;
+    };
+    rows.push({
+      label: 'Weight',
+      before: withUnit(beforeWeight),
+      after: withUnit(afterWeight),
+    });
+  }
+
+  return rows;
+}
+
+/**
+ * Swap fallback card when there are no numeric before/after fields.
+ * @param {object|undefined} params
+ * @returns {Array<{label:string,value:string}>}
+ */
+function readSwapInfoRows(params) {
+  const removed = readRemovedExercise(params);
+  const added = readAddedExercise(params);
+  const reason = params?.reason ? String(params.reason) : '';
+  const dayIndex = Number(params?.dayIndex);
+  const exerciseIndex = Number(params?.exerciseIndex);
+  const positionParts = [];
+  if (Number.isFinite(dayIndex)) positionParts.push(`Day ${dayIndex + 1}`);
+  if (Number.isFinite(exerciseIndex)) positionParts.push(`Exercise ${exerciseIndex + 1}`);
+
+  const rows = [];
+  if (removed) rows.push({ label: 'Remove', value: removed });
+  if (positionParts.length) rows.push({ label: 'Position', value: positionParts.join(' · ') });
+  if (added && added !== MISSING_VALUE) rows.push({ label: 'Add', value: added });
+  if (reason) rows.push({ label: 'Reason', value: reason });
+  return rows;
 }
 
 // ===== MAIN FUNCTION =====
@@ -93,25 +163,23 @@ function readSwapPosition(params) {
  * @param {{ params?: object, reasoning?: string, onConfirm: Function, onCancel: Function, loading?: boolean }} props
  */
 export default function EditWorkoutPopup({ params, reasoning, onConfirm, onCancel, loading }) {
-  // 1. Read the exercise to remove and the one to add.
-  const removedExercise = readRemovedExercise(params);
-  const addedExercise = readAddedExercise(params);
-  const swapReason = readSwapReason(params);
-  const swapPosition = readSwapPosition(params);
+  const title = readPopupTitle(params);
+  const diffRows = readNumericDiffRows(params);
+  const infoRows = diffRows.length ? [] : readSwapInfoRows(params);
 
-  // 2. Confirm swaps them. onConfirm still gets the original params.
   function handleConfirmSwap() {
     onConfirm(params);
   }
 
   return (
-    <ToolModalBody badge="Coach wants to edit a workout" title={POPUP_TITLE} reasoning={reasoning}>
-      <DetailRow label={REMOVE_ROW_LABEL} value={removedExercise} />
-      {/* Position row hides itself when the model sent no indexes. */}
-      <DetailRow label="Position" value={swapPosition} />
-      <DetailRow label={ADD_ROW_LABEL} value={addedExercise} />
-      <DetailRow label={REASON_ROW_LABEL} value={swapReason} />
-      <ConfirmCancelRow onConfirm={handleConfirmSwap} onCancel={onCancel} loading={loading} />
+    <ToolModalBody badge={BADGE} title={title} reasoning={reasoning}>
+      {diffRows.length ? <DiffTable rows={diffRows} /> : <InfoTable rows={infoRows} />}
+      <ConfirmCancelRow
+        onConfirm={handleConfirmSwap}
+        onCancel={onCancel}
+        loading={loading}
+        confirmLabel={CONFIRM_LABEL}
+      />
     </ToolModalBody>
   );
 }

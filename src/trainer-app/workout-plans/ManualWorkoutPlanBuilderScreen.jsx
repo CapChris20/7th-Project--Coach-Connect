@@ -5,7 +5,6 @@
 import React, { useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -23,6 +22,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useTheme } from '../../look-and-feel/lightDarkMode';
 import { nb, borderRadius } from '../../look-and-feel/colorPalette';
 import NbButton from '../../look-and-feel/NbButton';
+import NbNoticeSheet from '../../look-and-feel/NbNoticeSheet';
 import HardShadow from '../../look-and-feel/HardShadow';
 import TopHeader from '../../for-both/loading-and-header/TopHeader';
 import { SHELL_SAFE_AREA_EDGES, FORM_SCROLL_PROPS, useEmbeddedScrollBottomPad } from '../../navigation/bottomMenuSpacing';
@@ -387,6 +387,9 @@ export default function ManualWorkoutPlanBuilderScreen({
   const [savedPlanId, setSavedPlanId] = useState(editPlanId || null);
   const [loadingPlan, setLoadingPlan] = useState(!!editPlanId);
   const [saving, setSaving] = useState(false);
+  // vocab: notice = NbNoticeSheet payload — Design Law instead of Alert.alert
+  const [notice, setNotice] = useState(null);
+  const showNotice = (title, message, extras = {}) => setNotice({ title, message, ...extras });
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editExerciseId, setEditExerciseId] = useState(null);
@@ -500,7 +503,7 @@ export default function ManualWorkoutPlanBuilderScreen({
         setAssignedClients(draft.assignedClients?.length ? draft.assignedClients : [...(defaultAssignedClientIds || [])]);
         setSavedPlanId(editPlanId);
       } catch (e) {
-        Alert.alert('Could not load plan', e?.message || 'Unknown error');
+        showNotice('Could not load plan', e?.message || 'Unknown error');
       } finally {
         if (!cancelled) setLoadingPlan(false);
       }
@@ -568,7 +571,7 @@ export default function ManualWorkoutPlanBuilderScreen({
   const confirmModal = () => {
     const name = (pickedLibrary?.name || customName || '').trim();
     if (!name) {
-      Alert.alert('Exercise name required', 'Pick from the library or enter a custom name.');
+      showNotice('Exercise name required', 'Pick from the library or enter a custom name.');
       return;
     }
     const id = editExerciseId || newLocalId('ex');
@@ -658,7 +661,7 @@ export default function ManualWorkoutPlanBuilderScreen({
 
   const validateStep1 = () => {
     if (!planName.trim()) {
-      Alert.alert('Plan name', 'Please enter a plan name.');
+      showNotice('Plan name', 'Please enter a plan name.');
       return false;
     }
     return true;
@@ -667,7 +670,7 @@ export default function ManualWorkoutPlanBuilderScreen({
   const goNext = () => {
     if (step === 1 && !validateStep1()) return;
     if (step === 2 && !workoutDays.length) {
-      Alert.alert('Add days', 'Add at least one workout day.');
+      showNotice('Add days', 'Add at least one workout day.');
       return;
     }
     if (step === 3) {
@@ -710,26 +713,31 @@ export default function ManualWorkoutPlanBuilderScreen({
       });
       const totalEx = countExercisesAcrossDays(draft.workoutDays);
       if (totalEx < 1) {
-        Alert.alert('Add exercises', 'Add at least one exercise before saving.');
+        showNotice('Add exercises', 'Add at least one exercise before saving.');
         return;
       }
       if (!trainerId) {
-        Alert.alert('Not signed in', 'Trainer ID missing.');
+        showNotice('Not signed in', 'Trainer ID missing.');
         return;
       }
       setSaving(true);
       try {
         const res = await saveManualPlanDraft(trainerId, draft, savedPlanId);
         if (!res.success) {
-          Alert.alert('Save failed', res.error || 'Unknown error');
+          showNotice('Save failed', res.error || 'Unknown error');
           return;
         }
         setSavedPlanId(res.planId);
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        Alert.alert('Saved', doAssign && assignedClients.length ? 'Plan saved and assigned to selected clients.' : 'Plan saved.');
+        showNotice(
+          'Saved',
+          doAssign && assignedClients.length
+            ? 'Plan saved and assigned to selected clients.'
+            : 'Plan saved.',
+        );
         setStep(5);
       } catch (e) {
-        Alert.alert('Save failed', e?.message || 'Unknown error');
+        showNotice('Save failed', e?.message || 'Unknown error');
       } finally {
         setSaving(false);
       }
@@ -1464,6 +1472,17 @@ export default function ManualWorkoutPlanBuilderScreen({
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      <NbNoticeSheet
+        visible={!!notice}
+        onClose={() => setNotice(null)}
+        title={notice?.title || ''}
+        message={notice?.message}
+        confirmLabel={notice?.confirmLabel || 'OK'}
+        cancelLabel={notice?.cancelLabel}
+        onConfirm={notice?.onConfirm}
+        destructive={!!notice?.destructive}
+      />
     </SafeAreaView>
     </BuilderlightDarkMode.Provider>
   );

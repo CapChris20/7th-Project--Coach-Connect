@@ -7,7 +7,6 @@
 import React, { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   StyleSheet,
   Text,
   TextInput,
@@ -25,6 +24,7 @@ import NbSheet from '../../look-and-feel/NbSheet';
 import NbButton from '../../look-and-feel/NbButton';
 import NbSegmented from '../../look-and-feel/NbSegmented';
 import HardShadow from '../../look-and-feel/HardShadow';
+import NbNoticeSheet from '../../look-and-feel/NbNoticeSheet';
 import { borderRadius, nb, spacing } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
@@ -81,9 +81,9 @@ function fileMatchesTabAndSearch(item, searchText, tab) {
   return true;
 }
 
-function ensureClientIsSignedIn(clientId) {
+function ensureClientIsSignedIn(clientId, showNotice) {
   if (clientId) return true;
-  Alert.alert('Not signed in', 'Please sign in to upload files.');
+  showNotice('Not signed in', 'Please sign in to upload files.');
   return false;
 }
 
@@ -96,7 +96,7 @@ function inferredDocumentType(file) {
   return isPdf ? 'pdf' : 'doc';
 }
 
-async function uploadPickedPhoto(clientId, asset, setUploading, setUploadOpen) {
+async function uploadPickedPhoto(clientId, asset, setUploading, setUploadOpen, showNotice) {
   setUploading(true);
   try {
     await addFile(
@@ -112,7 +112,7 @@ async function uploadPickedPhoto(clientId, asset, setUploading, setUploadOpen) {
     );
     setUploadOpen(false);
   } catch (error) {
-    Alert.alert('Upload failed', error?.message || 'Could not upload photo.');
+    showNotice('Upload failed', error?.message || 'Could not upload photo.');
   } finally {
     setUploading(false);
   }
@@ -137,6 +137,8 @@ export function MyFilesSection({
   const [searchText, setSearchText] = useState('');
   const [uploadOpen, setUploadOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [notice, setNotice] = useState(null);
+  const showNotice = (title, message, extras = {}) => setNotice({ title, message, ...extras });
 
   const myFiles = useMemo(() => {
     const list = Array.isArray(items) ? items : [];
@@ -149,10 +151,10 @@ export function MyFilesSection({
   }, [myFiles, searchText, tab]);
 
   const takeProgressPhoto = async () => {
-    if (!ensureClientIsSignedIn(clientId)) return;
+    if (!ensureClientIsSignedIn(clientId, showNotice)) return;
     const permission = await ImagePicker.requestCameraPermissionsAsync();
     if (permission.status !== 'granted') {
-      Alert.alert('Permission needed', 'Allow camera access to take progress photos.');
+      showNotice('Permission needed', 'Allow camera access to take progress photos.');
       return;
     }
     const result = await ImagePicker.launchCameraAsync({
@@ -161,14 +163,14 @@ export function MyFilesSection({
       quality: PHOTO_UPLOAD_QUALITY,
     });
     if (result.canceled || !result.assets?.[0]?.uri) return;
-    await uploadPickedPhoto(clientId, result.assets[0], setUploading, setUploadOpen);
+    await uploadPickedPhoto(clientId, result.assets[0], setUploading, setUploadOpen, showNotice);
   };
 
   const choosePhotoFromGallery = async () => {
-    if (!ensureClientIsSignedIn(clientId)) return;
+    if (!ensureClientIsSignedIn(clientId, showNotice)) return;
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (permission.status !== 'granted') {
-      Alert.alert('Permission needed', 'Allow photo library access to upload progress photos.');
+      showNotice('Permission needed', 'Allow photo library access to upload progress photos.');
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -177,11 +179,11 @@ export function MyFilesSection({
       quality: PHOTO_UPLOAD_QUALITY,
     });
     if (result.canceled || !result.assets?.[0]?.uri) return;
-    await uploadPickedPhoto(clientId, result.assets[0], setUploading, setUploadOpen);
+    await uploadPickedPhoto(clientId, result.assets[0], setUploading, setUploadOpen, showNotice);
   };
 
   const uploadPickedDocument = async () => {
-    if (!ensureClientIsSignedIn(clientId)) return;
+    if (!ensureClientIsSignedIn(clientId, showNotice)) return;
     const result = await DocumentPicker.getDocumentAsync({
       type: DOCUMENT_PICKER_TYPES,
       copyToCacheDirectory: true,
@@ -204,14 +206,14 @@ export function MyFilesSection({
       );
       setUploadOpen(false);
     } catch (error) {
-      Alert.alert('Upload failed', error?.message || 'Could not upload document.');
+      showNotice('Upload failed', error?.message || 'Could not upload document.');
     } finally {
       setUploading(false);
     }
   };
 
   const uploadPickedSpreadsheet = async () => {
-    if (!ensureClientIsSignedIn(clientId)) return;
+    if (!ensureClientIsSignedIn(clientId, showNotice)) return;
     const result = await DocumentPicker.getDocumentAsync({
       type: SPREADSHEET_PICKER_TYPES,
       copyToCacheDirectory: true,
@@ -233,7 +235,7 @@ export function MyFilesSection({
       );
       setUploadOpen(false);
     } catch (error) {
-      Alert.alert('Upload failed', error?.message || 'Could not upload spreadsheet.');
+      showNotice('Upload failed', error?.message || 'Could not upload spreadsheet.');
     } finally {
       setUploading(false);
     }
@@ -328,6 +330,15 @@ export function MyFilesSection({
           </View>
         )}
       </NbSheet>
+      <NbNoticeSheet
+        visible={!!notice}
+        onClose={() => setNotice(null)}
+        title={notice?.title || ''}
+        message={notice?.message}
+        confirmLabel={notice?.confirmLabel || 'OK'}
+        cancelLabel={notice?.cancelLabel}
+        onConfirm={notice?.onConfirm}
+      />
     </View>
   );
 }

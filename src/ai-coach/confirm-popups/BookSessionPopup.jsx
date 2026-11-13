@@ -3,7 +3,7 @@
 // Used by: the coach conversation when a tool wants to book a session.
 
 import React from 'react';
-import { ToolModalBody, DetailRow, ConfirmCancelRow } from './sharedPopupParts';
+import { ToolModalBody, InfoTable, ConfirmCancelRow } from './sharedPopupParts';
 
 // ===== NAMED CONSTANTS =====
 
@@ -55,17 +55,23 @@ export default function BookSessionPopup({ params, reasoning, onConfirm, onCance
       title="Book session?"
       reasoning={reasoning}
     >
-      {/* Combined phrase wins when present; otherwise the split date/time rows. */}
-      {displayFields.combinedWhen ? (
-        <DetailRow label="When" value={displayFields.combinedWhen} />
-      ) : (
-        <>
-          <DetailRow label="Date" value={displayFields.sessionDate} />
-          <DetailRow label="Time" value={displayFields.sessionTime} />
-        </>
-      )}
-      <DetailRow label="Duration" value={displayFields.durationLabel} />
-      <DetailRow label="Notes" value={displayFields.notes} />
+      {/* Design Law: one bordered InfoTable — combined “When” when split fields are blank */}
+      <InfoTable
+        rows={
+          displayFields.combinedWhen
+            ? [
+                { label: 'When', value: displayFields.combinedWhen },
+                { label: 'Duration', value: displayFields.durationLabel },
+                { label: 'Notes', value: displayFields.notes },
+              ]
+            : [
+                { label: 'Date', value: displayFields.sessionDate },
+                { label: 'Time', value: displayFields.sessionTime },
+                { label: 'Duration', value: displayFields.durationLabel },
+                { label: 'Notes', value: displayFields.notes },
+              ]
+        }
+      />
       <ConfirmCancelRow
         onConfirm={handleConfirmBook}
         onCancel={onCancel}

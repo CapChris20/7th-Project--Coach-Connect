@@ -2,6 +2,7 @@
 // Flow: tabs → active chip + bold label → optional centerPlus. Production shell uses BottomMenuBar.js
 // (same chrome + AsyncStorage active key + AI slot). Keep this for previews / simple embeds.
 //
+// Pass ink/muted outline icons as tab.icon — the + is the only gradient accent on this dock.
 // vocab: soft chip = nbSoft fill + border behind the glyph only (never a black slab over the label)
 // Manipulate here: PLUS_SIZE / PLUS_OVERHANG must stay in sync with BottomMenuBar.js
 

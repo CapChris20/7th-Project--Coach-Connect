@@ -257,7 +257,7 @@ export default function LogWorkoutScreen({ onBack, onOpenPlan, workoutRating: ra
     await diary.save();
     const uid = auth?.currentUser?.uid;
     if (uid && Number.isFinite(rating)) {
-      // Same key DesignLawCheckInCard / home post-workout slider uses
+      // Same key ClientCheckInCard / home post-workout slider uses
       await saveDashboardMetricField(uid, 'dashboard_workout_rating', String(rating), getClientDateKey());
     }
     onBack?.();

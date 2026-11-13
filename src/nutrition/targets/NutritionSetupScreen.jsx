@@ -137,7 +137,7 @@ function macrosAddUpKcal(macros) {
 /**
  * Step 1 — PNG 19 black calories card + preset chips preview.
  */
-function CalorieGoalStep({ onNext, calories, setCalories, footerPadBottom, colors }) {
+function CalorieGoalStep({ onNext, calories, setCalories, footerPadBottom, topPad = 0, colors }) {
   const clamped = clampCalories(calories);
   const est = macrosFromCalorieTarget(clamped);
   const keyboardBehavior = Platform.OS === PLATFORM_IOS ? 'padding' : undefined;
@@ -145,7 +145,10 @@ function CalorieGoalStep({ onNext, calories, setCalories, footerPadBottom, color
   return (
     <KeyboardAvoidingView behavior={keyboardBehavior} style={{ flex: 1 }}>
       <ScrollView
-        contentContainerStyle={[styles.container, { paddingBottom: footerPadBottom }]}
+        contentContainerStyle={[
+          styles.container,
+          { paddingBottom: footerPadBottom, paddingTop: topPad },
+        ]}
         keyboardShouldPersistTaps="handled"
       >
         <NbProgressSteps current={STEP_CALORIES} total={TOTAL_ONBOARDING_STEPS} />
@@ -213,7 +216,7 @@ function CalorieGoalStep({ onNext, calories, setCalories, footerPadBottom, color
 /**
  * Step 2 — macro preset chips + HardShadow slider card (PNG 19).
  */
-function MacrosStep({ onNext, onBack, macros, setMacros, calories, footerPadBottom, colors }) {
+function MacrosStep({ onNext, onBack, macros, setMacros, calories, footerPadBottom, topPad = 0, colors }) {
   const [presetId, setPresetId] = useState('balanced');
   const keyboardBehavior = Platform.OS === PLATFORM_IOS ? 'padding' : undefined;
   const addUp = macrosAddUpKcal(macros);
@@ -226,7 +229,10 @@ function MacrosStep({ onNext, onBack, macros, setMacros, calories, footerPadBott
   return (
     <KeyboardAvoidingView behavior={keyboardBehavior} style={{ flex: 1 }}>
       <ScrollView
-        contentContainerStyle={[styles.container, { paddingBottom: footerPadBottom }]}
+        contentContainerStyle={[
+          styles.container,
+          { paddingBottom: footerPadBottom, paddingTop: topPad },
+        ]}
         keyboardShouldPersistTaps="handled"
       >
         <TouchableOpacity onPress={onBack} style={styles.backBtn} activeOpacity={0.7}>
@@ -375,7 +381,7 @@ function FoodPresetChips({ presets, selectedNames, onToggle, colors, selectedFil
 /**
  * Step 3 — foods you love and skip.
  */
-function FavoriteFoodsStep({ onBack, onFinish, footerPadBottom, colors }) {
+function FavoriteFoodsStep({ onBack, onFinish, footerPadBottom, topPad = 0, colors }) {
   const insets = useSafeAreaInsets();
   const [favorites, setFavorites] = useState([]);
   const [leastFavorites, setLeastFavorites] = useState([]);
@@ -408,7 +414,7 @@ function FavoriteFoodsStep({ onBack, onFinish, footerPadBottom, colors }) {
       behavior={keyboardBehavior}
       keyboardVerticalOffset={keyboardOffset}
     >
-      <View style={[styles.container, { flex: 1, paddingBottom: 0 }]}>
+      <View style={[styles.container, { flex: 1, paddingBottom: 0, paddingTop: topPad }]}>
         <TouchableOpacity onPress={onBack} style={styles.backBtn} activeOpacity={0.7}>
           <Text style={[styles.backText, { color: colors.nbMuted }]}>← Back</Text>
         </TouchableOpacity>
@@ -533,6 +539,8 @@ export const NutritionNewUserSetupScreen = ({ onComplete, reservedBottomInset = 
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const footerPadBottom = footerPadFromInsets(insets.bottom, reservedBottomInset);
+  // Manipulate here: top gap under Dynamic Island — shell does not pad top
+  const topPad = Math.max(insets.top, 0) + spacing.md;
   const [currentStep, setStep] = useState(STEP_CALORIES);
   const [calories, setCalories] = useState(DEFAULT_CALORIES);
   const [macros, setMacros] = useState({
@@ -571,6 +579,7 @@ export const NutritionNewUserSetupScreen = ({ onComplete, reservedBottomInset = 
           calories={calories}
           setCalories={setCalories}
           footerPadBottom={footerPadBottom}
+          topPad={topPad}
           colors={colors}
         />
       ) : null}
@@ -582,6 +591,7 @@ export const NutritionNewUserSetupScreen = ({ onComplete, reservedBottomInset = 
           setMacros={setMacros}
           calories={calories}
           footerPadBottom={footerPadBottom}
+          topPad={topPad}
           colors={colors}
         />
       ) : null}
@@ -590,6 +600,7 @@ export const NutritionNewUserSetupScreen = ({ onComplete, reservedBottomInset = 
           onBack={() => setStep(STEP_MACROS)}
           onFinish={handleFinish}
           footerPadBottom={footerPadBottom}
+          topPad={topPad}
           colors={colors}
         />
       ) : null}

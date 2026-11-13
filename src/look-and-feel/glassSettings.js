@@ -23,12 +23,13 @@ const Liquid = {
     textSecondary: darkColors.nbMuted,
     scrimStrong: 'rgba(0,0,0,0.72)',
     scrimSoft: 'rgba(0,0,0,0.45)',
+    // Accent stops mirror Design Law brand gradient — not solid pink chrome fills
     hotPink: '#FF6B9D',
     cyan: '#60A5FA',
-    magenta: '#E25588',
+    magenta: '#FB923C',
     darkPurple: darkColors.nbBackground,
     lightOrange: '#FB923C',
-    accent: '#E25588',
+    accent: '#0A0A0A',
     accentAlt: '#FB923C',
   },
   gradients: {

@@ -1,12 +1,12 @@
 // Turns the multi-source nutrition search reply into food cards the app can show.
-// Flow: parse the typed text (Big Mac + restaurant) → consensus row and source rows → merge with the older search list.
-// Used by food search. CommonJS so the food tests can require() it.
+// Flow: parse query → consensus + source rows → presentFoodSearchRows (filter, pin, never-blank).
+// Used by food search and the branded live suite. CommonJS so the food tests can require() it.
 
 const {
   parseCasualMenuIntent,
   RESTAURANT_CHAINS,
 } = require('../food-search/restaurantMenuSearch');
-const { significantQueryTokens } = require('./rankFoodResults');
+const { significantQueryTokens, filterFoodSearchRows } = require('./rankFoodResults');
 const {
   formatUserQueryAsFoodName,
   stripLegacyFoodTitleDecorations,
@@ -47,9 +47,13 @@ const CLOSE_MACRO_RATIO = 0.12;
 const CLOSE_MACRO_KCAL = 25;
 const DEFAULT_MERGE_LIMIT = 8;
 const DEFAULT_CLOSE_LIMIT = 5;
+const FILTERED_CARD_CAP = 8;
+const TRUSTED_SEED_LIMIT = 2;
+const TRUSTED_ONLY_CAP = 3;
 const CONSENSUS_KEEP_PRIORITY = 3;
 const TRUSTED_KEEP_PRIORITY = 2;
 const DB_KEEP_PRIORITY = 1;
+const MIN_USABLE_CALORIES = 0;
 
 // ===== HELPER FUNCTIONS =====
 
@@ -497,6 +501,46 @@ function mergeNutritionSearchWithLegacy(nutritionRows, legacyRows, limit = DEFAU
 }
 
 /**
+ * Pick the calorie anchor for close-macro filtering.
+ * Multi-source nutrition_consensus always wins when present — that is the card
+ * the product shows. Trusted catalog / legacy only anchor when consensus is absent.
+ * @param {object[]} list
+ * @returns {object}
+ */
+function pickCloseMacroAnchor(list) {
+  const consensus = list.find(
+    (row) => String(row.source || '').toLowerCase() === SOURCE_NUTRITION_CONSENSUS,
+  );
+  if (consensus) return consensus;
+  const trusted = list.find(
+    (row) => String(row.source || '').toLowerCase() === SOURCE_TRUSTED_CATALOG,
+  );
+  return trusted || list[0];
+}
+
+/**
+ * True when this row is the multi-source consensus card.
+ * @param {object} row
+ * @returns {boolean}
+ */
+function isConsensusFoodRow(row) {
+  return String(row?.source || '').toLowerCase() === SOURCE_NUTRITION_CONSENSUS;
+}
+
+/**
+ * Keep consensus cards first so the UI never buries the agreed macros under a cousin.
+ * @param {object[]} rows
+ * @returns {object[]}
+ */
+function pinConsensusFirst(rows) {
+  const list = Array.isArray(rows) ? rows : [];
+  const consensus = list.filter(isConsensusFoodRow);
+  if (!consensus.length) return list;
+  const rest = list.filter((row) => !isConsensusFoodRow(row));
+  return [...consensus, ...rest];
+}
+
+/**
  * Keep multiple results when calories/macros agree (±12% or ±25 kcal).
  * Consensus / trusted stay first; drop distant cousins.
  * @param {object[]} rows
@@ -507,10 +551,7 @@ function keepCloseMacroRows(rows, limit = DEFAULT_CLOSE_LIMIT) {
   const list = Array.isArray(rows) ? rows : [];
   if (!list.length) return [];
 
-  const anchor =
-    list.find((row) => String(row.source || '').toLowerCase() === SOURCE_NUTRITION_CONSENSUS) ||
-    list.find((row) => String(row.source || '').toLowerCase() === SOURCE_TRUSTED_CATALOG) ||
-    list[0];
+  const anchor = pickCloseMacroAnchor(list);
   const anchorCalories = Number(anchor.calories) || 0;
 
   const close = list.filter((row) => isCloseToAnchorCalories(Number(row.calories) || 0, anchorCalories));
@@ -522,6 +563,134 @@ function keepCloseMacroRows(rows, limit = DEFAULT_CLOSE_LIMIT) {
       return Math.abs(Number(leftRow.calories) - anchorCalories) - Math.abs(Number(rightRow.calories) - anchorCalories);
     })
     .slice(0, limit);
+}
+
+/**
+ * Best calorie-bearing rows from a raw merge when the name filter wiped everything (A).
+ * Prefer consensus → trusted catalog → FatSecret/USDA/OFF → everything else.
+ * This is the "any food" safety net — Apple Jacks from FatSecret still shows if titles disagree.
+ * vocab: "raw" = pre-filter server/catalog rows that still have usable macros
+ * @param {object[]} rows
+ * @param {number} [limit]
+ * @returns {object[]}
+ */
+function pickBestRawFoodRows(rows, limit = DEFAULT_CLOSE_LIMIT) {
+  const list = (Array.isArray(rows) ? rows : []).filter((row) => {
+    const calories = Number(row?.calories ?? row?.nf_calories);
+    return Number.isFinite(calories) && calories >= MIN_USABLE_CALORIES;
+  });
+  if (!list.length) return [];
+
+  return [...list]
+    .sort((leftRow, rightRow) => {
+      const priorityGap = sourcePriority(rightRow.source) - sourcePriority(leftRow.source);
+      if (priorityGap !== 0) return priorityGap;
+      return (Number(rightRow.calories) || 0) - (Number(leftRow.calories) || 0);
+    })
+    .slice(0, Math.max(1, limit));
+}
+
+/**
+ * When multi-source consensus fails, still promote the best FatSecret/USDA/OFF hit first.
+ * That is how random grocery (Apple Jacks, banana, chicken breast) feels as reliable as a Big Mac.
+ * @param {object[]} rows
+ * @returns {object[]}
+ */
+function pinBestDatabaseFirst(rows) {
+  const list = Array.isArray(rows) ? rows : [];
+  if (!list.length) return list;
+  if (list.some(isConsensusFoodRow)) return pinConsensusFirst(list);
+
+  let bestIndex = -1;
+  let bestPriority = -1;
+  for (let index = 0; index < list.length; index += 1) {
+    const priority = sourcePriority(list[index].source);
+    if (priority >= TRUSTED_DB_PRIORITY && priority > bestPriority) {
+      bestPriority = priority;
+      bestIndex = index;
+    }
+  }
+  if (bestIndex <= 0) return list;
+  const best = list[bestIndex];
+  return [best, ...list.slice(0, bestIndex), ...list.slice(bestIndex + 1)];
+}
+
+/**
+ * Name-filter + close-macro cluster with consensus pinned first.
+ * Trusted catalog fills gaps when consensus never landed.
+ * Never returns empty when the merge had calorie-bearing rows (A).
+ * Soft name filter keeps consensus / trusted through title quirks (C).
+ * @param {string} typedText
+ * @param {object[]} merged
+ * @param {object[]} [trusted]
+ * @param {number} [limit]
+ * @returns {object[]}
+ */
+function presentFoodSearchRows(typedText, merged, trusted = [], limit = DEFAULT_MERGE_LIMIT) {
+  const closeCap = Math.min(limit, DEFAULT_CLOSE_LIMIT);
+  const mergedList = Array.isArray(merged) ? merged : [];
+  const trustedList = Array.isArray(trusted) ? trusted : [];
+  const consensusFromMerge = mergedList.filter(isConsensusFoodRow);
+
+  let filtered = filterFoodSearchRows(typedText, mergedList, Math.min(limit, FILTERED_CARD_CAP));
+
+  // Ranker can still drop consensus on older callers — put it back. It is the product truth.
+  if (consensusFromMerge.length > 0 && !filtered.some(isConsensusFoodRow)) {
+    filtered = [...consensusFromMerge, ...filtered];
+  } else if (consensusFromMerge.length > 0) {
+    filtered = pinConsensusFirst(filtered);
+  }
+
+  filtered = pinConsensusFirst(keepCloseMacroRows(filtered, closeCap));
+
+  // Trusted catalog only when consensus did not produce a card.
+  if (!filtered.some(isConsensusFoodRow) && trustedList.length > 0) {
+    let trustedClose = filterFoodSearchRows(
+      typedText,
+      trustedList,
+      filtered.length === 0 ? TRUSTED_ONLY_CAP : TRUSTED_SEED_LIMIT,
+    );
+    // Soft filter still empty → keep raw trusted (A): famous menu beats a blank screen.
+    if (trustedClose.length === 0) {
+      trustedClose = pickBestRawFoodRows(trustedList, filtered.length === 0 ? TRUSTED_ONLY_CAP : TRUSTED_SEED_LIMIT);
+    }
+    if (trustedClose.length > 0) {
+      filtered = pinConsensusFirst(
+        keepCloseMacroRows(
+          filtered.length === 0 ? trustedClose : [...filtered, ...trustedClose],
+          closeCap,
+        ),
+      );
+    }
+  } else if (filtered.some(isConsensusFoodRow) && trustedList.length > 0) {
+    // Consensus won — only append trusted cousins that agree on macros (never re-anchor).
+    const consensus = filtered.find(isConsensusFoodRow);
+    const anchorCal = Number(consensus?.calories) || 0;
+    const trustedCousins = filterFoodSearchRows(typedText, trustedList, TRUSTED_SEED_LIMIT).filter(
+      (row) => isCloseToAnchorCalories(Number(row.calories) || 0, anchorCal),
+    );
+    const seen = new Set(
+      filtered.map((row) => `${String(row.source || '')}:${Number(row.calories) || 0}:${row.name || ''}`),
+    );
+    for (const row of trustedCousins) {
+      if (filtered.length >= closeCap) break;
+      const key = `${String(row.source || '')}:${Number(row.calories) || 0}:${row.name || ''}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      filtered.push(row);
+    }
+    filtered = pinConsensusFirst(filtered);
+  }
+
+  // Ranker wiped every server row — keep the best raw merge so the UI is not empty (A).
+  // Works for grocery too: one FatSecret Apple Jacks hit beats a blank screen.
+  if (filtered.length === 0 && mergedList.length > 0) {
+    const recovered = keepCloseMacroRows(mergedList, closeCap);
+    if (recovered.length > 0) return pinBestDatabaseFirst(pinConsensusFirst(recovered));
+    return pinBestDatabaseFirst(pickBestRawFoodRows(mergedList, closeCap));
+  }
+
+  return pinBestDatabaseFirst(pinConsensusFirst(filtered));
 }
 
 /**
@@ -555,8 +724,14 @@ module.exports = {
   mergeConsensusWithResults,
   mergeNutritionSearchWithLegacy,
   keepCloseMacroRows,
+  pickBestRawFoodRows,
+  pinBestDatabaseFirst,
+  presentFoodSearchRows,
   enrichSearchRowMicros,
   isHighConfidenceConsensus,
+  isConsensusFoodRow,
+  pinConsensusFirst,
+  isCloseToAnchorCalories,
   // Re-exported from tidyFoodTitles — keep for older import paths / Metro cache.
   sanitizeFoodCardTitle,
   stripLegacyFoodTitleDecorations,

@@ -333,7 +333,14 @@ function shouldRetryWebSearchOnNextBase(payload, json, base) {
 
 function aiCoachPathForPayload(payload) {
   const lastUserText = lastUserTextFromPayload(payload);
-  if (payload?.options?.web === WEB_MODE_ON && shouldForceDedicatedWebSearchRoute(lastUserText)) {
+  // Dedicated web-search route when the user clearly asked to search the web
+  // (web mode on from the caller, or auto mode that already decided this turn wants web).
+  const webMode = payload?.options?.web;
+  const forceWeb =
+    shouldForceDedicatedWebSearchRoute(lastUserText) &&
+    webMode !== WEB_MODE_OFF &&
+    (webMode === WEB_MODE_ON || payloadWantsWebSearch(payload));
+  if (forceWeb) {
     return COACH_WEB_SEARCH_PATH;
   }
   return COACH_PATH;

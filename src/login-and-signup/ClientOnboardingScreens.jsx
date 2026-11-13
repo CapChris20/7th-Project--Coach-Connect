@@ -96,7 +96,7 @@ const GENDER_OPTIONS = [
   { id: 'prefer_not_to_say', label: 'Prefer not to say', iconKey: 'prefer_not_to_say' },
 ];
 
-// Manipulate here: Design Law skip chips (onboarding.py dis list)
+// Manipulate here: Design Law skip chips — keep growing so clients can refuse what they hate
 const SKIP_EXERCISES = [
   'Burpees',
   'Running',
@@ -106,6 +106,20 @@ const SKIP_EXERCISES = [
   'Jumping',
   'Planks',
   'Overhead press',
+  'Squats',
+  'Bench press',
+  'Box jumps',
+  'Kettlebell swings',
+  'Rowing',
+  'Cycling',
+  'Sit-ups',
+  'Push-ups',
+  'Hip thrusts',
+  'Crunches',
+  'Mountain climbers',
+  'Turkish get-ups',
+  'Sled pushes',
+  'Farmer carries',
 ];
 
 const VITAL_ROWS = [

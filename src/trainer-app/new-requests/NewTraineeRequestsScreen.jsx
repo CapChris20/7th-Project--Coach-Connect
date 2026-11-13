@@ -200,7 +200,7 @@ function waitingPillLabel(count) {
 
 // ===== SUBCOMPONENTS =====
 
-function DesignLawBackButton({ onPress, colors }) {
+function RequestsBackButton({ onPress, colors }) {
   return (
     <HardShadow offset={nb.shadowOffsetSmall} radius={borderRadius.nbIconChip}>
       <Pressable
@@ -239,7 +239,7 @@ function WaitingPill({ count, colors }) {
 function RequestsHeader({ colors, requestCount, onBack }) {
   return (
     <View style={styles.headerRow}>
-      <DesignLawBackButton onPress={onBack} colors={colors} />
+      <RequestsBackButton onPress={onBack} colors={colors} />
       <Text style={[styles.headerTitle, { color: colors.nbInk }]} numberOfLines={1}>
         New requests
       </Text>

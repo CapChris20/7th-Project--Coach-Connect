@@ -174,7 +174,7 @@ export const WR_COLORS = {
   metricLabel: 'rgba(255,255,255,0.50)',
   pink: lightColors.primary,
   cyan: '#06B6D4',
-  purple: '#E25588',
+  purple: '#F97316',
   orange: '#F97316'
 };
 
@@ -204,7 +204,7 @@ export function getWRTheme(isDark = true) {
       tagRecoveryBg: palette.nbSurfaceChip,
       pink: lightColors.primary,
       cyan: '#06B6D4',
-      purple: '#E25588',
+      purple: '#F97316',
       orange: '#F97316',
       statBar: WR_STAT_BAR,
       brandGradient: WR_BRAND_GRADIENT,
@@ -239,7 +239,7 @@ export function getWRTheme(isDark = true) {
     tagRecoveryBg: palette.nbSurfaceChip,
     pink: '#DB2777',
     cyan: '#0891B2',
-    purple: '#BE185D',
+    purple: '#FB923C',
     orange: '#EA580C',
     statBar: WR_STAT_BAR,
     brandGradient: WR_BRAND_GRADIENT,

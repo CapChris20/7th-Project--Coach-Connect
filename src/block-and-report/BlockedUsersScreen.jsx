@@ -5,7 +5,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   ScrollView,
   StyleSheet,
   Text,
@@ -19,6 +18,7 @@ import NbPageHeader from '../look-and-feel/NbPageHeader';
 import NbCard from '../look-and-feel/NbCard';
 import NbAvatar from '../look-and-feel/NbAvatar';
 import NbButton from '../look-and-feel/NbButton';
+import NbNoticeSheet from '../look-and-feel/NbNoticeSheet';
 import { SHELL_SAFE_AREA_EDGES } from '../navigation/bottomMenuSpacing';
 import { listMyBlocks, unblockUser } from './blockUser';
 import { nb, spacing } from '../look-and-feel/colorPalette';
@@ -126,7 +126,7 @@ function BlockedUsersBody({ colors, isLoading, rows, busyId, onUnblock }) {
   );
 }
 
-function BlockedUsersLayout({ colors, isLoading, rows, busyId, onClose, onUnblock }) {
+function BlockedUsersLayout({ colors, isLoading, rows, busyId, onClose, onUnblock, notice, onDismissNotice }) {
   return (
     <SafeAreaView
       style={[styles.root, { backgroundColor: colors.nbBackground }]}
@@ -139,6 +139,16 @@ function BlockedUsersLayout({ colors, isLoading, rows, busyId, onClose, onUnbloc
         rows={rows}
         busyId={busyId}
         onUnblock={onUnblock}
+      />
+      <NbNoticeSheet
+        visible={!!notice}
+        onClose={onDismissNotice}
+        title={notice?.title || ''}
+        message={notice?.message}
+        confirmLabel={notice?.confirmLabel || 'OK'}
+        cancelLabel={notice?.cancelLabel}
+        onConfirm={notice?.onConfirm}
+        destructive={!!notice?.destructive}
       />
     </SafeAreaView>
   );
@@ -156,6 +166,8 @@ export default function BlockedUsersScreen({ onClose }) {
   const [rows, setRows] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
+  const [notice, setNotice] = useState(null);
+  const showNotice = (title, message, extras = {}) => setNotice({ title, message, ...extras });
 
   const refresh = useCallback(async () => {
     if (!uid) {
@@ -168,7 +180,7 @@ export default function BlockedUsersScreen({ onClose }) {
       const list = await listMyBlocks(uid);
       setRows(list);
     } catch (error) {
-      Alert.alert('Blocked users', error?.message || 'Could not load blocked users.');
+      showNotice('Blocked users', error?.message || 'Could not load blocked users.');
       setRows([]);
     } finally {
       setIsLoading(false);
@@ -181,23 +193,21 @@ export default function BlockedUsersScreen({ onClose }) {
 
   const onUnblock = (blockedUid, displayName) => {
     const prompt = displayName ? `Unblock ${displayName}?` : 'Unblock this user?';
-    Alert.alert('Unblock?', prompt, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Unblock',
-        onPress: async () => {
-          setBusyId(blockedUid);
-          try {
-            await unblockUser(uid, blockedUid);
-            await refresh();
-          } catch (error) {
-            Alert.alert('Unblock failed', error?.message || 'Try again.');
-          } finally {
-            setBusyId(null);
-          }
-        },
+    showNotice('Unblock?', prompt, {
+      cancelLabel: 'Cancel',
+      confirmLabel: 'Unblock',
+      onConfirm: async () => {
+        setBusyId(blockedUid);
+        try {
+          await unblockUser(uid, blockedUid);
+          await refresh();
+        } catch (error) {
+          showNotice('Unblock failed', error?.message || 'Try again.');
+        } finally {
+          setBusyId(null);
+        }
       },
-    ]);
+    });
   };
 
   return (
@@ -208,6 +218,8 @@ export default function BlockedUsersScreen({ onClose }) {
       busyId={busyId}
       onClose={onClose}
       onUnblock={onUnblock}
+      notice={notice}
+      onDismissNotice={() => setNotice(null)}
     />
   );
 }

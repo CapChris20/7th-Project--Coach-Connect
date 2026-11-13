@@ -66,6 +66,13 @@ function isPersonalDataLookup(userText) {
   const t = String(userText || '').toLowerCase().trim();
   if (!t) return false;
   if (hasExplicitWebIntent(t)) return false;
+  // Keep explicit log requests local (never Serper) — same rule as the client helper.
+  if (
+    /\b(log|track|record|add|save|enter|put|mark)\b/i.test(t) &&
+    /\b(sleep|slept|water|steps|energy|mood|food|meal|nutrition|workout|rest)\b/i.test(t)
+  ) {
+    return true;
+  }
   return (
     /\blook up\b.*\b(my|log|logs|data|food|nutrition|meal|sleep|slept|water|steps|weight|workout|dashboard|history)\b/.test(
       t,

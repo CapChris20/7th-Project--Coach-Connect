@@ -115,7 +115,7 @@ function hexToRgbTriple(hex) {
   const red = parseInt(hexDigits.slice(0, 2), 16);
   const green = parseInt(hexDigits.slice(2, 4), 16);
   const blue = parseInt(hexDigits.slice(4, 6), 16);
-  if ([red, green, blue].some((channel) => Number.isNaN(channel))) return '255, 107, 157';
+  if ([red, green, blue].some((channel) => Number.isNaN(channel))) return '10, 10, 10';
   return `${red}, ${green}, ${blue}`;
 }
 

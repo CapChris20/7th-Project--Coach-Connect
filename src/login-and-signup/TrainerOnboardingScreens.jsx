@@ -146,9 +146,9 @@ export function getTrainerChapterMeta(step) {
   };
 }
 
-/** Map Design Law stepper years to existing bucket keys. */
+/** Map Design Law stepper years to existing bucket keys (Firestore / filters). */
 export function yearsBucketFromStepper(n) {
-  const v = Math.max(0, Math.round(n));
+  const v = Math.max(0, Math.round(Number(n) || 0));
   if (v < 1) return 'less_than_1';
   if (v <= 2) return '1_2';
   if (v <= 5) return '3_5';
@@ -156,8 +156,15 @@ export function yearsBucketFromStepper(n) {
   return '10_plus';
 }
 
-export function stepperFromYearsBucket(bucket) {
-  switch (bucket) {
+/**
+ * Display years for the ± stepper.
+ * Prefer a real number (so +1/-1 actually moves). Fall back from legacy bucket strings.
+ */
+export function stepperFromYearsBucket(bucketOrYears) {
+  if (typeof bucketOrYears === 'number' && Number.isFinite(bucketOrYears)) {
+    return Math.max(0, Math.min(25, Math.round(bucketOrYears)));
+  }
+  switch (bucketOrYears) {
     case 'less_than_1':
       return 0;
     case '1_2':
@@ -168,8 +175,11 @@ export function stepperFromYearsBucket(bucket) {
       return 7;
     case '10_plus':
       return 12;
-    default:
-      return 4;
+    default: {
+      const asNum = Number(bucketOrYears);
+      if (Number.isFinite(asNum)) return Math.max(0, Math.min(25, Math.round(asNum)));
+      return 0;
+    }
   }
 }
 
@@ -373,10 +383,15 @@ function ProfileStep({ data, setData, onToggleSpecialty }) {
             <TouchableOpacity
               accessibilityRole="button"
               onPress={() =>
-                setData((prev) => ({
-                  ...prev,
-                  yearsExperience: yearsBucketFromStepper(Math.max(0, years - 1)),
-                }))
+                setData((prev) => {
+                  // Store a real number — bucket keys made +/- look broken (4→5 still mapped to 3_5→4).
+                  const next = Math.max(0, years - 1);
+                  return {
+                    ...prev,
+                    yearsExperience: next,
+                    yearsExperienceBucket: yearsBucketFromStepper(next),
+                  };
+                })
               }
               style={[styles.stepBtn, { borderColor: colors.nbBorder }]}
             >
@@ -386,10 +401,14 @@ function ProfileStep({ data, setData, onToggleSpecialty }) {
             <TouchableOpacity
               accessibilityRole="button"
               onPress={() =>
-                setData((prev) => ({
-                  ...prev,
-                  yearsExperience: yearsBucketFromStepper(Math.min(25, years + 1)),
-                }))
+                setData((prev) => {
+                  const next = Math.min(25, years + 1);
+                  return {
+                    ...prev,
+                    yearsExperience: next,
+                    yearsExperienceBucket: yearsBucketFromStepper(next),
+                  };
+                })
               }
               style={[styles.stepBtn, { borderColor: colors.nbBorder }]}
             >
@@ -1078,7 +1097,7 @@ function CompleteStep({ data, inviteCode, userName }) {
 
 // ===== MAIN EXPORT =====
 
-export default function DesignLawTrainerOnboardingStep({
+export default function TrainerOnboardingStep({
   step,
   data,
   setData,

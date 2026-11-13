@@ -29,7 +29,7 @@ import ProgressChartsScreen from '../progress/ProgressChartsScreen';
 import NotificationsScreen from '../../notifications/NotificationsScreen';
 import SavedWorkoutsScreen from '../../for-both/workout-plans/SavedWorkoutsScreen';
 import CreateWorkoutPlanScreen from '../../workouts/create-plan/CreateWorkoutPlanScreen';
-import DesignLawWorkoutSessionScreen from '../../workouts/session/DesignLawWorkoutSessionScreen';
+import WorkoutSessionScreen from '../../workouts/session/WorkoutSessionScreen';
 import CoachHomeScreen from '../../ai-coach/home-screen/CoachHomeScreen';
 import CoachConversationScreen from '../../ai-coach/conversation/CoachConversationScreen';
 import MySessionsScreen from '../scheduling/MySessionsScreen';
@@ -395,6 +395,10 @@ export function ClientWorkoutPlanScreen() {
  */
 export function ClientSearchTrainersScreen() {
   const shell = useClientAppStartShell();
+  const clientProfile = {
+    ...(shell.onboardingData || {}),
+    ...(shell.userData || {}),
+  };
   return withNav(
     <>
       <SearchTrainersScreen
@@ -402,6 +406,7 @@ export function ClientSearchTrainersScreen() {
         showBottomNav={false}
         reserveShellBottomNav
         onRequestTrainer={shell.requestTrainerConnection}
+        clientProfile={clientProfile}
       />
       {shell.addNotesFilesModalEl}
     </>,
@@ -758,7 +763,7 @@ export function ClientMyWorkoutPlanScreen() {
 export function ClientWorkoutSessionScreen({ route, navigation }) {
   const shell = useClientAppStartShell();
   return withNav(
-    <DesignLawWorkoutSessionScreen
+    <WorkoutSessionScreen
       route={route}
       navigation={navigation}
       onClose={shell.rootGoBack}

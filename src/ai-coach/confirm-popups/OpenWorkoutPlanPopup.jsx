@@ -1,18 +1,18 @@
-// Confirm popup before the coach opens the weekly workout plan.
-// Flow: read which plan → say "current" in plain words → confirm or cancel.
-// Used by: the coach conversation when a tool wants to open the plan viewer.
+// Design Law open-plan confirm — InfoTable of plan / today / exercises (screens/ai-coach-popups/17).
+// Flow: read plan display fields → Open plan confirms original params.
+// Used by: ConfirmActionPopup when tool = openWorkoutPlan.
 
 import React from 'react';
-import { ToolModalBody, DetailRow, ConfirmCancelRow } from './sharedPopupParts';
+import { ToolModalBody, InfoTable, ConfirmCancelRow } from './sharedPopupParts';
 
 // ===== NAMED CONSTANTS =====
 
-const POPUP_TITLE = 'Open workout plan?';
-const PLAN_ROW_LABEL = 'Plan';
+const BADGE = 'Coach wants to open your plan';
 const CONFIRM_BUTTON_LABEL = 'Open plan';
 const CURRENT_PLAN_ID = 'current';
 const CURRENT_PLAN_LABEL = 'Current active plan';
-const DEFAULT_REASONING = 'Opens your Weekly Plan viewer and summarizes today\'s session here in chat.';
+const DEFAULT_REASONING =
+  "Opens your Weekly Plan viewer and summarizes today's session here in chat.";
 
 // ===== HELPER FUNCTIONS =====
 
@@ -26,12 +26,52 @@ function readPlanId(params) {
 }
 
 /**
- * @param {string} planId
+ * Hero title — PNG uses the day’s plan name (“Lower body strength”).
+ * @param {object|undefined} params
  * @returns {string}
  */
-function planIdToDisplayLabel(planId) {
-  if (planId === CURRENT_PLAN_ID) return CURRENT_PLAN_LABEL;
-  return planId;
+function readTitle(params) {
+  const named =
+    params?.planName ||
+    params?.title ||
+    params?.dayName ||
+    params?.todayFocus ||
+    params?.focus;
+  if (named) return String(named);
+  return 'Open workout plan?';
+}
+
+/**
+ * @param {object|undefined} params
+ * @returns {Array<{label:string,value:string}>}
+ */
+function readInfoRows(params) {
+  const planId = readPlanId(params);
+  const planLabel =
+    params?.split ||
+    params?.planLabel ||
+    params?.planSummary ||
+    (planId === CURRENT_PLAN_ID ? CURRENT_PLAN_LABEL : planId);
+
+  const today =
+    params?.todayFocus ||
+    params?.dayName ||
+    params?.today ||
+    params?.focus;
+
+  let exercises = params?.exercises || params?.exerciseList;
+  if (Array.isArray(exercises)) {
+    exercises = exercises
+      .map((item) => (typeof item === 'string' ? item : item?.name))
+      .filter(Boolean)
+      .join(', ');
+  }
+
+  return [
+    { label: 'Plan', value: planLabel ? String(planLabel) : undefined },
+    { label: 'Today', value: today ? String(today) : undefined },
+    { label: 'Exercises', value: exercises ? String(exercises) : undefined },
+  ];
 }
 
 function reasoningTextOrDefault(reasoning) {
@@ -46,23 +86,17 @@ function reasoningTextOrDefault(reasoning) {
  * @param {{ params?: object, reasoning?: string, onConfirm: Function, onCancel: Function, loading?: boolean }} props
  */
 export default function OpenWorkoutPlanPopup({ params, reasoning, onConfirm, onCancel, loading }) {
-  // 1. Say "current" in plain words when the coach did not pick a saved plan id.
-  const planId = readPlanId(params);
-  const planLabel = planIdToDisplayLabel(planId);
+  const title = readTitle(params);
+  const rows = readInfoRows(params);
   const reasoningText = reasoningTextOrDefault(reasoning);
 
-  // 2. Confirm still sends the original params so the opener knows which plan.
   function handleConfirmOpenPlan() {
     onConfirm(params);
   }
 
   return (
-    <ToolModalBody
-      badge="Coach wants to open your plan"
-      title={POPUP_TITLE}
-      reasoning={reasoningText}
-    >
-      <DetailRow label={PLAN_ROW_LABEL} value={planLabel} />
+    <ToolModalBody badge={BADGE} title={title} reasoning={reasoningText}>
+      <InfoTable rows={rows} />
       <ConfirmCancelRow
         onConfirm={handleConfirmOpenPlan}
         onCancel={onCancel}

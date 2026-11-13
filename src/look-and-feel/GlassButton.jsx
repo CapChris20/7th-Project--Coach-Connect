@@ -1,12 +1,12 @@
-// A gradient button with optional icons on either side of the label.
-// Flow: press fades the button → the gradient fills the shape → the title stays centered.
-// Used by glass screens that need a primary action.
+// Compat primary button — Design Law fill or brand gradient (no Liquid glass).
+// Flow: press fades → gradient/fill shape → centered title.
+// Used by leftover glass-screen callers; new UI should use NbButton.
+// vocab: GlassButton name is legacy; defaults to brand pink→orange accent gradient
 
 import React from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Liquid } from './glassSettings';
-import { lightColors } from './colorPalette';
+import { gradients, lightColors, borderRadius, nb } from './colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
@@ -14,27 +14,22 @@ const IOS_PLATFORM = 'ios';
 const DISABLED_OPACITY = 0.45;
 const PRESSED_OPACITY = 0.92;
 const IDLE_OPACITY = 1;
+const DEFAULT_RADIUS = borderRadius.nbButton || 10;
 
 // ===== HELPER FUNCTIONS =====
 
-/**
- * @param {boolean} isDisabled
- * @param {boolean} isPressed
- * @returns {number}
- */
 function buttonOpacity(isDisabled, isPressed) {
   if (isDisabled) return DISABLED_OPACITY;
   if (isPressed) return PRESSED_OPACITY;
   return IDLE_OPACITY;
 }
 
-/**
- * iOS can round with a continuous curve. Android ignores that key.
- * @param {number} radius
- * @returns {object}
- */
 function gradientShape(radius) {
-  const shape = { borderRadius: radius };
+  const shape = {
+    borderRadius: radius,
+    borderWidth: nb.borderWidth,
+    borderColor: lightColors.nbBorder,
+  };
   if (Platform.OS === IOS_PLATFORM) shape.borderCurve = 'continuous';
   return shape;
 }
@@ -43,7 +38,6 @@ function gradientShape(radius) {
 
 /**
  * @param {{ title: string, onPress?: Function, disabled?: boolean, style?: object, left?: import('react').ReactNode, right?: import('react').ReactNode, radius?: number, colors?: string[], overlayOpacity?: number }} props
- * @returns {import('react').ReactElement}
  */
 export default function GlassButton({
   title,
@@ -52,8 +46,8 @@ export default function GlassButton({
   style,
   left,
   right,
-  radius = Liquid.radius.inner,
-  colors = Liquid.gradients.primary,
+  radius = DEFAULT_RADIUS,
+  colors = gradients.brand.colors,
   overlayOpacity = 0,
 }) {
   const isDisabled = Boolean(disabled);
@@ -116,8 +110,8 @@ const styles = StyleSheet.create({
   text: {
     flex: 1,
     textAlign: 'center',
-    color: lightColors.white,
-    fontWeight: '700',
+    color: lightColors.nbInk,
+    fontWeight: '900',
     letterSpacing: 0.2,
     fontSize: 16,
   },

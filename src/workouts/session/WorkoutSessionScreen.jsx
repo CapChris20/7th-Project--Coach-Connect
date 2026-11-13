@@ -391,7 +391,7 @@ function UpNextCard({ nextExercise, colors }) {
  *   workoutName, exercises[], userId?, onClose?
  * @param {{ navigation?: object, route?: object, onClose?: Function }} props
  */
-export default function DesignLawWorkoutSessionScreen({ navigation, route: routeProp, onClose }) {
+export default function WorkoutSessionScreen({ navigation, route: routeProp, onClose }) {
   const theme = useTheme();
   const { colors } = theme;
   const hookRoute = useRoute();

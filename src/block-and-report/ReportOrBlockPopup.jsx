@@ -1,8 +1,8 @@
-// Safety menus: report, block, or pick a reason. iOS uses the action sheet. Android uses an alert.
+// Safety menus: report, block, or pick a reason. iOS uses the action sheet. Android uses in-app sheets via callbacks.
 // Flow: show the menu → wait until it finishes dismissing → run the report or block callback.
 // Used by chat and the trainer profile popup.
 
-import { ActionSheetIOS, Alert, Platform } from 'react-native';
+import { ActionSheetIOS, Platform } from 'react-native';
 import { REPORT_REASONS } from './reportReasons';
 
 // ===== NAMED CONSTANTS =====
@@ -64,10 +64,11 @@ function safetyMenuTitle(peerName) {
 // ===== MAIN FUNCTION =====
 
 /**
- * @param {{ peerName?: string, onReport: Function, onBlock: Function }} options
+ * @param {{ peerName?: string, onReport: Function, onBlock: Function, presentSafetyMenu?: Function }} options
+ * presentSafetyMenu (Android): ({ title, onReport, onBlock }) => void — Design Law sheet in the host screen
  * @returns {void}
  */
-export function showSafetyPeerMenu({ peerName, onReport, onBlock }) {
+export function showSafetyPeerMenu({ peerName, onReport, onBlock, presentSafetyMenu }) {
   const title = safetyMenuTitle(peerName);
   const options = [CANCEL_LABEL, REPORT_LABEL, BLOCK_LABEL];
 
@@ -82,18 +83,23 @@ export function showSafetyPeerMenu({ peerName, onReport, onBlock }) {
     return;
   }
 
-  Alert.alert(title, undefined, [
-    { text: CANCEL_LABEL, style: 'cancel' },
-    { text: REPORT_LABEL, onPress: () => runAfterMenuCloses(onReport) },
-    { text: BLOCK_LABEL, style: 'destructive', onPress: () => runAfterMenuCloses(onBlock) },
-  ]);
+  if (typeof presentSafetyMenu === 'function') {
+    presentSafetyMenu({
+      title,
+      onReport: () => runAfterMenuCloses(onReport),
+      onBlock: () => runAfterMenuCloses(onBlock),
+    });
+    return;
+  }
+
+  console.warn('[showSafetyPeerMenu] presentSafetyMenu required on Android');
 }
 
 /**
- * @param {{ onPick: Function, title?: string }} options
+ * @param {{ onPick: Function, title?: string, presentReasonPicker?: Function }} options
  * @returns {void}
  */
-export function showReportReasonPicker({ onPick, title = REASON_TITLE }) {
+export function showReportReasonPicker({ onPick, title = REASON_TITLE, presentReasonPicker }) {
   const reasonLabels = REPORT_REASONS.map((reason) => reason.label);
 
   if (runningOnIos()) {
@@ -112,27 +118,51 @@ export function showReportReasonPicker({ onPick, title = REASON_TITLE }) {
     return;
   }
 
-  Alert.alert(title, REASON_PROMPT, [
-    { text: CANCEL_LABEL, style: 'cancel' },
-    ...REPORT_REASONS.map((reason) => ({
-      text: reason.label,
-      onPress: () => runAfterMenuCloses(() => onPick(reason.id)),
-    })),
-  ]);
+  if (typeof presentReasonPicker === 'function') {
+    presentReasonPicker({
+      title,
+      reasons: REPORT_REASONS,
+      onPick: (reasonId) => runAfterMenuCloses(() => onPick(reasonId)),
+    });
+    return;
+  }
+
+  console.warn('[showReportReasonPicker] presentReasonPicker required on Android');
 }
 
 /**
- * @param {{ peerName?: string, onConfirm: Function }} options
+ * @param {{ peerName?: string, onConfirm: Function, presentNotice?: Function }} options
+ * presentNotice: (title, message, extras) => void — host screen NbNoticeSheet
  * @returns {void}
  */
-export function confirmBlockUser({ peerName, onConfirm }) {
+export function confirmBlockUser({ peerName, onConfirm, presentNotice }) {
   const personName = peerName || 'this user';
-  Alert.alert(
-    'Block user?',
-    `You won’t see messages from ${personName} in your inbox. You can unblock anytime in Settings → Blocked users.`,
-    [
-      { text: CANCEL_LABEL, style: 'cancel' },
-      { text: 'Block', style: 'destructive', onPress: () => runAfterMenuCloses(onConfirm) },
-    ],
-  );
+  const message = `You won’t see messages from ${personName} in your inbox. You can unblock anytime in Settings → Blocked users.`;
+
+  if (runningOnIos()) {
+    ActionSheetIOS.showActionSheetWithOptions(
+      {
+        title: 'Block user?',
+        options: [CANCEL_LABEL, 'Block'],
+        cancelButtonIndex: CANCEL_INDEX,
+        destructiveButtonIndex: 1,
+      },
+      (selectedIndex) => {
+        if (selectedIndex === 1) runAfterMenuCloses(onConfirm);
+      },
+    );
+    return;
+  }
+
+  if (typeof presentNotice === 'function') {
+    presentNotice('Block user?', message, {
+      cancelLabel: CANCEL_LABEL,
+      confirmLabel: 'Block',
+      destructive: true,
+      onConfirm: () => runAfterMenuCloses(onConfirm),
+    });
+    return;
+  }
+
+  console.warn('[confirmBlockUser] presentNotice required on Android');
 }

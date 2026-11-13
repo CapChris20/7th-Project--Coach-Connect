@@ -16,6 +16,7 @@ import {
   isInformationalUserMessage,
   userExplicitlyRequestsAction,
   userWantsExplicitDashboardLog,
+  metricFollowUpFromUserText,
   // vocab: findMoodInText = first canonical mood word/emoji in a sentence (shared with the server)
   findMoodInText,
 } from './shouldAskFirst';
@@ -186,7 +187,11 @@ function inferDashboardLogFromConfirmPrompt(replyText, userText) {
   if (!userText) return null;
   if (!/\b(tap confirm|confirm in the app|confirm action)\b/i.test(replyText)) return null;
 
-  const stepsMatch = userText.match(/(\d[\d,]*)\s*steps?/i);
+  // Numbers often live in the coach sentence ("Logging 10 hours…") when the user
+  // only said "help me log my sleep" — search reply first, then the user text.
+  const combined = `${replyText}\n${userText}`;
+
+  const stepsMatch = combined.match(/(\d[\d,]*)\s*steps?/i);
   if (stepsMatch && userWantsExplicitDashboardLog(userText, 'steps')) {
     return normalizeToolCall({
       name: LOG_STEPS_TOOL,
@@ -195,7 +200,10 @@ function inferDashboardLogFromConfirmPrompt(replyText, userText) {
     });
   }
 
-  const sleepMatch = userText.match(/(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)(?:\s+of\s+sleep)?/i);
+  // Manipulate here: sleep hour patterns — must catch "Logging 10 hours for last night"
+  const sleepMatch =
+    combined.match(/log(?:ging|ged)?\s+(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)/i) ||
+    combined.match(/(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)(?:\s+(?:of\s+)?sleep|\s+for\s+(?:last\s+night|tonight))?/i);
   if (sleepMatch && userWantsExplicitDashboardLog(userText, 'sleep')) {
     return normalizeToolCall({
       name: LOG_SLEEP_TOOL,
@@ -203,13 +211,34 @@ function inferDashboardLogFromConfirmPrompt(replyText, userText) {
       reasoning: 'Log sleep on your dashboard.',
     });
   }
+  // Confirm promised, sleep intent, no number → still show the chip so they can fill hours.
+  if (userWantsExplicitDashboardLog(userText, 'sleep')) {
+    return normalizeToolCall({
+      name: LOG_SLEEP_TOOL,
+      params: {},
+      reasoning: 'Log sleep on your dashboard.',
+    });
+  }
 
-  const waterMatch = userText.match(/(\d+)\s*(?:oz|ounces?)\s*(?:of\s*)?water/i);
-  if (waterMatch && userWantsExplicitDashboardLog(userText, 'water')) {
+  // Coach often writes "Logging 90oz for today" without the word "water".
+  // Follow-up user turns are often just "90oz" — still offer Confirm.
+  const waterMatch =
+    combined.match(/(\d+)\s*(?:oz|ounces?)\s*(?:of\s*)?water/i) ||
+    combined.match(/(\d+)\s*(?:oz|ounces?)\b/i);
+  if (waterMatch) {
     return normalizeToolCall({
       name: LOG_WATER_TOOL,
       params: { amount_oz: Number(waterMatch[1]) },
       reasoning: 'Log water intake.',
+    });
+  }
+
+  const stepsOnlyMatch = combined.match(/(\d[\d,]*)\s*steps?\b/i);
+  if (stepsOnlyMatch) {
+    return normalizeToolCall({
+      name: LOG_STEPS_TOOL,
+      params: { step_count: Number(String(stepsOnlyMatch[1]).replace(/,/g, '')) },
+      reasoning: 'Log steps on your dashboard.',
     });
   }
 
@@ -269,12 +298,18 @@ function inferMacroTargetChange(replyText, userText, combinedLower) {
 function inferSleepLog(userText, combinedLower) {
   if (!userText) return null;
   if (!userWantsExplicitDashboardLog(userText, 'sleep')) return null;
+  // "log my sleep" must match (old `\blog\s*sleep` missed the "my").
+  // "logging 10 hours for last night" must match (coach prose, no "of sleep").
   const sleepMatch =
+    combinedLower.match(/log(?:ging|ged)?\s+(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)/i) ||
     combinedLower.match(/(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)\s*(?:of\s*)?sleep/i) ||
+    combinedLower.match(/(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)\s*(?:for\s+)?(?:last\s+night|tonight|today|yesterday)/i) ||
     combinedLower.match(/(?:log|add)\s+(?:in\s+)?(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)/i);
-  if (!(sleepMatch || /\blog\s*sleep/i.test(combinedLower))) return null;
+  const askedToLogSleep = /\blog\s+(?:my\s+)?sleep\b/i.test(combinedLower) || /\blog\s*sleep\b/i.test(combinedLower);
+  if (!(sleepMatch || askedToLogSleep)) return null;
   return normalizeToolCall({
     name: LOG_SLEEP_TOOL,
+    // Prefer a parsed number; fall back to DEFAULT only when they clearly asked to log sleep.
     params: { hours: Number(sleepMatch?.[1] || DEFAULT_SLEEP_HOURS) },
     reasoning: 'Log sleep on your dashboard.',
   });
@@ -304,8 +339,13 @@ function inferStepsLog(userText, combinedLower) {
  */
 function inferWaterLog(userText, combinedLower) {
   if (!userText) return null;
-  if (!userWantsExplicitDashboardLog(userText, 'water')) return null;
-  const waterMatch = combinedLower.match(/(\d+)\s*(?:oz|ounces?)\s*(?:of\s*)?water/i);
+  // Allow amount-only follow-ups ("90oz") after a prior "log my water" turn —
+  // userWantsExplicitDashboardLog alone rejects those because there is no log verb.
+  const isAmountFollowUp = metricFollowUpFromUserText(userText) === 'water';
+  if (!userWantsExplicitDashboardLog(userText, 'water') && !isAmountFollowUp) return null;
+  const waterMatch =
+    combinedLower.match(/(\d+)\s*(?:oz|ounces?)\s*(?:of\s*)?water/i) ||
+    combinedLower.match(/(\d+)\s*(?:oz|ounces?)\b/i);
   if (!(waterMatch || /\blog\s*water/i.test(combinedLower))) return null;
   // "log water" with no ounces: no number to confirm, so offer nothing here.
   // (The old code read waterMatch[1] anyway and threw a TypeError, which

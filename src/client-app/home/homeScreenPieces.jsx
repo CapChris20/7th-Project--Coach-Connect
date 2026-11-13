@@ -49,7 +49,7 @@ const WORKOUT_EMPTY_ICON = require('../../assets/icons/workout.png');
 // ===== NAMED CONSTANTS =====
 
 // Strip pass: brand pink, not purple chrome.
-const ACCENT_COLOR = '#E25588';
+const ACCENT_COLOR = '#0A0A0A';
 const DAYS_IN_WEEK = 7;
 const SUNDAY_INDEX = 0;
 const MONDAY_SHIFT_FROM_SUNDAY = -6;
@@ -93,7 +93,7 @@ const DEFAULT_FAT_TARGET = 70;
 
 const NUT_DONUT_CALORIES_GRADIENT = ['#DB2777', '#C2410C'];
 const NUT_DONUT_MACRO_GRADIENTS = {
-  protein: ['#BE185D', '#FDE68A'],
+  protein: ['#FF6B9D', '#FB923C'],
   carbs: ['#FBBF24', '#FB7185'],
   fat: ['#E07A32', '#DB2777'],
 };
@@ -102,7 +102,7 @@ const EXTRA_NUTRIENT_RULES = {
   Fiber: { goal: DEFAULT_FIBER_GOAL_G, color: '#22C55E' },
   Sugar: { goal: DEFAULT_SUGAR_LIMIT_G, color: '#F97316' },
   Sodium: { goal: SODIUM_LIMIT_MG, color: '#06B6D4' },
-  Potassium: { goal: POTASSIUM_GOAL_MG, color: '#E25588' },
+  Potassium: { goal: POTASSIUM_GOAL_MG, color: '#FB923C' },
 };
 
 // ===== HELPER FUNCTIONS =====
@@ -211,7 +211,7 @@ function compactNutritionRings(nutrientsWithData, consumed, goal) {
       value: roundedCalories,
       goal,
       label: 'Calories',
-      color: '#E25588',
+      color: '#0A0A0A',
       gradientColors: NUT_DONUT_CALORIES_GRADIENT,
       unit: '',
     }];
@@ -220,8 +220,8 @@ function compactNutritionRings(nutrientsWithData, consumed, goal) {
 }
 
 function calorieBarColor(isDark) {
-  if (isDark) return '#E25588';
-  return '#BE185D';
+  if (isDark) return '#F2F2F2';
+  return '#0A0A0A';
 }
 
 function clamp(value, min, max) {
@@ -895,7 +895,7 @@ const GreetingSection = ({ userName = "Client", theme, isDark }) => {
         </Text>
         <ColorText
           style={[styles.greetingTitle, { marginLeft: 6 }]}
-          colors={['#E25588', '#E07A32']}
+          colors={['#FF6B9D', '#FB923C']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
         >
@@ -1352,7 +1352,7 @@ const NutritionCard = ({ theme, consumed = 0, goal = DEFAULT_NUTRITION_CARD_GOAL
             value={roundedCalories}
             goal={goal}
             label="Calories"
-            color="#E25588"
+            color="#0A0A0A"
             gradientColors={NUT_DONUT_CALORIES_GRADIENT}
             unit=""
           />
@@ -1605,7 +1605,7 @@ const NotesFiles = ({ theme, items = [], onOpenFile }) => {
         Notes & Files
       </Text>
       <LinearGradient
-        colors={['#E25588', '#E07A32']}
+        colors={['#FF6B9D', '#FB923C']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.notesColorBorder}

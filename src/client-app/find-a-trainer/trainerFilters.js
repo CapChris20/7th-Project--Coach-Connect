@@ -1,6 +1,6 @@
 // Filter chips, Design Law tokens, and the rules that turn a Firestore trainer into a marketplace card.
 // Flow: normalize each trainer doc into one card shape → drop cards that miss the
-//       active filters → sort by price or by who joined most recently.
+//       active filters → sort by best client match, price, or who joined most recently.
 // Used by the find-a-trainer screens, the trainer card, and the filter popup.
 //
 // vocab: Design Law = black/white/gray neo-brutalist system (3px outlines, HardShadow, fill selected)
@@ -9,7 +9,7 @@
 
 import { lightColors } from '../../look-and-feel/colorPalette';
 
-export const SORT_OPTIONS = ['Newest', 'Price: Low', 'Price: High'];
+export const SORT_OPTIONS = ['Best match', 'Newest', 'Price: Low', 'Price: High'];
 export const FILTER_SPECIALTIES = [
   'Strength', 'Bodybuilding', 'HIIT', 'Cardio', 'Yoga', 'Pilates', 'CrossFit',
   'Nutrition', 'Rehab', 'Sports', 'Weight Loss', 'Mobility',
@@ -22,9 +22,33 @@ export const QUICK_SPECIALTIES = ['All', 'Strength', 'Weight Loss', 'Bodybuildin
 export const PRICE_FLOOR = 100;
 export const PRICE_CEILING = 500;
 
+const SORT_BEST_MATCH = 'Best match';
 const SORT_NEWEST = 'Newest';
 const SORT_PRICE_LOW = 'Price: Low';
 const SORT_PRICE_HIGH = 'Price: High';
+// Manipulate here: weight points for marketplace “Best match” ranking from client onboarding
+const MATCH_SPECIALTY_HIT = 24;
+const MATCH_GOAL_HIT = 18;
+const MATCH_AVAILABLE = 12;
+const MATCH_VERIFIED = 8;
+const MATCH_SESSION = 10;
+const MATCH_EXPERIENCE = 6;
+const MATCH_LOCATION = 5;
+const MATCH_RATING_UNIT = 2;
+const MATCH_RATING_CAP = 10;
+
+/**
+ * Client onboarding goal keys → specialties that should float those coaches.
+ * Keys stay lose_fat / build_muscle etc. — same strings NewUserSetup writes.
+ */
+const GOAL_TO_SPECIALTIES = {
+  lose_fat: ['Weight Loss', 'Cardio', 'HIIT', 'Nutrition'],
+  build_muscle: ['Strength', 'Bodybuilding'],
+  maintain_health: ['Nutrition', 'Mobility', 'Yoga', 'Pilates'],
+  athletic_performance: ['Sports', 'HIIT', 'Strength', 'CrossFit'],
+  improve_mental_health: ['Yoga', 'Mobility', 'Pilates'],
+  build_habits: ['Nutrition', 'HIIT', 'Strength'],
+};
 const QUICK_SPECIALTY_ALL = 'All';
 const SESSION_BOTH = 'Both';
 const SESSION_REMOTE = 'Remote';
@@ -44,7 +68,7 @@ const YEARS_FOR_SIX_TO_TEN_RANGE = 7;
 
 // Default filter sheet values. Keys must stay stable — Browse / FilterPopup / Firestore path rely on them.
 export const DEFAULT_FILTERS = {
-  sort: 'Newest',
+  sort: SORT_BEST_MATCH,
   specialties: [],
   experience: 'Any',
   availableOnly: false,
@@ -357,12 +381,118 @@ function doesTrainerMatchFilters(trainer, filters, searchText, quickSpecialty, m
 }
 
 /**
+ * Normalize client onboarding / userData into the prefs the match scorer reads.
+ * @param {object|null|undefined} raw
+ * @returns {{ goals: string[], fitnessLevel: string, preferredSessionType: string, location: string }|null}
+ */
+export function clientMatchPrefsFromProfile(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const goals = [];
+  if (Array.isArray(raw.goals)) {
+    for (const goal of raw.goals) {
+      if (goal) goals.push(String(goal));
+    }
+  }
+  if (raw.primaryGoal) goals.push(String(raw.primaryGoal));
+  if (raw.goal) goals.push(String(raw.goal));
+  const uniqueGoals = [...new Set(goals.map((goal) => goal.trim().toLowerCase()).filter(Boolean))];
+  const equipment = Array.isArray(raw.equipmentAccess)
+    ? raw.equipmentAccess.map((item) => String(item).toLowerCase())
+    : [];
+  // Bodyweight-only clients usually want remote; full gym leans in-person.
+  let preferredSessionType = SESSION_BOTH;
+  if (equipment.includes('bodyweight') && !equipment.includes('full_gym')) {
+    preferredSessionType = SESSION_REMOTE;
+  } else if (equipment.includes('full_gym')) {
+    preferredSessionType = SESSION_IN_PERSON;
+  }
+  return {
+    goals: uniqueGoals,
+    fitnessLevel: String(raw.fitnessLevel || raw.experience || '').toLowerCase(),
+    preferredSessionType,
+    location: String(raw.location || raw.city || '').trim().toLowerCase(),
+  };
+}
+
+/**
+ * Rule-based match score from client onboarding → trainer card.
+ * Higher = better fit. Used by Best match sort.
+ * @param {object} trainer
+ * @param {object|null|undefined} clientPrefs
+ * @returns {number}
+ */
+export function scoreTrainerMatch(trainer, clientPrefs) {
+  if (!trainer) return 0;
+  if (!clientPrefs) {
+    let score = 0;
+    if (trainer.available) score += MATCH_AVAILABLE;
+    if (trainer.verified) score += MATCH_VERIFIED;
+    const rating = Number(trainer.rating);
+    if (Number.isFinite(rating) && rating > 0) {
+      score += Math.min(MATCH_RATING_CAP, Math.round(rating * MATCH_RATING_UNIT));
+    }
+    return score;
+  }
+
+  let score = 0;
+  const specialties = Array.isArray(trainer.specialties) ? trainer.specialties : [];
+  const specialtyLower = specialties.map((specialty) => String(specialty).toLowerCase());
+
+  for (const goal of clientPrefs.goals || []) {
+    const mapped = GOAL_TO_SPECIALTIES[goal] || [];
+    for (const specialty of mapped) {
+      if (specialtyLower.some((text) => text.includes(specialty.toLowerCase()))) {
+        score += MATCH_GOAL_HIT;
+        break;
+      }
+    }
+    // Direct specialty string overlap (e.g. client typed "strength" into goals array)
+    if (specialtyLower.some((text) => text.includes(goal.replace(/_/g, ' ')))) {
+      score += MATCH_SPECIALTY_HIT;
+    }
+  }
+
+  if (trainer.available) score += MATCH_AVAILABLE;
+  if (trainer.verified) score += MATCH_VERIFIED;
+
+  const preferred = clientPrefs.preferredSessionType;
+  if (preferred && preferred !== SESSION_BOTH) {
+    if (matchesSessionType(trainer.mode, preferred)) score += MATCH_SESSION;
+  }
+
+  const level = clientPrefs.fitnessLevel;
+  const years = Number(trainer.years) || 0;
+  if (level === 'beginner' && years >= 1 && years <= 5) score += MATCH_EXPERIENCE;
+  if (level === 'intermediate' && years >= 3 && years <= 8) score += MATCH_EXPERIENCE;
+  if (level === 'advanced' && years >= 5) score += MATCH_EXPERIENCE;
+
+  const clientLocation = clientPrefs.location;
+  if (clientLocation && trainer.location) {
+    const trainerLocation = String(trainer.location).toLowerCase();
+    if (
+      trainerLocation.includes(clientLocation) ||
+      clientLocation.includes(trainerLocation.split(',')[0].trim())
+    ) {
+      score += MATCH_LOCATION;
+    }
+  }
+
+  const rating = Number(trainer.rating);
+  if (Number.isFinite(rating) && rating > 0) {
+    score += Math.min(MATCH_RATING_CAP, Math.round(rating * MATCH_RATING_UNIT));
+  }
+  return score;
+}
+
+/**
  * Price sorts read the raw Firestore doc. Newest uses the joined-at timestamp.
+ * Best match uses scoreTrainerMatch when client prefs exist.
  * @param {object[]} trainers
  * @param {string} sortOption
+ * @param {object|null} [clientPrefs]
  * @returns {object[]}
  */
-function sortTrainers(trainers, sortOption) {
+function sortTrainers(trainers, sortOption, clientPrefs = null) {
   if (sortOption === SORT_PRICE_LOW) {
     return [...trainers].sort((first, second) => {
       const firstPrice = getTrainerPrice(first._firebase) ?? first.price;
@@ -375,6 +505,17 @@ function sortTrainers(trainers, sortOption) {
       const firstPrice = getTrainerPrice(first._firebase) ?? first.price;
       const secondPrice = getTrainerPrice(second._firebase) ?? second.price;
       return secondPrice - firstPrice;
+    });
+  }
+  if (sortOption === SORT_BEST_MATCH) {
+    return [...trainers].sort((first, second) => {
+      const scoreGap =
+        scoreTrainerMatch(second, clientPrefs) - scoreTrainerMatch(first, clientPrefs);
+      if (scoreGap !== 0) return scoreGap;
+      return (
+        parseJoinedAt(second.memberSince, second._firebase) -
+        parseJoinedAt(first.memberSince, first._firebase)
+      );
     });
   }
   return [...trainers].sort(
@@ -552,10 +693,14 @@ export function normalizeTrainer(raw, index = 0) {
  * Cards that match the search box, the quick chip, and the filter sheet, in sort order.
  * @param {object[]} trainers
  * @param {object} filters
- * @param {{ query?: string, quickSpecialty?: string }} [options]
+ * @param {{ query?: string, quickSpecialty?: string, clientPrefs?: object|null }} [options]
  * @returns {object[]}
  */
-export function filterTrainers(trainers, filters, { query = '', quickSpecialty = 'All' } = {}) {
+export function filterTrainers(
+  trainers,
+  filters,
+  { query = '', quickSpecialty = 'All', clientPrefs = null } = {},
+) {
   // 1. Turn the typed min/max into numbers. Blank stays null so that filter is skipped.
   // Blank / missing price fields skip that bound (draft + DEFAULT_FILTERS always use '').
   const minPrice = String(filters.priceMin || '').trim() ? Number(filters.priceMin) : null;
@@ -567,6 +712,7 @@ export function filterTrainers(trainers, filters, { query = '', quickSpecialty =
     doesTrainerMatchFilters(trainer, filters, searchText, quickSpecialty, minPrice, maxPrice),
   );
 
-  // 3. Price sorts read the raw doc. Newest uses the joined-at timestamp.
-  return sortTrainers(matching, filters.sort || SORT_NEWEST);
+  // 3. Best match uses onboarding prefs; price / newest fall back as before.
+  const sortOption = filters.sort || SORT_BEST_MATCH;
+  return sortTrainers(matching, sortOption, clientPrefs);
 }

@@ -8,13 +8,13 @@ import { LinearGradient } from 'expo-linear-gradient';
 import HardShadow from '../look-and-feel/HardShadow';
 import AppLogo from '../for-both/icons/AppLogo';
 import {
-  DesignLawBrandHighlight,
-  DesignLawFaintGrid,
-  DesignLawOrbitRings,
-  DesignLawTaglineStrip,
+  BrandHighlight,
+  FaintGrid,
+  OrbitRings,
+  TaglineStrip,
   HERO_ACCENT_GRADIENT,
   WELCOME_STICKER_GRADIENT,
-} from '../for-both/brand-chrome/DesignLawHeroChrome';
+} from '../for-both/brand-chrome/HeroChrome';
 import { lightColors, nb } from '../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
@@ -69,7 +69,7 @@ function FeatureTile({ label, icon, tilt, radius, lift, theme }) {
 /**
  * @param {{ theme: Record<string, string> }} props
  */
-export default function DesignLawWelcomeStage({ theme }) {
+export default function WelcomeStage({ theme }) {
   return (
     <View>
       {/* Black/white fill stage — logo is the centerpiece, not a side accent */}
@@ -83,7 +83,7 @@ export default function DesignLawWelcomeStage({ theme }) {
             },
           ]}
         >
-          <DesignLawFaintGrid lineColor={theme.onFill} opacity={0.09} />
+          <FaintGrid lineColor={theme.onFill} opacity={0.09} />
 
           {/* “Day One starts here” sticker — g9 peach→lilac, tilted */}
           <LinearGradient
@@ -98,7 +98,7 @@ export default function DesignLawWelcomeStage({ theme }) {
           <View style={styles.markArea}>
             {/* Rings sit behind the transparent CC mark; both centered in the stage */}
             <View style={styles.ringsBehind} pointerEvents="none">
-              <DesignLawOrbitRings color={theme.onFill} size={182} />
+              <OrbitRings color={theme.onFill} size={182} />
             </View>
             <AppLogo
               variant="transparent"
@@ -118,7 +118,7 @@ export default function DesignLawWelcomeStage({ theme }) {
             />
           </View>
 
-          <DesignLawTaglineStrip textColor={theme.onFill} borderColor={theme.onFill} />
+          <TaglineStrip textColor={theme.onFill} borderColor={theme.onFill} />
         </View>
       </HardShadow>
 
@@ -134,13 +134,13 @@ export default function DesignLawWelcomeStage({ theme }) {
         <Text style={[styles.headline, { color: theme.heading }]}>
           Trainers and clients, finally{' '}
         </Text>
-        <DesignLawBrandHighlight
+        <BrandHighlight
           style={styles.syncMark}
           textStyle={styles.syncMarkText}
           borderColor={theme.border}
         >
           in sync.
-        </DesignLawBrandHighlight>
+        </BrandHighlight>
       </View>
     </View>
   );

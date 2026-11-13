@@ -1,10 +1,12 @@
-// Solid card wrapper (strip pass: no glass blur / gradient stroke).
-// Flow: Pressable when tappable → solid surface + ink border → children.
-// Used by: login and panels that still import GlassCard — API unchanged.
+// Compat card wrapper — Design Law solid surface (no glass blur / gradient stroke).
+// Flow: Pressable when tappable → nb surface + ink border → children.
+// Used by: any leftover GlassCard imports — API unchanged; prefer NbCard for new UI.
+// vocab: GlassCard name is legacy; paint is neo-brutalist nb tokens only
 
 import React from 'react';
 import { Platform, Pressable, StyleSheet, View } from 'react-native';
-import { darkColors, lightColors, nb } from './colorPalette';
+import { useTheme } from './lightDarkMode';
+import { nb } from './colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
@@ -14,19 +16,10 @@ const DEFAULT_RADIUS = 14;
 
 // ===== HELPER FUNCTIONS =====
 
-/**
- * iOS squircle when available.
- * @returns {{ borderCurve: string }|null}
- */
 function iosContinuousCurveStyle() {
   return Platform.OS === PLATFORM_IOS ? { borderCurve: 'continuous' } : null;
 }
 
-/**
- * @param {boolean} isPressed
- * @param {*} extraStyle
- * @returns {Array}
- */
 function pressedCardStyle(isPressed, extraStyle) {
   return [styles.hit, { opacity: isPressed ? PRESSED_OPACITY : 1 }, extraStyle];
 }
@@ -34,7 +27,7 @@ function pressedCardStyle(isPressed, extraStyle) {
 // ===== MAIN FUNCTION =====
 
 /**
- * Strip pass: solid nb surface, thick ink border — no BlurView, no glass stroke gradient.
+ * Solid nb surface, thick ink border — no BlurView, no glass stroke gradient.
  * @param {{ children: *, style?: object, contentStyle?: object, onPress?: Function, disabled?: boolean, radius?: number, blurIntensity?: number, strokeColors?: string[] }} props
  */
 export default function GlassCard({
@@ -47,6 +40,9 @@ export default function GlassCard({
   blurIntensity, // ignored — kept for call-site compat
   strokeColors, // ignored — kept for call-site compat
 }) {
+  void blurIntensity;
+  void strokeColors;
+  const { colors } = useTheme();
   const Container = onPress ? Pressable : View;
   const containerStyle = onPress
     ? ({ pressed }) => pressedCardStyle(pressed, style)
@@ -60,9 +56,9 @@ export default function GlassCard({
           styles.surface,
           {
             borderRadius: radius,
-            borderWidth: nb.borderWidth || 2.5,
-            borderColor: lightColors.nbBorder,
-            backgroundColor: darkColors.nbSurface,
+            borderWidth: nb.borderWidth,
+            borderColor: colors.nbBorder,
+            backgroundColor: colors.nbSurface,
             ...continuousCurve,
           },
           contentStyle,

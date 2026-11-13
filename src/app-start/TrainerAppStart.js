@@ -31,7 +31,6 @@ import {
   useWindowDimensions,
   ActivityIndicator,
   Platform,
-  Alert,
   ActionSheetIOS,
   Share,
 } from "react-native";
@@ -42,6 +41,10 @@ import BlurredBackground from '../look-and-feel/BlurredBackground';
 import LottieView from 'lottie-react-native';
 import DailyQuoteCard, { DailyQuotePill } from '../for-both/home-cards/DailyQuoteCard';
 import HoldToConfirmPopup from '../for-both/popups/HoldToConfirmPopup';
+import NbNoticeSheet from '../look-and-feel/NbNoticeSheet';
+import NbSheet from '../look-and-feel/NbSheet';
+import NbButton from '../look-and-feel/NbButton';
+import { spacing } from '../look-and-feel/colorPalette';
 import Svg, { Path, Polyline } from 'react-native-svg';
 import {
   doc,
@@ -1048,6 +1051,40 @@ function TrainerShellLayout({ shell }) {
           <TrainerScreenList />
         </NavigationContainer>
       </CrashCatcher>
+      <NbSheet
+        visible={!!shell.clientPickerForFilesOpen}
+        onClose={() => shell.setClientPickerForFilesOpen?.(false)}
+        title="Add to Notes & Files"
+      >
+        <View style={{ gap: 10, paddingHorizontal: spacing.md, paddingBottom: spacing.lg }}>
+          <Text style={{ fontSize: 14, fontWeight: '600', marginBottom: 4 }}>Select a client</Text>
+          {(shell.clientPickerClients || []).map((client) => (
+            <NbButton
+              key={client.id}
+              variant="plain"
+              onPress={() => {
+                shell.setAddNotesFilesClientId?.(client.id);
+                shell.setShowAddFilePopup?.(true);
+                shell.setClientPickerForFilesOpen?.(false);
+              }}
+            >
+              {client.name || client.displayName || 'Client'}
+            </NbButton>
+          ))}
+          <NbButton variant="ghost" onPress={() => shell.setClientPickerForFilesOpen?.(false)}>
+            Cancel
+          </NbButton>
+        </View>
+      </NbSheet>
+      <NbNoticeSheet
+        visible={!!shell.notice}
+        onClose={() => shell.dismissNotice?.()}
+        title={shell.notice?.title || ''}
+        message={shell.notice?.message}
+        confirmLabel={shell.notice?.confirmLabel || 'OK'}
+        cancelLabel={shell.notice?.cancelLabel}
+        onConfirm={shell.notice?.onConfirm}
+      />
     </TrainerAppStartShellProvider>
   );
 }
@@ -1163,6 +1200,13 @@ function TrainerAppStartContent({ user }) {
   const [manualPlanBuilderClientIds, setManualPlanBuilderClientIds] = useState([]);
   const [manualBuilderReturnToAI, setManualBuilderReturnToAI] = useState(false);
   const [aiWorkoutsListKey, setAiWorkoutsListKey] = useState(0);
+  const [clientPickerForFilesOpen, setClientPickerForFilesOpen] = useState(false);
+  const [notice, setNotice] = useState(null);
+  const showNotice = useCallback(
+    (title, message, extras = {}) => setNotice({ title, message, ...extras }),
+    [],
+  );
+  const dismissNotice = useCallback(() => setNotice(null), []);
   const [trainerProfileDoc, setTrainerProfileDoc] = useState(null);
 
   // Re-reads the trainer's own profile. Exposed on the shell so screens can refresh it after
@@ -1384,7 +1428,7 @@ function TrainerAppStartContent({ user }) {
   const handlePlusPress = () => {
     // Manipulate here: user-facing copy for the no-clients case.
     if (!clients?.length) {
-      Alert.alert('No clients', 'Add a client first to add notes or files for them.');
+      showNotice('No clients', 'Add a client first to add notes or files for them.');
       return;
     }
     // Skip the prompt when the answer is obvious: the client currently open on the dashboard (if
@@ -1400,24 +1444,7 @@ function TrainerAppStartContent({ user }) {
       setShowAddFilePopup(true);
       return;
     }
-    // Otherwise build a picker: one alert button per client, plus Cancel.
-    // Note this is a native Alert, so on a large roster it becomes a very long list — worth
-    // replacing with a searchable sheet if trainers grow past a handful of clients.
-    Alert.alert(
-      'Add to Notes & Files',
-      'Select a client',
-      [
-        ...clients.map((c) => ({
-          text: c.name || c.displayName || 'Client',
-          onPress: () => {
-            setAddNotesFilesClientId(c.id);
-            setShowAddFilePopup(true);
-          },
-        })),
-        // style: 'cancel' makes the OS render this as the dismissive option.
-        { text: 'Cancel', style: 'cancel' },
-      ]
-    );
+    setClientPickerForFilesOpen(true);
   };
 
   // Builds the nav-bar handlers used WHILE a document editor is open.
@@ -1568,6 +1595,12 @@ function TrainerAppStartContent({ user }) {
     setDocumentEditor,
     trainerDocsRefreshKey,
     setTrainerDocsRefreshKey,
+    clientPickerForFilesOpen,
+    setClientPickerForFilesOpen,
+    clientPickerClients: clients,
+    notice,
+    dismissNotice,
+    showNotice,
     getTrainerEditorNavChrome,
     handleTrainerClientRemovedFromRoster,
     appSessionId: appSessionIdRef.current,
@@ -1595,6 +1628,10 @@ function TrainerAppStartContent({ user }) {
     pdfViewer,
     documentEditor,
     trainerDocsRefreshKey,
+    clientPickerForFilesOpen,
+    notice,
+    showNotice,
+    dismissNotice,
   ]);
 
   return <TrainerShellLayout shell={shell} />;

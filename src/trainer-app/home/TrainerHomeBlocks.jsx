@@ -25,7 +25,7 @@ import {
   navAccentGradient,
   nb,
 } from '../../look-and-feel/colorPalette';
-import DesignLawHomeWelcomeHero from '../../for-both/home-cards/DesignLawHomeWelcomeHero';
+import HomeWelcomeHero from '../../for-both/home-cards/HomeWelcomeHero';
 import { getClientInitials, getClientRosterStats } from './trainerHomePieces';
 
 // ===== NAMED CONSTANTS =====
@@ -94,7 +94,7 @@ function clientStatusLabel(hasWeekly, hints) {
 
 // ===== SECTION HEADER =====
 
-export function DesignLawTrainerSectionHeader({ label, right, themeColors }) {
+export function TrainerSectionHeader({ label, right, themeColors }) {
   return (
     <View style={styles.secRow}>
       <Text style={[styles.secLabel, { color: themeColors.textMuted }]}>{String(label || '').toUpperCase()}</Text>
@@ -105,7 +105,7 @@ export function DesignLawTrainerSectionHeader({ label, right, themeColors }) {
 
 // ===== HEADER + MOTIVATION (PNG 01 — .hi + .quote) =====
 
-export function DesignLawTrainerHeader({
+export function TrainerHeader({
   themeColors,
   userName,
   greetingPeriod,
@@ -145,8 +145,8 @@ export function DesignLawTrainerHeader({
 }
 
 /** Mirrored welcome hero (boxer on the left). Quote props kept so call sites don’t break. */
-export function DesignLawTrainerMotivationCard({ themeColors }) {
-  return <DesignLawHomeWelcomeHero themeColors={themeColors} variant="trainer" />;
+export function TrainerMotivationCard({ themeColors }) {
+  return <HomeWelcomeHero themeColors={themeColors} variant="trainer" />;
 }
 
 // ===== NEEDS YOU (PNG 01, 07 — payout + request rows) =====
@@ -188,7 +188,7 @@ function NeedsYouRow({ iconSource, iconIndex, title, subtitle, right, onPress, t
   return inner;
 }
 
-export function DesignLawTrainerNeedsYou({
+export function TrainerNeedsYou({
   themeColors,
   needsCount,
   showPayoutBlock,
@@ -207,7 +207,7 @@ export function DesignLawTrainerNeedsYou({
 
   return (
     <View style={{ marginBottom: nb.blockGap }}>
-      <DesignLawTrainerSectionHeader
+      <TrainerSectionHeader
         label="Needs you"
         themeColors={themeColors}
         right={<NeedsYouCountBadge count={needsCount} themeColors={themeColors} />}
@@ -288,7 +288,7 @@ function formatInviteDisplay(code) {
   return `COACH-${raw}`;
 }
 
-export function DesignLawTrainerClientCarousel({
+export function TrainerClientCarousel({
   themeColors,
   clients,
   selectedClientId,
@@ -314,7 +314,7 @@ export function DesignLawTrainerClientCarousel({
     const codeLabel = formatInviteDisplay(inviteCode);
     return (
       <View style={{ marginBottom: nb.blockGap }}>
-        <DesignLawTrainerSectionHeader
+        <TrainerSectionHeader
           label="Your clients"
           right={<Text style={{ fontSize: 12, fontWeight: '800', color: themeColors.textMuted }}>{sub}</Text>}
           themeColors={themeColors}
@@ -365,7 +365,7 @@ export function DesignLawTrainerClientCarousel({
 
   return (
     <View style={{ marginBottom: nb.blockGap }}>
-      <DesignLawTrainerSectionHeader
+      <TrainerSectionHeader
         label="Your clients"
         themeColors={themeColors}
         right={<Text style={{ fontSize: 12, fontWeight: '800', color: themeColors.textMuted }}>{sub}</Text>}
@@ -479,7 +479,7 @@ export function DesignLawTrainerClientCarousel({
   );
 }
 
-export function DesignLawTrainerClientTodayLabel({ clientName, themeColors }) {
+export function TrainerClientTodayLabel({ clientName, themeColors }) {
   const name = String(clientName || 'Client').trim() || 'Client';
   return (
     <Text style={[styles.todayEyebrow, { color: themeColors.textMuted }]}>
@@ -500,11 +500,11 @@ const TOOL_DEFS = [
   { key: 'notes', label: 'Client notes & files', icon: HANDOFF_JOURNEY },
 ];
 
-export function DesignLawTrainerToolsGrid({ themeColors, onToolPress, messageBadge }) {
+export function TrainerToolsGrid({ themeColors, onToolPress, messageBadge }) {
   return (
     // Manipulate here: top margin clears the 4 client tabs above Tools
     <View style={{ marginTop: 28, marginBottom: nb.blockGap }}>
-      <DesignLawTrainerSectionHeader label="Tools" themeColors={themeColors} />
+      <TrainerSectionHeader label="Tools" themeColors={themeColors} />
       <View style={styles.toolsGrid}>
         {TOOL_DEFS.map((tool, idx) => (
           <HardShadow key={tool.key} offset={nb.shadowOffsetSmall} radius={10} style={styles.toolShadow}>
@@ -541,10 +541,10 @@ export function DesignLawTrainerToolsGrid({ themeColors, onToolPress, messageBad
 // ===== WEEKLY REPORT (PNG 01, 03 — .wr grid + adherence) =====
 
 /** empty-vs-data PNG 03 — dashed weekly report before any client exists. */
-export function DesignLawTrainerWeeklyReportEmpty({ themeColors }) {
+export function TrainerWeeklyReportEmpty({ themeColors }) {
   return (
     <View style={{ marginBottom: nb.blockGap }}>
-      <DesignLawTrainerSectionHeader label="Weekly report" themeColors={themeColors} />
+      <TrainerSectionHeader label="Weekly report" themeColors={themeColors} />
       <View
         style={[
           styles.wrEmpty,
@@ -578,7 +578,7 @@ export function DesignLawTrainerWeeklyReportEmpty({ themeColors }) {
   );
 }
 
-export function DesignLawTrainerWeeklyReportPanel({
+export function TrainerWeeklyReportPanel({
   themeColors,
   loading,
   hasReport,
@@ -602,7 +602,7 @@ export function DesignLawTrainerWeeklyReportPanel({
 
   return (
     <View style={{ marginBottom: nb.blockGap }}>
-      <DesignLawTrainerSectionHeader
+      <TrainerSectionHeader
         label="Weekly report"
         themeColors={themeColors}
         right={

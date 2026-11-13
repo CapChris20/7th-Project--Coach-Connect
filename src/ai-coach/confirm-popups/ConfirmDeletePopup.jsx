@@ -1,15 +1,25 @@
-// Design Law delete confirm — names exactly what goes; Keep first (screens/ai-coach-popups/15).
-// Flow: describe the entry → Keep (ghost) / Delete (fill).
+// Design Law delete-entry confirm — InfoTable + Cannot-be-undone pill (screens/ai-coach-popups delete).
+// Flow: name the entry → Keep it (ghost) / Delete (fill).
 // Used by: ConfirmActionPopup when tool = deleteLog.
 
 import React from 'react';
-import { Text } from 'react-native';
-import { ToolModalBody, DetailRow, ConfirmCancelRow, usePopupColors } from './sharedPopupParts';
-import { spacing } from '../../look-and-feel/colorPalette';
+import { Text, View, StyleSheet } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import {
+  ToolModalBody,
+  InfoTable,
+  ConfirmCancelRow,
+  usePopupColors,
+} from './sharedPopupParts';
+import { accentGradients, spacing, nb } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
 const BADGE = 'Coach wants to delete an entry';
+const TITLE = 'Delete this entry?';
+// Manipulate here: warn pill uses coral→red (same family as DeleteChatSheet)
+const WARN_GRADIENT = accentGradients[1] || ['#FB7185', '#EF4444'];
+
 const LOG_TYPE_LABELS = {
   nutrition: 'Food / nutrition entry',
   sleep: 'Sleep log',
@@ -22,27 +32,15 @@ const LOG_TYPE_LABELS = {
 };
 const DEFAULT_LOG_TYPE = 'nutrition';
 const DEFAULT_DATE_LABEL = 'Today';
-const WARNING = 'This cannot be undone.';
 
 // ===== HELPERS =====
-
-function buildDeleteConfirmTitle(logType, isDeleteAll, foodName) {
-  if (logType !== 'nutrition') {
-    const typeLabel = LOG_TYPE_LABELS[logType] || logType;
-    return `Clear your ${typeLabel}?`;
-  }
-  if (isDeleteAll) return 'Delete all food logs for this day?';
-  if (foodName) return `Delete "${foodName}" from your log?`;
-  return 'Delete your most recent food entry?';
-}
 
 function readDeletePopupContext(params) {
   const logType = String(params?.logType || DEFAULT_LOG_TYPE).toLowerCase();
   const logDate = params?.date || DEFAULT_DATE_LABEL;
   const foodName = params?.foodName || params?.food;
   const isDeleteAll = Boolean(params?.deleteAll || params?.all);
-  const title = buildDeleteConfirmTitle(logType, isDeleteAll, foodName);
-  return { logType, logDate, foodName, isDeleteAll, title };
+  return { logType, logDate, foodName, isDeleteAll };
 }
 
 // ===== MAIN FUNCTION =====
@@ -52,29 +50,55 @@ export default function ConfirmDeletePopup({ params, reasoning, onConfirm, onCan
   const deleteContext = readDeletePopupContext(params);
   const typeLabel = LOG_TYPE_LABELS[deleteContext.logType] || deleteContext.logType;
 
+  const rows = [
+    deleteContext.foodName
+      ? { label: 'Food', value: String(deleteContext.foodName) }
+      : null,
+    { label: 'Type', value: typeLabel },
+    { label: 'Date', value: String(deleteContext.logDate) },
+  ].filter(Boolean);
+
   return (
-    <ToolModalBody title={deleteContext.title} badge={BADGE} reasoning={reasoning}>
-      <DetailRow label="Type" value={typeLabel} />
-      {deleteContext.foodName ? <DetailRow label="Food" value={deleteContext.foodName} /> : null}
-      <DetailRow label="Date" value={deleteContext.logDate} />
-      <Text
-        style={{
-          marginBottom: spacing.md,
-          fontSize: 13,
-          fontWeight: '800',
-          color: colors.nbMuted,
-        }}
-      >
-        {WARNING}
-      </Text>
-      {/* Design Law: Keep first on the left, Delete on the fill side */}
+    <ToolModalBody title={TITLE} badge={BADGE} reasoning={reasoning}>
+      <InfoTable rows={rows} />
+      {/* Design Law: coral “Cannot be undone” pill before the actions */}
+      <View style={[styles.warnPill, { borderColor: colors.nbBorder }]}>
+        <LinearGradient
+          colors={WARN_GRADIENT}
+          start={{ x: 0, y: 0.5 }}
+          end={{ x: 1, y: 0.5 }}
+          style={styles.warnFill}
+        >
+          <Text style={styles.warnText}>Cannot be undone</Text>
+        </LinearGradient>
+      </View>
+      {/* Keep it first on the left — matches DeleteChatSheet + PNG delete entry */}
       <ConfirmCancelRow
         onConfirm={() => onConfirm(params)}
         onCancel={onCancel}
         loading={loading}
-        cancelLabel="Keep"
+        cancelLabel="Keep it"
         confirmLabel="Delete"
       />
     </ToolModalBody>
   );
 }
+
+const styles = StyleSheet.create({
+  warnPill: {
+    alignSelf: 'flex-start',
+    borderWidth: nb.borderWidthPill || nb.borderWidth,
+    borderRadius: 999,
+    overflow: 'hidden',
+    marginBottom: spacing.md,
+  },
+  warnFill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  warnText: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: '#0A0A0A',
+  },
+});

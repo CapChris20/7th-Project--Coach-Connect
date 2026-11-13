@@ -44,7 +44,7 @@ import { useCoachSpeech, COACH_VOICE_INPUT_AVAILABLE } from '../conversation/_vo
 import { keyboardBehavior, COACH_COMPOSER_TEXT_INPUT_PROPS } from '../conversation/keyboardBehavior';
 import CoachAttachSheet from '../conversation/CoachAttachSheet';
 import PasteTextPopup from '../conversation/PasteTextPopup';
-import DesignLawCoachHomeBody from './DesignLawCoachHomeBody';
+import CoachHomeBody from './CoachHomeBody';
 import { AI_COACH_UI } from '../coachColors';
 import {
   buildHourlyCanHelpWith,
@@ -1240,7 +1240,7 @@ function CoachTestSuiteButton({ onOpenTestSuite, insets, isDark }) {
           backgroundColor: buttonBackground,
         }}
       >
-        <Ionicons name="flask-outline" size={18} color="#FF6B9D" />
+        <Ionicons name="flask-outline" size={18} color={isDark ? '#F2F2F2' : '#0A0A0A'} />
       </TouchableOpacity>
     </View>
   );
@@ -1289,7 +1289,7 @@ function IdleCoachHome({
         transform: [{ translateY: idleGroupTranslateY }],
       }}
     >
-      <DesignLawCoachHomeBody
+      <CoachHomeBody
         isDark={isDark}
         suggestions={suggestions}
         dailyMetrics={dailyMetrics}
@@ -1620,6 +1620,8 @@ export default function CoachHomeScreen({
   const [pasteOpen, setPasteOpen] = useState(false);
   // vocab: notice = NbNoticeSheet payload — Design Law sheet instead of Alert.alert
   const [notice, setNotice] = useState(null);
+  // Design Law: route attach/copy errors through NbNoticeSheet instead of Alert.alert
+  const showNotice = (title, message) => setNotice({ title, message });
 
   const latestSession = Array.isArray(sessions) && sessions.length ? sessions[0] : null;
 
@@ -1748,8 +1750,10 @@ export default function CoachHomeScreen({
     }
   };
 
-  const handlePhotoLibrary = () => openChatWithAttachments(pickCoachPhotosFromLibrary);
-  const handleCamera = () => openChatWithAttachments(pickCoachPhotoFromCamera);
+  const handlePhotoLibrary = () =>
+    openChatWithAttachments(() => pickCoachPhotosFromLibrary({ presentNotice: showNotice }));
+  const handleCamera = () =>
+    openChatWithAttachments(() => pickCoachPhotoFromCamera({ presentNotice: showNotice }));
   const handleFile = () => openChatWithAttachments(pickCoachDocuments);
 
   const handleActionPress = (action) => {

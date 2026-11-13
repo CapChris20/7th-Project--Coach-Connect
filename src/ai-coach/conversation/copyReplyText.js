@@ -74,8 +74,26 @@ function applyMarkdownToPlainRules(rawText) {
   return plainText.trim();
 }
 
-function announceCopied(shouldAnnounce) {
-  if (shouldAnnounce) Alert.alert(COPIED_TITLE, COPIED_MESSAGE);
+/**
+ * Prefer Design Law NbNoticeSheet when the host passed presentNotice; else native Alert.
+ * @param {boolean} shouldAnnounce
+ * @param {((title: string, message: string) => void)|undefined} presentNotice
+ */
+function announceCopied(shouldAnnounce, presentNotice) {
+  if (!shouldAnnounce) return;
+  if (typeof presentNotice === 'function') {
+    presentNotice(COPIED_TITLE, COPIED_MESSAGE);
+    return;
+  }
+  Alert.alert(COPIED_TITLE, COPIED_MESSAGE);
+}
+
+function presentUserNotice(presentNotice, title, message) {
+  if (typeof presentNotice === 'function') {
+    presentNotice(title, message);
+    return;
+  }
+  Alert.alert(title, message);
 }
 
 function stringOrBlank(text) {
@@ -126,13 +144,14 @@ export function coachPlainText(text) {
 /**
  * Copy a coach reply. Falls back to the system share sheet when the clipboard write can't be verified.
  * @param {string} text
- * @param {{ announce?: boolean }} [options] announce: false skips the "Copied" alert. Callers pass this key.
+ * @param {{ announce?: boolean, presentNotice?: (title: string, message: string) => void }} [options]
+ *   announce: false skips the "Copied" notice. presentNotice routes to NbNoticeSheet when provided.
  * @returns {Promise<boolean>} True when the clipboard or the share sheet accepted the text.
  */
-export async function copyCoachText(text, { announce = true } = {}) {
+export async function copyCoachText(text, { announce = true, presentNotice } = {}) {
   const textToCopy = textReadyForClipboard(text);
   if (!textToCopy) {
-    Alert.alert(NOTHING_TO_COPY_TITLE, NOTHING_TO_COPY_MESSAGE);
+    presentUserNotice(presentNotice, NOTHING_TO_COPY_TITLE, NOTHING_TO_COPY_MESSAGE);
     return false;
   }
 
@@ -140,7 +159,7 @@ export async function copyCoachText(text, { announce = true } = {}) {
     await Clipboard.setStringAsync(textToCopy);
     const isClipboardVerified = await isClipboardHoldingText(textToCopy);
     if (isClipboardVerified) {
-      announceCopied(announce);
+      announceCopied(announce, presentNotice);
       return true;
     }
   } catch (_clipboardWriteError) {
@@ -153,7 +172,7 @@ export async function copyCoachText(text, { announce = true } = {}) {
     return true;
   } catch (error) {
     const failureMessage = messageFromShareError(error);
-    Alert.alert(COPY_FAILED_TITLE, failureMessage);
+    presentUserNotice(presentNotice, COPY_FAILED_TITLE, failureMessage);
     return false;
   }
 }

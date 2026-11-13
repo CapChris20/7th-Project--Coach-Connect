@@ -6,7 +6,7 @@
  // Keep Firebase item keys (addedBy, type, url, documentId) unchanged.
 
 import React, { useMemo, useState } from 'react';
-import { Alert, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useTheme } from '../../../look-and-feel/lightDarkMode';
 import HardShadow from '../../../look-and-feel/HardShadow';
@@ -16,6 +16,8 @@ import NbPill from '../../../look-and-feel/NbPill';
 import { borderRadius, nb, spacing } from '../../../look-and-feel/colorPalette';
 import { formatDateShort, formatFileSize, getFileTypeFromItem } from '../../../helpers/fileSizeAndDateText';
 import DeleteFileSheet from './DeleteFileSheet';
+import NbSheet from '../../../look-and-feel/NbSheet';
+import NbNoticeSheet from '../../../look-and-feel/NbNoticeSheet';
 import HatchedThumbFill from '../../../workouts/exercise-videos/HatchedThumbFill';
 
 // ===== NAMED CONSTANTS =====
@@ -175,24 +177,6 @@ function canDeleteFile(file, isTrainer, onDeleteItem) {
   return file?.addedBy !== ADDED_BY_TRAINER;
 }
 
-function longPressActionsForFile(file, name, isTrainer, callbacks) {
-  const actions = [
-    { text: 'Open', onPress: () => callbacks.onOpenItem?.(file) },
-    { text: 'Download', onPress: () => callbacks.onDownloadItem?.(file) },
-    { text: 'Share', onPress: () => callbacks.onShareItem?.(file) },
-  ];
-  // PNG 11–12: Delete opens DeleteFileSheet (not a native Alert confirm).
-  if (canDeleteFile(file, isTrainer, callbacks.onDeleteItem)) {
-    actions.push({
-      text: 'Delete',
-      style: 'destructive',
-      onPress: () => callbacks.onRequestDelete?.(file),
-    });
-  }
-  actions.push({ text: 'Cancel', style: 'cancel' });
-  Alert.alert(name, '', actions);
-}
-
 function noteTitleForAudience(isTrainer, note) {
   if (isTrainer) {
     return note?.addedBy === ADDED_BY_TRAINER ? 'Your note' : 'From client';
@@ -232,6 +216,9 @@ export default function FilesSection({
   const isTrainer = audience === AUDIENCE_TRAINER;
   const [filter, setFilter] = useState(FILTER_ALL);
   const [pendingDelete, setPendingDelete] = useState(null);
+  const [fileActionsMenu, setFileActionsMenu] = useState(null);
+  const [notice, setNotice] = useState(null);
+  const showNotice = (title, message, extras = {}) => setNotice({ title, message, ...extras });
 
   const { coachFiles, myFiles, notes, yourDocuments } = useMemo(
     () => groupNotesAndFiles(items, isTrainer, trainerDocuments),
@@ -283,15 +270,7 @@ export default function FilesSection({
           style={[styles.fileCard, { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder }]}
           activeOpacity={0.88}
           onPress={openFile}
-          onLongPress={() =>
-            longPressActionsForFile(file, name, isTrainer, {
-              onOpenItem,
-              onDownloadItem,
-              onShareItem,
-              onDeleteItem,
-              onRequestDelete: setPendingDelete,
-            })
-          }
+          onLongPress={() => setFileActionsMenu({ file, name })}
           delayLongPress={380}
         >
           <View style={[styles.thumb, { backgroundColor: colors.nbSoft, borderColor: colors.nbBorder }]}>
@@ -353,7 +332,7 @@ export default function FilesSection({
       } catch (_e) {
         /* mark-read is best-effort */
       }
-      Alert.alert(noteTitle, preview || '—');
+      showNotice(noteTitle, preview || '—');
     };
 
     return (
@@ -499,12 +478,76 @@ export default function FilesSection({
         </View>
       ) : null}
 
+      <NbSheet
+        visible={!!fileActionsMenu}
+        onClose={() => setFileActionsMenu(null)}
+        title={fileActionsMenu?.name || 'File'}
+      >
+        <View style={{ gap: 10, paddingHorizontal: spacing.md, paddingBottom: spacing.lg }}>
+          <NbButton
+            variant="fill"
+            onPress={() => {
+              const file = fileActionsMenu?.file;
+              setFileActionsMenu(null);
+              onOpenItem?.(file);
+            }}
+          >
+            Open
+          </NbButton>
+          <NbButton
+            variant="plain"
+            onPress={() => {
+              const file = fileActionsMenu?.file;
+              setFileActionsMenu(null);
+              onDownloadItem?.(file);
+            }}
+          >
+            Download
+          </NbButton>
+          <NbButton
+            variant="plain"
+            onPress={() => {
+              const file = fileActionsMenu?.file;
+              setFileActionsMenu(null);
+              onShareItem?.(file);
+            }}
+          >
+            Share
+          </NbButton>
+          {canDeleteFile(fileActionsMenu?.file, isTrainer, onDeleteItem) ? (
+            <NbButton
+              variant="plain"
+              onPress={() => {
+                const file = fileActionsMenu?.file;
+                setFileActionsMenu(null);
+                if (file) setPendingDelete(file);
+              }}
+            >
+              Delete
+            </NbButton>
+          ) : null}
+          <NbButton variant="ghost" onPress={() => setFileActionsMenu(null)}>
+            Cancel
+          </NbButton>
+        </View>
+      </NbSheet>
+
       <DeleteFileSheet
         visible={!!pendingDelete}
         onClose={() => setPendingDelete(null)}
         onConfirm={() => {
           if (pendingDelete) onDeleteItem?.(pendingDelete);
         }}
+      />
+
+      <NbNoticeSheet
+        visible={!!notice}
+        onClose={() => setNotice(null)}
+        title={notice?.title || ''}
+        message={notice?.message}
+        confirmLabel={notice?.confirmLabel || 'OK'}
+        cancelLabel={notice?.cancelLabel}
+        onConfirm={notice?.onConfirm}
       />
     </View>
   );

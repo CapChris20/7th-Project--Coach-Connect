@@ -7,7 +7,6 @@
 import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Animated,
   Dimensions,
   Image,
@@ -93,6 +92,7 @@ import {
 } from '../for-both/setup-steps/setupStepPieces';
 import NbProgressSteps from '../look-and-feel/NbProgressSteps';
 import NbButton from '../look-and-feel/NbButton';
+import NbNoticeSheet from '../look-and-feel/NbNoticeSheet';
 import NbSheet from '../look-and-feel/NbSheet';
 import HardShadow from '../look-and-feel/HardShadow';
 import ClientOnboardingStep, {
@@ -102,7 +102,7 @@ import ClientOnboardingStep, {
   validateClientOnboardingStep,
   withClientSliderDefaults,
 } from './ClientOnboardingScreens';
-import DesignLawTrainerOnboardingStep, {
+import TrainerOnboardingStep, {
   TRAINER_ONBOARDING_STEPS,
   TRAINER_INVITE_STEP,
   TRAINER_PRO_STEP,
@@ -112,7 +112,7 @@ import DesignLawTrainerOnboardingStep, {
   getTrainerScreenTitle,
   validateTrainerOnboardingStep,
   withTrainerSliderDefaults,
-} from './DesignLawTrainerOnboardingScreens';
+} from './TrainerOnboardingScreens';
 import NbHero from '../look-and-feel/NbHero';
 import NbChip from '../look-and-feel/NbChip';
 import NbChipRow from '../look-and-feel/NbChipRow';
@@ -149,7 +149,7 @@ const DAYS_IN_WEEK = 7;
 const DAY_OF_WEEK_NUMBERS = [1, 2, 3, 4, 5, 6, DAYS_IN_WEEK];
 // Client step tint index for trainer-code / invite step.
 const CLIENT_INVITE_STEP = 7;
-// Trainer invite-code step — Design Law part 1 step 4 (see DesignLawTrainerOnboardingScreens).
+// Trainer invite-code step — Design Law part 1 step 4 (see TrainerOnboardingScreens).
 // Invite code display "XXX-XXX" is 7 chars including the dash.
 const INVITE_CODE_DISPLAY_LENGTH = 7;
 // Manipulate here: orange warning when bio is near the limit.
@@ -746,7 +746,7 @@ const COLORS = {
 const GRADIENTS = {
   bluePurple: ['#5B86E5', '#E07A32'],
   tealBlue: ['#14B8A6', '#3B82F6'],
-  indigoPurple: ['#6366F1', '#E25588'],
+  indigoPurple: ['#FF6B9D', '#FB923C'],
   greenBlue: ['#10B981', '#3B82F6'],
   orangeRed: FOOD_CARD_MACRO_GRADIENTS.protein,
   green: ['#10B981', '#059669'],
@@ -1667,9 +1667,10 @@ export default function NewUserSetupScreen({
   previewInitialStep = 1,
   onPreviewClose,
 }) {
-  const { colors, typography, spacing, isDark: contextIsDark = true } = useTheme();
+  // Follow ThemeProvider (defaults light). Never invent a parallel “dark first” default.
+  const { colors, typography, spacing, isDark: contextIsDark = false, toggleTheme } = useTheme();
   const insets = useSafeAreaInsets();
-  const [isDark, setIsDark] = useState(contextIsDark);
+  const [isDark, setIsDark] = useState(Boolean(contextIsDark));
   const [role, setRole] = useState(() => cleanUpRoleName(roleProp, route?.params?.role));
 
   const [currentStep, setCurrentStep] = useState(previewMode ? previewInitialStep : 1);
@@ -1685,6 +1686,8 @@ export default function NewUserSetupScreen({
   // Design Law sheets: camera ask (PNG part-2 05) + payout skip warning (PNG 17)
   const [cameraPermissionSheetOpen, setCameraPermissionSheetOpen] = useState(false);
   const [payoutSkipSheetOpen, setPayoutSkipSheetOpen] = useState(false);
+  const [notice, setNotice] = useState(null);
+  const showNotice = (title, message, extras = {}) => setNotice({ title, message, ...extras });
   const [certUploading, setCertUploading] = useState(false);
   const faceCamRef = useRef(null);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
@@ -1742,20 +1745,17 @@ export default function NewUserSetupScreen({
   // Design Law trainer step: Yes / Not yet segmented (not two separate old cards).
   const [trainerChoice, setTrainerChoice] = useState('yes');
 
+  // Stay in sync with the app-wide theme (single source of truth: ThemeProvider).
   useEffect(() => {
-    // Prefer light on first visit; only flip to dark when explicitly saved.
-    AsyncStorage.getItem('themeMode')
-      .then((mode) => {
-        if (mode === 'dark') setIsDark(true);
-        else setIsDark(false);
-      })
-      .catch(() => {});
-  }, []);
+    setIsDark(Boolean(contextIsDark));
+  }, [contextIsDark]);
 
   useEffect(() => {
-    // Persist theme choice
-    AsyncStorage.setItem('themeMode', isDark ? 'dark' : 'light').catch(() => {});
-  }, [isDark]);
+    // Mirror local flips into ThemeProvider so Settings / home stay consistent.
+    if (typeof toggleTheme === 'function') {
+      toggleTheme(isDark ? 'dark' : 'light').catch?.(() => {});
+    }
+  }, [isDark, toggleTheme]);
 
   useLayoutEffect(() => {
     const next = cleanUpRoleName(roleProp, route?.params?.role);
@@ -2026,7 +2026,7 @@ export default function NewUserSetupScreen({
       setInviteCode(code);
       setOnboardingData((prev) => ({ ...prev, inviteCode: code }));
     } else {
-      Alert.alert('Error', 'Could not generate unique invite code. Please try again.');
+      showNotice('Error', 'Could not generate unique invite code. Please try again.');
     }
     setGeneratingCode(false);
   };
@@ -2086,10 +2086,10 @@ export default function NewUserSetupScreen({
     try {
       const { default: Clipboard } = await import('@react-native-clipboard/clipboard');
       await Clipboard.setString(text);
-      Alert.alert('Copied!', 'Invite code copied to clipboard');
+      showNotice('Copied!', 'Invite code copied to clipboard');
     } catch (error) {
       // Fallback for Expo
-      Alert.alert('Copied!', `Invite code: ${text}`);
+      showNotice('Copied!', `Invite code: ${text}`);
     }
   };
 
@@ -2163,24 +2163,18 @@ export default function NewUserSetupScreen({
       onPreviewClose?.();
       return;
     }
-    Alert.alert(
-      'Sign Out',
-      'Are you sure you want to sign out and return to the login screen?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Sign Out', 
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await signOut(auth);
-            } catch (error) {
-              console.error('Error signing out:', error);
-            }
-          }
-        },
-      ]
-    );
+    showNotice('Sign Out', 'Are you sure you want to sign out and return to the login screen?', {
+      cancelLabel: 'Cancel',
+      confirmLabel: 'Sign Out',
+      destructive: true,
+      onConfirm: async () => {
+        try {
+          await signOut(auth);
+        } catch (error) {
+          console.error('Error signing out:', error);
+        }
+      },
+    });
   };
 
   // Which steps may be skipped from the footer Skip button.
@@ -2235,10 +2229,10 @@ export default function NewUserSetupScreen({
     } catch (_) {
       /* queue best-effort */
     }
-    Alert.alert(
+    showNotice(
       "You're all set",
       'Your profile was saved. Any remaining account setup will finish in the background when the connection is stable.',
-      [{ text: 'Continue', style: 'default', onPress: finishToApp }],
+      { confirmLabel: 'Continue', onConfirm: finishToApp },
     );
   };
 
@@ -2256,30 +2250,29 @@ export default function NewUserSetupScreen({
     } catch (_) {
       /* queue best-effort */
     }
-    Alert.alert(
+    showNotice(
       'Save Failed',
       "Failed to save onboarding data. You can continue, but your preferences won't be saved.",
-      [
-        {
-          text: 'Continue Anyway',
-          onPress: () => {
-            const fallback =
-              updateData || buildOnboardingUpdatePayload(finalRole, onboardingData, overrideData);
-            onComplete && onComplete(finalRole, fallback);
-          },
+      {
+        cancelLabel: 'Try Again',
+        confirmLabel: 'Continue Anyway',
+        onCancel: handleFinish,
+        onConfirm: () => {
+          const fallback =
+            updateData || buildOnboardingUpdatePayload(finalRole, onboardingData, overrideData);
+          onComplete && onComplete(finalRole, fallback);
         },
-        { text: 'Try Again', onPress: handleFinish },
-      ],
+      },
     );
   };
 
   const handleFinish = async (overrideData = null) => {
     if (previewMode) {
-      Alert.alert('Preview mode', 'Onboarding would finish here — nothing was saved.');
+      showNotice('Preview mode', 'Onboarding would finish here — nothing was saved.');
       return;
     }
     if (!auth?.currentUser) {
-      Alert.alert('Error', 'You must be logged in to save onboarding data.');
+      showNotice('Error', 'You must be logged in to save onboarding data.');
       if (onComplete) onComplete();
       return;
     }
@@ -2318,9 +2311,10 @@ export default function NewUserSetupScreen({
       console.log('✅ Onboarding data saved locally + synced to server');
       console.log('✅ Onboarding completed for user:', userId);
 
-      Alert.alert("You're all set", 'Welcome to CoachConnect. Your profile is ready.', [
-        { text: 'Continue', style: 'default', onPress: finishToApp },
-      ]);
+      showNotice("You're all set", 'Welcome to CoachConnect. Your profile is ready.', {
+        confirmLabel: 'Continue',
+        onConfirm: finishToApp,
+      });
     } catch (error) {
       if (firestoreSynced) {
         await finishAfterDeferredServerSync({
@@ -2398,7 +2392,7 @@ export default function NewUserSetupScreen({
   const handleUploadCertificationSheet = async () => {
     const trainerUid = auth?.currentUser?.uid;
     if (!trainerUid) {
-      Alert.alert('Sign in required', 'Finish signup first so we can save your certification sheet.');
+      showNotice('Sign in required', 'Finish signup first so we can save your certification sheet.');
       return;
     }
     try {
@@ -2439,9 +2433,9 @@ export default function NewUserSetupScreen({
         meta,
         setOnboardingData,
       });
-      Alert.alert('Certification', verifyMessage);
+      showNotice('Certification', verifyMessage);
     } catch (error) {
-      Alert.alert('Upload failed', error?.message || 'Could not upload certification.');
+      showNotice('Upload failed', error?.message || 'Could not upload certification.');
     } finally {
       setCertUploading(false);
     }
@@ -2450,7 +2444,7 @@ export default function NewUserSetupScreen({
   // Design Law trainer bodies — trainer-setup + trainer-setup-part-2 PNGs.
   const renderTrainerStep = () => (
     <View style={styles.stepContainer}>
-      <DesignLawTrainerOnboardingStep
+      <TrainerOnboardingStep
         step={currentStep}
         data={onboardingData}
         setData={setOnboardingData}
@@ -2734,7 +2728,7 @@ export default function NewUserSetupScreen({
                       disabled={!validateStep()}
                       onDisabledPress={() => {
                         if (role === 'client') {
-                          Alert.alert('Almost there', 'Finish the required fields on this screen to continue.');
+                          showNotice('Almost there', 'Finish the required fields on this screen to continue.');
                         }
                       }}
                       onPress={handleNext}
@@ -2993,7 +2987,7 @@ export default function NewUserSetupScreen({
                   onPress={async () => {
                     const tid = auth?.currentUser?.uid;
                     if (!tid) {
-                      Alert.alert('Sign in required', 'Complete signup first.');
+                      showNotice('Sign in required', 'Complete signup first.');
                       return;
                     }
                     try {
@@ -3013,7 +3007,7 @@ export default function NewUserSetupScreen({
                       }));
                       setFaceCamOpen(false);
                     } catch (e) {
-                      Alert.alert('Capture failed', e?.message || 'Could not save face verification.');
+                      showNotice('Capture failed', e?.message || 'Could not save face verification.');
                     } finally {
                       setFaceCapturing(false);
                     }
@@ -3026,6 +3020,18 @@ export default function NewUserSetupScreen({
           </View>
         </SafeAreaView>
       </Modal>
+
+      <NbNoticeSheet
+        visible={!!notice}
+        onClose={() => setNotice(null)}
+        title={notice?.title || ''}
+        message={notice?.message}
+        confirmLabel={notice?.confirmLabel || 'OK'}
+        cancelLabel={notice?.cancelLabel}
+        onConfirm={notice?.onConfirm}
+        onCancel={notice?.onCancel}
+        destructive={!!notice?.destructive}
+      />
     </ScreenRoot>
   );
 }
@@ -3139,14 +3145,14 @@ const getStyles = (isDark = true) => ({
     borderRadius: 12,
     backgroundColor: isDark ? '#2A2A2A' : lightColors.white,
     borderWidth: 2,
-    borderColor: '#E25588',
+    borderColor: '#0A0A0A',
     justifyContent: 'center',
     alignItems: 'center',
   },
   secondaryButtonText: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#E25588',
+    color: '#0A0A0A',
   },
   inputError: {
     borderWidth: 2,
@@ -3415,14 +3421,14 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: lightColors.white,
     borderWidth: 2,
-    borderColor: '#E25588',
+    borderColor: '#0A0A0A',
     justifyContent: 'center',
     alignItems: 'center',
   },
   secondaryButtonText: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#E25588',
+    color: '#0A0A0A',
   },
   primaryButton: {
     flex: 1,
@@ -3827,8 +3833,8 @@ const styles = StyleSheet.create({
     width: 22,
     height: 22,
     borderRadius: 11,
-    backgroundColor: '#E25588',
-    borderColor: '#E25588',
+    backgroundColor: '#0A0A0A',
+    borderColor: '#0A0A0A',
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
@@ -4434,7 +4440,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   neumorphicCardTitleSelected: {
-    color: '#BE185D',
+    color: '#0A0A0A',
   },
   neumorphicCardSubtitle: {
     fontSize: 14,

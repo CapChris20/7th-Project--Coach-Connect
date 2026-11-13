@@ -33,6 +33,7 @@ import {
   DEFAULT_FILTERS,
   filterTrainers,
   normalizeTrainer,
+  clientMatchPrefsFromProfile,
 } from './trainerFilters';
 
 // ===== NAMED CONSTANTS =====
@@ -381,6 +382,8 @@ const SearchTrainersScreen = ({
   onNutritionPress,
   onWorkoutPress,
   onMessagesPress,
+  /** Client onboarding + userData — drives Best match sort. */
+  clientProfile = null,
 }) => {
   const headerBack = onBack ?? onClose;
   const { isDark: appIsDark } = useTheme();
@@ -457,9 +460,19 @@ const SearchTrainersScreen = ({
     [trainers],
   );
 
+  const clientPrefs = useMemo(
+    () => clientMatchPrefsFromProfile(clientProfile),
+    [clientProfile],
+  );
+
   const filtered = useMemo(
-    () => filterTrainers(normalized, filters, { query: search, quickSpecialty }),
-    [normalized, filters, search, quickSpecialty],
+    () =>
+      filterTrainers(normalized, filters, {
+        query: search,
+        quickSpecialty,
+        clientPrefs,
+      }),
+    [normalized, filters, search, quickSpecialty, clientPrefs],
   );
 
   const visibleTrainers = useMemo(

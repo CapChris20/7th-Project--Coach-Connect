@@ -4,7 +4,6 @@
 
 // ===== NAMED CONSTANTS =====
 
-import { lightColors } from '../../look-and-feel/colorPalette';
 const MINUTES_PER_HOUR = 60;
 const SECONDS_PER_MINUTE = 60;
 const MS_PER_SECOND = 1000;
@@ -120,8 +119,8 @@ export const CAN_HELP_WITH_ITEMS = [
     title: 'Log sleep, water, steps, or mood',
     subtitle: 'Dashboard tools with one tap',
     icon: 'create-outline',
-    accent: '#E25588',
-    rim: ['#E25588', '#E07A32'],
+    accent: '#0A0A0A',
+    rim: ['#FF6B9D', '#FB923C'],
     prompt: 'Can you log data for me?',
   },
   {
@@ -138,8 +137,8 @@ export const CAN_HELP_WITH_ITEMS = [
     title: 'Review my logs and context',
     subtitle: 'Macros, workouts, and weekly trends',
     icon: 'stats-chart-outline',
-    accent: '#E25588',
-    rim: ['#E25588', '#E07A32'],
+    accent: '#0A0A0A',
+    rim: ['#FF6B9D', '#FB923C'],
     prompt: 'Can you show me my data and context?',
   },
   {
@@ -157,7 +156,8 @@ export const CAN_HELP_WITH_ITEMS = [
     subtitle: 'Splits, swaps, and progression',
     icon: 'barbell-outline',
     accent: '#FB7185',
-    rim: [lightColors.primary, '#DB2777'],
+    // Design Law: accent rim only — never solid purple/pink chrome, never green
+    rim: ['#A78BFA', '#E879F9'],
     prompt: 'Help me adjust my training plan',
   },
   {
@@ -165,8 +165,8 @@ export const CAN_HELP_WITH_ITEMS = [
     title: 'Tighten up recovery',
     subtitle: 'Sleep, rest days, and stress',
     icon: 'moon-outline',
-    accent: '#34D399',
-    rim: ['#10B981', '#6EE7B7'],
+    accent: '#60A5FA',
+    rim: ['#60A5FA', '#818CF8'],
     prompt: 'Help me improve my recovery this week',
   },
 ];

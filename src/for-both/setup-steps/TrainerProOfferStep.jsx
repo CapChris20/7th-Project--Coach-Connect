@@ -306,7 +306,7 @@ const DESIGN_LAW_PRO_FEATURES = [
   { title: 'Weekly reports', sub: 'Every client, built from their logs' },
 ];
 
-function DesignLawProOffer({ isDark, selectedTier, onSkip, onStartTrial, trialLoading }) {
+function TrainerProOfferCard({ isDark, selectedTier, onSkip, onStartTrial, trialLoading }) {
   const uiTokens = getOnboardingUiTokens(isDark);
   const price = selectedTier?.priceLabel || '$19 / month';
   const trial = selectedTier?.trialLabel || TRAINER_SUBSCRIPTION_TRIAL_LABEL;
@@ -409,7 +409,7 @@ export function TrainerProOfferStep({
 
   if (designLaw) {
     return (
-      <DesignLawProOffer
+      <TrainerProOfferCard
         isDark={isDark}
         selectedTier={selectedTier}
         onSkip={onSkip}

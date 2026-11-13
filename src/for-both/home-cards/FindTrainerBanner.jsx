@@ -1,12 +1,13 @@
 // Design Law home marketplace entry (marketplace-new PNG 01) — fill card + Find / invite CTAs.
-// Flow: black (nbFill) hero card → headline/body → primary fill CTA → optional outline invite CTA.
+// Flow: black (nbFill) hero card with zcoach Lottie → headline/body → primary fill CTA → outline invite CTA.
 // Used by client home when the user has no trainer yet.
 //
 // vocab: nbFill = theme ink surface (black in light, light in dark); never rainbow borders or green checks
-// Manipulate here: DEFAULT_* copy strings if marketing wants different banner wording
+// Manipulate here: DEFAULT_* copy strings if marketing wants different banner wording; LOTTIE_SIZE for art
 
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import LottieView from 'lottie-react-native';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
 import HardShadow from '../../look-and-feel/HardShadow';
 import NbButton from '../../look-and-feel/NbButton';
@@ -23,6 +24,11 @@ const DEFAULT_SUBHEAD =
 const DEFAULT_CTA_LABEL = 'Find a Trainer';
 const DEFAULT_INVITE_LABEL = 'I have an invite code';
 const DEFAULT_ACCESSIBILITY_LABEL = 'Find a trainer';
+// Manipulate here: PNG 01 art box is ~84; keep touch/visual balance with headline
+const LOTTIE_SIZE = 84;
+const ART_PAD = 4;
+
+const ZCOACH_LOTTIE = require('../../assets/animations/handoff/zcoach.json');
 
 // ===== HELPER FUNCTIONS =====
 
@@ -90,9 +96,27 @@ export default function FindTrainerBanner({
             { backgroundColor: colors.nbFill, borderColor: colors.nbBorder },
           ]}
         >
-          <Text style={[styles.label, { color: mutedOnFill }]}>{label}</Text>
-          <Text style={[styles.headline, { color: colors.nbOnFill }]}>{headline}</Text>
-          <Text style={[styles.subhead, { color: mutedOnFill }]}>{subhead}</Text>
+          {/* PNG 01: copy left, zcoach Lottie in a hard-bordered on-fill art box right */}
+          <View style={styles.cardRow}>
+            <View style={styles.copyCol}>
+              <Text style={[styles.label, { color: mutedOnFill }]}>{label}</Text>
+              <Text style={[styles.headline, { color: colors.nbOnFill }]}>{headline}</Text>
+              <Text style={[styles.subhead, { color: mutedOnFill }]}>{subhead}</Text>
+            </View>
+            <View
+              style={[
+                styles.artBox,
+                { borderColor: colors.nbBorder, backgroundColor: colors.nbOnFill },
+              ]}
+            >
+              <LottieView
+                source={ZCOACH_LOTTIE}
+                autoPlay
+                loop
+                style={{ width: LOTTIE_SIZE, height: LOTTIE_SIZE }}
+              />
+            </View>
+          </View>
           {children ? <View style={styles.childrenSlot}>{children}</View> : null}
         </View>
       </HardShadow>
@@ -126,6 +150,25 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.nbCard,
     padding: 20,
     gap: 12,
+  },
+  cardRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  copyCol: {
+    flex: 1,
+    minWidth: 0,
+    gap: 10,
+  },
+  artBox: {
+    width: LOTTIE_SIZE + ART_PAD * 2,
+    height: LOTTIE_SIZE + ART_PAD * 2,
+    borderWidth: nb.borderWidth,
+    borderRadius: borderRadius.nbCard,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
   },
   label: {
     fontFamily: 'SpaceGrotesk_700Bold',

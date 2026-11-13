@@ -49,7 +49,7 @@ module.exports = {
           defaultChannel: 'default',
         }
       ],
-      '@react-native-community/netinfo',
+      // NetInfo is a library only — it has no Expo config plugin (do not list it here).
       'expo-iap',
       'expo-apple-authentication',
       [

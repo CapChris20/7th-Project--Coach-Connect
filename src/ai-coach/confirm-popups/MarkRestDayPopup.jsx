@@ -3,7 +3,7 @@
 // Used by: the coach conversation when a tool wants to log a rest day.
 
 import React from 'react';
-import { ToolModalBody, DetailRow, ConfirmCancelRow } from './sharedPopupParts';
+import { ToolModalBody, InfoTable, ConfirmCancelRow } from './sharedPopupParts';
 
 // ===== NAMED CONSTANTS =====
 
@@ -42,8 +42,12 @@ export default function MarkRestDayPopup({ params, reasoning, onConfirm, onCance
 
   return (
     <ToolModalBody badge="Coach wants to mark a rest day" title={POPUP_TITLE} reasoning={reasoning}>
-      <DetailRow label={DATE_ROW_LABEL} value={restDayDate} />
-      <DetailRow label={WORKOUT_CARD_ROW_LABEL} value={REST_DAY_CARD_TEXT} />
+      <InfoTable
+        rows={[
+          { label: DATE_ROW_LABEL, value: restDayDate },
+          { label: WORKOUT_CARD_ROW_LABEL, value: REST_DAY_CARD_TEXT },
+        ]}
+      />
       <ConfirmCancelRow
         onConfirm={handleConfirmRestDay}
         onCancel={onCancel}

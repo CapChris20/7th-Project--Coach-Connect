@@ -1,31 +1,31 @@
-// Native attach sheet for coach chat: library, camera, or file.
-// Flow: show menu → wait for dismiss animation → invoke the matching picker callback.
-// Used by CoachConversationScreen and CoachHomeScreen.
+// Legacy native attach menu — DO NOT call from coach screens.
+// Flow was: ActionSheet / Alert → picker callback. Replaced by CoachAttachSheet (Design Law NbSheet).
+// Kept only so old imports do not crash; new code must open CoachAttachSheet instead.
 
 import { ActionSheetIOS, Alert, Platform } from 'react-native';
 
 // ===== NAMED CONSTANTS =====
 
-// Cancel row first — iOS uses cancelButtonIndex for the system cancel styling.
 const ATTACH_MENU_LABELS = ['Cancel', 'Photo Library', 'Camera', 'File'];
 const CANCEL_MENU_INDEX = 0;
 const LIBRARY_MENU_INDEX = 1;
 const CAMERA_MENU_INDEX = 2;
 const FILE_MENU_INDEX = 3;
-
-// Manipulate here: delay before opening ImagePicker so it does not stack under the menu modal.
 const IOS_DISMISS_WAIT_MS = 50;
 const ANDROID_DISMISS_WAIT_MS = 150;
 
 // ===== MAIN FUNCTION =====
 
 /**
- * Show the attach menu and route the user's choice to the right picker.
+ * @deprecated Use CoachAttachSheet from conversation screens — native ActionSheet is old chrome.
  * @param {{ onPhotoLibrary?: function, onCamera?: function, onFile?: function }} callbacks
- * @returns {void}
  */
 export function showCoachAttachMenu(callbacks) {
-  // 1. iOS native sheet; everything else uses Alert.
+  if (__DEV__) {
+    console.warn(
+      '[AI Coach] showCoachAttachMenu is deprecated — open CoachAttachSheet (Design Law) instead.',
+    );
+  }
   const isIosDevice = Platform.OS === 'ios';
   if (isIosDevice) {
     openIosAttachSheet(callbacks);

@@ -7,9 +7,9 @@ import { View } from 'react-native';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../../app-start/cloudConnection';
 import {
-  DesignLawTrainerWeeklyReportPanel,
+  TrainerWeeklyReportPanel,
   trainerHomeThemeColors,
-} from '../home/DesignLawTrainerHomeBlocks';
+} from '../home/TrainerHomeBlocks';
 
 // ===== NAMED CONSTANTS =====
 
@@ -163,7 +163,7 @@ export default function TrainerWeeklyReportSection({
 
   return (
     <View>
-      <DesignLawTrainerWeeklyReportPanel
+      <TrainerWeeklyReportPanel
         themeColors={themeColors}
         loading={isLoading}
         hasReport={hasReport}

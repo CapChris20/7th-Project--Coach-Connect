@@ -38,7 +38,7 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import AppLogo from '../for-both/icons/AppLogo';
 import { cachePendingSignupProfile } from './decideTraineeOrTrainer';
-import DesignLawWelcomeStage from './DesignLawWelcomeStage';
+import WelcomeStage from './WelcomeStage';
 import ChooseRoleScreen from './ChooseRoleScreen';
 import NbButton from '../look-and-feel/NbButton';
 import NbCard from '../look-and-feel/NbCard';
@@ -1768,7 +1768,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
           />
         </View>
 
-        <DesignLawWelcomeStage theme={landingTheme} />
+        <WelcomeStage theme={landingTheme} />
 
         <View style={{ flex: 1, justifyContent: 'flex-end', marginTop: spacing.lg }}>
           <NbButton variant="fill" onPress={onGetStarted} style={{ marginBottom: spacing.md }}>

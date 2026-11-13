@@ -1,6 +1,6 @@
 // Home welcome hero — client + trainer (Design Law hero-and-welcome-redesign).
 // Flow: eyebrow → “Welcome to” + gradient “Coach Connect” → Lottie on disc → tagline strip.
-// Used by TrainingHomeScreen (client) and DesignLawTrainerHomeBlocks (trainer).
+// Used by TrainingHomeScreen (client) and TrainerHomeBlocks (trainer).
 // Owner rule: NO streak, week dots, session counts, countdown, or stats in this card.
 // Surface card (cardBg + ink) follows light/dark with the rest of home — not the inverted fill block.
 
@@ -12,11 +12,11 @@ import HardShadow from '../../look-and-feel/HardShadow';
 import { nb } from '../../look-and-feel/colorPalette';
 import {
   CLIENT_HERO_DISC_GRADIENT,
-  DesignLawBrandHighlight,
-  DesignLawFaintGrid,
-  DesignLawTaglineStrip,
+  BrandHighlight,
+  FaintGrid,
+  TaglineStrip,
   TRAINER_HERO_DISC_GRADIENT,
-} from '../brand-chrome/DesignLawHeroChrome';
+} from '../brand-chrome/HeroChrome';
 
 // ===== NAMED CONSTANTS =====
 
@@ -42,7 +42,7 @@ const TRAINER_EYEBROW = 'Your coaching home';
  *   eyebrow?: string,
  * }} props
  */
-export default function DesignLawHomeWelcomeHero({
+export default function HomeWelcomeHero({
   themeColors,
   variant = 'client',
   eyebrow,
@@ -78,12 +78,12 @@ export default function DesignLawHomeWelcomeHero({
       <Text style={[styles.eyebrow, { color: ink }]}>{label}</Text>
       <View style={styles.welcomeBlock}>
         <Text style={[styles.welcomeLead, { color: ink }]}>Welcome to</Text>
-        <DesignLawBrandHighlight
+        <BrandHighlight
           style={styles.brandMark}
           borderColor={themeColors.cardBorder}
         >
           Coach Connect
-        </DesignLawBrandHighlight>
+        </BrandHighlight>
       </View>
     </View>
   );
@@ -121,7 +121,7 @@ export default function DesignLawHomeWelcomeHero({
           },
         ]}
       >
-        <DesignLawFaintGrid lineColor={ink} opacity={0.08} />
+        <FaintGrid lineColor={ink} opacity={0.08} />
 
         {/* row-reverse puts art on the left for trainer without duplicating markup */}
         <View
@@ -135,7 +135,7 @@ export default function DesignLawHomeWelcomeHero({
           {art}
         </View>
 
-        <DesignLawTaglineStrip textColor={ink} borderColor={ink} />
+        <TaglineStrip textColor={ink} borderColor={ink} />
       </View>
     </HardShadow>
   );

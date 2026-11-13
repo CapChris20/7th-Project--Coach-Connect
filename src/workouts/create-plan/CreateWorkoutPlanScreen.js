@@ -32,7 +32,6 @@ import { useTheme } from '../../look-and-feel/lightDarkMode';
 import { auth, db } from '../../app-start/cloudConnection';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { doc, getDoc, setDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
-import { Liquid } from '../../look-and-feel/glassSettings';
 import ColorText from '../../look-and-feel/ColorText';
 import { HERO_TITLE_TEXT_GRADIENT } from '../../look-and-feel/brandColors';
 import BottomMenuBar from '../../navigation/BottomMenuBar';
@@ -45,7 +44,7 @@ import NbPill from '../../look-and-feel/NbPill';
 import NbPageHeader from '../../look-and-feel/NbPageHeader';
 import NbSegmented from '../../look-and-feel/NbSegmented';
 import NbNoticeSheet from '../../look-and-feel/NbNoticeSheet';
-import NewPlanDesignLawPanel from './NewPlanDesignLawPanel';
+import NewPlanPanel from './NewPlanPanel';
 import BuildingYourPlanView from './BuildingYourPlanView';
 import { lightColors, darkColors, gradients, nb, borderRadius, accentGradients, spacing } from '../../look-and-feel/colorPalette';
 import WorkoutPlanBuilderFieldEditBody from '../create-plan/editPlanFieldForms';
@@ -4052,7 +4051,7 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
             }
           />
         ) : (
-          <NewPlanDesignLawPanel
+          <NewPlanPanel
             sourceTab={planSourceTab}
             onSourceTabChange={setPlanSourceTab}
             onboardingData={onboardingData}
@@ -4271,7 +4270,7 @@ const styles = StyleSheet.create({
     borderRadius: 2,
   },
   headerWrap: {
-    paddingHorizontal: Liquid.spacing.gutter,
+    paddingHorizontal: spacing.md,
     paddingTop: 6,
     paddingBottom: 10,
   },
@@ -4305,7 +4304,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '800',
     letterSpacing: 0.2,
-    color: Liquid.colors.textPrimary,
+    color: lightColors.nbInk,
     fontFamily: 'System',
   },
   headerRight: {
@@ -4318,7 +4317,7 @@ const styles = StyleSheet.create({
   },
   backArrow: {
     fontSize: 22,
-    color: Liquid.colors.textPrimary,
+    color: lightColors.nbInk,
     fontWeight: '800',
   },
   forwardArrow: {
@@ -4328,7 +4327,7 @@ const styles = StyleSheet.create({
   },
   openChevron: {
     fontSize: 18,
-    color: Liquid.colors.cyan,
+    color: lightColors.info,
     fontWeight: '800',
     marginLeft: 6,
   },
@@ -4336,12 +4335,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: Liquid.spacing.gutter,
+    paddingHorizontal: spacing.md,
     paddingBottom: 24,
   },
   content: {
     flex: 1,
-    paddingHorizontal: Liquid.spacing.gutter,
+    paddingHorizontal: spacing.md,
     paddingTop: 10,
   },
   sectionHeader: {
@@ -4862,7 +4861,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
   planResultTitle: {
-    color: Liquid.colors.textPrimary,
+    color: lightColors.nbInk,
     fontSize: 20,
     fontWeight: '800',
     letterSpacing: 0.2,
@@ -4901,7 +4900,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   planResultSubtitle: {
-    color: Liquid.colors.textSecondary,
+    color: lightColors.nbMuted,
     fontSize: 14,
     marginBottom: 12,
     lineHeight: 20,
@@ -5082,12 +5081,12 @@ const styles = StyleSheet.create({
     padding: 14,
   },
   resultTitle: {
-    color: Liquid.colors.textPrimary,
+    color: lightColors.nbInk,
     fontWeight: '800',
     fontSize: 16,
   },
   resultSubtitle: {
-    color: Liquid.colors.textSecondary,
+    color: lightColors.nbMuted,
     marginTop: 6,
     fontSize: 13,
     lineHeight: 18,
@@ -5099,7 +5098,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   resultMeta: {
-    color: Liquid.colors.textSecondary,
+    color: lightColors.nbMuted,
     fontSize: 12,
     letterSpacing: 0.2,
   },
@@ -5111,7 +5110,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
   },
   resultLinkText: {
-    color: Liquid.colors.cyan,
+    color: lightColors.info,
     fontWeight: '800',
   },
   generateButton: {
@@ -5156,7 +5155,7 @@ const styles = StyleSheet.create({
   generatingInlineBanner: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    marginHorizontal: Liquid.spacing.gutter,
+    marginHorizontal: spacing.md,
     marginBottom: 10,
     paddingVertical: 12,
     paddingHorizontal: 14,
@@ -5209,7 +5208,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 1000,
-    paddingHorizontal: Liquid.spacing.gutter,
+    paddingHorizontal: spacing.md,
   },
   aura: {
     ...StyleSheet.absoluteFillObject,
@@ -5225,14 +5224,14 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   processingTitle: {
-    color: Liquid.colors.textPrimary,
+    color: lightColors.nbInk,
     fontSize: 16,
     fontWeight: '800',
     letterSpacing: 0.2,
     marginTop: 2,
   },
   processingSubtitle: {
-    color: Liquid.colors.textSecondary,
+    color: lightColors.nbMuted,
     fontSize: 13,
     textAlign: 'center',
     lineHeight: 18,

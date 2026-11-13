@@ -22,6 +22,7 @@ import { useTheme } from './lightDarkMode';
  *   message?: string,
  *   confirmLabel?: string,
  *   onConfirm?: () => void,
+ *   onCancel?: () => void,
  *   cancelLabel?: string,
  *   destructive?: boolean,
  *   confirmDisabled?: boolean,
@@ -34,6 +35,7 @@ export default function NbNoticeSheet({
   message,
   confirmLabel = 'OK',
   onConfirm,
+  onCancel,
   cancelLabel,
   destructive = false,
   confirmDisabled = false,
@@ -60,7 +62,13 @@ export default function NbNoticeSheet({
         {showCancel ? (
           <>
             <View style={{ height: 10 }} />
-            <NbButton variant="ghost" onPress={onClose}>
+            <NbButton
+              variant="ghost"
+              onPress={() => {
+                onCancel?.();
+                onClose?.();
+              }}
+            >
               {cancelLabel}
             </NbButton>
           </>

@@ -98,7 +98,7 @@ The repo already has `Nb*` components in `src/look-and-feel/`. Restyle those to 
 | Skeleton | hatched soft fill, same layout as the real screen, soft pulse (no shimmer). | (new) |
 | Empty state | dashed card, large icon chip, h1, one sentence, one or two buttons. | (new) |
 | Screen shell | status area, scroll area, optional bottom bar | `NbScreen.jsx` |
-| Hero block | home: surface card + ink + Lottie; welcome stage: fill block + logo | `NbHero.jsx` / `DesignLawHomeWelcomeHero.jsx` |
+| Hero block | home: surface card + ink + Lottie; welcome stage: fill block + logo | `NbHero.jsx` / `HomeWelcomeHero.jsx` |
 | List row | 56–64 tall, 2px dividers | `NbListRow.jsx`, `NbOptionRow.jsx` |
 | Steps | chapter bar, 3 segments | `NbProgressSteps.jsx` |
 | Bottom bar | see section 7 | `NbBottomNav.jsx` and `src/navigation/BottomMenuBar.js` |

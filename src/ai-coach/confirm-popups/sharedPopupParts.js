@@ -33,7 +33,8 @@ import {
 const DEFAULT_CONFIRM_LABEL = 'Confirm';
 // Design Law popups use “Not now” instead of Cancel on the ghost side
 const CANCEL_LABEL = 'Not now';
-const SPINNER_COLOR = lightColors.nbOnFill;
+// Manipulate here: Coach-wants pill uses brand pink→orange (accentGradients[0]), not nav gold
+const COACH_WANTS_GRADIENT = accentGradients[0] || navAccentGradient;
 
 // ===== HELPERS =====
 
@@ -63,7 +64,7 @@ export function CoachWantsBadge({ text }) {
   return (
     <View style={sharedStyles.badgeWrap}>
       <LinearGradient
-        colors={navAccentGradient}
+        colors={COACH_WANTS_GRADIENT}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 0 }}
         style={[sharedStyles.badge, { borderColor: colors.nbBorder }]}
@@ -128,9 +129,117 @@ export function PopupTextField({ value, onChangeText, placeholder, multiline = f
           borderColor: colors.nbBorder,
           backgroundColor: colors.nbSurface,
           color: colors.nbInk,
+          // Design Law PNG 01: food field carries a hard offset shadow
+          shadowColor: colors.nbShadow,
         },
       ]}
     />
+  );
+}
+
+/**
+ * One bordered table of label / value rows (open plan, delete entry).
+ * vocab: InfoTable = 3px card with hairline dividers between rows — not loose DetailRows.
+ * @param {{ rows: Array<{ label: string, value?: * }> }} props
+ */
+export function InfoTable({ rows }) {
+  const colors = usePopupColors();
+  const visible = (rows || []).filter(
+    (row) => row && row.value != null && row.value !== '',
+  );
+  if (!visible.length) return null;
+
+  return (
+    <View
+      style={[
+        sharedStyles.tableCard,
+        {
+          borderColor: colors.nbBorder,
+          backgroundColor: colors.nbSurface,
+          shadowColor: colors.nbShadow,
+        },
+      ]}
+    >
+      {visible.map((row, index) => (
+        <View
+          key={`${row.label}-${index}`}
+          style={[
+            sharedStyles.tableRow,
+            index < visible.length - 1 && {
+              borderBottomWidth: 2,
+              borderBottomColor: colors.nbBorder,
+            },
+          ]}
+        >
+          <Text style={[sharedStyles.tableLabel, { color: colors.nbMuted }]}>{row.label}</Text>
+          <Text style={[sharedStyles.tableValue, { color: colors.nbInk }]}>{String(row.value)}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+/**
+ * Before → after rows inside one bordered card (macros, workout edits).
+ * vocab: DiffTable = strikethrough “before” + bold “after” when both exist.
+ * @param {{ rows: Array<{ label: string, before?: *, after?: * }> }} props
+ */
+export function DiffTable({ rows }) {
+  const colors = usePopupColors();
+  const visible = (rows || []).filter((row) => {
+    if (!row) return false;
+    return (row.before != null && row.before !== '') || (row.after != null && row.after !== '');
+  });
+  if (!visible.length) return null;
+
+  return (
+    <View
+      style={[
+        sharedStyles.tableCard,
+        {
+          borderColor: colors.nbBorder,
+          backgroundColor: colors.nbSurface,
+          shadowColor: colors.nbShadow,
+        },
+      ]}
+    >
+      {visible.map((row, index) => {
+        const hasBefore = row.before != null && row.before !== '';
+        const hasAfter = row.after != null && row.after !== '';
+        const beforeMatchesAfter =
+          hasBefore && hasAfter && String(row.before) === String(row.after);
+        return (
+          <View
+            key={`${row.label}-${index}`}
+            style={[
+              sharedStyles.tableRow,
+              index < visible.length - 1 && {
+                borderBottomWidth: 2,
+                borderBottomColor: colors.nbBorder,
+              },
+            ]}
+          >
+            <Text style={[sharedStyles.tableLabel, { color: colors.nbMuted }]}>{row.label}</Text>
+            <View style={sharedStyles.diffValues}>
+              {hasBefore && !beforeMatchesAfter ? (
+                <Text style={[sharedStyles.diffBefore, { color: colors.nbMuted }]}>
+                  {String(row.before)}
+                </Text>
+              ) : null}
+              {hasAfter ? (
+                <Text style={[sharedStyles.diffAfter, { color: colors.nbInk }]}>
+                  {String(row.after)}
+                </Text>
+              ) : hasBefore ? (
+                <Text style={[sharedStyles.diffAfter, { color: colors.nbInk }]}>
+                  {String(row.before)}
+                </Text>
+              ) : null}
+            </View>
+          </View>
+        );
+      })}
+    </View>
   );
 }
 
@@ -272,10 +381,11 @@ export function ConfirmCancelRow({
   confirmLabel = DEFAULT_CONFIRM_LABEL,
   cancelLabel = CANCEL_LABEL,
 }) {
+  const colors = usePopupColors();
   const confirmContent = loading ? (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
-      <ActivityIndicator color={SPINNER_COLOR} size="small" />
-      <Text style={{ color: lightColors.nbOnFill, fontWeight: '800' }}>{confirmLabel}</Text>
+      <ActivityIndicator color={colors.nbOnFill} size="small" />
+      <Text style={{ color: colors.nbOnFill, fontWeight: '800' }}>{confirmLabel}</Text>
     </View>
   ) : (
     confirmLabel
@@ -284,12 +394,22 @@ export function ConfirmCancelRow({
   return (
     <View style={sharedStyles.buttons}>
       <View style={{ flex: 1 }}>
-        <NbButton variant="ghost" onPress={onCancel} disabled={loading}>
+        <NbButton
+          variant="ghost"
+          onPress={onCancel}
+          disabled={loading}
+          accessibilityLabel={cancelLabel}
+        >
           {cancelLabel}
         </NbButton>
       </View>
       <View style={{ flex: 1 }}>
-        <NbButton variant="fill" onPress={onConfirm} disabled={loading}>
+        <NbButton
+          variant="fill"
+          onPress={onConfirm}
+          disabled={loading}
+          accessibilityLabel={confirmLabel}
+        >
           {confirmContent}
         </NbButton>
       </View>
@@ -345,10 +465,55 @@ const sharedStyles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     marginBottom: spacing.md,
+    shadowOffset: { width: 3, height: 3 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 3,
   },
   textFieldMulti: {
     minHeight: 72,
     textAlignVertical: 'top',
+  },
+  tableCard: {
+    borderWidth: nb.borderWidth,
+    borderRadius: borderRadius.nbCard,
+    overflow: 'hidden',
+    marginBottom: spacing.md,
+    shadowOffset: { width: 3, height: 3 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 3,
+  },
+  tableRow: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  tableLabel: {
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 1.1,
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  tableValue: {
+    fontSize: 15,
+    fontWeight: '800',
+    lineHeight: 20,
+  },
+  diffValues: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  diffBefore: {
+    fontSize: 15,
+    fontWeight: '700',
+    textDecorationLine: 'line-through',
+  },
+  diffAfter: {
+    fontSize: 15,
+    fontWeight: '900',
   },
   chipWrap: {
     flexDirection: 'row',
