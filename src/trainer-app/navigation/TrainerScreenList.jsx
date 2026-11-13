@@ -22,6 +22,7 @@ import {
   TrainerWorkoutPlanScreen,
   TrainerManualPlanBuilderScreen,
   TrainerEarningsScreen,
+  TrainerNotificationsScreen,
 } from './trainerExtraScreens';
 
 // ===== NAMED CONSTANTS =====
@@ -61,6 +62,7 @@ const TRAINER_OVERLAY_SCREENS = [
   { routeName: TRAINER_ROUTES.WorkoutPlan, ScreenComponent: TrainerWorkoutPlanScreen },
   { routeName: TRAINER_ROUTES.ManualPlanBuilder, ScreenComponent: TrainerManualPlanBuilderScreen },
   { routeName: TRAINER_ROUTES.Payments, ScreenComponent: TrainerEarningsScreen },
+  { routeName: TRAINER_ROUTES.Notifications, ScreenComponent: TrainerNotificationsScreen },
 ];
 
 // ===== HELPER FUNCTIONS =====

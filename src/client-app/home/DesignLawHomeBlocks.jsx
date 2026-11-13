@@ -230,11 +230,16 @@ export function DesignLawNutritionCard({
 }) {
   const cal = Math.round(todayCalories || 0);
   const goal = Math.max(1, Math.round(calorieGoal || 2000));
+  const p = Math.round(proteinG || 0);
+  const c = Math.round(carbsG || 0);
+  const f = Math.round(fatsG || 0);
+  // empty-vs-data PNG: no meals → dashed shell + Log a meal (not a zeroed ring)
+  const isEmpty = cal <= 0 && p <= 0 && c <= 0 && f <= 0;
   const macros = [
     {
       key: 'protein',
       label: 'Protein',
-      value: Math.round(proteinG || 0),
+      value: p,
       goal: proteinGoal,
       icon: HANDOFF_PROTEIN,
       index: 1,
@@ -242,7 +247,7 @@ export function DesignLawNutritionCard({
     {
       key: 'carbs',
       label: 'Carbs',
-      value: Math.round(carbsG || 0),
+      value: c,
       goal: carbsGoal,
       icon: HANDOFF_CARBS,
       index: 3,
@@ -250,12 +255,39 @@ export function DesignLawNutritionCard({
     {
       key: 'fats',
       label: 'Fats',
-      value: Math.round(fatsG || 0),
+      value: f,
       goal: fatsGoal,
       icon: HANDOFF_FATS,
       index: 0,
     },
   ];
+
+  if (isEmpty) {
+    return (
+      <HardShadow offset={nb.shadowOffsetCard} radius={10} style={{ marginBottom: nb.blockGap }}>
+        <View
+          style={[
+            styles.emptyDashCard,
+            {
+              backgroundColor: themeColors.cardBg,
+              borderColor: themeColors.cardBorder,
+            },
+          ]}
+        >
+          <NbIconChip source={HANDOFF_PROTEIN} index={2} size={48} />
+          <Text style={[styles.emptyTitle, { color: themeColors.text }]}>No meals logged yet</Text>
+          <Text style={[styles.emptyBody, { color: themeColors.textMuted }]}>
+            Log breakfast, lunch, or a snack and macros show up here.
+          </Text>
+          {typeof onOpenNutrition === 'function' ? (
+            <NbButton variant="fill" onPress={onOpenNutrition} style={{ alignSelf: 'stretch' }}>
+              Log a meal
+            </NbButton>
+          ) : null}
+        </View>
+      </HardShadow>
+    );
+  }
 
   return (
     <TouchableOpacity activeOpacity={0.92} onPress={onOpenNutrition} style={{ marginBottom: nb.blockGap }}>
@@ -308,6 +340,32 @@ export function DesignLawWorkoutCard({ themeColors, state }) {
     save,
     showNotified,
   } = state;
+
+  // empty-vs-data PNG: dashed shell + Add exercise when nothing logged yet
+  if (!workoutExercises?.length) {
+    return (
+      <HardShadow offset={nb.shadowOffsetCard} radius={10} style={{ marginBottom: nb.blockGap }}>
+        <View
+          style={[
+            styles.emptyDashCard,
+            {
+              backgroundColor: themeColors.cardBg,
+              borderColor: themeColors.cardBorder,
+            },
+          ]}
+        >
+          <NbIconChip source={HANDOFF_WORKOUT} index={5} size={48} />
+          <Text style={[styles.emptyTitle, { color: themeColors.text }]}>No workout logged yet</Text>
+          <Text style={[styles.emptyBody, { color: themeColors.textMuted }]}>
+            Add an exercise and its sets. Your trainer is told when you save.
+          </Text>
+          <NbButton variant="fill" onPress={addExercise} style={{ alignSelf: 'stretch' }}>
+            + Add exercise
+          </NbButton>
+        </View>
+      </HardShadow>
+    );
+  }
 
   return (
     <HardShadow offset={nb.shadowOffsetCard} radius={10} style={{ marginBottom: nb.blockGap }}>
@@ -410,6 +468,7 @@ export function DesignLawCheckInCard({
   onNoteChange,
   onNoteBlur,
 }) {
+  const [expanded, setExpanded] = useState(false);
   const soreness = Number(values?.soreness) || 4;
   const energy = Number(values?.energy) || 5;
   const stress = Number(values?.stress) || 3;
@@ -422,6 +481,36 @@ export function DesignLawCheckInCard({
   const doneCount = [values?.soreness, values?.energy, values?.stress, values?.mood, values?.workout].filter(
     (v) => v != null && v !== '',
   ).length;
+
+  // empty-vs-data PNG: collapsed “Not logged yet” until the first slider/mood is saved (or tap to expand)
+  if (doneCount === 0 && !expanded) {
+    return (
+      <HardShadow offset={nb.shadowOffsetCard} radius={10} style={{ marginBottom: nb.blockGap }}>
+        <TouchableOpacity
+          activeOpacity={0.92}
+          onPress={() => setExpanded(true)}
+          style={[
+            styles.emptyDashCard,
+            {
+              backgroundColor: themeColors.cardBg,
+              borderColor: themeColors.cardBorder,
+              alignItems: 'flex-start',
+            },
+          ]}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, width: '100%' }}>
+            <NbIconChip source={HANDOFF_CHECKIN} index={4} size={44} />
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={[styles.emptyTitle, { color: themeColors.text }]}>Not logged yet</Text>
+              <Text style={[styles.emptyBody, { color: themeColors.textMuted }]}>
+                Soreness, energy, stress, and mood — tap to start.
+              </Text>
+            </View>
+          </View>
+        </TouchableOpacity>
+      </HardShadow>
+    );
+  }
 
   return (
     <HardShadow offset={nb.shadowOffsetCard} radius={10} style={{ marginBottom: nb.blockGap }}>
@@ -1071,4 +1160,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // empty-vs-data PNG: dashed HardShadow shells for nutrition / workout / check-in
+  emptyDashCard: {
+    borderWidth: nb.borderWidth,
+    borderRadius: 10,
+    borderStyle: 'dashed',
+    padding: 18,
+    gap: 10,
+    alignItems: 'center',
+  },
+  emptyTitle: { fontSize: 17, fontWeight: '900', textAlign: 'left', alignSelf: 'stretch' },
+  emptyBody: { fontSize: 14, fontWeight: '600', lineHeight: 20, textAlign: 'left', alignSelf: 'stretch' },
 });

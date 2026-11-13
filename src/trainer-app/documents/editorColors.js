@@ -20,7 +20,7 @@ const EDITOR_TEXT_COLORS = [
   lightColors.primary,
   lightColors.primary,
   '#06B6D4',
-  '#22C55E',
+  lightColors.nbMuted,
   '#FBBF24',
   '#FB7185',
   '#E25588',
@@ -29,7 +29,7 @@ const EDITOR_TEXT_COLORS = [
 const EDITOR_HIGHLIGHT_COLORS = [
   'transparent',
   'rgba(254,240,138,0.45)',
-  'rgba(187,247,208,0.45)',
+  'rgba(229,229,229,0.65)',
   'rgba(191,219,254,0.45)',
   'rgba(251,207,232,0.45)',
   'rgba(233,213,255,0.45)',
@@ -45,8 +45,9 @@ const PRINT_PAGE_TEXT = lightColors.nbInk;
 const PRINT_PAGE_MUTED = lightColors.nbMuted;
 const DARK_PRINT_CANVAS = darkColors.nbBackground;
 const PAGE_SHADOW_COLOR = lightColors.nbShadow;
-const DARK_FORMULA_GREEN = '#6EE7A0';
-const LIGHT_FORMULA_GREEN = '#2D8A55';
+// Design Law: never green chrome — formula result uses ink, not spreadsheet-green
+const DARK_FORMULA_RESULT = darkColors.nbInk;
+const LIGHT_FORMULA_RESULT = lightColors.nbInk;
 const DARK_INPUT_BG = 'rgba(255,255,255,0.04)';
 const LIGHT_INPUT_BG = 'rgba(0,0,0,0.03)';
 
@@ -136,7 +137,7 @@ export function getEditorTheme(isDark) {
     selectionBorder: chromeBorder,
     sheetTabActiveBg: tabFill,
     sheetTabActiveText: tabOnFill,
-    formulaGreen: isDark ? DARK_FORMULA_GREEN : LIGHT_FORMULA_GREEN,
+    formulaGreen: isDark ? DARK_FORMULA_RESULT : LIGHT_FORMULA_RESULT,
     inputBg: isDark ? DARK_INPUT_BG : LIGHT_INPUT_BG,
     divider: isDark ? 'rgba(242,242,242,0.16)' : 'rgba(10,10,10,0.12)',
     pageShadow: pageShadow(isDark),

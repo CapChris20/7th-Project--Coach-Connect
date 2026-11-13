@@ -342,9 +342,46 @@ export default function SpreadsheetViewer({
             </View>
           ) : null}
           {error ? (
-            <View style={styles.errorBlock}>
-              <Text style={[styles.errorText, { color: theme.nbInk }]}>{error}</Text>
-            </View>
+            <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard}>
+              <View
+                style={[
+                  styles.emptyShell,
+                  {
+                    backgroundColor: theme.nbSurface,
+                    borderColor: theme.nbBorder,
+                  },
+                ]}
+              >
+                <Text style={[styles.errorText, { color: theme.nbInk }]}>{error}</Text>
+                <Text style={[styles.emptyHint, { color: theme.nbMuted }]}>
+                  Open a CSV or spreadsheet from Notes & Files, or ask your trainer to reshare it.
+                </Text>
+                {typeof onClose === 'function' ? (
+                  <NbButton variant="fill" onPress={onClose} style={{ alignSelf: 'stretch' }}>
+                    Close
+                  </NbButton>
+                ) : null}
+              </View>
+            </HardShadow>
+          ) : null}
+          {!loading && !error && displayRows.length === 0 ? (
+            <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard}>
+              <View
+                style={[
+                  styles.emptyShell,
+                  {
+                    backgroundColor: theme.nbSurface,
+                    borderColor: theme.nbBorder,
+                    borderStyle: 'dashed',
+                  },
+                ]}
+              >
+                <Text style={[styles.errorText, { color: theme.nbInk }]}>No rows to show</Text>
+                <Text style={[styles.emptyHint, { color: theme.nbMuted }]}>
+                  This spreadsheet is empty. Add data in the editor and open it again.
+                </Text>
+              </View>
+            </HardShadow>
           ) : null}
           {!loading && !error && displayRows.length > 0 ? (
             <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard} style={{ flex: 1 }}>
@@ -434,8 +471,15 @@ const styles = StyleSheet.create({
   content: { flex: 1, padding: nb.screenGutter },
   loadingBlock: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
   loadingText: { fontSize: 15, fontWeight: '600' },
-  errorBlock: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
-  errorText: { fontSize: 15, textAlign: 'center', fontWeight: '600' },
+  emptyShell: {
+    borderWidth: nb.borderWidth,
+    borderRadius: borderRadius.nbCard,
+    padding: 20,
+    gap: 12,
+    alignItems: 'stretch',
+  },
+  errorText: { fontSize: 17, textAlign: 'left', fontWeight: '900' },
+  emptyHint: { fontSize: 14, fontWeight: '600', lineHeight: 20 },
   scroll: { flex: 1 },
   scrollContent: { flexGrow: 1 },
   scrollVertical: { flex: 1 },

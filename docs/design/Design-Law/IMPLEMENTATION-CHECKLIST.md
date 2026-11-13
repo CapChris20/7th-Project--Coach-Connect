@@ -10,7 +10,7 @@ Living status of the PNG-first redesign. Source of truth for visuals is still `s
 
 Owner visual mock checklist (browser ticks only): `mockups/checklist.html`
 
-Last updated: 2026-11-12 (Batches A–E code-landed; F–K queued; device PNG QA still open)
+Last updated: 2026-11-12 (Batches A–K code-landed; device PNG QA still open)
 
 ---
 
@@ -27,11 +27,13 @@ Last updated: 2026-11-12 (Batches A–E code-landed; F–K queued; device PNG QA
 
 ## 1. Welcome, sign in, reset
 
-Screens: `screens/welcome-and-sign-in/`
+Screens: `screens/welcome-and-sign-in/` + `screens/hero-and-welcome-redesign/` (welcome wins)
 
-- [~] Welcome / Create account / Sign in (`LoginScreen.js`)
-- [ ] Sign-in error states 1:1
-- [ ] Forgot password + Check your inbox (`ForgotPasswordFlow.js`)
+- [x] Welcome stage (`DesignLawWelcomeStage` + LoginScreen — CC logo, rings, 3 tiles, in sync.)
+- [x] Create account / Sign in (`LoginScreen.js` — role toggle, AuthField, social, Design Law chrome)
+- [x] Sign-in error states (`LoginScreen` — `AuthField` dashed border + ! row, `AuthBannerErrorCard`, role-mismatch `NbSheet` — PNG 07/08)
+- [x] Forgot password + Check your inbox (`ForgotPasswordFlow.js` — PNG 09–12)
+- [!] Device PNG QA light+dark on welcome-and-sign-in
 
 ---
 
@@ -60,22 +62,24 @@ Screens: `screens/trainer-setup/`, `screens/trainer-setup-part-2/`
 
 ## 4. Client dashboard + nav
 
-Screens: `screens/client-home/`
+Screens: `screens/client-home/` + hero from `screens/hero-and-welcome-redesign/03-04`
 
-- [~] Dashboard blocks (`DesignLawHomeBlocks.jsx` + `TrainingHomeScreen.jsx`)
+- [x] Welcome hero (`DesignLawHomeWelcomeHero` — Welcome to Coach Connect + lifter + tagline; no stats)
+- [x] Dashboard blocks (`DesignLawHomeBlocks.jsx` + `TrainingHomeScreen.jsx`) — empty shells + week Build a plan + invite CTA
 - [~] My trainer sheet / review sheet
-- [~] Log / check-in sheets on home
-- [!] Every home card vs PNG (welcome, up next, week ring, number tiles, nutrition, workout, go-to)
-- [!] Empty vs filled home (`screens/empty-vs-data/`)
+- [x] Log / check-in sheets on home (empty check-in collapsed shell)
+- [x] Every home card vs PNG (welcome, up next, week ring, number tiles, nutrition, workout, go-to) — device QA still open
+- [x] Empty vs filled home (`screens/empty-vs-data/`) — nutrition / workout / check-in / week / Find trainer
 - [~] Bottom nav (+ sheet)
 
 ---
 
 ## 5. Trainer home
 
-Screens: `screens/trainer-home/`
+Screens: `screens/trainer-home/` + hero from `screens/hero-and-welcome-redesign/05-06`
 
-- [~] Shell: greeting, motivation, Needs you, client carousel, tools, weekly report (`DesignLawTrainerHomeBlocks.jsx`)
+- [x] Welcome hero (mirrored boxer via `DesignLawTrainerMotivationCard` → `DesignLawHomeWelcomeHero`)
+- [~] Shell: greeting, Needs you, client carousel, tools, weekly report (`DesignLawTrainerHomeBlocks.jsx`)
 - [x] Client tab pills (segmented; Notes label no longer clips)
 - [x] Progress tab interior → metric list (PNG 01/02)
 - [x] Nutrition tab interior → ring + bars + meals (PNG 03/04), empty day = Design Law shell (not old Lottie)
@@ -96,7 +100,7 @@ Screens: `screens/trainer-home/`
 - [x] Tools → Workout plans list + Build custom maker chrome (Saved + Manual builder — see §7)
 - [!] Trainer bottom nav slots confirmed with you
 - [!] Chat: Design Law attach sheet + session-scheduled cards (still native ActionSheet / plain bubbles)
-- [!] Compare photos flow (progress PNG compare) not built here
+- [x] Compare photos flow (`MyProgressPhotosScreen` Compare slider — progress PNG 09/10)
 - [!] CreateWorkoutPlanScreen full generate/building/viewer still pink in places (coach banner fixed)
 - [!] Spot-check light+dark vs PNGs on device before calling any of the above “final”
 
@@ -157,11 +161,12 @@ Screens: `screens/nutrition/`
 
 Screens: `screens/progress/`
 
-- [ ] Progress charts
-- [~] Photos / viewer / compare (`MyProgressPhotosScreen.jsx` — grid + fullscreen viewer PNG 07/08 [~]; compare slider [ ])
+- [x] Progress charts (`ProgressChartsScreen.jsx` — Weight / Body fat / Lifts; Go to → Progress)
+- [x] Photos / viewer / compare (`MyProgressPhotosScreen.jsx` — grid + viewer PNG 07/08 + Compare slider PNG 09/10)
 - [x] Weekly report (client) — `WeeklyReportScreen` / body Design Law; `WeeklyReportBars` legacy helpers only
-- [ ] Spreadsheet viewer chrome
-- [!] Empty gallery / no-data charts
+- [x] Spreadsheet viewer chrome (`SpreadsheetViewer.js` — HardShadow table + empty/error shells)
+- [x] Empty gallery / no-data charts (dashed empty shells on charts + gallery)
+- [!] Device PNG QA light+dark for charts / compare / spreadsheet
 
 ---
 
@@ -174,11 +179,12 @@ Screens: `screens/settings-and-profile/`
 - [x] Settings root (client + trainer) — Batch F
 - [x] FAQ / Contact / Bug / Terms / Privacy (+ `PrivacyDataRightsScreen`)
 - [x] Delete account hold-to-confirm (`HoldToConfirmPopup`)
-- [~] Blocked users [x]; report-or-block still native Alert/ActionSheet (PNG 29)
+- [x] Blocked users + ReportOrBlock sheet (PNG 29 — reasons + Also block)
 - [x] Remove trainer popup (Design Law sheet)
 - [x] Change password (3-field reauth on Settings)
-- [!] Certification upload sheet on trainer profile
-- [!] Coaching payment detail page vs PNG 07/09; bug screenshot picker visual-only
+- [x] Certification upload sheet (`CertificationUploadSheet`)
+- [x] Coaching payment (`CoachingPaymentScreen` — PNG 07/08 active + empty)
+- [!] Device PNG QA light+dark; bug screenshot picker still visual-only
 
 ---
 
@@ -187,11 +193,11 @@ Screens: `screens/settings-and-profile/`
 Screens: `screens/inbox-and-money/`
 
 - [x] Inbox (trainer + client) — PNG 01 list/search
-- [~] Chat thread (`ChatScreen.jsx`) — PNG 09/10 bubbles/header/composer [x]; session cards / attach sheet still old
-- [ ] Notifications surfaces
-- [~] Pro offer pieces (touched in trainer setup)
-- [ ] Free trial banner / upgrade / expired screens
-- [!] Message composer, attach sheet, blocked empty state
+- [x] Chat thread (`ChatScreen.jsx`) — PNG 09–13: NbSheet attach, `ChatSessionCard`, blocked shell + `ReportOrBlockSheet`; device QA still open
+- [x] Notifications (`NotificationsScreen.jsx` + trainer/client stack routes; home bells → `openNotifications`)
+- [x] Pro offer / upgrade / expired (`ProUpgradeOffer.jsx` HardShadow hero+cards, `ProUpgradeScreen.jsx`, `ProExpiredScreen.jsx`, onboarding `TrainerProOfferStep`)
+- [x] Free trial banner (`FreeTrialBanner.jsx` 3 states on trainer home; Subscribe → Settings)
+- [!] Alert→Nb sheet sweep + blocked empty edge cases still hunting
 
 ---
 
@@ -204,9 +210,9 @@ Screens: `screens/files-and-notes/`
 - [~] Add sheet (`AddFilePopup` → NbSheet PNG 05/06); compact note step in-sheet; full PNG 07 attach-files composer still [ ]
 - [x] Viewer / delete sheets — `PdfViewer` / `PhotoVideoViewer` / `DeleteFileSheet` (PNG 09–16); prev/next page chrome still light
 - [x] Trainer shared files popup (`TrainerSharedFilesPopup` → NbPageHeader)
-- [x] Document editor + share popup (`DocumentEditor.js`, `ShareDocumentPopup.js` — PNG 17–20); file-error cards PNG 21–22 still [ ]
+- [~] Document editor (`DocumentEditor.js` + `ShareDocumentPopup.js`) — Design Law chrome pass landed (PNG 17–20): HardShadow header/toolbar/page card, Clean/Bold/Handout chips, reading-level row, Export/Share; interior still WebView contentEditable; next: TipTap/Lexical via Expo DOM
 - [x] `FilesHeaderCard` / `FilesSection` / `AddFilePopup` / `MyFilesSection` / `FilesScreen` / `FileGrid` Design Law chrome
-- [~] Spreadsheet editor shell (`SpreadsheetEditor.js`) — share title wired; Google-docs chrome still [~]
+- [~] Spreadsheet editor (`SpreadsheetEditor.js`) — Design Law chrome pass landed: DocumentEditor-style header, HardShadow toolbar/grid frame/tabs/toasts, `editorColors` nb tokens (no green formula chrome), SlideUpMenu + FormulaBar skinned; still custom grid + SlideUpMenu; next: native `expo-modern-table` OR Univer in Expo DOM
 
 ---
 
@@ -216,9 +222,10 @@ Screens: `screens/scheduling/`
 
 - [x] Trainer Sessions tab → `BookSessionScreen` (calendar/list) + `CalendarTab` mount
 - [x] Full calendar / month / list (`BookSessionScreen`, `MonthCalendar`, `SessionCard`)
-- [~] New session form (`ScheduleSessionScreen` — PNG chips); detail / delete sheets still [ ]
-- [~] Client invite Decline/Confirm on home (`UpcomingSessionCard`); dedicated My sessions / Request screens still [ ]
-- [!] Session detail + delete NbSheets (PNG 13–16)
+- [x] New session form (`ScheduleSessionScreen` — PNG chips)
+- [x] Session detail + delete NbSheets (`SessionDetailSheet`, `DeleteSessionSheet` — PNG 13–16)
+- [x] Client My sessions + Request (`MySessionsScreen`, `RequestSessionScreen` — PNG 17–22); home entry when empty
+- [!] Device PNG QA light+dark; Message from detail needs chat wiring when available
 
 ---
 
@@ -226,11 +233,12 @@ Screens: `screens/scheduling/`
 
 Screens: `screens/trainees-and-records/`
 
-- [ ] Clients roster
-- [ ] Manage trainee / client record tabs (separate from trainer-home tabs)
-- [ ] Remove client flow
+- [x] Clients roster (`MyTraineesScreen` — search, requests row, filters, empty invite code, toast)
+- [x] Manage trainee / client record (`ManageTraineeScreen` — Design Law header + Progress/Nutrition/Sessions/Notes)
+- [x] Nutrition empty dashed shell + Remind CTA; filled micros + foods list (PNG 07–10)
+- [x] Remove client flow (`RemoveClientSheet` — PNG 17/18; roster + manage + home)
 - [x] Trainer weekly report screens (shared `WeeklyReportScreen` + trainer layout); Add-a-priority still visual-only
-- [!] Roster search, empty roster, remove confirm popup
+- [!] Device PNG QA light+dark
 
 ---
 
@@ -238,10 +246,10 @@ Screens: `screens/trainees-and-records/`
 
 Screens: `screens/loading-and-errors/`
 
-- [ ] Startup / skeletons / loaders
-- [ ] Crash screen
-- [ ] Error popup / offline
-- [ ] Sign-out chrome
+- [x] Startup poster (`StartupLoadingCover.js`) — `LoginGate` + `ClientAppStart` + trainer first-roster lock in `TrainerAppStart`; `NbSkeleton.jsx` inbox rows
+- [x] Crash screen (`CrashCatcher.jsx`)
+- [x] Error popup (`ErrorPopup.jsx` — login/settings flows); `OfflineBanner.jsx` built, **not mounted** — deferred until `@react-native-community/netinfo` is added
+- [x] Sign-out NbSheet on `SettingsScreen.js`
 - [!] Every Alert.alert that should be an Nb sheet instead
 
 ---
@@ -265,9 +273,10 @@ Screens: `screens/missing-screens/`, `screens/empty-vs-data/`
 - [ ] Choose role
 - [ ] Log workout / daily check-in / mood (non–AI-coach paths)
 - [ ] Weekly Momentum
-- [~] Spreadsheet editor (`SpreadsheetEditor.js` + `editorColors.js` — tabs/toolbars; grid cell chrome + `SlideUpMenu` still older)
+- [~] Spreadsheet editor rewrite candidate (`SpreadsheetEditor.js` — see §12; pick Expo DOM Univer vs native grid)
 - [ ] Trainer AI coach variant (if separate)
-- [ ] Empty vs filled audit for dashboard, trainer home, plan, coach home
+- [x] Empty vs filled audit for **client** dashboard (`empty-vs-data` nutrition/workout/check-in/week/banner)
+- [ ] Empty vs filled audit for trainer home, plan, coach home
 
 ---
 
@@ -304,12 +313,12 @@ These are the pieces that usually stay “old shit” after a screen pass:
 |---|---|---|---|
 | **D** | **DONE** | **Files & notes** | `AddFilePopup`, `FilesHeaderCard`, `FilesSection`, `FilesScreen`, `MyFilesSection`, trainer shared files popup, `DeleteFileSheet` · PNGs `screens/files-and-notes/` · Viewer chrome polish (PDF/media) can tighten later |
 | **E** | **DONE** | **Marketplace (Find a trainer)** | List / search / empty, filter popup, trainer card, profile, request / confirm / sent, home banner · PNGs `screens/marketplace-new/` · Map deferred (no repo screen) |
-| **F** | **MOSTLY DONE** | **Settings & profile** | Root + support + hold/remove + privacy rights landed · ReportOrBlock sheet + payment detail still open · PNGs `screens/settings-and-profile/` |
-| **G** | Queued | **Client home + empty states** | Card-by-card vs `screens/client-home/`, Find trainer banner polish, empty-vs-data audit for home / trainer home / plan / coach |
-| **H** | **MOSTLY DONE** | **Scheduling** | Calendar/list/new session/cards landed · detail/delete sheets + client My sessions/Request still open · PNGs `screens/scheduling/` |
-| **I** | **PARTIAL** | **Progress** | Weekly report [x]; charts / photos compare / spreadsheet chrome still open · PNGs `screens/progress/` |
-| **J** | **PARTIAL** | **Trainees & records** | Trainer weekly report [x]; roster / manage trainee / remove client still open · PNGs `screens/trainees-and-records/` |
-| **K** | Queued | **Messages leftovers + Pro + loading/errors** | Chat attach sheet + session cards, notifications, trial / upgrade / expired, skeletons / crash / offline / sign-out, Alert→Nb sheet sweep · PNGs `screens/inbox-and-money/`, `screens/loading-and-errors/` |
+| **F** | **DONE** | **Settings & profile** | Root + support + hold/remove + privacy + ReportOrBlock + coaching payment + cert sheet · PNGs `screens/settings-and-profile/` |
+| **G** | **DONE** | **Client home + empty states** | Empty nutrition/workout/check-in/week + Find trainer invite CTA · Go to Progress → charts · PNGs `screens/client-home/`, `empty-vs-data/` · device QA still open |
+| **H** | **DONE** | **Scheduling** | Calendar/list/new/detail/delete + client My sessions/Request landed · device PNG QA still open · PNGs `screens/scheduling/` |
+| **I** | **DONE** | **Progress** | Charts + photo compare + spreadsheet empty/error · weekly report already [x] · PNGs `screens/progress/` · device QA still open |
+| **J** | **DONE** | **Trainees & records** | Roster + manage + remove + nutrition empty/filled · PNGs `screens/trainees-and-records/` |
+| **K** | **DONE** | **Messages leftovers + Pro + loading/errors** | Chat attach NbSheet + session cards + blocked; `NotificationsScreen` + client/trainer bells (`openNotifications`); `FreeTrialBanner` 3 states; Pro stack wired · boot poster + `NbSkeleton` inbox + `CrashCatcher` both shells; Settings sign-out NbSheet · `OfflineBanner` deferred (no NetInfo) · PayTrainerPopup `NbSheet` import fixed · Alert→Nb sweep still [!] · device QA still [!] |
 
 ### Batch rules
 

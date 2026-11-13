@@ -1,64 +1,147 @@
-// Trainer’s full client roster: swipe to remove, tap to open a client.
-// Flow: show the list → confirm remove → call the cloud function → refresh.
-// Used by the trainer Clients tab.
+// Design Law Clients roster (trainees PNG 01–04 + empty 02 + toast 19).
+// Flow: search + filter chips → request row → client rows → RemoveClientSheet → cloud unlink.
+// Used by trainer Clients tab (TrainerMainScreen embed) and standalone shell.
+//
+// vocab: RemoveClientSheet = PNG Unlinks confirm (not the reason-picker RemoveTrainerPopup)
+// Manipulate here: FILTER_CHIPS labels, status badge heuristics
 
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Modal,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { SHELL_SAFE_AREA_EDGES, ShellBottomNavAnchor, FORM_SCROLL_PROPS, useShellBottomNavInset } from '../../navigation/bottomMenuSpacing';
-import { LinearGradient } from 'expo-linear-gradient';
+import {
+  SHELL_SAFE_AREA_EDGES,
+  ShellBottomNavAnchor,
+  FORM_SCROLL_PROPS,
+  useShellBottomNavInset,
+  useShellTopPad,
+} from '../../navigation/bottomMenuSpacing';
 import { Ionicons } from '@expo/vector-icons';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../../app-start/cloudConnection';
 import { GestureHandlerRootView, Swipeable } from 'react-native-gesture-handler';
-import TopHeader from '../../for-both/loading-and-header/TopHeader';
 import BottomMenuBar from '../../navigation/BottomMenuBar';
 import {
   getClientInitials,
   getClientRosterStats,
   getClientSubtext,
 } from '../home/trainerHomePieces';
+import RemoveClientSheet from './RemoveClientSheet';
 import NbCard from '../../look-and-feel/NbCard';
 import NbAvatar from '../../look-and-feel/NbAvatar';
 import NbButton from '../../look-and-feel/NbButton';
-import { lightColors } from '../../look-and-feel/colorPalette';
+import NbChip from '../../look-and-feel/NbChip';
+import NbIconChip from '../../look-and-feel/NbIconChip';
+import HardShadow from '../../look-and-feel/HardShadow';
+import { useTheme } from '../../look-and-feel/lightDarkMode';
+import { nb, spacing } from '../../look-and-feel/colorPalette';
+import { AppNavigationProvider } from '../../navigation/whichScreenIsOpen';
 
 // ===== NAMED CONSTANTS =====
 
 const SHELL_NAV_INSET_FALLBACK = 24;
-
-// Full-screen background wash behind the roster (dark plum → light lavender).
-// Manipulate here: change these two stops to re-tint the whole Clients screen.
-const GRADIENT_BG_DARK = ['#0A0618', '#120A24'];
-const GRADIENT_BG_LIGHT = ['#F2F2F0', lightColors.white];
-
-const CLIENT_LIST_DELETE_GRADIENT = [lightColors.primaryDark, '#C2410C'];
-const ROSTER_LIST_AVATAR_GRADIENT = ['#9F1239', '#C2410C'];
-const ROSTER_LIST_RIM_GRADIENT = [lightColors.primaryDark, '#C2410C'];
 const SWIPE_DELETE_WIDTH = 88;
-const DELETE_ICON_PINK = lightColors.primary;
+const ICON_CLIENTS = require('../../assets/icons/handoff/checkin.png');
+const FILTER_ALL = 'all';
+const FILTER_NEEDS = 'needs';
+const FILTER_TRAINING = 'training';
+const FILTER_RECOVERY = 'recovery';
+const FILTER_CHIPS = [
+  { id: FILTER_ALL, label: 'All' },
+  { id: FILTER_NEEDS, label: 'Needs attention' },
+  { id: FILTER_TRAINING, label: 'Training' },
+  { id: FILTER_RECOVERY, label: 'Recovery' },
+];
 
-// ===== HELPER FUNCTIONS =====
+// ===== HELPERS =====
 
-// ===== MAIN FUNCTION =====
+function clientPhase(client) {
+  const raw = String(client?.phase || client?.status || client?.trainingPhase || 'training')
+    .toLowerCase()
+    .trim();
+  if (raw.includes('recover')) return FILTER_RECOVERY;
+  return FILTER_TRAINING;
+}
+
+function attentionBadge(client) {
+  // Prefer real daily-log hints when present; otherwise light heuristic for PNG-shaped chips
+  if (client?.loggedToday) return { label: 'Logged today', dashed: true };
+  if (client?.daysSinceLog != null && Number(client.daysSinceLog) >= 3) {
+    return { label: `No log in ${client.daysSinceLog} days`, dashed: false };
+  }
+  if (client?.sleepAvg != null) {
+    return { label: `Sleep avg ${Number(client.sleepAvg).toFixed(1)} h`, dashed: false };
+  }
+  if (client?.soreness != null) {
+    return { label: `Soreness ${client.soreness} of 8`, dashed: false };
+  }
+  const stats = getClientRosterStats(client);
+  if (stats.goal) return { label: stats.goal, dashed: false };
+  return { label: 'On roster', dashed: true };
+}
+
+function formatInviteDisplay(code) {
+  if (!code) return 'COACH-····';
+  const cleaned = String(code).replace(/-/g, '').slice(0, 4).toUpperCase();
+  return `COACH-${cleaned}`;
+}
+
+function matchesSearch(client, query) {
+  if (!query) return true;
+  const name = String(client?.name || client?.displayName || '').toLowerCase();
+  return name.includes(query);
+}
+
+function matchesFilter(client, filterId) {
+  if (filterId === FILTER_ALL) return true;
+  const phase = clientPhase(client);
+  if (filterId === FILTER_TRAINING) return phase === FILTER_TRAINING;
+  if (filterId === FILTER_RECOVERY) return phase === FILTER_RECOVERY;
+  if (filterId === FILTER_NEEDS) {
+    return !!(client?.needsAttention || (client?.daysSinceLog != null && client.daysSinceLog >= 3));
+  }
+  return true;
+}
+
+function NavSquare({ onPress, children, colors }) {
+  return (
+    <HardShadow offset={nb.shadowOffsetSmall} radius={12}>
+      <TouchableOpacity
+        onPress={onPress}
+        style={[
+          styles.navSquare,
+          { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface },
+        ]}
+        accessibilityRole="button"
+        activeOpacity={0.85}
+      >
+        {children}
+      </TouchableOpacity>
+    </HardShadow>
+  );
+}
+
+// ===== MAIN =====
 
 /**
- * Trainer roster list.
+ * Trainer roster list — Design Law Clients screen.
  */
 const ClientsListScreen = ({
   clients,
   trainerId,
+  inviteCode = null,
+  pendingRequestNames = [],
+  pendingRequestCount = 0,
   hasMore = false,
   loadingMore = false,
   onLoadMore,
@@ -75,23 +158,17 @@ const ClientsListScreen = ({
   onNutritionPress,
   onWorkoutPress,
   onMessagesPress,
-  isDark = true,
+  isDark: _isDarkIgnored = true,
 }) => {
-  // Floating shell BottomMenuBar overlays embed + standalone — always reserve it.
+  const { colors } = useTheme();
+  const shellTopPad = useShellTopPad(spacing.sm);
   const scrollBottomPad = useShellBottomNavInset(SHELL_NAV_INSET_FALLBACK);
+  const [search, setSearch] = useState('');
+  const [filterId, setFilterId] = useState(FILTER_ALL);
   const [deletePending, setDeletePending] = useState(null);
   const [removeBusy, setRemoveBusy] = useState(false);
+  const [toast, setToast] = useState(null);
   const swipeRefs = useRef(new Map());
-
-  const textColor = isDark ? lightColors.white : lightColors.nbInk;
-  const titleColor = textColor;
-  const emptyColor = isDark ? 'rgba(255,255,255,0.55)' : 'rgba(10,10,15,0.55)';
-  const mutedColor = emptyColor;
-  const innerCardBg = isDark ? '#0f0f16' : '#FAFAFC';
-  const modalOverlay = 'rgba(0,0,0,0.55)';
-  const modalCardBg = isDark ? '#141419' : lightColors.white;
-  const modalText = isDark ? lightColors.white : lightColors.nbInk;
-  const modalMuted = isDark ? 'rgba(255,255,255,0.65)' : 'rgba(10,10,15,0.65)';
 
   const openRemoveSheet = useCallback((client) => {
     swipeRefs.current.get(client.id)?.close?.();
@@ -112,21 +189,25 @@ const ClientsListScreen = ({
       Alert.alert('Unavailable', 'Cloud Functions are not configured.');
       return;
     }
-      const clientId = deletePending.id;
-      const displayName = deletePending.name;
-      setRemoveBusy(true);
-      try {
-        const fn = httpsCallable(functions, 'removeTrainerClientLink');
-        await fn({
-          trainerId,
-          clientId,
-          reasons: [],
-          otherText: null,
-          removedBy: 'trainer',
-        });
-        cancelRemove();
-        onClientRemoved?.(clientId);
-        Alert.alert('Client removed', `${displayName} is no longer on your roster.`);
+    const clientId = deletePending.id;
+    const displayName = deletePending.name;
+    setRemoveBusy(true);
+    try {
+      const fn = httpsCallable(functions, 'removeTrainerClientLink');
+      await fn({
+        trainerId,
+        clientId,
+        reasons: [],
+        otherText: null,
+        removedBy: 'trainer',
+      });
+      cancelRemove();
+      onClientRemoved?.(clientId);
+      setToast({
+        title: 'Client removed',
+        body: `${displayName.split(/\s+/)[0]} is no longer on your roster. You can invite them again with your code.`,
+      });
+      setTimeout(() => setToast(null), 4200);
     } catch (e) {
       const msg = e?.message || e?.code || 'Could not remove this client. Try again.';
       Alert.alert('Remove failed', String(msg));
@@ -135,345 +216,290 @@ const ClientsListScreen = ({
     }
   }, [cancelRemove, deletePending, onClientRemoved, trainerId]);
 
+  const filteredClients = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return (clients || []).filter(
+      (c) => matchesSearch(c, q) && matchesFilter(c, filterId),
+    );
+  }, [clients, filterId, search]);
+
+  const requestSubtitle = useMemo(() => {
+    if (pendingRequestNames?.length) return pendingRequestNames.slice(0, 3).join(', ');
+    if (pendingRequestCount > 0) return `${pendingRequestCount} waiting`;
+    return 'Open inbox';
+  }, [pendingRequestCount, pendingRequestNames]);
+
+  const copyInvite = useCallback(async () => {
+    if (!inviteCode) return;
+    try {
+      await Clipboard.setStringAsync(String(inviteCode));
+      setToast({ title: 'Copied', body: formatInviteDisplay(inviteCode) });
+      setTimeout(() => setToast(null), 2500);
+    } catch (_e) {
+      Alert.alert('Copy failed', 'Could not copy invite code.');
+    }
+  }, [inviteCode]);
+
   const renderRightActions = useCallback(
     (client) => (
-      <View
-        style={{
-          width: SWIPE_DELETE_WIDTH,
-          marginBottom: 12,
-          justifyContent: 'stretch',
-        }}
-      >
+      <View style={styles.swipeWrap}>
         <TouchableOpacity
           activeOpacity={0.85}
           onPress={() => openRemoveSheet(client)}
-          style={{
-            flex: 1,
-            backgroundColor: lightColors.primaryDark,
-            borderTopRightRadius: 14,
-            borderBottomRightRadius: 14,
-            alignItems: 'center',
-            justifyContent: 'center',
-            paddingHorizontal: 6,
-          }}
+          style={[styles.swipeDelete, { backgroundColor: colors.nbFill }]}
         >
-          <Ionicons name="trash-outline" size={24} color={lightColors.white} />
-          <Text style={{ color: lightColors.white, fontSize: 11, fontWeight: '800', marginTop: 4 }}>Remove</Text>
+          <Ionicons name="trash-outline" size={22} color={colors.nbOnFill} />
+          <Text style={[styles.swipeDeleteText, { color: colors.nbOnFill }]}>Remove</Text>
         </TouchableOpacity>
       </View>
     ),
-    [openRemoveSheet],
+    [colors.nbFill, colors.nbOnFill, openRemoveSheet],
   );
 
-  const removeModal = (
-    <Modal visible={!!deletePending} transparent animationType="fade" onRequestClose={cancelRemove}>
-      <Pressable style={{ flex: 1, backgroundColor: modalOverlay, justifyContent: 'center', padding: 24 }} onPress={cancelRemove}>
-        <Pressable
-          onPress={(e) => e.stopPropagation?.()}
-          style={{
-            borderRadius: 16,
-            padding: 20,
-            backgroundColor: modalCardBg,
-            borderWidth: StyleSheet.hairlineWidth,
-            borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)',
+  const header = (
+    <View style={[styles.headerRow, !embedInLayout && { paddingTop: shellTopPad }]}>
+      <Text style={[styles.screenTitle, { color: colors.nbInk }]}>Clients</Text>
+      {typeof onOpenClientRequests === 'function' || typeof onPlusPress === 'function' ? (
+        <NavSquare
+          colors={colors}
+          onPress={() => {
+            if (typeof onOpenClientRequests === 'function') onOpenClientRequests();
+            else onPlusPress?.();
           }}
         >
-          <Text style={{ color: modalText, fontSize: 18, fontWeight: '900', marginBottom: 10 }}>Remove client?</Text>
-          <Text style={{ color: modalMuted, fontSize: 14, lineHeight: 20, marginBottom: 20 }}>
-            {deletePending?.name} will lose access to plans you assigned through Coach Connect. This cannot be undone from the app.
-          </Text>
-          <View style={{ flexDirection: 'row', gap: 12, justifyContent: 'flex-end' }}>
-            <TouchableOpacity
-              onPress={cancelRemove}
-              disabled={removeBusy}
-              style={{ paddingVertical: 12, paddingHorizontal: 16, borderRadius: 12, opacity: removeBusy ? 0.5 : 1 }}
-            >
-              <Text style={{ color: modalMuted, fontSize: 15, fontWeight: '700' }}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={confirmRemove}
-              disabled={removeBusy}
-              style={{
-                paddingVertical: 12,
-                paddingHorizontal: 18,
-                borderRadius: 12,
-                backgroundColor: DELETE_ICON_PINK,
-                minWidth: 100,
-                alignItems: 'center',
-                opacity: removeBusy ? 0.75 : 1,
-              }}
-            >
-              {removeBusy ? (
-                <ActivityIndicator color={lightColors.white} />
-              ) : (
-                <Text style={{ color: lightColors.white, fontSize: 15, fontWeight: '800' }}>Remove</Text>
-              )}
-            </TouchableOpacity>
-          </View>
-        </Pressable>
-      </Pressable>
-    </Modal>
-  );
-
-  const listContent = clients.length === 0 ? (
-    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, paddingBottom: 24 }}>
-      <View
-        style={[
-          {
-            width: '100%',
-            maxWidth: 360,
-            borderRadius: 22,
-            overflow: 'hidden',
-            borderWidth: 1,
-            borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(15,23,42,0.1)',
-            backgroundColor: isDark ? 'rgba(12,12,18,0.96)' : 'rgba(255,255,255,0.98)',
-          },
-          Platform.select({
-            ios: {
-              shadowColor: '#6366f1',
-              shadowOffset: { width: 0, height: 6 },
-              shadowOpacity: 0.14,
-              shadowRadius: 12,
-            },
-            android: { elevation: 8 },
-          }),
-        ]}
-      >
-        <LinearGradient
-          colors={ROSTER_LIST_RIM_GRADIENT}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={{ height: 4, width: '100%' }}
-        />
-        <View style={{ paddingHorizontal: 22, paddingVertical: 28, alignItems: 'center' }}>
-          <LinearGradient colors={ROSTER_LIST_AVATAR_GRADIENT} style={{ width: 56, height: 56, borderRadius: 18, alignItems: 'center', justifyContent: 'center' }}>
-            <Ionicons name="people-outline" size={28} color={lightColors.white} />
-          </LinearGradient>
-          <Text style={{ color: titleColor, fontSize: 20, fontWeight: '900', textAlign: 'center', marginTop: 18, letterSpacing: -0.3 }}>
-            No clients yet
-          </Text>
-          <Text style={{ color: emptyColor, fontSize: 14, textAlign: 'center', lineHeight: 20, marginTop: 8 }}>
-            When someone connects or you accept a request, they show up here.
-          </Text>
-          {typeof onOpenClientRequests === 'function' ? (
-            <TouchableOpacity
-              onPress={onOpenClientRequests}
-              activeOpacity={0.9}
-              style={{ marginTop: 20, borderRadius: 14, overflow: 'hidden', alignSelf: 'stretch' }}
-            >
-              <LinearGradient
-                colors={CLIENT_LIST_DELETE_GRADIENT}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={{ paddingVertical: 14, paddingHorizontal: 22, alignItems: 'center' }}
-              >
-                <Text style={{ color: lightColors.white, fontSize: 14, fontWeight: '800' }}>View client requests</Text>
-              </LinearGradient>
-            </TouchableOpacity>
-          ) : null}
-        </View>
-      </View>
-    </View>
-  ) : (
-    <ScrollView
-      contentContainerStyle={{ paddingTop: 8, paddingBottom: scrollBottomPad, paddingHorizontal: 16 }}
-      nestedScrollEnabled
-      {...FORM_SCROLL_PROPS}
-    >
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6, paddingHorizontal: 2 }}>
-        <Text
-          style={{
-            fontSize: 11,
-            fontWeight: '800',
-            letterSpacing: 1.1,
-            color: mutedColor,
-            textTransform: 'uppercase',
-          }}
-        >
-          Your roster
-        </Text>
-        <View
-          style={{
-            paddingHorizontal: 10,
-            paddingVertical: 4,
-            borderRadius: 999,
-            backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-            borderWidth: 1,
-            borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(15,23,42,0.08)',
-          }}
-        >
-          <Text style={{ fontSize: 10, fontWeight: '800', color: mutedColor }}>{clients.length} active</Text>
-        </View>
-      </View>
-      <Text style={{ color: mutedColor, fontSize: 12, marginBottom: 14, paddingHorizontal: 2 }}>
-        Tap a client to open their dashboard · swipe left or tap trash to remove
-      </Text>
-      {(clients || []).map((client) => {
-        const displayName = client.name || client.displayName || 'Client';
-        const stats = getClientRosterStats(client);
-        const initials = getClientInitials(displayName);
-        return (
-          <Swipeable
-            key={client.id}
-            ref={(r) => {
-              if (r) swipeRefs.current.set(client.id, r);
-              else swipeRefs.current.delete(client.id);
-            }}
-            friction={2}
-            overshootRight={false}
-            renderRightActions={() => renderRightActions(client)}
-          >
-            <View style={{ marginBottom: 12, position: 'relative' }}>
-              <TouchableOpacity
-                activeOpacity={0.88}
-                onPress={() => onSelectClient(client.id)}
-              >
-                <NbCard style={{ padding: 16 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
-                    <NbAvatar
-                      initials={initials}
-                      size={52}
-                    />
-                    <View style={{ flex: 1, minWidth: 0, paddingRight: 36 }}>
-                      <Text style={{ color: textColor, fontSize: 18, fontWeight: '900', letterSpacing: -0.3, fontFamily: 'SpaceGrotesk_700Bold' }} numberOfLines={1}>
-                        {displayName}
-                      </Text>
-                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', marginTop: 8 }}>
-                        {stats.goal ? (
-                          <View
-                            style={{
-                              paddingHorizontal: 10,
-                              paddingVertical: 5,
-                              borderRadius: 999,
-                              backgroundColor: isDark ? 'rgba(157, 23, 57, 0.22)' : 'rgba(190, 24, 93, 0.1)',
-                              borderWidth: 1,
-                              borderColor: isDark ? 'rgba(234, 88, 12, 0.28)' : 'rgba(194, 65, 12, 0.22)',
-                              marginRight: 8,
-                              marginBottom: 4,
-                            }}
-                          >
-                            <Text style={{ color: isDark ? 'rgba(254, 205, 211, 0.92)' : '#9F1239', fontSize: 11, fontWeight: '800', fontFamily: 'SpaceGrotesk_700Bold' }} numberOfLines={1}>
-                              {stats.goal}
-                            </Text>
-                          </View>
-                        ) : (
-                          <Text style={{ color: mutedColor, fontSize: 11, fontWeight: '600', marginBottom: 4 }}>{getClientSubtext(client)}</Text>
-                        )}
-                      </View>
-                    </View>
-                  </View>
-
-                  <View style={{ flexDirection: 'row', marginTop: 14, gap: 10 }}>
-                    {[
-                      { key: 'age', cap: 'AGE', val: stats.age ? `${stats.age}` : '—' },
-                      { key: 'wt', cap: 'WEIGHT', val: stats.weight ? `${stats.weight} lbs` : '—' },
-                      { key: 'ht', cap: 'HEIGHT', val: stats.height || '—' },
-                    ].map((cell) => (
-                      <View
-                        key={cell.key}
-                        style={{
-                          flex: 1,
-                          alignItems: 'center',
-                        }}
-                      >
-                        <Text
-                          style={{
-                            color: mutedColor,
-                            fontSize: 12,
-                            fontWeight: '700',
-                            letterSpacing: 1.2,
-                            fontFamily: 'SpaceGrotesk_700Bold',
-                            textTransform: 'uppercase',
-                          }}
-                        >
-                          {cell.cap}
-                        </Text>
-                        <Text
-                          style={{
-                            color: textColor,
-                            fontSize: 15,
-                            fontWeight: '800',
-                            fontFamily: 'SpaceGrotesk_700Bold',
-                            marginTop: 4,
-                            letterSpacing: -0.2,
-                          }}
-                          numberOfLines={1}
-                        >
-                          {cell.val}
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-                </NbCard>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                onPress={() => openRemoveSheet(client)}
-                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                accessibilityLabel={`Remove ${displayName}`}
-                style={{
-                  position: 'absolute',
-                  top: 12,
-                  right: 12,
-                  width: 34,
-                  height: 34,
-                  borderRadius: 17,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  backgroundColor: isDark ? 'rgba(190, 24, 93, 0.18)' : 'rgba(190, 24, 93, 0.08)',
-                  borderWidth: 1,
-                  borderColor: isDark ? 'rgba(244, 114, 182, 0.22)' : 'rgba(190, 24, 93, 0.15)',
-                }}
-              >
-                <Ionicons name="trash-outline" size={17} color={DELETE_ICON_PINK} />
-              </TouchableOpacity>
-            </View>
-          </Swipeable>
-        );
-      })}
-      {hasMore && typeof onLoadMore === 'function' ? (
-        <TouchableOpacity
-          onPress={onLoadMore}
-          disabled={loadingMore}
-          accessibilityRole="button"
-          accessibilityLabel="Load more clients"
-          style={{
-            alignSelf: 'center',
-            marginTop: 16,
-            marginBottom: 8,
-            paddingVertical: 12,
-            paddingHorizontal: 20,
-            borderRadius: 14,
-            backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.05)',
-            borderWidth: 1,
-            borderColor: isDark ? 'rgba(244, 114, 182, 0.2)' : 'rgba(194, 65, 12, 0.12)',
-          }}
-        >
-          {loadingMore ? (
-            <ActivityIndicator size="small" color={isDark ? '#F472B6' : lightColors.primaryDark} />
-          ) : (
-            <Text style={{ color: mutedColor, fontSize: 14, fontWeight: '700' }}>Load more clients</Text>
-          )}
-        </TouchableOpacity>
+          <Ionicons name="add" size={24} color={colors.nbInk} />
+        </NavSquare>
       ) : null}
+    </View>
+  );
+
+  const searchField = (
+    <View
+      style={[
+        styles.searchWrap,
+        { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface },
+      ]}
+    >
+      <Ionicons name="search" size={18} color={colors.nbMuted} />
+      <TextInput
+        value={search}
+        onChangeText={setSearch}
+        placeholder="Search clients"
+        placeholderTextColor={colors.nbMuted}
+        style={[styles.searchInput, { color: colors.nbInk }]}
+        autoCorrect={false}
+        autoCapitalize="none"
+      />
+    </View>
+  );
+
+  const requestsRow =
+    typeof onOpenClientRequests === 'function' ? (
+      <HardShadow offset={nb.shadowOffsetCard} radius={16}>
+        <TouchableOpacity
+          onPress={onOpenClientRequests}
+          activeOpacity={0.88}
+          style={[
+            styles.requestsRow,
+            { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface },
+          ]}
+        >
+          <NbIconChip source={ICON_CLIENTS} index={2} size={44} />
+          <View style={styles.requestsText}>
+            <Text style={[styles.requestsTitle, { color: colors.nbInk }]}>
+              View client requests
+            </Text>
+            <Text style={[styles.requestsSub, { color: colors.nbMuted }]} numberOfLines={1}>
+              {requestSubtitle}
+            </Text>
+          </View>
+          {pendingRequestCount > 0 ? (
+            <View style={[styles.countBadge, { backgroundColor: colors.nbFill }]}>
+              <Text style={[styles.countBadgeText, { color: colors.nbOnFill }]}>
+                {pendingRequestCount > 9 ? '9+' : String(pendingRequestCount)}
+              </Text>
+            </View>
+          ) : null}
+        </TouchableOpacity>
+      </HardShadow>
+    ) : null;
+
+  const filterRow = (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.filterStrip}
+    >
+      {FILTER_CHIPS.map((chip) => (
+        <NbChip
+          key={chip.id}
+          selected={filterId === chip.id}
+          onPress={() => setFilterId(chip.id)}
+        >
+          {chip.label}
+        </NbChip>
+      ))}
     </ScrollView>
   );
 
-  if (embedInLayout) {
-    return (
-      <View style={{ flex: 1 }}>
-        <TopHeader
-          title="Clients"
-          isDark={isDark}
-          skipTopSafeInset
-          onBack={onBack}
-          onProfilePress={onProfilePress}
-          onSettingsPress={onSettingsPress}
-        />
-        {listContent}
-        {removeModal}
-      </View>
+  const emptyState = (
+    <NbCard style={[styles.emptyCard, { borderStyle: 'dashed' }]}>
+      <NbIconChip source={ICON_CLIENTS} index={2} size={56} />
+      <Text style={[styles.emptyTitle, { color: colors.nbInk }]}>No clients yet</Text>
+      <Text style={[styles.emptyBody, { color: colors.nbMuted }]}>
+        Clients you already train join with your invite code. New clients find you in the marketplace.
+      </Text>
+      {inviteCode ? (
+        <>
+          <View
+            style={[
+              styles.inviteBox,
+              { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface },
+            ]}
+          >
+            <Text style={[styles.inviteCode, { color: colors.nbInk }]}>
+              {formatInviteDisplay(inviteCode)}
+            </Text>
+          </View>
+          <NbButton variant="fill" onPress={copyInvite} style={styles.copyBtn}>
+            Copy code
+          </NbButton>
+        </>
+      ) : typeof onOpenClientRequests === 'function' ? (
+        <NbButton variant="fill" onPress={onOpenClientRequests} style={styles.copyBtn}>
+          View client requests
+        </NbButton>
+      ) : null}
+    </NbCard>
+  );
+
+  const listCard =
+    filteredClients.length === 0 && (clients || []).length === 0 ? (
+      emptyState
+    ) : (
+      <HardShadow offset={nb.shadowOffsetCard} radius={16}>
+        <View
+          style={[
+            styles.listCard,
+            { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface },
+          ]}
+        >
+          {filteredClients.length === 0 ? (
+            <Text style={[styles.noMatch, { color: colors.nbMuted }]}>No clients match.</Text>
+          ) : (
+            filteredClients.map((client, index) => {
+              const displayName = client.name || client.displayName || 'Client';
+              const initials = getClientInitials(displayName);
+              const sub = getClientSubtext(client);
+              const badge = attentionBadge(client);
+              const phase = clientPhase(client);
+              const phaseLabel = phase === FILTER_RECOVERY ? 'Recovery' : 'Training';
+              const phaseSelected = phase === FILTER_TRAINING;
+              return (
+                <Swipeable
+                  key={client.id}
+                  ref={(r) => {
+                    if (r) swipeRefs.current.set(client.id, r);
+                    else swipeRefs.current.delete(client.id);
+                  }}
+                  friction={2}
+                  overshootRight={false}
+                  renderRightActions={() => renderRightActions(client)}
+                >
+                  <TouchableOpacity
+                    activeOpacity={0.88}
+                    onPress={() => onSelectClient?.(client.id)}
+                    onLongPress={() => openRemoveSheet(client)}
+                    style={[
+                      styles.clientRow,
+                      index < filteredClients.length - 1 && {
+                        borderBottomWidth: StyleSheet.hairlineWidth,
+                        borderBottomColor: colors.nbBorder,
+                      },
+                    ]}
+                  >
+                    <NbAvatar initials={initials} size={48} />
+                    <View style={styles.clientMain}>
+                      <Text style={[styles.clientName, { color: colors.nbInk }]} numberOfLines={1}>
+                        {displayName}
+                      </Text>
+                      <Text style={[styles.clientSub, { color: colors.nbMuted }]} numberOfLines={1}>
+                        {sub}
+                      </Text>
+                      <View
+                        style={[
+                          styles.statusBadge,
+                          {
+                            borderColor: colors.nbBorder,
+                            backgroundColor: badge.dashed
+                              ? 'transparent'
+                              : colors.nbSurfaceChip || colors.nbBackground,
+                            borderStyle: badge.dashed ? 'dashed' : 'solid',
+                          },
+                        ]}
+                      >
+                        <Text style={[styles.statusBadgeText, { color: colors.nbInk }]}>
+                          {badge.label}
+                        </Text>
+                      </View>
+                    </View>
+                    <NbChip selected={phaseSelected} variant={phaseSelected ? 'default' : 'outline'}>
+                      {phaseLabel}
+                    </NbChip>
+                  </TouchableOpacity>
+                </Swipeable>
+              );
+            })
+          )}
+          {hasMore && typeof onLoadMore === 'function' ? (
+            <View style={styles.loadMoreWrap}>
+              <NbButton variant="ghost" onPress={onLoadMore} disabled={loadingMore}>
+                {loadingMore ? 'Loading…' : 'Load more clients'}
+              </NbButton>
+            </View>
+          ) : null}
+        </View>
+      </HardShadow>
     );
+
+  const toastEl = toast ? (
+    <View
+      style={[
+        styles.toast,
+        { backgroundColor: colors.nbFill, borderColor: colors.nbBorder, shadowColor: colors.nbShadow },
+      ]}
+    >
+      <Text style={[styles.toastTitle, { color: colors.nbOnFill }]}>{toast.title}</Text>
+      <Text style={[styles.toastBody, { color: colors.nbOnFill }]}>{toast.body}</Text>
+    </View>
+  ) : null;
+
+  const body = (
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      {header}
+      <ScrollView
+        contentContainerStyle={[styles.scroll, { paddingBottom: scrollBottomPad }]}
+        {...FORM_SCROLL_PROPS}
+        keyboardShouldPersistTaps="handled"
+      >
+        {searchField}
+        {requestsRow}
+        {(clients || []).length > 0 ? filterRow : null}
+        {listCard}
+      </ScrollView>
+      {toastEl}
+      <RemoveClientSheet
+        visible={!!deletePending}
+        onClose={cancelRemove}
+        onConfirm={confirmRemove}
+        clientName={deletePending?.name}
+        busy={removeBusy}
+      />
+    </GestureHandlerRootView>
+  );
+
+  if (embedInLayout) {
+    return <View style={{ flex: 1, backgroundColor: colors.nbBackground }}>{body}</View>;
   }
 
   return (
@@ -487,35 +513,209 @@ const ClientsListScreen = ({
       onWorkoutPress={onWorkoutPress}
       onMessagesPress={onMessagesPress}
     >
-      <LinearGradient colors={isDark ? GRADIENT_BG_DARK : GRADIENT_BG_LIGHT} style={{ flex: 1 }}>
-        <SafeAreaView style={{ flex: 1 }} edges={SHELL_SAFE_AREA_EDGES}>
-          <TopHeader
-            title="Clients"
-            skipTopSafeInset
-            onBack={onBack}
-            onProfilePress={onProfilePress}
-            onSettingsPress={onSettingsPress}
+      <SafeAreaView
+        style={{ flex: 1, backgroundColor: colors.nbBackground }}
+        edges={SHELL_SAFE_AREA_EDGES}
+      >
+        {body}
+        <ShellBottomNavAnchor>
+          <BottomMenuBar
+            onHomePress={onHomePress}
+            onPlusPress={onPlusPress}
+            onVoicePress={onVoicePress}
+            onNutritionPress={onNutritionPress}
+            onWorkoutPress={onWorkoutPress}
+            onMessagesPress={onMessagesPress}
           />
-          {listContent}
-          <ShellBottomNavAnchor>
-            <BottomMenuBar
-              onHomePress={onHomePress}
-              onPlusPress={onPlusPress}
-              onVoicePress={onVoicePress}
-              onNutritionPress={onNutritionPress}
-              onWorkoutPress={onWorkoutPress}
-              onMessagesPress={onMessagesPress}
-            />
-          </ShellBottomNavAnchor>
-          {removeModal}
-        </SafeAreaView>
-      </LinearGradient>
+        </ShellBottomNavAnchor>
+      </SafeAreaView>
     </AppNavigationProvider>
   );
 };
 
-// ─────────────────────────────────────────────
-// DASHBOARD CONTENT
-// ─────────────────────────────────────────────
-
 export default ClientsListScreen;
+
+const styles = StyleSheet.create({
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.sm,
+    gap: 12,
+  },
+  screenTitle: {
+    flex: 1,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 28,
+    letterSpacing: -0.4,
+  },
+  navSquare: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    borderWidth: nb.borderWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scroll: {
+    paddingHorizontal: spacing.md,
+    gap: spacing.md,
+  },
+  searchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: nb.borderWidth,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    minHeight: 48,
+  },
+  searchInput: {
+    flex: 1,
+    fontFamily: 'Inter_500Medium',
+    fontSize: 15,
+    paddingVertical: Platform.OS === 'ios' ? 12 : 8,
+  },
+  requestsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderWidth: nb.borderWidth,
+    borderRadius: 16,
+    padding: 12,
+  },
+  requestsText: { flex: 1, minWidth: 0 },
+  requestsTitle: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 15,
+  },
+  requestsSub: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 12,
+    marginTop: 2,
+  },
+  countBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  countBadgeText: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 13,
+  },
+  filterStrip: { flexDirection: 'row', gap: 8, paddingVertical: 2 },
+  listCard: {
+    borderWidth: nb.borderWidth,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  clientRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+  },
+  clientMain: { flex: 1, minWidth: 0, gap: 4 },
+  clientName: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 16,
+    letterSpacing: -0.2,
+  },
+  clientSub: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 12,
+  },
+  statusBadge: {
+    alignSelf: 'flex-start',
+    borderWidth: nb.borderWidth,
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginTop: 2,
+  },
+  statusBadgeText: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 11,
+  },
+  loadMoreWrap: { padding: 12 },
+  noMatch: {
+    padding: 20,
+    textAlign: 'center',
+    fontFamily: 'Inter_500Medium',
+  },
+  emptyCard: {
+    paddingVertical: 28,
+    paddingHorizontal: 18,
+    alignItems: 'center',
+    gap: 12,
+  },
+  emptyTitle: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 20,
+    textAlign: 'center',
+  },
+  emptyBody: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
+  },
+  inviteBox: {
+    borderWidth: nb.borderWidth,
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    alignSelf: 'stretch',
+    alignItems: 'center',
+  },
+  inviteCode: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 20,
+    letterSpacing: 1,
+  },
+  copyBtn: { alignSelf: 'stretch', marginTop: 4 },
+  swipeWrap: {
+    width: SWIPE_DELETE_WIDTH,
+    justifyContent: 'stretch',
+  },
+  swipeDelete: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+  },
+  swipeDeleteText: {
+    fontSize: 11,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    marginTop: 4,
+  },
+  toast: {
+    position: 'absolute',
+    left: spacing.md,
+    right: spacing.md,
+    top: 8,
+    borderWidth: nb.borderWidth,
+    borderRadius: 14,
+    padding: 14,
+    gap: 4,
+    shadowOffset: { width: nb.shadowOffsetSmall, height: nb.shadowOffsetSmall },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 4,
+    zIndex: 20,
+  },
+  toastTitle: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 15,
+  },
+  toastBody: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 13,
+    lineHeight: 18,
+    opacity: 0.9,
+  },
+});

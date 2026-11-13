@@ -28,6 +28,7 @@ import {
   useGetTrainingSession,
 } from '../scheduling/mySessions';
 import { pagedTraineeList } from '../my-trainees/pagedTraineeList';
+import DeleteSessionSheet from './DeleteSessionSheet';
 import NbChip from '../../look-and-feel/NbChip';
 import NbSegmented from '../../look-and-feel/NbSegmented';
 import NbButton from '../../look-and-feel/NbButton';
@@ -146,6 +147,8 @@ export function ScheduleSessionScreen(props = {}) {
   const editing = sessionId ? getSession(sessionId) : undefined;
   const isEdit = Boolean(editing);
   const today = useMemo(() => new Date(), []);
+  const [showDeleteSheet, setShowDeleteSheet] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   const initDate = useMemo(() => {
     if (editing?.date) return new Date(`${editing.date}T12:00:00`);
@@ -272,24 +275,20 @@ export function ScheduleSessionScreen(props = {}) {
     }
   };
 
-  const handleDelete = () => {
-    Alert.alert('Delete Session', 'Are you sure?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            if (sessionId) {
-              await deleteSession(sessionId);
-              goBack();
-            }
-          } catch (e) {
-            Alert.alert('Error', e?.message || 'Failed to delete session');
-          }
-        },
-      },
-    ]);
+  const handleDelete = () => setShowDeleteSheet(true);
+
+  const confirmDelete = async () => {
+    if (!sessionId) return;
+    setDeleteBusy(true);
+    try {
+      await deleteSession(sessionId);
+      setShowDeleteSheet(false);
+      goBack();
+    } catch (e) {
+      Alert.alert('Error', e?.message || 'Failed to delete session');
+    } finally {
+      setDeleteBusy(false);
+    }
   };
 
   const clientFirst = firstName(selectedClientName || 'Client');
@@ -483,6 +482,16 @@ export function ScheduleSessionScreen(props = {}) {
     />
   );
 
+  const deleteSheet = (
+    <DeleteSessionSheet
+      visible={showDeleteSheet}
+      onClose={() => !deleteBusy && setShowDeleteSheet(false)}
+      onConfirm={confirmDelete}
+      clientName={selectedClientName || editing?.clientName}
+      busy={deleteBusy}
+    />
+  );
+
   if (embedded) {
     return (
       <View style={[styles.embeddedRoot, { backgroundColor: colors.nbBackground }]}>
@@ -495,6 +504,7 @@ export function ScheduleSessionScreen(props = {}) {
           {body}
         </ScrollView>
         {stickyFooter}
+        {deleteSheet}
       </View>
     );
   }
@@ -510,6 +520,7 @@ export function ScheduleSessionScreen(props = {}) {
         {body}
       </ScrollView>
       {stickyFooter}
+      {deleteSheet}
     </View>
   );
 }

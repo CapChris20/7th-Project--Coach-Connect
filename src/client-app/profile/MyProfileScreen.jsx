@@ -36,6 +36,7 @@ import {
   certificationStatusDetail,
   certificationStatusTone,
 } from '../../for-both/online-connection/checkTrainerCertificate';
+import CertificationUploadSheet from './CertificationUploadSheet';
 import BottomMenuBar from '../../navigation/BottomMenuBar';
 import { ShellBottomNavAnchor, FORM_SCROLL_PROPS, useShellBottomNavInset } from '../../navigation/bottomMenuSpacing';
 import ProfileIcon from '../../for-both/icons/ProfileIcon';
@@ -779,6 +780,7 @@ export function ViewMyMyProfileScreen({
   const [certProgress, setCertProgress] = useState(0);
   const [certVerifyStatus, setCertVerifyStatus] = useState(null); // local + live status key
   const [certVerifyBusy, setCertVerifyBusy] = useState(false);
+  const [certSheetOpen, setCertSheetOpen] = useState(false);
 
   // Subtle entrance animations (fade + slight lift)
   const heroAnim = useMemo(() => new Animated.Value(0), []);
@@ -825,6 +827,7 @@ export function ViewMyMyProfileScreen({
     try {
       const file = await pickCertificationFile();
       if (!file) return;
+      setCertSheetOpen(true);
       setCertUploading(true);
       setCertProgress(0);
       const { meta, url } = await uploadTrainerCertificationSheet(
@@ -856,6 +859,7 @@ export function ViewMyMyProfileScreen({
       });
 
       Alert.alert('Certification', verifyMessage);
+      setCertSheetOpen(false);
     } catch (uploadError) {
       Alert.alert('Upload failed', uploadError?.message || 'Could not upload certification. Try again.');
     } finally {
@@ -1520,7 +1524,7 @@ function formatWeight(weightValue) {
                       </View>
                     ) : (
                       <TouchableOpacity
-                        onPress={handleAddCertification}
+                        onPress={() => setCertSheetOpen(true)}
                         activeOpacity={0.85}
                         style={{
                           marginTop: 8,
@@ -1530,7 +1534,7 @@ function formatWeight(weightValue) {
                           gap: 8,
                           paddingVertical: 12,
                           borderRadius: 12,
-                          borderWidth: 1,
+                          borderWidth: nb.borderWidth,
                           borderColor: theme.border,
                         }}
                       >
@@ -1619,6 +1623,14 @@ function formatWeight(weightValue) {
           ) : null}
         </ScrollView>
       </View>
+
+      <CertificationUploadSheet
+        visible={certSheetOpen}
+        onClose={() => !certUploading && setCertSheetOpen(false)}
+        onPickUpload={handleAddCertification}
+        uploading={certUploading}
+        progress={certProgress}
+      />
 
       {/* Design Law field editor — bottom sheet, 3px ink, Nb fill/ghost (no gradient Save) */}
       <Modal visible={!!editKey} transparent animationType="slide" onRequestClose={closeEdit}>

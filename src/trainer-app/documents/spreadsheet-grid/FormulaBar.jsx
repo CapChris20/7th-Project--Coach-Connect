@@ -94,17 +94,18 @@ function FormulaBar({
 }) {
   const isFormula = isFormulaValue(value);
   const formulaColor = isFormula ? theme.formulaGreen : theme.text;
-  const fxColor = isFormula ? theme.formulaGreen : theme.textMuted;
+  // Design Law: formula prefix uses ink, not spreadsheet-green.
+  const fxColor = isFormula ? theme.text : theme.textMuted;
 
   return (
     <View style={[styles.formulaBar, { backgroundColor: theme.toolbarBg, borderBottomColor: theme.border }]}>
       {/* Left pill showing the current address, e.g. "C7". */}
-      <View style={[styles.refPill, { borderColor: theme.border, backgroundColor: theme.inputBg }]}>
+      <View style={[styles.refPill, { borderColor: theme.chromeBorder, backgroundColor: theme.pageBg }]}>
         <Text style={{ color: theme.text, fontSize: 12, fontWeight: '800' }}>
           {cellAddressLabel(focusC, focusR)}
         </Text>
       </View>
-      {/* The "fx" marker turns green the moment the text starts with '='. */}
+      {/* "fx" bold when the cell value is a formula (=…). */}
       <Text style={{ color: fxColor, fontWeight: '800', fontSize: 13 }}>
         fx
       </Text>
@@ -121,8 +122,8 @@ function FormulaBar({
           styles.formulaInput,
           {
             color: formulaColor,
-            borderColor: theme.border,
-            backgroundColor: theme.inputBg,
+            borderColor: theme.chromeBorder,
+            backgroundColor: theme.pageBg,
           },
         ]}
         autoCapitalize="none"

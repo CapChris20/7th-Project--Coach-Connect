@@ -26,6 +26,7 @@ import { lightColors, darkColors, nb, spacing } from '../look-and-feel/colorPale
 import NbCard from '../look-and-feel/NbCard';
 import NbButton from '../look-and-feel/NbButton';
 import NbListRow from '../look-and-feel/NbListRow';
+import HardShadow from '../look-and-feel/HardShadow';
 
 // ===== NAMED CONSTANTS =====
 
@@ -115,12 +116,12 @@ function FeatureCardList({ features, palette }) {
   return (
     <View style={styles.featuresContainer}>
       {features.map((feature) => (
-        <NbListRow
-          key={feature.title}
-          title={feature.title}
-          right={<Ionicons name="checkmark-circle" size={18} color={palette.nbInk} />}
-          style={styles.featureRow}
-        />
+        <HardShadow key={feature.title} offset={nb.shadowOffsetCard} radius={10}>
+          <NbListRow
+            title={feature.title}
+            right={<Ionicons name="checkmark-circle" size={18} color={palette.nbInk} />}
+          />
+        </HardShadow>
       ))}
     </View>
   );
@@ -203,9 +204,11 @@ export default function ProUpgradeOffer({
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.heroWrap}>
-          <Image source={SUBSCRIPTION_HERO} style={styles.heroImage} contentFit="contain" accessibilityIgnoresInvertColors />
-        </View>
+        <HardShadow offset={nb.shadowOffsetCard} radius={10} style={styles.heroShadow}>
+          <View style={[styles.heroWrap, { backgroundColor: palette.nbSurface, borderColor: palette.nbBorder }]}>
+            <Image source={SUBSCRIPTION_HERO} style={styles.heroImage} contentFit="contain" accessibilityIgnoresInvertColors />
+          </View>
+        </HardShadow>
 
         <View style={styles.titleSection}>
           <Text style={[styles.title, { color: palette.nbInk }]}>{copy.title}</Text>
@@ -254,11 +257,16 @@ const styles = StyleSheet.create({
     paddingTop: spacing.sm,
     paddingBottom: spacing.xl,
   },
+  heroShadow: {
+    marginBottom: spacing.sm,
+  },
   heroWrap: {
     height: 240,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: spacing.sm,
+    borderWidth: nb.borderWidth,
+    borderRadius: 10,
+    overflow: 'hidden',
   },
   heroImage: {
     width: '100%',
@@ -291,9 +299,6 @@ const styles = StyleSheet.create({
   featuresContainer: {
     gap: 12,
     marginBottom: 14,
-  },
-  featureRow: {
-    // NbListRow already has thick border
   },
   errorBox: {
     padding: 14,

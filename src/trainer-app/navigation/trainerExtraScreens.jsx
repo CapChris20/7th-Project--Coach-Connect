@@ -25,6 +25,7 @@ import TrainerWeeklyReportScreen from '../../for-both/weekly-report/WeeklyReport
 import ManualWorkoutPlanBuilderScreen from '../workout-plans/ManualWorkoutPlanBuilderScreen';
 import EarningsScreen from '../earnings/EarningsScreen';
 import AddFilePopup from '../../for-both/files-and-notes/viewers/AddFilePopup';
+import NotificationsScreen from '../../notifications/NotificationsScreen';
 import { useSubscription } from '../../trainer-pro-plan/ProPlanSetup';
 import { TRAINER_PLATFORM_SUBSCRIPTION_ENABLED } from '../../trainer-pro-plan/proPlanSwitches';
 
@@ -437,4 +438,16 @@ export function TrainerManualPlanBuilderScreen() {
 export function TrainerEarningsScreen() {
   const shell = useTrainerAppStartShell();
   return withNav(<EarningsScreen />, shell);
+}
+
+/**
+ * Design Law Notifications list (trainer = trainerUid field).
+ * @returns {import('react').ReactElement}
+ */
+export function TrainerNotificationsScreen() {
+  const shell = useTrainerAppStartShell();
+  return withNav(
+    <NotificationsScreen onBack={shell.rootGoBack || shell.handleHomePress} roleField="trainerUid" />,
+    shell,
+  );
 }

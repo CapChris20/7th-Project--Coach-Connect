@@ -1216,13 +1216,15 @@ export default function DocumentEditor({
               </Text>
               <Text style={[styles.readingSub, { color: theme.textMuted }]}>{readingCard.easeCopy}</Text>
             </View>
-            <TouchableOpacity
-              onPress={() => postCmd('clear')}
-              style={[styles.clearPill, { borderColor: theme.chromeBorder, backgroundColor: theme.pageBg }]}
-              accessibilityLabel="Clear formatting"
-            >
-              <Text style={[styles.clearPillText, { color: theme.text }]}>Clear</Text>
-            </TouchableOpacity>
+            <HardShadow offset={nb.shadowOffsetSmall} radius={999}>
+              <TouchableOpacity
+                onPress={() => postCmd('clear')}
+                style={[styles.clearPill, { borderColor: theme.chromeBorder, backgroundColor: theme.pageBg }]}
+                accessibilityLabel="Clear formatting"
+              >
+                <Text style={[styles.clearPillText, { color: theme.text }]}>Clear</Text>
+              </TouchableOpacity>
+            </HardShadow>
           </View>
 
           <View style={[styles.bottomActions, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>

@@ -16,5 +16,8 @@ export {
   showReportReasonPicker,
   confirmBlockUser,
 } from './ReportOrBlockPopup';
+// Named export (not only re-export default as) so static import audits see the symbol.
+import ReportOrBlockSheet from './ReportOrBlockSheet';
+export { ReportOrBlockSheet };
 export { submitContentReport } from './reportContent';
 export { REPORT_TYPES, REPORT_REASONS } from './reportReasons';

@@ -50,7 +50,7 @@ export default function TrainerMainScreen() {
       onOpenPrivacy={shell.openPrivacy}
     >
       <View style={{ flex: 1, backgroundColor: shell.isDark ? darkColors.nbBackground : lightColors.nbBackground }}>
-        <FreeTrialBanner />
+        <FreeTrialBanner onSubscribe={() => shell.openSettings?.()} />
       <SafeAreaView style={{ flex: 1 }} edges={SHELL_SAFE_AREA_EDGES}>
         <StatusBar barStyle={shell.isDark ? 'light-content' : 'dark-content'} />
         {!shell.showWorkoutGenerator &&
@@ -113,6 +113,16 @@ export default function TrainerMainScreen() {
             embedInLayout
             clients={shell.clients}
             trainerId={shell.user?.uid}
+            inviteCode={
+              shell.trainerProfileDoc?.inviteCode ||
+              shell.userData?.inviteCode ||
+              null
+            }
+            pendingRequestCount={Array.isArray(shell.pendingRequests) ? shell.pendingRequests.length : 0}
+            pendingRequestNames={(shell.pendingRequests || [])
+              .slice(0, 3)
+              .map((r) => r?.name || r?.displayName || r?.clientName)
+              .filter(Boolean)}
             isDark={shell.isDark}
             hasMore={shell.clientsHasMore}
             loadingMore={shell.clientsLoadingMore}
@@ -155,6 +165,7 @@ export default function TrainerMainScreen() {
             isDark={shell.isDark} clients={shell.clients} clientsLoading={shell.clientsLoading}
             pendingRequestsCount={shell.pendingRequests?.length ?? 0} unreadMessageCount={shell.unreadMessageCount}
             onClientRequestsPress={() => shell.setShowClientRequests(true)}
+            onOpenNotifications={() => shell.openNotifications?.()}
             onClientsPress={() => shell.setShowClientsList(true)}
             onMessagesPress={(clientId) => { shell.setSelectedClientIdForMessages(clientId); shell.setShowTrainerMessaging(false); shell.setShowConversationsList(true); }}
             onOpenPhotoGallery={(client) => {

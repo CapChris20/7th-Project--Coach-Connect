@@ -1,7 +1,8 @@
 // Client dashboard — structure locked to docs/design/mockups/client-home.html.
-// Flow: layout paints welcome → up next → trainer row → week → numbers → nutrition → workouts → check-in;
+// Flow: layout paints welcome hero → up next → trainer row → week → numbers → nutrition → workouts → check-in;
 //       the export loads Firestore sessions/metrics and passes handlers into that layout.
 // Used by the client shell. Metric cards still write users/{uid}/dailyLogs for today.
+// Hero visual law: screens/hero-and-welcome-redesign/03-04 (welcome + lifter + tagline only).
 //
 // vocab: nb = neo-brutalist tokens (3px ink border, hard offset shadow, fill hero) — not GradientFrame chrome
 
@@ -54,11 +55,11 @@ import { UpcomingSessionCard } from '../../for-both/home-cards/UpcomingSessionCa
 import { WORKOUT_DAY_EXAMPLES_SHORT } from '../../helpers/workoutDayNames';
 import { formatTime12 } from '../../helpers/sessionTimeText';
 import NbCard from '../../look-and-feel/NbCard';
+import NbButton from '../../look-and-feel/NbButton';
 import HardShadow from '../../look-and-feel/HardShadow';
 import NbRing from '../../look-and-feel/NbRing';
 import { lightColors, darkColors, accentGradients, navAccentGradient, nb } from '../../look-and-feel/colorPalette';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useDailyQuote } from '../../for-both/home-cards/DailyQuoteCard';
 import {
   DesignLawCheckInCard,
   DesignLawGoToGrid,
@@ -74,9 +75,7 @@ import {
 } from './DesignLawHomeBlocks';
 import WriteTrainerReviewPopup from './WriteTrainerReviewPopup';
 import FindTrainerBanner from '../../for-both/home-cards/FindTrainerBanner';
-
-// Recolored handoff lifter — yellow circles swapped to coral/pink (owner: no yellow).
-const HANDOFF_LIFTER_LOTTIE = require('../../assets/animations/handoff/zlifter-noyellow.json');
+import DesignLawHomeWelcomeHero from '../../for-both/home-cards/DesignLawHomeWelcomeHero';
 
 // ===== NAMED CONSTANTS =====
 
@@ -108,26 +107,6 @@ const METRIC_TILE_WIDTH = 148;
 const MOOD_EMPTY_LOTTIE = require('../../for-both/assets/Happy SUN.json');
 
 // ===== HELPER FUNCTIONS =====
-
-const formatHMS = (milliseconds) => {
-  const totalSeconds = Math.max(0, Math.floor(milliseconds / MS_PER_SECOND));
-  const hours = Math.floor(totalSeconds / SECONDS_PER_HOUR);
-  const minutes = Math.floor((totalSeconds % SECONDS_PER_HOUR) / SECONDS_PER_MINUTE);
-  const seconds = totalSeconds % SECONDS_PER_MINUTE;
-  const padTwoDigits = (part) => String(part).padStart(2, '0');
-  return `${padTwoDigits(hours)}:${padTwoDigits(minutes)}:${padTwoDigits(seconds)}`;
-};
-
-// Design Law motivation is a short punch line — clamp long dailyQuotes to a first clause.
-// Manipulate here: MAX_MOTIVATION_CHARS = how long the hero line can run before we cut.
-const MAX_MOTIVATION_CHARS = 42;
-function shortMotivationLine(raw) {
-  const text = String(raw || '').trim() || 'Keep showing up.';
-  if (text.length <= MAX_MOTIVATION_CHARS) return text;
-  const clause = text.split(/(?<=[.!?])\s+|;\s+| — | - /)[0]?.trim() || text;
-  if (clause.length <= MAX_MOTIVATION_CHARS) return clause.endsWith('.') ? clause : `${clause}.`;
-  return `${text.slice(0, MAX_MOTIVATION_CHARS - 1).trim()}…`;
-}
 
 // Handoff B/W/gray surfaces (docs/design/DESIGN.md).
 const DARK = {
@@ -1660,6 +1639,9 @@ function TrainingHomeScreenLayout({
   pendingReset,
   currentUser,
   onOpenWeeklyReport,
+  /** When set, header bell opens notifications instead of weekly report. */
+  onOpenNotifications,
+  onOpenMySessions,
   weeklyReportCard,
   weeklyReportCardLoading,
   untilResetMs,
@@ -1686,6 +1668,7 @@ function TrainingHomeScreenLayout({
   onPressFindTrainer,
   unreadMessageCount,
   onOpenPhotoGallery,
+  onOpenProgressCharts,
   trainerClientId,
   trainerClientName,
   photoGalleryBadgeCount,
@@ -1717,7 +1700,6 @@ function TrainingHomeScreenLayout({
   const hour = (localClock instanceof Date ? localClock : new Date()).getHours();
   const dayPart = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
-  const dailyQuote = useDailyQuote(currentUser?.uid);
 
   // Design Law sheets — log metric / trainer actions / review (screens 5–7)
   const [logMetricKey, setLogMetricKey] = useState(null);
@@ -1803,10 +1785,13 @@ function TrainingHomeScreenLayout({
       }
     });
     const sessionsDone = doneDays.size;
-    const sessionsGoal = 4;
+    // empty-vs-data PNG: brand-new clients show “0 of 0” + Build a plan (not a fake 4-session goal)
+    const hasAnyWorkoutHistory = (recentWorkouts || []).length > 0;
+    const sessionsGoal = hasAnyWorkoutHistory || sessionsDone > 0 ? 4 : 0;
     const monthShort = start.toLocaleString(undefined, { month: 'short' });
     const rangeLabel = `${monthShort} ${start.getDate()} to ${end.getDate()}`;
-    return { sessionsDone, sessionsGoal, doneDays, rangeLabel, pct: Math.min(1, sessionsDone / sessionsGoal) };
+    const pct = sessionsGoal > 0 ? Math.min(1, sessionsDone / sessionsGoal) : 0;
+    return { sessionsDone, sessionsGoal, doneDays, rangeLabel, pct, emptyWeek: sessionsGoal === 0 };
   })();
 
   const trainerInitials = String(trainerName || 'TR')
@@ -1865,10 +1850,15 @@ function TrainingHomeScreenLayout({
               {`${greeting}, ${firstName}`}
             </Text>
           </View>
-          {typeof onOpenWeeklyReport === 'function' ? (
+          {typeof onOpenNotifications === 'function' || typeof onOpenWeeklyReport === 'function' ? (
             <TouchableOpacity
-              onPress={() => onOpenWeeklyReport()}
-              accessibilityLabel="Notifications and week in review"
+              onPress={() => {
+                if (typeof onOpenNotifications === 'function') onOpenNotifications();
+                else if (typeof onOpenWeeklyReport === 'function') onOpenWeeklyReport();
+              }}
+              accessibilityLabel={
+                typeof onOpenNotifications === 'function' ? 'Notifications' : 'Notifications and week in review'
+              }
               style={[dash.sq, { borderColor: themeColors.cardBorder, backgroundColor: themeColors.cardBg }]}
             >
               {weeklyReportCardLoading ? (
@@ -1880,28 +1870,8 @@ function TrainingHomeScreenLayout({
           ) : null}
         </View>
 
-        {/* .welcome — Design Law poster: short punch line + quiet reset + lifter */}
-        <HardShadow offset={nb.shadowOffsetHero} radius={10} style={{ marginBottom: nb.blockGap }}>
-          <View style={[dash.welcome, { backgroundColor: themeColors.fill, borderColor: themeColors.cardBorder }]}>
-            <View style={{ flex: 1, paddingRight: 6, justifyContent: 'center' }}>
-              <Text style={[dash.eybOnFill, { color: themeColors.onFill }]}>Daily motivation</Text>
-              <Text style={[dash.welcomeQuote, { color: themeColors.onFill }]} numberOfLines={2}>
-                {shortMotivationLine(dailyQuote.q)}
-              </Text>
-              {dailyQuote.a ? (
-                <Text style={[dash.welcomeAuthor, { color: themeColors.onFill }]} numberOfLines={1}>
-                  {`— ${dailyQuote.a}`}
-                </Text>
-              ) : null}
-              <Text style={[dash.welcomeSub, { color: themeColors.onFill }]}>
-                {weekInfo.sessionsDone > 0
-                  ? `Session ${weekInfo.sessionsDone} of ${weekInfo.sessionsGoal} this week`
-                  : `Resets in ${formatHMS(untilResetMs)}`}
-              </Text>
-            </View>
-            <LottieView source={HANDOFF_LIFTER_LOTTIE} autoPlay loop style={{ width: 118, height: 118 }} />
-          </View>
-        </HardShadow>
+        {/* .hero4 — welcome + lifter + tagline only (no streak / stats / countdown) */}
+        <DesignLawHomeWelcomeHero themeColors={themeColors} variant="client" />
 
         {/* Up next */}
         <View style={dash.eybRow}>
@@ -1971,6 +1941,11 @@ function TrainingHomeScreenLayout({
             <Text style={{ fontSize: 13, color: themeColors.textMuted, marginTop: 4 }}>
               When your coach books a session, it shows up here.
             </Text>
+            {typeof onOpenMySessions === 'function' ? (
+              <TouchableOpacity onPress={onOpenMySessions} style={{ marginTop: 12 }} activeOpacity={0.85}>
+                <Text style={{ fontSize: 14, fontWeight: '800', color: themeColors.text }}>My sessions</Text>
+              </TouchableOpacity>
+            ) : null}
           </NbCard>
         )}
 
@@ -2012,8 +1987,8 @@ function TrainingHomeScreenLayout({
           // PNG 01 marketplace entry — Design Law fill banner (replaces the thin “No trainer yet” row)
           <FindTrainerBanner
             onPress={typeof onPressFindTrainer === 'function' ? onPressFindTrainer : onPressMessage}
+            onInvitePress={typeof onPressFindTrainer === 'function' ? onPressFindTrainer : onPressMessage}
             outerStyle={{ marginBottom: nb.blockGap, paddingHorizontal: 0 }}
-            hideInvite
           />
         )}
 
@@ -2056,16 +2031,26 @@ function TrainingHomeScreenLayout({
                   );
                 })}
               </View>
-              <View style={{ gap: 3 }}>
-                <Text style={{ fontSize: 13, fontWeight: '600', color: themeColors.textMuted }}>
-                  {typeof sleepHoursValue === 'number'
-                    ? `Sleep averaging ${sleepHoursValue} h`
-                    : 'Sleep updates from Today\'s numbers'}
-                </Text>
-                <Text style={{ fontSize: 13, fontWeight: '600', color: themeColors.textMuted }}>
-                  {`Water ${Math.round((waterOz || 0) / 8)} of 8 cups today`}
-                </Text>
-              </View>
+              {weekInfo.emptyWeek ? (
+                <NbButton
+                  variant="fill"
+                  onPress={() => onOpenAIWorkouts?.({ id: trainerClientId, name: trainerClientName })}
+                  style={{ alignSelf: 'stretch' }}
+                >
+                  Build a plan
+                </NbButton>
+              ) : (
+                <View style={{ gap: 3 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: themeColors.textMuted }}>
+                    {typeof sleepHoursValue === 'number'
+                      ? `Sleep averaging ${sleepHoursValue} h`
+                      : 'Sleep updates from Today\'s numbers'}
+                  </Text>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: themeColors.textMuted }}>
+                    {`Water ${Math.round((waterOz || 0) / 8)} of 8 cups today`}
+                  </Text>
+                </View>
+              )}
             </View>
           </View>
         </HardShadow>
@@ -2155,9 +2140,13 @@ function TrainingHomeScreenLayout({
             },
             {
               label: 'Progress',
-              sub: cappedBadgeLabel(photoGalleryBadgeCount, 'new', 'Photos'),
+              sub: 'Charts',
               icon: HANDOFF_PROGRESS,
-              onPress: () => onOpenPhotoGallery?.({ id: trainerClientId, name: trainerClientName }),
+              // Design Law: Go to Progress opens charts; photos live under the gallery route separately
+              onPress:
+                typeof onOpenProgressCharts === 'function'
+                  ? () => onOpenProgressCharts()
+                  : () => onOpenPhotoGallery?.({ id: trainerClientId, name: trainerClientName }),
             },
             {
               label: 'History',
@@ -2264,9 +2253,14 @@ export const TrainingHomeScreen = ({
   onPressViewProfile,
   onOpenRemoveTrainer,
   onOpenPhotoGallery,
+  /** Design Law Progress charts (Weight / Body fat / Lifts) — not the photo gallery. */
+  onOpenProgressCharts,
   onOpenAIWorkouts,
   /** Opens full-screen weekly report for the signed-in client (`users/{uid}/weeklySummaries`). */
   onOpenWeeklyReport,
+  /** Shell route to notifications stack — header bell prefers this over weekly report. */
+  onOpenNotifications,
+  onOpenMySessions,
   /** Opens Nutrition from the calories card (optional). */
   onPressCalories,
   /** Opens Notes & Files overlay from Home Go-to row. */
@@ -2663,6 +2657,8 @@ export const TrainingHomeScreen = ({
     pendingReset,
     currentUser,
     onOpenWeeklyReport,
+    onOpenNotifications,
+    onOpenMySessions,
     weeklyReportCard,
     weeklyReportCardLoading,
     untilResetMs,
@@ -2688,6 +2684,7 @@ export const TrainingHomeScreen = ({
     onPressFindTrainer,
     unreadMessageCount,
     onOpenPhotoGallery,
+    onOpenProgressCharts,
     trainerClientId,
     trainerClientName,
     photoGalleryBadgeCount,

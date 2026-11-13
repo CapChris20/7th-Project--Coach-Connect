@@ -14,6 +14,17 @@ Mockup file: `mockups/welcome-and-sign-in.html`  ·  Artifact id: `953rhucJV6tYm
 | Welcome, Create account, Sign in, Sign-in errors | `src/login-and-signup/LoginScreen.js`<br>`src/app-start/LoginGate.js` |
 | Forgot password, Check your inbox | `src/login-and-signup/ForgotPasswordFlow.js`<br>`src/login-and-signup/resetPasswordByEmail.js` |
 
+## Welcome + home heroes (newest — wins over older welcome / home top cards)
+
+Mockup file: `mockups/hero-and-welcome-redesign.html`  
+Screens: `screens/hero-and-welcome-redesign/` · See `UPDATE-WELCOME-AND-HEROES.md`
+
+| Mockup screens | Existing code to change |
+|---|---|
+| Welcome (01/02) | `src/login-and-signup/LoginScreen.js`<br>`src/login-and-signup/DesignLawWelcomeStage.jsx`<br>`src/for-both/icons/AppLogo.jsx`<br>`src/assets/logo/brandLogo.js`<br>`src/for-both/brand-chrome/DesignLawHeroChrome.jsx` |
+| Client home hero (03/04) | `src/client-app/home/TrainingHomeScreen.jsx`<br>`src/for-both/home-cards/DesignLawHomeWelcomeHero.jsx` |
+| Trainer home hero (05/06) | `src/trainer-app/home/DesignLawTrainerHomeBlocks.jsx`<br>`src/trainer-app/home/TrainerHomeContent.jsx`<br>`src/for-both/home-cards/DesignLawHomeWelcomeHero.jsx` |
+
 ## Client onboarding (8 screens)
 
 Mockup file: `mockups/client-onboarding.html`  ·  Artifact id: `3WqJR4w8LoX7YRYwtA9pmE`
@@ -111,7 +122,7 @@ Mockup file: `mockups/progress.html`  ·  Artifact id: `ArwYbvTE6Bq9m6F9kfBxrz`
 
 | Mockup screens | Existing code to change |
 |---|---|
-| Progress charts | `src/client-app/home/TrainingHomeScreen.jsx` |
+| Progress charts | `src/client-app/progress/ProgressChartsScreen.jsx` (opened from home Go to) |
 | Photos, viewer, compare | `src/for-both/photo-gallery/MyProgressPhotosScreen.jsx` |
 | Weekly report | `src/for-both/weekly-report` |
 | Spreadsheet viewer | `src/for-both/files-and-notes/viewers/SpreadsheetViewer.js`<br>`src/spreadsheet-support` |

@@ -162,6 +162,7 @@ export function goToTrainerScreen() {
   const openWeeklyReport = useCallback((clientId, clientName) => {
     rootNavigate(TRAINER_ROUTES.WeeklyReport, { clientId, clientName: clientName || '' });
   }, []);
+  const openNotifications = useCallback(() => rootNavigate(TRAINER_ROUTES.Notifications), []);
   const openManualPlanBuilder = useCallback(() => rootNavigate(TRAINER_ROUTES.ManualPlanBuilder), []);
   const openPayments = useCallback(() => rootNavigate(TRAINER_ROUTES.Payments), []);
 
@@ -283,6 +284,7 @@ export function goToTrainerScreen() {
     openVoiceAI,
     openAIChatSession,
     openWeeklyReport,
+    openNotifications,
     openManualPlanBuilder,
     openPayments,
     handleHomePress,

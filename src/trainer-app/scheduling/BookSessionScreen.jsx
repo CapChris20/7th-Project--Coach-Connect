@@ -6,8 +6,9 @@
 // vocab: useShellTopPad = status-bar clearance when shell SafeArea is left/right only
 // Manipulate here: UPCOMING_LIMIT, week length (7), empty-state copy
 
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
+  Alert,
   ScrollView,
   StyleSheet,
   Text,
@@ -24,9 +25,11 @@ import {
   addWeeks,
   subWeeks,
 } from 'date-fns';
-import { useSessions } from '../scheduling/mySessions';
+import { useDeleteTrainingSession, useSessions } from '../scheduling/mySessions';
 import { MonthCalendar } from './MonthCalendar';
 import { SessionCard } from './SessionCard';
+import SessionDetailSheet from './SessionDetailSheet';
+import DeleteSessionSheet from './DeleteSessionSheet';
 import {
   FORM_SCROLL_PROPS,
   useEmbeddedScrollBottomPad,
@@ -202,9 +205,11 @@ export const BookSessionScreen = ({
   onNavigate,
   clientId,
   clientName,
+  onMessageClient,
 }) => {
   const { colors, isDark: _isDark } = useTheme();
   const { sessions } = useSessions();
+  const deleteSession = useDeleteTrainingSession();
   const shellTopPad = useShellTopPad(spacing.sm);
   const scrollBottomPad = useEmbeddedScrollBottomPad(
     embedded ? SCROLL_BOTTOM_PAD_EMBEDDED : SCROLL_BOTTOM_PAD_STANDALONE,
@@ -215,6 +220,10 @@ export const BookSessionScreen = ({
   const [calendarMode, setCalendarMode] = useState('week');
   const [weekAnchor, setWeekAnchor] = useState(() => new Date());
   const [selectedDate, setSelectedDate] = useState(() => dateKeyFromDate(new Date()));
+  // Detail sheet first (PNG 13); delete confirm is a second sheet (PNG 15)
+  const [detailSession, setDetailSession] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   const clientLabel = clientName || (clientId ? 'this client' : 'all clients');
   const todayKey = dateKeyFromDate(new Date());
@@ -262,9 +271,50 @@ export const BookSessionScreen = ({
     return `/sessions/new?date=${encodeURIComponent(dateKey)}`;
   }
 
-  function goToSession(sessionId) {
-    onNavigate?.(`/sessions/${sessionId}`);
-  }
+  const openDetail = useCallback((session) => {
+    setDetailSession(session);
+  }, []);
+
+  const closeDetail = useCallback(() => setDetailSession(null), []);
+
+  const handleReschedule = useCallback(
+    (session) => {
+      setDetailSession(null);
+      if (session?.id) onNavigate?.(`/sessions/${session.id}`);
+    },
+    [onNavigate],
+  );
+
+  const handleMessage = useCallback(
+    (session) => {
+      setDetailSession(null);
+      if (typeof onMessageClient === 'function') {
+        onMessageClient(session);
+        return;
+      }
+      // Fallback: open edit form if chat wiring is not mounted yet
+      if (session?.id) onNavigate?.(`/sessions/${session.id}`);
+    },
+    [onMessageClient, onNavigate],
+  );
+
+  const openDeleteFromDetail = useCallback((session) => {
+    setDetailSession(null);
+    setDeleteTarget(session);
+  }, []);
+
+  const confirmDelete = useCallback(async () => {
+    if (!deleteTarget?.id) return;
+    setDeleteBusy(true);
+    try {
+      await deleteSession(deleteTarget.id);
+      setDeleteTarget(null);
+    } catch (e) {
+      Alert.alert('Error', e?.message || 'Failed to delete session');
+    } finally {
+      setDeleteBusy(false);
+    }
+  }, [deleteSession, deleteTarget]);
 
   const agendaCount = sessionsOnSelectedDate.length;
   const agendaTitle = selectedDate
@@ -383,7 +433,7 @@ export const BookSessionScreen = ({
                 {sessionsOnSelectedDate.map((session) => (
                   <TouchableOpacity
                     key={session.id}
-                    onPress={() => goToSession(session.id)}
+                    onPress={() => openDetail(session)}
                     activeOpacity={0.88}
                   >
                     <SessionCard session={session} showDate={false} />
@@ -413,7 +463,7 @@ export const BookSessionScreen = ({
                     {daySessions.map((session) => (
                       <TouchableOpacity
                         key={session.id}
-                        onPress={() => goToSession(session.id)}
+                        onPress={() => openDetail(session)}
                         activeOpacity={0.88}
                       >
                         <SessionCard session={session} showDate={false} />
@@ -436,6 +486,22 @@ export const BookSessionScreen = ({
           </NbButton>
         ) : null}
       </ScrollView>
+
+      <SessionDetailSheet
+        visible={!!detailSession}
+        session={detailSession}
+        onClose={closeDetail}
+        onMessage={handleMessage}
+        onReschedule={handleReschedule}
+        onDelete={openDeleteFromDetail}
+      />
+      <DeleteSessionSheet
+        visible={!!deleteTarget}
+        onClose={() => !deleteBusy && setDeleteTarget(null)}
+        onConfirm={confirmDelete}
+        clientName={deleteTarget?.clientName}
+        busy={deleteBusy}
+      />
     </View>
   );
 };

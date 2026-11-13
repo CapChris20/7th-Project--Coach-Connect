@@ -74,9 +74,9 @@ export default function SlideUpMenu({ visible, onClose, title, children, theme }
 
   if (!visible) return null;
 
-  const sheetBg = theme?.headerBg;
-  const sheetBorder = theme?.border;
-  const handleColor = theme?.border;
+  const sheetBg = theme?.pageBg ?? theme?.headerBg;
+  const sheetBorder = theme?.chromeBorder ?? theme?.border;
+  const handleColor = theme?.textMuted ?? theme?.border;
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
@@ -122,15 +122,15 @@ export function SheetMenuItem({ icon, label, shortcut, onPress, theme }) {
     <TouchableOpacity
       onPress={onPress}
       activeOpacity={ITEM_ACTIVE_OPACITY}
-      style={[styles.item, { minHeight: ITEM_MIN_HEIGHT, borderBottomColor: theme?.divider }]}
+      style={[styles.item, { minHeight: ITEM_MIN_HEIGHT, borderBottomColor: theme?.chromeBorder ?? theme?.divider }]}
     >
       {icon ? (
         <View
           style={[
             styles.iconWrap,
             {
-              backgroundColor: theme?.headerBg,
-              borderColor: theme?.border,
+              backgroundColor: theme?.pageBg ?? theme?.headerBg,
+              borderColor: theme?.chromeBorder ?? theme?.border,
             },
           ]}
         >

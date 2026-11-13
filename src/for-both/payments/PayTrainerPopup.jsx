@@ -18,7 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
 import NbButton from '../../look-and-feel/NbButton';
 import NbCard from '../../look-and-feel/NbCard';
-import { NbSheet } from '../../look-and-feel/NbSheet';
+import NbSheet from '../../look-and-feel/NbSheet';
 import { postCoachingCharge } from './chargeCard';
 import {
   getStripeNativeModule,

@@ -1,7 +1,8 @@
 // Design Law signed-out stack: welcome poster → create account → sign in (one component, no navigator).
 // Flow: `currentView` swaps the three screens → email / Google / Apple auth → users/{uid} →
 //       onSignupSuccess or onLoginSuccess so LoginGate routes into the app.
-// Used by LoginGate when nobody is signed in. Visual law: screens/welcome-and-sign-in PNGs.
+// Used by LoginGate when nobody is signed in.
+// Visual law: screens/hero-and-welcome-redesign (welcome) + screens/welcome-and-sign-in (auth).
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
@@ -29,7 +30,6 @@ import { httpsCallable } from 'firebase/functions';
 import * as Google from 'expo-auth-session/providers/google';import * as WebBrowser from 'expo-web-browser';
 import { pickImage } from '../ai-coach/conversation/photoPermissions';
 import { uploadProfileImage } from '../for-both/cloud-database/uploadAndDownloadFiles';
-import LottieView from 'lottie-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Crypto from 'expo-crypto';
@@ -43,8 +43,11 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import AppLogo from '../for-both/icons/AppLogo';
 import { cachePendingSignupProfile } from './decideTraineeOrTrainer';
+import DesignLawWelcomeStage from './DesignLawWelcomeStage';
 import NbButton from '../look-and-feel/NbButton';
+import NbCard from '../look-and-feel/NbCard';
 import NbPageHeader from '../look-and-feel/NbPageHeader';
+import NbSheet from '../look-and-feel/NbSheet';
 import HardShadow from '../look-and-feel/HardShadow';
 import {
   nb,
@@ -115,10 +118,7 @@ function buildAppleDisplayName(appleCredential) {
 /** Auth + onboarding CTA (dark pink → dark orange) */
 const AUTH_CTA_GRADIENT = ['#C1265A', '#D84315'];
 
-/** Shown when Client/Trainer toggle does not match the account's role in Firestore */
-const ROLE_MISMATCH_TITLE = 'Wrong account type';
-const ROLE_MISMATCH_MESSAGE =
-  'The account you entered is on the opposite side. Please change the Client / Trainer toggle at the top to match your account, then try again.';
+/** After role mismatch we reopen sign-in (NbSheet on login view) instead of a legacy popup */
 const ROLE_MISMATCH_NEXT_VIEW_KEY = 'auth_role_mismatch_next_view';
 let roleMismatchNextViewInMemory = null;
 
@@ -189,8 +189,6 @@ const LIGHT = {
   signinLink: lightColors.nbInk,
 };
 
-// Manipulate here: welcome ticker copy under the black wordmark poster
-const WELCOME_TICKER = 'One Day or Day One!  |  One Day or Day One!  |  One Day or Day One!';
 const PASSWORD_RULE_LENGTH = '8+ characters';
 const PASSWORD_RULE_LETTER = 'A letter';
 const PASSWORD_RULE_NUMBER = 'A number';
@@ -257,6 +255,54 @@ function collectLoginErrors({ loginEmail, loginPassword }) {
   if (emailError) errors.email = emailError;
   if (!loginPassword) errors.password = 'Password is required';
   return errors;
+}
+
+// Maps Firebase sign-in failures to PNG 07/08 field copy (dashed border + ! row under the field).
+function mapFirebaseLoginErrorToFields(error) {
+  const code = error?.code || '';
+  if (code === 'auth/user-not-found') {
+    return { fieldErrors: { email: 'No account found with this email address.' }, banner: null };
+  }
+  if (code === 'auth/wrong-password' || code === 'auth/invalid-credential' || code === 'auth/invalid-login-credentials') {
+    return { fieldErrors: { password: 'Incorrect password. Please try again.' }, banner: null };
+  }
+  if (code === 'auth/invalid-email') {
+    return { fieldErrors: { email: 'Please enter a valid email address.' }, banner: null };
+  }
+  if (code === 'auth/user-disabled') {
+    return {
+      fieldErrors: {},
+      banner: { title: 'Account disabled', message: 'This account has been disabled.' },
+    };
+  }
+  if (code === 'auth/too-many-requests') {
+    return {
+      fieldErrors: {},
+      banner: { title: 'Too many attempts', message: 'Too many failed attempts. Please try again later.' },
+    };
+  }
+  return {
+    fieldErrors: {},
+    banner: {
+      title: 'Sign-in failed',
+      message: error?.message || 'Failed to sign in. Please try again.',
+    },
+  };
+}
+
+function roleMismatchSheetContent(selectedRole, actualRole) {
+  const onTrainerToggle = selectedRole === 'client' && actualRole === 'trainer';
+  return {
+    pill: 'Wrong account type',
+    headline: onTrainerToggle
+      ? 'This email belongs to a trainer account'
+      : 'This email belongs to a client account',
+    body: onTrainerToggle
+      ? 'You are on the client sign-in. Switch to trainer sign-in, or use a different email.'
+      : 'You are on the trainer sign-in. Switch to client sign-in, or use a different email.',
+    switchLabel: onTrainerToggle ? 'Switch to trainer sign-in' : 'Switch to client sign-in',
+    switchTo: actualRole,
+  };
 }
 
 function messageForSignupAuthError(error) {
@@ -772,6 +818,36 @@ function AuthField({
         </View>
       ) : null}
     </View>
+  );
+}
+
+// HardShadow card for rare sign-in failures that are not tied to one field (PNG 07/08 style chrome).
+function AuthBannerErrorCard({ title, message, theme }) {
+  return (
+    <NbCard style={{ marginBottom: spacing.md, padding: spacing.md }}>
+      <View style={{ flexDirection: 'row', gap: 12, alignItems: 'flex-start' }}>
+        <View
+          style={[
+            authUiStyles.errorDot,
+            {
+              borderColor: theme.border,
+              backgroundColor: theme.fill,
+              width: 28,
+              height: 28,
+              borderRadius: 14,
+            },
+          ]}
+        >
+          <Text style={[authUiStyles.errorBang, { color: theme.onFill }]}>!</Text>
+        </View>
+        <View style={{ flex: 1 }}>
+          {title ? (
+            <Text style={{ fontSize: 15, fontWeight: '900', color: theme.ink, marginBottom: 4 }}>{title}</Text>
+          ) : null}
+          <Text style={{ fontSize: 13, fontWeight: '600', color: theme.muted, lineHeight: 18 }}>{message}</Text>
+        </View>
+      </View>
+    </NbCard>
   );
 }
 
@@ -1415,6 +1491,8 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
   const [loginPassword, setLoginPassword] = useState('');
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginErrors, setLoginErrors] = useState({});
+  const [loginBannerError, setLoginBannerError] = useState(null);
+  const [roleMismatchSheet, setRoleMismatchSheet] = useState(null);
 
   const [errorModal, setErrorPopup] = useState(null);
 
@@ -1434,7 +1512,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
     } catch (e) {
       console.warn('signOut after role mismatch:', e?.message || e);
     }
-    setErrorPopup({ title: ROLE_MISMATCH_TITLE, message: ROLE_MISMATCH_MESSAGE });
+    setRoleMismatchSheet({ actualRole: actual });
     return false;
   }, []);
 
@@ -1658,11 +1736,12 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
   };
 
   const handleLogin = async () => {
+    setLoginBannerError(null);
     if (!validateLoginForm()) return;
-    
+
     if (!auth) {
-      setErrorPopup({
-        title: 'Error',
+      setLoginBannerError({
+        title: 'Auth unavailable',
         message: 'Firebase authentication is not initialized. Please check your configuration.',
       });
       return;
@@ -1681,37 +1760,13 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
       }
     } catch (error) {
       console.error('Login error:', error);
-      let errorMessage = 'Failed to sign in. Please try again.';
-      
-      switch (error.code) {
-        case 'auth/user-not-found':
-          errorMessage = 'No account found with this email address.';
-          break;
-        case 'auth/wrong-password':
-          errorMessage = 'Incorrect password. Please try again.';
-          break;
-        case 'auth/invalid-email':
-          errorMessage = 'Invalid email address.';
-          break;
-        case 'auth/user-disabled':
-          errorMessage = 'This account has been disabled.';
-          break;
-        case 'auth/too-many-requests':
-          errorMessage = 'Too many failed attempts. Please try again later.';
-          break;
-        default:
-          errorMessage = error.message || errorMessage;
+      const { fieldErrors, banner } = mapFirebaseLoginErrorToFields(error);
+      if (fieldErrors.email || fieldErrors.password) {
+        setLoginErrors((prev) => ({ ...prev, ...fieldErrors }));
+        setLoginBannerError(null);
+      } else if (banner) {
+        setLoginBannerError(banner);
       }
-      
-      setErrorPopup({
-        title: 'Login Failed',
-        message: errorMessage,
-        retryText: 'Try again',
-        onRetry: () => {
-          setErrorPopup(null);
-          void handleLogin();
-        },
-      });
     } finally {
       setLoginLoading(false);
     }
@@ -1804,8 +1859,8 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
   };
 
   // ==================== RENDER VIEWS ====================
-  // Design Law welcome (01/02): fill poster wordmark + ticker, paired illustration cards,
-  // headline, solid Get started, underlined Sign in. Theme chip top-right.
+  // Design Law welcome (hero-and-welcome-redesign 01/02): CC logo stage, 3 tilted tiles,
+  // “in sync.” highlight, solid Get started, underlined Sign in. Theme chip top-right.
   const renderWelcomeView = () => (
     <RNAnimated.View style={{ flex: 1, backgroundColor: animatedBg }}>
       <ScrollView
@@ -1825,154 +1880,9 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
           />
         </View>
 
-        {/* Black/white fill poster — brand is the hero, not an accent word */}
-        <HardShadow offset={nb.shadowOffsetHero} radius={borderRadius.nbHero} style={{ marginBottom: spacing.md }}>
-          <View
-            style={{
-              borderWidth: nb.borderWidth,
-              borderColor: landingTheme.border,
-              backgroundColor: landingTheme.fill,
-              borderRadius: borderRadius.nbHero,
-              paddingTop: 22,
-              paddingHorizontal: 16,
-              paddingBottom: 14,
-              overflow: 'hidden',
-            }}
-          >
-            <Text
-              style={{
-                fontSize: 42,
-                fontWeight: '900',
-                letterSpacing: -2,
-                color: landingTheme.onFill,
-                textAlign: 'center',
-              }}
-            >
-              COACH CONNECT
-            </Text>
-            <View
-              style={{
-                marginTop: 14,
-                borderTopWidth: 2,
-                borderTopColor: landingTheme.onFill,
-                paddingTop: 10,
-              }}
-            >
-              <Text
-                style={{
-                  fontSize: 13,
-                  fontWeight: '800',
-                  fontStyle: 'italic',
-                  color: landingTheme.onFill,
-                  letterSpacing: 0.2,
-                }}
-                numberOfLines={1}
-              >
-                {WELCOME_TICKER}
-              </Text>
-            </View>
-          </View>
-        </HardShadow>
+        <DesignLawWelcomeStage theme={landingTheme} />
 
-        {/* Paired feature cards under the poster (AI Lottie + plans chip) */}
-        <View style={{ flexDirection: 'row', gap: 12, marginBottom: spacing.lg }}>
-          <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard} style={{ flex: 1 }}>
-            <View
-              style={{
-                borderWidth: nb.borderWidth,
-                borderColor: landingTheme.border,
-                backgroundColor: landingTheme.surface,
-                borderRadius: borderRadius.nbCard,
-                height: 140,
-                alignItems: 'center',
-                justifyContent: 'center',
-                overflow: 'hidden',
-              }}
-            >
-              <LottieView
-                source={require('../assets/animations/handoff/robot.json')}
-                autoPlay
-                loop
-                style={{ width: 120, height: 120 }}
-              />
-            </View>
-          </HardShadow>
-          <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard} style={{ flex: 1 }}>
-            <View
-              style={{
-                borderWidth: nb.borderWidth,
-                borderColor: landingTheme.border,
-                backgroundColor: landingTheme.surface,
-                borderRadius: borderRadius.nbCard,
-                height: 140,
-                padding: 12,
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 10,
-              }}
-            >
-              <View
-                style={{
-                  width: 52,
-                  height: 52,
-                  borderRadius: borderRadius.nbIconChip,
-                  borderWidth: nb.borderWidth,
-                  borderColor: landingTheme.border,
-                  overflow: 'hidden',
-                }}
-              >
-                <LinearGradient
-                  colors={accentGradients[3]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
-                >
-                  <Image
-                    source={require('../assets/icons/handoff/dumbbell.png')}
-                    style={{ width: 28, height: 28, resizeMode: 'contain' }}
-                  />
-                </LinearGradient>
-              </View>
-              <Text
-                style={{
-                  fontSize: 13,
-                  fontWeight: '900',
-                  color: landingTheme.ink,
-                  textAlign: 'center',
-                  lineHeight: 18,
-                }}
-              >
-                Plans, logs, check-ins
-              </Text>
-            </View>
-          </HardShadow>
-        </View>
-
-        <View style={{ flex: 1, justifyContent: 'flex-end' }}>
-          <Text
-            style={{
-              fontSize: 28,
-              fontWeight: '900',
-              letterSpacing: -0.6,
-              color: landingTheme.heading,
-              marginBottom: 8,
-              lineHeight: 34,
-            }}
-          >
-            Trainers and clients, finally in sync.
-          </Text>
-          <Text
-            style={{
-              fontSize: 15,
-              fontWeight: '500',
-              lineHeight: 22,
-              color: landingTheme.subtitle,
-              marginBottom: spacing.lg,
-            }}
-          >
-            One platform for programming, tracking, and communication.
-          </Text>
-
+        <View style={{ flex: 1, justifyContent: 'flex-end', marginTop: spacing.lg }}>
           <NbButton variant="fill" onPress={onGetStarted} style={{ marginBottom: spacing.md }}>
             Get started >
           </NbButton>
@@ -3028,6 +2938,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
               onChangeText={(text) => {
                 setLoginEmail(text);
                 if (loginErrors.email) setLoginErrors({ ...loginErrors, email: '' });
+                if (loginBannerError) setLoginBannerError(null);
               }}
               placeholder="alex@example.com"
               keyboardType="email-address"
@@ -3042,6 +2953,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
               onChangeText={(text) => {
                 setLoginPassword(text);
                 if (loginErrors.password) setLoginErrors({ ...loginErrors, password: '' });
+                if (loginBannerError) setLoginBannerError(null);
               }}
               placeholder="••••••••"
               secureTextEntry
@@ -3083,6 +2995,14 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
               {loginLoading ? 'Signing in…' : 'Sign in'}
             </NbButton>
 
+            {loginBannerError ? (
+              <AuthBannerErrorCard
+                title={loginBannerError.title}
+                message={loginBannerError.message}
+                theme={landingTheme}
+              />
+            ) : null}
+
             <AuthOrDivider label="OR CONTINUE WITH" theme={landingTheme} />
             <SocialAuthRow
               onApple={onApple}
@@ -3107,6 +3027,10 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
   };
 
   // ==================== MAIN RENDER ====================
+  const roleMismatchCopy = roleMismatchSheet
+    ? roleMismatchSheetContent(role, roleMismatchSheet.actualRole)
+    : null;
+
   return (
     <>
       {currentView === 'welcome'
@@ -3114,6 +3038,54 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
         : currentView === 'signup'
           ? renderSignupViewLiquid()
           : renderLoginViewLiquid()}
+      <NbSheet
+        visible={!!roleMismatchSheet && currentView === 'login'}
+        onClose={() => setRoleMismatchSheet(null)}
+      >
+        {roleMismatchCopy ? (
+          <View style={{ paddingBottom: spacing.lg, gap: spacing.md }}>
+            <View
+              style={{
+                alignSelf: 'flex-start',
+                borderWidth: nb.borderWidth,
+                borderColor: landingTheme.border,
+                backgroundColor: landingTheme.soft,
+                borderRadius: 999,
+                paddingHorizontal: 12,
+                paddingVertical: 6,
+              }}
+            >
+              <Text style={{ fontSize: 12, fontWeight: '900', color: landingTheme.ink, letterSpacing: 0.3 }}>
+                {roleMismatchCopy.pill}
+              </Text>
+            </View>
+            <Text style={{ fontSize: 22, fontWeight: '900', color: landingTheme.ink, lineHeight: 28 }}>
+              {roleMismatchCopy.headline}
+            </Text>
+            <Text style={{ fontSize: 15, fontWeight: '500', color: landingTheme.muted, lineHeight: 22 }}>
+              {roleMismatchCopy.body}
+            </Text>
+            <NbButton
+              variant="fill"
+              onPress={() => {
+                setRole(roleMismatchCopy.switchTo);
+                setRoleMismatchSheet(null);
+              }}
+            >
+              {roleMismatchCopy.switchLabel}
+            </NbButton>
+            <NbButton
+              variant="ghost"
+              onPress={() => {
+                setLoginPassword('');
+                setRoleMismatchSheet(null);
+              }}
+            >
+              Use a different email
+            </NbButton>
+          </View>
+        ) : null}
+      </NbSheet>
       <ErrorPopup
         visible={!!errorModal}
         title={errorModal?.title ?? 'Error'}

@@ -7,12 +7,13 @@ import React, {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from 'react';
-import { StatusBar, StyleSheet, View } from 'react-native';
+import { Animated, StatusBar, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import LoadingBarAnimation from './LoadingBarAnimation';
 
@@ -21,8 +22,12 @@ import LoadingBarAnimation from './LoadingBarAnimation';
 // Starts at 1 so the overlay is visible on first paint, before any screen has acquired a lock.
 const INITIAL_LOCK_COUNT = 1;
 // Manipulate here: bar width on the boot splash.
-const LOADING_BAR_WIDTH = 300;
+const LOADING_BAR_WIDTH = 280;
 const STATUS_BAR_STYLE_LIGHT = 'light-content';
+const LOADING_COPY = 'Loading your plan and logs';
+const BRAND_LINE_1 = 'COACH';
+const BRAND_LINE_2 = 'CONNECT';
+const BRAND_TAGLINE = 'One Day or Day One!';
 
 const StartupLoadingCoverContext = createContext({
   acquire: () => {},
@@ -112,6 +117,47 @@ export function useStartupLoadingCoverLock(active) {
   }, [active, acquire, release]);
 }
 
+/** Three bouncing squares under the brand (loading-and-errors PNG 01). */
+function BouncingDots() {
+  const a = useRef(new Animated.Value(0)).current;
+  const b = useRef(new Animated.Value(0)).current;
+  const c = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const bounce = (value, delay) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.delay(delay),
+          Animated.timing(value, { toValue: 1, duration: 280, useNativeDriver: true }),
+          Animated.timing(value, { toValue: 0, duration: 280, useNativeDriver: true }),
+          Animated.delay(420),
+        ]),
+      );
+    const anims = [bounce(a, 0), bounce(b, 120), bounce(c, 240)];
+    anims.forEach((x) => x.start());
+    return () => anims.forEach((x) => x.stop());
+  }, [a, b, c]);
+
+  const styleFor = (value, offsetY) => ({
+    transform: [
+      {
+        translateY: value.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0, -10 - offsetY],
+        }),
+      },
+    ],
+  });
+
+  return (
+    <View style={styles.dotsRow}>
+      <Animated.View style={[styles.dot, styleFor(a, 0)]} />
+      <Animated.View style={[styles.dot, styles.dotMid, styleFor(b, 2)]} />
+      <Animated.View style={[styles.dot, styles.dotLow, styleFor(c, 4)]} />
+    </View>
+  );
+}
+
 /**
  * Always mounted. Opacity toggles only — animation keeps running.
  * @returns {React.ReactElement}
@@ -120,6 +166,7 @@ export function StartupLoadingCoverOverlay() {
   const { visible } = useStartupLoadingCover();
 
   // 1. Stay mounted. Hide with opacity so the bar keeps looping while lockCount is 0.
+  // 2. Poster brand + bouncing dots + prism bar match Design Law startup PNG.
   return (
     <View
       style={[styles.overlay, !visible && styles.hidden]}
@@ -128,8 +175,17 @@ export function StartupLoadingCoverOverlay() {
     >
       <SafeAreaView style={styles.screen}>
         <StatusBar barStyle={STATUS_BAR_STYLE_LIGHT} />
-        <View style={styles.content}>
-          <LoadingBarAnimation width={LOADING_BAR_WIDTH} />
+        <View style={styles.poster}>
+          <View style={styles.brandBlock}>
+            <Text style={styles.brand}>{BRAND_LINE_1}</Text>
+            <Text style={styles.brand}>{BRAND_LINE_2}</Text>
+            <Text style={styles.tagline}>{BRAND_TAGLINE}</Text>
+          </View>
+          <View style={styles.loaderBlock}>
+            <BouncingDots />
+            <LoadingBarAnimation width={LOADING_BAR_WIDTH} />
+            <Text style={styles.loadingCopy}>{LOADING_COPY}</Text>
+          </View>
         </View>
       </SafeAreaView>
     </View>
@@ -162,12 +218,37 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: '#0A0A0A',
-    justifyContent: 'center',
-    alignItems: 'center',
   },
-  content: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 20,
+  poster: {
+    flex: 1,
+    paddingHorizontal: 28,
+    paddingTop: 48,
+    paddingBottom: 56,
+    justifyContent: 'space-between',
+  },
+  brandBlock: { gap: 4 },
+  brand: {
+    color: '#FFFFFF',
+    fontSize: 44,
+    fontWeight: '900',
+    letterSpacing: -1.2,
+    lineHeight: 48,
+  },
+  tagline: {
+    marginTop: 10,
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+    fontStyle: 'italic',
+  },
+  loaderBlock: { gap: 14, alignItems: 'flex-start' },
+  dotsRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, height: 28 },
+  dot: { width: 10, height: 10, backgroundColor: '#FFFFFF', borderRadius: 2 },
+  dotMid: { marginBottom: 4 },
+  dotLow: { marginBottom: 8 },
+  loadingCopy: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
   },
 });

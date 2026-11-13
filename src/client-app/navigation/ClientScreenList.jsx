@@ -21,9 +21,13 @@ import {
   ClientTrainerViewMyMyProfileScreen,
   ClientWeeklyReportScreen,
   ClientMyProgressPhotosScreen,
+  ClientProgressChartsScreen,
+  ClientNotificationsScreen,
   ClientAIWorkoutsScreen,
   ClientMyWorkoutPlanScreen,
   ClientWorkoutSessionScreen,
+  ClientMySessionsScreen,
+  ClientRequestSessionScreen,
   ClientCoachHomeScreen,
   ClientCoachConversationScreen,
   ClientAICoachTestScreen,
@@ -74,9 +78,13 @@ export default function ClientScreenList() {
       {pushedClientScreen(CLIENT_ROUTES.TrainerProfile, ClientTrainerViewMyMyProfileScreen)}
       {pushedClientScreen(CLIENT_ROUTES.WeeklyReport, ClientWeeklyReportScreen)}
       {pushedClientScreen(CLIENT_ROUTES.PhotoGallery, ClientMyProgressPhotosScreen)}
+      {pushedClientScreen(CLIENT_ROUTES.ProgressCharts, ClientProgressChartsScreen)}
+      {pushedClientScreen(CLIENT_ROUTES.Notifications, ClientNotificationsScreen)}
       {pushedClientScreen(CLIENT_ROUTES.AIWorkouts, ClientAIWorkoutsScreen)}
       {pushedClientScreen(CLIENT_ROUTES.PlanViewer, ClientMyWorkoutPlanScreen)}
       {pushedClientScreen(CLIENT_ROUTES.WorkoutSession, ClientWorkoutSessionScreen)}
+      {pushedClientScreen(CLIENT_ROUTES.MySessions, ClientMySessionsScreen)}
+      {pushedClientScreen(CLIENT_ROUTES.RequestSession, ClientRequestSessionScreen)}
       {pushedClientScreen(CLIENT_ROUTES.AI, ClientCoachHomeScreen)}
       {pushedClientScreen(CLIENT_ROUTES.AIChat, ClientCoachConversationScreen)}
       {pushedClientScreen(QA_COACH_TEST_ROUTE, ClientAICoachTestScreen)}

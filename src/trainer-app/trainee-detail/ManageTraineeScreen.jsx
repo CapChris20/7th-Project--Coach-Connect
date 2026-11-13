@@ -4,9 +4,8 @@
 //
 // vocab: NbCard / NbAvatar = neobrutalist profile shell; ProgressTab / NutritionTab reuse home tab bodies
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
-  ActionSheetIOS,
   ActivityIndicator,
   Alert,
   Platform,
@@ -18,8 +17,9 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { httpsCallable } from 'firebase/functions';
 import { doc, getDoc, getDocs, onSnapshot, collection, query, where } from 'firebase/firestore';
-import { db } from '../../app-start/cloudConnection';
+import { db, functions } from '../../app-start/cloudConnection';
 import { getProfileDateKey } from '../../helpers/dateStrings';
 import { getFoodLogsForDate, calculateMacroTotals, getDailyGoals } from '../../nutrition/daily-log/saveLoggedFood';
 import {
@@ -32,7 +32,7 @@ import SpreadsheetViewer from '../../for-both/files-and-notes/viewers/Spreadshee
 import DocumentEditor from '../documents/DocumentEditor';
 import SpreadsheetEditor from '../documents/SpreadsheetEditor';
 import ShareDocumentPopup from '../documents/ShareDocumentPopup';
-import RemoveTrainerPopup from '../../for-both/popups/RemoveTrainerPopup';
+import RemoveClientSheet from '../my-trainees/RemoveClientSheet';
 import CalendarTab from '../scheduling/CalendarTab';
 import ProgressTab from '../progress-tab/TrainerProgressTab';
 import NutritionTab from '../nutrition-tab/TrainerNutritionTab';
@@ -40,16 +40,14 @@ import { isBenignTrainerClientFirestoreError } from '../trainee-records/calmData
 import { FORM_SCROLL_PROPS, useEmbeddedScrollBottomPad } from '../../navigation/bottomMenuSpacing';
 import {
   TabPills,
-  Icon,
   ICON_ACCENT,
   TrainerNotesFilesHeroAndWorkspace,
-  getClientInitials,
   getClientSubtext,
   useTrainerTheme,
 } from '../home/trainerHomePieces';
-import { lightColors, darkColors } from '../../look-and-feel/colorPalette';
+import { lightColors, darkColors, nb, spacing } from '../../look-and-feel/colorPalette';
 import NbCard from '../../look-and-feel/NbCard';
-import NbAvatar from '../../look-and-feel/NbAvatar';
+import HardShadow from '../../look-and-feel/HardShadow';
 
 // ===== NAMED CONSTANTS =====
 
@@ -61,8 +59,6 @@ const TAB_NOTES_FILES = 'Notes & Files';
 const SCROLL_BOTTOM_PAD = 48;
 const DEFAULT_PROGRAM_NAME = 'Custom Workout Plan';
 const DEFAULT_CLIENT_LABEL = 'Client';
-const DEFAULT_TRAINER_LABEL = 'Trainer';
-const NO_NAME_LABEL = 'No Name';
 
 // Manipulate here: fallback macro goals when getDailyGoals fails or returns blanks.
 const DEFAULT_PROTEIN_GOAL = 150;
@@ -71,17 +67,8 @@ const DEFAULT_FAT_GOAL = 70;
 const DEFAULT_CALORIES_GOAL = 2000;
 
 const MAX_LIKED_EXERCISES_SHOWN = 12;
-const REMOVE_SHEET_TITLE = 'Remove client?';
-const REMOVE_SHEET_MESSAGE =
-  'They will be unlinked from you in Coach Connect. You can invite them again later if you change your mind.';
-const REMOVE_OPTION_CANCEL = 'Cancel';
-const REMOVE_OPTION_CONFIRM = 'Remove from my roster…';
-const REMOVE_ALERT_CONFIRM = 'Remove from roster';
-const PLATFORM_IOS = 'ios';
 const HIT_SLOP_HEADER = { top: 12, bottom: 12, left: 12, right: 12 };
 const HIT_SLOP_MENU = { top: 8, bottom: 8, left: 8, right: 8 };
-const HIT_SLOP_REMOVE_LINK = { top: 6, bottom: 6 };
-const DANGER_RED = '#ef4444';
 
 // ===== HELPER FUNCTIONS =====
 
@@ -351,33 +338,6 @@ function screenColorsForTheme(isDark) {
   };
 }
 
-/**
- * Show the remove confirmation sheet (iOS action sheet or Android alert).
- * @param {Function} openRemoveSheet
- */
-function presentRemoveClientMenu(openRemoveSheet) {
-  if (Platform.OS === PLATFORM_IOS) {
-    ActionSheetIOS.showActionSheetWithOptions(
-      {
-        options: [REMOVE_OPTION_CANCEL, REMOVE_OPTION_CONFIRM],
-        cancelButtonIndex: 0,
-        destructiveButtonIndex: 1,
-        title: REMOVE_SHEET_TITLE,
-        message: REMOVE_SHEET_MESSAGE,
-      },
-      (buttonIndex) => {
-        if (buttonIndex === 1) openRemoveSheet();
-      },
-    );
-    return;
-  }
-
-  Alert.alert(REMOVE_SHEET_TITLE, REMOVE_SHEET_MESSAGE, [
-    { text: REMOVE_OPTION_CANCEL, style: 'cancel' },
-    { text: REMOVE_ALERT_CONFIRM, style: 'destructive', onPress: openRemoveSheet },
-  ]);
-}
-
 // ===== MAIN FUNCTION =====
 
 /**
@@ -389,7 +349,7 @@ const ClientDetailScreen = ({
   trainerId,
   onBack,
   onRemoveClient,
-  trainerName,
+  trainerName: _trainerName,
   getTrainerEditorNavChrome,
 }) => {
   const { isDark } = useTrainerTheme();
@@ -398,6 +358,7 @@ const ClientDetailScreen = ({
 
   const [activeTab, setActiveTab] = useState(TAB_PROGRESS);
   const [showRemoveSheet, setShowRemoveSheet] = useState(false);
+  const [removeBusy, setRemoveBusy] = useState(false);
   const [clientData, setClientData] = useState(null);
   const [loadingClientData, setLoadingClientData] = useState(false);
   const [todayDailyLog, setTodayDailyLog] = useState(null);
@@ -608,80 +569,121 @@ const ClientDetailScreen = ({
     };
   }, [client?.id, trainerId, clientTodayKey]);
 
-  const openRemoveClientMenu = () => {
-    presentRemoveClientMenu(() => setShowRemoveSheet(true));
-  };
+  const openRemoveClientMenu = () => setShowRemoveSheet(true);
+
+  const confirmRemoveClient = useCallback(async () => {
+    if (!trainerId || !client?.id || !functions) {
+      Alert.alert('Unavailable', 'Cloud Functions are not configured.');
+      return;
+    }
+    setRemoveBusy(true);
+    try {
+      const fn = httpsCallable(functions, 'removeTrainerClientLink');
+      await fn({
+        trainerId,
+        clientId: client.id,
+        reasons: [],
+        otherText: null,
+        removedBy: 'trainer',
+      });
+      setShowRemoveSheet(false);
+      onRemoveClient?.();
+    } catch (e) {
+      Alert.alert('Remove failed', e?.message || 'Could not remove this client.');
+    } finally {
+      setRemoveBusy(false);
+    }
+  }, [client?.id, onRemoveClient, trainerId]);
 
   const clientDisplayName = client?.name || DEFAULT_CLIENT_LABEL;
-  const checkInLabel = hasDashboardCheckInToday(todayDailyLog)
-    ? '✓ Check-in logged today'
-    : 'No check-in yet today';
+  const clientSubtitle = getClientSubtext(client);
   const showLikedExercises =
     Array.isArray(clientData?.likedExercises) && clientData.likedExercises.length > 0;
   const statusBarStyle = isDark ? 'light-content' : 'dark-content';
-  const headerBorderColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)';
-  const cardDividerColor = divider;
-  const androidHeaderPad = Platform.OS === 'android' ? 16 : 0;
+  const androidHeaderPad = Platform.OS === 'android' ? 8 : 0;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: screenBg }}>
       <StatusBar barStyle={statusBarStyle} />
 
+      {/* Design Law header: back square · name/subtitle · ⋯ (PNG 05/07/17) */}
       <View
         style={{
           flexDirection: 'row',
           alignItems: 'center',
-          paddingHorizontal: 16,
-          paddingTop: androidHeaderPad,
-          paddingBottom: 14,
-          borderBottomWidth: 1,
-          borderBottomColor: headerBorderColor,
+          paddingHorizontal: spacing.md,
+          paddingTop: androidHeaderPad + spacing.sm,
+          paddingBottom: spacing.sm,
+          gap: 12,
         }}
       >
-        <TouchableOpacity
-          onPress={onBack}
-          hitSlop={HIT_SLOP_HEADER}
-          style={{ width: 36, alignItems: 'flex-start' }}
-        >
-          <Icon name="ChevronLeft" size={26} color={textColor} />
-        </TouchableOpacity>
-        <View style={{ flex: 1, alignItems: 'center' }}>
+        <HardShadow offset={nb.shadowOffsetSmall} radius={12}>
+          <TouchableOpacity
+            onPress={onBack}
+            hitSlop={HIT_SLOP_HEADER}
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 12,
+              borderWidth: nb.borderWidth,
+              borderColor: divider,
+              backgroundColor: screenBg,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+          >
+            <Ionicons name="chevron-back" size={22} color={textColor} />
+          </TouchableOpacity>
+        </HardShadow>
+        <View style={{ flex: 1, minWidth: 0 }}>
           <Text
-            style={{ color: textColor, fontSize: 17, fontWeight: '700', textAlign: 'center' }}
+            style={{
+              color: textColor,
+              fontSize: 20,
+              fontFamily: 'SpaceGrotesk_700Bold',
+              letterSpacing: -0.3,
+            }}
             numberOfLines={1}
           >
             {clientDisplayName}
           </Text>
           <Text
-            style={{ color: mutedColor, fontSize: 11, marginTop: 2, textAlign: 'center' }}
+            style={{ color: mutedColor, fontSize: 13, marginTop: 2, fontFamily: 'Inter_500Medium' }}
             numberOfLines={1}
           >
-            Tap ⋮ for remove options
+            {clientSubtitle}
           </Text>
         </View>
-        <TouchableOpacity
-          onPress={openRemoveClientMenu}
-          accessibilityLabel="Client options: remove from roster"
-          accessibilityRole="button"
-          hitSlop={HIT_SLOP_MENU}
-          style={{ width: 36, alignItems: 'flex-end' }}
-        >
-          <Ionicons name="ellipsis-vertical" size={22} color={textColor} />
-        </TouchableOpacity>
+        <HardShadow offset={nb.shadowOffsetSmall} radius={12}>
+          <TouchableOpacity
+            onPress={openRemoveClientMenu}
+            accessibilityLabel="Client options: remove from roster"
+            accessibilityRole="button"
+            hitSlop={HIT_SLOP_MENU}
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 12,
+              borderWidth: nb.borderWidth,
+              borderColor: divider,
+              backgroundColor: screenBg,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Ionicons name="ellipsis-horizontal" size={22} color={textColor} />
+          </TouchableOpacity>
+        </HardShadow>
       </View>
 
-      <RemoveTrainerPopup
+      <RemoveClientSheet
         visible={showRemoveSheet}
-        onClose={() => setShowRemoveSheet(false)}
-        onRemovalComplete={() => {
-          setShowRemoveSheet(false);
-          onRemoveClient?.();
-        }}
-        trainerName={trainerName || DEFAULT_TRAINER_LABEL}
+        onClose={() => !removeBusy && setShowRemoveSheet(false)}
+        onConfirm={confirmRemoveClient}
         clientName={clientDisplayName}
-        removedBy="trainer"
-        trainerId={trainerId}
-        clientId={client?.id}
+        busy={removeBusy}
       />
 
       <View style={{ flex: 1, minHeight: 0 }}>
@@ -691,48 +693,10 @@ const ClientDetailScreen = ({
             paddingBottom: scrollBottomPad,
             gap: 16,
             paddingHorizontal: 16,
-            paddingTop: 16,
+            paddingTop: 8,
           }}
           {...FORM_SCROLL_PROPS}
         >
-          <NbCard style={{ padding: 16 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-              {client?.photoURL ? (
-                <NbAvatar source={client.photoURL} size={48} />
-              ) : (
-                <NbAvatar initials={getClientInitials(client?.name)} size={48} />
-              )}
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: textColor, fontFamily: 'SpaceGrotesk_700Bold', fontSize: 17 }}>
-                  {client?.name || NO_NAME_LABEL}
-                </Text>
-                <Text style={{ color: mutedColor, fontSize: 12, marginTop: 2, fontFamily: 'Inter_400Regular' }}>
-                  {getClientSubtext(client)}
-                </Text>
-                <Text style={{ color: mutedColor, fontSize: 11, marginTop: 4, fontFamily: 'Inter_400Regular' }}>
-                  {checkInLabel}
-                </Text>
-              </View>
-            </View>
-            <View
-              style={{
-                marginTop: 14,
-                paddingTop: 14,
-                borderTopWidth: 1,
-                borderTopColor: cardDividerColor,
-              }}
-            >
-              <TouchableOpacity onPress={openRemoveClientMenu} hitSlop={HIT_SLOP_REMOVE_LINK}>
-                <Text style={{ color: DANGER_RED, fontSize: 14, fontWeight: '600', fontFamily: 'Inter_600SemiBold' }}>
-                  Remove from my roster
-                </Text>
-                <Text style={{ color: mutedColor, fontSize: 12, marginTop: 4, lineHeight: 16, fontFamily: 'Inter_400Regular' }}>
-                  Unlinks this client from you (same as the ⋮ menu). They keep their account and can work with another coach.
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </NbCard>
-
           {showLikedExercises ? (
             <NbCard style={{ padding: 14 }}>
               <Text style={{ color: textColor, fontFamily: 'SpaceGrotesk_700Bold', fontSize: 13, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1.2 }}>
@@ -768,6 +732,14 @@ const ClientDetailScreen = ({
                   key={client?.id || 'nutrition'}
                   isDark={isDark}
                   clientData={clientData}
+                  clientName={clientDisplayName}
+                  onRemindLog={() => {
+                    const first = String(clientDisplayName || 'Client').split(/\s+/)[0];
+                    Alert.alert(
+                      'Reminder sent',
+                      `${first} will get a nudge to log today’s meals.`,
+                    );
+                  }}
                 />
               ) : null}
               {activeTab === TAB_SESSIONS ? (

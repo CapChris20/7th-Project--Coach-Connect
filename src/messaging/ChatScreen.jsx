@@ -1,5 +1,5 @@
-// Design Law 1:1 chat thread (inbox-and-money PNG 09/10).
-// Flow: open thread → load/create conversation → live messages → send text/photos/files.
+// Design Law 1:1 chat thread (inbox-and-money PNG 09–13): bubbles, attach sheet, session cards, blocked.
+// Flow: open thread → load/create conversation → live messages → send text/photos/files / session cards.
 // Used by: trainer Messaging tab and client Messages. Export: ChatWithTraineeScreen.
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -17,9 +17,9 @@ import {
   Image,
   Modal,
   Linking,
-  ActionSheetIOS,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -44,16 +44,25 @@ import TopHeader from '../for-both/loading-and-header/TopHeader';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   blockUser,
+  unblockUser,
+  subscribeMyBlocks,
   submitContentReport,
   showSafetyPeerMenu,
-  showReportReasonPicker,
   confirmBlockUser,
+  ReportOrBlockSheet,
   REPORT_TYPES,
 } from '../block-and-report';
 import NbAvatar from '../look-and-feel/NbAvatar';
 import NbButton from '../look-and-feel/NbButton';
+import NbSheet from '../look-and-feel/NbSheet';
+import NbIconChip from '../look-and-feel/NbIconChip';
 import HardShadow from '../look-and-feel/HardShadow';
-import { borderRadius, nb } from '../look-and-feel/colorPalette';
+import { accentGradients, borderRadius, nb } from '../look-and-feel/colorPalette';
+
+const HANDOFF_SCHEDULE = require('../assets/icons/handoff/schedule.png');
+const HANDOFF_WORKOUT = require('../assets/icons/handoff/workout.png');
+// Empty-thread mark — people mark reads “start talking,” not a chat-bubble emoji (Design Law: no emoji icons).
+const HANDOFF_PEOPLE = require('../assets/icons/handoff/people.png');
 
 // ===== NAMED CONSTANTS =====
 
@@ -192,6 +201,12 @@ function buildThreadRenderList(messages, currentUserUid, extras = {}) {
       fileUrl: m.fileUrl,
       fileName: m.fileName,
       fileSize: m.fileSize,
+      // Session card fields (Design Law PNG session scheduled bubble)
+      sessionTitle: m.sessionTitle || m.title || null,
+      sessionWhen: m.sessionWhen || m.whenLabel || null,
+      sessionMeta: m.sessionMeta || m.metaLine || null,
+      sessionStatus: m.sessionStatus || m.status || null,
+      sessionCoachName: m.sessionCoachName || null,
       sent: m.senderId === currentUserUid,
       senderId: m.senderId,
       rawTimestamp: m.timestamp,
@@ -280,19 +295,93 @@ function formatFileSize(bytes) {
   return `${(bytes / (BYTES_PER_KB * BYTES_PER_KB)).toFixed(1)} MB`;
 }
 
-function ChatBubble({ message, colors, onLongPress }) {
+function ChatSessionCard({ message, colors, peerFirstName }) {
+  const title = message.sessionTitle || message.text || 'Training session';
+  const when = message.sessionWhen || '';
+  const meta = message.sessionMeta || '';
+  const status = String(message.sessionStatus || 'scheduled').toLowerCase();
+  const badge =
+    status === 'confirmed'
+      ? 'Session confirmed'
+      : status === 'declined'
+        ? 'Session declined'
+        : 'Session scheduled';
+  return (
+    <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetCard}>
+      <View
+        style={{
+          width: 280,
+          borderWidth: nb.borderWidth,
+          borderColor: colors.nbBorder,
+          backgroundColor: colors.nbSurface,
+          borderRadius: borderRadius.nbCard,
+          padding: 12,
+          gap: 10,
+        }}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <LinearGradient
+            colors={accentGradients[0]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={{
+              paddingHorizontal: 10,
+              paddingVertical: 5,
+              borderRadius: 999,
+              borderWidth: nb.borderWidthPill,
+              borderColor: colors.nbBorder,
+            }}
+          >
+            <Text style={{ fontSize: 11, fontWeight: '900', color: '#0A0A0A' }}>{badge}</Text>
+          </LinearGradient>
+          {peerFirstName ? (
+            <Text style={{ fontSize: 12, fontWeight: '700', color: colors.nbMuted }} numberOfLines={1}>
+              {peerFirstName}
+            </Text>
+          ) : null}
+        </View>
+        <Text style={{ fontSize: 16, fontWeight: '900', color: colors.nbInk }}>
+          {when ? `${title} · ${when}` : title}
+        </Text>
+        {meta ? (
+          <Text style={{ fontSize: 13, fontWeight: '600', color: colors.nbMuted }}>{meta}</Text>
+        ) : null}
+        {status === 'scheduled' && !message.sent ? (
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <View style={{ flex: 1 }}>
+              <NbButton variant="ghost" sm onPress={() => {}}>
+                Change time
+              </NbButton>
+            </View>
+            <View style={{ flex: 1 }}>
+              <NbButton variant="fill" sm onPress={() => {}}>
+                Confirm
+              </NbButton>
+            </View>
+          </View>
+        ) : null}
+      </View>
+    </HardShadow>
+  );
+}
+
+function ChatBubble({ message, colors, onLongPress, peerFirstName }) {
   const isImage = message.type === 'image';
   const isFile = message.type === 'file';
+  const isSession = message.type === 'session' || message.sessionTitle || message.sessionWhen;
   const sent = message.sent;
   const bubbleBg = sent ? colors.nbFill : colors.nbSurface;
   const bubbleText = sent ? colors.nbOnFill : colors.nbInk;
-  const padless = isImage || isFile;
+  const padless = isImage || isFile || isSession;
 
   const openFile = () => {
     if (message.fileUrl) Linking.openURL(message.fileUrl);
   };
 
   const renderBubbleBody = () => {
+    if (isSession) {
+      return <ChatSessionCard message={message} colors={colors} peerFirstName={peerFirstName} />;
+    }
     if (isImage && message.fileUrl) {
       return (
         <TouchableOpacity activeOpacity={0.9} onPress={() => message.onPreview?.()} onLongPress={onLongPress}>
@@ -341,6 +430,24 @@ function ChatBubble({ message, colors, onLongPress }) {
       <Text style={[bubbleStyles.text, { color: bubbleText }]}>{message.text || ''}</Text>
     );
   };
+
+  if (isSession) {
+    return (
+      <View style={[bubbleStyles.wrapper, { justifyContent: sent ? 'flex-end' : 'flex-start' }]}>
+        <View style={{ maxWidth: '90%' }}>
+          {renderBubbleBody()}
+          <Text
+            style={[
+              bubbleStyles.timestamp,
+              { color: colors.nbMuted, textAlign: sent ? 'right' : 'left' },
+            ]}
+          >
+            {message.clockLabel}
+          </Text>
+        </View>
+      </View>
+    );
+  }
 
   const bubbleChrome = (
     <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetCard}>
@@ -453,6 +560,25 @@ const chatStyles = StyleSheet.create({
     flexShrink: 0,
   },
   clientBadgeText: { fontSize: 12, fontWeight: '800', letterSpacing: 0.2 },
+  emptyThread: {
+    paddingVertical: 48,
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  emptyThreadTitle: {
+    fontSize: 17,
+    fontWeight: '900',
+    textAlign: 'center',
+    letterSpacing: -0.2,
+    marginBottom: 6,
+  },
+  emptyThreadSub: {
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
+    lineHeight: 20,
+    maxWidth: 280,
+  },
   uploadRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -490,6 +616,11 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
   const [remoteTyping, setRemoteTyping] = useState(false);
   const [hasMoreMessages, setHasMoreMessages] = useState(false);
   const [loadingEarlier, setLoadingEarlier] = useState(false);
+  const [reportSheet, setReportSheet] = useState(null); // { type, messageId?, targetUid? }
+  const [reportBusy, setReportBusy] = useState(false);
+  const [attachOpen, setAttachOpen] = useState(false);
+  const [peerBlocked, setPeerBlocked] = useState(false);
+  const [unblocking, setUnblocking] = useState(false);
   const scrollRef = useRef(null);
   const oldestTimestampRef = useRef(null);
   const currentUser = auth.currentUser;
@@ -679,22 +810,20 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
     }
   };
 
-  const showAttachmentOptions = () => {
-    if (Platform.OS === 'ios' && ActionSheetIOS) {
-      ActionSheetIOS.showActionSheetWithOptions(
-        { options: ['Cancel', 'Photo / Video', 'File'], cancelButtonIndex: 0 },
-        (buttonIndex) => {
-          if (buttonIndex === 1) handlePickPhoto();
-          if (buttonIndex === 2) handlePickFile();
-        }
-      );
-    } else {
-      Alert.alert('Attach', 'Choose an option', [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Photo / Video', onPress: handlePickPhoto },
-        { text: 'File', onPress: handlePickFile },
-      ]);
-    }
+  const showAttachmentOptions = () => setAttachOpen(true);
+
+  const pickPhotoFromSheet = () => {
+    setAttachOpen(false);
+    setTimeout(() => {
+      void handlePickPhoto();
+    }, 180);
+  };
+
+  const pickFileFromSheet = () => {
+    setAttachOpen(false);
+    setTimeout(() => {
+      void handlePickFile();
+    }, 180);
   };
 
   const uriToBlob = (uri) =>
@@ -777,27 +906,69 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
 
   const displayName = trainerData?.name || trainer?.name || 'User';
   const peerUid = otherParticipantIdFromProp(trainer);
+  const peerFirstName = String(displayName).split(/\s+/)[0] || displayName;
+
+  useEffect(() => {
+    if (!currentUser?.uid || !peerUid) {
+      setPeerBlocked(false);
+      return undefined;
+    }
+    return subscribeMyBlocks(currentUser.uid, (blockedIds) => {
+      setPeerBlocked(blockedIds.has(peerUid));
+    });
+  }, [currentUser?.uid, peerUid]);
+
+  const handleUnblockPeer = async () => {
+    if (!currentUser?.uid || !peerUid || unblocking) return;
+    setUnblocking(true);
+    try {
+      await unblockUser(currentUser.uid, peerUid);
+      setPeerBlocked(false);
+    } catch (e) {
+      Alert.alert('Unblock failed', e?.message || 'Try again.');
+    } finally {
+      setUnblocking(false);
+    }
+  };
 
   const runReport = (type, extra = {}) => {
     if (!currentUser?.uid || !peerUid) return;
-    showReportReasonPicker({
-      onPick: async (reasonId) => {
-        try {
-          await submitContentReport({
-            reporterId: currentUser.uid,
-            type,
-            targetUid: extra.targetUid || peerUid,
-            reason: reasonId,
-            conversationId,
-            messageId: extra.messageId || null,
-            targetDisplayName: displayName,
-          });
-          Alert.alert('Report sent', 'Thanks — we’ll review this as soon as we can.');
-        } catch (e) {
-          Alert.alert('Report failed', e?.message || 'Try again.');
-        }
-      },
+    setReportSheet({
+      type,
+      messageId: extra.messageId || null,
+      targetUid: extra.targetUid || peerUid,
     });
+  };
+
+  const submitReportSheet = async ({ reasonId, alsoBlock }) => {
+    if (!currentUser?.uid || !reportSheet) return;
+    setReportBusy(true);
+    try {
+      await submitContentReport({
+        reporterId: currentUser.uid,
+        type: reportSheet.type,
+        targetUid: reportSheet.targetUid || peerUid,
+        reason: reasonId,
+        conversationId,
+        messageId: reportSheet.messageId || null,
+        targetDisplayName: displayName,
+      });
+      if (alsoBlock && peerUid) {
+        await blockUser(currentUser.uid, peerUid, { displayName });
+      }
+      setReportSheet(null);
+      Alert.alert(
+        alsoBlock ? 'Reported and blocked' : 'Report sent',
+        alsoBlock
+          ? `${displayName} is blocked. You can unblock in Settings → Blocked users.`
+          : 'Thanks — we’ll review this as soon as we can.',
+        alsoBlock ? [{ text: 'OK', onPress: () => onClose?.() }] : undefined,
+      );
+    } catch (e) {
+      Alert.alert('Report failed', e?.message || 'Try again.');
+    } finally {
+      setReportBusy(false);
+    }
   };
 
   const runBlockPeer = () => {
@@ -844,15 +1015,17 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
 
   const hasPresence = typeof trainerData?.isOnline === 'boolean';
   const isPeerOnline = hasPresence && trainerData.isOnline;
-  const headerSubtitle = hasPresence
-    ? isPeerOnline
-      ? 'Online now'
-      : 'Offline'
-    : trainerData?.role === 'trainer'
-      ? 'Your coach'
-      : trainerData?.role === 'client'
-        ? 'Client'
-        : 'Direct message';
+  const headerSubtitle = peerBlocked
+    ? 'Blocked'
+    : hasPresence
+      ? isPeerOnline
+        ? 'Online now'
+        : 'Offline'
+      : trainerData?.role === 'trainer'
+        ? 'Your coach'
+        : trainerData?.role === 'client'
+          ? 'Client'
+          : 'Direct message';
 
   const identityBlock = (
     <>
@@ -946,10 +1119,16 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
         showsVerticalScrollIndicator={false}
       >
         {threadItems.length === 0 ? (
-          <View style={{ paddingVertical: 48, alignItems: 'center' }}>
-            <Text style={{ fontSize: 48, marginBottom: 16 }}>💬</Text>
-            <Text style={{ color: colors.nbMuted, fontSize: 16, textAlign: 'center', fontWeight: '600' }}>
-              Start a conversation with {displayName}
+          <View style={chatStyles.emptyThread}>
+            {/* Hard sticker + gradient chip instead of 💬 — matches inbox-and-money empty chrome */}
+            <HardShadow offset={nb.shadowOffsetSmall} radius={borderRadius.nbIconChip} style={{ marginBottom: 16 }}>
+              <NbIconChip source={HANDOFF_PEOPLE} index={0} size={56} />
+            </HardShadow>
+            <Text style={[chatStyles.emptyThreadTitle, { color: colors.nbInk }]}>
+              Start a conversation
+            </Text>
+            <Text style={[chatStyles.emptyThreadSub, { color: colors.nbMuted }]}>
+              Say hi to {displayName} — your messages will show up here.
             </Text>
           </View>
         ) : (
@@ -998,9 +1177,31 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
                   message={item}
                   colors={colors}
                   onLongPress={item.onLongPress}
+                  peerFirstName={peerFirstName}
                 />
               ),
             )}
+            {peerBlocked ? (
+              <View
+                style={{
+                  marginTop: 8,
+                  marginBottom: 12,
+                  borderRadius: borderRadius.nbCard,
+                  borderWidth: nb.borderWidth,
+                  borderColor: colors.nbBorder,
+                  backgroundColor: colors.nbFill,
+                  padding: 16,
+                  gap: 6,
+                }}
+              >
+                <Text style={{ fontSize: 16, fontWeight: '900', color: colors.nbOnFill }}>
+                  You blocked this person
+                </Text>
+                <Text style={{ fontSize: 14, fontWeight: '600', color: colors.nbOnFill, opacity: 0.85 }}>
+                  They cannot message you. Unblock to chat again.
+                </Text>
+              </View>
+            ) : null}
             {uploadingFileName != null && (
               <View style={{ marginBottom: 12, alignItems: 'flex-end' }}>
                 <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetCard}>
@@ -1051,58 +1252,149 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
           ) : null}
         </TouchableOpacity>
       </Modal>
-      <View
-        style={[
-          chatStyles.inputBarOuter,
-          { paddingBottom: 16 + embedBottomPad, borderTopColor: colors.nbBorder, backgroundColor: colors.nbBackground },
-        ]}
-      >
-        <View style={chatStyles.inputBarInner}>
-          <ChatIconSquare onPress={showAttachmentOptions} accessibilityLabel="Attach file or photo" colors={colors}>
-            {(iconColor) => <Ionicons name="add" size={24} color={iconColor} />}
-          </ChatIconSquare>
-          <TextInput
-            style={[
-              chatStyles.input,
-              {
-                color: colors.nbInk,
-                borderColor: colors.nbBorder,
-                backgroundColor: colors.nbSurface,
-              },
-            ]}
-            value={messageText}
-            onChangeText={(txt) => {
-              setMessageText(txt);
-              scheduleTypingPulse(txt);
-            }}
-            onBlur={() => {
-              clearTimeout(typingPulseTimerRef.current);
-              clearTimeout(typingStopTimerRef.current);
-              if (conversationId && currentUser?.uid) {
-                clearMyConversationTyping(conversationId, currentUser.uid);
-              }
-            }}
-            placeholder={`Message ${displayName.split(' ')[0] || displayName}`}
-            placeholderTextColor={colors.nbMuted}
-            returnKeyType="send"
-            onSubmitEditing={handleSendMessage}
-            multiline={false}
-          />
-          <ChatIconSquare
-            onPress={handleSendMessage}
-            accessibilityLabel="Send message"
-            colors={colors}
-            fill
-            disabled={!messageText.trim() || sending}
-          >
-            {(iconColor) => <Ionicons name="arrow-forward" size={22} color={iconColor} />}
-          </ChatIconSquare>
+      {peerBlocked ? (
+        <View
+          style={[
+            chatStyles.inputBarOuter,
+            {
+              paddingBottom: 16 + embedBottomPad,
+              borderTopColor: colors.nbBorder,
+              backgroundColor: colors.nbBackground,
+            },
+          ]}
+        >
+          <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard}>
+            <NbButton variant="fill" onPress={handleUnblockPeer} disabled={unblocking}>
+              {unblocking ? 'Unblocking…' : 'Unblock'}
+            </NbButton>
+          </HardShadow>
         </View>
-      </View>
+      ) : (
+        <View
+          style={[
+            chatStyles.inputBarOuter,
+            {
+              paddingBottom: 16 + embedBottomPad,
+              borderTopColor: colors.nbBorder,
+              backgroundColor: colors.nbBackground,
+            },
+          ]}
+        >
+          <View style={chatStyles.inputBarInner}>
+            <ChatIconSquare onPress={showAttachmentOptions} accessibilityLabel="Attach file or photo" colors={colors}>
+              {(iconColor) => <Ionicons name="add" size={24} color={iconColor} />}
+            </ChatIconSquare>
+            <TextInput
+              style={[
+                chatStyles.input,
+                {
+                  color: colors.nbInk,
+                  borderColor: colors.nbBorder,
+                  backgroundColor: colors.nbSurface,
+                },
+              ]}
+              value={messageText}
+              onChangeText={(txt) => {
+                setMessageText(txt);
+                scheduleTypingPulse(txt);
+              }}
+              onBlur={() => {
+                clearTimeout(typingPulseTimerRef.current);
+                clearTimeout(typingStopTimerRef.current);
+                if (conversationId && currentUser?.uid) {
+                  clearMyConversationTyping(conversationId, currentUser.uid);
+                }
+              }}
+              placeholder={`Message ${displayName.split(' ')[0] || displayName}`}
+              placeholderTextColor={colors.nbMuted}
+              returnKeyType="send"
+              onSubmitEditing={handleSendMessage}
+              multiline={false}
+            />
+            <ChatIconSquare
+              onPress={handleSendMessage}
+              accessibilityLabel="Send message"
+              colors={colors}
+              fill
+              disabled={!messageText.trim() || sending}
+            >
+              {(iconColor) => <Ionicons name="arrow-forward" size={22} color={iconColor} />}
+            </ChatIconSquare>
+          </View>
+        </View>
+      )}
     </KeyboardAvoidingView>
   );
 
-  const inner = <View style={{ flex: 1, backgroundColor: colors.nbBackground }}>{chatBody}</View>;
+  const reportSheetEl = (
+    <ReportOrBlockSheet
+      visible={!!reportSheet}
+      onClose={() => !reportBusy && setReportSheet(null)}
+      onSubmit={submitReportSheet}
+      peerName={displayName}
+      busy={reportBusy}
+    />
+  );
+
+  const attachSheetEl = (
+    <NbSheet visible={attachOpen} onClose={() => setAttachOpen(false)} title="Attach">
+      <TouchableOpacity
+        activeOpacity={0.9}
+        onPress={pickPhotoFromSheet}
+        style={{
+          minHeight: 64,
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 12,
+          borderBottomWidth: StyleSheet.hairlineWidth,
+          borderBottomColor: colors.nbBorder,
+          paddingVertical: 12,
+        }}
+      >
+        <NbIconChip source={HANDOFF_SCHEDULE} index={0} size={44} />
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={{ fontSize: 16, fontWeight: '900', color: colors.nbInk }}>Photo / Video</Text>
+          <Text style={{ fontSize: 13, fontWeight: '600', color: colors.nbMuted, marginTop: 2 }}>
+            From your library or camera
+          </Text>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color={colors.nbInk} />
+      </TouchableOpacity>
+      <TouchableOpacity
+        activeOpacity={0.9}
+        onPress={pickFileFromSheet}
+        style={{
+          minHeight: 64,
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 12,
+          paddingVertical: 12,
+        }}
+      >
+        <NbIconChip source={HANDOFF_WORKOUT} index={3} size={44} />
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={{ fontSize: 16, fontWeight: '900', color: colors.nbInk }}>File</Text>
+          <Text style={{ fontSize: 13, fontWeight: '600', color: colors.nbMuted, marginTop: 2 }}>
+            PDF, spreadsheet or document
+          </Text>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color={colors.nbInk} />
+      </TouchableOpacity>
+      <View style={{ marginTop: 16 }}>
+        <NbButton variant="ghost" onPress={() => setAttachOpen(false)}>
+          Cancel
+        </NbButton>
+      </View>
+    </NbSheet>
+  );
+
+  const inner = (
+    <View style={{ flex: 1, backgroundColor: colors.nbBackground }}>
+      {chatBody}
+      {reportSheetEl}
+      {attachSheetEl}
+    </View>
+  );
 
   if (embedInLayout) {
     return <View style={{ flex: 1 }}>{inner}</View>;

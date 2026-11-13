@@ -1,22 +1,25 @@
-// Design Law Nutrition tab (trainer-home PNG 03/04): calorie ring + macro bars + meal rows.
-// Flow: always paint the Design Law shell — empty days show 0s + “No meals logged yet” slots.
-// Used by TrainerHomeContent. Food keys stay as the client nutrition log writes them.
+// Design Law Nutrition tab (trainer-home PNG 03/04 + trainees 07–10): ring + macros + micros + meals.
+// Flow: zero foods → dashed empty shell + Remind CTA; otherwise ring/bars/micros/meal list.
+// Used by TrainerHomeContent and ManageTraineeScreen. Food keys stay as the client nutrition log writes them.
 //
 // vocab: NbProgressBar = hard-border track with gradient fill (accent only)
+// Manipulate here: empty copy, remind button label template
 
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
-import { lightColors, darkColors } from '../../look-and-feel/colorPalette';
+import { lightColors, darkColors, nb } from '../../look-and-feel/colorPalette';
 import NbCard from '../../look-and-feel/NbCard';
 import NbIconChip from '../../look-and-feel/NbIconChip';
 import NbProgressBar from '../../look-and-feel/NbProgressBar';
+import NbButton from '../../look-and-feel/NbButton';
 
 // ===== NAMED CONSTANTS =====
 
 const ICON_PROTEIN = require('../../assets/icons/handoff/protein.png');
 const ICON_CARBS = require('../../assets/icons/handoff/carbs.png');
 const ICON_FATS = require('../../assets/icons/handoff/fats.png');
+const ICON_FOOD = require('../../assets/icons/handoff/protein.png');
 
 const RING_SIZE = 96;
 const RING_STROKE = 8;
@@ -27,6 +30,12 @@ const CARBS_GOAL_DEFAULT_G = 250;
 const FAT_GOAL_DEFAULT_G = 70;
 // Design Law empty day shows the four meal slots, each “No meals logged yet”.
 const EMPTY_MEAL_SLOTS = ['Breakfast', 'Lunch', 'Snack', 'Dinner'];
+const MICRO_KEYS = [
+  { key: 'fiber', label: 'Fiber', unit: 'g' },
+  { key: 'sugar', label: 'Sugar', unit: 'g' },
+  { key: 'sodium', label: 'Sodium', unit: 'mg' },
+  { key: 'potassium', label: 'Potassium', unit: 'mg' },
+];
 
 // ===== HELPERS =====
 
@@ -185,9 +194,37 @@ function EmptyMealSlot({ label, isDark, isLast }) {
 
 // ===== MAIN =====
 
-const NutritionTab = ({ isDark, clientData }) => {
+function firstName(fullName) {
+  const text = String(fullName || 'Alex').trim();
+  return text.split(/\s+/)[0] || 'Alex';
+}
+
+function microRowsFromNutrition(nutrition) {
+  const micros = nutrition?.micros;
+  if (Array.isArray(micros) && micros.length) {
+    return micros.map((row, index) => ({
+      id: `micro-${index}`,
+      label: row.label || row.name || MICRO_KEYS[index]?.label || 'Micro',
+      valueText:
+        row.valueText ||
+        (row.value != null ? `${row.value}${row.unit ? ` ${row.unit}` : ''}` : '—'),
+    }));
+  }
+  return MICRO_KEYS.map((spec) => {
+    const raw = nutrition?.[spec.key];
+    return {
+      id: spec.key,
+      label: spec.label,
+      valueText: raw != null && raw !== '' ? `${raw} ${spec.unit}` : '—',
+    };
+  });
+}
+
+const NutritionTab = ({ isDark, clientData, clientName, onRemindLog }) => {
   const nutrition = clientData?.nutrition || {};
   const foods = useMemo(() => normalizeFoodRows(nutrition.foods), [nutrition.foods]);
+  const ink = isDark ? darkColors.nbInk : lightColors.nbInk;
+  const muted = isDark ? darkColors.nbMuted : lightColors.nbMuted;
 
   const calories = Number(nutrition.calories) || 0;
   const caloriesGoal = Number(nutrition.caloriesGoal) || CALORIES_GOAL_DEFAULT;
@@ -197,13 +234,34 @@ const NutritionTab = ({ isDark, clientData }) => {
   const proteinGoal = Number(nutrition.proteinGoal) || PROTEIN_GOAL_DEFAULT_G;
   const carbsGoal = Number(nutrition.carbsGoal) || CARBS_GOAL_DEFAULT_G;
   const fatGoal = Number(nutrition.fatGoal) || FAT_GOAL_DEFAULT_G;
+  const microRows = useMemo(() => microRowsFromNutrition(nutrition), [nutrition]);
+
+  const isTotallyEmpty = foods.length === 0 && calories <= 0;
+
+  // PNG 08/10: dashed empty shell + Remind when nothing logged
+  if (isTotallyEmpty) {
+    const remindName = firstName(clientName);
+    return (
+      <View style={styles.root}>
+        <NbCard style={[styles.emptyShell, { borderStyle: 'dashed' }]}>
+          <NbIconChip source={ICON_FOOD} index={2} size={56} />
+          <Text style={[styles.emptyTitle, { color: ink }]}>No nutrition logged yet</Text>
+          <Text style={[styles.emptyBody, { color: muted }]}>
+            When your client tracks meals in the app, their daily intake shows up here automatically.
+          </Text>
+          {typeof onRemindLog === 'function' ? (
+            <NbButton variant="ghost" onPress={onRemindLog} style={styles.remindBtn}>
+              {`Remind ${remindName} to log`}
+            </NbButton>
+          ) : null}
+        </NbCard>
+      </View>
+    );
+  }
 
   const mealsPresent = new Set(foods.map((f) => f.meal));
-  // Empty day → all four slots. Partial day → only missing named slots still shown.
-  const emptySlots =
-    foods.length === 0
-      ? EMPTY_MEAL_SLOTS
-      : EMPTY_MEAL_SLOTS.filter((meal) => !mealsPresent.has(meal)).slice(0, 1);
+  // Partial day → only missing named slots still shown.
+  const emptySlots = EMPTY_MEAL_SLOTS.filter((meal) => !mealsPresent.has(meal)).slice(0, 1);
 
   return (
     <View style={styles.root}>
@@ -239,6 +297,31 @@ const NutritionTab = ({ isDark, clientData }) => {
         </View>
       </NbCard>
 
+      <Text style={[styles.sectionLabel, { color: muted }]}>MICRONUTRIENTS</Text>
+      <NbCard style={styles.microCard}>
+        {microRows.map((row, index) => (
+          <View
+            key={row.id}
+            style={[
+              styles.microRow,
+              index < microRows.length - 1 && {
+                borderBottomWidth: nb.borderWidthDivider || 2,
+                borderBottomColor: isDark ? darkColors.nbBorder : lightColors.nbBorder,
+              },
+            ]}
+          >
+            <Text style={[styles.microLabel, { color: ink }]}>{row.label}</Text>
+            <Text style={[styles.microValue, { color: ink }]}>{row.valueText}</Text>
+          </View>
+        ))}
+      </NbCard>
+
+      <View style={styles.foodsHeader}>
+        <Text style={[styles.sectionLabel, { color: muted }]}>FOODS LOGGED TODAY</Text>
+        <Text style={[styles.sectionLabel, { color: muted }]}>
+          {`${foods.length} ITEM${foods.length === 1 ? '' : 'S'}`}
+        </Text>
+      </View>
       <NbCard style={styles.listCard}>
         {foods.map((food, index) => (
           <MealRow
@@ -266,6 +349,49 @@ const styles = StyleSheet.create({
   root: {
     gap: 16,
     paddingTop: 4,
+  },
+  emptyShell: {
+    paddingVertical: 28,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    gap: 12,
+  },
+  emptyTitle: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 18,
+    textAlign: 'center',
+  },
+  emptyBody: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 13,
+    lineHeight: 18,
+    textAlign: 'center',
+  },
+  remindBtn: { alignSelf: 'stretch', marginTop: 4 },
+  sectionLabel: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 11,
+    letterSpacing: 1.1,
+  },
+  foodsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  microCard: { paddingVertical: 0, paddingHorizontal: 0, overflow: 'hidden' },
+  microRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+  },
+  microLabel: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 14,
+  },
+  microValue: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 14,
   },
   summaryCard: {
     paddingVertical: 14,

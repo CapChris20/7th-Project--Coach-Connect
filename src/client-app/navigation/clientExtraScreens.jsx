@@ -25,11 +25,15 @@ import RequestIntroPopup from '../find-a-trainer/RequestIntroPopup';
 import { sendConnectionRequest } from '../find-a-trainer/sendConnectionRequest';
 import WeeklyReportScreen from '../../for-both/weekly-report/WeeklyReportScreen';
 import MyProgressPhotosScreen from '../../for-both/photo-gallery/MyProgressPhotosScreen';
+import ProgressChartsScreen from '../progress/ProgressChartsScreen';
+import NotificationsScreen from '../../notifications/NotificationsScreen';
 import SavedWorkoutsScreen from '../../for-both/workout-plans/SavedWorkoutsScreen';
 import CreateWorkoutPlanScreen from '../../workouts/create-plan/CreateWorkoutPlanScreen';
 import DesignLawWorkoutSessionScreen from '../../workouts/session/DesignLawWorkoutSessionScreen';
 import CoachHomeScreen from '../../ai-coach/home-screen/CoachHomeScreen';
 import CoachConversationScreen from '../../ai-coach/conversation/CoachConversationScreen';
+import MySessionsScreen from '../scheduling/MySessionsScreen';
+import RequestSessionScreen from '../scheduling/RequestSessionScreen';
 import ClientBottomMenu from './ClientBottomMenu';
 import TopHeader from '../../for-both/loading-and-header/TopHeader';
 import { doc, getDoc } from 'firebase/firestore';
@@ -37,6 +41,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { db } from '../../app-start/cloudConnection';
 import { loadCachedOnboardingProfile, fillTraineeProfile } from '../../helpers/fillTraineeProfile';
 import { rootNavigate } from '../../navigation/openScreenFromAnywhere';
+import { CLIENT_ROUTES } from '../../navigation/screenNames';
 import { buildNavigateFromShell } from '../../navigation/goToScreenByKeyword';
 
 // ===== NAMED CONSTANTS =====
@@ -489,6 +494,61 @@ export function ClientTrainerViewMyMyProfileScreen() {
 }
 
 /**
+ * Client My sessions list (Design Law scheduling PNG 17–20).
+ * @returns {import('react').ReactElement|null}
+ */
+export function ClientMySessionsScreen() {
+  const shell = useClientAppStartShell();
+  if (!shell.user?.uid) return null;
+  const trainerId = shell.trainerData?.id || shell.trainerData?.uid || shell.userData?.trainerId || null;
+  const trainerName =
+    shell.trainerData?.name ||
+    shell.trainerData?.displayName ||
+    shell.userData?.trainerName ||
+    DEFAULT_COACH_NAME;
+  return withNav(
+    <>
+      <MySessionsScreen
+        clientId={shell.user.uid}
+        trainerId={trainerId}
+        trainerName={trainerName}
+        onBack={shell.rootGoBack}
+        onRequestSession={() => rootNavigate(CLIENT_ROUTES.RequestSession)}
+      />
+      {shell.addNotesFilesModalEl}
+    </>,
+    shell,
+  );
+}
+
+/**
+ * Client request-a-session form (Design Law scheduling PNG 21/22).
+ * @returns {import('react').ReactElement|null}
+ */
+export function ClientRequestSessionScreen() {
+  const shell = useClientAppStartShell();
+  if (!shell.user?.uid) return null;
+  const trainerId = shell.trainerData?.id || shell.trainerData?.uid || shell.userData?.trainerId || null;
+  const trainerName =
+    shell.trainerData?.name ||
+    shell.trainerData?.displayName ||
+    shell.userData?.trainerName ||
+    DEFAULT_COACH_NAME;
+  return withNav(
+    <>
+      <RequestSessionScreen
+        clientId={shell.user.uid}
+        trainerId={trainerId}
+        trainerName={trainerName}
+        onBack={shell.rootGoBack}
+      />
+      {shell.addNotesFilesModalEl}
+    </>,
+    shell,
+  );
+}
+
+/**
  * Weekly report for the signed-in client. clientName key stays clientName.
  * @returns {import('react').ReactElement|null}
  */
@@ -529,6 +589,36 @@ export function ClientMyProgressPhotosScreen() {
       onBack={shell.rootGoBack}
       reserveShellBottomNav
     />,
+    shell,
+  );
+}
+
+/**
+ * Design Law Progress charts (Weight / Body fat / Lifts).
+ * @returns {import('react').ReactElement}
+ */
+export function ClientProgressChartsScreen() {
+  const shell = useClientAppStartShell();
+  const uid = shell.user?.uid || shell.day6Client?.id;
+  return withNav(
+    <ProgressChartsScreen
+      userId={uid}
+      weightGoal={shell.userData?.goalWeight || shell.userData?.weightGoal || null}
+      onBack={shell.rootGoBack}
+      navigation={{ goBack: shell.rootGoBack }}
+    />,
+    shell,
+  );
+}
+
+/**
+ * Design Law Notifications list (client = clientUid field).
+ * @returns {import('react').ReactElement}
+ */
+export function ClientNotificationsScreen() {
+  const shell = useClientAppStartShell();
+  return withNav(
+    <NotificationsScreen onBack={shell.rootGoBack} roleField="clientUid" />,
     shell,
   );
 }

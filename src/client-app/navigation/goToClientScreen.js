@@ -205,7 +205,11 @@ export function goToClientScreen({ refetchNutritionData } = {}) {
   const openTrainerSearch = useCallback(() => rootNavigate(CLIENT_ROUTES.TrainerSearch), []);
   const openTrainerProfile = useCallback(() => rootNavigate(CLIENT_ROUTES.TrainerProfile), []);
   const openWeeklyReport = useCallback(() => rootNavigate(CLIENT_ROUTES.WeeklyReport), []);
+  const openMySessions = useCallback(() => rootNavigate(CLIENT_ROUTES.MySessions), []);
+  const openRequestSession = useCallback(() => rootNavigate(CLIENT_ROUTES.RequestSession), []);
   const openPhotoGallery = useCallback(() => rootNavigate(CLIENT_ROUTES.PhotoGallery), []);
+  const openProgressCharts = useCallback(() => rootNavigate(CLIENT_ROUTES.ProgressCharts), []);
+  const openNotifications = useCallback(() => rootNavigate(CLIENT_ROUTES.Notifications), []);
   const openAIWorkouts = useCallback(() => rootNavigate(CLIENT_ROUTES.AIWorkouts), []);
   const openPlanViewer = useCallback(() => rootNavigate(CLIENT_ROUTES.PlanViewer), []);
   // vocab: session payload = { workoutName, exercises[] } from a plan day
@@ -391,7 +395,11 @@ export function goToClientScreen({ refetchNutritionData } = {}) {
     openTrainerSearch,
     openTrainerProfile,
     openWeeklyReport,
+    openMySessions,
+    openRequestSession,
     openPhotoGallery,
+    openProgressCharts,
+    openNotifications,
     openAIWorkouts,
     openPlanViewer,
     openWorkoutSession,

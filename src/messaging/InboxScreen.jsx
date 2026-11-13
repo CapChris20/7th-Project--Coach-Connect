@@ -30,6 +30,7 @@ import { getTrainerClients, createOrUpdateClient } from '../trainer-app/my-train
 import { getOrCreateConversation, markMessagesAsRead } from '../ai-coach/coach-actions/alertTrainer';
 import { doc, getDoc } from 'firebase/firestore';
 import TopHeader from '../for-both/loading-and-header/TopHeader';
+import { NbSkeletonMessageRow } from '../look-and-feel/NbSkeleton';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FORM_SCROLL_PROPS, useShellBottomNavInset } from '../navigation/bottomMenuSpacing';
 import { blockedList } from '../block-and-report/blockedList';
@@ -766,8 +767,14 @@ export default function InboxScreen({
 
   const listBody =
     loading ? (
-      <View style={screenStyles.emptyWrap}>
-        <ActivityIndicator size="large" color={ink} />
+      <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
+        <HardShadow>
+          <NbCard style={screenStyles.listCard}>
+            {[0, 1, 2, 3, 4].map((i) => (
+              <NbSkeletonMessageRow key={`skel-${i}`} />
+            ))}
+          </NbCard>
+        </HardShadow>
       </View>
     ) : filteredConversations.length === 0 ? (
       renderEmptyState()

@@ -51,6 +51,7 @@ import NbCard from '../look-and-feel/NbCard';
 import NbSwitch from '../look-and-feel/NbSwitch';
 import NbButton from '../look-and-feel/NbButton';
 import NbPageHeader from '../look-and-feel/NbPageHeader';
+import NbSheet from '../look-and-feel/NbSheet';
 import { nb, gradients, spacing } from '../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
@@ -698,6 +699,8 @@ export default function SettingsScreen({
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordUpdatedNote, setPasswordUpdatedNote] = useState(false);
   const [showDeleteHoldModal, setShowDeleteHoldModal] = useState(false);
+  const [showSignOutSheet, setShowSignOutSheet] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
   const [showBlockedUsers, setShowBlockedUsers] = useState(false);
   const [aiDetailsOpen, setAiDetailsOpen] = useState(false);
   const [resolvedUserRole, setResolvedUserRole] = useState(userRoleProp || null);
@@ -909,11 +912,18 @@ export default function SettingsScreen({
       ? `Client · ${clientCoachName} is your trainer`
       : 'Client';
 
-  const handleSignOut = async () => {
+  const handleSignOut = () => setShowSignOutSheet(true);
+
+  const confirmSignOut = async () => {
+    if (signingOut) return;
+    setSigningOut(true);
     try {
       await onUserSignOut();
+      setShowSignOutSheet(false);
     } catch (error) {
       Alert.alert('Sign out failed', error?.message || 'Please try again.');
+    } finally {
+      setSigningOut(false);
     }
   };
 
@@ -1383,6 +1393,36 @@ export default function SettingsScreen({
         pillLabel="Hold to confirm"
         onHoldComplete={performDeleteAccount}
       />
+
+      <NbSheet visible={showSignOutSheet} onClose={() => !signingOut && setShowSignOutSheet(false)} title="Sign out">
+        <View
+          style={{
+            alignSelf: 'flex-start',
+            paddingHorizontal: 10,
+            paddingVertical: 5,
+            borderRadius: 999,
+            borderWidth: nb.borderWidthPill,
+            borderColor: colors.nbBorder,
+            backgroundColor: colors.nbSoft,
+            marginBottom: 10,
+          }}
+        >
+          <Text style={{ fontSize: 11, fontWeight: '900', color: colors.nbInk }}>Signed out</Text>
+        </View>
+        <Text style={{ fontSize: 20, fontWeight: '900', color: colors.nbInk, marginBottom: 8 }}>
+          Please sign in again.
+        </Text>
+        <Text style={{ fontSize: 14, fontWeight: '600', color: colors.nbMuted, lineHeight: 20, marginBottom: 16 }}>
+          Your session will end. Logs on this phone are kept and will sync after you sign in.
+        </Text>
+        <NbButton variant="fill" onPress={confirmSignOut} disabled={signingOut}>
+          {signingOut ? 'Signing out…' : 'Sign out'}
+        </NbButton>
+        <View style={{ height: 10 }} />
+        <NbButton variant="ghost" onPress={() => setShowSignOutSheet(false)} disabled={signingOut}>
+          Cancel
+        </NbButton>
+      </NbSheet>
 
       <Modal visible={showBlockedUsers} animationType="slide" presentationStyle="fullScreen">
         <BlockedUsersScreen onClose={() => setShowBlockedUsers(false)} />

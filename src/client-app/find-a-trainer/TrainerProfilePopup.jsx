@@ -30,8 +30,8 @@ import { trainerPhotoUri } from '../../helpers/trainerProfilePhoto';
 import {
   blockUser,
   submitContentReport,
-  showReportReasonPicker,
   confirmBlockUser,
+  ReportOrBlockSheet,
   REPORT_TYPES,
 } from '../../block-and-report';
 import NbAvatar from '../../look-and-feel/NbAvatar';
@@ -93,7 +93,7 @@ function readProfileFields(display, trainer) {
   };
 }
 
-async function sendTrainerProfileReport(reporterUid, trainerUid, trainerName, reasonId) {
+async function sendTrainerProfileReport(reporterUid, trainerUid, trainerName, reasonId, alsoBlock, onClose) {
   try {
     await submitContentReport({
       reporterId: reporterUid,
@@ -102,6 +102,12 @@ async function sendTrainerProfileReport(reporterUid, trainerUid, trainerName, re
       reason: reasonId,
       targetDisplayName: trainerName,
     });
+    if (alsoBlock) {
+      await blockUser(reporterUid, String(trainerUid), { displayName: trainerName });
+      Alert.alert('Reported and blocked', `${trainerName} is blocked. Unblock anytime in Settings → Blocked users.`);
+      onClose?.();
+      return;
+    }
     Alert.alert('Report sent', 'Thanks — we’ll review this trainer listing.');
   } catch (error) {
     Alert.alert('Report failed', error?.message || 'Try again.');
@@ -307,6 +313,8 @@ export function TrainerProfileSheet({
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const [safetyOpen, setSafetyOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportBusy, setReportBusy] = useState(false);
   // On nbFill: light theme = white wash; dark theme flips fill so muted must follow on-fill ink
   const trialMuted = isDark ? 'rgba(10,10,10,0.55)' : 'rgba(255,255,255,0.55)';
   // vocab: useShellTopPad clears the status bar when this sheet is embedded in the shell
@@ -335,15 +343,24 @@ export function TrainerProfileSheet({
 
   const onSafetyReport = () => {
     setSafetyOpen(false);
-    showReportReasonPicker({
-      onPick: (reasonId) =>
-        sendTrainerProfileReport(
-          getAuth()?.currentUser?.uid,
-          fields.trainerUid,
-          fields.trainerName,
-          reasonId,
-        ),
-    });
+    setReportOpen(true);
+  };
+
+  const onSubmitReport = async ({ reasonId, alsoBlock }) => {
+    setReportBusy(true);
+    try {
+      await sendTrainerProfileReport(
+        getAuth()?.currentUser?.uid,
+        fields.trainerUid,
+        fields.trainerName,
+        reasonId,
+        alsoBlock,
+        onClose,
+      );
+      setReportOpen(false);
+    } finally {
+      setReportBusy(false);
+    }
   };
 
   const onSafetyBlock = () => {
@@ -583,6 +600,13 @@ export function TrainerProfileSheet({
       {/* PNG 13 empty-bio: primary Send message lives in the dashed card — no pinned price bar */}
       {hasBio ? footer : null}
 
+      <ReportOrBlockSheet
+        visible={reportOpen}
+        onClose={() => !reportBusy && setReportOpen(false)}
+        onSubmit={onSubmitReport}
+        peerName={fields.trainerName}
+        busy={reportBusy}
+      />
       <SafetySheet
         visible={safetyOpen}
         trainerName={fields.trainerName}

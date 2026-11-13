@@ -1,6 +1,7 @@
 // Design Law Trainer Home blocks — layout matches docs/design/Design-Law/screens/trainer-home.
-// Flow: header → motivation → needs you → client carousel → (parent paints tabs) → tools → weekly report.
+// Flow: header → welcome hero → needs you → client carousel → (parent paints tabs) → tools → weekly report.
 // Used only by TrainerHomeContent. Nb* + handoff assets; no parallel chrome system.
+// Hero visual law: screens/hero-and-welcome-redesign/05-06 (mirrored boxer welcome).
 
 import React from 'react';
 import {
@@ -13,7 +14,6 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import LottieView from 'lottie-react-native';
 import HardShadow from '../../look-and-feel/HardShadow';
 import NbAvatar from '../../look-and-feel/NbAvatar';
 import NbIconChip from '../../look-and-feel/NbIconChip';
@@ -24,6 +24,7 @@ import {
   navAccentGradient,
   nb,
 } from '../../look-and-feel/colorPalette';
+import DesignLawHomeWelcomeHero from '../../for-both/home-cards/DesignLawHomeWelcomeHero';
 import { getClientInitials, getClientRosterStats } from './trainerHomePieces';
 
 // ===== NAMED CONSTANTS =====
@@ -34,7 +35,6 @@ const HANDOFF_CHECKIN = require('../../assets/icons/handoff/checkin.png');
 const HANDOFF_WEEK = require('../../assets/icons/handoff/week.png');
 const HANDOFF_PICTURE = require('../../assets/icons/handoff/picture.png');
 const HANDOFF_JOURNEY = require('../../assets/icons/handoff/journey.png');
-const HANDOFF_LIFTER_LOTTIE = require('../../assets/animations/handoff/zlifter-noyellow.json');
 
 // Manipulate here: client carousel — wide enough that Sleep/Steps don’t clip; next card peeks.
 const CLIENT_CHIP_MIN_WIDTH = 248;
@@ -144,36 +144,9 @@ export function DesignLawTrainerHeader({
   );
 }
 
-export function DesignLawTrainerMotivationCard({ themeColors, quoteText, quoteAuthor }) {
-  const line = String(quoteText || 'Keep showing up.').trim();
-  const author = String(quoteAuthor || '').trim();
-
-  return (
-    <HardShadow offset={nb.shadowOffsetHero} radius={10} style={{ marginBottom: nb.blockGap }}>
-      <View
-        style={[
-          styles.quoteCard,
-          {
-            backgroundColor: themeColors.fill,
-            borderColor: themeColors.cardBorder,
-          },
-        ]}
-      >
-        <View style={{ flex: 1, minWidth: 0, paddingRight: 8 }}>
-          <Text style={[styles.quoteBody, { color: themeColors.onFill }]} numberOfLines={4}>
-            {line}
-          </Text>
-          {author ? (
-            <Text style={[styles.quoteAuthor, { color: themeColors.onFill }]} numberOfLines={1}>
-              {`— ${author}`}
-            </Text>
-          ) : null}
-          <Text style={[styles.quoteKicker, { color: themeColors.onFill }]}>Daily motivation</Text>
-        </View>
-        <LottieView source={HANDOFF_LIFTER_LOTTIE} autoPlay loop style={{ width: 84, height: 84 }} />
-      </View>
-    </HardShadow>
-  );
+/** Mirrored welcome hero (boxer on the left). Quote props kept so call sites don’t break. */
+export function DesignLawTrainerMotivationCard({ themeColors }) {
+  return <DesignLawHomeWelcomeHero themeColors={themeColors} variant="trainer" />;
 }
 
 // ===== NEEDS YOU (PNG 01, 07 — payout + request rows) =====
@@ -629,38 +602,6 @@ const styles = StyleSheet.create({
     borderWidth: nb.borderWidth,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  quoteCard: {
-    borderWidth: nb.borderWidth,
-    borderTopLeftRadius: 6,
-    borderTopRightRadius: 24,
-    borderBottomRightRadius: 6,
-    borderBottomLeftRadius: 6,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    minHeight: 130,
-  },
-  quoteBody: {
-    fontSize: 17,
-    fontWeight: '800',
-    lineHeight: 22,
-    letterSpacing: -0.2,
-  },
-  quoteAuthor: {
-    marginTop: 6,
-    fontSize: 12,
-    fontWeight: '600',
-    opacity: 0.75,
-  },
-  quoteKicker: {
-    marginTop: 8,
-    fontSize: 12,
-    fontWeight: '900',
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-    opacity: 0.7,
   },
   secRow: {
     flexDirection: 'row',

@@ -243,8 +243,11 @@ export default function ClientMainScreen() {
     day6Client,
     setDay6Client,
     openPhotoGallery,
+    openProgressCharts,
     openAIWorkouts,
     openWeeklyReport,
+    openNotifications,
+    openMySessions,
     openNutrition: goNutrition,
     userData,
     showNotesFiles,
@@ -476,11 +479,14 @@ export default function ClientMainScreen() {
               setDay6Client({ id: user?.uid, name: userData?.firstName || user?.displayName || DEFAULT_SELF_NAME });
               openPhotoGallery();
             }}
+            onOpenProgressCharts={() => openProgressCharts()}
             onOpenAIWorkouts={() => {
               setDay6Client({ id: user?.uid, name: userData?.firstName || user?.displayName || DEFAULT_SELF_NAME });
               openAIWorkouts();
             }}
             onOpenWeeklyReport={() => openWeeklyReport()}
+            onOpenNotifications={() => openNotifications?.()}
+            onOpenMySessions={() => openMySessions()}
             onPressCalories={() => openNutrition()}
             onOpenNotesFiles={() => setShowNotesFiles(true)}
             notesFilesCount={notesFileCount(notesAndFiles)}

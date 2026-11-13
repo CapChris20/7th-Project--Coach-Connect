@@ -28,10 +28,9 @@ import {
   getTrainerDocuments,
   getNotesAndFiles,
 } from '../../for-both/files-and-notes/saveNotesAndFiles';
-import HoldToConfirmPopup from '../../for-both/popups/HoldToConfirmPopup';
+import RemoveClientSheet from '../my-trainees/RemoveClientSheet';
 import SpreadsheetViewer from '../../for-both/files-and-notes/viewers/SpreadsheetViewer';
 import ShareDocumentPopup from '../documents/ShareDocumentPopup';
-import { useDailyQuote } from '../../for-both/home-cards/DailyQuoteCard';
 import TrainerWeeklyReportSection from '../weekly-report/TrainerWeeklyReportSection';
 import ProgressTab from '../progress-tab/TrainerProgressTab';
 import NutritionTab from '../nutrition-tab/TrainerNutritionTab';
@@ -331,6 +330,7 @@ const DashboardContent = ({
   pendingRequestsCount = 0,
   unreadMessageCount = 0,
   onClientRequestsPress,
+  onOpenNotifications,
   onClientsPress,
   onMessagesPress,
   onOpenPhotoGallery,
@@ -353,7 +353,6 @@ const DashboardContent = ({
   userEmail = '',
 }) => {
   const shellBottomPad = useShellBottomNavInset(28);
-  const dailyQuote = useDailyQuote(trainerId);
   const themeColors = trainerHomeThemeColors(isDark);
   const [activeTab, setActiveTab] = useState('Progress');
   const [selectedClientId, setSelectedClientId] = useState(null);
@@ -372,6 +371,7 @@ const DashboardContent = ({
   const plusHandlerRef = useRef(() => {});
   const [clientUnreadCount, setClientUnreadCount] = useState(0);
   const [removeClientHold, setRemoveClientHold] = useState(null);
+  const [removeClientBusy, setRemoveClientBusy] = useState(false);
   const [payoutNudgeDismissed, setPayoutNudgeDismissed] = useState(false);
   const [showPaymentPopup, setShowPaymentPopup] = useState(false);
   const [paymentPopupStripeAccountId, setPaymentPopupStripeAccountId] = useState('');
@@ -1032,14 +1032,13 @@ const DashboardContent = ({
         themeColors={themeColors}
         userName={userName}
         greetingPeriod={timeOfDay}
-        onNotificationsPress={() => onClientRequestsPress?.()}
+        onNotificationsPress={() => {
+          if (typeof onOpenNotifications === 'function') onOpenNotifications();
+          else onClientRequestsPress?.();
+        }}
       />
 
-      <DesignLawTrainerMotivationCard
-        themeColors={themeColors}
-        quoteText={dailyQuote?.q}
-        quoteAuthor={dailyQuote?.a}
-      />
+      <DesignLawTrainerMotivationCard themeColors={themeColors} />
 
       <DesignLawTrainerNeedsYou
         themeColors={themeColors}
@@ -1096,7 +1095,19 @@ const DashboardContent = ({
             />
           )}
           {activeTab === 'Nutrition' && (
-            <NutritionTab key={currentClient?.id || 'nutrition'} isDark={isDark} clientData={clientData} />
+            <NutritionTab
+              key={currentClient?.id || 'nutrition'}
+              isDark={isDark}
+              clientData={clientData}
+              clientName={currentClient?.name || currentClient?.displayName}
+              onRemindLog={() => {
+                const first = String(
+                  currentClient?.name || currentClient?.displayName || 'Client',
+                )
+                  .split(/\s+/)[0];
+                Alert.alert('Reminder sent', `${first} will get a nudge to log today’s meals.`);
+              }}
+            />
           )}
           {activeTab === 'Sessions' && (
             <CalendarTab
@@ -1192,42 +1203,45 @@ const DashboardContent = ({
     </ScrollView>
     </View>
 
-    <HoldToConfirmPopup
+    <RemoveClientSheet
       visible={!!removeClientHold}
-      onClose={() => setRemoveClientHold(null)}
-      isDark={isDark}
-      title="Remove from roster?"
-      message={
-        removeClientHold
-          ? `${String(removeClientHold.name || removeClientHold.displayName || 'Client').trim() || 'Client'} will lose trainer access. They can send a new request if you work together again.`
-          : ''
+      onClose={() => !removeClientBusy && setRemoveClientHold(null)}
+      clientName={
+        String(removeClientHold?.name || removeClientHold?.displayName || 'Client').trim() || 'Client'
       }
-      holdDurationMs={1200}
-      pillLabel="Hold until bar fills to remove"
-      barGradient={['#E25588', '#DB7093']}
-      onHoldComplete={async () => {
+      busy={removeClientBusy}
+      onConfirm={async () => {
         const client = removeClientHold;
         if (!client?.id || !trainerId) return;
         if (!functions) {
-          throw new Error('Cloud Functions are not configured.');
+          Alert.alert('Unavailable', 'Cloud Functions are not configured.');
+          return;
         }
-        const displayName = String(client.name || client.displayName || 'Client').trim() || 'Client';
-        const fn = httpsCallable(functions, 'removeTrainerClientLink');
-        await fn({
-          trainerId,
-          clientId: client.id,
-          reasons: [],
-          otherText: null,
-          removedBy: 'trainer',
-        });
-        const removedId = client.id;
-        setSelectedClientId((sel) => {
-          if (sel !== removedId) return sel;
-          const remaining = clients.filter((c) => c.id !== removedId);
-          return remaining[0]?.id ?? null;
-        });
-        onTrainerClientRemoved?.(removedId);
-        Alert.alert('Client removed', `${displayName} is no longer on your roster.`);
+        setRemoveClientBusy(true);
+        try {
+          const displayName = String(client.name || client.displayName || 'Client').trim() || 'Client';
+          const fn = httpsCallable(functions, 'removeTrainerClientLink');
+          await fn({
+            trainerId,
+            clientId: client.id,
+            reasons: [],
+            otherText: null,
+            removedBy: 'trainer',
+          });
+          const removedId = client.id;
+          setRemoveClientHold(null);
+          setSelectedClientId((sel) => {
+            if (sel !== removedId) return sel;
+            const remaining = clients.filter((c) => c.id !== removedId);
+            return remaining[0]?.id ?? null;
+          });
+          onTrainerClientRemoved?.(removedId);
+          Alert.alert('Client removed', `${displayName} is no longer on your roster.`);
+        } catch (e) {
+          Alert.alert('Remove failed', e?.message || 'Could not remove this client.');
+        } finally {
+          setRemoveClientBusy(false);
+        }
       }}
     />
     {showPaymentPopup ? (

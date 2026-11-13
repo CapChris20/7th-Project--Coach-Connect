@@ -1,5 +1,5 @@
-// App-styled error / alert modal: neobrutalist card, icon, title, message, Dismiss, optional Retry.
-// Flow: parent sets visible → user taps Dismiss (onDismiss) or Retry (onRetry).
+// Design Law error / alert modal (loading-and-errors cannot-reach / form toasts).
+// Flow: parent sets visible → Dismiss (onDismiss) or Retry (onRetry).
 // Used by login and other screens that need a branded alert instead of a system Alert.
 
 import React from 'react';
@@ -7,40 +7,25 @@ import {
   Modal,
   View,
   Text,
-  TouchableOpacity,
   StyleSheet,
-  Platform,
   useWindowDimensions,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
 import NbCard from '../../look-and-feel/NbCard';
 import NbButton from '../../look-and-feel/NbButton';
-import { lightColors } from '../../look-and-feel/colorPalette';
+import HardShadow from '../../look-and-feel/HardShadow';
+import { borderRadius, nb } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
-const COLORS = {
-  bg: lightColors.nbInk,
-  cardBg: '#141419',
-  textPrimary: lightColors.white,
-  textSecondary: 'rgba(255,255,255,0.65)',
-  textTertiary: 'rgba(255,255,255,0.4)',
-  pink: lightColors.primary,
-  orange: '#F97316',
-  cyan: '#06B6D4',
-  purple: '#E25588',
-};
-
-const CTA_GRADIENT = [COLORS.pink, COLORS.orange];
 const DEFAULT_TITLE = 'Error';
 const DEFAULT_MESSAGE = 'Something went wrong.';
-const DEFAULT_ICON = 'alert-circle';
+const DEFAULT_ICON = 'alert-circle-outline';
 const DEFAULT_RETRY_TEXT = 'Retry';
 const MAX_CARD_WIDTH = 500;
 const CARD_WIDTH_RATIO = 0.9;
-const ICON_SIZE = 48;
+const ICON_SIZE = 40;
 
 // ===== HELPER FUNCTIONS =====
 
@@ -49,8 +34,6 @@ function noop() {}
 // ===== MAIN FUNCTION =====
 
 /**
- * CoachConnect-styled error / alert modal (gradient rim, glass inner, optional retry).
- * Uses Ionicons names (default `alert-circle`).
  * @param {{ visible?: boolean, title?: string, message?: string, icon?: string, onDismiss?: Function, onRetry?: Function, retryText?: string }} props
  */
 export function ErrorPopup({
@@ -67,29 +50,33 @@ export function ErrorPopup({
   const maxCard = Math.min(MAX_CARD_WIDTH, width * CARD_WIDTH_RATIO);
   const hasRetry = Boolean(onRetry);
 
-  // 1. Dismiss always. Retry only when the parent passed onRetry.
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onDismiss || noop}>
       <View style={styles.overlay}>
-        <View style={[styles.cardWrap, { width: maxCard }]}>
-          <NbCard>
+        <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard} style={{ width: maxCard }}>
+          <NbCard noShadow style={styles.card}>
             <View style={styles.cardContent}>
-              <Ionicons name={icon} size={ICON_SIZE} color={COLORS.pink} style={styles.icon} />
+              <View
+                style={[
+                  styles.iconWrap,
+                  { borderColor: colors.nbBorder, backgroundColor: colors.nbSoft },
+                ]}
+              >
+                <Ionicons name={icon} size={ICON_SIZE} color={colors.nbInk} />
+              </View>
 
               <Text style={[styles.title, { color: colors.nbInk }]}>{title}</Text>
-
               <Text style={[styles.message, { color: colors.nbMuted }]}>{message}</Text>
 
               <View style={[styles.buttonRow, !hasRetry && styles.buttonRowSingle]}>
                 <View style={{ flex: 1 }}>
-                  <NbButton variant="plain" onPress={onDismiss}>
+                  <NbButton variant="ghost" onPress={onDismiss}>
                     Dismiss
                   </NbButton>
                 </View>
-
                 {hasRetry ? (
                   <View style={{ flex: 1 }}>
-                    <NbButton variant="brand" onPress={onRetry}>
+                    <NbButton variant="fill" onPress={onRetry}>
                       {retryText}
                     </NbButton>
                   </View>
@@ -97,7 +84,7 @@ export function ErrorPopup({
               </View>
             </View>
           </NbCard>
-        </View>
+        </HardShadow>
       </View>
     </Modal>
   );
@@ -108,39 +95,46 @@ export default ErrorPopup;
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.8)',
+    backgroundColor: 'rgba(0,0,0,0.55)',
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 20,
   },
-  cardWrap: {
-    maxWidth: 500,
+  card: {
+    padding: 0,
   },
   cardContent: {
     alignItems: 'center',
+    padding: 20,
+    gap: 10,
   },
-  icon: {
-    marginBottom: 16,
+  iconWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: 16,
+    borderWidth: nb.borderWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
   },
   title: {
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: 20,
+    fontWeight: '900',
     textAlign: 'center',
-    marginBottom: 8,
   },
   message: {
-    fontSize: 13,
+    fontSize: 14,
+    fontWeight: '600',
     textAlign: 'center',
     lineHeight: 20,
-    marginBottom: 20,
   },
   buttonRow: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 10,
     width: '100%',
-    alignItems: 'stretch',
+    marginTop: 8,
   },
   buttonRowSingle: {
-    flexDirection: 'column',
+    justifyContent: 'center',
   },
 });

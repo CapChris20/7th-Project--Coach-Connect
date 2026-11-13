@@ -1,5 +1,5 @@
-// Progress photo gallery — grid + Design Law fullscreen viewer (progress PNG 07/08).
-// Flow: listen to users/{clientId}/progressPhotos → filter/sort → tap to open → client can add a photo.
+// Progress photo gallery — grid + Design Law fullscreen viewer + compare slider (progress PNG 05–10).
+// Flow: listen to users/{clientId}/progressPhotos → filter/sort → tap to open → Compare → before/after drag.
 // Used by the client gallery tab and the trainer viewing a client's photos.
 
 import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
@@ -75,6 +75,13 @@ const SORT_OPTIONS = [
   { id: 'date_desc', label: 'By Date (Newest)' },
   { id: 'date_asc', label: 'By Date (Oldest)' },
   { id: 'name', label: 'By Name' },
+];
+
+// Manipulate here: compare angle chips match progress PNG 09 (Front / Side / Back)
+const COMPARE_ANGLES = [
+  { id: 'front', label: 'Front' },
+  { id: 'side', label: 'Side' },
+  { id: 'back', label: 'Back' },
 ];
 
 // ===== HELPER FUNCTIONS =====
@@ -210,6 +217,35 @@ function findFilterLabel(filterId) {
     if (option.id === filterId) return option.label;
   }
   return 'All';
+}
+
+function photoMatchesCompareAngle(photo, angleId) {
+  const body = String(photo?._body || '').toLowerCase();
+  const pose = String(photo?.pose || photo?.angle || photo?.view || photo?.tag || '').toLowerCase();
+  if (pose.includes(angleId) || body.includes(angleId)) return true;
+  // Soft fallbacks when clients never tagged Front/Side/Back
+  if (angleId === 'front' && (body === 'full_body' || body === 'chest' || body === 'all')) return true;
+  if (angleId === 'back' && body === 'back') return true;
+  return false;
+}
+
+/**
+ * Prefer angle-tagged photos; if fewer than 2, fall back to the full sorted list.
+ * Returns [before, after] oldest→newest for the slider.
+ */
+function pickComparePair(photos, angleId) {
+  if (!photos?.length) return [null, null];
+  const chronological = [...photos].sort((a, b) => a._date - b._date);
+  const angled = chronological.filter((p) => photoMatchesCompareAngle(p, angleId));
+  const pool = angled.length >= 2 ? angled : chronological;
+  if (pool.length < 2) return [null, null];
+  return [pool[0], pool[pool.length - 1]];
+}
+
+function weeksBetweenPhotos(before, after) {
+  if (!before?._date || !after?._date) return null;
+  const ms = Math.abs(after._date.getTime() - before._date.getTime());
+  return Math.max(1, Math.round(ms / (1000 * 60 * 60 * 24 * 7)));
 }
 
 /** Map app nb tokens to the local theme object this screen already expects. */
@@ -366,6 +402,253 @@ function PhotoGridCard({ item, cellSize, theme, colors, onOpen, onMenu }) {
   );
 }
 
+/**
+ * Design Law before/after slider (progress PNG 09/10).
+ * vocab: clip left image to dividerX; right image shows full under it
+ */
+function CompareSliderModal({
+  visible,
+  onClose,
+  photos,
+  colors,
+  theme,
+}) {
+  const { width: winW } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const [angleId, setAngleId] = useState('front');
+  const frameSize = Math.min(winW - 40, 360);
+  const dividerX = useSharedValue(frameSize / 2);
+  const startX = useSharedValue(frameSize / 2);
+
+  const [before, after] = useMemo(() => pickComparePair(photos, angleId), [photos, angleId]);
+  const weeksApart = weeksBetweenPhotos(before, after);
+
+  useEffect(() => {
+    if (!visible) return;
+    dividerX.value = frameSize / 2;
+    startX.value = frameSize / 2;
+  }, [visible, frameSize, angleId, dividerX, startX]);
+
+  const pan = Gesture.Pan()
+    .onBegin(() => {
+      startX.value = dividerX.value;
+    })
+    .onUpdate((e) => {
+      dividerX.value = clamp(startX.value + e.translationX, 24, frameSize - 24);
+    });
+
+  const leftClipStyle = useAnimatedStyle(() => ({
+    width: dividerX.value,
+  }));
+  const handleStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: dividerX.value - 22 }],
+  }));
+
+  if (!visible) return null;
+
+  return (
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+      <SafeAreaView style={[styles.safe, { backgroundColor: theme.bg }]} edges={SHELL_SAFE_AREA_EDGES}>
+        <View style={[styles.modalTop, { paddingTop: Math.max(insets.top, 8) }]}>
+          <TouchableOpacity
+            onPress={onClose}
+            style={[styles.modalSqBtn, { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface }]}
+            accessibilityLabel="Close compare"
+          >
+            <Ionicons name="chevron-back" size={22} color={colors.nbInk} />
+          </TouchableOpacity>
+          <View style={styles.modalTitleStack}>
+            <Text style={[styles.modalTitle, { color: colors.nbInk }]}>Compare</Text>
+            <Text style={[styles.modalSubtitle, { color: colors.nbMuted }]}>Drag the line</Text>
+          </View>
+          <View style={styles.hit44} />
+        </View>
+
+        <View style={{ flex: 1, paddingHorizontal: 20, justifyContent: 'center', alignItems: 'center', gap: 16 }}>
+          {!before?.url || !after?.url ? (
+            <View style={styles.centerFill}>
+              <Text style={[styles.emptyTitle, { color: theme.text }]}>Need two photos</Text>
+              <Text style={[styles.emptySub, { color: theme.muted }]}>
+                Add at least two progress photos to compare before and after.
+              </Text>
+            </View>
+          ) : (
+            <>
+              <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard}>
+                <View
+                  style={{
+                    width: frameSize,
+                    height: frameSize,
+                    borderRadius: borderRadius.nbCard,
+                    borderWidth: nb.borderWidth,
+                    borderColor: colors.nbBorder,
+                    overflow: 'hidden',
+                    backgroundColor: colors.nbSoft,
+                  }}
+                >
+                  <Image
+                    source={{ uri: after.url }}
+                    style={StyleSheet.absoluteFillObject}
+                    resizeMode="cover"
+                  />
+                  <AnimatedRe.View
+                    style={[
+                      {
+                        position: 'absolute',
+                        left: 0,
+                        top: 0,
+                        bottom: 0,
+                        overflow: 'hidden',
+                      },
+                      leftClipStyle,
+                    ]}
+                  >
+                    <Image
+                      source={{ uri: before.url }}
+                      style={{ width: frameSize, height: frameSize }}
+                      resizeMode="cover"
+                    />
+                  </AnimatedRe.View>
+                  <GestureDetector gesture={pan}>
+                    <AnimatedRe.View
+                      style={[
+                        {
+                          position: 'absolute',
+                          top: 0,
+                          bottom: 0,
+                          width: 44,
+                          alignItems: 'center',
+                        },
+                        handleStyle,
+                      ]}
+                    >
+                      <View
+                        style={{
+                          position: 'absolute',
+                          top: 0,
+                          bottom: 0,
+                          width: 3,
+                          backgroundColor: colors.nbInk,
+                        }}
+                      />
+                      <View
+                        style={{
+                          marginTop: frameSize / 2 - 22,
+                          width: 44,
+                          height: 44,
+                          borderRadius: 22,
+                          borderWidth: nb.borderWidth,
+                          borderColor: colors.nbBorder,
+                          backgroundColor: colors.nbFill,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <Ionicons name="swap-horizontal" size={20} color={colors.nbOnFill} />
+                      </View>
+                    </AnimatedRe.View>
+                  </GestureDetector>
+                  <Text
+                    style={{
+                      position: 'absolute',
+                      left: 10,
+                      bottom: 10,
+                      fontSize: 12,
+                      fontWeight: '800',
+                      color: colors.nbOnFill,
+                      textShadowColor: 'rgba(0,0,0,0.55)',
+                      textShadowRadius: 4,
+                    }}
+                  >
+                    {formatPhotoShortDate(before._date)}
+                  </Text>
+                  <Text
+                    style={{
+                      position: 'absolute',
+                      right: 10,
+                      bottom: 10,
+                      fontSize: 12,
+                      fontWeight: '800',
+                      color: colors.nbOnFill,
+                      textShadowColor: 'rgba(0,0,0,0.55)',
+                      textShadowRadius: 4,
+                    }}
+                  >
+                    {formatPhotoShortDate(after._date)}
+                  </Text>
+                </View>
+              </HardShadow>
+
+              <View style={{ flexDirection: 'row', gap: 10, width: '100%' }}>
+                {[
+                  { label: 'Apart', value: weeksApart != null ? `${weeksApart} wks` : '—' },
+                  { label: 'Before', value: formatPhotoShortDate(before._date) },
+                  { label: 'After', value: formatPhotoShortDate(after._date) },
+                ].map((stat) => (
+                  <HardShadow key={stat.label} offset={nb.shadowOffsetSmall} radius={10} style={{ flex: 1 }}>
+                    <View
+                      style={{
+                        borderWidth: nb.borderWidth,
+                        borderColor: colors.nbBorder,
+                        backgroundColor: colors.nbSurface,
+                        borderRadius: 10,
+                        paddingVertical: 12,
+                        alignItems: 'center',
+                        minHeight: 64,
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Text style={{ fontSize: 15, fontWeight: '900', color: colors.nbInk }}>{stat.value}</Text>
+                      <Text
+                        style={{
+                          fontSize: 11,
+                          fontWeight: '800',
+                          color: colors.nbMuted,
+                          marginTop: 4,
+                          textTransform: 'uppercase',
+                          letterSpacing: 0.6,
+                        }}
+                      >
+                        {stat.label}
+                      </Text>
+                    </View>
+                  </HardShadow>
+                ))}
+              </View>
+            </>
+          )}
+        </View>
+
+        <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 20, paddingBottom: Math.max(insets.bottom, 16) }}>
+          {COMPARE_ANGLES.map((angle) => {
+            const on = angle.id === angleId;
+            return (
+              <TouchableOpacity
+                key={angle.id}
+                onPress={() => setAngleId(angle.id)}
+                style={{
+                  flex: 1,
+                  minHeight: 44,
+                  borderRadius: 999,
+                  borderWidth: nb.borderWidth,
+                  borderColor: colors.nbBorder,
+                  backgroundColor: on ? colors.nbFill : colors.nbSurface,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Text style={{ fontSize: 14, fontWeight: '900', color: on ? colors.nbOnFill : colors.nbInk }}>
+                  {angle.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </SafeAreaView>
+    </Modal>
+  );
+}
+
 // ===== MAIN FUNCTION =====
 
 /**
@@ -398,6 +681,7 @@ export default function MyProgressPhotosScreen({
   const [filterId, setFilterId] = useState('all');
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [showFilterMenu, setShowFilterMenu] = useState(false);
+  const [compareOpen, setCompareOpen] = useState(false);
   const [fullscreenZoomed, setFullscreenZoomed] = useState(false);
   const [galleryReloadKey, setGalleryReloadKey] = useState(0);
   const listRef = useRef(null);
@@ -672,16 +956,41 @@ export default function MyProgressPhotosScreen({
 
       <View style={{ paddingTop: useShellHeader ? 8 : 0 }}>
         <View style={[styles.controlsRow, { paddingHorizontal: gridPad, gap: 10 }]}>
-          <DropdownChip
-            label="Sort"
-            valueLabel={sortLabel}
-            colors={colors}
-            focused={showSortMenu}
-            onPress={() => {
-              setShowFilterMenu(false);
-              setShowSortMenu((isSortOpen) => !isSortOpen);
-            }}
-          />
+          <View style={{ flex: 1 }}>
+            <DropdownChip
+              label="Sort"
+              valueLabel={sortLabel}
+              colors={colors}
+              focused={showSortMenu}
+              onPress={() => {
+                setShowFilterMenu(false);
+                setShowSortMenu((isSortOpen) => !isSortOpen);
+              }}
+            />
+          </View>
+          <HardShadow offset={nb.shadowOffsetSmall} radius={borderRadius.nbChip}>
+            <TouchableOpacity
+              onPress={() => {
+                setShowSortMenu(false);
+                setShowFilterMenu(false);
+                setCompareOpen(true);
+              }}
+              style={{
+                minHeight: nb.minTouchTarget,
+                paddingHorizontal: 16,
+                borderRadius: borderRadius.nbChip,
+                borderWidth: nb.borderWidth,
+                borderColor: colors.nbBorder,
+                backgroundColor: colors.nbSurface,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Compare progress photos"
+            >
+              <Text style={{ fontSize: 13, fontWeight: '800', color: colors.nbInk }}>Compare</Text>
+            </TouchableOpacity>
+          </HardShadow>
           <DropdownChip
             label="Filter"
             valueLabel={filterLabel}
@@ -1010,6 +1319,14 @@ export default function MyProgressPhotosScreen({
           </View>
         </View>
       </Modal>
+
+      <CompareSliderModal
+        visible={compareOpen}
+        onClose={() => setCompareOpen(false)}
+        photos={processed}
+        colors={colors}
+        theme={theme}
+      />
     </SafeAreaView>
   );
 }

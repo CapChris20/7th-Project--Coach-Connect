@@ -31,10 +31,16 @@ export const CLIENT_ROUTES = {
   TrainerProfile: 'ClientTrainerProfile',
   WeeklyReport: 'ClientWeeklyReport',
   PhotoGallery: 'ClientPhotoGallery',
+  // Design Law Progress charts (Weight / Body fat / Lifts) — separate from PhotoGallery
+  ProgressCharts: 'ClientProgressCharts',
+  Notifications: 'ClientNotifications',
   AIWorkouts: 'ClientAIWorkouts',
   PlanViewer: 'ClientPlanViewer',
   // Design Law session mode (log set + rest) — opened from My workout plan Start session
   WorkoutSession: 'ClientWorkoutSession',
+  // Design Law client scheduling (My sessions + Request)
+  MySessions: 'ClientMySessions',
+  RequestSession: 'ClientRequestSession',
   AIChat: 'ClientAIChat',
 };
 
@@ -57,6 +63,7 @@ export const TRAINER_ROUTES = {
   ManualPlanBuilder: 'TrainerManualPlanBuilder',
   AIChat: 'TrainerAIChat',
   PhotoGallery: 'TrainerPhotoGallery',
+  Notifications: 'TrainerNotifications',
   AIWorkouts: 'TrainerAIWorkouts',
   WorkoutGenerator: 'TrainerWorkoutGenerator',
   PlanViewer: 'TrainerPlanViewer',

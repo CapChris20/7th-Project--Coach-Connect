@@ -103,7 +103,7 @@ import { useStartupLoadingCoverLock } from '../for-both/loading-and-header/Start
 import TopHeader from '../for-both/loading-and-header/TopHeader';
 import DailyQuoteCard, { DailyQuotePill } from '../for-both/home-cards/DailyQuoteCard';
 import DocumentViewer from '../for-both/files-and-notes/viewers/DocumentViewer';
-import { PayTrainerPopup } from '../for-both/payments/PayTrainerPopup';
+import CoachingPaymentScreen from '../settings/CoachingPaymentScreen';
 import WebPageViewer from '../for-both/files-and-notes/viewers/WebPageViewer';
 import FileGrid, { FILE_GALLERY_THEME_COLORS } from '../for-both/files-and-notes/viewers/FileGrid';
 import PhotoVideoViewer from '../for-both/files-and-notes/viewers/PhotoVideoViewer';
@@ -654,14 +654,26 @@ function ClientAppShellLayout({
               overflow: 'hidden',
             }}
           >
-            {/* Three sources for the trainer id (live data, alternate field name, the profile copy)
-                because the payment can be opened before trainerData has loaded. */}
-            <PayTrainerPopup
+            {/* Design Law Coaching payment (PNG 07/08). Card charge form opens from Update / Add. */}
+            <CoachingPaymentScreen
               trainerId={trainerId}
               trainerName={coachingTrainerName}
+              userData={{
+                ...(userData || {}),
+                uid: shell?.user?.uid || userData?.uid,
+                id: shell?.user?.uid || userData?.id,
+                sessionRate:
+                  userData?.sessionRate ||
+                  trainerData?.sessionRate ||
+                  trainerData?.pricing?.perSession ||
+                  null,
+                monthlyRate:
+                  userData?.monthlyRate ||
+                  trainerData?.monthlyRate ||
+                  trainerData?.pricing?.monthly ||
+                  null,
+              }}
               onClose={closeCoachingPayment}
-              // Re-read the profile after paying: the server flips subscription/billing fields on
-              // the user doc, and without this refetch the UI would keep showing "unpaid".
               onSuccess={() => {
                 onRefetchUserData?.();
               }}
@@ -845,7 +857,10 @@ export default function ClientAppStart({ user, userData, onRefetchUserData }) {
     openTrainerSearch,
     openTrainerProfile,
     openWeeklyReport,
+    openMySessions,
     openPhotoGallery,
+    openProgressCharts,
+    openNotifications,
     openAIWorkouts,
     openPlanViewer,
     openWorkoutSession,
@@ -1743,7 +1758,10 @@ export default function ClientAppStart({ user, userData, onRefetchUserData }) {
     openNutrition,
     openWorkout,
     openWeeklyReport,
+    openMySessions,
     openPhotoGallery,
+    openProgressCharts,
+    openNotifications,
     openAIWorkouts,
     openPlanViewer,
     openWorkoutSession,

@@ -16,7 +16,6 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { auth } from '../app-start/cloudConnection';
@@ -39,7 +38,9 @@ const SCROLL_BOTTOM_PAD_EXTRA = 24;
 // Manipulate here: seconds before “Resend link” unlocks on the inbox step
 const RESEND_COOLDOWN_SEC = 30;
 const TIP_GRADIENT = accentGradients[4];
-const CLOCK_GRADIENT = accentGradients[0];
+// Manipulate here: inbox hero + resend bar accent (PNG 11/12 pink→orange fill)
+const INBOX_HERO_GRADIENT = accentGradients[0];
+const RESEND_PROGRESS_GRADIENT = accentGradients[0];
 
 // ===== HELPER FUNCTIONS =====
 
@@ -287,12 +288,15 @@ export default function ResetPasswordScreen({ navigation, initialEmail = '' }) {
                 <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbIconChip} style={styles.clockWrap}>
                   <View style={[styles.clockChip, { borderColor: colors.nbBorder }]}>
                     <LinearGradient
-                      colors={CLOCK_GRADIENT}
+                      colors={INBOX_HERO_GRADIENT}
                       start={{ x: 0, y: 0 }}
                       end={{ x: 1, y: 1 }}
                       style={styles.clockFill}
                     >
-                      <Ionicons name="time-outline" size={36} color={lightColors.nbInk} />
+                      <Image
+                        source={require('../assets/icons/handoff/checkin.png')}
+                        style={{ width: 36, height: 36, resizeMode: 'contain' }}
+                      />
                     </LinearGradient>
                   </View>
                 </HardShadow>
@@ -337,7 +341,7 @@ export default function ResetPasswordScreen({ navigation, initialEmail = '' }) {
                     ]}
                   >
                     <LinearGradient
-                      colors={CLOCK_GRADIENT}
+                      colors={RESEND_PROGRESS_GRADIENT}
                       start={{ x: 0, y: 0.5 }}
                       end={{ x: 1, y: 0.5 }}
                       style={[styles.progressFill, { width: `${Math.max(cooldownProgressPct, 3)}%` }]}

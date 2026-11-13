@@ -99,6 +99,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SessionsProvider } from "../trainer-app/scheduling/SharedSessionList";
 import { unreadAlertCount } from "../notifications/unreadAlertCount";
 import { CrashCatcher } from "../crash-reports/CrashCatcher";
+import { useStartupLoadingCoverLock } from "../for-both/loading-and-header/StartupLoadingCover";
 import { getNotesAndFiles, getTrainerDocuments, deleteNotesAndFilesItem, filterTrainerDocumentsForClient } from "../for-both/files-and-notes/saveNotesAndFiles";
 import { clearAllUserData } from "../logout-cleanup/clearDataOnLogout";
 import AddFilePopup from "../for-both/files-and-notes/viewers/AddFilePopup";
@@ -1126,6 +1127,7 @@ function TrainerAppStartContent({ user }) {
     openVoiceAI,
     openAIChatSession,
     openWeeklyReport,
+    openNotifications,
     openManualPlanBuilder,
     openPayments,
     handleHomePress: navHandleHomePress,
@@ -1195,6 +1197,14 @@ function TrainerAppStartContent({ user }) {
     error: clientsError,
     refresh: refreshClients,
   } = pagedTraineeList(user?.uid);
+  // First roster fetch only — mirror ClientAppStart so home does not flash under the boot poster.
+  const [trainerHomeBootLocked, setTrainerHomeBootLocked] = useState(true);
+  useEffect(() => {
+    if (!clientsLoading && trainerHomeBootLocked) {
+      setTrainerHomeBootLocked(false);
+    }
+  }, [clientsLoading, trainerHomeBootLocked]);
+  useStartupLoadingCoverLock(trainerHomeBootLocked);
   // Incoming "please coach me" requests — the badge on the requests screen.
   const { requests: pendingRequests } = pendingRequestCount(user?.uid);
 
@@ -1217,6 +1227,7 @@ function TrainerAppStartContent({ user }) {
     console.log(`🔄 TrainerAppStart: User changed to ${user.uid} - resetting state`);
     
     // Reset all user-specific state
+    setTrainerHomeBootLocked(true);
     setUserName(null);
     setTrainerProfileDoc(null);
     setSelectedTrainer(null);
@@ -1503,6 +1514,7 @@ function TrainerAppStartContent({ user }) {
     openVoiceAI,
     openAIChatSession,
     openWeeklyReport,
+    openNotifications,
     openManualPlanBuilder,
     openPayments,
     showTrainerMessaging,

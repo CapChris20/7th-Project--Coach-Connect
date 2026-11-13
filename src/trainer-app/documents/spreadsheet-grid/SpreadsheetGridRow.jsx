@@ -402,8 +402,8 @@ const styles = StyleSheet.create({
   },
   focusRing: {
     ...StyleSheet.absoluteFillObject,
-    // Manipulate here: 2px is the ring thickness; the slight radius softens the corners.
-    borderWidth: 2,
+    // Manipulate here: nb.borderWidth matches Design Law focus outline (3px).
+    borderWidth: nb.borderWidth,
     borderRadius: 2,
   },
 });

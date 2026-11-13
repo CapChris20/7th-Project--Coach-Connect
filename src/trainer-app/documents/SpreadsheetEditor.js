@@ -1,24 +1,25 @@
-// Trainer spreadsheet editor modal — sheet grid + Firestore save shell.
-// Flow: load sheet → edit cells/formulas → autosave to users/{trainerId}/documents → share/export.
+// Trainer spreadsheet editor — Design Law chrome over custom grid + Firestore autosave.
+// Flow: load sheets → edit cells/formulas → debounce-save to users/{trainerId}/documents → share/export.
 // Used by: trainer files screen when opening or creating a spreadsheet.
+// KEEP: sheet data shape, Firestore keys, projectId anatrox-auth.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Modal, View, Text, TouchableOpacity, TextInput, Keyboard, Platform, ActivityIndicator, Alert, ScrollView, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons, MaterialIcons } from '@expo/vector-icons';
-import { nb } from '../../look-and-feel/colorPalette';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+import { nb, borderRadius, spacing } from '../../look-and-feel/colorPalette';
+import HardShadow from '../../look-and-feel/HardShadow';
+import NbButton from '../../look-and-feel/NbButton';
 import * as Clipboard from 'expo-clipboard';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { deleteDoc, doc, collection } from 'firebase/firestore';
 import { getTrainerDocument, saveTrainerSpreadsheet } from '../../for-both/files-and-notes/saveNotesAndFiles';
 import { db } from '../../app-start/cloudConnection';
-import TopHeader from '../../for-both/loading-and-header/TopHeader';
 import BottomMenuBar from '../../navigation/BottomMenuBar';
 import { SHELL_SAFE_AREA_EDGES, ShellBottomNavAnchor } from '../../navigation/bottomMenuSpacing';
 import ShareDocumentPopup from './ShareDocumentPopup';
-import SaveStatusLabel from './SaveStatusLabel';
-import { EditorIconButton, EditorTitleField, DEFAULT_SAVE_TITLE_SPREADSHEET } from './EditorTopButtons';
+import { EditorInlineTitle, DEFAULT_SAVE_TITLE_SPREADSHEET } from './EditorTopButtons';
 import { formatEditorSavedAgo, getEditorTheme } from './editorColors';
 import { ROWS, COLS, DEFAULT_COL_WIDTH, DEFAULT_ROW_HEIGHT, TOUCH_MIN, keyOf, newSheet, normalizeSel } from './spreadsheet-grid/spreadsheetConstants';
 import { detectFormat, formatNumberNice } from './spreadsheet-grid/cellFormatting';
@@ -563,35 +564,50 @@ function markSpreadsheetSaveFailed(mountedRef, setStatus, error) {
   Alert.alert('Could not save', error?.message || 'Something went wrong saving your spreadsheet.');
 }
 
-function ToolBtn({
-  children,
-  onPress,
-  label,
-  active,
-  theme,
-  disabled
-}) {
-  const hitOpacity = disabled ? 0.35 : 1;
-  const btnStyle = [
-    styles.toolBtn,
-    active
-      ? {
-          backgroundColor: theme.sheetTabActiveBg,
-          borderWidth: nb.borderWidth,
-          borderColor: theme.chromeBorder,
-        }
-      : null,
-    { opacity: hitOpacity },
-  ];
+/**
+ * Design Law toolbar chip — HardShadow + 3px border; fill when active.
+ */
+function ToolBtn({ children, onPress, label, active, theme, disabled }) {
+  const fillBg = active ? theme.accent : theme.pageBg;
   return (
-    <TouchableOpacity
-      onPress={onPress}
-      disabled={disabled}
-      accessibilityLabel={label}
-      activeOpacity={0.75}
+    <HardShadow
+      offset={nb.shadowOffsetSmall}
+      radius={borderRadius.nbButton}
+      style={{ opacity: disabled ? 0.35 : 1 }}
     >
-      <View style={btnStyle}>{children}</View>
-    </TouchableOpacity>
+      <TouchableOpacity
+        onPress={onPress}
+        disabled={disabled}
+        accessibilityLabel={label}
+        activeOpacity={0.85}
+        style={[
+          styles.toolBtn,
+          {
+            backgroundColor: fillBg,
+            borderColor: theme.chromeBorder,
+          },
+        ]}
+      >
+        {children}
+      </TouchableOpacity>
+    </HardShadow>
+  );
+}
+
+/** Square header control matching DocumentEditor (PNG 17). */
+function HeaderSq({ onPress, theme, children, accessibilityLabel, disabled }) {
+  return (
+    <HardShadow offset={nb.shadowOffsetSmall} radius={borderRadius.nbIconChip} style={{ opacity: disabled ? 0.4 : 1 }}>
+      <TouchableOpacity
+        onPress={onPress}
+        disabled={disabled}
+        style={[styles.headerSq, { backgroundColor: theme.pageBg, borderColor: theme.chromeBorder }]}
+        hitSlop={8}
+        accessibilityLabel={accessibilityLabel}
+      >
+        {children}
+      </TouchableOpacity>
+    </HardShadow>
   );
 }
 function StatChip({
@@ -603,35 +619,21 @@ function StatChip({
   return (
     <TouchableOpacity onPress={onPress} style={styles.statChip} activeOpacity={0.8}>
       <Text style={[styles.statLabel, { color: theme.textMuted }]}>{label}</Text>
-      <Text style={[styles.statVal, { color: theme.sheetTabActiveText }]}>{val}</Text>
+      <Text style={[styles.statVal, { color: theme.text }]}>{val}</Text>
     </TouchableOpacity>
   );
 }
-function Divider({
-  theme
-}) {
-  return <View style={[styles.divider, {
-    backgroundColor: theme.divider
-  }]} />;
-}
-
-/** Ticks on its own so the header clock does not re-render the whole editor grid. */
-function SavedAgoLabel({
-  at,
-  theme
-}) {
-  const [, tick] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => tick((tickCount) => tickCount + 1), TOAST_VISIBLE_MS);
-    return () => clearInterval(id);
-  }, []);
-  return <Text style={{
-    color: theme.textMuted,
-    fontSize: 11,
-    marginLeft: 8
-  }}>
-      {formatEditorSavedAgo(at)}
-    </Text>;
+function Divider({ theme }) {
+  return (
+    <View
+      style={{
+        width: nb.borderWidth,
+        height: 28,
+        marginHorizontal: 4,
+        backgroundColor: theme.border,
+      }}
+    />
+  );
 }
 // ===== MAIN FUNCTION =====
 
@@ -666,6 +668,7 @@ export default function SpreadsheetEditor({
   const activeIdRef = useRef('');
   const docIdRef = useRef(documentId || null);
   const performSaveRef = useRef(null);
+  const insets = useSafeAreaInsets();
   const [themeMode, setThemeMode] = useState(isDark ? 'dark' : 'light');
   const isSheetDark = themeMode === 'dark';
   const theme = useMemo(() => getEditorTheme(isSheetDark), [isSheetDark]);
@@ -705,6 +708,12 @@ export default function SpreadsheetEditor({
   const [showShare, setShowShare] = useState(false);
   const [sharedWith, setSharedWith] = useState([]);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const savedSubtitle = useMemo(() => {
+    if (status === 'saving') return 'Saving…';
+    if (status === 'unsaved') return 'Unsaved changes';
+    const ago = formatEditorSavedAgo(lastSaved);
+    return ago === 'just now' ? 'Saved just now' : `Saved ${ago}`;
+  }, [status, lastSaved]);
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
     const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
@@ -1514,111 +1523,126 @@ export default function SpreadsheetEditor({
   return <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={handleBackPress}>
       <SafeAreaView style={{
       flex: 1,
-      backgroundColor: theme.canvasBg
+      backgroundColor: theme.bg
     }} edges={SHELL_SAFE_AREA_EDGES}>
-          {trainerNavChrome ? <TopHeader title="Spreadsheet" skipTopSafeInset appearanceIsDark={isSheetDark} onBack={handleBackPress} onProfilePress={trainerNavChrome.onProfilePress} onSettingsPress={trainerNavChrome.onSettingsPress} /> : <View style={[styles.backRow, {
-        backgroundColor: theme.headerBg
-      }]}>
-              <TouchableOpacity onPress={handleBackPress} style={styles.headerBtn} hitSlop={12}>
-                <Ionicons name="chevron-back" size={20} color={theme.text} />
-              </TouchableOpacity>
-            </View>}
-
-          <View style={[styles.titleSection, {
-        backgroundColor: theme.headerBg,
-        borderBottomColor: theme.border
-      }]}>
-            <EditorTitleField inputRef={titleInputRef} value={title} onChangeText={t => {
-          userEditedRef.current = true;
-          canAutoSaveRef.current = true;
-          setTitle(t);
-          setStatus('unsaved');
-        }} onFocus={() => setTitleFocused(true)} onBlur={() => setTitleFocused(false)} focused={titleFocused} theme={theme} />
-            <View style={styles.metaRow}>
-              <SaveStatusLabel status={status} theme={theme} />
-              <SavedAgoLabel at={lastSaved} theme={theme} />
-              <View style={{
-            flex: 1
-          }} />
-              <EditorIconButton icon="share-outline" onPress={handleSharePress} theme={theme} accessibilityLabel="Share" />
-              <EditorIconButton icon={favorite ? 'star' : 'star-outline'} onPress={() => {
-            setFavorite(v => !v);
-            queueSave();
-          }} theme={theme} active={favorite} accessibilityLabel="Favorite" />
-              <EditorIconButton icon={isSheetDark ? 'sunny-outline' : 'moon-outline'} onPress={() => setThemeMode(t => t === 'dark' ? 'light' : 'dark')} theme={theme} accessibilityLabel="Toggle theme" />
-              <TouchableOpacity onPress={() => setOpenSheet('menu')} style={styles.menuBtn} accessibilityLabel="Menu">
-                <Ionicons name="menu" size={22} color={theme.text} />
-              </TouchableOpacity>
+          {/* Header — same rhythm as DocumentEditor PNG 17 */}
+          <View style={[styles.topBar, { paddingTop: insets.top + spacing.sm }]}>
+            <HeaderSq onPress={handleBackPress} theme={theme} accessibilityLabel="Back">
+              <Ionicons name="chevron-back" size={22} color={theme.text} />
+            </HeaderSq>
+            <View style={styles.titleWrap}>
+              <EditorInlineTitle
+                inputRef={titleInputRef}
+                value={title}
+                onChangeText={(t) => {
+                  userEditedRef.current = true;
+                  canAutoSaveRef.current = true;
+                  setTitle(t);
+                  setStatus('unsaved');
+                }}
+                onFocus={() => setTitleFocused(true)}
+                onBlur={() => setTitleFocused(false)}
+                focused={titleFocused}
+                theme={theme}
+                placeholder={DEFAULT_SAVE_TITLE_SPREADSHEET}
+              />
+              <Text style={[styles.savedLabel, { color: theme.textMuted }]}>{savedSubtitle}</Text>
             </View>
+            <HeaderSq onPress={handleSharePress} theme={theme} accessibilityLabel="Share">
+              <Ionicons name="paper-plane-outline" size={20} color={theme.text} />
+            </HeaderSq>
+          </View>
+
+          <View style={styles.headerIconRow}>
+            <HeaderSq
+              onPress={() => {
+                setFavorite((v) => !v);
+                queueSave();
+              }}
+              theme={theme}
+              accessibilityLabel="Favorite"
+            >
+              <Ionicons name={favorite ? 'star' : 'star-outline'} size={18} color={favorite ? theme.text : theme.textMuted} />
+            </HeaderSq>
+            <HeaderSq
+              onPress={() => setThemeMode((t) => (t === 'dark' ? 'light' : 'dark'))}
+              theme={theme}
+              accessibilityLabel="Toggle theme"
+            >
+              <Ionicons name={isSheetDark ? 'sunny-outline' : 'moon-outline'} size={18} color={theme.text} />
+            </HeaderSq>
+            <HeaderSq onPress={() => setOpenSheet('menu')} theme={theme} accessibilityLabel="Menu">
+              <Ionicons name="menu" size={20} color={theme.text} />
+            </HeaderSq>
           </View>
 
           <View style={[styles.toolbar, {
-        backgroundColor: theme.toolbarBg,
+        backgroundColor: theme.bg,
         borderBottomColor: theme.border
       }]}>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.toolbarRow}>
               <ToolBtn theme={theme} label="Undo" disabled={!history.length} onPress={undo}>
-                <Ionicons name="arrow-undo-outline" size={18} color={theme.textMuted} />
+                <Ionicons name="arrow-undo-outline" size={18} color={theme.text} />
               </ToolBtn>
               <ToolBtn theme={theme} label="Redo" disabled={!future.length} onPress={redo}>
-                <Ionicons name="arrow-redo-outline" size={18} color={theme.textMuted} />
+                <Ionicons name="arrow-redo-outline" size={18} color={theme.text} />
               </ToolBtn>
               <Divider theme={theme} />
               <ToolBtn theme={theme} label="Add row" onPress={() => shiftCells('row', sel.r1 + 1, 1)}>
-                <Ionicons name="add-circle-outline" size={18} color={theme.textMuted} />
+                <Ionicons name="add-circle-outline" size={18} color={theme.text} />
               </ToolBtn>
               <ToolBtn theme={theme} label="Remove row" onPress={() => shiftCells('row', sel.r1, -1)}>
-                <Ionicons name="remove-circle-outline" size={18} color={theme.textMuted} />
+                <Ionicons name="remove-circle-outline" size={18} color={theme.text} />
               </ToolBtn>
               <ToolBtn theme={theme} label="Add column" onPress={() => shiftCells('col', sel.c1 + 1, 1)}>
-                <MaterialIcons name="view-column" size={18} color={theme.textMuted} />
+                <Ionicons name="grid-outline" size={18} color={theme.text} />
               </ToolBtn>
               <ToolBtn theme={theme} label="Remove column" onPress={() => shiftCells('col', sel.c1, -1)}>
-                <MaterialIcons name="delete-outline" size={18} color={theme.textMuted} />
+                <Ionicons name="trash-outline" size={18} color={theme.text} />
               </ToolBtn>
               <Divider theme={theme} />
               <ToolBtn theme={theme} label="Bold" active={!!focusCell?.style?.bold} onPress={() => toggleStyle('bold')}>
                 <Text style={{
               fontWeight: '900',
-              color: theme.text
+              color: focusCell?.style?.bold ? theme.textOnAccent : theme.text
             }}>B</Text>
               </ToolBtn>
               <ToolBtn theme={theme} label="Italic" active={!!focusCell?.style?.italic} onPress={() => toggleStyle('italic')}>
                 <Text style={{
               fontStyle: 'italic',
               fontWeight: '800',
-              color: theme.text
+              color: focusCell?.style?.italic ? theme.textOnAccent : theme.text
             }}>I</Text>
               </ToolBtn>
               <ToolBtn theme={theme} label="Underline" active={!!focusCell?.style?.underline} onPress={() => toggleStyle('underline')}>
                 <Text style={{
               textDecorationLine: 'underline',
               fontWeight: '800',
-              color: theme.text
+              color: focusCell?.style?.underline ? theme.textOnAccent : theme.text
             }}>U</Text>
               </ToolBtn>
               <Divider theme={theme} />
               <ToolBtn theme={theme} label="Currency" onPress={() => applyFormat('currency', '$')}>
                 <Text style={{
               fontWeight: '800',
-              color: theme.textMuted
+              color: theme.text
             }}>$</Text>
               </ToolBtn>
               <ToolBtn theme={theme} label="Percent" onPress={() => applyFormat('percent')}>
                 <Text style={{
               fontWeight: '800',
-              color: theme.textMuted
+              color: theme.text
             }}>%</Text>
               </ToolBtn>
               <ToolBtn theme={theme} label="Checkbox" onPress={() => applyFormat('checkbox')}>
-                <Ionicons name="checkbox-outline" size={18} color={theme.textMuted} />
+                <Ionicons name="checkbox-outline" size={18} color={theme.text} />
               </ToolBtn>
               <Divider theme={theme} />
               <ToolBtn theme={theme} label="Find" onPress={() => setFindOpen(true)}>
-                <Ionicons name="search-outline" size={18} color={theme.textMuted} />
+                <Ionicons name="search-outline" size={18} color={theme.text} />
               </ToolBtn>
               <ToolBtn theme={theme} label="More" onPress={() => setOpenSheet('more')}>
-                <Ionicons name="ellipsis-horizontal" size={20} color={theme.textMuted} />
+                <Ionicons name="ellipsis-horizontal" size={20} color={theme.text} />
               </ToolBtn>
             </ScrollView>
           </View>
@@ -1641,17 +1665,16 @@ export default function SpreadsheetEditor({
           }
         }} />
 
-          <View style={{
-          flex: 1,
-          backgroundColor: theme.pageBg
-        }}>
+          <View style={[styles.gridDesk, { backgroundColor: theme.canvasBg }]}>
             {loading ? <View style={{
             flex: 1,
             alignItems: 'center',
             justifyContent: 'center'
           }}>
-                <ActivityIndicator size="large" color={theme.selectionBorder} />
-              </View> : <SpreadsheetGrid ref={gridRef} theme={theme} cells={active?.cells ?? {}} displayCache={displayCache} colWidths={active?.colWidths} rowHeights={active?.rowHeights} dimRevision={dimRevision} selection={selection} editing={editing} editSeed={cellEditBoot} editVia={editing?.via ?? 'cell'} cellEditRef={cellEditRef} onCellPress={onCellPress} onCellLongPress={() => setContextSheet('context')} onCellDraftChange={onCellDraftChange} onCellEditCommit={commitEdit} onColHeaderPress={c => setSelection({
+                <ActivityIndicator size="large" color={theme.text} />
+              </View> : <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard} style={styles.gridShadow}>
+                <View style={[styles.gridFrame, { borderColor: theme.chromeBorder, backgroundColor: theme.pageBg }]}>
+                  <SpreadsheetGrid ref={gridRef} theme={theme} cells={active?.cells ?? {}} displayCache={displayCache} colWidths={active?.colWidths} rowHeights={active?.rowHeights} dimRevision={dimRevision} selection={selection} editing={editing} editSeed={cellEditBoot} editVia={editing?.via ?? 'cell'} cellEditRef={cellEditRef} onCellPress={onCellPress} onCellLongPress={() => setContextSheet('context')} onCellDraftChange={onCellDraftChange} onCellEditCommit={commitEdit} onColHeaderPress={c => setSelection({
             anchor: {
               r: 0,
               c
@@ -1669,64 +1692,80 @@ export default function SpreadsheetEditor({
               r,
               c: COLS - 1
             }
-          })} onRowHeaderLongPress={() => setOpenSheet('more')} />}
-            {stats && !keyboardVisible ? <View style={[styles.statsChip, {
-            backgroundColor: theme.sheetTabActiveBg,
+          })} onRowHeaderLongPress={() => setOpenSheet('more')} />
+                </View>
+              </HardShadow>}
+            {stats && !keyboardVisible ? <HardShadow offset={nb.shadowOffsetSmall} radius={999} style={styles.statsShadow}>
+                <View style={[styles.statsChip, {
+            backgroundColor: theme.pageBg,
             borderWidth: nb.borderWidth,
             borderColor: theme.chromeBorder,
           }]}>
-                {stats.hasNums ? <StatChip theme={theme} label="Sum" val={formatNumberNice(stats.sum)} onPress={() => Clipboard.setStringAsync(String(stats.sum)).then(() => showToast('Copied'))} /> : null}
-                {stats.avg !== null ? <StatChip theme={theme} label="Avg" val={formatNumberNice(stats.avg)} onPress={() => Clipboard.setStringAsync(String(stats.avg)).then(() => showToast('Copied'))} /> : null}
-                <StatChip theme={theme} label="Count" val={String(stats.count)} onPress={() => Clipboard.setStringAsync(String(stats.count)).then(() => showToast('Copied'))} />
-              </View> : null}
+                  {stats.hasNums ? <StatChip theme={theme} label="Sum" val={formatNumberNice(stats.sum)} onPress={() => Clipboard.setStringAsync(String(stats.sum)).then(() => showToast('Copied'))} /> : null}
+                  {stats.avg !== null ? <StatChip theme={theme} label="Avg" val={formatNumberNice(stats.avg)} onPress={() => Clipboard.setStringAsync(String(stats.avg)).then(() => showToast('Copied'))} /> : null}
+                  <StatChip theme={theme} label="Count" val={String(stats.count)} onPress={() => Clipboard.setStringAsync(String(stats.count)).then(() => showToast('Copied'))} />
+                </View>
+              </HardShadow> : null}
           </View>
           </View>
 
           {!keyboardVisible ? <View style={[styles.sheetTabs, {
-        backgroundColor: theme.headerBg,
+        backgroundColor: theme.bg,
         borderTopColor: theme.border
       }]}>
-            <TouchableOpacity onPress={() => {
+            <HardShadow offset={nb.shadowOffsetSmall} radius={borderRadius.nbIconChip}>
+              <TouchableOpacity
+                onPress={() => {
           pushHistory();
           const createdSheet = newSheet(sheets.length + 1);
           setSheets(s => [...s, createdSheet]);
           setActiveId(createdSheet.id);
           queueSave();
-        }} style={styles.addSheetBtn}>
-              <Ionicons name="add" size={18} color={theme.textMuted} />
-            </TouchableOpacity>
+        }}
+                style={[styles.addSheetBtn, { backgroundColor: theme.pageBg, borderColor: theme.chromeBorder, borderWidth: nb.borderWidth }]}
+              >
+                <Ionicons name="add" size={18} color={theme.text} />
+              </TouchableOpacity>
+            </HardShadow>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{
           alignItems: 'center',
-          gap: 6
+          gap: 8
         }}>
               {sheets.map(s => {
             const isActive = s.id === activeId;
-            return <TouchableOpacity key={s.id} onPress={() => setActiveId(s.id)} onLongPress={() => promptRenameSheet(s)} delayLongPress={400}>
-                    {isActive ? <View style={[styles.sheetTabActive, {
+            const tabBody = isActive ? (
+              <View style={[styles.sheetTabActive, {
                 backgroundColor: theme.sheetTabActiveBg,
                 borderWidth: nb.borderWidth,
                 borderColor: theme.chromeBorder,
               }]}>
-                        <Text style={[styles.sheetTabActiveText, { color: theme.sheetTabActiveText }]}>{s.name}</Text>
-                      </View> : <View style={[styles.sheetTab, {
-                backgroundColor: theme.inputBg,
+                <Text style={[styles.sheetTabActiveText, { color: theme.sheetTabActiveText }]}>{s.name}</Text>
+              </View>
+            ) : (
+              <View style={[styles.sheetTab, {
+                backgroundColor: theme.pageBg,
                 borderWidth: nb.borderWidth,
                 borderColor: theme.chromeBorder,
               }]}>
-                        <Text style={{
-                  color: theme.textMuted,
-                  fontSize: 12,
-                  fontWeight: '700'
-                }}>{s.name}</Text>
-                      </View>}
-                  </TouchableOpacity>;
+                <Text style={{ color: theme.textMuted, fontSize: 12, fontWeight: '800' }}>{s.name}</Text>
+              </View>
+            );
+            return (
+              <TouchableOpacity key={s.id} onPress={() => setActiveId(s.id)} onLongPress={() => promptRenameSheet(s)} delayLongPress={400} activeOpacity={0.85}>
+                <HardShadow offset={nb.shadowOffsetSmall} radius={999}>
+                  {tabBody}
+                </HardShadow>
+              </TouchableOpacity>
+            );
           })}
             </ScrollView>
           </View> : null}
 
-          {toastMsg ? <View style={styles.toast}>
-              <Text style={styles.toastText}>{toastMsg}</Text>
-            </View> : null}
+          {toastMsg ? <HardShadow offset={nb.shadowOffsetSmall} radius={999} style={styles.toastWrap}>
+              <View style={[styles.toast, { backgroundColor: theme.accent, borderColor: theme.chromeBorder }]}>
+                <Text style={[styles.toastText, { color: theme.textOnAccent }]}>{toastMsg}</Text>
+              </View>
+            </HardShadow> : null}
 
           <SlideUpMenu visible={openSheet === 'menu'} onClose={() => setOpenSheet(null)} title="Menu" theme={theme}>
             {Object.entries(menuSections).map(([key, m]) => <View key={key}>
@@ -1798,73 +1837,59 @@ export default function SpreadsheetEditor({
         }} />
           </SlideUpMenu>
 
-          {findOpen ? <View style={[styles.findModal, {
-        backgroundColor: theme.headerBg,
-        borderColor: theme.border
+          {findOpen ? <View style={styles.findOverlay} pointerEvents="box-none">
+              <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard} style={{ width: '100%' }}>
+                <View style={[styles.findModal, {
+        backgroundColor: theme.pageBg,
+        borderColor: theme.chromeBorder
       }]}>
-              <View style={styles.findHeader}>
-                <Text style={{
-            color: theme.text,
-            fontWeight: '700'
-          }}>Find & replace</Text>
-                <TouchableOpacity onPress={() => setFindOpen(false)} hitSlop={8}>
-                  <Ionicons name="close" size={20} color={theme.textMuted} />
-                </TouchableOpacity>
-              </View>
-              <TextInput value={findQ} onChangeText={setFindQ} placeholder="Find" placeholderTextColor={theme.textMuted} style={[styles.findInput, {
+                  <View style={styles.findHeader}>
+                    <Text style={{ color: theme.text, fontWeight: '800', fontSize: 16 }}>Find & replace</Text>
+                    <HeaderSq onPress={() => setFindOpen(false)} theme={theme} accessibilityLabel="Close">
+                      <Ionicons name="close" size={18} color={theme.text} />
+                    </HeaderSq>
+                  </View>
+                  <TextInput value={findQ} onChangeText={setFindQ} placeholder="Find" placeholderTextColor={theme.textMuted} style={[styles.findInput, {
           color: theme.text,
-          borderColor: theme.border,
-          backgroundColor: theme.inputBg
+          borderColor: theme.chromeBorder,
+          backgroundColor: theme.pageBg
         }]} />
-              <TextInput value={replaceQ} onChangeText={setReplaceQ} placeholder="Replace with" placeholderTextColor={theme.textMuted} style={[styles.findInput, {
+                  <TextInput value={replaceQ} onChangeText={setReplaceQ} placeholder="Replace with" placeholderTextColor={theme.textMuted} style={[styles.findInput, {
           color: theme.text,
-          borderColor: theme.border,
-          backgroundColor: theme.inputBg
+          borderColor: theme.chromeBorder,
+          backgroundColor: theme.pageBg
         }]} />
-              <View style={styles.findActions}>
-                <TouchableOpacity onPress={() => doReplace(false)} style={[styles.findBtn, {
-            borderColor: theme.border
-          }]}>
-                  <Text style={{
-              color: theme.text
-            }}>Replace</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => doReplace(true)} style={[styles.findBtnPrimary, {
-              backgroundColor: theme.sheetTabActiveBg,
-              borderWidth: nb.borderWidth,
-              borderColor: theme.chromeBorder,
-            }]}>
-                    <Text style={{
-                color: theme.sheetTabActiveText,
-                fontWeight: '700'
-              }}>Replace all</Text>
-                </TouchableOpacity>
-              </View>
+                  <View style={styles.findActions}>
+                    <NbButton variant="plain" onPress={() => doReplace(false)} style={styles.findNbBtn}>
+                      Replace
+                    </NbButton>
+                    <NbButton variant="fill" onPress={() => doReplace(true)} style={styles.findNbBtn}>
+                      Replace all
+                    </NbButton>
+                  </View>
+                </View>
+              </HardShadow>
             </View> : null}
 
-          {renameSheetId ? <View style={[styles.findModal, {
-        backgroundColor: theme.headerBg,
-        borderColor: theme.border
+          {renameSheetId ? <View style={styles.findOverlay} pointerEvents="box-none">
+              <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard} style={{ width: '100%' }}>
+                <View style={[styles.findModal, {
+        backgroundColor: theme.pageBg,
+        borderColor: theme.chromeBorder
       }]}>
-              <Text style={{
+                  <Text style={{ color: theme.text, fontWeight: '800', fontSize: 16, marginBottom: 8 }}>Rename sheet</Text>
+                  <TextInput value={renameValue} onChangeText={setRenameValue} style={[styles.findInput, {
           color: theme.text,
-          fontWeight: '700',
-          marginBottom: 8
-        }}>Rename sheet</Text>
-              <TextInput value={renameValue} onChangeText={setRenameValue} style={[styles.findInput, {
-          color: theme.text,
-          borderColor: theme.border,
-          backgroundColor: theme.inputBg
+          borderColor: theme.chromeBorder,
+          backgroundColor: theme.pageBg
         }]} autoFocus />
-              <View style={styles.findActions}>
-                <TouchableOpacity onPress={() => setRenameSheetId(null)} style={[styles.findBtn, {
-            borderColor: theme.border
-          }]}>
-                  <Text style={{
-              color: theme.text
-            }}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => {
+                  <View style={styles.findActions}>
+                    <NbButton variant="plain" onPress={() => setRenameSheetId(null)} style={styles.findNbBtn}>
+                      Cancel
+                    </NbButton>
+                    <NbButton
+                      variant="fill"
+                      onPress={() => {
             if (renameValue.trim()) {
               pushHistory();
               setSheets(prev => prev.map(x => x.id === renameSheetId ? {
@@ -1874,17 +1899,14 @@ export default function SpreadsheetEditor({
               queueSave();
             }
             setRenameSheetId(null);
-          }} style={[styles.findBtnPrimary, {
-              backgroundColor: theme.sheetTabActiveBg,
-              borderWidth: nb.borderWidth,
-              borderColor: theme.chromeBorder,
-            }]}>
-                    <Text style={{
-                color: theme.sheetTabActiveText,
-                fontWeight: '700'
-              }}>Rename</Text>
-                </TouchableOpacity>
-              </View>
+          }}
+                      style={styles.findNbBtn}
+                    >
+                      Rename
+                    </NbButton>
+                  </View>
+                </View>
+              </HardShadow>
             </View> : null}
 
           <ShareDocumentPopup visible={showShare} onClose={() => setShowShare(false)} trainerId={trainerId} documentId={docId} documentTitle={title || DEFAULT_SAVE_TITLE_SPREADSHEET} initialSharedWith={sharedWith} isDark={isSheetDark} onSaved={() => {
@@ -1903,55 +1925,70 @@ export default function SpreadsheetEditor({
     </Modal>;
 }
 const styles = StyleSheet.create({
-  backRow: {
-    paddingHorizontal: 6,
-    paddingTop: 4
-  },
-  titleSection: {
-    paddingHorizontal: 12,
-    paddingTop: 8,
-    paddingBottom: 10,
-    borderBottomWidth: nb.borderWidth
-  },
-  metaRow: {
+  topBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 10,
-    gap: 4
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.sm,
+    gap: spacing.sm,
   },
-  headerBtn: {
-    width: TOUCH_MIN,
-    height: TOUCH_MIN,
+  headerSq: {
+    width: nb.minTouchTarget,
+    height: nb.minTouchTarget,
+    borderRadius: borderRadius.nbIconChip,
+    borderWidth: nb.borderWidth,
     alignItems: 'center',
-    justifyContent: 'center'
+    justifyContent: 'center',
   },
-  menuBtn: {
-    width: TOUCH_MIN,
-    height: TOUCH_MIN,
-    alignItems: 'center',
-    justifyContent: 'center'
+  titleWrap: {
+    flex: 1,
+    minWidth: 0,
+    justifyContent: 'center',
+  },
+  savedLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  headerIconRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 8,
+    paddingHorizontal: spacing.md,
+    paddingBottom: 6,
   },
   toolbar: {
-    borderBottomWidth: nb.borderWidth
+    borderBottomWidth: nb.borderWidth,
   },
   toolbarRow: {
-    paddingHorizontal: 8,
+    paddingHorizontal: spacing.md,
     paddingVertical: 6,
     alignItems: 'center',
-    gap: 2
+    gap: 8,
+    minHeight: nb.minTouchTarget,
   },
   toolBtn: {
-    width: TOUCH_MIN,
-    height: TOUCH_MIN,
-    borderRadius: 10,
+    width: nb.minTouchTarget,
+    height: nb.minTouchTarget,
+    borderRadius: borderRadius.nbButton,
+    borderWidth: nb.borderWidth,
     alignItems: 'center',
-    justifyContent: 'center'
+    justifyContent: 'center',
   },
-  toolBtnActive: {},
-  divider: {
-    width: 1,
-    height: 22,
-    marginHorizontal: 4
+  gridDesk: {
+    flex: 1,
+    minHeight: 0,
+    paddingHorizontal: spacing.sm,
+    paddingBottom: 4,
+  },
+  gridShadow: {
+    flex: 1,
+  },
+  gridFrame: {
+    flex: 1,
+    borderRadius: borderRadius.nbCard,
+    borderWidth: nb.borderWidth,
+    overflow: 'hidden',
   },
   formulaBar: {
     flexDirection: 'row',
@@ -1979,16 +2016,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : undefined
   },
-  statsChip: {
+  statsShadow: {
     position: 'absolute',
     bottom: 12,
     right: 12,
+  },
+  statsChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 999
+    borderRadius: 999,
   },
   statChip: {
     flexDirection: 'row',
@@ -2014,11 +2053,11 @@ const styles = StyleSheet.create({
     gap: 6
   },
   addSheetBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: nb.minTouchTarget,
+    height: nb.minTouchTarget,
+    borderRadius: borderRadius.nbIconChip,
     alignItems: 'center',
-    justifyContent: 'center'
+    justifyContent: 'center',
   },
   sheetTab: {
     paddingHorizontal: 14,
@@ -2034,18 +2073,20 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700'
   },
-  toast: {
+  toastWrap: {
     position: 'absolute',
     bottom: 60,
     alignSelf: 'center',
-    backgroundColor: 'rgba(0,0,0,0.75)',
+  },
+  toast: {
     paddingHorizontal: 16,
     paddingVertical: 10,
-    borderRadius: 999
+    borderRadius: 999,
+    borderWidth: nb.borderWidth,
   },
   toastText: {
-    color: '#fff',
-    fontSize: 13
+    fontSize: 13,
+    fontWeight: '800',
   },
   menuSection: {
     fontSize: 10,
@@ -2056,15 +2097,21 @@ const styles = StyleSheet.create({
     paddingBottom: 4,
     textTransform: 'uppercase'
   },
+  findOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    paddingHorizontal: spacing.md,
+    paddingTop: 120,
+    zIndex: 100,
+    alignItems: 'center',
+  },
   findModal: {
-    position: 'absolute',
-    top: 120,
-    left: 16,
-    right: 16,
-    borderRadius: 16,
+    borderRadius: borderRadius.nbCard,
     borderWidth: nb.borderWidth,
     padding: 16,
-    zIndex: 100
+    width: '100%',
+  },
+  findNbBtn: {
+    flex: 1,
   },
   findHeader: {
     flexDirection: 'row',
@@ -2086,15 +2133,4 @@ const styles = StyleSheet.create({
     gap: 8,
     marginTop: 4
   },
-  findBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 999,
-    borderWidth: nb.borderWidth
-  },
-  findBtnPrimary: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 999
-  }
 });
