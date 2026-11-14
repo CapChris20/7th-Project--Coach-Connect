@@ -1,0 +1,1967 @@
+{
+  "campaign": "syntax-rewrite-only",
+  "at": "2026-11-14T06:19:21.422233+00:00",
+  "batchSize": 40,
+  "inventory": 486,
+  "goldUntouched": [
+    "src/for-both/weekly-report/WeeklyReportBody.jsx",
+    "src/for-both/weekly-report/WeeklyReportScreen.jsx",
+    "src/trainer-app/scheduling/BookSessionScreen.jsx"
+  ],
+  "queueSize": 483,
+  "batches": [
+    "batch-syntax-01.txt",
+    "batch-syntax-02.txt",
+    "batch-syntax-03.txt",
+    "batch-syntax-04.txt",
+    "batch-syntax-05.txt",
+    "batch-syntax-06.txt",
+    "batch-syntax-07.txt",
+    "batch-syntax-08.txt",
+    "batch-syntax-09.txt",
+    "batch-syntax-10.txt",
+    "batch-syntax-11.txt",
+    "batch-syntax-12.txt",
+    "batch-syntax-13.txt"
+  ],
+  "passedDone": {
+    "src/client-app/meals/LogTodaysMealsScreen.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/client-app/workout-plans/MyWorkoutPlanScreen.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/CoachSelfTest.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/coach-actions/alertTrainer.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/coach-actions/carryOutAction.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/coach-actions/cleanUpActionDetails.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/coach-actions/findActionsInReply.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/coach-actions/popupOrAutoRun.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/coach-actions/readActionsFromReply.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/coach-actions/shouldAskFirst.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/coach-actions/spotDeleteRequests.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/coach-knowledge/decideWhatCoachShouldKnow.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/coach-knowledge/loadWeeklyNumbers.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/coach-knowledge/loadYourWeekForCoach.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/coachColors.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/confirm-popups/BookSessionPopup.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/confirm-popups/ChangeFoodTargetsPopup.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/confirm-popups/ConfirmDeletePopup.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/confirm-popups/EditWorkoutPopup.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/confirm-popups/LogMealPopup.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/confirm-popups/LogMoodPopup.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/confirm-popups/LogSleepPopup.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/confirm-popups/LogStepsPopup.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/confirm-popups/LogWaterPopup.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/confirm-popups/MarkRestDayPopup.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/confirm-popups/MessageTrainerPopup.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/confirm-popups/OpenWorkoutPlanPopup.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/confirm-popups/RateEnergyPopup.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/confirm-popups/RateWorkoutPopup.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/confirm-popups/UpdateGoalPopup.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/confirm-popups/sharedPopupParts.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/conversation/CoachAttachSheet.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/conversation/ConfirmActionPopup.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/conversation/PasteTextPopup.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/conversation/SourceLinkCards.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/conversation/TrainerQuietClientsCard.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/conversation/_voiceStub.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/conversation/choosePhoto.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/conversation/copyReplyText.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/conversation/keyboardBehavior.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/conversation/openPhotoMenu.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/conversation/photoPermissions.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/conversation/preparePhotosToSend.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/conversation/sendMessageToCoach.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/conversation/sourceLinkPreview.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/conversation/suggestedQuestions.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/conversation/typingBox.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/home-screen/CoachHomeBody.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/home-screen/CoachHomeScreen.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/internet-lookup/internetLookupRules.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/internet-lookup/shouldLookUpOnInternet.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/past-chats/DeleteChatSheet.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/past-chats/PastChatsPanel.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/past-chats/chatHistoryList.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/past-chats/chatTitles.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/past-chats/fixOldChatTitles.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/past-chats/loadOlderChats.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/past-chats/makeChatTitle.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/past-chats/saveAndLoadChats.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/past-chats/savedChatShape.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/reply-display/CoachGlassCard.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/reply-display/CoachReplyText.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/reply-display/InternetAnswerReply.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/reply-display/SuggestedQuestionChips.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/reply-display/coachMarkdownRules.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/reply-display/copyableReplyText.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/reply-display/developerChatLog.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/reply-display/replyTextStyles.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/reply-display/splitInternetAnswer.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/reply-display/stripHonestyOpeners.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/reply-display/suggestedQuestionMaker.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/app-start/LoginGate.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/app-start/TrainerAppStart.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/app-start/cloudConnection.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/assets/icons/frequency2SvgXml.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/assets/logo/brandLogo.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/block-and-report/BlockedUsersScreen.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/block-and-report/ReportOrBlockPopup.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/block-and-report/ReportOrBlockSheet.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/block-and-report/blockUser.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/block-and-report/blockedList.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/block-and-report/index.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/block-and-report/reportContent.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/block-and-report/reportReasons.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/client-app/check-in/DailyCheckInScreen.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/client-app/check-in/LogWorkoutScreen.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/client-app/check-in/MoodCheckInScreen.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/client-app/files-and-notes/FileCard.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/client-app/files-and-notes/MyFilesSection.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/client-app/files-and-notes/SharedByTrainerSection.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/client-app/files-and-notes/TrainerSharedFilesPopup.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/client-app/find-a-trainer/BrowseTrainersScreen.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/client-app/find-a-trainer/ConfirmRequestPopup.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/client-app/find-a-trainer/FilterPopup.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/client-app/find-a-trainer/RequestIntroPopup.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/client-app/find-a-trainer/SearchTrainersScreen.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/client-app/find-a-trainer/TrainerCard.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/client-app/find-a-trainer/TrainerProfilePopup.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/client-app/find-a-trainer/sendConnectionRequest.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/client-app/find-a-trainer/trainerFilters.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/client-app/home/ClientHomeBlocks.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/client-app/home/MyTrainerCard.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/client-app/home/TodayStatsCards.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/client-app/home/TopBannerCard.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/client-app/home/WriteTrainerReviewPopup.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/client-app/home/keepDailyStatsFresh.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/client-app/home/loadHomeScreenData.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/client-app/home/workoutDiary.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/client-app/navigation/ClientBottomMenu.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/client-app/navigation/ClientOpenScreenTracker.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/client-app/navigation/ClientScreenList.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/client-app/navigation/goToClientScreen.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/client-app/profile/CertificationUploadSheet.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/client-app/progress/ProgressChartsScreen.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/client-app/scheduling/MySessionsScreen.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/client-app/scheduling/RequestSessionScreen.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/crash-reports/CrashCatcher.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/crash-reports/recordError.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/crash-reports/reportCrashAutomatically.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/crash-reports/sendSavedErrors.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/daily-stats/latestWeight.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/daily-stats/progressMetricHistory.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/daily-stats/saveYesterdaysStats.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/daily-stats/todaysDate.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/app-wide-settings/AIPermission.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/brand-chrome/HeroChrome.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/calorieAndMacroMath.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/cloud-database/handleLiveUpdateErrors.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/cloud-database/loadInPages.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/cloud-database/loadMyProfile.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/cloud-database/traineeProfileLocations.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/cloud-database/uploadAndDownloadFiles.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/demo-people/DEMO_PEOPLE.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/files-and-notes/packSpreadsheetRows.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/files-and-notes/saveNotesAndFiles.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/files-and-notes/viewers/AddFilePopup.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/files-and-notes/viewers/DeleteFileSheet.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/files-and-notes/viewers/DocumentViewer.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/files-and-notes/viewers/FileGrid.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/files-and-notes/viewers/PdfViewer.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/files-and-notes/viewers/PhotoVideoViewer.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/files-and-notes/viewers/SpreadsheetViewer.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/files-and-notes/viewers/WebPageViewer.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/home-cards/CardGlow.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/home-cards/DailyQuoteCard.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/home-cards/FilesHeaderCard.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/home-cards/FindTrainerBanner.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/home-cards/HomeTopBanner.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/home-cards/HomeWelcomeHero.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/home-cards/QuickActionCard.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/home-cards/SectionTitle.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/helpers/showSetupAnswers.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/helpers/trainerProfilePhoto.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/helpers/whichViewerForFile.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/helpers/workoutDayNames.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/login-and-signup/ChooseRoleScreen.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/login-and-signup/ClientOnboardingScreens.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/login-and-signup/ForgotPasswordFlow.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/login-and-signup/SetupPreviewScreen.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/login-and-signup/SetupScreenshotTool.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/login-and-signup/TrainerPayoutSetupStep.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/login-and-signup/WelcomeStage.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/login-and-signup/checkTrainerCode.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/login-and-signup/cleanUpRoleName.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/login-and-signup/decideTraineeOrTrainer.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/login-and-signup/finishSetup.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/login-and-signup/resetPasswordByEmail.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/login-and-signup/signOutCleanupSteps.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/logout-cleanup/clearDataOnLogout.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/look-and-feel/BlurredBackground.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/look-and-feel/ColorText.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/look-and-feel/GlassBackgroundDark.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/look-and-feel/GlassBackgroundLight.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/look-and-feel/GlassButton.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/look-and-feel/GlassCard.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/look-and-feel/GlassPanel.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/look-and-feel/GradientFrame.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/look-and-feel/HardShadow.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/look-and-feel/LabeledRow.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/look-and-feel/NbAvatar.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/look-and-feel/NbBottomNav.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/look-and-feel/NbButton.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/look-and-feel/NbCard.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/look-and-feel/NbChip.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/look-and-feel/NbChipRow.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/look-and-feel/NbComponentsPreview.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/look-and-feel/NbEmptyState.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/look-and-feel/NbField.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/look-and-feel/NbHero.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/look-and-feel/NbIconChip.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/popups/ErrorPopup.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/popups/HoldToConfirmPopup.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/popups/RemoveTrainerPopup.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/profileCardIconSizes.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/screenReaderLabels.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/setup-icons/onboardingIconRegistry.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/setup-steps/AIPermissionStep.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/setup-steps/setupColors.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/setup-steps/setupStepPieces.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/trainer-listing/keepTrainerListingUpdated.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/trainerCity.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/weekly-report/DayCard.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/weekly-report/NoReportYet.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/weekly-report/ReportOptionsPopup.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/weekly-report/StatCard.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/weekly-report/StatIcon.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/weekly-report/TipRow.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/weekly-report/TrainerTipsForWeek.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/weekly-report/WeekPicker.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/weekly-report/WeeklyChart.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/weekly-report/WinsAndWorkOnsSection.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/weekly-report/loadWeekDailyEntries.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/weekly-report/loadWeekFoodTotals.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/weekly-report/pickBestTips.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/weekly-report/reportColorSettings.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/weekly-report/reportColors.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/weekly-report/writeTrainerTips.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/whichProfileCardsToShow.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/helpers/cleanDataBeforeSaving.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/helpers/combineTraineeProfile.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/helpers/convertHeight.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/helpers/dateStrings.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/helpers/fileSizeAndDateText.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/helpers/fillTraineeProfile.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/helpers/getLocalDay.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/helpers/sessionTimeText.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/daily-stats/readDailyStats.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/daily-stats/saveDailyStats.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/home-cards/UpcomingSessionCard.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/icons/AICoachTabIcon.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/icons/AppLogo.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/icons/CalendarIcon.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/icons/ChatIcon.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/icons/ColorfulIcon.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/icons/OutlinedColorText.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/icons/ProfileIcon.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/icons/WorkoutTabIcon.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/icons/iconShapes.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/loading-and-header/AppLoadingScreen.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/loading-and-header/BouncingDots.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/loading-and-header/LoadingBarAnimation.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/loading-and-header/OfflineBanner.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/loading-and-header/StartupLoadingCover.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/loading-and-header/TopHeader.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/online-connection/attachLoginProof.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/online-connection/checkConnectionHealth.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/online-connection/checkTrainerCertificate.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/online-connection/linkTrainerAndTrainee.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/online-connection/loadHomeAlerts.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/online-connection/sendCrashReport.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/online-connection/sendOnlineRequest.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/online-connection/sendPhoneAlert.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/online-connection/uploadSetupAnswers.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/online-connection/useNetworkStatus.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/online-connection/whereToConnect.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/payments/CardPaymentWrapper.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/payments/HowPaymentsWorkSections.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/payments/PayTrainerPopup.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/payments/PayoutSetupReminderPopup.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/payments/TrainerPayoutSetupPopup.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/payments/canThisPhoneTakeCards.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/payments/chargeCard.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/payments/howPaymentsWorkText.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/payments/traineePaymentHistory.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/payments/trainerPaymentHistory.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/payments/trainerPayoutSetup.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/payments/trainerPayoutSetupFlow.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/payments/whenToAskForPayoutSetup.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/look-and-feel/NbListRow.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/look-and-feel/NbNoticeSheet.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/look-and-feel/NbOptionRow.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/look-and-feel/NbPageHeader.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/look-and-feel/NbPill.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/look-and-feel/NbProgressBar.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/look-and-feel/NbProgressSteps.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/look-and-feel/NbRing.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/look-and-feel/NbScreen.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/look-and-feel/NbSegmented.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/look-and-feel/NbSheet.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/look-and-feel/NbSkeleton.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/look-and-feel/NbSlider.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/look-and-feel/NbStepper.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/look-and-feel/NbSwitch.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/look-and-feel/NbTile.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/look-and-feel/NbToast.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/look-and-feel/TwoColumnGrid.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/look-and-feel/brandColors.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/look-and-feel/colorPalette.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/look-and-feel/glassSettings.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/look-and-feel/homeStatColors.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/look-and-feel/index.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/look-and-feel/lightDarkMode.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/look-and-feel/openNbPreview.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/messaging/markMessagesRead.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/messaging/unreadMessageCounts.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/navigation/BottomMenuBar.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/navigation/bottomMenuSpacing.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/navigation/openScreenFromAnywhere.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/navigation/screenNames.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/navigation/webLinks.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/navigation/whichScreenIsOpen.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/notifications/NotificationsScreen.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/notifications/removeEmojiFromAlerts.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/notifications/unreadAlertCount.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/notifications/writeAlertText.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/nutrition/barcode/BarcodeScannerScreen.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/nutrition/barcode/fixBarcodeDigits.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/nutrition/barcode/rejectBadBarcodeResults.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/nutrition/barcode/scannedProductSummary.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/nutrition/daily-log/DailyFoodLogScreen.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/nutrition/daily-log/DayPicker.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/nutrition/daily-log/MacroBar.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/nutrition/daily-log/MealCard.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/nutrition/food-cards/ColorFieldFrame.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/nutrition/food-cards/ColorText.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/nutrition/food-cards/FoodCard.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/nutrition/food-cards/LoggedFoodRow.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/nutrition/food-cards/NutritionFactsPanel.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/nutrition/food-cards/foodCardColors.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/nutrition/food-details/EditServingPopup.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/nutrition/food-details/FoodItem.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/nutrition/food-details/NutritionFactsScreen.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/nutrition/food-details/fixPackageAmounts.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/nutrition/food-details/nutritionFactsData.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/nutrition/food-details/servingSizeMath.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/nutrition/food-details/tidyBrandName.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/nutrition/food-search/ConfirmFoodPopup.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/nutrition/food-search/SearchDisclaimerCard.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/nutrition/food-search/cleanSearchText.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/nutrition/food-search/knownRestaurantFoods.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/nutrition/food-search/rankFoodResults.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/nutrition/food-search/readableFoodTitle.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/nutrition/food-search/restaurantMenuSearch.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/nutrition/food-search/tidyFoodTitles.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/nutrition/momentum/WeeklyMomentumScreen.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/nutrition/nutritionColors.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/nutrition/quick-add/QuickAddNutrition.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/nutrition/targets/NutritionSettingsScreen.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/nutrition/targets/NutritionSetupScreen.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/settings/BugReportScreen.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/settings/CoachingPaymentScreen.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/settings/ContactSupportScreen.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/settings/HelpFAQScreen.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/settings/PrivacyDataRightsScreen.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/settings/PrivacyPolicyScreen.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/settings/SettingsScreen.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/settings/TermsOfServiceScreen.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/settings/emailSupport.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/settings/supportContact.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/spreadsheet-support/spreadsheetReader.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/spreadsheet-support/spreadsheetReader.native.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/spreadsheet-support/spreadsheetReader.web.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-app/documents/EditorTopButtons.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-app/documents/SaveStatusLabel.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-app/documents/ShareDocumentPopup.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-app/documents/documentEditorTools.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-app/documents/editorAccent.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-app/documents/editorColors.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-app/documents/exportDocument.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-app/documents/pageStylePresets.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-app/documents/readingLevel.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-app/documents/smartPaste.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-app/home/TrainerCreateSheet.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-app/home/TrainerHomeBlocks.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-app/home/TrainerListingPopup.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-app/my-trainees/RemoveClientSheet.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-app/my-trainees/pagedTraineeList.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-app/my-trainees/traineeList.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-app/navigation/TrainerOpenScreenTracker.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-app/navigation/TrainerScreenList.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-app/navigation/goToTrainerScreen.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-app/navigation/trainerExtraScreens.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-app/new-requests/NewTraineeRequestsScreen.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-app/new-requests/loadPendingTraineeRequests.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-app/new-requests/pendingRequestCount.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-app/nutrition-tab/TrainerNutritionTab.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-app/progress-tab/ProgressTopCard.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-app/progress-tab/TrainerProgressTab.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-app/progress-tab/pickWeightToShow.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-app/scheduling/CalendarTab.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-app/scheduling/DeleteSessionSheet.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-app/scheduling/MonthCalendar.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-app/scheduling/SessionCard.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-app/scheduling/SessionDetailSheet.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-app/scheduling/SharedSessionList.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-app/scheduling/alertTraineeOfSession.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-app/scheduling/schedulingColors.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-app/trainee-records/calmDatabaseErrors.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-app/trainee-records/getTraineeDisplayName.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-app/trainee-records/loadMyLinkedTrainees.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-app/trainee-records/traineeDatabaseLocations.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-app/weekly-report/TrainerWeeklyReportSection.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-app/weekly-report/WeeklyReportBanner.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-app/workout-plans/builtInExerciseList.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-app/workout-plans/manualPlanToWorkoutPlan.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-pro-plan/FreeTrialBanner.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-pro-plan/ProAccessCheck.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-pro-plan/ProExpiredScreen.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-pro-plan/ProLegalFooter.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-pro-plan/ProPlanSetup.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-pro-plan/ProUpgradeOffer.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-pro-plan/ProUpgradeScreen.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-pro-plan/proAccessRules.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-pro-plan/proPlanStatus.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-pro-plan/proPlanSwitches.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-pro-plan/verifyProPurchase.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/workouts/create-plan/BuildingYourPlanView.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/workouts/create-plan/EditWorkoutPopup.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/workouts/create-plan/GenerateMyWorkoutPlanScreen.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/workouts/create-plan/NewPlanPanel.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/workouts/create-plan/WorkoutProfileTags.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/workouts/create-plan/askForWorkoutPlan.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/workouts/create-plan/countPlansCreated.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/workouts/create-plan/keepPlanBuildingInBackground.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/workouts/create-plan/nameWorkoutPlan.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/workouts/create-plan/planQuestionLabels.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/workouts/create-plan/planRequestAnswers.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/workouts/create-plan/readPlanText.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/workouts/create-plan/workoutPlanCreation.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/workouts/exercise-rows/ExerciseRow.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/workouts/exercise-rows/ExerciseSection.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/workouts/exercise-videos/DislikedExercisesPicker.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/workouts/exercise-videos/ExerciseCard.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/workouts/exercise-videos/HatchedThumbFill.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/workouts/exercise-videos/ShortVideoCard.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/workouts/exercise-videos/VideoPlayer.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/workouts/exercise-videos/dislikableExercises.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/workouts/exercise-videos/dislikedExercisesText.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/workouts/exercise-videos/loadSavedWorkoutPlans.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/workouts/view-plan/PlanPdfViewer.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/workouts/view-plan/makePlanPdf.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/workouts/view-plan/planViewPieces.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/client-app/home/homeLooks.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/nutrition/food-cards/FoodListScreen.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/client-app/navigation/clientExtraScreens.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/files-and-notes/viewers/FilesSection.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/workout-plans/SavedWorkoutsScreen.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/nutrition/daily-log/DailyLogContent.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/nutrition/daily-log/saveLoggedFood.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/nutrition/food-cards/foodCardText.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-app/earnings/EarningsScreen.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-app/home/TrainerHomeContent.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-app/trainee-detail/ManageTraineeScreen.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/workouts/create-plan/saveAndLoadWorkoutPlan.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/workouts/view-plan/WorkoutPlanView.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/ai-coach/conversation/CoachConversationScreen.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/login-and-signup/LoginScreen.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/login-and-signup/NewUserSetupScreen.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/app-start/ClientAppStart.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/client-app/navigation/ClientMainScreen.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/messaging/ChatScreen.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/nutrition/food-search/searchFoods.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/client-app/home/homeScreenPieces.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/client-app/files-and-notes/FilesScreen.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/client-app/files-and-notes/NotesFromTrainerSection.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/client-app/profile/MyProfileScreen.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/photo-gallery/MyProgressPhotosScreen.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/setup-steps/TrainerProOfferStep.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/for-both/weekly-report/prepareReportForScreen.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/login-and-signup/TrainerOnboardingScreens.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/messaging/InboxScreen.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/navigation/goToScreenByKeyword.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/notifications/manageAlerts.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/nutrition/food-search/FoodSearchScreen.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/nutrition/food-search/combineFoodSources.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/nutrition/food-search/guessServingLabel.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/nutrition/food-search/trustRestaurantResult.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/nutrition/targets/recalculateFoodTargets.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-app/documents/DocumentEditor.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-app/home/trainerHomePieces.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-app/my-trainees/MyTraineesScreen.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-app/scheduling/ScheduleSessionScreen.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-app/scheduling/mySessions.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-app/weekly-report/WeeklyReportBars.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-app/workout-plans/ManualWorkoutPlanBuilderScreen.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-pro-plan/ProPlanPurchases.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/workouts/create-plan/CreateWorkoutPlanScreen.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/workouts/create-plan/editPlanFieldForms.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/workouts/exercise-videos/ExerciseVideosTab.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/workouts/exercise-videos/findExerciseVideos.js": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/workouts/session/WorkoutSessionScreen.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/client-app/home/TrainingHomeScreen.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    },
+    "src/trainer-app/navigation/TrainerMainScreen.jsx": {
+      "at": "2026-11-14T22:34:14.970332+00:00",
+      "batch": "wave2-complete"
+    }
+  },
+  "rejected": {},
+  "notes": [
+    "DONE = layman syntax rewrite only. Comments optional.",
+    "Reject presentation/rename/restructure theater.",
+    "Do not trust prior redo-progress passedDone."
+  ]
+}

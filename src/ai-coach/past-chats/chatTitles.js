@@ -1,8 +1,7 @@
 // Turns a coach chat's first message into a short title for the history list.
-// Flow: throw away junk replies → try a question pattern → try a known topic →
-//       otherwise title-case a cleaned snippet. A local creative title is the backup
-//       when the title API is down.
-// Used by makeChatTitle, the history list, and the coach conversation screen.
+// Flow: reject junk → question pattern → known topic → title-cased snippet → fallback label.
+// Local creative titles run when the title API is down (buildCreativeTitleLocal).
+// Used by makeChatTitle, fixOldChatTitles, chatHistoryList, and the live conversation screen.
 
 // ===== NAMED CONSTANTS =====
 
@@ -104,35 +103,44 @@ const TRAINING_TOPIC_TITLES = [
   { pattern: /\bbulk(ing)?\b/i, title: 'Bulking Blueprint' },
 ];
 
+const CASUAL_PROMPT_TITLE_PATTERN =
+  /^(can u|can you|what do u|what do you|hey |please |log i|log that|check the)\b/i;
+const FILLER_WORD_IN_LONG_TITLE_PATTERN = /\b(for|that i|you don|walked|slept)\b/i;
+
 // ===== MAIN FUNCTION =====
 
 /**
- * Lowercase, strip punctuation, collapse spaces. Used to compare a title to the raw message.
+ * Lowercase, strip punctuation, collapse spaces — used to compare a title to the raw message.
  * @param {string} text
  * @returns {string}
  */
 export function normalizeTitleKey(text) {
-  return String(text || '')
-    .toLowerCase()
-    .replace(/[^\w\s]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
+  // 1. Force a string so undefined drafts do not throw.
+  const safeText = String(text || '');
+
+  // 2. Drop punctuation, collapse spaces, trim — keys must match across tiny wording diffs.
+  const lowercased = safeText.toLowerCase();
+  const lettersAndSpacesOnly = lowercased.replace(/[^\w\s]/g, '');
+  const collapsedSpaces = lettersAndSpacesOnly.replace(/\s+/g, ' ');
+  return collapsedSpaces.trim();
 }
 
 /**
- * True for disclaimers, raw tool JSON, and the old bland "Protein Chat" leftovers.
- * Those must never stay as the history title.
+ * True for disclaimers, raw tool JSON, and bland "Protein Chat" leftovers that must not stay as the history title.
  * @param {string} title
  * @returns {boolean}
  */
 export function isJunkChatTitle(title) {
+  // 1. Empty titles always need a rewrite.
   const titleText = String(title || '').trim();
   if (!titleText) return true;
-  return JUNK_TITLE_PATTERNS.some((pattern) => pattern.test(titleText));
+
+  // 2. Any junk pattern hit (disclaimer, tool JSON, "X Chat") means replace it.
+  return titleMatchesAnyJunkPattern(titleText);
 }
 
 /**
- * A readable title from the first user message. Empty input becomes the fallback.
+ * Readable title from the first user message. Empty input becomes the fallback label.
  * @param {string} firstUserText
  * @returns {string}
  */
@@ -140,14 +148,19 @@ export function deriveChatTitle(firstUserText) {
   const originalText = String(firstUserText || '').trim();
   if (!originalText) return FALLBACK_TITLE;
 
+  // 1. "What is protein?" style leads become a short topic title.
   const questionTitle = titleFromQuestionLead(originalText);
   if (questionTitle) return questionTitle;
 
-  const topicTitle = titleFromTopicKeyword(originalText.toLowerCase());
+  // 2. Known coaching keywords (recomp, creatine, …) map to fixed sidebar labels.
+  const lowerText = originalText.toLowerCase();
+  const topicTitle = titleFromTopicKeyword(lowerText);
   if (topicTitle) return topicTitle;
 
-  const cleaned = cleanedSnippetTitle(originalText);
-  return cleaned ? toTitleCase(cleaned) : FALLBACK_TITLE;
+  // 3. Otherwise title-case a cleaned snippet of the message itself.
+  const snippetWithoutFiller = cleanedSnippetTitle(originalText);
+  if (!snippetWithoutFiller) return FALLBACK_TITLE;
+  return toTitleCase(snippetWithoutFiller);
 }
 
 /**
@@ -158,17 +171,19 @@ export function deriveChatTitle(firstUserText) {
  */
 export function needsCreativeTitle(title, firstUserText = '') {
   const titleText = String(title || '').trim();
+
+  // 1. Junk / disclaimer titles always need a creative rewrite.
   if (isJunkChatTitle(titleText)) return true;
 
+  // 2. Title still equals the opening message (or a derived snippet of it).
   const userText = String(firstUserText || '').trim();
   if (titleLooksLikeRawMessage(titleText, userText)) return true;
 
-  if (/^(can u|can you|what do u|what do you|hey |please |log i|log that|check the)\b/i.test(titleText)) {
-    return true;
-  }
-  if (titleText.length > RAW_MESSAGE_TITLE_MIN_LENGTH && /\b(for|that i|you don|walked|slept)\b/i.test(titleText)) {
-    return true;
-  }
+  // 3. Casual prompts ("can you…", "hey…") are not finished titles.
+  if (CASUAL_PROMPT_TITLE_PATTERN.test(titleText)) return true;
+
+  // 4. Long titles that still contain filler words need a rewrite.
+  if (titleIsLongWithFillerWords(titleText)) return true;
 
   return false;
 }
@@ -185,26 +200,30 @@ export function buildCreativeTitleLocal(userText = '', assistantText = '') {
   const lowerText = originalText.toLowerCase();
   if (!originalText) return null;
 
+  // 1. High-signal keywords in the user's message.
   const keywordTitle = firstMatchingTitle(CREATIVE_KEYWORD_TITLES, lowerText);
   if (keywordTitle) return keywordTitle;
 
+  // 2. Step logging ("12,000 steps").
   const stepTitle = titleFromStepCount(originalText);
   if (stepTitle) return stepTitle;
 
+  // 3. Sleep hours in a log-style message.
   const sleepTitle = titleFromSleepHours(originalText, lowerText);
   if (sleepTitle) return sleepTitle;
 
+  // 4. Generic "log my …" requests.
   const logTitle = titleFromLogRequest(originalText);
   if (logTitle) return logTitle;
 
+  // 5. Training / diet topics without an explicit log verb.
   const trainingTitle = titleFromTrainingTopic(originalText);
   if (trainingTitle) return trainingTitle;
 
-  const wordCount = originalText.split(/\s+/).length;
-  if (originalText.length <= SHORT_TITLE_MAX_LENGTH && !/\?/.test(originalText) && wordCount <= SHORT_TITLE_MAX_WORDS) {
-    return toTitleCase(originalText);
-  }
+  // 6. Very short, non-question opener — title-case as-is.
+  if (messageIsShortNonQuestion(originalText)) return toTitleCase(originalText);
 
+  // 7. Last resort: infer a topic word from a short coach reply.
   const assistantTitle = titleFromAssistantReply(originalText, assistantText);
   if (assistantTitle) return assistantTitle;
 
@@ -214,35 +233,72 @@ export function buildCreativeTitleLocal(userText = '', assistantText = '') {
 // ===== HELPER FUNCTIONS =====
 // PLUMBING — skip unless debugging
 
+function titleMatchesAnyJunkPattern(titleText) {
+  for (let index = 0; index < JUNK_TITLE_PATTERNS.length; index += 1) {
+    const pattern = JUNK_TITLE_PATTERNS[index];
+    if (pattern.test(titleText)) return true;
+  }
+  return false;
+}
+
+function titleIsLongWithFillerWords(titleText) {
+  if (titleText.length <= RAW_MESSAGE_TITLE_MIN_LENGTH) return false;
+  return FILLER_WORD_IN_LONG_TITLE_PATTERN.test(titleText);
+}
+
+function messageIsShortNonQuestion(originalText) {
+  const wordCount = originalText.split(/\s+/).length;
+  if (originalText.length > SHORT_TITLE_MAX_LENGTH) return false;
+  if (/\?/.test(originalText)) return false;
+  if (wordCount > SHORT_TITLE_MAX_WORDS) return false;
+  return true;
+}
+
 function toTitleCase(text) {
-  return String(text || '')
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ');
+  const rawWords = String(text || '').split(/\s+/);
+  const capitalizedWords = [];
+
+  for (let index = 0; index < rawWords.length; index += 1) {
+    const word = rawWords[index];
+    if (!word) continue;
+    const firstLetter = word.charAt(0).toUpperCase();
+    const restOfWord = word.slice(1);
+    capitalizedWords.push(firstLetter + restOfWord);
+  }
+
+  return capitalizedWords.join(' ');
 }
 
 function cleanedQuestionTopic(topic) {
-  return topic
-    .replace(/^go on the web and\s+/i, '')
-    .replace(/^google\s+/i, '')
-    .replace(/^(about|for)\s+/i, '')
-    .replace(/\s+/g, ' ')
-    .replace(/["'.!?]+$/g, '')
-    .slice(0, TITLE_TOPIC_MAX_LENGTH);
+  let cleaned = topic;
+  cleaned = cleaned.replace(/^go on the web and\s+/i, '');
+  cleaned = cleaned.replace(/^google\s+/i, '');
+  cleaned = cleaned.replace(/^(about|for)\s+/i, '');
+  cleaned = cleaned.replace(/\s+/g, ' ');
+  cleaned = cleaned.replace(/["'.!?]+$/g, '');
+  return cleaned.slice(0, TITLE_TOPIC_MAX_LENGTH);
 }
 
 function titleIfQuestionPatternMatches(originalText, pattern) {
   const match = originalText.match(pattern);
-  if (!match || !(match[2] || match[1])) return null;
-  const topic = (match[2] || match[1] || '').trim();
-  const cleaned = cleanedQuestionTopic(topic);
-  if (!cleaned) return null;
-  return toTitleCase(cleaned);
+  if (!match) return null;
+
+  // match[2] is the topic for "what is X"; match[1] covers "explain X" patterns.
+  let captureGroup = match[1];
+  if (match[2]) {
+    captureGroup = match[2];
+  }
+  if (!captureGroup) return null;
+
+  const topic = captureGroup.trim();
+  const cleanedTopic = cleanedQuestionTopic(topic);
+  if (!cleanedTopic) return null;
+  return toTitleCase(cleanedTopic);
 }
 
 function titleFromQuestionLead(originalText) {
-  for (const pattern of QUESTION_LEAD_PATTERNS) {
+  for (let index = 0; index < QUESTION_LEAD_PATTERNS.length; index += 1) {
+    const pattern = QUESTION_LEAD_PATTERNS[index];
     const questionTitle = titleIfQuestionPatternMatches(originalText, pattern);
     if (questionTitle) return questionTitle;
   }
@@ -250,14 +306,16 @@ function titleFromQuestionLead(originalText) {
 }
 
 function titleFromTopicKeyword(lowerText) {
-  for (const topic of TOPIC_TITLES) {
-    if (lowerText.includes(topic.key)) return topic.title;
+  for (let index = 0; index < TOPIC_TITLES.length; index += 1) {
+    const topicRow = TOPIC_TITLES[index];
+    if (lowerText.includes(topicRow.key)) return topicRow.title;
   }
   return null;
 }
 
-function firstMatchingTitle(rows, text) {
-  for (const row of rows) {
+function firstMatchingTitle(titlePatternRows, text) {
+  for (let index = 0; index < titlePatternRows.length; index += 1) {
+    const row = titlePatternRows[index];
     if (row.pattern.test(text)) return row.title;
   }
   return null;
@@ -265,17 +323,25 @@ function firstMatchingTitle(rows, text) {
 
 function stepCountLabel(stepCount) {
   if (stepCount >= STEP_COUNT_THOUSANDS) {
-    return `${Math.round(stepCount / STEPS_PER_THOUSAND)}K`;
+    const thousandsRounded = Math.round(stepCount / STEPS_PER_THOUSAND);
+    return `${thousandsRounded}K`;
   }
   return stepCount.toLocaleString();
 }
 
 function titleFromStepCount(originalText) {
   const stepsMatch = originalText.match(/(\d[\d,]*)\s*steps?/i);
-  const mentionsLoggingSteps =
-    stepsMatch || (/\b(log|track|record)\b/i.test(originalText) && /\bsteps?\b/i.test(originalText));
+  const hasLogVerb = /\b(log|track|record)\b/i.test(originalText);
+  const hasStepsWord = /\bsteps?\b/i.test(originalText);
+  const mentionsLoggingSteps = stepsMatch || (hasLogVerb && hasStepsWord);
   if (!mentionsLoggingSteps) return null;
-  const stepCount = stepsMatch ? Number(stepsMatch[1].replace(/,/g, '')) : null;
+
+  let stepCount = null;
+  if (stepsMatch) {
+    const digitsOnly = stepsMatch[1].replace(/,/g, '');
+    stepCount = Number(digitsOnly);
+  }
+
   if (stepCount && stepCount >= STEP_COUNT_MIN) {
     return `${stepCountLabel(stepCount)}-Step Day`;
   }
@@ -284,14 +350,22 @@ function titleFromStepCount(originalText) {
 
 function titleFromSleepHours(originalText, lowerText) {
   const sleepMatch = originalText.match(/(\d+(?:\.\d+)?)\s*(?:hours?|hrs?|h)\b/i);
-  if (!(sleepMatch && /\b(sleep|slept|log|nap)\b/i.test(lowerText))) return null;
+  const mentionsSleep = /\b(sleep|slept|log|nap)\b/i.test(lowerText);
+  if (!sleepMatch) return null;
+  if (!mentionsSleep) return null;
+
+  // Manipulate here: ".0" hours drop the trailing zero so "7.0" becomes "7h".
   const hoursLabel = sleepMatch[1].replace(/\.0$/, '');
   return `${hoursLabel}h Sleep Debrief`;
 }
 
 function titleFromLogRequest(originalText) {
-  if (!/\b(log|track|record)\b/i.test(originalText)) return null;
-  return firstMatchingTitle(LOG_REQUEST_TITLES, originalText) || 'Daily Metrics Drop';
+  const isLogRequest = /\b(log|track|record)\b/i.test(originalText);
+  if (!isLogRequest) return null;
+
+  const matchedLogTitle = firstMatchingTitle(LOG_REQUEST_TITLES, originalText);
+  if (matchedLogTitle) return matchedLogTitle;
+  return 'Daily Metrics Drop';
 }
 
 function titleFromTrainingTopic(originalText) {
@@ -299,31 +373,46 @@ function titleFromTrainingTopic(originalText) {
 }
 
 function titleFromAssistantReply(originalText, assistantText) {
-  const assistant = String(assistantText || '').trim();
-  if (!assistant || isJunkChatTitle(assistant) || originalText.length >= ASSISTANT_TOPIC_USER_MAX_LENGTH) {
-    return null;
-  }
-  const topicMatch = assistant.match(
+  const assistantReply = String(assistantText || '').trim();
+  if (!assistantReply) return null;
+  if (isJunkChatTitle(assistantReply)) return null;
+  if (originalText.length >= ASSISTANT_TOPIC_USER_MAX_LENGTH) return null;
+
+  const topicMatch = assistantReply.match(
     /\b(protein|macros|calories|sleep|recovery|workout|hypertrophy|cutting|bulking|recomp|steps|cardio|creatine|ashwagandha)\b/i,
   );
   if (!topicMatch) return null;
+
   const topicWord = topicMatch[0].toLowerCase();
-  return ASSISTANT_TOPIC_TITLES[topicWord] || `${toTitleCase(topicMatch[0])} Focus`;
+  const mappedTitle = ASSISTANT_TOPIC_TITLES[topicWord];
+  if (mappedTitle) return mappedTitle;
+  return `${toTitleCase(topicMatch[0])} Focus`;
 }
 
 function cleanedSnippetTitle(originalText) {
-  return originalText
-    .replace(/[^\w\s%-]/g, ' ')
-    .replace(/\b(please|pls|hey|hi|hello|ok|okay|so|like|just|really|actually|basically|google|web|search)\b/gi, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, TITLE_TOPIC_MAX_LENGTH);
+  let snippet = originalText;
+  snippet = snippet.replace(/[^\w\s%-]/g, ' ');
+  snippet = snippet.replace(
+    /\b(please|pls|hey|hi|hello|ok|okay|so|like|just|really|actually|basically|google|web|search)\b/gi,
+    ' ',
+  );
+  snippet = snippet.replace(/\s+/g, ' ');
+  snippet = snippet.trim();
+  return snippet.slice(0, TITLE_TOPIC_MAX_LENGTH);
 }
 
 function titleLooksLikeRawMessage(titleText, userText) {
   if (!userText) return false;
-  if (normalizeTitleKey(titleText) === normalizeTitleKey(userText)) return true;
-  if (normalizeTitleKey(titleText) === normalizeTitleKey(deriveChatTitle(userText))) return true;
-  if (normalizeTitleKey(titleText) === normalizeTitleKey(userText.slice(0, TITLE_TOPIC_MAX_LENGTH))) return true;
+
+  const titleKey = normalizeTitleKey(titleText);
+  const userKey = normalizeTitleKey(userText);
+  if (titleKey === userKey) return true;
+
+  const derivedFromUser = deriveChatTitle(userText);
+  if (titleKey === normalizeTitleKey(derivedFromUser)) return true;
+
+  const userPrefix = userText.slice(0, TITLE_TOPIC_MAX_LENGTH);
+  if (titleKey === normalizeTitleKey(userPrefix)) return true;
+
   return false;
 }

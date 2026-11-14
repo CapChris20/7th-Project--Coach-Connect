@@ -1,6 +1,6 @@
-// One exercise in a workout plan: name, sets, reps, rest, optional notes.
-// Flow: tap the row to edit inline → on blur, parse the numbers and tell the parent.
-// Used by: workout plan builders. UI only — the parent owns the saved plan.
+// One exercise in a saved workout plan: name, sets, reps, rest, optional notes.
+// Flow: tap row → edit inline as strings → on blur, parse numbers and call onUpdate.
+// Used by: workout plan builders. Parent owns persisted plan data; this file is presentation + local draft state.
 
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, useColorScheme } from 'react-native';
@@ -9,6 +9,7 @@ import { lightColors, darkColors, spacing as nbSpacing, nb } from '../../look-an
 
 // ===== NAMED CONSTANTS =====
 
+// Manipulate here: defaults when a saved exercise is missing sets / reps / rest
 const DEFAULT_SETS = 3;
 const DEFAULT_REPS = 10;
 const SECONDS_PER_MINUTE = 60;
@@ -17,51 +18,62 @@ const DEFAULT_REST_SECONDS = SECONDS_PER_MINUTE;
 // ===== HELPER FUNCTIONS =====
 
 /**
- * "45s" under a minute, "2m" on the minute, "1m 30s" otherwise.
- * @param {number} seconds
+ * Human rest label: "45s", "2m", or "1m 30s".
+ * @param {number} totalSeconds
  * @returns {string}
  */
-function formatRestTime(seconds) {
-  if (seconds < SECONDS_PER_MINUTE) return `${seconds}s`;
-  const minutes = Math.floor(seconds / SECONDS_PER_MINUTE);
-  const leftoverSeconds = seconds % SECONDS_PER_MINUTE;
-  if (leftoverSeconds > 0) return `${minutes}m ${leftoverSeconds}s`;
-  return `${minutes}m`;
+function formatRestTimeLabel(totalSeconds) {
+  if (totalSeconds < SECONDS_PER_MINUTE) {
+    return `${totalSeconds}s`;
+  }
+
+  const wholeMinutes = Math.floor(totalSeconds / SECONDS_PER_MINUTE);
+  const leftoverSeconds = totalSeconds % SECONDS_PER_MINUTE;
+
+  if (leftoverSeconds > 0) {
+    return `${wholeMinutes}m ${leftoverSeconds}s`;
+  }
+  return `${wholeMinutes}m`;
 }
 
 /**
- * parseInt of empty/garbage input falls back to the saved exercise value, then the default.
- * @param {string} rawValue
- * @param {number} savedValue
- * @param {number} fallbackValue
+ * parseInt on empty/garbage falls back to saved exercise value, then file default.
+ * @param {string} textValue
+ * @param {number} savedNumber
+ * @param {number} defaultNumber
  * @returns {number}
  */
-function parsedCountOrFallback(rawValue, savedValue, fallbackValue) {
-  return parseInt(rawValue) || savedValue || fallbackValue;
+function numberFromTextInput(textValue, savedNumber, defaultNumber) {
+  return parseInt(textValue, 10) || savedNumber || defaultNumber;
 }
 
 /**
+ * Display title: name, then exerciseName, then "Exercise N".
  * @param {object} exercise
- * @param {number} index
+ * @param {number} listIndex
  * @returns {string}
  */
-function exerciseDisplayName(exercise, index) {
-  return exercise.name || exercise.exerciseName || `Exercise ${index + 1}`;
+function titleForExercise(exercise, listIndex) {
+  if (exercise.name) {
+    return exercise.name;
+  }
+  if (exercise.exerciseName) {
+    return exercise.exerciseName;
+  }
+  return `Exercise ${listIndex + 1}`;
 }
 
 /**
- * bodyPart • target, skipping whichever is missing.
+ * bodyPart • target — skip missing pieces.
  * @param {object} exercise
  * @returns {string}
  */
-function exerciseTargetLine(exercise) {
-  return [exercise.bodyPart, exercise.target].filter(Boolean).join(' • ');
+function muscleTargetLine(exercise) {
+  const pieces = [exercise.bodyPart, exercise.target].filter(Boolean);
+  return pieces.join(' • ');
 }
 
-/**
- * @param {object} colors - neobrutalist colors
- */
-function createStyles(colors) {
+function buildExerciseRowStyles(themeColors) {
   return StyleSheet.create({
     cardInner: {
       padding: nbSpacing.md,
@@ -74,7 +86,7 @@ function createStyles(colors) {
     exerciseNumber: {
       fontSize: 16,
       fontFamily: 'SpaceGrotesk_700Bold',
-      color: colors.nbInk,
+      color: themeColors.nbInk,
       width: 24,
       marginRight: nbSpacing.sm,
     },
@@ -84,13 +96,13 @@ function createStyles(colors) {
     exerciseName: {
       fontSize: 16,
       fontFamily: 'SpaceGrotesk_700Bold',
-      color: colors.nbInk,
+      color: themeColors.nbInk,
       marginBottom: 2,
     },
     exerciseTarget: {
       fontSize: 13,
       fontFamily: 'Inter_400Regular',
-      color: colors.nbMuted,
+      color: themeColors.nbMuted,
       textTransform: 'capitalize',
     },
     exerciseDetails: {
@@ -98,7 +110,7 @@ function createStyles(colors) {
       justifyContent: 'space-around',
       paddingTop: nbSpacing.sm,
       borderTopWidth: nb.borderWidth,
-      borderTopColor: colors.nbBorder,
+      borderTopColor: themeColors.nbBorder,
     },
     detailItem: {
       alignItems: 'center',
@@ -107,7 +119,7 @@ function createStyles(colors) {
     detailLabel: {
       fontSize: 12,
       fontFamily: 'Inter_500Medium',
-      color: colors.nbMuted,
+      color: themeColors.nbMuted,
       marginBottom: 4,
       textTransform: 'uppercase',
       letterSpacing: 0.1,
@@ -115,49 +127,92 @@ function createStyles(colors) {
     detailValue: {
       fontSize: 16,
       fontFamily: 'SpaceGrotesk_700Bold',
-      color: colors.nbInk,
+      color: themeColors.nbInk,
       fontVariant: ['tabular-nums'],
     },
     detailInput: {
       fontSize: 16,
       fontFamily: 'SpaceGrotesk_700Bold',
-      color: colors.nbInk,
+      color: themeColors.nbInk,
       textAlign: 'center',
       minWidth: 40,
-      backgroundColor: colors.nbSurfaceChip,
+      backgroundColor: themeColors.nbSurfaceChip,
       borderRadius: 6,
       padding: nbSpacing.xs,
       borderWidth: nb.borderWidth,
-      borderColor: colors.nbBorder,
+      borderColor: themeColors.nbBorder,
     },
     notesContainer: {
       marginTop: nbSpacing.sm,
       paddingTop: nbSpacing.sm,
       borderTopWidth: nb.borderWidth,
-      borderTopColor: colors.nbBorder,
+      borderTopColor: themeColors.nbBorder,
     },
     notesInput: {
       fontSize: 14,
       fontFamily: 'Inter_400Regular',
-      color: colors.nbInk,
-      backgroundColor: colors.nbSurfaceChip,
+      color: themeColors.nbInk,
+      backgroundColor: themeColors.nbSurfaceChip,
       borderRadius: 8,
       padding: nbSpacing.sm,
       minHeight: 40,
       textAlignVertical: 'top',
       borderWidth: nb.borderWidth,
-      borderColor: colors.nbBorder,
+      borderColor: themeColors.nbBorder,
     },
   });
+}
+
+// Sets / reps / rest column — shared blur handler so one keyboard dismiss saves everything.
+function ExerciseDetailField({
+  label,
+  isEditing,
+  displayText,
+  draftText,
+  onDraftChange,
+  onBlurSave,
+  styles,
+  keyboardType,
+  placeholder,
+}) {
+  let valueNode;
+  if (isEditing) {
+    valueNode = (
+      <TextInput
+        style={styles.detailInput}
+        value={draftText}
+        onChangeText={onDraftChange}
+        onBlur={onBlurSave}
+        keyboardType={keyboardType}
+        placeholder={placeholder}
+        selectTextOnFocus
+      />
+    );
+  } else {
+    valueNode = <Text style={styles.detailValue}>{displayText}</Text>;
+  }
+
+  return (
+    <View style={styles.detailItem}>
+      <Text style={styles.detailLabel}>{label}</Text>
+      {valueNode}
+    </View>
+  );
 }
 
 // ===== MAIN FUNCTION =====
 
 /**
- * Inline-editable exercise row. Hooks stay in this original order so the parent screen cannot skip a field.
- * vocab: useState holds the draft strings until blur, when we parse and send numbers upward.
- * @param {{ exercise: object, index: number, onUpdate?: Function, isDark: boolean, colors: object, spacing: object }} props
+ * One editable exercise card inside a workout plan list.
+ * @param {object} props
+ * @param {object} props.exercise
+ * @param {number} props.index
+ * @param {Function} [props.onUpdate]
+ * @param {boolean} [props.isDark] deprecated
+ * @param {object} [props.colors] deprecated
+ * @param {object} [props.spacing] deprecated
  */
+// vocab: useColorScheme + useState — hook order frozen for parent screens; do not reorder.
 export default function ExerciseRow({
   exercise,
   index,
@@ -166,111 +221,122 @@ export default function ExerciseRow({
   colors: deprecatedColors,
   spacing: deprecatedSpacing,
 }) {
+  void deprecatedIsDark;
+  void deprecatedColors;
+  void deprecatedSpacing;
+
   const colorScheme = useColorScheme();
-  const colors = colorScheme === 'dark' ? darkColors : lightColors;
+  let themeColors = lightColors;
+  if (colorScheme === 'dark') {
+    themeColors = darkColors;
+  }
+
+  // Draft strings stay local until blur so typing never fights parent re-renders.
   const [isEditing, setIsEditing] = useState(false);
   const [localSets, setLocalSets] = useState(String(exercise.sets || DEFAULT_SETS));
   const [localReps, setLocalReps] = useState(String(exercise.reps || DEFAULT_REPS));
   const [localRest, setLocalRest] = useState(String(exercise.restSeconds || DEFAULT_REST_SECONDS));
   const [localNotes, setLocalNotes] = useState(exercise.notes || '');
 
-  const styles = createStyles(colors);
-  const targetLine = exerciseTargetLine(exercise);
+  const styles = buildExerciseRowStyles(themeColors);
+  const targetSubtitle = muscleTargetLine(exercise);
+  const exerciseTitle = titleForExercise(exercise, index);
+  const showTargetLine = Boolean(exercise.target || exercise.bodyPart);
 
-  const handleBlur = () => {
+  const restSecondsSaved = exercise.restSeconds || DEFAULT_REST_SECONDS;
+  const restDisplayWhenIdle = formatRestTimeLabel(restSecondsSaved);
+  const setsDisplayWhenIdle = exercise.sets || DEFAULT_SETS;
+  const repsDisplayWhenIdle = exercise.reps || DEFAULT_REPS;
+  const rowNumberLabel = index + 1;
+
+  // Show notes whenever editing, or when there is already text to display.
+  const showNotesArea = isEditing || Boolean(localNotes);
+
+  // 1. Parse drafts → push patch upward → leave edit mode.
+  const saveEditsAndClose = () => {
     if (onUpdate) {
       onUpdate({
-        sets: parsedCountOrFallback(localSets, exercise.sets, DEFAULT_SETS),
-        reps: parsedCountOrFallback(localReps, exercise.reps, DEFAULT_REPS),
-        restSeconds: parsedCountOrFallback(localRest, exercise.restSeconds, DEFAULT_REST_SECONDS),
+        sets: numberFromTextInput(localSets, exercise.sets, DEFAULT_SETS),
+        reps: numberFromTextInput(localReps, exercise.reps, DEFAULT_REPS),
+        restSeconds: numberFromTextInput(localRest, exercise.restSeconds, DEFAULT_REST_SECONDS),
         notes: localNotes,
       });
     }
     setIsEditing(false);
   };
 
+  const openInlineEditor = () => {
+    setIsEditing(true);
+  };
+
+  let targetLineNode = null;
+  if (showTargetLine) {
+    targetLineNode = <Text style={styles.exerciseTarget}>{targetSubtitle}</Text>;
+  }
+
+  let notesAreaNode = null;
+  if (showNotesArea) {
+    notesAreaNode = (
+      <View style={styles.notesContainer}>
+        <TextInput
+          style={styles.notesInput}
+          value={localNotes}
+          onChangeText={setLocalNotes}
+          onBlur={saveEditsAndClose}
+          placeholder="Add notes (optional)"
+          placeholderTextColor={themeColors.nbMuted}
+          multiline
+        />
+      </View>
+    );
+  }
+
   return (
-    <TouchableOpacity
-      onPress={() => setIsEditing(true)}
-      activeOpacity={0.7}
-    >
+    <TouchableOpacity onPress={openInlineEditor} activeOpacity={0.7}>
       <NbCard style={styles.cardInner}>
         <View style={styles.exerciseHeader}>
-          <Text style={styles.exerciseNumber}>{index + 1}</Text>
+          <Text style={styles.exerciseNumber}>{rowNumberLabel}</Text>
           <View style={styles.exerciseNameContainer}>
-            <Text style={styles.exerciseName}>{exerciseDisplayName(exercise, index)}</Text>
-            {(exercise.target || exercise.bodyPart) && (
-              <Text style={styles.exerciseTarget}>{targetLine}</Text>
-            )}
+            <Text style={styles.exerciseName}>{exerciseTitle}</Text>
+            {targetLineNode}
           </View>
         </View>
 
         <View style={styles.exerciseDetails}>
-          <View style={styles.detailItem}>
-            <Text style={styles.detailLabel}>Sets</Text>
-            {isEditing ? (
-              <TextInput
-                style={styles.detailInput}
-                value={localSets}
-                onChangeText={setLocalSets}
-                onBlur={handleBlur}
-                keyboardType="numeric"
-                selectTextOnFocus
-              />
-            ) : (
-              <Text style={styles.detailValue}>{exercise.sets || DEFAULT_SETS}</Text>
-            )}
-          </View>
-
-          <View style={styles.detailItem}>
-            <Text style={styles.detailLabel}>Reps</Text>
-            {isEditing ? (
-              <TextInput
-                style={styles.detailInput}
-                value={localReps}
-                onChangeText={setLocalReps}
-                onBlur={handleBlur}
-                keyboardType="numeric"
-                selectTextOnFocus
-              />
-            ) : (
-              <Text style={styles.detailValue}>{exercise.reps || DEFAULT_REPS}</Text>
-            )}
-          </View>
-
-          <View style={styles.detailItem}>
-            <Text style={styles.detailLabel}>Rest</Text>
-            {isEditing ? (
-              <TextInput
-                style={styles.detailInput}
-                value={localRest}
-                onChangeText={setLocalRest}
-                onBlur={handleBlur}
-                keyboardType="numeric"
-                placeholder="seconds"
-                selectTextOnFocus
-              />
-            ) : (
-              <Text style={styles.detailValue}>
-                {formatRestTime(exercise.restSeconds || DEFAULT_REST_SECONDS)}
-              </Text>
-            )}
-          </View>
+          <ExerciseDetailField
+            label="Sets"
+            isEditing={isEditing}
+            displayText={setsDisplayWhenIdle}
+            draftText={localSets}
+            onDraftChange={setLocalSets}
+            onBlurSave={saveEditsAndClose}
+            styles={styles}
+            keyboardType="numeric"
+          />
+          <ExerciseDetailField
+            label="Reps"
+            isEditing={isEditing}
+            displayText={repsDisplayWhenIdle}
+            draftText={localReps}
+            onDraftChange={setLocalReps}
+            onBlurSave={saveEditsAndClose}
+            styles={styles}
+            keyboardType="numeric"
+          />
+          <ExerciseDetailField
+            label="Rest"
+            isEditing={isEditing}
+            displayText={restDisplayWhenIdle}
+            draftText={localRest}
+            onDraftChange={setLocalRest}
+            onBlurSave={saveEditsAndClose}
+            styles={styles}
+            keyboardType="numeric"
+            placeholder="seconds"
+          />
         </View>
 
-        {(isEditing || localNotes) && (
-          <View style={styles.notesContainer}>
-            <TextInput
-              style={styles.notesInput}
-              value={localNotes}
-              onChangeText={setLocalNotes}
-              onBlur={handleBlur}
-              placeholder="Add notes (optional)"
-              placeholderTextColor={colors.nbMuted}
-              multiline
-            />
-          </View>
-        )}
+        {notesAreaNode}
       </NbCard>
     </TouchableOpacity>
   );

@@ -1,6 +1,7 @@
 // Design Law saved plans library (workouts PNG 17/18) — trainer Tools → Workout plans + client library.
 // Flow: load plans from Firestore → normalize → search/filter → list rows or empty state.
 // Layout paints; default export wires data. Delete confirm = NbSheet (PNG 18).
+
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
 import NbButton from '../../look-and-feel/NbButton';
@@ -33,27 +34,14 @@ import { fetchClientWorkoutPlansForLibrary } from '../../workouts/exercise-video
 
 // ===== NAMED CONSTANTS =====
 
-/** Map theme nb tokens → legacy `theme.*` keys used by list chrome. */
-function nbTheme(colors) {
-  return {
-    bg: colors.nbBackground,
-    surface: colors.nbSurface,
-    card: colors.nbSurface,
-    border: colors.nbBorder,
-    text: colors.nbInk,
-    textMuted: colors.nbMuted,
-    textSecondary: colors.nbMuted,
-    fill: colors.nbFill,
-    onFill: colors.nbOnFill,
-    soft: colors.nbSoft,
-  };
-}
-
 // Icon-chip gradient rotation (Design Law — small accents only)
+const ICON_GRADS_BRAND = (gradients.brand && gradients.brand.colors) || ['#FF6B9D', '#FB923C'];
+const ICON_GRADS_ENERGY = (gradients.energy && gradients.energy.colors) || ['#FBBF24', '#EF4444'];
+const ICON_GRADS_WATER = (gradients.water && gradients.water.colors) || ['#60A5FA', '#818CF8'];
 const ICON_GRADS = [
-  gradients.brand?.colors || ['#FF6B9D', '#FB923C'],
-  gradients.energy?.colors || ['#FBBF24', '#EF4444'],
-  gradients.water?.colors || ['#60A5FA', '#818CF8'],
+  ICON_GRADS_BRAND,
+  ICON_GRADS_ENERGY,
+  ICON_GRADS_WATER,
   ['#A78BFA', '#E879F9'],
   ['#FDBA74', '#C4B5FD'],
 ];
@@ -69,46 +57,16 @@ const MAX_MUSCLE_TAG_LENGTH = 28;
 const MAX_MUSCLE_TAGS = 8;
 const WEEKDAY_SHORT_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 const SHELL_BOTTOM_PAD_EXTRA = 24;
+const CLIENT_NAME_FALLBACK = 'Client';
+const PLAN_NAME_FALLBACK = 'Plan';
+const USERS_COLLECTION = 'users';
+const WORKOUT_PLANS_SUBCOLLECTION = 'workoutPlans';
+const WORKOUT_PLANS_TOP_COLLECTION = 'workoutPlans';
+const SOURCE_USERS_SUBCOLLECTION = 'usersSubcollection';
+const SOURCE_WORKOUT_PLAN_CURRENT = 'workoutPlanCurrent';
+const SOURCE_MANUAL_BUILDER = 'manualBuilder';
+const PLAN_KIND_MANUAL = 'manual';
 
-// ===== HELPER FUNCTIONS =====
-
-function useClientWorkoutPlans(clientId, trainerId) {
-  const [plans, setPlans] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  const load = useCallback(async () => {
-    if (!clientId || !db) {
-      setPlans([]);
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    try {
-      const { plans: loaded, error: loadError } = await fetchClientWorkoutPlansForLibrary(clientId, {
-        trainerId: trainerId || null,
-      });
-      setPlans(loaded);
-      setError(loadError);
-    } catch (e) {
-      setPlans([]);
-      setError(String(e?.message || e || 'Failed to load workout plans'));
-    } finally {
-      setLoading(false);
-    }
-  }, [clientId, trainerId]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  return { plans, loading, error, reload: load };
-}
-
-// ============================================================================
-// DATA NORMALIZER  –  maps raw Firestore shape → UI shape
-// ============================================================================
 const GOAL_COLOR_MAP = {
   strength: 'purple',
   hypertrophy: 'purple',
@@ -123,26 +81,130 @@ const GOAL_COLOR_MAP = {
   recovery: 'green',
 };
 
+// ===== HELPER FUNCTIONS =====
+
+function callIfFunction(maybeFunction, ...args) {
+  if (typeof maybeFunction !== 'function') {
+    return;
+  }
+  return maybeFunction(...args);
+}
+
+function errorMessageOrFallback(errorObject, fallbackText) {
+  if (errorObject && errorObject.message) return errorObject.message;
+  return fallbackText;
+}
+
+function noticeTitle(notice) {
+  if (!notice) return '';
+  return notice.title || '';
+}
+
+function noticeMessage(notice) {
+  if (!notice) return undefined;
+  return notice.message;
+}
+
+function noticeConfirmLabel(notice) {
+  if (!notice) return 'OK';
+  return notice.confirmLabel || 'OK';
+}
+
+function noticeCancelLabel(notice) {
+  if (!notice) return undefined;
+  return notice.cancelLabel;
+}
+
+function noticeOnConfirm(notice) {
+  if (!notice) return undefined;
+  return notice.onConfirm;
+}
+
+function planRawSource(plan) {
+  if (!plan || !plan._raw) return null;
+  return plan._raw.source;
+}
+
+function planRawPlanKind(plan) {
+  if (!plan || !plan._raw) return null;
+  return plan._raw.planKind;
+}
+
+function planIsAssignedOnRaw(plan) {
+  if (!plan || !plan._raw) return false;
+  return !!plan._raw.assigned;
+}
+
+
+/**
+ * Who this library belongs to — prop wins, else route params.
+ * @param {object|undefined} clientProp
+ * @param {object|undefined} route
+ */
+function readLibraryClientIdentity(clientProp, route) {
+  const routeParams = route && route.params ? route.params : {};
+  const clientFromProp = clientProp || {};
+  const clientId = clientFromProp.id || routeParams.clientId;
+  const clientName =
+    clientFromProp.name || routeParams.clientName || CLIENT_NAME_FALLBACK;
+  return { clientId, clientName };
+}
+
+// vocab: nbTheme maps Design Law tokens into the legacy `theme.*` keys list chrome still expects
+function nbTheme(colors) {
+  return {
+    bg: colors.nbBackground,
+    surface: colors.nbSurface,
+    card: colors.nbSurface,
+    border: colors.nbBorder,
+    text: colors.nbInk,
+    textMuted: colors.nbMuted,
+    textSecondary: colors.nbMuted,
+    fill: colors.nbFill,
+    onFill: colors.nbOnFill,
+    soft: colors.nbSoft,
+  };
+}
+
 function dateFromFirestoreOrRaw(raw) {
   if (!raw) return null;
-  if (raw?.toDate) return raw.toDate();
+  // vocab: Firestore Timestamp has .toDate()
+  if (typeof raw.toDate === 'function') return raw.toDate();
   if (raw instanceof Date) return raw;
   return new Date(raw);
 }
 
 function formatDate(raw) {
   const parsedDate = dateFromFirestoreOrRaw(raw);
-  if (!parsedDate || isNaN(parsedDate.getTime())) return '';
-  return parsedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  if (!parsedDate) return '';
+  if (isNaN(parsedDate.getTime())) return '';
+  return parsedDate.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
 }
 
 /** "MAY 5, 2026" for history card headers */
 function formatCreatedUpper(raw) {
   const parsedDate = dateFromFirestoreOrRaw(raw);
-  if (!parsedDate || isNaN(parsedDate.getTime())) return '';
+  if (!parsedDate) return '';
+  if (isNaN(parsedDate.getTime())) return '';
   return parsedDate
     .toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
     .toUpperCase();
+}
+
+function daysFromWeeksArray(weeks) {
+  const allDays = [];
+  for (let weekIndex = 0; weekIndex < weeks.length; weekIndex += 1) {
+    const week = weeks[weekIndex];
+    const weekDays = week && week.days ? week.days : [];
+    for (let dayIndex = 0; dayIndex < weekDays.length; dayIndex += 1) {
+      allDays.push(weekDays[dayIndex]);
+    }
+  }
+  return allDays;
 }
 
 function structuredPlanDays(structuredPlan) {
@@ -150,7 +212,7 @@ function structuredPlanDays(structuredPlan) {
   if (structuredPlan.days) return structuredPlan.days;
   if (structuredPlan.sessions) return structuredPlan.sessions;
   if (Array.isArray(structuredPlan.weeks)) {
-    return structuredPlan.weeks.flatMap((week) => week?.days || []);
+    return daysFromWeeksArray(structuredPlan.weeks);
   }
   return null;
 }
@@ -158,25 +220,37 @@ function structuredPlanDays(structuredPlan) {
 function exerciseCountFromDays(days) {
   let exerciseCount = 0;
   for (const day of days) {
-    if (day?.isRest || day?.rest) continue;
-    const exercises = day?.exercises || day?.mainWorkouts || day?.main_workouts || [];
+    if (!day) continue;
+    if (day.isRest || day.rest) continue;
+    const exercises = day.exercises || day.mainWorkouts || day.main_workouts || [];
     if (!Array.isArray(exercises)) continue;
     exerciseCount += exercises.length;
   }
   return exerciseCount;
 }
 
+function explicitExerciseCountOnItem(item) {
+  if (!item) return null;
+  if (item.totalExerciseCount != null) return item.totalExerciseCount;
+  if (item.exerciseCount != null) return item.exerciseCount;
+  return item.exerciseTotal;
+}
+
+function countedExercisesFromStructuredPlan(item) {
+  const structuredPlan = item ? item.structuredPlan : null;
+  const days = structuredPlanDays(structuredPlan);
+  if (!Array.isArray(days)) return 0;
+  return exerciseCountFromDays(days);
+}
+
 function deriveExerciseCount(item) {
-  const explicit = item?.totalExerciseCount ?? item?.exerciseCount ?? item?.exerciseTotal;
+  const explicit = explicitExerciseCountOnItem(item);
   if (typeof explicit === 'number' && explicit > 0) return explicit;
 
-  const days = structuredPlanDays(item?.structuredPlan);
-  if (Array.isArray(days)) {
-    const counted = exerciseCountFromDays(days);
-    if (counted > 0) return counted;
-  }
+  const counted = countedExercisesFromStructuredPlan(item);
+  if (counted > 0) return counted;
 
-  const daysPerWeek = Number(item?.daysPerWeek) || DAYS_PER_WEEK_DEFAULT;
+  const daysPerWeek = Number(item && item.daysPerWeek) || DAYS_PER_WEEK_DEFAULT;
   return Math.max(MIN_EXERCISE_COUNT_FALLBACK, daysPerWeek * EXERCISES_PER_DAY_FALLBACK);
 }
 
@@ -190,16 +264,18 @@ function pushUniqueTag(tags, rawLabel) {
 
 function muscleLabelFromEntry(entry) {
   if (typeof entry === 'string') return entry;
-  return entry?.name || entry?.label;
+  if (!entry) return undefined;
+  return entry.name || entry.label;
 }
 
 function collectTagsFromDays(days, tags) {
   if (!Array.isArray(days)) return;
   for (const day of days) {
-    pushUniqueTag(tags, day?.focus);
-    pushUniqueTag(tags, day?.label);
-    pushUniqueTag(tags, day?.name);
-    const muscleGroups = day?.muscleGroups || day?.muscles || day?.targets;
+    if (!day) continue;
+    pushUniqueTag(tags, day.focus);
+    pushUniqueTag(tags, day.label);
+    pushUniqueTag(tags, day.name);
+    const muscleGroups = day.muscleGroups || day.muscles || day.targets;
     if (!Array.isArray(muscleGroups)) continue;
     for (const muscle of muscleGroups) {
       pushUniqueTag(tags, muscleLabelFromEntry(muscle));
@@ -208,7 +284,8 @@ function collectTagsFromDays(days, tags) {
 }
 
 function collectTagsFromPrimaryMuscles(item, tags) {
-  const primaryMuscles = item?.primaryMuscles || item?.muscleGroups || item?.muscles;
+  if (!item) return;
+  const primaryMuscles = item.primaryMuscles || item.muscleGroups || item.muscles;
   if (Array.isArray(primaryMuscles)) {
     for (const muscle of primaryMuscles) {
       pushUniqueTag(tags, muscleLabelFromEntry(muscle));
@@ -224,7 +301,8 @@ function collectTagsFromPrimaryMuscles(item, tags) {
 
 function deriveMuscleTags(item, displayFocus) {
   const tags = [];
-  const days = structuredPlanDays(item?.structuredPlan);
+  const structuredPlan = item ? item.structuredPlan : null;
+  const days = structuredPlanDays(structuredPlan);
   collectTagsFromDays(days, tags);
   collectTagsFromPrimaryMuscles(item, tags);
 
@@ -237,17 +315,56 @@ function deriveMuscleTags(item, displayFocus) {
   return tags.slice(0, MAX_MUSCLE_TAGS);
 }
 
-function normalizePlan(item) {
-  // Derive status: prefer explicit field, else infer from assigned flag
-  const status = item.status || (item.assigned ? 'active' : 'paused');
+function planIsManual(item) {
+  if (!item) return false;
+  return item.source === SOURCE_MANUAL_BUILDER || item.planKind === PLAN_KIND_MANUAL;
+}
 
-  const isManual = item.source === 'manualBuilder' || item.planKind === 'manual';
-
-  // Pick a gradient colour key
-  const goalKey = Object.keys(GOAL_COLOR_MAP).find((k) =>
-    (item.goal || item.focus || item.type || item.category || '').toLowerCase().includes(k),
+function focusColorForPlan(item) {
+  const goalText = (item.goal || item.focus || item.type || item.category || '').toLowerCase();
+  const goalKeyword = Object.keys(GOAL_COLOR_MAP).find((keyword) =>
+    goalText.includes(keyword),
   );
-  const focusColor = item.focusColor || GOAL_COLOR_MAP[goalKey] || 'pink';
+  return item.focusColor || GOAL_COLOR_MAP[goalKeyword] || 'pink';
+}
+
+function displayNameForPlan(item, isManual) {
+  if (isManual) {
+    return item.title || item.name || item.planName || 'Custom plan';
+  }
+  if (item.title || item.name || item.planTitle) {
+    return item.title || item.name || item.planTitle;
+  }
+  if (item.rawPlan || item.planText) return 'Workout plan';
+  return 'Workout Plan';
+}
+
+function displayFocusForPlan(item, isManual) {
+  if (isManual) {
+    return String(item.category || item.focus || 'Custom plan').trim();
+  }
+  return item.focus || item.goal || item.type || 'Training';
+}
+
+function trainingDaysForPlan(item, daysPerWeek) {
+  const stored = item.trainingDays;
+  if (Array.isArray(stored) && stored.length === TRAINING_DAYS_LENGTH) {
+    return stored;
+  }
+  return Array.from({ length: TRAINING_DAYS_LENGTH }, (_, dayIndex) => dayIndex < daysPerWeek);
+}
+
+/**
+ * Map one raw Firestore plan doc into the UI row shape list chrome expects.
+ * Flow: 1. status  2. focus color  3. weeks/days  4. display fields  5. return row + _raw
+ */
+function normalizePlan(item) {
+  // 1. Active vs paused — explicit status wins, else infer from assigned flag
+  const status = item.status || (item.assigned ? 'active' : 'paused');
+  const isManual = planIsManual(item);
+
+  // 2. Focus chip color from goal keywords (falls back to pink)
+  const focusColor = focusColorForPlan(item);
 
   const totalWeeks = isManual
     ? (item.durationWeeks || item.totalWeeks || item.weeks || DEFAULT_TOTAL_WEEKS)
@@ -259,55 +376,200 @@ function normalizePlan(item) {
       : item.daysPerWeek || DEFAULT_DAYS_PER_WEEK;
   const sessionMinutes = item.sessionMinutes || item.sessionLength || DEFAULT_SESSION_MINUTES;
 
-  // Build a 7-day boolean array from stored field or infer from daysPerWeek
-  const trainingDays =
-    Array.isArray(item.trainingDays) && item.trainingDays.length === TRAINING_DAYS_LENGTH
-      ? item.trainingDays
-      : Array.from({ length: TRAINING_DAYS_LENGTH }, (_, dayIndex) => dayIndex < daysPerWeek);
+  // 3. Build a 7-day boolean array from stored field or infer from daysPerWeek
+  const trainingDays = trainingDaysForPlan(item, daysPerWeek);
 
-  const displayName = isManual
-    ? (item.title || item.name || item.planName || 'Custom plan')
-    : (item.title || item.name || item.planTitle || (item.rawPlan || item.planText ? 'Workout plan' : 'Workout Plan'));
-  const displayFocus = isManual
-    ? String(item.category || item.focus || 'Custom plan').trim()
-    : (item.focus || item.goal || item.type || 'Training');
+  // 4. Display name + focus line
+  const displayName = displayNameForPlan(item, isManual);
+  const displayFocus = displayFocusForPlan(item, isManual);
 
+  // 5. UI row + Firestore bookkeeping for write/delete paths
   return {
-    // UI fields
-    id:              item.id,
-    name:            displayName,
+    id: item.id,
+    name: displayName,
     status,
     focusColor,
-    focus:           displayFocus,
+    focus: displayFocus,
     totalWeeks,
     weeksCompleted,
     daysPerWeek,
     sessionMinutes,
-    createdAt:       formatDate(item.generatedAt || item.createdAt),
-    createdUpper:    formatCreatedUpper(item.generatedAt || item.createdAt),
-    exerciseCount:   deriveExerciseCount(item),
-    muscleTags:      deriveMuscleTags(item, displayFocus),
+    createdAt: formatDate(item.generatedAt || item.createdAt),
+    createdUpper: formatCreatedUpper(item.generatedAt || item.createdAt),
+    exerciseCount: deriveExerciseCount(item),
+    muscleTags: deriveMuscleTags(item, displayFocus),
     trainingDays,
-    // Firestore bookkeeping (needed for write ops below)
-    _source:         item._source,
-    _singleDoc:      item._singleDoc,
-    _path:           item._path,
-    assigned:        item.assigned,
-    // Pass through so renderPlan can still use original fields if needed
-    _raw:            item,
+    _source: item._source,
+    _singleDoc: item._singleDoc,
+    _path: item._path,
+    assigned: item.assigned,
+    _raw: item,
   };
 }
 
-// ============================================================================
-// LIBRARY HEADER — PNG 17 title row
-// ============================================================================
+function normalizePlanList(rawPlans) {
+  const plans = [];
+  for (let index = 0; index < rawPlans.length; index += 1) {
+    plans.push(normalizePlan(rawPlans[index]));
+  }
+  return plans;
+}
+
+/** Client-side search — name, focus line, or muscle tag text. */
+function filterPlansByLibraryQuery(plans, libraryQuery) {
+  const queryText = libraryQuery.trim().toLowerCase();
+  if (!queryText) return plans;
+
+  return plans.filter((plan) => {
+    const nameMatch = String(plan.name || '').toLowerCase().includes(queryText);
+    const focusMatch = String(plan.focus || '').toLowerCase().includes(queryText);
+    const tagMatch = (plan.muscleTags || []).some((tag) =>
+      String(tag).toLowerCase().includes(queryText),
+    );
+    return nameMatch || focusMatch || tagMatch;
+  });
+}
+
+function planRowMetaLine(plan) {
+  const createdLabel = plan.createdAt || '—';
+  const isManual =
+    planRawSource(plan) === SOURCE_MANUAL_BUILDER || planRawPlanKind(plan) === PLAN_KIND_MANUAL;
+  if (isManual) return `Custom · ${createdLabel}`;
+  return `Built by AI · ${createdLabel}`;
+}
+
+function statusBadgeLabel(status) {
+  if (status === 'completed') return 'Done';
+  if (status === 'paused') return 'Paused';
+  return String(status || 'Plan');
+}
+
+function emptyHeroTitle(compact, message) {
+  if (compact) return message || 'Nothing here yet';
+  return 'No plans yet';
+}
+
+function emptyHeroSubtitle(compact, viewerRole, clientName) {
+  if (compact) return 'Try a different search or add a new plan.';
+  if (viewerRole === 'trainer') {
+    return `${clientName} has no saved plans yet. Build a custom plan or generate with AI.`;
+  }
+  return 'Tap Build a plan to draft one, or wait for your coach to add one.';
+}
+
+function emptyFilterMessage(libraryQuery) {
+  if (libraryQuery.trim()) return 'No matching plans';
+  return 'No plans yet';
+}
+
+function deleteSheetMetaLine(planPendingDelete) {
+  if (!planPendingDelete) return '';
+  const planName = planPendingDelete.name || PLAN_NAME_FALLBACK;
+  if (!planPendingDelete.focus) return planName;
+  return `${planName} · ${planPendingDelete.focus}`;
+}
+
+function assignToggleLabel(planPendingOptions) {
+  if (planIsAssignedOnRaw(planPendingOptions)) return 'Unassign from client';
+  return 'Assign to client';
+}
+
+function planCountKicker(totalPlans) {
+  if (totalPlans === 1) return '1 plan';
+  return `${totalPlans} plans`;
+}
+
+/**
+ * Load Firestore library rows for this client (trainer-scoped when trainerId set).
+ * vocab: useCallback/useEffect = React hooks; reload = re-run load
+ */
+function useClientWorkoutPlans(clientId, trainerId) {
+  const [plans, setPlans] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const load = useCallback(async () => {
+    if (!clientId || !db) {
+      setPlans([]);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const { plans: loaded, error: loadError } = await fetchClientWorkoutPlansForLibrary(
+        clientId,
+        { trainerId: trainerId || null },
+      );
+      setPlans(loaded);
+      setError(loadError);
+    } catch (loadFailure) {
+      setPlans([]);
+      setError(String(errorMessageOrFallback(loadFailure, loadFailure || 'Failed to load workout plans')));
+    } finally {
+      setLoading(false);
+    }
+  }, [clientId, trainerId]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  return { plans, loading, error, reload: load };
+}
+
+async function writeAssignedFlagOnFirestore(plan, nextAssigned, clientId) {
+  const raw = plan._raw;
+  if (raw._singleDoc && raw._path) {
+    await setDoc(doc(db, ...raw._path), { assigned: nextAssigned }, { merge: true });
+    return;
+  }
+  if (raw._source === SOURCE_USERS_SUBCOLLECTION || raw._source === SOURCE_WORKOUT_PLAN_CURRENT) {
+    await setDoc(
+      doc(db, USERS_COLLECTION, clientId, WORKOUT_PLANS_SUBCOLLECTION, plan.id),
+      { assigned: nextAssigned },
+      { merge: true },
+    );
+    return;
+  }
+  await setDoc(
+    doc(db, WORKOUT_PLANS_TOP_COLLECTION, plan.id),
+    { assigned: nextAssigned },
+    { merge: true },
+  );
+}
+
+async function deletePlanDocumentsOnFirestore(plan, clientId) {
+  const raw = plan._raw;
+  if (raw._singleDoc && raw._path) {
+    await deleteDoc(doc(db, ...raw._path));
+    return;
+  }
+  if (raw._source === SOURCE_USERS_SUBCOLLECTION || raw._source === SOURCE_WORKOUT_PLAN_CURRENT) {
+    if (raw._singleDoc && raw._path) {
+      await deleteDoc(doc(db, ...raw._path));
+    }
+    if (!plan.id) return;
+    try {
+      await deleteDoc(
+        doc(db, USERS_COLLECTION, clientId, WORKOUT_PLANS_SUBCOLLECTION, plan.id),
+      );
+    } catch {
+      // Subcollection row may already be gone.
+    }
+    return;
+  }
+  await deleteDoc(doc(db, WORKOUT_PLANS_TOP_COLLECTION, plan.id));
+}
+
+// ===== LAYOUT CHROME (pure — no Firestore hooks) =====
+
 function LibraryHeroSummary({ theme, totalPlans }) {
+  const kickerText = planCountKicker(totalPlans);
   return (
     <View style={styles.libraryHeroPlain}>
       <Text style={[styles.libraryHeroTitle, { color: theme.text }]}>Saved plans</Text>
-      <Text style={[styles.libraryHeroKicker, { color: theme.textMuted }]}>
-        {totalPlans} plan{totalPlans === 1 ? '' : 's'}
-      </Text>
+      <Text style={[styles.libraryHeroKicker, { color: theme.textMuted }]}>{kickerText}</Text>
     </View>
   );
 }
@@ -317,8 +579,7 @@ function StatusBadge({ status }) {
   if (status === 'active') {
     return <NbPill variant="brand">Active</NbPill>;
   }
-  const label =
-    status === 'completed' ? 'Done' : status === 'paused' ? 'Paused' : String(status || 'Plan');
+  const label = statusBadgeLabel(status);
   return <NbPill variant="plain">{label}</NbPill>;
 }
 
@@ -327,16 +588,17 @@ function StatusBadge({ status }) {
  * vocab: iconGrad = small accent only — never on the whole row.
  */
 function HistoryPlanCard({ plan, theme, onPress, onOptions, index = 0 }) {
-  const grad = ICON_GRADS[index % ICON_GRADS.length];
-  const isManual = plan._raw?.source === 'manualBuilder' || plan._raw?.planKind === 'manual';
-  const meta = isManual
-    ? `Custom · ${plan.createdAt || '—'}`
-    : `Built by AI · ${plan.createdAt || '—'}`;
+  const iconChipGradient = ICON_GRADS[index % ICON_GRADS.length];
+  const isManual =
+    planRawSource(plan) === SOURCE_MANUAL_BUILDER || planRawPlanKind(plan) === PLAN_KIND_MANUAL;
+  const metaLine = planRowMetaLine(plan);
+  const showActiveBadge = plan.status === 'active';
+  const showTrainerPill = isManual && plan.status !== 'active';
 
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.88} style={styles.planRow}>
       <LinearGradient
-        colors={grad}
+        colors={iconChipGradient}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={[styles.planIconChip, { borderColor: theme.border }]}
@@ -348,11 +610,11 @@ function HistoryPlanCard({ plan, theme, onPress, onOptions, index = 0 }) {
           {plan.name}
         </Text>
         <Text style={[styles.historyCardCreated, { color: theme.textMuted }]} numberOfLines={1}>
-          {meta}
+          {metaLine}
         </Text>
       </View>
-      {plan.status === 'active' ? <StatusBadge status="active" /> : null}
-      {isManual && plan.status !== 'active' ? <NbPill variant="plain">Trainer</NbPill> : null}
+      {showActiveBadge ? <StatusBadge status="active" /> : null}
+      {showTrainerPill ? <NbPill variant="plain">Trainer</NbPill> : null}
       {onOptions ? (
         <TouchableOpacity onPress={onOptions} hitSlop={10} style={styles.historyCardIconHit}>
           <Ionicons name="ellipsis-horizontal" size={20} color={theme.textMuted} />
@@ -362,9 +624,6 @@ function HistoryPlanCard({ plan, theme, onPress, onOptions, index = 0 }) {
   );
 }
 
-// ============================================================================
-// EMPTY — dashed Design Law card
-// ============================================================================
 function PlansLibraryEmptyHero({
   theme,
   clientName,
@@ -379,6 +638,8 @@ function PlansLibraryEmptyHero({
     !compact && viewerRole === 'client' && typeof onGenerateWorkout === 'function' && !!clientId;
   const showTrainerCustom =
     !compact && viewerRole === 'trainer' && typeof onBuildCustom === 'function' && !!clientId;
+  const titleText = emptyHeroTitle(compact, message);
+  const subtitleText = emptyHeroSubtitle(compact, viewerRole, clientName);
 
   return (
     <View
@@ -395,16 +656,8 @@ function PlansLibraryEmptyHero({
       <View style={[styles.emptyFilterIcon, { backgroundColor: theme.soft, borderColor: theme.border }]}>
         <Ionicons name="layers-outline" size={26} color={theme.text} />
       </View>
-      <Text style={[styles.emptyFilterTitle, { color: theme.text }]}>
-        {compact ? message || 'Nothing here yet' : 'No plans yet'}
-      </Text>
-      <Text style={[styles.emptyFilterSub, { color: theme.textMuted }]}>
-        {compact
-          ? 'Try a different search or add a new plan.'
-          : viewerRole === 'trainer'
-            ? `${clientName} has no saved plans yet. Build a custom plan or generate with AI.`
-            : 'Tap Build a plan to draft one, or wait for your coach to add one.'}
-      </Text>
+      <Text style={[styles.emptyFilterTitle, { color: theme.text }]}>{titleText}</Text>
+      <Text style={[styles.emptyFilterSub, { color: theme.textMuted }]}>{subtitleText}</Text>
       {showTrainerCustom ? (
         <View style={{ marginTop: 12, width: '100%' }}>
           <NbButton variant="fill" onPress={() => onBuildCustom({ id: clientId, name: clientName })}>
@@ -440,15 +693,23 @@ function TrainerBuilderFooterCard({ clientName, onGenerateWorkout, onBuildCustom
             },
           ]}
         >
-          <Text style={[styles.trainerBuilderFooterTitle, { color: theme.text }]}>Build for {clientName}</Text>
+          <Text style={[styles.trainerBuilderFooterTitle, { color: theme.text }]}>
+            Build for {clientName}
+          </Text>
           <Text style={[styles.trainerBuilderFooterSub, { color: theme.textMuted }]}>
             Custom builder or AI plan
           </Text>
           <View style={{ gap: 10, marginTop: 12 }}>
-            <NbButton variant="fill" onPress={() => onBuildCustom?.({ id: clientId, name: clientName })}>
+            <NbButton
+              variant="fill"
+              onPress={() => callIfFunction(onBuildCustom, { id: clientId, name: clientName })}
+            >
               Build custom plan
             </NbButton>
-            <NbButton variant="ghost" onPress={() => onGenerateWorkout?.({ id: clientId, name: clientName })}>
+            <NbButton
+              variant="ghost"
+              onPress={() => callIfFunction(onGenerateWorkout, { id: clientId, name: clientName })}
+            >
               Generate AI plan
             </NbButton>
           </View>
@@ -458,7 +719,64 @@ function TrainerBuilderFooterCard({ clientName, onGenerateWorkout, onBuildCustom
   );
 }
 
-// ===== MAIN FUNCTION =====
+function buildPlanListRowElements(plansFilteredBySearch, theme, handleView, showPlanOptions, viewerRole) {
+  const rows = [];
+  for (let index = 0; index < plansFilteredBySearch.length; index += 1) {
+    const plan = plansFilteredBySearch[index];
+    const showDivider = index > 0;
+    let optionsHandler = null;
+    if (viewerRole === 'trainer') {
+      optionsHandler = () => showPlanOptions(plan);
+    }
+    rows.push(
+      <View key={plan.id}>
+        {showDivider ? (
+          <View style={[styles.planRowDivider, { backgroundColor: theme.border }]} />
+        ) : null}
+        <HistoryPlanCard
+          plan={plan}
+          theme={theme}
+          index={index}
+          onPress={() => handleView(plan)}
+          onOptions={optionsHandler}
+        />
+      </View>,
+    );
+  }
+  return rows;
+}
+
+function PlansListCard({
+  theme,
+  plansFilteredBySearch,
+  handleView,
+  showPlanOptions,
+  viewerRole,
+}) {
+  const rowElements = buildPlanListRowElements(
+    plansFilteredBySearch,
+    theme,
+    handleView,
+    showPlanOptions,
+    viewerRole,
+  );
+  return (
+    <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetCard}>
+      <View
+        style={[
+          styles.plansListCard,
+          {
+            backgroundColor: theme.surface,
+            borderColor: theme.border,
+            borderWidth: nb.borderWidth,
+          },
+        ]}
+      >
+        {rowElements}
+      </View>
+    </HardShadow>
+  );
+}
 
 function SavedWorkoutsScreenLayout({
   theme,
@@ -486,13 +804,22 @@ function SavedWorkoutsScreenLayout({
   trainerId,
 }) {
   const ScreenRoot = embedInLayout ? View : SafeAreaView;
+  const showHeader = !embedInLayout;
+  const showLoadingBlock = !!loading;
+  const showErrorBlock = !!error && !loading;
+  const showEmptyLibrary = !loading && !error && !hasPlans;
+  const showPlansLibrary = !loading && !error && hasPlans;
+  const searchReturnedNothing = plansFilteredBySearch.length === 0;
+  const showTrainerFooter = isTrainerView && trainerId && clientId;
+  const scrollTopPad = embedInLayout ? { paddingTop: 4 } : null;
+  const emptySearchMessage = emptyFilterMessage(libraryQuery);
 
   return (
     <ScreenRoot
       style={[styles.container, { backgroundColor: theme.bg }]}
       {...(embedInLayout ? {} : { edges: SHELL_SAFE_AREA_EDGES })}
     >
-      {!embedInLayout ? (
+      {showHeader ? (
         <TopHeader
           title=""
           skipTopSafeInset
@@ -507,19 +834,19 @@ function SavedWorkoutsScreenLayout({
         contentContainerStyle={[
           styles.scrollContent,
           { paddingBottom: shellBottomPad },
-          embedInLayout && { paddingTop: 4 },
+          scrollTopPad,
         ]}
         style={{ backgroundColor: theme.bg }}
         keyboardShouldPersistTaps="handled"
       >
-        {loading && (
+        {showLoadingBlock ? (
           <View style={styles.centeredFeedback}>
             <ActivityIndicator size="large" color={theme.fill} />
             <Text style={[styles.feedbackText, { color: theme.textMuted }]}>Loading plans…</Text>
           </View>
-        )}
+        ) : null}
 
-        {error && !loading && (
+        {showErrorBlock ? (
           <View style={{ paddingHorizontal: 16 }}>
             <View
               style={[
@@ -541,9 +868,9 @@ function SavedWorkoutsScreenLayout({
               </View>
             </View>
           </View>
-        )}
+        ) : null}
 
-        {!loading && !error && !hasPlans && (
+        {showEmptyLibrary ? (
           <View style={{ paddingHorizontal: 16 }}>
             <LibraryHeroSummary theme={theme} totalPlans={0} />
             <PlansLibraryEmptyHero
@@ -555,9 +882,9 @@ function SavedWorkoutsScreenLayout({
               onBuildCustom={onBuildCustom}
             />
           </View>
-        )}
+        ) : null}
 
-        {!loading && !error && hasPlans && (
+        {showPlansLibrary ? (
           <>
             <View style={{ paddingHorizontal: 16, marginTop: 8 }}>
               <LibraryHeroSummary theme={theme} totalPlans={plans.length} />
@@ -589,49 +916,29 @@ function SavedWorkoutsScreenLayout({
             </View>
 
             <View style={[styles.plansSection, { marginTop: 12, paddingHorizontal: 16 }]}>
-              {plansFilteredBySearch.length === 0 ? (
+              {searchReturnedNothing ? (
                 <PlansLibraryEmptyHero
                   compact
                   theme={theme}
                   clientName={clientName}
                   clientId={clientId}
                   viewerRole={viewerRole}
-                  message={libraryQuery.trim() ? 'No matching plans' : 'No plans yet'}
+                  message={emptySearchMessage}
                 />
               ) : (
-                <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetCard}>
-                  <View
-                    style={[
-                      styles.plansListCard,
-                      {
-                        backgroundColor: theme.surface,
-                        borderColor: theme.border,
-                        borderWidth: nb.borderWidth,
-                      },
-                    ]}
-                  >
-                    {plansFilteredBySearch.map((plan, index) => (
-                      <View key={plan.id}>
-                        {index > 0 ? (
-                          <View style={[styles.planRowDivider, { backgroundColor: theme.border }]} />
-                        ) : null}
-                        <HistoryPlanCard
-                          plan={plan}
-                          theme={theme}
-                          index={index}
-                          onPress={() => handleView(plan)}
-                          onOptions={viewerRole === 'trainer' ? () => showPlanOptions(plan) : null}
-                        />
-                      </View>
-                    ))}
-                  </View>
-                </HardShadow>
+                <PlansListCard
+                  theme={theme}
+                  plansFilteredBySearch={plansFilteredBySearch}
+                  handleView={handleView}
+                  showPlanOptions={showPlanOptions}
+                  viewerRole={viewerRole}
+                />
               )}
             </View>
           </>
-        )}
+        ) : null}
 
-        {isTrainerView && trainerId && clientId ? (
+        {showTrainerFooter ? (
           <TrainerBuilderFooterCard
             theme={theme}
             clientId={clientId}
@@ -645,6 +952,12 @@ function SavedWorkoutsScreenLayout({
   );
 }
 
+// ===== MAIN FUNCTION =====
+
+/**
+ * Saved plans library screen — load, search, open, assign/delete via NbSheets.
+ * Flow: 1. theme/shell  2. client ids  3. UI state  4. load+normalize  5. search  6. paint
+ */
 export default function SavedWorkoutsScreen({
   route,
   navigation,
@@ -660,257 +973,275 @@ export default function SavedWorkoutsScreen({
   trainerId,
   viewerRole = 'trainer',
 }) {
+  // 1. Theme + shell spacing for scroll content above bottom nav
+  // vocab: useTheme = Design Law light/dark color bag
   const { colors } = useTheme();
   const theme = useMemo(() => nbTheme(colors), [colors]);
+  // vocab: useShellBottomNavInset = pad so list clears the bottom tab bar
   const shellBottomPad = useShellBottomNavInset(SHELL_BOTTOM_PAD_EXTRA);
 
-  const clientId   = clientProp?.id   || route?.params?.clientId;
-  const clientName = clientProp?.name || route?.params?.clientName || 'Client';
+  // 2. Who is this library for?
+  const libraryClient = readLibraryClientIdentity(clientProp, route);
+  const clientId = libraryClient.clientId;
+  const clientName = libraryClient.clientName;
 
+  // 3. Local UI state: search box + NbSheet confirm targets + notice sheet
   const [libraryQuery, setLibraryQuery] = useState('');
   // vocab: planPendingDelete = plan waiting on PNG 18 NbSheet confirm (null = sheet closed)
   const [planPendingDelete, setPlanPendingDelete] = useState(null);
   const [planPendingOptions, setPlanPendingOptions] = useState(null);
   const [notice, setNotice] = useState(null);
   const showNotice = (title, message, extras = {}) => setNotice({ title, message, ...extras });
+
+  // 4. Load Firestore library rows for this client (trainer-scoped when trainerId set)
   const { plans: rawPlans, loading, error, reload } = useClientWorkoutPlans(clientId, trainerId);
+  const plans = useMemo(() => normalizePlanList(rawPlans), [rawPlans]);
 
-  // Normalize all Firestore docs into UI-friendly shape
-  const plans = useMemo(() => rawPlans.map(normalizePlan), [rawPlans]);
+  // 5. Client-side search — name, focus line, or muscle tag text
+  const plansFilteredBySearch = useMemo(
+    () => filterPlansByLibraryQuery(plans, libraryQuery),
+    [plans, libraryQuery],
+  );
 
-  const plansFilteredBySearch = useMemo(() => {
-    const queryText = libraryQuery.trim().toLowerCase();
-    if (!queryText) return plans;
-    return plans.filter((plan) => {
-      if (String(plan.name || '').toLowerCase().includes(queryText)) return true;
-      if (String(plan.focus || '').toLowerCase().includes(queryText)) return true;
-      if ((plan.muscleTags || []).some((tag) => String(tag).toLowerCase().includes(queryText))) return true;
-      return false;
-    });
-  }, [plans, libraryQuery]);
+  // Firestore writes — assign toggle and delete across legacy path shapes
+  const writeAssignedFlag = useCallback(
+    async (plan, nextAssigned) => {
+      await writeAssignedFlagOnFirestore(plan, nextAssigned, clientId);
+    },
+    [clientId],
+  );
 
-  const writeAssignedFlag = useCallback(async (plan, nextAssigned) => {
-    const raw = plan._raw;
-    if (raw._singleDoc && raw._path) {
-      await setDoc(doc(db, ...raw._path), { assigned: nextAssigned }, { merge: true });
-      return;
-    }
-    if (raw._source === 'usersSubcollection' || raw._source === 'workoutPlanCurrent') {
-      await setDoc(doc(db, 'users', clientId, 'workoutPlans', plan.id), { assigned: nextAssigned }, { merge: true });
-      return;
-    }
-    await setDoc(doc(db, 'workoutPlans', plan.id), { assigned: nextAssigned }, { merge: true });
-  }, [clientId]);
+  const deletePlanDocuments = useCallback(
+    async (plan) => {
+      await deletePlanDocumentsOnFirestore(plan, clientId);
+    },
+    [clientId],
+  );
 
-  const deletePlanDocuments = useCallback(async (plan) => {
-    const raw = plan._raw;
-    if (raw._singleDoc && raw._path) {
-      await deleteDoc(doc(db, ...raw._path));
-      return;
-    }
-    if (raw._source === 'usersSubcollection' || raw._source === 'workoutPlanCurrent') {
-      if (raw._singleDoc && raw._path) {
-        await deleteDoc(doc(db, ...raw._path));
-      }
-      if (!plan.id) return;
+  const handleToggleAssigned = useCallback(
+    async (plan) => {
+      if (!db || !clientId || !plan || !plan.id) return;
       try {
-        await deleteDoc(doc(db, 'users', clientId, 'workoutPlans', plan.id));
-      } catch {
-        // Subcollection row may already be gone.
+        await writeAssignedFlag(plan, !plan._raw.assigned);
+        reload();
+      } catch (writeError) {
+        showNotice('Error', errorMessageOrFallback(writeError, 'Could not update plan.'));
       }
-      return;
-    }
-    await deleteDoc(doc(db, 'workoutPlans', plan.id));
-  }, [clientId]);
+    },
+    [clientId, reload, writeAssignedFlag],
+  );
 
-  const handleToggleAssigned = useCallback(async (plan) => {
-    if (!db || !clientId || !plan?.id) return;
-    try {
-      await writeAssignedFlag(plan, !plan._raw.assigned);
-      reload();
-    } catch (error) {
-      showNotice('Error', error?.message || 'Could not update plan.');
-    }
-  }, [clientId, reload, writeAssignedFlag]);
-
-  const confirmDeletePlan = useCallback(async (plan) => {
-    try {
-      await deletePlanDocuments(plan);
-      setPlanPendingDelete(null);
-      reload();
-    } catch (error) {
-      showNotice('Error', error?.message || 'Could not delete plan.');
-    }
-  }, [deletePlanDocuments, reload]);
+  const confirmDeletePlan = useCallback(
+    async (plan) => {
+      try {
+        await deletePlanDocuments(plan);
+        setPlanPendingDelete(null);
+        reload();
+      } catch (deleteError) {
+        showNotice('Error', errorMessageOrFallback(deleteError, 'Could not delete plan.'));
+      }
+    },
+    [deletePlanDocuments, reload],
+  );
 
   // PNG 18: open Design Law delete sheet instead of native Alert
-  const handleDeletePlan = useCallback((plan) => {
-    if (!db || !clientId || !plan?.id) return;
-    setPlanPendingDelete(plan);
-  }, [clientId]);
+  const handleDeletePlan = useCallback(
+    (plan) => {
+      if (!db || !clientId || !plan || !plan.id) return;
+      setPlanPendingDelete(plan);
+    },
+    [clientId],
+  );
 
-  const showPlanOptions = useCallback((plan) => {
-    if (viewerRole !== 'trainer') return;
-    setPlanPendingOptions(plan);
-  }, [viewerRole]);
+  const showPlanOptions = useCallback(
+    (plan) => {
+      if (viewerRole !== 'trainer') return;
+      setPlanPendingOptions(plan);
+    },
+    [viewerRole],
+  );
 
-  const deleteSheetMeta = planPendingDelete
-    ? `${planPendingDelete.name || 'Plan'}${
-        planPendingDelete.focus ? ` · ${planPendingDelete.focus}` : ''
-      }`
-    : '';
+  const deleteSheetMeta = deleteSheetMetaLine(planPendingDelete);
+  const optionsAssignLabel = assignToggleLabel(planPendingOptions);
 
-  const handleBack = () => (onBack ? onBack() : navigation?.goBack());
+  const handleBack = () => {
+    if (onBack) {
+      onBack();
+      return;
+    }
+    if (navigation && typeof navigation.goBack === 'function') {
+      navigation.goBack();
+    }
+  };
+
   const handleView = (plan) => {
     if (onViewPlan) {
       onViewPlan(plan._raw);
       return;
     }
-    if (typeof navigation?.navigate === 'function') {
+    if (navigation && typeof navigation.navigate === 'function') {
       navigation.navigate('WorkoutDetail', { planId: plan.id });
     }
   };
 
   const hasPlans = plans.length > 0;
   const isTrainerView = viewerRole === 'trainer';
+  const deleteSheetVisible = !!planPendingDelete;
+  const optionsSheetVisible = !!planPendingOptions;
+  const noticeSheetVisible = !!notice;
 
+  // 6. Paint scrollable library + trainer sheets (delete confirm PNG 18, options, notices)
   return (
     <>
-    <SavedWorkoutsScreenLayout
-      theme={theme}
-      embedInLayout={embedInLayout}
-      shellBottomPad={shellBottomPad}
-      handleBack={handleBack}
-      onProfilePress={onProfilePress}
-      onSettingsPress={onSettingsPress}
-      loading={loading}
-      error={error}
-      reload={reload}
-      hasPlans={hasPlans}
-      clientName={clientName}
-      clientId={clientId}
-      viewerRole={viewerRole}
-      onGenerateWorkout={onGenerateWorkout}
-      onBuildCustom={onBuildCustom}
-      plans={plans}
-      libraryQuery={libraryQuery}
-      setLibraryQuery={setLibraryQuery}
-      plansFilteredBySearch={plansFilteredBySearch}
-      handleView={handleView}
-      showPlanOptions={showPlanOptions}
-      isTrainerView={isTrainerView}
-      trainerId={trainerId}
-    />
+      <SavedWorkoutsScreenLayout
+        theme={theme}
+        embedInLayout={embedInLayout}
+        shellBottomPad={shellBottomPad}
+        handleBack={handleBack}
+        onProfilePress={onProfilePress}
+        onSettingsPress={onSettingsPress}
+        loading={loading}
+        error={error}
+        reload={reload}
+        hasPlans={hasPlans}
+        clientName={clientName}
+        clientId={clientId}
+        viewerRole={viewerRole}
+        onGenerateWorkout={onGenerateWorkout}
+        onBuildCustom={onBuildCustom}
+        plans={plans}
+        libraryQuery={libraryQuery}
+        setLibraryQuery={setLibraryQuery}
+        plansFilteredBySearch={plansFilteredBySearch}
+        handleView={handleView}
+        showPlanOptions={showPlanOptions}
+        isTrainerView={isTrainerView}
+        trainerId={trainerId}
+      />
 
-    {/* PNG 18 delete confirm sheet */}
-    <NbSheet
-      visible={!!planPendingDelete}
-      onClose={() => setPlanPendingDelete(null)}
-      title="Delete plan"
-    >
-      <View style={{ paddingHorizontal: spacing.md, paddingBottom: spacing.lg, gap: 14 }}>
-        <View
-          style={{
-            alignSelf: 'flex-start',
-            paddingHorizontal: 10,
-            paddingVertical: 4,
-            borderRadius: 999,
-            borderWidth: nb.borderWidth,
-            borderColor: colors.nbBorder,
-            backgroundColor: colors.nbSurfaceChip,
-          }}
-        >
-          <Text style={{ fontSize: 11, fontWeight: '900', color: colors.nbInk }}>
-            Cannot be undone
+      {/* PNG 18 delete confirm sheet */}
+      <NbSheet
+        visible={deleteSheetVisible}
+        onClose={() => setPlanPendingDelete(null)}
+        title="Delete plan"
+      >
+        <View style={{ paddingHorizontal: spacing.md, paddingBottom: spacing.lg, gap: 14 }}>
+          <View
+            style={{
+              alignSelf: 'flex-start',
+              paddingHorizontal: 10,
+              paddingVertical: 4,
+              borderRadius: 999,
+              borderWidth: nb.borderWidth,
+              borderColor: colors.nbBorder,
+              backgroundColor: colors.nbSurfaceChip,
+            }}
+          >
+            <Text style={{ fontSize: 11, fontWeight: '900', color: colors.nbInk }}>
+              Cannot be undone
+            </Text>
+          </View>
+          <Text style={{ fontSize: 15, fontWeight: '600', color: colors.nbMuted, lineHeight: 22 }}>
+            Are you sure you want to delete this workout plan?
           </Text>
-        </View>
-        <Text style={{ fontSize: 15, fontWeight: '600', color: colors.nbMuted, lineHeight: 22 }}>
-          Are you sure you want to delete this workout plan?
-        </Text>
-        {planPendingDelete ? (
-          <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetSmall}>
-            <View
-              style={{
-                borderWidth: nb.borderWidth,
-                borderColor: colors.nbBorder,
-                borderRadius: borderRadius.nbCard,
-                backgroundColor: colors.nbSurface,
-                padding: 14,
-              }}
-            >
-              <Text style={{ fontSize: 16, fontWeight: '900', color: colors.nbInk }}>
-                {planPendingDelete.name || 'Plan'}
-              </Text>
-              {deleteSheetMeta ? (
-                <Text style={{ fontSize: 13, fontWeight: '600', color: colors.nbMuted, marginTop: 4 }}>
-                  {deleteSheetMeta}
+          {planPendingDelete ? (
+            <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetSmall}>
+              <View
+                style={{
+                  borderWidth: nb.borderWidth,
+                  borderColor: colors.nbBorder,
+                  borderRadius: borderRadius.nbCard,
+                  backgroundColor: colors.nbSurface,
+                  padding: 14,
+                }}
+              >
+                <Text style={{ fontSize: 16, fontWeight: '900', color: colors.nbInk }}>
+                  {planPendingDelete.name || PLAN_NAME_FALLBACK}
                 </Text>
-              ) : null}
-            </View>
-          </HardShadow>
-        ) : null}
-        <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
-          <NbButton variant="plain" onPress={() => setPlanPendingDelete(null)} style={{ flex: 1 }}>
-            Keep it
-          </NbButton>
+                {deleteSheetMeta ? (
+                  <Text
+                    style={{
+                      fontSize: 13,
+                      fontWeight: '600',
+                      color: colors.nbMuted,
+                      marginTop: 4,
+                    }}
+                  >
+                    {deleteSheetMeta}
+                  </Text>
+                ) : null}
+              </View>
+            </HardShadow>
+          ) : null}
+          <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
+            <NbButton
+              variant="plain"
+              onPress={() => setPlanPendingDelete(null)}
+              style={{ flex: 1 }}
+            >
+              Keep it
+            </NbButton>
+            <NbButton
+              variant="fill"
+              onPress={() => {
+                if (planPendingDelete) void confirmDeletePlan(planPendingDelete);
+              }}
+              style={{ flex: 1 }}
+            >
+              Delete plan
+            </NbButton>
+          </View>
+        </View>
+      </NbSheet>
+
+      <NbSheet
+        visible={optionsSheetVisible}
+        onClose={() => setPlanPendingOptions(null)}
+        title="Plan options"
+      >
+        <View style={{ paddingHorizontal: spacing.md, paddingBottom: spacing.lg, gap: 10 }}>
           <NbButton
             variant="fill"
             onPress={() => {
-              if (planPendingDelete) void confirmDeletePlan(planPendingDelete);
+              const plan = planPendingOptions;
+              setPlanPendingOptions(null);
+              if (plan) void handleToggleAssigned(plan);
             }}
-            style={{ flex: 1 }}
+          >
+            {optionsAssignLabel}
+          </NbButton>
+          <NbButton
+            variant="plain"
+            onPress={() => {
+              const plan = planPendingOptions;
+              setPlanPendingOptions(null);
+              if (plan) handleDeletePlan(plan);
+            }}
           >
             Delete plan
           </NbButton>
+          <NbButton variant="ghost" onPress={() => setPlanPendingOptions(null)}>
+            Cancel
+          </NbButton>
         </View>
-      </View>
-    </NbSheet>
+      </NbSheet>
 
-    <NbSheet
-      visible={!!planPendingOptions}
-      onClose={() => setPlanPendingOptions(null)}
-      title="Plan options"
-    >
-      <View style={{ paddingHorizontal: spacing.md, paddingBottom: spacing.lg, gap: 10 }}>
-        <NbButton
-          variant="fill"
-          onPress={() => {
-            const plan = planPendingOptions;
-            setPlanPendingOptions(null);
-            if (plan) void handleToggleAssigned(plan);
-          }}
-        >
-          {planPendingOptions?._raw?.assigned ? 'Unassign from client' : 'Assign to client'}
-        </NbButton>
-        <NbButton
-          variant="plain"
-          onPress={() => {
-            const plan = planPendingOptions;
-            setPlanPendingOptions(null);
-            if (plan) handleDeletePlan(plan);
-          }}
-        >
-          Delete plan
-        </NbButton>
-        <NbButton variant="ghost" onPress={() => setPlanPendingOptions(null)}>
-          Cancel
-        </NbButton>
-      </View>
-    </NbSheet>
-
-    <NbNoticeSheet
-      visible={!!notice}
-      onClose={() => setNotice(null)}
-      title={notice?.title || ''}
-      message={notice?.message}
-      confirmLabel={notice?.confirmLabel || 'OK'}
-      cancelLabel={notice?.cancelLabel}
-      onConfirm={notice?.onConfirm}
-    />
+      <NbNoticeSheet
+        visible={noticeSheetVisible}
+        onClose={() => setNotice(null)}
+        title={noticeTitle(notice)}
+        message={noticeMessage(notice)}
+        confirmLabel={noticeConfirmLabel(notice)}
+        cancelLabel={noticeCancelLabel(notice)}
+        onConfirm={noticeOnConfirm(notice)}
+      />
     </>
   );
 }
 
+// ===== PLUMBING — skip unless debugging =====
+// WEEKDAY_SHORT_LABELS kept for Design Law weekday-dot parity (list chrome may re-use).
+void WEEKDAY_SHORT_LABELS;
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
@@ -1067,89 +1398,77 @@ const styles = StyleSheet.create({
   },
   historyOpenBtnLabel: { fontSize: 16, fontWeight: '900', color: '#FFFFFF', letterSpacing: 0.2 },
 
-  // Page title (legacy — unused in main library flow; kept for reference)
   pageTitleSection: { paddingHorizontal: 16, marginTop: 20, marginBottom: 8 },
   pageLabel: { fontSize: 10, fontWeight: '700', letterSpacing: 2, marginBottom: 4 },
   pageTitle: { fontSize: 28, fontWeight: '700' },
 
-  // Sections
   featuredSection: { paddingHorizontal: 16, marginBottom: 32 },
-  plansSection:    { paddingHorizontal: 16 },
-  sectionLabel:    { fontSize: 11, fontWeight: '800', letterSpacing: 1.6, marginBottom: 12 },
+  plansSection: { paddingHorizontal: 16 },
+  sectionLabel: { fontSize: 11, fontWeight: '800', letterSpacing: 1.6, marginBottom: 12 },
 
-  // Featured card
-  featuredBorder:  { borderRadius: 24, padding: 2, marginBottom: 4 },
-  featuredCard:    { padding: 20, borderRadius: 22, overflow: 'hidden' },
-  featuredGlow:    { position: 'absolute', top: -60, right: -60, width: 200, height: 200, borderRadius: 100, opacity: 0.12 },
+  featuredBorder: { borderRadius: 24, padding: 2, marginBottom: 4 },
+  featuredCard: { padding: 20, borderRadius: 22, overflow: 'hidden' },
+  featuredGlow: { position: 'absolute', top: -60, right: -60, width: 200, height: 200, borderRadius: 100, opacity: 0.12 },
   featuredContent: {},
-  featuredBadges:  { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
-  featuredTag:     { fontSize: 10, fontWeight: '600' },
+  featuredBadges: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  featuredTag: { fontSize: 10, fontWeight: '600' },
   featuredTitleSection: { gap: 6 },
-  featuredTitle:   { fontSize: 26, fontWeight: '700', lineHeight: 32 },
-  featuredSubtitle:{ fontSize: 13 },
+  featuredTitle: { fontSize: 26, fontWeight: '700', lineHeight: 32 },
+  featuredSubtitle: { fontSize: 13 },
   featuredActions: { gap: 10 },
 
-  // Focus badge
   focusBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 5, paddingHorizontal: 11, borderRadius: 20 },
   focusLabel: { fontSize: 11, fontWeight: '700', color: '#FFF', letterSpacing: 0.4 },
 
-  // Status badge
-  statusBadge:  { paddingVertical: 4, paddingHorizontal: 10, borderRadius: 16, borderWidth: 1 },
-  statusLabel:  { fontSize: 10, fontWeight: '700', letterSpacing: 0.4 },
+  statusBadge: { paddingVertical: 4, paddingHorizontal: 10, borderRadius: 16, borderWidth: 1 },
+  statusLabel: { fontSize: 10, fontWeight: '700', letterSpacing: 0.4 },
 
-  // Metrics
   metricsGrid: { flexDirection: 'row', gap: 10 },
-  metricCard:  { flex: 1, paddingVertical: 12, paddingHorizontal: 10, borderRadius: 12, borderWidth: 2.5, gap: 5 },
+  metricCard: { flex: 1, paddingVertical: 12, paddingHorizontal: 10, borderRadius: 12, borderWidth: 2.5, gap: 5 },
   metricValue: { fontSize: 17, fontWeight: '700' },
   metricLabel: { fontSize: 10, fontWeight: '600', letterSpacing: 0.8 },
 
-  // Week dots
-  weekSection:  { gap: 8 },
-  weekLabel:    { fontSize: 10, fontWeight: '700', letterSpacing: 2 },
-  weekDots:     { flexDirection: 'row', gap: 5 },
-  weekDot:      { flex: 1, height: 34, borderRadius: 8, borderWidth: 2.5, justifyContent: 'center', alignItems: 'center' },
+  weekSection: { gap: 8 },
+  weekLabel: { fontSize: 10, fontWeight: '700', letterSpacing: 2 },
+  weekDots: { flexDirection: 'row', gap: 5 },
+  weekDot: { flex: 1, height: 34, borderRadius: 8, borderWidth: 2.5, justifyContent: 'center', alignItems: 'center' },
   weekDayLabel: { fontSize: 10, fontWeight: '700' },
 
-  // Primary / secondary buttons
   primaryButtonGradient: { borderRadius: 20 },
-  primaryButton:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12, paddingHorizontal: 16 },
+  primaryButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12, paddingHorizontal: 16 },
   primaryButtonLabel: { fontSize: 14, fontWeight: '700', color: '#FFF' },
-  secondaryButton:    { paddingVertical: 12, paddingHorizontal: 16, borderRadius: 20, borderWidth: 2.5, alignItems: 'center' },
+  secondaryButton: { paddingVertical: 12, paddingHorizontal: 16, borderRadius: 20, borderWidth: 2.5, alignItems: 'center' },
   secondaryButtonLabel: { fontSize: 14, fontWeight: '600' },
 
-  // Progress ring
   progressRingSection: { alignItems: 'center', gap: 12, marginTop: 16 },
-  progressRingWrap:    { alignItems: 'center', justifyContent: 'center' },
-  progressRingOuter:   { width: 130, height: 130, borderRadius: 65, borderWidth: 8, justifyContent: 'center', alignItems: 'center' },
-  progressRingInner:   { width: 110, height: 110, borderRadius: 55, borderWidth: 3, justifyContent: 'center', alignItems: 'center' },
-  progressValue:       { fontSize: 28, fontWeight: '700' },
-  progressLabel:       { fontSize: 11, fontWeight: '600', letterSpacing: 0.8, marginTop: 2 },
-  weeksLeftCard:       { paddingVertical: 10, paddingHorizontal: 16, borderRadius: 16, borderWidth: 2.5, alignItems: 'center' },
-  weeksLeftValue:      { fontSize: 22, fontWeight: '700' },
-  weeksLeftLabel:      { fontSize: 10, fontWeight: '600', letterSpacing: 0.8, marginTop: 2 },
+  progressRingWrap: { alignItems: 'center', justifyContent: 'center' },
+  progressRingOuter: { width: 130, height: 130, borderRadius: 65, borderWidth: 8, justifyContent: 'center', alignItems: 'center' },
+  progressRingInner: { width: 110, height: 110, borderRadius: 55, borderWidth: 3, justifyContent: 'center', alignItems: 'center' },
+  progressValue: { fontSize: 28, fontWeight: '700' },
+  progressLabel: { fontSize: 11, fontWeight: '600', letterSpacing: 0.8, marginTop: 2 },
+  weeksLeftCard: { paddingVertical: 10, paddingHorizontal: 16, borderRadius: 16, borderWidth: 2.5, alignItems: 'center' },
+  weeksLeftValue: { fontSize: 22, fontWeight: '700' },
+  weeksLeftLabel: { fontSize: 10, fontWeight: '600', letterSpacing: 0.8, marginTop: 2 },
 
-  // Plan card
-  planCardBorder:       { borderRadius: 12, padding: 1, marginBottom: 0 },
-  planCard:             { padding: 16, borderRadius: 11, gap: 8 },
-  planCardHeader:       { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  focusBadgeSmall:      { paddingVertical: 4, paddingHorizontal: 10, borderRadius: 16 },
-  focusLabelSmall:      { fontSize: 10, fontWeight: '700', color: '#FFF' },
-  planCardName:         { fontSize: 16, fontWeight: '700' },
-  planCardSubtitle:     { fontSize: 12 },
-  planCardMetrics:      { flexDirection: 'row', gap: 8 },
-  planCardMetricPill:   { paddingVertical: 5, paddingHorizontal: 10, borderRadius: 12, borderWidth: 1 },
-  planCardMetricText:   { fontSize: 11, fontWeight: '600' },
-  planCardActions:      { flexDirection: 'row', gap: 8, marginTop: 4 },
-  planCardButton:       { flex: 1, paddingVertical: 10, borderRadius: 12, borderWidth: 2.5, alignItems: 'center' },
-  planCardButtonLabel:  { fontSize: 12, fontWeight: '600' },
+  planCardBorder: { borderRadius: 12, padding: 1, marginBottom: 0 },
+  planCard: { padding: 16, borderRadius: 11, gap: 8 },
+  planCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  focusBadgeSmall: { paddingVertical: 4, paddingHorizontal: 10, borderRadius: 16 },
+  focusLabelSmall: { fontSize: 10, fontWeight: '700', color: '#FFF' },
+  planCardName: { fontSize: 16, fontWeight: '700' },
+  planCardSubtitle: { fontSize: 12 },
+  planCardMetrics: { flexDirection: 'row', gap: 8 },
+  planCardMetricPill: { paddingVertical: 5, paddingHorizontal: 10, borderRadius: 12, borderWidth: 1 },
+  planCardMetricText: { fontSize: 11, fontWeight: '600' },
+  planCardActions: { flexDirection: 'row', gap: 8, marginTop: 4 },
+  planCardButton: { flex: 1, paddingVertical: 10, borderRadius: 12, borderWidth: 2.5, alignItems: 'center' },
+  planCardButtonLabel: { fontSize: 12, fontWeight: '600' },
   planCardButtonGradient: { flex: 1, borderRadius: 12 },
   planCardButtonPrimary: { paddingVertical: 10, paddingHorizontal: 16, alignItems: 'center' },
   planCardButtonPrimaryLabel: { fontSize: 12, fontWeight: '700', color: '#FFF' },
 
-  // Plans list
   plansList: { gap: 16, marginTop: 8 },
 
-  // Empty state
   emptyHeroOuter: { marginTop: 8, marginBottom: 8 },
   emptyHeroInner: { borderRadius: 22, overflow: 'hidden' },
   emptyHeroContent: { padding: 20, gap: 12, zIndex: 1 },
@@ -1197,10 +1516,9 @@ const styles = StyleSheet.create({
   retryGrad: { paddingVertical: 12, paddingHorizontal: 28, borderRadius: 999 },
   retryGradLabel: { color: '#FFFFFF', fontWeight: '800', fontSize: 15, textAlign: 'center' },
 
-  // Feedback
-  centeredFeedback:  { alignItems: 'center', justifyContent: 'center', paddingVertical: 40 },
-  feedbackText:      { marginTop: 10, fontSize: 14 },
-  errorText:         { color: '#F97373', textAlign: 'center', marginBottom: 8 },
-  retryButton:       { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 999, backgroundColor: '#0A0A0A' },
-  retryButtonLabel:  { color: '#FFFFFF', fontWeight: '600' },
+  centeredFeedback: { alignItems: 'center', justifyContent: 'center', paddingVertical: 40 },
+  feedbackText: { marginTop: 10, fontSize: 14 },
+  errorText: { color: '#F97373', textAlign: 'center', marginBottom: 8 },
+  retryButton: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 999, backgroundColor: '#0A0A0A' },
+  retryButtonLabel: { color: '#FFFFFF', fontWeight: '600' },
 });

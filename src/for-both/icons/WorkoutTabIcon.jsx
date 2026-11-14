@@ -1,6 +1,6 @@
-// Barbell tab icon: an Ionicon used as a mask, filled with the brand gradient.
-// Flow: draw the ionicon in opaque black → MaskedView keeps the gradient only inside that shape.
-// Used by the bottom menu for the workout tab. It stays separate from the SVG nav icons so this tab keeps the older look.
+// Barbell tab icon: opaque ionicon mask with brand gradient fill inside the shape.
+// Flow: build square box → paint black ionicon as mask → MaskedView shows gradient only through that silhouette.
+// Used by the bottom menu workout tab (legacy look, separate from SVG nav icons).
 
 import React from 'react';
 import { View } from 'react-native';
@@ -16,17 +16,19 @@ import {
 
 // ===== NAMED CONSTANTS =====
 
-// The mask color has to be opaque. MaskedView uses the drawn pixels as the shape, not this color as a tint.
+// Mask pixels must be opaque — MaskedView reads alpha/shape, not this as a tint.
+// Manipulate here: any fully opaque color works; black is the usual mask convention.
 const MASK_COLOR = '#000';
+// Manipulate here: default tab glyph size in points.
 const DEFAULT_TAB_ICON_SIZE = 36;
 
 // ===== HELPER FUNCTIONS =====
 
-function tabSlotStyle(iconSize) {
-  return { width: iconSize, height: iconSize };
+function squareBoxStyle(sideLength) {
+  return { width: sideLength, height: sideLength };
 }
 
-function workoutMaskStyle(iconSize) {
+function centeredMaskContainerStyle(iconSize) {
   return {
     width: iconSize,
     height: iconSize,
@@ -37,16 +39,30 @@ function workoutMaskStyle(iconSize) {
 }
 
 /**
- * Opaque ionicon centered in the tab slot. Returned as an element so the mask stays a View.
- * @param {string} iconName
- * @param {number} iconSize
- * @returns {JSX.Element}
+ * Brand gradient square that fills the icon box.
+ * MaskedView clips this so only the ionicon silhouette shows the colors.
  */
-function workoutIconMask(iconName, iconSize) {
-  const maskStyle = workoutMaskStyle(iconSize);
+function BrandGradientFill({ iconSize, gradientColors, gradientStops, gradientStart, gradientEnd }) {
+  const boxStyle = squareBoxStyle(iconSize);
   return (
-    <View style={maskStyle}>
-      <Ionicons name={iconName} size={iconSize} color={MASK_COLOR} />
+    <LinearGradient
+      colors={gradientColors}
+      locations={gradientStops}
+      start={gradientStart}
+      end={gradientEnd}
+      style={boxStyle}
+    />
+  );
+}
+
+/**
+ * Opaque ionicon centered in a transparent box — becomes the MaskedView maskElement.
+ */
+function OpaqueIoniconMask({ ioniconName, iconSize }) {
+  const maskContainerStyle = centeredMaskContainerStyle(iconSize);
+  return (
+    <View style={maskContainerStyle}>
+      <Ionicons name={ioniconName} size={iconSize} color={MASK_COLOR} />
     </View>
   );
 }
@@ -54,15 +70,8 @@ function workoutIconMask(iconName, iconSize) {
 // ===== MAIN FUNCTION =====
 
 /**
- * Gradient-filled ionicon for the workout tab.
- * @param {object} props
- * @param {string} props.name Ionicon name, for example the barbell glyph.
- * @param {number} [props.size]
- * @param {string[]} [props.colors]
- * @param {number[]} [props.locations]
- * @param {object} [props.start]
- * @param {object} [props.end]
- * @returns {JSX.Element}
+ * Workout tab barbell icon with brand gradient clipped to the ionicon outline.
+ * @param {{ name: string, size?: number, colors?: string[], locations?: number[], start?: object, end?: object }} props
  */
 export default function WorkoutTabIcon({
   name,
@@ -72,24 +81,27 @@ export default function WorkoutTabIcon({
   start = BRAND_ICON_GRADIENT_START,
   end = BRAND_ICON_GRADIENT_END,
 }) {
-  const boxStyle = tabSlotStyle(size);
-  const iconMask = workoutIconMask(name, size);
+  // 1. Square tab slot and opaque ionicon mask from the caller glyph name.
+  const iconBoxStyle = squareBoxStyle(size);
+  const maskElement = (
+    <OpaqueIoniconMask ioniconName={name} iconSize={size} />
+  );
 
-  // 1. Mask the brand gradient through the ionicon shape.
+  // 2. Clip the brand gradient to the ionicon outline via MaskedView.
+  // vocab: MaskedView = children paint only where maskElement is opaque.
+  // vocab: collapsable={false} = stop Android from flattening the mask away (icons went blank).
   return (
-    // vocab: MaskedView = show the children only inside the shape of maskElement.
-    // collapsable={false} keeps Android from flattening this view away, which would drop the mask.
     <MaskedView
-      style={boxStyle}
+      style={iconBoxStyle}
       collapsable={false}
-      maskElement={iconMask}
+      maskElement={maskElement}
     >
-      <LinearGradient
-        colors={colors}
-        locations={locations}
-        start={start}
-        end={end}
-        style={boxStyle}
+      <BrandGradientFill
+        iconSize={size}
+        gradientColors={colors}
+        gradientStops={locations}
+        gradientStart={start}
+        gradientEnd={end}
       />
     </MaskedView>
   );

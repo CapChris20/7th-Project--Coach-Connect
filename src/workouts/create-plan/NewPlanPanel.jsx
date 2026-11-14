@@ -26,6 +26,15 @@ import {
 
 // ===== NAMED CONSTANTS =====
 
+// Manipulate here: accentGradients slot per row icon chip (Design Law palette order)
+const ACCENT_SLOT_AGE = 0;
+const ACCENT_SLOT_HEIGHT = 3;
+const ACCENT_SLOT_GOAL = 6;
+const ACCENT_SLOT_LEVEL = 1;
+const ACCENT_SLOT_FREQUENCY = 4;
+const ACCENT_SLOT_ENVIRONMENT = 7;
+const ACCENT_SLOT_EQUIPMENT = 2;
+
 // Manipulate here: PNG 13 row order — Age → … → Hydration
 const NEW_PLAN_ROWS = [
   {
@@ -34,9 +43,12 @@ const NEW_PLAN_ROWS = [
     helper: 'personal info',
     editKey: 'personalInfo',
     icon: require('../../assets/icons/handoff/age.png'),
-    accentIndex: 0,
-    valueFrom: (data) =>
-      data?.age != null && data?.age !== '' ? String(data.age) : '—',
+    accentIndex: ACCENT_SLOT_AGE,
+    valueFrom: (data) => {
+      const ageMissing = data?.age == null || data?.age === '';
+      if (ageMissing) return '—';
+      return String(data.age);
+    },
   },
   {
     id: 'height',
@@ -44,7 +56,7 @@ const NEW_PLAN_ROWS = [
     helper: 'personal info',
     editKey: 'personalInfo',
     icon: require('../../assets/icons/handoff/height.png'),
-    accentIndex: 3,
+    accentIndex: ACCENT_SLOT_HEIGHT,
     valueFrom: (data) => formatProfileHeightDisplay(data?.height),
   },
   {
@@ -53,7 +65,7 @@ const NEW_PLAN_ROWS = [
     helper: 'primary goal',
     editKey: 'goal',
     icon: require('../../assets/icons/handoff/journey.png'),
-    accentIndex: 6,
+    accentIndex: ACCENT_SLOT_GOAL,
     valueFrom: (data) => displayForFieldKey('goal', data),
   },
   {
@@ -62,7 +74,7 @@ const NEW_PLAN_ROWS = [
     helper: 'training status',
     editKey: 'fitnessLevel',
     icon: require('../../assets/icons/handoff/inter.png'),
-    accentIndex: 1,
+    accentIndex: ACCENT_SLOT_LEVEL,
     valueFrom: (data) => displayForFieldKey('fitnessLevel', data),
   },
   {
@@ -71,12 +83,8 @@ const NEW_PLAN_ROWS = [
     helper: 'weekly sessions',
     editKey: 'frequency',
     icon: require('../../assets/icons/handoff/week.png'),
-    accentIndex: 4,
-    valueFrom: (data) => {
-      const raw = displayForFieldKey('frequency', data);
-      // Shorten “4 days per week” → “4 days” to match PNG sample
-      return String(raw || '—').replace(/\s*per\s*week/i, '').trim() || '—';
-    },
+    accentIndex: ACCENT_SLOT_FREQUENCY,
+    valueFrom: (data) => frequencyValueForNewPlanRow(data),
   },
   {
     id: 'environment',
@@ -84,7 +92,7 @@ const NEW_PLAN_ROWS = [
     helper: 'training place',
     editKey: 'trainingEnvironment',
     icon: require('../../assets/icons/handoff/gym.png'),
-    accentIndex: 7,
+    accentIndex: ACCENT_SLOT_ENVIRONMENT,
     valueFrom: (data) => displayForFieldKey('trainingEnvironment', data),
   },
   {
@@ -93,14 +101,8 @@ const NEW_PLAN_ROWS = [
     helper: 'available tools',
     editKey: 'equipment',
     icon: require('../../assets/icons/handoff/dumbbells.png'),
-    accentIndex: 2,
-    valueFrom: (data) => {
-      const list = data?.equipmentAccess;
-      if (Array.isArray(list) && list.length > 0) {
-        return `${list.length} selected`;
-      }
-      return displayForFieldKey('equipment', data);
-    },
+    accentIndex: ACCENT_SLOT_EQUIPMENT,
+    valueFrom: (data) => equipmentValueForNewPlanRow(data),
   },
   {
     id: 'injuries',
@@ -127,16 +129,7 @@ const NEW_PLAN_ROWS = [
     editKey: 'hydrationHabits',
     icon: require('../../assets/icons/handoff/hydration.png'),
     accentIndex: 10,
-    valueFrom: (data) => {
-      const raw = displayForFieldKey('hydrationHabits', data);
-      // PNG sample: “4-8 cups”
-      return String(raw || '—')
-        .replace(/cups\/day/gi, 'cups')
-        .replace(/–/g, '-')
-        .replace(/Less than/i, '<')
-        .replace(/More than/i, '>')
-        .trim();
-    },
+    valueFrom: (data) => hydrationValueForNewPlanRow(data),
   },
 ];
 
@@ -146,20 +139,118 @@ const SEGMENTS = [
 ];
 
 const ICON_CHIP_SIZE = 40;
+const EMPTY_VALUE_DASH = '—';
+const TRAINER_INITIALS_FALLBACK = 'T';
+const CHEVRON_SIZE = 18;
 
-// ===== HELPER FUNCTIONS =====
+// ===== ROW VALUE HELPERS =====
 
-function levelIconSource(onboardingData) {
-  const level = String(onboardingData?.fitnessLevel || '').toLowerCase();
-  if (level.includes('begin')) return require('../../assets/icons/handoff/beginner.png');
-  if (level.includes('adv')) return require('../../assets/icons/handoff/adv.png');
+/**
+ * Frequency row: drop "per week" so the trailing value stays short on the list card.
+ */
+function frequencyValueForNewPlanRow(onboardingData) {
+  const frequencyText = displayForFieldKey('frequency', onboardingData);
+  const shortened = String(frequencyText || EMPTY_VALUE_DASH)
+    .replace(/\s*per\s*week/i, '')
+    .trim();
+  if (shortened) {
+    return shortened;
+  }
+  return EMPTY_VALUE_DASH;
+}
+
+/**
+ * Equipment row: show "N selected" when the client picked a list; else the field display string.
+ */
+function equipmentValueForNewPlanRow(onboardingData) {
+  const equipmentList = onboardingData?.equipmentAccess;
+  const hasSelectedGear = Array.isArray(equipmentList) && equipmentList.length > 0;
+  if (hasSelectedGear) {
+    return `${equipmentList.length} selected`;
+  }
+  return displayForFieldKey('equipment', onboardingData);
+}
+
+/**
+ * Hydration row: shorten cups/day copy and inequality words for the trailing value.
+ */
+function hydrationValueForNewPlanRow(onboardingData) {
+  const hydrationText = displayForFieldKey('hydrationHabits', onboardingData);
+  return String(hydrationText || EMPTY_VALUE_DASH)
+    .replace(/cups\/day/gi, 'cups')
+    .replace(/–/g, '-')
+    .replace(/Less than/i, '<')
+    .replace(/More than/i, '>')
+    .trim();
+}
+
+/**
+ * Level row icon: beginner / advanced art when the text matches; else intermediate handoff art.
+ */
+function fitnessLevelIconSource(onboardingData) {
+  const levelText = String(onboardingData?.fitnessLevel || '').toLowerCase();
+  const looksBeginner = levelText.includes('begin');
+  if (looksBeginner) {
+    return require('../../assets/icons/handoff/beginner.png');
+  }
+  const looksAdvanced = levelText.includes('adv');
+  if (looksAdvanced) {
+    return require('../../assets/icons/handoff/adv.png');
+  }
   return require('../../assets/icons/handoff/inter.png');
 }
 
 /**
- * One PNG list row: gradient icon chip | label+helper | value | chevron.
+ * Turn NEW_PLAN_ROWS defs into display rows with resolved icon + value for this onboarding snapshot.
  */
-function ProfileFactRow({
+function buildProfileRowsForDisplay(onboardingData) {
+  const displayRows = [];
+  for (const rowDef of NEW_PLAN_ROWS) {
+    const isLevelRow = rowDef.id === 'level';
+    let iconSource = rowDef.icon;
+    if (isLevelRow) {
+      iconSource = fitnessLevelIconSource(onboardingData);
+    }
+    displayRows.push({
+      ...rowDef,
+      iconSource,
+      value: rowDef.valueFrom(onboardingData),
+    });
+  }
+  return displayRows;
+}
+
+/**
+ * Two-letter initials from a trainer display name (fallback "T").
+ */
+function trainerInitialsFromName(trainerDisplayName) {
+  const words = String(trainerDisplayName || TRAINER_INITIALS_FALLBACK).split(/\s+/);
+  const firstLetters = [];
+  for (const word of words) {
+    if (word[0]) {
+      firstLetters.push(word[0]);
+    }
+  }
+  const twoLetters = firstLetters.join('').slice(0, 2).toUpperCase();
+  if (twoLetters) {
+    return twoLetters;
+  }
+  return TRAINER_INITIALS_FALLBACK;
+}
+
+/**
+ * NbPill label for plans left this month.
+ */
+function remainingPlansPillLabel(plansRemaining) {
+  if (plansRemaining <= 0) {
+    return '0 left';
+  }
+  return `${plansRemaining} left`;
+}
+
+// ===== IN-FILE UI — PROFILE ROW =====
+
+function NewPlanProfileFactRow({
   label,
   helper,
   value,
@@ -170,25 +261,31 @@ function ProfileFactRow({
   onPress,
   readOnly,
 }) {
+  const canPress = !readOnly && typeof onPress === 'function';
+  const accentColors = accentGradients[accentIndex % accentGradients.length];
+  const displayValue = value || EMPTY_VALUE_DASH;
+
+  const rowStyle = [styles.row];
+  if (!isLast) {
+    rowStyle.push({
+      borderBottomWidth: nb.borderWidthDivider,
+      borderBottomColor: colors.nbBorder,
+    });
+  }
+
   return (
     <TouchableOpacity
       onPress={onPress}
-      disabled={readOnly || typeof onPress !== 'function'}
+      disabled={!canPress}
       activeOpacity={0.85}
       accessibilityRole="button"
-      style={[
-        styles.row,
-        !isLast && {
-          borderBottomWidth: nb.borderWidthDivider,
-          borderBottomColor: colors.nbBorder,
-        },
-      ]}
+      style={rowStyle}
     >
       <NbIconChip
         source={iconSource}
         size={ICON_CHIP_SIZE}
         index={accentIndex}
-        colors={accentGradients[accentIndex % accentGradients.length]}
+        colors={accentColors}
       />
       <View style={styles.rowGrow}>
         <Text style={[styles.rowLabel, { color: colors.nbInk }]} numberOfLines={1}>
@@ -199,46 +296,404 @@ function ProfileFactRow({
         </Text>
       </View>
       <Text style={[styles.rowValue, { color: colors.nbInk }]} numberOfLines={1}>
-        {value || '—'}
+        {displayValue}
       </Text>
-      <Ionicons name="chevron-forward" size={18} color={colors.nbMuted} />
+      <Ionicons name="chevron-forward" size={CHEVRON_SIZE} color={colors.nbMuted} />
     </TouchableOpacity>
   );
 }
 
-// ===== MAIN FUNCTION =====
+// ===== IN-FILE UI — TRAINER TAB =====
+
+function TrainerIdentityCard({ colors, trainerDisplayName, trainerInitials }) {
+  const cardSurfaceStyle = [
+    styles.trainerCard,
+    { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder },
+  ];
+  const avatarStyle = [
+    styles.trainerAvatar,
+    { backgroundColor: colors.nbSoft, borderColor: colors.nbBorder },
+  ];
+  const nameLine = trainerDisplayName || 'Your trainer';
+
+  return (
+    <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetCard}>
+      <View style={cardSurfaceStyle}>
+        <View style={avatarStyle}>
+          <Text style={[styles.trainerInitials, { color: colors.nbInk }]}>{trainerInitials}</Text>
+        </View>
+        <View style={styles.trainerNameColumn}>
+          <Text style={[styles.trainerName, { color: colors.nbInk }]} numberOfLines={1}>
+            {nameLine}
+          </Text>
+          <Text style={[styles.trainerSub, { color: colors.nbMuted }]}>Your trainer</Text>
+        </View>
+      </View>
+    </HardShadow>
+  );
+}
+
+function NeedTrainerFirstCard({ colors, onEnableAi, onGoHome }) {
+  const cardStyle = [
+    styles.trainerCard,
+    {
+      backgroundColor: colors.nbSurface,
+      borderColor: colors.nbBorder,
+      flexDirection: 'column',
+      alignItems: 'stretch',
+    },
+  ];
+  const canEnableAi = typeof onEnableAi === 'function';
+  const canGoHome = typeof onGoHome === 'function';
+
+  return (
+    <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetCard} style={{ marginTop: 16 }}>
+      <View style={cardStyle}>
+        <Text style={[styles.sectionTitle, { color: colors.nbInk, fontSize: 18 }]}>
+          You need a trainer first
+        </Text>
+        <Text style={[styles.sectionSub, { color: colors.nbMuted, marginTop: 8 }]}>
+          Connect with a trainer to receive custom workout plans, or enable AI features in Settings.
+        </Text>
+        <View style={styles.needTrainerActions}>
+          {canEnableAi ? (
+            <NbButton variant="fill" onPress={onEnableAi}>
+              Enable AI Features
+            </NbButton>
+          ) : null}
+          {canGoHome ? (
+            <NbButton variant="plain" onPress={onGoHome}>
+              Go Home
+            </NbButton>
+          ) : null}
+        </View>
+      </View>
+    </HardShadow>
+  );
+}
+
+function TrainerRequestForm({
+  colors,
+  requestText,
+  onChangeRequestText,
+  sendingRequest,
+  isCoachViewingClientProfile,
+  onSendTrainerRequest,
+}) {
+  const inputIsEditable = !isCoachViewingClientProfile;
+  const sendIsDisabled = sendingRequest || isCoachViewingClientProfile;
+  // Manipulate here: busy label while the request POST is in flight
+  const sendButtonLabel = sendingRequest ? 'Sending…' : 'Send request';
+  const inputStyle = [
+    styles.requestInput,
+    {
+      color: colors.nbInk,
+      backgroundColor: colors.nbSurface,
+      borderColor: colors.nbBorder,
+    },
+  ];
+
+  return (
+    <>
+      <Text style={[styles.fieldLabel, { color: colors.nbMuted }]}>
+        WHAT KIND OF PLAN DO YOU WANT?
+      </Text>
+      <HardShadow radius={borderRadius.nbInput} offset={nb.shadowOffsetSmall}>
+        <TextInput
+          value={requestText}
+          onChangeText={onChangeRequestText}
+          placeholder="Tell your trainer what you want…"
+          placeholderTextColor={colors.nbMuted}
+          multiline
+          editable={inputIsEditable}
+          style={inputStyle}
+        />
+      </HardShadow>
+      <NbButton
+        variant="fill"
+        onPress={onSendTrainerRequest}
+        disabled={sendIsDisabled}
+        style={{ marginTop: 14 }}
+      >
+        {sendButtonLabel}
+      </NbButton>
+      <Text style={[styles.leaveHint, { color: colors.nbMuted, marginTop: 12 }]}>
+        Clients send plan requests from their account. Your trainer builds it and it lands in Saved plans.
+      </Text>
+    </>
+  );
+}
+
+function NewPlanTrainerTab({
+  colors,
+  trainerDisplayName,
+  hasTrainer,
+  requestText,
+  onChangeRequestText,
+  sendingRequest,
+  isCoachViewingClientProfile,
+  onSendTrainerRequest,
+  onEnableAi,
+  onGoHome,
+}) {
+  const trainerInitials = trainerInitialsFromName(trainerDisplayName);
+
+  return (
+    <View style={styles.trainerBlock}>
+      <TrainerIdentityCard
+        colors={colors}
+        trainerDisplayName={trainerDisplayName}
+        trainerInitials={trainerInitials}
+      />
+
+      {!hasTrainer ? (
+        <NeedTrainerFirstCard colors={colors} onEnableAi={onEnableAi} onGoHome={onGoHome} />
+      ) : (
+        <TrainerRequestForm
+          colors={colors}
+          requestText={requestText}
+          onChangeRequestText={onChangeRequestText}
+          sendingRequest={sendingRequest}
+          isCoachViewingClientProfile={isCoachViewingClientProfile}
+          onSendTrainerRequest={onSendTrainerRequest}
+        />
+      )}
+    </View>
+  );
+}
+
+// ===== IN-FILE UI — AI TAB =====
+
+function AiSettingsLoading({ colors }) {
+  return (
+    <View style={styles.aiBlock}>
+      <Text style={[styles.sectionSub, { color: colors.nbMuted }]}>Loading AI settings…</Text>
+    </View>
+  );
+}
+
+function AiIsOffCard({ colors, onEnableAi }) {
+  const cardStyle = [
+    styles.trainerCard,
+    {
+      backgroundColor: colors.nbSurface,
+      borderColor: colors.nbBorder,
+      flexDirection: 'column',
+      alignItems: 'stretch',
+    },
+  ];
+  const canOpenSettings = typeof onEnableAi === 'function';
+
+  return (
+    <View style={styles.aiBlock}>
+      <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetCard}>
+        <View style={cardStyle}>
+          <Text style={[styles.sectionTitle, { color: colors.nbInk, fontSize: 18 }]}>AI is off</Text>
+          <Text style={[styles.sectionSub, { color: colors.nbMuted, marginTop: 8 }]}>
+            Turn on AI features in Settings, or switch to Ask my trainer.
+          </Text>
+          {canOpenSettings ? (
+            <NbButton variant="fill" onPress={onEnableAi} style={{ marginTop: 14 }}>
+              Open Settings
+            </NbButton>
+          ) : null}
+        </View>
+      </HardShadow>
+    </View>
+  );
+}
+
+function GenerationErrorBanner({ colors, generationError, onRetryGenerate }) {
+  const bannerStyle = [
+    styles.errorBanner,
+    { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface },
+  ];
+
+  return (
+    <View style={bannerStyle}>
+      <Text style={[styles.errorText, { color: colors.nbInk }]}>{generationError}</Text>
+      <TouchableOpacity onPress={onRetryGenerate} hitSlop={8}>
+        <Text style={[styles.retryText, { color: colors.nbInk }]}>Retry</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+function MonthlyUsageBanner({
+  colors,
+  plansUsedThisMonth,
+  planGenerationLimit,
+  resetLabel,
+  leftPillLabel,
+}) {
+  const usageCardStyle = [
+    styles.usageCard,
+    { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder },
+  ];
+  const usageTitleText = `${plansUsedThisMonth} of ${planGenerationLimit} plans used this month`;
+
+  return (
+    <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetCard} style={{ marginTop: 16 }}>
+      <View style={usageCardStyle}>
+        <View style={styles.usageCopyColumn}>
+          <Text style={[styles.usageTitle, { color: colors.nbInk }]}>{usageTitleText}</Text>
+          <Text style={[styles.usageSub, { color: colors.nbMuted }]}>Resets on {resetLabel}</Text>
+        </View>
+        <NbPill variant="brand">{leftPillLabel}</NbPill>
+      </View>
+    </HardShadow>
+  );
+}
+
+function GeneratePlanActions({
+  hasGeneratedPlan,
+  isGenerating,
+  aiOn,
+  onGenerate,
+  onOpenPlan,
+  onRegenerate,
+}) {
+  // Manipulate here: busy labels while Claude is running
+  const regenerateLabel = isGenerating ? 'Generating…' : 'Generate New';
+  const firstGenerateLabel = isGenerating ? 'Generating…' : 'Generate plan';
+  const firstGenerateDisabled = isGenerating || !aiOn;
+
+  if (hasGeneratedPlan) {
+    return (
+      <View style={styles.twoButtonRow}>
+        <NbButton variant="fill" onPress={onOpenPlan} style={{ flex: 1 }}>
+          Open Plan
+        </NbButton>
+        <NbButton variant="plain" onPress={onRegenerate} disabled={isGenerating} style={{ flex: 1 }}>
+          {regenerateLabel}
+        </NbButton>
+      </View>
+    );
+  }
+
+  return (
+    <NbButton variant="fill" onPress={onGenerate} disabled={firstGenerateDisabled}>
+      {firstGenerateLabel}
+    </NbButton>
+  );
+}
+
+function NewPlanAiTab({
+  colors,
+  aiPrefReady,
+  aiOn,
+  profileRows,
+  canEdit,
+  onEditField,
+  generationError,
+  onRetryGenerate,
+  isCoachViewingClientProfile,
+  plansUsedThisMonth,
+  planGenerationLimit,
+  resetLabel,
+  plansRemaining,
+  hasGeneratedPlan,
+  isGenerating,
+  onGenerate,
+  onOpenPlan,
+  onRegenerate,
+  onEnableAi,
+}) {
+  const leftPillLabel = remainingPlansPillLabel(plansRemaining);
+
+  // Pref not loaded yet → short loading line (PNG waits on Settings flag)
+  if (!aiPrefReady) {
+    return <AiSettingsLoading colors={colors} />;
+  }
+
+  // AI off → Settings CTA (or switch segment to trainer)
+  if (!aiOn) {
+    return <AiIsOffCard colors={colors} onEnableAi={onEnableAi} />;
+  }
+
+  /**
+   * Open the field editor for one list row.
+   * Flow: 1. refuse when read-only  2. hand editKey to parent
+   */
+  const openFieldEditor = (editKey) => {
+    // 1. Coach viewing / read-only → do nothing
+    if (!canEdit) {
+      return;
+    }
+    // 2. Parent opens EditModalForm for that onboarding key
+    onEditField?.(editKey);
+  };
+
+  const listCardStyle = [
+    styles.listCard,
+    { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder },
+  ];
+  const lastRowIndex = profileRows.length - 1;
+  const showUsageBanner = !isCoachViewingClientProfile;
+
+  return (
+    <View style={styles.aiBlock}>
+      <Text style={[styles.sectionTitle, { color: colors.nbInk }]}>Built from your profile</Text>
+      <Text style={[styles.sectionSub, { color: colors.nbMuted }]}>
+        Tap anything that looks wrong and fix it before you generate.
+      </Text>
+
+      <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetCard} style={{ marginTop: 14 }}>
+        <View style={listCardStyle}>
+          {profileRows.map((row, index) => (
+            <NewPlanProfileFactRow
+              key={row.id}
+              label={row.label}
+              helper={row.helper}
+              value={row.value}
+              iconSource={row.iconSource}
+              accentIndex={row.accentIndex}
+              isLast={index === lastRowIndex}
+              colors={colors}
+              readOnly={!canEdit}
+              onPress={() => openFieldEditor(row.editKey)}
+            />
+          ))}
+        </View>
+      </HardShadow>
+
+      {generationError ? (
+        <GenerationErrorBanner
+          colors={colors}
+          generationError={generationError}
+          onRetryGenerate={onRetryGenerate}
+        />
+      ) : null}
+
+      {showUsageBanner ? (
+        <MonthlyUsageBanner
+          colors={colors}
+          plansUsedThisMonth={plansUsedThisMonth}
+          planGenerationLimit={planGenerationLimit}
+          resetLabel={resetLabel}
+          leftPillLabel={leftPillLabel}
+        />
+      ) : null}
+
+      <View style={{ marginTop: 14 }}>
+        <GeneratePlanActions
+          hasGeneratedPlan={hasGeneratedPlan}
+          isGenerating={isGenerating}
+          aiOn={aiOn}
+          onGenerate={onGenerate}
+          onOpenPlan={onOpenPlan}
+          onRegenerate={onRegenerate}
+        />
+      </View>
+    </View>
+  );
+}
+
+// ===== MAIN PANEL =====
 
 /**
- * @param {object} props
- * @param {'ai'|'trainer'} props.sourceTab
- * @param {Function} props.onSourceTabChange
- * @param {object} props.onboardingData
- * @param {boolean} props.isDark
- * @param {boolean} props.readOnly
- * @param {boolean} props.isCoachViewingClientProfile
- * @param {string} [props.trainerDisplayName]
- * @param {string} props.requestText
- * @param {Function} props.onChangeRequestText
- * @param {boolean} props.sendingRequest
- * @param {boolean} props.hasTrainer
- * @param {Function} props.onSendTrainerRequest
- * @param {Function} props.onEnableAi
- * @param {Function} props.onGoHome
- * @param {boolean} props.aiOn
- * @param {boolean} props.aiPrefReady
- * @param {Function} props.onEditField — (editKey) => void
- * @param {number} props.plansUsedThisMonth
- * @param {number} props.planGenerationLimit
- * @param {number} props.plansRemaining
- * @param {string} props.resetLabel
- * @param {boolean} props.isGenerating
- * @param {boolean} props.hasGeneratedPlan
- * @param {Function} props.onGenerate
- * @param {Function} props.onOpenPlan
- * @param {Function} props.onRegenerate
- * @param {string|null} props.generationError
- * @param {Function} props.onRetryGenerate
- * @param {object} [props.contentContainerStyle]
+ * New-plan body: AI profile list or ask-trainer form behind NbSegmented.
+ * Parent owns generate / edit / send-request; this panel only paints Design Law chrome.
  */
 export default function NewPlanPanel({
   sourceTab,
@@ -270,36 +725,27 @@ export default function NewPlanPanel({
   onRetryGenerate,
   contentContainerStyle,
 }) {
+  // vocab: useTheme = Design Law color bag for the active light/dark mode
   const { colors } = useTheme();
 
-  const rows = useMemo(() => {
-    return NEW_PLAN_ROWS.map((row) => {
-      const iconSource =
-        row.id === 'level' ? levelIconSource(onboardingData) : row.icon;
-      return {
-        ...row,
-        iconSource,
-        value: row.valueFrom(onboardingData),
-      };
-    });
-  }, [onboardingData]);
+  // vocab: useMemo = rebuild profile rows only when onboardingData identity changes
+  const profileRows = useMemo(
+    () => buildProfileRowsForDisplay(onboardingData),
+    [onboardingData],
+  );
 
-  const leftLabel = plansRemaining <= 0 ? '0 left' : `${plansRemaining} left`;
-  const canEdit = !readOnly && !isCoachViewingClientProfile;
-
-  const openField = (editKey) => {
-    if (!canEdit) return;
-    onEditField?.(editKey);
-  };
+  // Name the decisions before JSX
+  const canEditProfileRows = !readOnly && !isCoachViewingClientProfile;
+  const showTrainerTab = sourceTab === 'trainer';
+  const scrollContentStyle = [styles.scroll, contentContainerStyle];
 
   return (
     <ScrollView
       style={{ flex: 1 }}
-      contentContainerStyle={[styles.scroll, contentContainerStyle]}
+      contentContainerStyle={scrollContentStyle}
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
     >
-      {/* PNG: Build with AI | Ask my trainer — selected cell = solid fill */}
       <NbSegmented
         segments={SEGMENTS}
         selected={sourceTab}
@@ -307,233 +753,47 @@ export default function NewPlanPanel({
         style={styles.segmented}
       />
 
-      {sourceTab === 'trainer' ? (
-        <View style={styles.trainerBlock}>
-          <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetCard}>
-            <View
-              style={[
-                styles.trainerCard,
-                { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder },
-              ]}
-            >
-              <View
-                style={[
-                  styles.trainerAvatar,
-                  { backgroundColor: colors.nbSoft, borderColor: colors.nbBorder },
-                ]}
-              >
-                <Text style={[styles.trainerInitials, { color: colors.nbInk }]}>
-                  {String(trainerDisplayName || 'T')
-                    .split(/\s+/)
-                    .map((w) => w[0])
-                    .join('')
-                    .slice(0, 2)
-                    .toUpperCase() || 'T'}
-                </Text>
-              </View>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={[styles.trainerName, { color: colors.nbInk }]} numberOfLines={1}>
-                  {trainerDisplayName || 'Your trainer'}
-                </Text>
-                <Text style={[styles.trainerSub, { color: colors.nbMuted }]}>Your trainer</Text>
-              </View>
-            </View>
-          </HardShadow>
-
-          {!hasTrainer ? (
-            <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetCard} style={{ marginTop: 16 }}>
-              <View
-                style={[
-                  styles.trainerCard,
-                  { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder, flexDirection: 'column', alignItems: 'stretch' },
-                ]}
-              >
-                <Text style={[styles.sectionTitle, { color: colors.nbInk, fontSize: 18 }]}>
-                  You need a trainer first
-                </Text>
-                <Text style={[styles.sectionSub, { color: colors.nbMuted, marginTop: 8 }]}>
-                  Connect with a trainer to receive custom workout plans, or enable AI features in Settings.
-                </Text>
-                <View style={{ marginTop: 14, gap: 10 }}>
-                  {typeof onEnableAi === 'function' ? (
-                    <NbButton variant="fill" onPress={onEnableAi}>
-                      Enable AI Features
-                    </NbButton>
-                  ) : null}
-                  {typeof onGoHome === 'function' ? (
-                    <NbButton variant="plain" onPress={onGoHome}>
-                      Go Home
-                    </NbButton>
-                  ) : null}
-                </View>
-              </View>
-            </HardShadow>
-          ) : (
-            <>
-              <Text style={[styles.fieldLabel, { color: colors.nbMuted }]}>
-                WHAT KIND OF PLAN DO YOU WANT?
-              </Text>
-              <HardShadow radius={borderRadius.nbInput} offset={nb.shadowOffsetSmall}>
-                <TextInput
-                  value={requestText}
-                  onChangeText={onChangeRequestText}
-                  placeholder="Tell your trainer what you want…"
-                  placeholderTextColor={colors.nbMuted}
-                  multiline
-                  editable={!isCoachViewingClientProfile}
-                  style={[
-                    styles.requestInput,
-                    {
-                      color: colors.nbInk,
-                      backgroundColor: colors.nbSurface,
-                      borderColor: colors.nbBorder,
-                    },
-                  ]}
-                />
-              </HardShadow>
-              <NbButton
-                variant="fill"
-                onPress={onSendTrainerRequest}
-                disabled={sendingRequest || isCoachViewingClientProfile}
-                style={{ marginTop: 14 }}
-              >
-                {sendingRequest ? 'Sending…' : 'Send request'}
-              </NbButton>
-              <Text style={[styles.leaveHint, { color: colors.nbMuted, marginTop: 12 }]}>
-                Clients send plan requests from their account. Your trainer builds it and it lands in Saved plans.
-              </Text>
-            </>
-          )}
-        </View>
+      {showTrainerTab ? (
+        <NewPlanTrainerTab
+          colors={colors}
+          trainerDisplayName={trainerDisplayName}
+          hasTrainer={hasTrainer}
+          requestText={requestText}
+          onChangeRequestText={onChangeRequestText}
+          sendingRequest={sendingRequest}
+          isCoachViewingClientProfile={isCoachViewingClientProfile}
+          onSendTrainerRequest={onSendTrainerRequest}
+          onEnableAi={onEnableAi}
+          onGoHome={onGoHome}
+        />
       ) : (
-        <View style={styles.aiBlock}>
-          {!aiPrefReady ? (
-            <Text style={[styles.sectionSub, { color: colors.nbMuted }]}>Loading AI settings…</Text>
-          ) : !aiOn ? (
-            <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetCard}>
-              <View
-                style={[
-                  styles.trainerCard,
-                  {
-                    backgroundColor: colors.nbSurface,
-                    borderColor: colors.nbBorder,
-                    flexDirection: 'column',
-                    alignItems: 'stretch',
-                  },
-                ]}
-              >
-                <Text style={[styles.sectionTitle, { color: colors.nbInk, fontSize: 18 }]}>
-                  AI is off
-                </Text>
-                <Text style={[styles.sectionSub, { color: colors.nbMuted, marginTop: 8 }]}>
-                  Turn on AI features in Settings, or switch to Ask my trainer.
-                </Text>
-                {typeof onEnableAi === 'function' ? (
-                  <NbButton variant="fill" onPress={onEnableAi} style={{ marginTop: 14 }}>
-                    Open Settings
-                  </NbButton>
-                ) : null}
-              </View>
-            </HardShadow>
-          ) : (
-            <>
-              <Text style={[styles.sectionTitle, { color: colors.nbInk }]}>Built from your profile</Text>
-              <Text style={[styles.sectionSub, { color: colors.nbMuted }]}>
-                Tap anything that looks wrong and fix it before you generate.
-              </Text>
-
-              {/* Single HardShadow card — list of fact rows (NOT 2-col cards) */}
-              <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetCard} style={{ marginTop: 14 }}>
-                <View
-                  style={[
-                    styles.listCard,
-                    { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder },
-                  ]}
-                >
-                  {rows.map((row, index) => (
-                    <ProfileFactRow
-                      key={row.id}
-                      label={row.label}
-                      helper={row.helper}
-                      value={row.value}
-                      iconSource={row.iconSource}
-                      accentIndex={row.accentIndex}
-                      isLast={index === rows.length - 1}
-                      colors={colors}
-                      readOnly={!canEdit}
-                      onPress={() => openField(row.editKey)}
-                    />
-                  ))}
-                </View>
-              </HardShadow>
-
-              {generationError ? (
-                <View
-                  style={[
-                    styles.errorBanner,
-                    { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface },
-                  ]}
-                >
-                  <Text style={[styles.errorText, { color: colors.nbInk }]}>{generationError}</Text>
-                  <TouchableOpacity onPress={onRetryGenerate} hitSlop={8}>
-                    <Text style={[styles.retryText, { color: colors.nbInk }]}>Retry</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : null}
-
-              {!isCoachViewingClientProfile ? (
-                <HardShadow
-                  radius={borderRadius.nbCard}
-                  offset={nb.shadowOffsetCard}
-                  style={{ marginTop: 16 }}
-                >
-                  <View
-                    style={[
-                      styles.usageCard,
-                      { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder },
-                    ]}
-                  >
-                    <View style={{ flex: 1, minWidth: 0, paddingRight: 10 }}>
-                      <Text style={[styles.usageTitle, { color: colors.nbInk }]}>
-                        {plansUsedThisMonth} of {planGenerationLimit} plans used this month
-                      </Text>
-                      <Text style={[styles.usageSub, { color: colors.nbMuted }]}>
-                        Resets on {resetLabel}
-                      </Text>
-                    </View>
-                    <NbPill variant="brand">{leftLabel}</NbPill>
-                  </View>
-                </HardShadow>
-              ) : null}
-
-              <View style={{ marginTop: 14 }}>
-                {hasGeneratedPlan ? (
-                  <View style={{ flexDirection: 'row', gap: 10 }}>
-                    <NbButton variant="fill" onPress={onOpenPlan} style={{ flex: 1 }}>
-                      Open Plan
-                    </NbButton>
-                    <NbButton
-                      variant="plain"
-                      onPress={onRegenerate}
-                      disabled={isGenerating}
-                      style={{ flex: 1 }}
-                    >
-                      {isGenerating ? 'Generating…' : 'Generate New'}
-                    </NbButton>
-                  </View>
-                ) : (
-                  <NbButton variant="fill" onPress={onGenerate} disabled={isGenerating || !aiOn}>
-                    {isGenerating ? 'Generating…' : 'Generate plan'}
-                  </NbButton>
-                )}
-              </View>
-            </>
-          )}
-        </View>
+        <NewPlanAiTab
+          colors={colors}
+          aiPrefReady={aiPrefReady}
+          aiOn={aiOn}
+          profileRows={profileRows}
+          canEdit={canEditProfileRows}
+          onEditField={onEditField}
+          generationError={generationError}
+          onRetryGenerate={onRetryGenerate}
+          isCoachViewingClientProfile={isCoachViewingClientProfile}
+          plansUsedThisMonth={plansUsedThisMonth}
+          planGenerationLimit={planGenerationLimit}
+          resetLabel={resetLabel}
+          plansRemaining={plansRemaining}
+          hasGeneratedPlan={hasGeneratedPlan}
+          isGenerating={isGenerating}
+          onGenerate={onGenerate}
+          onOpenPlan={onOpenPlan}
+          onRegenerate={onRegenerate}
+          onEnableAi={onEnableAi}
+        />
       )}
     </ScrollView>
   );
 }
+
+// ===== STYLES =====
 
 const styles = StyleSheet.create({
   scroll: {
@@ -603,6 +863,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
+  usageCopyColumn: {
+    flex: 1,
+    minWidth: 0,
+    paddingRight: 10,
+  },
   usageTitle: {
     fontSize: 14,
     fontWeight: '900',
@@ -636,6 +901,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '900',
   },
+  trainerNameColumn: {
+    flex: 1,
+    minWidth: 0,
+  },
   trainerSub: {
     fontSize: 13,
     fontWeight: '600',
@@ -661,6 +930,14 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '500',
     lineHeight: 18,
+  },
+  needTrainerActions: {
+    marginTop: 14,
+    gap: 10,
+  },
+  twoButtonRow: {
+    flexDirection: 'row',
+    gap: 10,
   },
   errorBanner: {
     marginTop: 14,

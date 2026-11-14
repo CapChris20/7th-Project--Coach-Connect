@@ -1,12 +1,15 @@
-// Shared look of the client home: spacing, the hero, cards, and skeleton blocks.
-// Flow: a few spacing numbers, then one style sheet the home screen imports.
-// Used by the training home and the cards on it.
+// Client home StyleSheet — spacing exports + every card/chrome style key.
+// Flow: layout numbers → named section builders → StyleSheet.create merge → default export.
+// Used by TrainingHomeScreen, homeScreenPieces, and the client shell context.
+// Style KEY names are frozen — screens look them up by string.
 
 import { StyleSheet, Dimensions, Platform } from 'react-native';
 import { lightColors } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
+// Layout numbers importers can reuse without pulling the full sheet.
+// Manipulate here: CARD_GAP / STATS_ROW_* must stay in sync with statsRowContent padding + gap.
 export const CARD_GAP = 16;
 export const SCREEN_WIDTH = Dimensions.get('window').width;
 export const STATS_ROW_PAD_H = 40;
@@ -14,20 +17,21 @@ export const STATS_ROW_CARD_GAP = 12;
 
 // ===== HELPER FUNCTIONS =====
 
-function buildHomeLooks() {
-  return StyleSheet.create({
+// chrome — style keys frozen; screens look these up by name.
+function chromeHomeStyles() {
+  return {
   safeArea: {
-    flex: 1,
-  },
-  safeAreaLight: {
-    backgroundColor: lightColors.white,
-  },
-  safeAreaDark: {
-    backgroundColor: '#0A0A0A',
+    flex: 1
   },
   scrollView: {
-    flex: 1,
-  },
+    flex: 1
+  }
+};
+}
+
+// heroAndHeader — style keys frozen; screens look these up by name.
+function heroAndHeaderHomeStyles() {
+  return {
   // ─────────────────────────────────────────────
   // HERO (Client + Trainer top-of-app)
   // ─────────────────────────────────────────────
@@ -38,89 +42,92 @@ function buildHomeLooks() {
     borderRadius: 24,
     borderWidth: 1,
     backgroundColor: 'transparent',
-    shadowOffset: { width: 0, height: 14 },
+    shadowOffset: {
+      width: 0,
+      height: 14
+    },
     shadowOpacity: 0.14,
     shadowRadius: 24,
-    elevation: 10,
+    elevation: 10
   },
   heroBorderGradient: {
     borderRadius: 24,
-    padding: 2,
+    padding: 2
   },
   heroInner: {
     borderRadius: 23,
     overflow: 'hidden',
     paddingVertical: 14,
-    paddingHorizontal: 12,
+    paddingHorizontal: 12
   },
   heroContentRow: {
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'space-between'
   },
   heroLeft: {
-    alignItems: 'center',
+    alignItems: 'center'
   },
   welcomeWrap: {
     alignItems: 'center',
-    marginBottom: 4,
+    marginBottom: 4
   },
   welcomeKicker: {
     fontSize: 18,
     fontWeight: '800',
-    letterSpacing: 2.5,
+    letterSpacing: 2.5
   },
   welcomeUnderline: {
     marginTop: 6,
     width: 72,
     height: 3,
     borderRadius: 99,
-    opacity: 0.9,
+    opacity: 0.9
   },
   heroTitle: {
     fontWeight: '800',
     textAlign: 'center',
-    letterSpacing: -0.5,
+    letterSpacing: -0.5
   },
   heroTagline: {
     marginTop: 6,
     fontSize: 12,
     fontWeight: '600',
     textAlign: 'center',
-    letterSpacing: 1.5,
+    letterSpacing: 1.5
   },
   heroRight: {
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'center'
   },
   heroRightInlineRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-start',
-    width: '100%',
+    width: '100%'
   },
   heroInlineQuoteWrap: {
     flex: 1,
     marginLeft: 12,
     alignSelf: 'stretch',
-    justifyContent: 'center',
+    justifyContent: 'center'
   },
   heroInlineQuoteBorder: {
     borderRadius: 28,
     padding: 1,
     alignSelf: 'stretch',
-    justifyContent: 'center',
+    justifyContent: 'center'
   },
   heroQuotePillWrap: {
     marginTop: 8,
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'center'
   },
   heroQuotePillBorder: {
     borderRadius: 28,
     padding: 1,
     alignSelf: 'center',
     width: '92%',
-    maxWidth: 360,
+    maxWidth: 360
   },
   auroraBorder: {
     height: 160,
@@ -130,12 +137,12 @@ function buildHomeLooks() {
     borderRadius: 24,
     borderWidth: 1,
     borderColor: 'rgba(255,107,157,0.25)',
-    backgroundColor: 'transparent',
+    backgroundColor: 'transparent'
   },
   auroraContainer: {
     flex: 1,
     borderRadius: 22,
-    overflow: 'hidden',
+    overflow: 'hidden'
   },
   logoCardInner: {
     flex: 1,
@@ -145,25 +152,25 @@ function buildHomeLooks() {
     backgroundColor: 'transparent',
     borderWidth: 1,
     borderColor: 'rgba(255,107,157,0.08)',
-    borderRadius: 16,
+    borderRadius: 16
   },
   logoMark: {
     width: 88,
     height: 88,
     borderRadius: 20,
-    marginBottom: 16,
+    marginBottom: 16
   },
   logoTitle: {
     fontSize: 22,
     fontWeight: '900',
     letterSpacing: 3,
-    color: lightColors.white,
+    color: lightColors.white
   },
   logoSubtitle: {
     marginTop: 6,
     fontSize: 12,
     color: 'rgba(255,255,255,0.5)',
-    letterSpacing: 1.5,
+    letterSpacing: 1.5
   },
   header: {
     flexDirection: 'row',
@@ -171,70 +178,73 @@ function buildHomeLooks() {
     alignItems: 'center',
     paddingHorizontal: 20,
     paddingVertical: 12,
-    backgroundColor: '#0A0A0A',
+    backgroundColor: '#0A0A0A'
   },
   headerTitle: {
     fontSize: 22,
     fontWeight: 'bold',
-    color: 'white',
+    color: 'white'
   },
   headerIcons: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'center'
   },
   iconButton: {
     marginLeft: 16,
-    position: 'relative',
+    position: 'relative'
   },
   themeToggleText: {
     fontSize: 20,
-    color: 'white',
+    color: 'white'
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
-    alignItems: 'center',
+    alignItems: 'center'
   },
   loadingText: {
     fontSize: 16,
     fontWeight: '500',
     color: 'rgba(255,255,255,0.6)',
     marginTop: 16,
-    fontFamily: 'System',
+    fontFamily: 'System'
   },
   lottieAnimation: {
     width: '100%',
-    height: '100%',
+    height: '100%'
   },
   lightText: {
-    color: '#000000',
+    color: '#000000'
   },
   darkText: {
-    color: lightColors.white,
+    color: lightColors.white
   },
   lightMutedText: {
-    color: '#6B7280',
+    color: '#6B7280'
   },
   cardShadowWrap: {
     borderRadius: 12,
     shadowColor: '#0A0A0F',
-    shadowOffset: { width: 0, height: 18 },
+    shadowOffset: {
+      width: 0,
+      height: 18
+    },
     shadowOpacity: 0.28,
     shadowRadius: 28,
     elevation: 14,
-    backgroundColor: 'transparent',
+    backgroundColor: 'transparent'
   },
   cardShadowWrapLight: {
     shadowColor: '#5E5CE6',
-    shadowOpacity: 0.18,
+    shadowOpacity: 0.18
   },
   lightCard: {
     backgroundColor: '#F3F4F6',
-    borderColor: '#E5E7EB',
+    borderColor: '#E5E7EB'
   },
   photoScrollView: {
     paddingHorizontal: 20,
-    paddingVertical: 12,
+    paddingVertical: 12
   },
   addPhotoButton: {
     width: 100,
@@ -244,28 +254,28 @@ function buildHomeLooks() {
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#4B5563',
+    borderColor: '#4B5563'
   },
   addPhotoButtonLight: {
     backgroundColor: '#F3F4F6',
-    borderColor: '#E5E7EB',
+    borderColor: '#E5E7EB'
   },
   addPhotoText: {
     marginTop: 8,
     fontSize: 12,
-    color: '#9CA3AF',
+    color: '#9CA3AF'
   },
   videoRailContainer: {
     height: 180,
     backgroundColor: '#0A0A0A',
-    overflow: 'visible',
+    overflow: 'visible'
   },
   videoRailContainerLight: {
-    backgroundColor: lightColors.white,
+    backgroundColor: lightColors.white
   },
   videoRailContent: {
     paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingVertical: 16
   },
   videoRailItem: {
     width: 120,
@@ -273,292 +283,41 @@ function buildHomeLooks() {
     marginRight: 12,
     borderRadius: 18,
     overflow: 'hidden',
-    position: 'relative',
+    position: 'relative'
   },
   videoRailVideo: {
     width: '100%',
-    height: '100%',
+    height: '100%'
   },
   videoRailOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.18)',
-  },
-  statsRowWrap: {
-    paddingTop: 2,
-    marginTop: 8,
-  },
-  statsRowContent: {
-    paddingHorizontal: 20,
-    paddingBottom: 6,
-    gap: 12,
-  },
-  statCardShadow: {
-    borderRadius: 24,
-    marginRight: 12,
-    shadowOffset: { width: 0, height: 16 },
-    shadowOpacity: 0.22,
-    shadowRadius: 22,
-    elevation: 10,
-    overflow: 'visible',
-  },
-  statCardBlur: {
-    borderRadius: 24,
-    overflow: 'hidden',
-    width: '100%',
-    alignSelf: 'stretch',
-  },
-  statCardInner: {
-    borderRadius: 24,
-    padding: 14,
-    borderWidth: 1,
-    minHeight: 150,
-    width: '100%',
-    alignSelf: 'stretch',
-    alignItems: 'stretch',
-    justifyContent: 'space-between',
-  },
-  /** Wellness row: stack title + value as one centered group (no space-between gap). */
-  statCardInnerCentered: {
-    justifyContent: 'center',
-    gap: 10,
-  },
-  statWellnessValueBlock: {
-    width: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 2,
-  },
-  statWellnessEmpty: {
-    width: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 6,
-    paddingVertical: 4,
-  },
-  statKicker: {
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 0.8,
-    textAlign: 'center',
-    width: '100%',
-  },
-  statBig: {
-    fontSize: 22,
-    fontWeight: '800',
-    marginTop: 10,
-    lineHeight: 26,
-  },
-  statEmpty: {
-    marginTop: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flex: 1,
-  },
-  statEmptyRow: {
-    marginTop: 10,
-    width: '100%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    flex: 1,
-  },
-  statEmptyCopy: {
-    flex: 1,
-    minWidth: 0,
-    paddingRight: 10,
-    justifyContent: 'center',
-  },
-  statEmptyLottie: {
-    width: 100,
-    height: 100,
-  },
-  statEmptyLottieSmall: {
-    width: 64,
-    height: 64,
-    opacity: 0.8,
-    marginRight: -4,
-  },
-  wellnessEmptyLottie: {
-    width: 80,
-    height: 80,
-  },
-  wellnessEmptyLottieSmall: {
-    width: 56,
-    height: 56,
-    opacity: 0.8,
-    marginRight: -2,
-  },
-  statWellnessEmptyRow: {
-    width: '100%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 6,
-    paddingVertical: 6,
-  },
-  wellnessEmptyCta: {
-    marginTop: 4,
-    fontSize: 14,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  statEmptyText: {
-    marginTop: 6,
-    fontSize: 12,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  statEmptyCta: {
-    marginTop: 6,
-    fontSize: 14,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  statGradientBlock: {
-    marginTop: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: '100%',
-    alignSelf: 'stretch',
-  },
-  statGradientNumberWrap: {
-    paddingVertical: 4,
-  },
-  statGradientNumber: {
-    fontSize: 48,
-    fontWeight: '800',
-    lineHeight: 54,
-    textAlign: 'center',
-  },
-  statGradientLabel: {
-    marginTop: 6,
-    fontSize: 13,
-    fontWeight: '700',
-    textAlign: 'center',
-    width: '100%',
-  },
-  statGradientWorkoutText: {
-    fontSize: 34,
-    lineHeight: 38,
-    fontWeight: '800',
-    textAlign: 'center',
-  },
-  statCtaBtn: {
-    marginTop: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 14,
-  },
-  statCtaText: {
-    fontWeight: '800',
-    fontSize: 12,
-    letterSpacing: 0.2,
-  },
-  waterRow: {
-    marginTop: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  waterMeta: {
-    marginLeft: 12,
-  },
-  waterNumber: {
-    fontSize: 26,
-    fontWeight: '900',
-    lineHeight: 30,
-  },
-  waterUnit: {
-    marginTop: 2,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  sleepWrap: {
-    marginTop: 12,
-  },
-  sleepTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  sleepNumber: {
-    fontSize: 28,
-    fontWeight: '900',
-    lineHeight: 32,
-  },
-  sleepMoon: {
-    marginLeft: 8,
-    fontSize: 20,
-    fontWeight: '800',
-  },
-  sleepUnit: {
-    marginTop: 4,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  goalWrap: {
-    marginTop: 12,
-  },
-  goalLabel: {
-    fontSize: 16,
-    fontWeight: '800',
-    lineHeight: 20,
-  },
-  goalBarTrack: {
-    marginTop: 10,
-    height: 8,
-    borderRadius: 999,
-    overflow: 'hidden',
-  },
-  goalBarFill: {
-    height: '100%',
-    borderRadius: 999,
-  },
-  goalPct: {
-    marginTop: 8,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  goalEmpty: {
-    marginTop: 12,
-    flex: 1,
-    justifyContent: 'center',
-  },
-  goalOutlineBtn: {
-    marginTop: 10,
-    borderRadius: 14,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderWidth: 1,
-    alignSelf: 'flex-start',
-  },
-  goalOutlineText: {
-    fontSize: 12,
-    fontWeight: '800',
+    backgroundColor: 'rgba(0, 0, 0, 0.18)'
   },
   greetingSection: {
     paddingHorizontal: 20,
     paddingTop: 10,
     paddingBottom: 6,
     overflow: 'visible',
-    alignItems: 'center',
+    alignItems: 'center'
   },
   greetingLineWrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'center'
   },
   greetingTitle: {
     fontSize: 22,
     fontWeight: '800',
-    letterSpacing: -0.4,
+    letterSpacing: -0.4
   },
   greetingCardOuter: {
     marginTop: 14,
-    paddingHorizontal: 16,
+    paddingHorizontal: 16
   },
   greetingRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'space-between'
   },
   greetingQuoteCard: {
     flexDirection: 'row',
@@ -567,31 +326,31 @@ function buildHomeLooks() {
     borderRadius: 24,
     paddingHorizontal: 20,
     paddingVertical: 18,
-    borderWidth: 1,
+    borderWidth: 1
   },
   greetingQuoteCardDark: {
     backgroundColor: '#050509',
-    borderColor: '#27272f',
+    borderColor: '#27272f'
   },
   greetingQuoteCardLight: {
     backgroundColor: '#F3F4F6',
-    borderColor: '#E5E7EB',
+    borderColor: '#E5E7EB'
   },
   greetingQuote: {
     flex: 1,
-    paddingRight: 16,
+    paddingRight: 16
   },
   greetingQuoteText: {
     fontSize: 18,
     fontWeight: '600',
     color: '#E5E7EB',
-    lineHeight: 26,
+    lineHeight: 26
   },
   greetingQuoteAuthor: {
     marginTop: 10,
     fontSize: 13,
     fontWeight: '500',
-    color: '#9CA3AF',
+    color: '#9CA3AF'
   },
   greetingLottieWrap: {
     width: 96,
@@ -600,11 +359,11 @@ function buildHomeLooks() {
     overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 16,
+    marginLeft: 16
   },
   greetingLottie: {
     width: '100%',
-    height: '100%',
+    height: '100%'
   },
   welcomeCard: {
     width: 140,
@@ -617,23 +376,26 @@ function buildHomeLooks() {
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.12)',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
+    shadowOffset: {
+      width: 0,
+      height: 10
+    },
     shadowOpacity: 0.22,
     shadowRadius: 18,
-    elevation: 8,
+    elevation: 8
   },
   welcomeCardLight: {
-    borderColor: 'rgba(0, 0, 0, 0.08)',
+    borderColor: 'rgba(0, 0, 0, 0.08)'
   },
   welcomeText: {
     fontSize: 16,
     fontWeight: '500',
     color: 'rgba(255, 255, 255, 0.92)',
     textAlign: 'center',
-    letterSpacing: -0.2,
+    letterSpacing: -0.2
   },
   welcomeTextLight: {
-    color: 'rgba(15, 23, 42, 0.9)',
+    color: 'rgba(15, 23, 42, 0.9)'
   },
   lottieWrap: {
     width: 140,
@@ -642,18 +404,342 @@ function buildHomeLooks() {
     borderRadius: 20,
     overflow: 'hidden',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'center'
   },
   lottieWrapLight: {
     // keep neutral in light mode; no override needed
   },
+  heroCardContainer: {
+    marginBottom: 20,
+    borderRadius: 24,
+    overflow: 'hidden'
+  },
+  heroColorBorder: {
+    borderRadius: 24,
+    padding: 1
+  },
+  heroCard: {
+    borderRadius: 24,
+    padding: 24,
+    backgroundColor: '#1F1F2A'
+  },
+  heroHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 16
+  },
+  heroTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: lightColors.white,
+    marginBottom: 8,
+    fontFamily: 'System'
+  },
+  heroWorkoutName: {
+    fontSize: 24,
+    fontWeight: '600',
+    color: lightColors.white,
+    marginBottom: 8,
+    fontFamily: 'System'
+  },
+  heroSubtitle: {
+    fontSize: 15,
+    fontWeight: '400',
+    color: 'rgba(255,255,255,0.6)',
+    marginBottom: 20,
+    lineHeight: 20,
+    fontFamily: 'System'
+  },
+  heroStats: {
+    flexDirection: 'row',
+    gap: 20,
+    marginBottom: 20
+  },
+  heroStat: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6
+  },
+  heroStatText: {
+    fontSize: 14,
+    fontWeight: '400',
+    color: 'rgba(255,255,255,0.6)',
+    fontFamily: 'System'
+  },
+  heroButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 24,
+    backgroundColor: '#6C5CE7'
+  },
+  heroButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: lightColors.white,
+    fontFamily: 'System'
+  }
+};
+}
+
+// stats — style keys frozen; screens look these up by name.
+function statsRowHomeStyles() {
+  return {
+  statsRowWrap: {
+    paddingTop: 2,
+    marginTop: 8
+  },
+  statsRowContent: {
+    paddingHorizontal: 20,
+    paddingBottom: 6,
+    gap: 12
+  },
+  statCardShadow: {
+    borderRadius: 24,
+    marginRight: 12,
+    shadowOffset: {
+      width: 0,
+      height: 16
+    },
+    shadowOpacity: 0.22,
+    shadowRadius: 22,
+    elevation: 10,
+    overflow: 'visible'
+  },
+  statCardBlur: {
+    borderRadius: 24,
+    overflow: 'hidden',
+    width: '100%',
+    alignSelf: 'stretch'
+  },
+  statCardInner: {
+    borderRadius: 24,
+    padding: 14,
+    borderWidth: 1,
+    minHeight: 150,
+    width: '100%',
+    alignSelf: 'stretch',
+    alignItems: 'stretch',
+    justifyContent: 'space-between'
+  },
+  /** Wellness row: stack title + value as one centered group (no space-between gap). */
+  statCardInnerCentered: {
+    justifyContent: 'center',
+    gap: 10
+  },
+  statWellnessValueBlock: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2
+  },
+  statWellnessEmpty: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 6,
+    paddingVertical: 4
+  },
+  statKicker: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    textAlign: 'center',
+    width: '100%'
+  },
+  statBig: {
+    fontSize: 22,
+    fontWeight: '800',
+    marginTop: 10,
+    lineHeight: 26
+  },
+  statEmpty: {
+    marginTop: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flex: 1
+  },
+  statEmptyRow: {
+    marginTop: 10,
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flex: 1
+  },
+  statEmptyCopy: {
+    flex: 1,
+    minWidth: 0,
+    paddingRight: 10,
+    justifyContent: 'center'
+  },
+  statEmptyLottie: {
+    width: 100,
+    height: 100
+  },
+  statEmptyLottieSmall: {
+    width: 64,
+    height: 64,
+    opacity: 0.8,
+    marginRight: -4
+  },
+  statWellnessEmptyRow: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 6,
+    paddingVertical: 6
+  },
+  statEmptyText: {
+    marginTop: 6,
+    fontSize: 12,
+    fontWeight: '600',
+    textAlign: 'center'
+  },
+  statEmptyCta: {
+    marginTop: 6,
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center'
+  },
+  statGradientBlock: {
+    marginTop: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    alignSelf: 'stretch'
+  },
+  statGradientNumberWrap: {
+    paddingVertical: 4
+  },
+  statGradientNumber: {
+    fontSize: 48,
+    fontWeight: '800',
+    lineHeight: 54,
+    textAlign: 'center'
+  },
+  statGradientLabel: {
+    marginTop: 6,
+    fontSize: 13,
+    fontWeight: '700',
+    textAlign: 'center',
+    width: '100%'
+  },
+  statGradientWorkoutText: {
+    fontSize: 34,
+    lineHeight: 38,
+    fontWeight: '800',
+    textAlign: 'center'
+  },
+  statCtaBtn: {
+    marginTop: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 14
+  },
+  statCtaText: {
+    fontWeight: '800',
+    fontSize: 12,
+    letterSpacing: 0.2
+  },
+  waterRow: {
+    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'center'
+  },
+  waterMeta: {
+    marginLeft: 12
+  },
+  waterNumber: {
+    fontSize: 26,
+    fontWeight: '900',
+    lineHeight: 30
+  },
+  waterUnit: {
+    marginTop: 2,
+    fontSize: 12,
+    fontWeight: '700'
+  },
+  sleepWrap: {
+    marginTop: 12
+  },
+  sleepTop: {
+    flexDirection: 'row',
+    alignItems: 'center'
+  },
+  sleepNumber: {
+    fontSize: 28,
+    fontWeight: '900',
+    lineHeight: 32
+  },
+  sleepMoon: {
+    marginLeft: 8,
+    fontSize: 20,
+    fontWeight: '800'
+  },
+  sleepUnit: {
+    marginTop: 4,
+    fontSize: 12,
+    fontWeight: '700'
+  },
+  goalWrap: {
+    marginTop: 12
+  },
+  goalLabel: {
+    fontSize: 16,
+    fontWeight: '800',
+    lineHeight: 20
+  },
+  goalBarTrack: {
+    marginTop: 10,
+    height: 8,
+    borderRadius: 999,
+    overflow: 'hidden'
+  },
+  goalBarFill: {
+    height: '100%',
+    borderRadius: 999
+  },
+  goalPct: {
+    marginTop: 8,
+    fontSize: 12,
+    fontWeight: '700'
+  },
+  goalEmpty: {
+    marginTop: 12,
+    flex: 1,
+    justifyContent: 'center'
+  },
+  goalOutlineBtn: {
+    marginTop: 10,
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    alignSelf: 'flex-start'
+  },
+  goalOutlineText: {
+    fontSize: 12,
+    fontWeight: '800'
+  }
+};
+}
+
+// calendar — style keys frozen; screens look these up by name.
+function calendarHomeStyles() {
+  return {
   calendarContainer: {
     paddingHorizontal: 20,
-    marginVertical: 10,
+    marginVertical: 10
   },
   gradientCardBorder: {
     borderRadius: 16,
-    padding: 1.5,
+    padding: 1.5
   },
   weekCalendar: {
     backgroundColor: '#020617',
@@ -662,13 +748,16 @@ function buildHomeLooks() {
     borderWidth: 1,
     borderColor: '#4B5563',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 14 },
+    shadowOffset: {
+      width: 0,
+      height: 14
+    },
     shadowOpacity: 0.28,
     shadowRadius: 22,
-    elevation: 10,
+    elevation: 10
   },
   weekHeader: {
-    marginBottom: 12,
+    marginBottom: 12
   },
   weekHeaderText: {
     fontSize: 12,
@@ -676,37 +765,34 @@ function buildHomeLooks() {
     color: lightColors.white,
     letterSpacing: 1.5,
     textTransform: 'uppercase',
-    textAlign: 'center',
+    textAlign: 'center'
   },
   weekDays: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'space-between'
   },
   weekDay: {
     alignItems: 'center',
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 8,
-    minWidth: 40,
+    minWidth: 40
   },
   weekDayToday: {
-    backgroundColor: '#BF5AF2',
+    backgroundColor: '#BF5AF2'
   },
   weekDayName: {
     fontSize: 12,
     color: '#9CA3AF',
-    marginBottom: 4,
+    marginBottom: 4
   },
   weekDayNumber: {
     fontSize: 16,
     fontWeight: '600',
-    color: 'white',
+    color: 'white'
   },
   weekDayNumberToday: {
-    color: 'white',
-  },
-  lightWeekDay: {
-    backgroundColor: '#F3F4F6',
+    color: 'white'
   },
   trainerButton: {
     paddingVertical: 12,
@@ -714,19 +800,19 @@ function buildHomeLooks() {
     borderRadius: 999,
     width: '100%',
     maxWidth: 300,
-    alignItems: 'center',
+    alignItems: 'center'
   },
   trainerButtonText: {
     color: 'white',
     fontWeight: '600',
     fontSize: 14,
-    letterSpacing: 0.5,
+    letterSpacing: 0.5
   },
   trainerButtonTextLight: {
     color: 'black',
     fontWeight: '600',
     fontSize: 14,
-    letterSpacing: 0.5,
+    letterSpacing: 0.5
   },
   notificationBadge: {
     position: 'absolute',
@@ -738,12 +824,12 @@ function buildHomeLooks() {
     height: 20,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 6,
+    paddingHorizontal: 6
   },
   notificationBadgeText: {
     color: 'white',
     fontSize: 12,
-    fontWeight: 'bold',
+    fontWeight: 'bold'
   },
   sectionTitle: {
     fontSize: 11,
@@ -751,33 +837,39 @@ function buildHomeLooks() {
     color: 'rgba(255,255,255,0.78)',
     letterSpacing: 2.4,
     textTransform: 'uppercase',
-    marginBottom: 14,
-  },
+    marginBottom: 14
+  }
+};
+}
+
+// agenda — style keys frozen; screens look these up by name.
+function agendaHomeStyles() {
+  return {
   agendaContainer: {
     paddingHorizontal: 20,
     marginTop: 10,
-    marginBottom: 22,
+    marginBottom: 22
   },
   agendaColorBorder: {
     borderRadius: 16,
-    overflow: 'hidden',
+    overflow: 'hidden'
   },
   agendaEmptyStage: {
     marginTop: 22,
     marginBottom: 8,
     width: '100%',
     alignItems: 'center',
-    paddingHorizontal: 8,
+    paddingHorizontal: 8
   },
   agendaEmptyAmbient: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFillObject
   },
   agendaEmptyIconWrap: {
     width: 48,
     height: 48,
     borderRadius: 24,
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'center'
   },
   agendaEmptyHeadline: {
     marginTop: 14,
@@ -786,7 +878,7 @@ function buildHomeLooks() {
     letterSpacing: -0.25,
     lineHeight: 24,
     textAlign: 'center',
-    alignSelf: 'center',
+    alignSelf: 'center'
   },
   agendaEmptySubcopy: {
     marginTop: 8,
@@ -794,57 +886,57 @@ function buildHomeLooks() {
     fontWeight: '500',
     lineHeight: 18,
     textAlign: 'center',
-    maxWidth: 260,
+    maxWidth: 260
   },
   agendaEmptyRule: {
     marginTop: 16,
     height: 1.5,
     width: '42%',
     alignSelf: 'center',
-    borderRadius: 2,
+    borderRadius: 2
   },
   agendaCardInner: {
     borderRadius: 14,
     overflow: 'hidden',
     // Inner wrapper for animated card; background is handled by gradients inside.
-    padding: 0,
+    padding: 0
   },
   agendaBg: {
     borderRadius: 14,
     overflow: 'hidden',
-    minHeight: 120,
+    minHeight: 120
   },
   agendaTexture: {
     ...StyleSheet.absoluteFillObject,
-    opacity: 0.55,
+    opacity: 0.55
   },
   agendaPad: {
-    padding: 20,
+    padding: 20
   },
   agendaHeaderRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
-    gap: 12,
+    gap: 12
   },
   agendaSubtitle: {
     fontSize: 12,
     fontWeight: '400',
     color: '#B0B0B0',
     letterSpacing: 1.2,
-    textTransform: 'uppercase',
+    textTransform: 'uppercase'
   },
   agendaTitle: {
     fontSize: 24,
     fontWeight: '800',
     color: lightColors.white,
-    letterSpacing: 0.2,
+    letterSpacing: 0.2
   },
   agendaTitleRow: {
     marginTop: 6,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 10
   },
   agendaTitleIconWrap: {
     width: 28,
@@ -854,7 +946,7 @@ function buildHomeLooks() {
     justifyContent: 'center',
     backgroundColor: '#1F1F2A',
     borderWidth: 1,
-    borderColor: '#F2F2F0',
+    borderColor: '#F2F2F0'
   },
   agendaBadge: {
     alignSelf: 'flex-start',
@@ -863,22 +955,22 @@ function buildHomeLooks() {
     borderRadius: 999,
     backgroundColor: '#1F1F2A',
     borderWidth: 1,
-    borderColor: '#F2F2F0',
+    borderColor: '#F2F2F0'
   },
   agendaBadgeText: {
     color: lightColors.white,
     fontSize: 11,
     fontWeight: '800',
-    letterSpacing: 0.3,
+    letterSpacing: 0.3
   },
   agendaExercisesWrap: {
     marginTop: 16,
-    gap: 12,
+    gap: 12
   },
   agendaExerciseRowPremium: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 10,
+    gap: 10
   },
   agendaDot: {
     width: 8,
@@ -887,98 +979,98 @@ function buildHomeLooks() {
     marginTop: 6,
     backgroundColor: '#1F1F2A',
     borderWidth: 1,
-    borderColor: '#F2F2F0',
+    borderColor: '#F2F2F0'
   },
   agendaExerciseName: {
     fontSize: 15,
     fontWeight: '600',
-    color: lightColors.white,
+    color: lightColors.white
   },
   agendaExerciseSets: {
     marginTop: 3,
     fontSize: 13,
     fontWeight: '400',
-    color: '#B0B0B0',
+    color: '#B0B0B0'
   },
   agendaFooterRow: {
     marginTop: 16,
     flexDirection: 'row',
     alignItems: 'flex-end',
-    justifyContent: 'space-between',
+    justifyContent: 'space-between'
   },
   agendaDuration: {
     fontSize: 12,
     fontWeight: '600',
-    color: 'rgba(255,255,255,0.78)',
+    color: 'rgba(255,255,255,0.78)'
   },
   agendaTimestamp: {
     fontSize: 11,
     fontWeight: '400',
-    color: '#B0B0B0',
+    color: '#B0B0B0'
   },
   agendaEmptyPremium: {
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '600'
   },
   agendaCardDark: {
     backgroundColor: 'rgba(31, 41, 55, 0.95)',
-    borderWidth: 0,
+    borderWidth: 0
   },
   agendaCardLight: {
     backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    borderWidth: 0,
+    borderWidth: 0
   },
   agendaEmptyContent: {
     paddingVertical: 20,
     alignItems: 'center',
-    gap: 14,
+    gap: 14
   },
   agendaEmptyText: {
     fontSize: 14,
-    textAlign: 'center',
+    textAlign: 'center'
   },
   agendaEmptyButton: {
     paddingHorizontal: 20,
     paddingVertical: 12,
-    borderRadius: 12,
+    borderRadius: 12
   },
   agendaEmptyButtonText: {
     color: '#fff',
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: '700'
   },
   agendaWorkoutBlock: {
-    marginBottom: 16,
+    marginBottom: 16
   },
   agendaWorkoutHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 8,
-    paddingRight: 8,
+    paddingRight: 8
   },
   agendaWorkoutTitle: {
     fontSize: 16,
     fontWeight: '700',
-    flex: 1,
+    flex: 1
   },
   agendaExercisesList: {
     paddingLeft: 32,
     paddingTop: 4,
-    gap: 6,
+    gap: 6
   },
   agendaExerciseRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 6
   },
   agendaExerciseNum: {
     fontSize: 12,
     width: 20,
-    fontWeight: '600',
+    fontWeight: '600'
   },
   agendaExerciseText: {
     fontSize: 13,
-    flex: 1,
+    flex: 1
   },
   agendaCard: {
     backgroundColor: '#1F2937',
@@ -987,10 +1079,13 @@ function buildHomeLooks() {
     borderColor: '#4B5563',
     overflow: 'hidden',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 14 },
+    shadowOffset: {
+      width: 0,
+      height: 14
+    },
     shadowOpacity: 0.28,
     shadowRadius: 22,
-    elevation: 10,
+    elevation: 10
   },
   agendaItem: {
     flexDirection: 'row',
@@ -999,11 +1094,11 @@ function buildHomeLooks() {
     paddingHorizontal: 16,
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#4B5563',
+    borderBottomColor: '#4B5563'
   },
   agendaItemLeft: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'center'
   },
   checkbox: {
     width: 20,
@@ -1013,112 +1108,122 @@ function buildHomeLooks() {
     borderColor: '#6B7280',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: 12
   },
   checkedBox: {
     backgroundColor: '#22C55E',
-    borderColor: '#22C55E',
+    borderColor: '#22C55E'
   },
   workoutName: {
     fontSize: 14,
-    color: 'white',
+    color: 'white'
   },
   workoutNameChecked: {
     textDecorationLine: 'line-through',
-    color: '#9CA3AF',
+    color: '#9CA3AF'
   },
   workoutSets: {
     fontSize: 12,
     color: '#9CA3AF',
-    fontFamily: 'monospace',
-  },
+    fontFamily: 'monospace'
+  }
+};
+}
+
+// nutrition — style keys frozen; screens look these up by name.
+function nutritionHomeStyles() {
+  return {
   nutritionContainer: {
     paddingHorizontal: 20,
     marginTop: 12,
-    marginBottom: 22,
+    marginBottom: 22
   },
   nutritionColorBorder: {
     borderRadius: 16,
     padding: 2,
-    overflow: 'hidden',
+    overflow: 'hidden'
   },
   nutritionCard: {
     backgroundColor: '#1F2937',
     borderRadius: 16,
     borderWidth: 1,
     borderColor: '#F2F2F0',
-    padding: 14,
+    padding: 14
   },
   nutritionCardLight: {
     backgroundColor: '#F3F4F6',
-    borderColor: 'rgba(255,107,157,0.25)',
+    borderColor: 'rgba(255,107,157,0.25)'
   },
   nutritionGrid2x2: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginBottom: 10,
+    marginBottom: 10
   },
   nutritionGridCell: {
     width: '50%',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 4,
+    paddingVertical: 4
   },
   nutritionCompactCirclesRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 10,
-    paddingHorizontal: 6,
+    paddingHorizontal: 6
   },
-  nutritionCompactCircleCell: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  nutritionCompactCircleCell: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
   nutritionCircleWrap: {
     alignItems: 'center',
-    position: 'relative',
+    position: 'relative'
   },
   nutritionCircleCenter: {
     position: 'absolute',
     left: 0,
     right: 0,
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'center'
   },
   nutritionCircleValue: {
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: '700'
   },
   nutritionCircleLabel: {
     fontSize: 11,
-    fontWeight: '600',
+    fontWeight: '600'
   },
   macrosGrid: {
     flexDirection: 'row',
     flexWrap: 'nowrap',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 12,
+    marginBottom: 12
   },
   macroItem: {
     alignItems: 'center',
     flex: 1,
     minWidth: 0,
-    paddingHorizontal: 2,
+    paddingHorizontal: 2
   },
   macroIcon: {
     width: 55,
     height: 55,
-    resizeMode: 'contain',
+    resizeMode: 'contain'
   },
   macroLabel: {
     fontSize: 16,
     textShadowColor: 'cyan',
     color: '#9CA3AF',
-    marginTop: 2,
+    marginTop: 2
   },
   macroValue: {
     fontSize: 14,
     fontWeight: '600',
     color: 'white',
-    marginTop: 1,
+    marginTop: 1
   },
   additionalNutrientsGrid: {
     flexDirection: 'row',
@@ -1126,140 +1231,212 @@ function buildHomeLooks() {
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     marginBottom: 12,
-    paddingHorizontal: 4,
+    paddingHorizontal: 4
   },
   additionalNutrientItem: {
     alignItems: 'center',
     width: '22%',
     minWidth: 60,
     paddingHorizontal: 2,
-    paddingVertical: 4,
+    paddingVertical: 4
   },
   additionalNutrientIcon: {
     fontSize: 16,
-    marginBottom: 2,
+    marginBottom: 2
   },
   additionalNutrientLabel: {
     fontSize: 10,
     color: '#9CA3AF',
     marginTop: 1,
-    textAlign: 'center',
+    textAlign: 'center'
   },
   additionalNutrientValue: {
     fontSize: 11,
     fontWeight: '600',
     color: 'white',
     marginTop: 1,
-    textAlign: 'center',
+    textAlign: 'center'
   },
   caloriesSection: {
-    marginBottom: 8,
+    marginBottom: 8
   },
   caloriesInfo: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 6,
+    marginBottom: 6
   },
   caloriesLabel: {
     fontSize: 13,
-    color: '#9CA3AF',
+    color: '#9CA3AF'
   },
   caloriesValue: {
     fontSize: 14,
     fontWeight: '600',
-    color: 'white',
+    color: 'white'
   },
   progressBarBackground: {
     height: 8,
     backgroundColor: '#374151',
     borderRadius: 4,
-    overflow: 'hidden',
+    overflow: 'hidden'
   },
   progressBar: {
     height: '100%',
-    borderRadius: 4,
+    borderRadius: 4
   },
   journalLink: {
     fontSize: 13,
     color: '#BF5AF2',
     fontWeight: '600',
     textAlign: 'center',
-    marginTop: 8,
+    marginTop: 8
   },
+  caloriesCard: {
+    marginBottom: CARD_GAP
+  },
+  caloriesContent: {
+    padding: 24
+  },
+  caloriesHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20
+  },
+  caloriesHeroLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.5)',
+    letterSpacing: 1,
+    marginBottom: 8,
+    fontFamily: 'System'
+  },
+  caloriesHeroValue: {
+    fontSize: 40,
+    fontWeight: '700',
+    color: lightColors.white,
+    fontFamily: 'System',
+    letterSpacing: -0.5
+  },
+  caloriesGoal: {
+    fontSize: 20,
+    fontWeight: '400',
+    color: 'rgba(255,255,255,0.5)',
+    fontFamily: 'System'
+  },
+  caloriesFooter: {
+    flexDirection: 'row',
+    gap: 20
+  },
+  caloriesStat: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6
+  },
+  caloriesStatText: {
+    fontSize: 13,
+    fontWeight: '400',
+    color: 'rgba(255,255,255,0.5)',
+    fontFamily: 'System'
+  }
+};
+}
+
+// notes — style keys frozen; screens look these up by name.
+function notesAndFilesHomeStyles() {
+  return {
   notesContainer: {
     paddingHorizontal: 20,
     marginTop: 20,
-    paddingBottom: 100,
+    paddingBottom: 100
   },
   notesColorBorder: {
     borderRadius: 16,
     padding: 2,
     overflow: 'hidden',
-    ...(Platform.OS === 'ios' && { shadowColor: '#E07A32', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 12 }),
-    elevation: 4,
+    ...(Platform.OS === 'ios' && {
+      shadowColor: '#E07A32',
+      shadowOffset: {
+        width: 0,
+        height: 4
+      },
+      shadowOpacity: 0.2,
+      shadowRadius: 12
+    }),
+    elevation: 4
   },
   notesCardInner: {
     borderRadius: 14,
     overflow: 'hidden',
-    padding: 16,
+    padding: 16
   },
   notesCardDark: {
-    backgroundColor: 'rgba(20, 25, 40, 0.95)',
+    backgroundColor: 'rgba(20, 25, 40, 0.95)'
   },
   notesCardLight: {
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    backgroundColor: 'rgba(255, 255, 255, 0.95)'
   },
   notesEmptyContent: {
     paddingVertical: 40,
     alignItems: 'center',
-    gap: 14,
+    gap: 14
   },
   notesEmptyText: {
     fontSize: 16,
     fontWeight: '700',
-    textAlign: 'center',
+    textAlign: 'center'
   },
   notesEmptySubtext: {
     fontSize: 14,
     textAlign: 'center',
     lineHeight: 20,
-    paddingHorizontal: 20,
+    paddingHorizontal: 20
   },
-  notesContent: { gap: 28 },
-  notesSection: { gap: 14 },
+  notesContent: {
+    gap: 28
+  },
+  notesSection: {
+    gap: 14
+  },
   notesCategoryTitle: {
     fontSize: 16,
     fontWeight: '800',
     letterSpacing: 0.5,
     marginBottom: 4,
     marginTop: 4,
-    textTransform: 'uppercase',
+    textTransform: 'uppercase'
   },
   notesSectionTitle: {
     fontSize: 13,
     fontWeight: '600',
     letterSpacing: 0.5,
     textTransform: 'uppercase',
-    marginBottom: 2,
+    marginBottom: 2
   },
   notesNoteCard: {
     borderWidth: 1,
     borderRadius: 16,
     padding: 16,
     gap: 8,
-    backgroundColor: '#1F1F2A',
+    backgroundColor: '#1F1F2A'
   },
-  notesNoteText: { fontSize: 15, lineHeight: 22 },
-  notesNoteDate: { fontSize: 12, fontWeight: '500' },
+  notesNoteText: {
+    fontSize: 15,
+    lineHeight: 22
+  },
+  notesNoteDate: {
+    fontSize: 12,
+    fontWeight: '500'
+  },
   notesMediaGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
+    gap: 12
   },
   notesMediaCard: {
     width: '31%',
     alignItems: 'center',
-    gap: 6,
+    gap: 6
   },
   notesMediaThumb: {
     width: '100%',
@@ -1267,14 +1444,17 @@ function buildHomeLooks() {
     borderRadius: 14,
     backgroundColor: 'rgba(0,0,0,0.2)',
     borderWidth: 0.5,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: 'rgba(255,255,255,0.1)'
   },
   notesVideoPlaceholder: {
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.3)',
+    backgroundColor: 'rgba(0,0,0,0.3)'
   },
-  notesMediaLabel: { fontSize: 12, fontWeight: '500' },
+  notesMediaLabel: {
+    fontSize: 12,
+    fontWeight: '500'
+  },
   notesDocRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1283,11 +1463,23 @@ function buildHomeLooks() {
     paddingHorizontal: 16,
     borderRadius: 16,
     borderWidth: 1,
-    backgroundColor: '#17171F',
+    backgroundColor: '#17171F'
   },
-  notesDocName: { fontSize: 15, fontWeight: '600', marginBottom: 4 },
-  notesFileInfo: { flex: 1, justifyContent: 'center', minWidth: 0 },
-  notesFileMeta: { fontSize: 12, fontWeight: '500', color: 'rgba(255,255,255,0.5)' },
+  notesDocName: {
+    fontSize: 15,
+    fontWeight: '600',
+    marginBottom: 4
+  },
+  notesFileInfo: {
+    flex: 1,
+    justifyContent: 'center',
+    minWidth: 0
+  },
+  notesFileMeta: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: 'rgba(255,255,255,0.5)'
+  },
   notesCard: {
     backgroundColor: '#1F2937',
     borderRadius: 16,
@@ -1295,17 +1487,20 @@ function buildHomeLooks() {
     borderColor: 'rgba(255,255,255,0.1)',
     padding: 16,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
+    shadowOffset: {
+      width: 0,
+      height: 8
+    },
     shadowOpacity: 0.3,
     shadowRadius: 16,
-    elevation: 8,
+    elevation: 8
   },
   notesGrid: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    justifyContent: 'space-around'
   },
   fileItem: {
-    alignItems: 'center',
+    alignItems: 'center'
   },
   centerNavItem: {
     width: 56,
@@ -1313,7 +1508,7 @@ function buildHomeLooks() {
     borderRadius: 28,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 10
   },
   fileIconContainer: {
     width: 48,
@@ -1321,74 +1516,90 @@ function buildHomeLooks() {
     borderRadius: 8,
     backgroundColor: '#374151',
     justifyContent: 'center',
-    alignItems: 'center',
+    alignItems: 'center'
   },
   fileLabel: {
     fontSize: 12,
     color: '#9CA3AF',
     textAlign: 'center',
-    marginTop: 8,
+    marginTop: 8
   },
   emptyStateContainer: {
     justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 32,
+    paddingVertical: 32
   },
   emptyStateText: {
     color: '#9CA3AF',
     marginTop: 12,
-    textAlign: 'center',
+    textAlign: 'center'
   },
   emptyStateButton: {
     marginTop: 16,
     paddingVertical: 8,
     paddingHorizontal: 16,
-    borderRadius: 999,
+    borderRadius: 999
   },
   emptyStateButtonText: {
     color: 'white',
     fontWeight: '600',
+    fontSize: 14
+  },
+  emptyState: {
+    padding: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: '100%'
+  },
+  emptyStateText: {
     fontSize: 14,
+    fontWeight: '400',
+    color: 'rgba(255,255,255,0.5)',
+    fontFamily: 'System'
+  }
+};
+}
+
+// cardsAndDiscover — style keys frozen; screens look these up by name.
+function cardsAndDiscoverHomeStyles() {
+  return {
+  safeAreaLight: {
+    backgroundColor: lightColors.white
+  },
+  safeAreaDark: {
+    backgroundColor: '#0A0A0A'
+  },
+  wellnessEmptyLottie: {
+    width: 80,
+    height: 80
+  },
+  wellnessEmptyLottieSmall: {
+    width: 56,
+    height: 56,
+    opacity: 0.8,
+    marginRight: -2
+  },
+  wellnessEmptyCta: {
+    marginTop: 4,
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center'
+  },
+  lightWeekDay: {
+    backgroundColor: '#F3F4F6'
   },
   glassCard: {
     borderRadius: 24,
     overflow: 'hidden',
     position: 'relative',
-    backgroundColor: '#1F1F2A',
+    backgroundColor: '#1F1F2A'
   },
   glassCardBorder: {
     ...StyleSheet.absoluteFillObject,
     borderRadius: 24,
     borderWidth: 1,
     borderColor: '#F2F2F0',
-    pointerEvents: 'none',
-  },
-  heroCardContainer: {
-    marginBottom: 20,
-    borderRadius: 24,
-    overflow: 'hidden',
-  },
-  heroColorBorder: {
-    borderRadius: 24,
-    padding: 1,
-  },
-  heroCard: {
-    borderRadius: 24,
-    padding: 24,
-    backgroundColor: '#1F1F2A',
-  },
-  heroHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 16,
-  },
-  heroTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: lightColors.white,
-    marginBottom: 8,
-    fontFamily: 'System',
+    pointerEvents: 'none'
   },
   aiBadge: {
     flexDirection: 'row',
@@ -1398,109 +1609,14 @@ function buildHomeLooks() {
     paddingVertical: 4,
     borderRadius: 8,
     backgroundColor: 'rgba(226, 85, 136, 0.15)',
-    alignSelf: 'flex-start',
+    alignSelf: 'flex-start'
   },
   aiBadgeText: {
     fontSize: 10,
     fontWeight: '500',
     color: '#6C5CE7',
     letterSpacing: 0.3,
-    fontFamily: 'System',
-  },
-  heroWorkoutName: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: lightColors.white,
-    marginBottom: 8,
-    fontFamily: 'System',
-  },
-  heroSubtitle: {
-    fontSize: 15,
-    fontWeight: '400',
-    color: 'rgba(255,255,255,0.6)',
-    marginBottom: 20,
-    lineHeight: 20,
-    fontFamily: 'System',
-  },
-  heroStats: {
-    flexDirection: 'row',
-    gap: 20,
-    marginBottom: 20,
-  },
-  heroStat: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  heroStatText: {
-    fontSize: 14,
-    fontWeight: '400',
-    color: 'rgba(255,255,255,0.6)',
-    fontFamily: 'System',
-  },
-  heroButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    borderRadius: 24,
-    backgroundColor: '#6C5CE7',
-  },
-  heroButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: lightColors.white,
-    fontFamily: 'System',
-  },
-  caloriesCard: {
-    marginBottom: CARD_GAP,
-  },
-  caloriesContent: {
-    padding: 24,
-  },
-  caloriesHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  caloriesHeroLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: 'rgba(255,255,255,0.5)',
-    letterSpacing: 1,
-    marginBottom: 8,
-    fontFamily: 'System',
-  },
-  caloriesHeroValue: {
-    fontSize: 40,
-    fontWeight: '700',
-    color: lightColors.white,
-    fontFamily: 'System',
-    letterSpacing: -0.5,
-  },
-  caloriesGoal: {
-    fontSize: 20,
-    fontWeight: '400',
-    color: 'rgba(255,255,255,0.5)',
-    fontFamily: 'System',
-  },
-  caloriesFooter: {
-    flexDirection: 'row',
-    gap: 20,
-  },
-  caloriesStat: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  caloriesStatText: {
-    fontSize: 13,
-    fontWeight: '400',
-    color: 'rgba(255,255,255,0.5)',
-    fontFamily: 'System',
+    fontFamily: 'System'
   },
   smallStatCard: {
     // Inherits from GlassCard
@@ -1509,7 +1625,7 @@ function buildHomeLooks() {
     padding: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    height: '100%',
+    height: '100%'
   },
   smallStatIconContainer: {
     width: 64,
@@ -1517,32 +1633,32 @@ function buildHomeLooks() {
     borderRadius: 32,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 12
   },
   smallStatIconImage: {
     width: 32,
     height: 32,
-    resizeMode: 'contain',
+    resizeMode: 'contain'
   },
   smallStatValue: {
     fontSize: 24,
     fontWeight: '600',
     color: lightColors.white,
     marginBottom: 4,
-    fontFamily: 'System',
+    fontFamily: 'System'
   },
   smallStatLabel: {
     fontSize: 11,
     fontWeight: '500',
     color: 'rgba(255,255,255,0.5)',
     letterSpacing: 0.5,
-    fontFamily: 'System',
+    fontFamily: 'System'
   },
   gridContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    gap: CARD_GAP,
+    gap: CARD_GAP
   },
   gridCard: {
     // Inherits from GlassCard
@@ -1551,7 +1667,7 @@ function buildHomeLooks() {
     padding: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    height: '100%',
+    height: '100%'
   },
   gridIconContainer: {
     width: 64,
@@ -1559,12 +1675,12 @@ function buildHomeLooks() {
     borderRadius: 32,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 12
   },
   gridIconImage: {
     width: 32,
     height: 32,
-    resizeMode: 'contain',
+    resizeMode: 'contain'
   },
   gridTitle: {
     fontSize: 18,
@@ -1572,27 +1688,27 @@ function buildHomeLooks() {
     color: lightColors.white,
     marginBottom: 4,
     textAlign: 'center',
-    fontFamily: 'System',
+    fontFamily: 'System'
   },
   gridSubtitle: {
     fontSize: 13,
     fontWeight: '400',
     color: 'rgba(255,255,255,0.5)',
     textAlign: 'center',
-    fontFamily: 'System',
+    fontFamily: 'System'
   },
   upcomingSection: {
-    marginBottom: 24,
+    marginBottom: 24
   },
   upcomingContainer: {
-    padding: 4,
+    padding: 4
   },
   upcomingItem: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#F2F2F0',
+    borderBottomColor: '#F2F2F0'
   },
   upcomingIcon: {
     width: 32,
@@ -1601,48 +1717,36 @@ function buildHomeLooks() {
     backgroundColor: '#1F1F2A',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 16,
+    marginRight: 16
   },
   upcomingContent: {
-    flex: 1,
+    flex: 1
   },
   upcomingTitle: {
     fontSize: 16,
     fontWeight: '500',
     color: lightColors.white,
     marginBottom: 4,
-    fontFamily: 'System',
+    fontFamily: 'System'
   },
   upcomingTime: {
     fontSize: 13,
     fontWeight: '400',
     color: 'rgba(255,255,255,0.5)',
-    fontFamily: 'System',
-  },
-  emptyState: {
-    padding: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: '100%',
-  },
-  emptyStateText: {
-    fontSize: 14,
-    fontWeight: '400',
-    color: 'rgba(255,255,255,0.5)',
-    fontFamily: 'System',
+    fontFamily: 'System'
   },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 16,
-    paddingLeft: 4,
+    paddingLeft: 4
   },
   sectionAccent: {
     width: 2,
     height: 16,
     backgroundColor: '#8B7FFF',
     marginRight: 8,
-    borderRadius: 1,
+    borderRadius: 1
   },
   sectionLabel: {
     fontSize: 13,
@@ -1650,16 +1754,16 @@ function buildHomeLooks() {
     color: 'rgba(255,255,255,0.5)',
     letterSpacing: 1.2,
     textTransform: 'uppercase',
-    fontFamily: 'System',
+    fontFamily: 'System'
   },
   discoverSection: {
-    marginBottom: 24,
+    marginBottom: 24
   },
   discoverGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    gap: CARD_GAP,
+    gap: CARD_GAP
   },
   discoverCard: {
     // Inherits from GlassCard
@@ -1668,7 +1772,7 @@ function buildHomeLooks() {
     padding: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    height: '100%',
+    height: '100%'
   },
   discoverIconContainer: {
     width: 64,
@@ -1676,12 +1780,12 @@ function buildHomeLooks() {
     borderRadius: 32,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 12
   },
   discoverIconImage: {
     width: 32,
     height: 32,
-    resizeMode: 'contain',
+    resizeMode: 'contain'
   },
   discoverTitle: {
     fontSize: 18,
@@ -1689,49 +1793,49 @@ function buildHomeLooks() {
     color: lightColors.white,
     marginBottom: 4,
     textAlign: 'center',
-    fontFamily: 'System',
+    fontFamily: 'System'
   },
   discoverSubtitle: {
     fontSize: 13,
     fontWeight: '400',
     color: 'rgba(255,255,255,0.5)',
     textAlign: 'center',
-    fontFamily: 'System',
+    fontFamily: 'System'
   },
   findTrainersSection: {
-    marginBottom: 24,
+    marginBottom: 24
   },
   findTrainersContent: {
-    padding: 20,
+    padding: 20
   },
   findTrainersHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 16
   },
   findTrainersIcon: {
     width: 40,
     height: 40,
-    marginRight: 12,
+    marginRight: 12
   },
   findTrainersTextContainer: {
-    flex: 1,
+    flex: 1
   },
   findTrainersTitle: {
     fontSize: 18,
     fontWeight: '600',
     color: lightColors.white,
     marginBottom: 4,
-    fontFamily: 'System',
+    fontFamily: 'System'
   },
   findTrainersSubtitle: {
     fontSize: 13,
     fontWeight: '400',
     color: 'rgba(255,255,255,0.5)',
-    fontFamily: 'System',
+    fontFamily: 'System'
   },
   searchBarContainer: {
-    marginTop: 8,
+    marginTop: 8
   },
   searchBarGradient: {
     flexDirection: 'row',
@@ -1741,13 +1845,13 @@ function buildHomeLooks() {
     borderRadius: 16,
     gap: 10,
     borderWidth: 1,
-    borderColor: 'rgba(226, 85, 136, 0.3)',
+    borderColor: 'rgba(226, 85, 136, 0.3)'
   },
   searchBarPlaceholder: {
     fontSize: 15,
     fontWeight: '400',
     color: 'rgba(255,255,255,0.5)',
-    fontFamily: 'System',
+    fontFamily: 'System'
   },
   crmCard: {
     // Inherits from GlassCard
@@ -1756,7 +1860,7 @@ function buildHomeLooks() {
     flexDirection: 'row',
     alignItems: 'center',
     padding: 20,
-    height: '100%',
+    height: '100%'
   },
   crmIconContainer: {
     width: 56,
@@ -1765,40 +1869,69 @@ function buildHomeLooks() {
     backgroundColor: 'rgba(226, 85, 136, 0.15)',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 16,
+    marginRight: 16
   },
   crmTextContainer: {
-    flex: 1,
+    flex: 1
   },
   crmTitle: {
     fontSize: 18,
     fontWeight: '600',
     color: lightColors.white,
     marginBottom: 4,
-    fontFamily: 'System',
+    fontFamily: 'System'
   },
   crmSubtitle: {
     fontSize: 13,
     fontWeight: '400',
     color: 'rgba(255,255,255,0.5)',
-    fontFamily: 'System',
+    fontFamily: 'System'
   },
   // Skeleton loading styles
   skeletonBlock: {
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
     borderRadius: 8,
-    opacity: 0.7,
+    opacity: 0.7
   },
   skeletonCard: {
     backgroundColor: '#1F1F2A',
     borderRadius: 16,
-    opacity: 0.7,
-  },
-  });
+    opacity: 0.7
+  }
+};
 }
 
 // ===== MAIN FUNCTION =====
 
-const homeLooks = buildHomeLooks();
+/**
+ * Build the full RN StyleSheet once at module load (keys must stay stable for lookups).
+ * Flow: 1. chrome  2. hero/header  3. stats  4. calendar  5. agenda  6. nutrition  7. notes  8. cards
+ */
+function createClientHomeStyleSheet() {
+  // 1. Gather every named section object.
+  const chromeStyles = chromeHomeStyles();
+  const heroAndHeaderStyles = heroAndHeaderHomeStyles();
+  const statsRowStyles = statsRowHomeStyles();
+  const calendarStyles = calendarHomeStyles();
+  const agendaStyles = agendaHomeStyles();
+  const nutritionStyles = nutritionHomeStyles();
+  const notesAndFilesStyles = notesAndFilesHomeStyles();
+  const cardsAndDiscoverStyles = cardsAndDiscoverHomeStyles();
+
+  // 2. Merge into one StyleSheet.create so importers keep stable keys.
+  return StyleSheet.create({
+    ...chromeStyles,
+    ...heroAndHeaderStyles,
+    ...statsRowStyles,
+    ...calendarStyles,
+    ...agendaStyles,
+    ...nutritionStyles,
+    ...notesAndFilesStyles,
+    ...cardsAndDiscoverStyles,
+  });
+}
+
+// PLUMBING — module singleton; importers read keys off the default export.
+const homeLooks = createClientHomeStyleSheet();
 
 export default homeLooks;

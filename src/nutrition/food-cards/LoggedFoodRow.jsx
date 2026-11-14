@@ -1,6 +1,6 @@
-// One logged food inside a meal section, drawn as a transparent card on that section's background.
-// Flow: turn the log into card text → decide if it is expanded → wire edit, delete, and bookmark.
-// Used by the daily food log when it lists foods already saved to a meal.
+// One food already on a meal — wraps FoodCard with embedded palette and local expand state.
+// Flow: log row + amount string → foodCardText → wire edit/delete/bookmark → transparent FoodCard.
+// Used by DailyFoodLogScreen meal sections.
 
 import React, { useState, useMemo } from 'react';
 import { View, StyleSheet } from 'react-native';
@@ -9,88 +9,94 @@ import { foodCardText } from './foodCardText';
 
 // ===== NAMED CONSTANTS =====
 
+// Manipulate here: space under each logged row inside a meal section
 const ROW_BOTTOM_GAP = 10;
 
 // ===== HELPER FUNCTIONS =====
 
 /**
- * Confirm screens force the card open. Everywhere else the row remembers its own toggle.
- * @param {boolean} isPermanentlyExpanded
- * @param {boolean} isExpanded
+ * Confirm screens force the card open. Everywhere else the row remembers its own chevron.
+ * @param {boolean} permanentlyExpanded
+ * @param {boolean} userToggledExpanded
  * @returns {boolean}
  */
-function isRowExpanded(isPermanentlyExpanded, isExpanded) {
-  if (isPermanentlyExpanded) return true;
-  return isExpanded;
+function shouldShowCardExpanded(permanentlyExpanded, userToggledExpanded) {
+  if (permanentlyExpanded) return true;
+  return userToggledExpanded;
 }
 
 /**
- * Functional setState updater. React passes the previous flag so two fast taps cannot both read a stale value.
- * @param {boolean} isCurrentlyExpanded
+ * Flip expand/collapse. React passes the previous flag so two fast taps cannot both read stale state.
+ * vocab: functional updater = setState(fn) where fn receives the previous value
+ * @param {boolean} wasExpanded
  * @returns {boolean}
  */
-function toggledExpansion(isCurrentlyExpanded) {
-  return !isCurrentlyExpanded;
+function flippedExpandFlag(wasExpanded) {
+  return !wasExpanded;
 }
 
 /**
- * Permanently expanded rows have no chevron, so they get no toggle handler.
- * @param {boolean} isPermanentlyExpanded
- * @param {Function} setIsExpanded
+ * Permanently expanded rows hide the chevron, so they get no toggle handler.
+ * @param {boolean} permanentlyExpanded
+ * @param {Function} setUserToggledExpanded
  * @returns {Function|undefined}
  */
-function expansionToggleHandler(isPermanentlyExpanded, setIsExpanded) {
-  if (isPermanentlyExpanded) return undefined;
-  return () => setIsExpanded(toggledExpansion);
+function buildToggleHandler(permanentlyExpanded, setUserToggledExpanded) {
+  if (permanentlyExpanded) return undefined;
+  return () => setUserToggledExpanded(flippedExpandFlag);
 }
 
 /**
- * Edit is omitted when the parent did not pass a handler or the log is missing.
+ * Edit is omitted when the parent did not pass a handler or the log row is missing.
  * @param {Function|undefined} onEdit
- * @param {object|undefined} log
+ * @param {object|undefined} logRow
  * @returns {Function|undefined}
  */
-function editHandlerForLoggedFood(onEdit, log) {
-  if (!onEdit || !log) return undefined;
-  return () => onEdit(log);
+function buildEditHandler(onEdit, logRow) {
+  if (!onEdit || !logRow) return undefined;
+  return () => onEdit(logRow);
 }
 
 /**
- * Delete needs both a handler and a saved id. Unsaved rows cannot be removed by id.
+ * Delete needs both a handler and a saved Firestore id. Unsaved rows cannot be removed by id.
  * @param {Function|undefined} onRemove
- * @param {object|undefined} log
+ * @param {object|undefined} logRow
  * @returns {Function|undefined}
  */
-function deleteHandlerForLoggedFood(onRemove, log) {
-  if (!onRemove || !log?.id) return undefined;
-  return () => onRemove(log.id);
+function buildDeleteHandler(onRemove, logRow) {
+  const logHasSavedId = Boolean(logRow?.id);
+  if (!onRemove || !logHasSavedId) return undefined;
+  return () => onRemove(logRow.id);
 }
 
 /**
  * Build the FoodCard prop bag so the main component stays a short checklist.
+ * Key letters on `food` stay whatever foodCardText produced (name / calories / … frozen upstream).
  * @param {object} options
  * @returns {object}
  */
-function buildLoggedFoodCardProps({
+function buildEmbeddedFoodCardProps({
   food,
   permanentlyExpanded,
-  isExpanded,
+  userToggledExpanded,
   isDark,
-  log,
+  logRow,
   onEdit,
   onRemove,
   onBookmark,
-  setIsExpanded,
+  setUserToggledExpanded,
 }) {
+  const cardIsExpanded = shouldShowCardExpanded(permanentlyExpanded, userToggledExpanded);
+
   return {
     food,
-    expanded: isRowExpanded(permanentlyExpanded, isExpanded),
+    expanded: cardIsExpanded,
     permanentlyExpanded,
     embedded: true,
     isDark,
-    onToggle: expansionToggleHandler(permanentlyExpanded, setIsExpanded),
-    onEdit: editHandlerForLoggedFood(onEdit, log),
-    onDelete: deleteHandlerForLoggedFood(onRemove, log),
+    onToggle: buildToggleHandler(permanentlyExpanded, setUserToggledExpanded),
+    onEdit: buildEditHandler(onEdit, logRow),
+    onDelete: buildDeleteHandler(onRemove, logRow),
     onBookmark,
   };
 }
@@ -98,17 +104,8 @@ function buildLoggedFoodCardProps({
 // ===== MAIN FUNCTION =====
 
 /**
- * Transparent food card for one food that is already logged on a meal.
- * @param {object} props
- * @param {object} props.log Saved food record for this row.
- * @param {*} props.amount Serving amount shown on the card.
- * @param {Function} [props.onRemove] Called with the log id when the row is deleted.
- * @param {Function} [props.onEdit] Called with the log when the row is edited.
- * @param {Function} [props.onBookmark]
- * @param {boolean} [props.isDark]
- * @param {object} [props.style]
- * @param {boolean} [props.permanentlyExpanded] Confirm screens open fully and hide the chevron.
- * @returns {JSX.Element}
+ * One logged meal row drawn as an embedded FoodCard on the meal section background.
+ * @param {{ log: object, amount?: string, onRemove?: Function, onEdit?: Function, onBookmark?: Function, isDark?: boolean, style?: object, permanentlyExpanded?: boolean }} props
  */
 export default function LoggedFoodRow({
   log,
@@ -117,35 +114,39 @@ export default function LoggedFoodRow({
   onEdit,
   onBookmark,
   isDark = true,
-  style,
+  style: rowStyle,
   permanentlyExpanded = false,
 }) {
-  // 1. Remember expand/collapse unless the parent forces it open.
-  const [isExpanded, setIsExpanded] = useState(permanentlyExpanded);
+  // 1. Chevron expand state — skipped when confirm screens pass permanentlyExpanded.
+  // vocab: useState = React state hook; initial value mirrors permanentlyExpanded so confirm opens expanded
+  const [userToggledExpanded, setUserToggledExpanded] = useState(permanentlyExpanded);
 
-  // 2. vocab: useMemo = reuse card text until log or amount changes.
+  // 2. Turn the Firestore log + amount label into the card text FoodCard already understands.
+  // vocab: useMemo = rebuild only when log or amount changes (not on every parent paint)
+  // Hook order frozen: useState then useMemo — do not reorder.
   const food = useMemo(() => foodCardText(log, amount), [log, amount]);
 
-  // 3. Wire handlers once, then paint the embedded card.
-  const cardProps = buildLoggedFoodCardProps({
+  // 3. Map parent callbacks into FoodCard props, then render embedded on the meal background.
+  const cardProps = buildEmbeddedFoodCardProps({
     food,
     permanentlyExpanded,
-    isExpanded,
+    userToggledExpanded,
     isDark,
-    log,
+    logRow: log,
     onEdit,
     onRemove,
     onBookmark,
-    setIsExpanded,
+    setUserToggledExpanded,
   });
 
   return (
-    <View style={[styles.wrap, style]}>
-      {/* embedded asks FoodCard for the in-section palette. The meal section already paints the background. */}
+    <View style={[styles.wrap, rowStyle]}>
       <FoodCard {...cardProps} />
     </View>
   );
 }
+
+// ===== PLUMBING — skip unless debugging =====
 
 const styles = StyleSheet.create({
   wrap: {

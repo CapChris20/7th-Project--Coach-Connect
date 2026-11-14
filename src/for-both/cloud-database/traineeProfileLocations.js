@@ -7,35 +7,34 @@
 const CLIENT_ROLE = 'client';
 const ACTIVE_STATUS = 'active';
 
-// ===== HELPER FUNCTIONS =====
-
-/**
- * @param {object} [source]
- * @returns {string|null}
- */
-function pickName(source = {}) {
-  const combinedName = [source.firstName, source.lastName].filter(Boolean).join(' ').trim();
-  const directName = source.name || source.displayName || combinedName;
-  return directName || null;
-}
-
 // ===== MAIN FUNCTION =====
 
 /**
+ * Build the clients/{uid} document shape the marketplace and coach list read.
  * @param {string} uid
  * @param {object} [source]
  * @returns {object|null}
  */
 export function buildClientRegistryDoc(uid, source = {}) {
   // 1. Need an id or we cannot write the clients/{uid} document.
-  const clientId = String(uid || source.uid || source.id || '').trim();
-  if (!clientId) return null;
+  const clientId = firstNonEmptyId(uid, source);
+  if (!clientId) {
+    return null;
+  }
 
-  // 2. Copy the marketplace fields. Keep ?? so 0 height / weight / age survive.
-  const trainerIdText = source.trainerId != null ? String(source.trainerId) : null;
+  // 2. Trainer link and photo — keep null when missing so merge does not invent ids.
+  const trainerIdText = trainerIdAsTextOrNull(source.trainerId);
   const photoAddress = source.photoURL || source.photoUrl || null;
-  const clientName = pickName(source);
+
+  // 3. Display fields the marketplace cards read.
+  const clientName = pickDisplayName(source);
   const emailAddress = source.email || null;
+
+  // 4. Goals and schedule. ?? keeps 0 height / weight / age when the user entered zero.
+  // vocab/symbol: ?? = use the right side only when the left is null or undefined (0 stays 0).
+  const goalsText = source.primaryGoal || source.goals || null;
+  const daysPerWeek = source.daysPerWeek ?? null;
+  const startingWeight = source.startingWeight ?? source.weight ?? null;
 
   return {
     uid: clientId,
@@ -46,14 +45,14 @@ export function buildClientRegistryDoc(uid, source = {}) {
     photoURL: photoAddress,
     trainerId: trainerIdText || null,
     onboardingCompleted: source.onboardingCompleted === true,
-    goals: source.primaryGoal || source.goals || null,
+    goals: goalsText,
     fitnessLevel: source.fitnessLevel || null,
     equipmentAccess: source.equipmentAccess || [],
-    daysPerWeek: source.daysPerWeek ?? null,
+    daysPerWeek,
     injuries: source.injuries || null,
     height: source.height ?? null,
     weight: source.weight ?? null,
-    startingWeight: source.startingWeight ?? source.weight ?? null,
+    startingWeight,
     age: source.age ?? null,
     gender: source.gender || null,
     preferredWorkoutTime: source.preferredWorkoutTime || null,
@@ -75,11 +74,18 @@ export function buildClientRegistryDoc(uid, source = {}) {
  * @returns {object}
  */
 export function stripEmptyForFirestore(record) {
+  // 1. Walk every key on the record we are about to merge.
   const filledFields = {};
-  for (const [fieldName, fieldValue] of Object.entries(record || {})) {
-    if (fieldValue === undefined || fieldValue === null) continue;
+  const fieldEntries = Object.entries(record || {});
+
+  for (const [fieldName, fieldValue] of fieldEntries) {
+    // 2. Skip undefined and null — only ship real values.
+    if (fieldValue === undefined || fieldValue === null) {
+      continue;
+    }
     filledFields[fieldName] = fieldValue;
   }
+
   return filledFields;
 }
 
@@ -87,3 +93,40 @@ module.exports = {
   buildClientRegistryDoc,
   stripEmptyForFirestore,
 };
+
+// ===== HELPER FUNCTIONS =====
+// PLUMBING — skip unless debugging name / id picking.
+
+function firstNonEmptyId(uid, source) {
+  const fromArgument = String(uid || '').trim();
+  if (fromArgument) {
+    return fromArgument;
+  }
+
+  const fromSourceUid = String(source.uid || '').trim();
+  if (fromSourceUid) {
+    return fromSourceUid;
+  }
+
+  return String(source.id || '').trim();
+}
+
+function trainerIdAsTextOrNull(trainerId) {
+  if (trainerId == null) {
+    return null;
+  }
+  return String(trainerId);
+}
+
+function pickDisplayName(source = {}) {
+  const firstName = source.firstName;
+  const lastName = source.lastName;
+  const nameParts = [firstName, lastName].filter(Boolean);
+  const combinedName = nameParts.join(' ').trim();
+
+  const directName = source.name || source.displayName || combinedName;
+  if (directName) {
+    return directName;
+  }
+  return null;
+}

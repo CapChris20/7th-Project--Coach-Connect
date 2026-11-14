@@ -1,9 +1,11 @@
-// Pure helpers for trainer platform subscription access.
-// Flow: parse dates on users/{uid}.subscription → pick free_trial / active / expired → format the trial countdown.
-// Used by Pro screens and gates. No React and no Firestore reads here.
+// Pure rules for trainer Pro access — no React, no Firestore reads.
+// Flow: turn users/{uid}.subscription dates into free_trial / active / expired → countdown copy for UI.
+// Used by Pro gates and account screens. Status string letters must match stored Firestore values.
+// Read order: constants → thin helpers → MAIN recipes → PLUMBING (countdown math).
 
 // ===== NAMED CONSTANTS =====
 
+// Firestore / Stripe status letters — do not rename the string values.
 export const SUBSCRIPTION_STATUSES = {
   FREE_TRIAL: 'free_trial',
   ACTIVE: 'active',
@@ -11,11 +13,13 @@ export const SUBSCRIPTION_STATUSES = {
   CANCELLED: 'cancelled',
 };
 
+// Access kinds returned to screens (same letter set as status where they overlap).
 const ACCESS_NONE = 'no_subscription';
 const ACCESS_FREE_TRIAL = 'free_trial';
 const ACCESS_ACTIVE = 'active';
 const ACCESS_EXPIRED = 'expired';
 
+// Manipulate here: countdown math — day/hour labels stay consistent app-wide.
 const MILLISECONDS_PER_MINUTE = 60000;
 const MINUTES_IN_ONE_HOUR = 60;
 const HOURS_IN_ONE_DAY = 24;
@@ -25,7 +29,11 @@ const MINUTES_IN_ONE_DAY = MINUTES_IN_ONE_HOUR * HOURS_IN_ONE_DAY;
 
 // ===== HELPER FUNCTIONS =====
 
-function emptyAccessState() {
+/**
+ * Empty access row when there is no usable subscription object.
+ * @returns {{ access: SubscriptionAccess, hasFullAccess: boolean, status: null, trialEndsAt: null, expiresAt: null, nextBillingDate: null, trialCountdownMs: null }}
+ */
+function buildNoAccessRow() {
   return {
     access: /** @type {SubscriptionAccess} */ (ACCESS_NONE),
     hasFullAccess: false,
@@ -37,70 +45,166 @@ function emptyAccessState() {
   };
 }
 
-function isDateStillInTheFuture(date, nowMs) {
-  return date && date.getTime() > nowMs;
+/**
+ * True when the date is after "now" (ms). Missing dates never count as open.
+ * @param {Date | null} dateValue
+ * @param {number} nowMilliseconds
+ * @returns {boolean}
+ */
+function dateIsStillAfterNow(dateValue, nowMilliseconds) {
+  if (!dateValue) return false;
+  return dateValue.getTime() > nowMilliseconds;
 }
 
-function subscriptionStatusKey(subscription) {
-  return String(subscription.status || '').toLowerCase() || null;
+/**
+ * Lowercase status string from the subscription record, or null if blank.
+ * @param {Record<string, unknown>} subscriptionRecord
+ * @returns {string | null}
+ */
+function normalizedStatusFromSubscription(subscriptionRecord) {
+  const rawStatus = subscriptionRecord.status || '';
+  const lowerStatus = String(rawStatus).toLowerCase();
+  if (!lowerStatus) return null;
+  return lowerStatus;
 }
 
-function fullAccessState({ access, status, trialEndsAt, expiresAt, nextBillingDate, trialCountdownMs }) {
+/**
+ * Full-feature access row (trial or paid window still open).
+ * @param {object} parts
+ * @returns {object}
+ */
+function buildFullAccessRow(parts) {
   return {
-    access,
+    access: parts.accessKind,
     hasFullAccess: true,
-    status,
-    trialEndsAt,
-    expiresAt,
-    nextBillingDate,
-    trialCountdownMs,
+    status: parts.status,
+    trialEndsAt: parts.trialEndsAt,
+    expiresAt: parts.expiresAt,
+    nextBillingDate: parts.nextBillingDate,
+    trialCountdownMs: parts.trialCountdownMs,
   };
 }
 
-function expiredAccessState({ status, isPaidPeriodStillOpen, trialEndsAt, expiresAt, nextBillingDate }) {
+/**
+ * Expired / cancelled-past-paid-window row. Cancelled with a closed paid window shows as expired.
+ * @param {object} parts
+ * @returns {object}
+ */
+function buildExpiredAccessRow(parts) {
+  const cancelledAndPaidWindowClosed =
+    parts.status === SUBSCRIPTION_STATUSES.CANCELLED && !parts.paidPeriodStillOpen;
+
+  let displayStatus = parts.status || SUBSCRIPTION_STATUSES.EXPIRED;
+  if (cancelledAndPaidWindowClosed) {
+    displayStatus = SUBSCRIPTION_STATUSES.EXPIRED;
+  }
+
   return {
     access: ACCESS_EXPIRED,
     hasFullAccess: false,
-    status:
-      status === SUBSCRIPTION_STATUSES.CANCELLED && !isPaidPeriodStillOpen
-        ? SUBSCRIPTION_STATUSES.EXPIRED
-        : status || SUBSCRIPTION_STATUSES.EXPIRED,
-    trialEndsAt,
-    expiresAt,
-    nextBillingDate,
+    status: displayStatus,
+    trialEndsAt: parts.trialEndsAt,
+    expiresAt: parts.expiresAt,
+    nextBillingDate: parts.nextBillingDate,
     trialCountdownMs: null,
   };
 }
 
-function isKnownSubscriptionStatus(status) {
-  return (
-    status === SUBSCRIPTION_STATUSES.EXPIRED ||
-    status === SUBSCRIPTION_STATUSES.CANCELLED ||
-    status === SUBSCRIPTION_STATUSES.FREE_TRIAL ||
-    status === SUBSCRIPTION_STATUSES.ACTIVE
-  );
+/**
+ * Status letters we know how to map (everything else → no_subscription).
+ * @param {string | null} status
+ * @returns {boolean}
+ */
+function statusIsOneWeRecognize(status) {
+  if (status === SUBSCRIPTION_STATUSES.EXPIRED) return true;
+  if (status === SUBSCRIPTION_STATUSES.CANCELLED) return true;
+  if (status === SUBSCRIPTION_STATUSES.FREE_TRIAL) return true;
+  if (status === SUBSCRIPTION_STATUSES.ACTIVE) return true;
+  return false;
 }
 
-function isPaidStatusStillActive(status) {
-  return status === SUBSCRIPTION_STATUSES.ACTIVE || status === SUBSCRIPTION_STATUSES.CANCELLED;
+/**
+ * Active or cancelled-but-still-paid both count as "paid subscription" for the open-window check.
+ * @param {string | null} status
+ * @returns {boolean}
+ */
+function statusCountsAsPaidSubscription(status) {
+  if (status === SUBSCRIPTION_STATUSES.ACTIVE) return true;
+  if (status === SUBSCRIPTION_STATUSES.CANCELLED) return true;
+  return false;
+}
+
+/**
+ * Trial branch: free_trial status + trialEndsAt still in the future → full access + countdown ms.
+ * @param {object} parts
+ * @returns {object | null}
+ */
+function tryBuildTrialAccessRow(parts) {
+  if (parts.status !== SUBSCRIPTION_STATUSES.FREE_TRIAL) return null;
+
+  const trialStillRunning = dateIsStillAfterNow(parts.trialEndsAt, parts.nowMilliseconds);
+  if (!trialStillRunning) return null;
+
+  const millisecondsLeft = parts.trialEndsAt.getTime() - parts.nowMilliseconds;
+  return buildFullAccessRow({
+    accessKind: ACCESS_FREE_TRIAL,
+    status: parts.status,
+    trialEndsAt: parts.trialEndsAt,
+    expiresAt: parts.expiresAt,
+    nextBillingDate: parts.nextBillingDate,
+    trialCountdownMs: millisecondsLeft,
+  });
+}
+
+/**
+ * Paid branch: active/cancelled + expiresAt still in the future → full access, no trial countdown.
+ * @param {object} parts
+ * @returns {object | null}
+ */
+function tryBuildPaidAccessRow(parts) {
+  if (!statusCountsAsPaidSubscription(parts.status)) return null;
+
+  const paidPeriodStillOpen = dateIsStillAfterNow(parts.expiresAt, parts.nowMilliseconds);
+  if (!paidPeriodStillOpen) return null;
+
+  return buildFullAccessRow({
+    accessKind: ACCESS_ACTIVE,
+    status: parts.status,
+    trialEndsAt: parts.trialEndsAt,
+    expiresAt: parts.expiresAt,
+    nextBillingDate: parts.nextBillingDate,
+    trialCountdownMs: null,
+  });
 }
 
 // ===== MAIN FUNCTION =====
 
 /**
+ * Turn an ISO string or Date into a real Date, or null if unusable.
  * @param {string | Date | null | undefined} value
  * @returns {Date | null}
  */
 export function parseIsoDate(value) {
+  // 1. Missing value → null.
   if (!value) return null;
+
+  // 2. Already a Date — keep only if getTime is finite.
   if (value instanceof Date) {
-    return Number.isNaN(value.getTime()) ? null : value;
+    const timeIsInvalid = Number.isNaN(value.getTime());
+    if (timeIsInvalid) return null;
+    return value;
   }
-  const parsedDate = new Date(String(value));
-  return Number.isNaN(parsedDate.getTime()) ? null : parsedDate;
+
+  // 3. Parse string; reject NaN clocks.
+  const parsedFromString = new Date(String(value));
+  const stringParseFailed = Number.isNaN(parsedFromString.getTime());
+  if (stringParseFailed) return null;
+  return parsedFromString;
 }
 
 /**
+ * Decide what Pro features this trainer may use right now.
+ * Flow: 1. refuse bad input  2. trial window  3. paid window  4. known-but-expired  5. none
  * @param {Record<string, unknown> | null | undefined} subscription
  * @param {Date} [now]
  * @returns {{
@@ -114,53 +218,49 @@ export function parseIsoDate(value) {
  * }}
  */
 export function resolveSubscriptionAccess(subscription, now = new Date()) {
-  const empty = emptyAccessState();
-  if (!subscription || typeof subscription !== 'object') {
-    return empty;
-  }
+  const noAccess = buildNoAccessRow();
 
-  const status = subscriptionStatusKey(subscription);
+  // 1. Need a real object.
+  if (!subscription) return noAccess;
+  if (typeof subscription !== 'object') return noAccess;
+
+  // 2. Pull status + date fields (letters stay trialEndsAt / expiresAt / nextBillingDate).
+  const status = normalizedStatusFromSubscription(subscription);
   const trialEndsAt = parseIsoDate(subscription.trialEndsAt);
   const expiresAt = parseIsoDate(subscription.expiresAt);
   const nextBillingDate = parseIsoDate(subscription.nextBillingDate);
-  const nowMs = now.getTime();
+  const nowMilliseconds = now.getTime();
+  const paidPeriodStillOpen = dateIsStillAfterNow(expiresAt, nowMilliseconds);
 
-  const isTrialStillRunning = isDateStillInTheFuture(trialEndsAt, nowMs);
-  const isPaidPeriodStillOpen = isDateStillInTheFuture(expiresAt, nowMs);
+  const sharedParts = {
+    status,
+    trialEndsAt,
+    expiresAt,
+    nextBillingDate,
+    nowMilliseconds,
+  };
 
-  if (status === SUBSCRIPTION_STATUSES.FREE_TRIAL && isTrialStillRunning) {
-    return fullAccessState({
-      access: ACCESS_FREE_TRIAL,
+  // 3. Free trial still running → full access + countdown.
+  const duringTrial = tryBuildTrialAccessRow(sharedParts);
+  if (duringTrial) return duringTrial;
+
+  // 4. Paid period still open (active or cancelled-but-paid) → full access.
+  const duringPaidPeriod = tryBuildPaidAccessRow(sharedParts);
+  if (duringPaidPeriod) return duringPaidPeriod;
+
+  // 5. Known status but windows closed → expired row (cancelled may display as expired).
+  if (statusIsOneWeRecognize(status)) {
+    return buildExpiredAccessRow({
       status,
-      trialEndsAt,
-      expiresAt,
-      nextBillingDate,
-      trialCountdownMs: trialEndsAt.getTime() - nowMs,
-    });
-  }
-
-  if (isPaidStatusStillActive(status) && isPaidPeriodStillOpen) {
-    return fullAccessState({
-      access: ACCESS_ACTIVE,
-      status,
-      trialEndsAt,
-      expiresAt,
-      nextBillingDate,
-      trialCountdownMs: null,
-    });
-  }
-
-  if (isKnownSubscriptionStatus(status)) {
-    return expiredAccessState({
-      status,
-      isPaidPeriodStillOpen,
+      paidPeriodStillOpen,
       trialEndsAt,
       expiresAt,
       nextBillingDate,
     });
   }
 
-  return empty;
+  // 6. Unknown / blank status → treat as no subscription.
+  return noAccess;
 }
 
 /**
@@ -169,12 +269,36 @@ export function resolveSubscriptionAccess(subscription, now = new Date()) {
  * @returns {string}
  */
 export function formatTrialCountdown(remainingMs) {
-  if (remainingMs == null || remainingMs <= 0) return 'Trial ended';
+  // 1. Missing or already over → ended copy.
+  if (remainingMs == null) return 'Trial ended';
+  if (remainingMs <= 0) return 'Trial ended';
+
+  // 2. Split remaining ms into days / hours / leftover minutes (ceil so "1m left" never shows 0 early).
+  const parts = splitCountdownPartsFromMilliseconds(remainingMs);
+
+  // 3. Pick the shortest label that still shows the biggest unit.
+  if (parts.wholeDays > 0) {
+    return `${parts.wholeDays}d ${parts.wholeHours}h left in trial`;
+  }
+  if (parts.wholeHours > 0) {
+    return `${parts.wholeHours}h ${parts.leftoverMinutes}m left in trial`;
+  }
+  return `${parts.leftoverMinutes}m left in trial`;
+}
+
+// ===== PLUMBING — skip unless debugging =====
+
+/**
+ * Break remaining ms into whole days, hours after those days, and leftover minutes.
+ * @param {number} remainingMs
+ * @returns {{ wholeDays: number, wholeHours: number, leftoverMinutes: number }}
+ */
+function splitCountdownPartsFromMilliseconds(remainingMs) {
+  // vocab: Math.ceil — round up so 30s remaining still shows as 1 minute, not 0.
   const totalMinutes = Math.ceil(remainingMs / MILLISECONDS_PER_MINUTE);
-  const days = Math.floor(totalMinutes / MINUTES_IN_ONE_DAY);
-  const hours = Math.floor((totalMinutes % MINUTES_IN_ONE_DAY) / MINUTES_IN_ONE_HOUR);
-  const minutes = totalMinutes % MINUTES_IN_ONE_HOUR;
-  if (days > 0) return `${days}d ${hours}h left in trial`;
-  if (hours > 0) return `${hours}h ${minutes}m left in trial`;
-  return `${minutes}m left in trial`;
+  const wholeDays = Math.floor(totalMinutes / MINUTES_IN_ONE_DAY);
+  const minutesAfterFullDays = totalMinutes % MINUTES_IN_ONE_DAY;
+  const wholeHours = Math.floor(minutesAfterFullDays / MINUTES_IN_ONE_HOUR);
+  const leftoverMinutes = totalMinutes % MINUTES_IN_ONE_HOUR;
+  return { wholeDays, wholeHours, leftoverMinutes };
 }

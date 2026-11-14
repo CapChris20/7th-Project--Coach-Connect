@@ -1,6 +1,7 @@
-// Design Law metric icon — NbIconChip with owner handoff art (accent gradient only).
-// Flow: map metricKey → handoff PNG → NbIconChip. Used by tips / legacy day expand rows.
-// vocab: NbIconChip = 3px bordered gradient square; never a purple ring border
+// Metric icon chip for weekly report rows — owner handoff PNG inside NbIconChip.
+// Flow: metricKey → macro table OR lifestyle table OR legacy bars → paint chip.
+// Used on stat rows and legacy day expanders.
+// vocab: NbIconChip = 3px outline square with a small accent gradient (never a purple ring).
 
 import React from 'react';
 import NbIconChip from '../../look-and-feel/NbIconChip';
@@ -9,29 +10,34 @@ import { WR_METRIC_VISUAL } from '../../trainer-app/weekly-report/WeeklyReportBa
 
 // ===== NAMED CONSTANTS =====
 
-const DEFAULT_ICON_SIZE = 40;
+// Manipulate here: default square size on report stat rows
+const DEFAULT_CHIP_SIZE = 40;
+
+// Fallback when an unknown metricKey hits the legacy bar table
 const FALLBACK_METRIC_KEY = 'energy';
 
-const EXTRA_METRIC_VISUAL = {
+// Nutrition macros use fixed accent slots (Design Law handoff art).
+const NUTRITION_AND_MACRO_ART = {
   nutrition: {
     source: require('../../assets/icons/handoff/apple.png'),
-    index: 3,
+    gradientIndex: 3,
   },
   protein: {
     source: require('../../assets/icons/handoff/protein.png'),
-    index: 0,
+    gradientIndex: 0,
   },
   carbs: {
     source: require('../../assets/icons/handoff/carbs.png'),
-    index: 4,
+    gradientIndex: 4,
   },
   fat: {
     source: require('../../assets/icons/handoff/fats.png'),
-    index: 1,
+    gradientIndex: 1,
   },
 };
 
-const HANDOFF_BY_KEY = {
+// Lifestyle metrics — key order here decides fallback gradient index when no fixed slot exists.
+const LIFESTYLE_HANDOFF_BY_KEY = {
   sleep: require('../../assets/icons/handoff/sleeping.png'),
   water: require('../../assets/icons/handoff/hydration.png'),
   steps: require('../../assets/icons/handoff/journey.png'),
@@ -44,50 +50,112 @@ const HANDOFF_BY_KEY = {
   bodyfat: require('../../assets/icons/handoff/progress.png'),
 };
 
-// ===== HELPER FUNCTIONS =====
-
-/**
- * @param {string} metricKey
- * @returns {{ source: number, index: number }}
- */
-export function getReportMetricVisual(metricKey) {
-  if (EXTRA_METRIC_VISUAL[metricKey]) {
-    return {
-      source: EXTRA_METRIC_VISUAL[metricKey].source,
-      index: EXTRA_METRIC_VISUAL[metricKey].index,
-      gradient: accentGradients[EXTRA_METRIC_VISUAL[metricKey].index],
-    };
-  }
-  if (HANDOFF_BY_KEY[metricKey]) {
-    const index = Object.keys(HANDOFF_BY_KEY).indexOf(metricKey);
-    return {
-      source: HANDOFF_BY_KEY[metricKey],
-      index,
-      gradient: accentGradients[index % accentGradients.length],
-    };
-  }
-  // Fall back to WeeklyReportBars visual when a rare key appears
-  const legacy = WR_METRIC_VISUAL[metricKey] || WR_METRIC_VISUAL[FALLBACK_METRIC_KEY];
-  return {
-    source: legacy.source,
-    index: 0,
-    gradient: legacy.gradient || accentGradients[0],
-  };
-}
-
 // ===== MAIN FUNCTION =====
 
 /**
+ * Resolve handoff art + accent for a metric letter key.
+ * Flow: 1. macros  2. lifestyle  3. legacy trainer bars
+ * @param {string} metricKey
+ * @returns {{ source: number, index: number, gradient: string[] }}
+ */
+export function getReportMetricVisual(metricKey) {
+  // 1. Prefer macro/nutrition table (fixed gradient slots).
+  const fromMacros = buildVisualFromMacroTable(metricKey);
+  if (fromMacros) {
+    return fromMacros;
+  }
+
+  // 2. Then lifestyle handoff table (gradient follows key order).
+  const fromLifestyle = buildVisualFromLifestyleTable(metricKey);
+  if (fromLifestyle) {
+    return fromLifestyle;
+  }
+
+  // 3. Rare keys fall back to trainer weekly-report bar art.
+  return buildVisualFromLegacyBars(metricKey);
+}
+
+/**
+ * Design Law icon chip for one weekly-report metric key.
+ * Flow: 1. resolve art  2. paint NbIconChip
  * @param {{ metricKey: string, size?: number, imageSize?: number }} props
  */
-export function StatIcon({ metricKey, size = DEFAULT_ICON_SIZE, imageSize: _imageSize }) {
-  const visual = getReportMetricVisual(metricKey);
+export function StatIcon({ metricKey, size = DEFAULT_CHIP_SIZE, imageSize: _imageSize }) {
+  // 1. Resolve art + accent for this metric letter key.
+  // `_imageSize` stays in the props signature for callers that still pass it (unused by NbIconChip).
+  const metricVisual = getReportMetricVisual(metricKey);
+
+  // 2. Paint the Design Law icon chip (outline + gradient only).
   return (
     <NbIconChip
-      source={visual.source}
-      index={visual.index}
+      source={metricVisual.source}
+      index={metricVisual.index}
       size={size}
-      colors={visual.gradient}
+      colors={metricVisual.gradient}
     />
   );
+}
+
+// ===== HELPER FUNCTIONS =====
+// PLUMBING — skip unless debugging =====
+
+/**
+ * Macro/nutrition keys with fixed Design Law gradient slots.
+ * @returns {{ source: number, index: number, gradient: string[] }|null}
+ */
+function buildVisualFromMacroTable(metricKey) {
+  const macroRow = NUTRITION_AND_MACRO_ART[metricKey];
+  if (!macroRow) {
+    return null;
+  }
+
+  const gradientIndex = macroRow.gradientIndex;
+  return {
+    source: macroRow.source,
+    index: gradientIndex,
+    gradient: accentGradients[gradientIndex],
+  };
+}
+
+/**
+ * Lifestyle keys — gradient index = position in LIFESTYLE_HANDOFF_BY_KEY.
+ * @returns {{ source: number, index: number, gradient: string[] }|null}
+ */
+function buildVisualFromLifestyleTable(metricKey) {
+  const imageSource = LIFESTYLE_HANDOFF_BY_KEY[metricKey];
+  if (!imageSource) {
+    return null;
+  }
+
+  const keyOrder = Object.keys(LIFESTYLE_HANDOFF_BY_KEY);
+  const gradientIndex = keyOrder.indexOf(metricKey);
+  const gradientCount = accentGradients.length;
+
+  return {
+    source: imageSource,
+    index: gradientIndex,
+    gradient: accentGradients[gradientIndex % gradientCount],
+  };
+}
+
+/**
+ * Last resort: trainer WeeklyReportBars visual map (energy if key missing).
+ * @returns {{ source: number, index: number, gradient: string[] }}
+ */
+function buildVisualFromLegacyBars(metricKey) {
+  let legacyRow = WR_METRIC_VISUAL[metricKey];
+  if (!legacyRow) {
+    legacyRow = WR_METRIC_VISUAL[FALLBACK_METRIC_KEY];
+  }
+
+  let gradient = accentGradients[0];
+  if (legacyRow.gradient) {
+    gradient = legacyRow.gradient;
+  }
+
+  return {
+    source: legacyRow.source,
+    index: 0,
+    gradient,
+  };
 }

@@ -1,35 +1,37 @@
-// Makes a coach tool's parameters use one spelling before the app acts on them.
-// Flow: shallow copy → pick the normalizer for that tool name → water and meals get field aliases.
-// Used by: the coach action runner. Callers still read amount_oz and mealType.
+// One spelling per field before the app runs a coach tool (water oz, meal type, sleep).
+// Flow: shallow-copy model params → pick the fixer for that tool → return the fixed object.
+// Used by the coach action runner. Downstream code still reads amount_oz and mealType.
+// Read order: constants → normalizeToolParams (main) → export → PLUMBING at the bottom.
 
 // ===== NAMED CONSTANTS =====
 
 const TOOL_LOG_WATER = 'logWater';
 const TOOL_LOG_NUTRITION = 'logNutrition';
 const TOOL_LOG_SLEEP = 'logSleep';
-const SNACK_MEAL = 'snack';
+const SNACK_MEAL_WORD = 'snack';
 const SNACKS_MEAL_TYPE = 'snacks';
 
 // ===== MAIN FUNCTION =====
 
 /**
  * Normalize coach tool params so downstream code sees one spelling per field.
- * Flow: 1. safe copy  2. find normalizer  3. run it or return the copy
  * @param {string} toolName
  * @param {object} params
  * @returns {object}
  */
 function normalizeToolParams(toolName, params) {
-  const hasObjectParams = params && typeof params === 'object';
-  const actionParams = hasObjectParams ? { ...params } : {};
+  // 1. Shallow copy so callers never mutate the model object.
+  const actionParams = shallowCopyParamsOrEmptyObject(params);
   const toolNameText = String(toolName || '');
 
-  // 1. Unknown tools still get a shallow copy so callers never mutate the model object.
-  const normalizer = pickParamNormalizer(toolNameText);
-  if (!normalizer) return actionParams;
+  // 2. Unknown tools still return that copy.
+  const paramFixer = pickParamFixerForToolName(toolNameText);
+  if (!paramFixer) {
+    return actionParams;
+  }
 
-  // 2. Water / nutrition / sleep each apply their own alias rules.
-  return normalizer(actionParams);
+  // 3. Water, nutrition, and sleep each apply their own alias rules.
+  return paramFixer(actionParams);
 }
 
 module.exports = {
@@ -37,18 +39,37 @@ module.exports = {
 };
 
 // ===== HELPER FUNCTIONS =====
-// PLUMBING — skip unless debugging
+// PLUMBING — skip unless debugging water / meal / sleep alias spelling
+
+function shallowCopyParamsOrEmptyObject(params) {
+  if (!params) {
+    return {};
+  }
+  if (typeof params !== 'object') {
+    return {};
+  }
+  return { ...params };
+}
 
 /**
  * Water tools sometimes send amountOz and sometimes amount_oz. Keep both keys in sync.
  * @param {object} actionParams
  * @returns {object}
  */
-function applyWaterAmountAliases(actionParams) {
-  // vocab: ?? = use the right side only when the left is null or undefined (0 is kept).
-  const ouncesFromEitherKey = actionParams.amountOz ?? actionParams.amount_oz ?? null;
-  const amountOzField =
-    ouncesFromEitherKey == null ? actionParams.amountOz : ouncesFromEitherKey;
+function fixWaterAmountFieldAliases(actionParams) {
+  // Prefer amountOz first, then amount_oz — both end up filled. Keep 0 oz.
+  let ouncesFromEitherKey = null;
+  if (actionParams.amountOz !== null && actionParams.amountOz !== undefined) {
+    ouncesFromEitherKey = actionParams.amountOz;
+  } else if (actionParams.amount_oz !== null && actionParams.amount_oz !== undefined) {
+    ouncesFromEitherKey = actionParams.amount_oz;
+  }
+
+  let amountOzField = actionParams.amountOz;
+  if (ouncesFromEitherKey != null) {
+    amountOzField = ouncesFromEitherKey;
+  }
+
   return {
     ...actionParams,
     amountOz: amountOzField,
@@ -57,22 +78,44 @@ function applyWaterAmountAliases(actionParams) {
 }
 
 /**
+ * Turn the free-text meal word into the lowercase spelling mealType expects.
+ * snack → snacks; other words pass through; blank → null.
+ * @param {unknown} mealWord
+ * @returns {string|null}
+ */
+function mealTypeFromMealWord(mealWord) {
+  if (!mealWord) {
+    return null;
+  }
+  if (mealWord === SNACK_MEAL_WORD) {
+    return SNACKS_MEAL_TYPE;
+  }
+  return mealWord;
+}
+
+/**
  * Meal type may live on mealType or on meal (with snack → snacks).
  * @param {object} actionParams
  * @returns {object}
  */
-function applyMealTypeAliases(actionParams) {
-  const mealWord =
-    typeof actionParams.meal === 'string'
-      ? actionParams.meal.toLowerCase()
-      : actionParams.meal;
-  const mealTypeFromParams = actionParams.mealType;
-  const mealTypeResolved =
-    mealTypeFromParams ||
-    (mealWord === SNACK_MEAL ? SNACKS_MEAL_TYPE : mealWord || null);
+function fixNutritionMealTypeAliases(actionParams) {
+  // Why: the model sometimes sends meal:"snack" and sometimes mealType:"snacks".
+  // Downstream food logging only reads mealType — keep that one key filled.
+  let mealWord = actionParams.meal;
+  if (typeof mealWord === 'string') {
+    mealWord = mealWord.toLowerCase();
+  }
+
+  if (actionParams.mealType) {
+    return {
+      ...actionParams,
+      mealType: actionParams.mealType,
+    };
+  }
+
   return {
     ...actionParams,
-    mealType: mealTypeResolved,
+    mealType: mealTypeFromMealWord(mealWord),
   };
 }
 
@@ -81,7 +124,7 @@ function applyMealTypeAliases(actionParams) {
  * @param {object} actionParams
  * @returns {object}
  */
-function passThroughSleepParams(actionParams) {
+function passSleepParamsThroughUnchanged(actionParams) {
   return actionParams;
 }
 
@@ -89,10 +132,15 @@ function passThroughSleepParams(actionParams) {
  * @param {string} toolNameText
  * @returns {((object) => object)|null}
  */
-function pickParamNormalizer(toolNameText) {
-  if (toolNameText === TOOL_LOG_WATER) return applyWaterAmountAliases;
-  if (toolNameText === TOOL_LOG_NUTRITION) return applyMealTypeAliases;
-  if (toolNameText === TOOL_LOG_SLEEP) return passThroughSleepParams;
+function pickParamFixerForToolName(toolNameText) {
+  if (toolNameText === TOOL_LOG_WATER) {
+    return fixWaterAmountFieldAliases;
+  }
+  if (toolNameText === TOOL_LOG_NUTRITION) {
+    return fixNutritionMealTypeAliases;
+  }
+  if (toolNameText === TOOL_LOG_SLEEP) {
+    return passSleepParamsThroughUnchanged;
+  }
   return null;
 }
-

@@ -26,82 +26,63 @@ const REASON_UNREACHABLE = 'unreachable';
 
 // ===== HELPER FUNCTIONS =====
 
-/**
- * Lock-screen copy when the caller sent an empty body.
- * @param {string} notificationType
- * @returns {string}
- */
-function fallbackAlertText(notificationType) {
-  const isChatMessage = String(notificationType || DEFAULT_NOTIFICATION_TYPE) === DEFAULT_NOTIFICATION_TYPE;
+function lockScreenFallbackWords(notificationType) {
+  const typeText = String(notificationType || DEFAULT_NOTIFICATION_TYPE);
+  const isChatMessage = typeText === DEFAULT_NOTIFICATION_TYPE;
   if (isChatMessage) return CHAT_MESSAGE_FALLBACK;
   return OTHER_ALERT_FALLBACK;
 }
 
-/**
- * Emoji in a push title gets dropped by some Android builds, so both fields are cleaned first.
- * An empty body still needs words, or the lock screen shows a blank banner.
- * @param {string} senderName
- * @param {string} messageText
- * @param {string} notificationType
- * @returns {{ cleanSenderName: string, cleanMessageText: string }}
- */
-function cleanedAlertFields(senderName, messageText, notificationType) {
+function buildCleanPushCopy(senderName, messageText, notificationType) {
+  // vocab: removeEmojiFromAlerts = strips emoji so Android lock screens do not drop the title
   const cleanSenderName = removeEmojiFromAlerts(senderName) || DEFAULT_SENDER_NAME;
   let cleanMessageText = removeEmojiFromAlerts(String(messageText || ''));
   const hasMessageText = Boolean(cleanMessageText.trim());
   if (!hasMessageText) {
-    cleanMessageText = fallbackAlertText(notificationType);
+    cleanMessageText = lockScreenFallbackWords(notificationType);
   }
   return { cleanSenderName, cleanMessageText };
 }
 
-/**
- * @returns {Promise<object|null>}
- */
-async function signedInJsonHeaders() {
+async function loadSignedInJsonHeadersOrNull() {
   try {
     const authHeaders = await getApiAuthHeaders({ 'Content-Type': JSON_CONTENT_TYPE });
-    const isSignedIn = Boolean(authHeaders.Authorization);
-    if (!isSignedIn) return null;
+    const userHasBearerToken = Boolean(authHeaders.Authorization);
+    if (!userHasBearerToken) return null;
     return authHeaders;
-  } catch (error) {
+  } catch (_authLookupFailed) {
     return null;
   }
 }
 
-/**
- * res.json() throws on an empty body. Read text first so a bare 200 still counts as success.
- * @param {Response} response
- * @returns {Promise<object>}
- */
-async function readJsonBody(response) {
+// res.json() throws on an empty body. Read text first so a bare 200 still counts as success.
+async function readJsonBodySafely(response) {
   let responseJson = {};
   try {
     const responseText = await response.text();
-    if (responseText) responseJson = JSON.parse(responseText);
-  } catch (error) {
+    if (responseText) {
+      responseJson = JSON.parse(responseText);
+    }
+  } catch (_parseFailed) {
     responseJson = {};
   }
   return responseJson;
 }
 
-/**
- * shouldTryNextBase is only for 5xx. A 4xx, or success: false, is final.
- * Only an explicit false is a rejection. A body with no `success` field is still a win.
- * @param {Response} response
- * @param {object} responseJson
- * @returns {{ ok?: boolean, reason?: string, shouldTryNextBase?: boolean }}
- */
-function pushResultFromResponse(response, responseJson) {
+// shouldTryNextBase is only for 5xx. A 4xx, or success: false, is final.
+// Only an explicit false is a rejection. A body with no `success` field is still a win.
+function outcomeFromPushResponse(response, responseJson) {
   if (!response.ok) {
     const reason = `HTTP ${response.status}`;
-    if (response.status >= SERVER_ERROR_STATUS) {
+    const isServerSideFault = response.status >= SERVER_ERROR_STATUS;
+    if (isServerSideFault) {
       return { shouldTryNextBase: true, reason };
     }
     return { ok: false, reason };
   }
 
-  if (responseJson.success === false) {
+  const serverSaidFailure = responseJson.success === false;
+  if (serverSaidFailure) {
     return {
       ok: false,
       reason: responseJson.message || responseJson.error || REASON_SERVER_REJECTED,
@@ -111,28 +92,40 @@ function pushResultFromResponse(response, responseJson) {
   return { ok: true };
 }
 
-/**
- * @param {string} apiBase
- * @param {object} authHeaders
- * @param {string} requestBody
- * @returns {Promise<{ shouldTryNextBase?: boolean, reason?: string, result?: object }>}
- */
-async function postPushToOneBase(apiBase, authHeaders, requestBody) {
+async function postPushToOneBase(apiBase, authHeaders, requestBodyText) {
   try {
     const response = await fetch(`${apiBase}${SEND_NOTIFICATION_PATH}`, {
       method: 'POST',
       headers: authHeaders,
-      body: requestBody,
+      body: requestBodyText,
     });
-    const responseJson = await readJsonBody(response);
-    const result = pushResultFromResponse(response, responseJson);
+    const responseJson = await readJsonBodySafely(response);
+    const result = outcomeFromPushResponse(response, responseJson);
     if (result.shouldTryNextBase) {
       return { shouldTryNextBase: true, reason: result.reason };
     }
     return { result };
-  } catch (error) {
-    return { shouldTryNextBase: true, reason: error?.message || String(error) };
+  } catch (networkError) {
+    return {
+      shouldTryNextBase: true,
+      reason: networkError?.message || String(networkError),
+    };
   }
+}
+
+async function walkApiBasesUntilPushSettles(apiBaseList, authHeaders, requestBodyText) {
+  let lastFailureReason = '';
+
+  for (const apiBase of apiBaseList) {
+    const attempt = await postPushToOneBase(apiBase, authHeaders, requestBodyText);
+    if (attempt.shouldTryNextBase) {
+      lastFailureReason = attempt.reason;
+      continue;
+    }
+    return attempt.result;
+  }
+
+  return { ok: false, reason: lastFailureReason || REASON_UNREACHABLE };
 }
 
 // ===== MAIN FUNCTION =====
@@ -161,41 +154,32 @@ export async function postRemotePushNotify(pushRequest) {
     notificationType = DEFAULT_NOTIFICATION_TYPE,
   } = pushRequest || {};
 
-  const hasRequiredFields = Boolean(recipientId && senderName);
-  if (!hasRequiredFields) {
+  // 1. Hard stop when the server cannot route a push without both ids.
+  const hasRecipientAndSender = Boolean(recipientId && senderName);
+  if (!hasRecipientAndSender) {
     return { ok: false, reason: REASON_MISSING_FIELDS };
   }
 
-  const { cleanSenderName, cleanMessageText } = cleanedAlertFields(
-    senderName,
-    messageText,
-    notificationType,
-  );
-  const requestBody = JSON.stringify({
+  // 2. Clean title/body for Android lock screens; never ship a blank banner.
+  const cleanedCopy = buildCleanPushCopy(senderName, messageText, notificationType);
+  const truncatedMessageText = cleanedCopy.cleanMessageText.slice(0, MESSAGE_TEXT_MAX_LENGTH);
+  const requestBodyText = JSON.stringify({
     recipientId,
-    senderName: cleanSenderName,
+    senderName: cleanedCopy.cleanSenderName,
     senderId,
     conversationId,
     messageId,
-    messageText: cleanMessageText.slice(0, MESSAGE_TEXT_MAX_LENGTH),
+    messageText: truncatedMessageText,
     notificationType,
   });
 
-  const apiBases = getApiBaseCandidates();
-  const authHeaders = await signedInJsonHeaders();
-  if (!authHeaders) {
+  // 3. Must be signed in — the API expects a Firebase ID token on every POST.
+  const signedInHeaders = await loadSignedInJsonHeadersOrNull();
+  if (!signedInHeaders) {
     return { ok: false, reason: REASON_NOT_SIGNED_IN };
   }
 
-  let lastFailureReason = '';
-  for (const apiBase of apiBases) {
-    const attempt = await postPushToOneBase(apiBase, authHeaders, requestBody);
-    if (attempt.shouldTryNextBase) {
-      lastFailureReason = attempt.reason;
-      continue;
-    }
-    return attempt.result;
-  }
-
-  return { ok: false, reason: lastFailureReason || REASON_UNREACHABLE };
+  // 4. Walk bases in order; only 5xx (or network faults) try the next host.
+  const apiBaseList = getApiBaseCandidates();
+  return walkApiBasesUntilPushSettles(apiBaseList, signedInHeaders, requestBodyText);
 }

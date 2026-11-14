@@ -1,6 +1,6 @@
-// Floating bottom tab bar for client screens pushed on top of the main tabs.
-// Flow: watch the keyboard → hide while typing or before nav props exist → otherwise pin the bar to the bottom.
-// Used by stack screens that would otherwise lose the tab bar.
+// Floating bottom tab bar for client stack screens that sit on top of MainTabs.
+// Flow: subscribe to keyboard → hide while typing → pin BottomMenuBar to the bottom edge.
+// Used by clientExtraScreens wrappers so pushed cards keep the same tab bar as the root tabs.
 
 import React, { useEffect, useState } from 'react';
 import { Keyboard, Platform, View } from 'react-native';
@@ -9,76 +9,135 @@ import BottomMenuBar from '../../navigation/BottomMenuBar';
 // ===== NAMED CONSTANTS =====
 
 const IOS_PLATFORM = 'ios';
-const IOS_KEYBOARD_SHOW_EVENT = 'keyboardWillShow';
-const IOS_KEYBOARD_HIDE_EVENT = 'keyboardWillHide';
-const ANDROID_KEYBOARD_SHOW_EVENT = 'keyboardDidShow';
-const ANDROID_KEYBOARD_HIDE_EVENT = 'keyboardDidHide';
-const DEFAULT_TAB_KEY = 'home';
-// Manipulate here: raise this if a sheet covers the bar.
-const MENU_Z_INDEX = 200;
+const IOS_KEYBOARD_WILL_SHOW = 'keyboardWillShow';
+const IOS_KEYBOARD_WILL_HIDE = 'keyboardWillHide';
+const ANDROID_KEYBOARD_DID_SHOW = 'keyboardDidShow';
+const ANDROID_KEYBOARD_DID_HIDE = 'keyboardDidHide';
+
+// Manipulate here: fallback highlight when neither prop nor shell says which tab is active.
+const FALLBACK_HIGHLIGHTED_TAB = 'home';
+
+// Manipulate here: raise if a sheet or modal paints over the bar.
+const MENU_BAR_Z_INDEX = 200;
 
 // ===== HELPER FUNCTIONS =====
 
-function keyboardEventNames() {
-  const isIos = Platform.OS === IOS_PLATFORM;
-  if (isIos) {
+/**
+ * iOS fires "will" events (before animation); Android fires "did" (after).
+ * Pick the pair that matches this OS so the bar hides in sync with the keyboard.
+ */
+function keyboardShowAndHideEventNames() {
+  const runningOnIos = Platform.OS === IOS_PLATFORM;
+  if (runningOnIos) {
     return {
-      showEventName: IOS_KEYBOARD_SHOW_EVENT,
-      hideEventName: IOS_KEYBOARD_HIDE_EVENT,
+      showEventName: IOS_KEYBOARD_WILL_SHOW,
+      hideEventName: IOS_KEYBOARD_WILL_HIDE,
     };
   }
+
   return {
-    showEventName: ANDROID_KEYBOARD_SHOW_EVENT,
-    hideEventName: ANDROID_KEYBOARD_HIDE_EVENT,
+    showEventName: ANDROID_KEYBOARD_DID_SHOW,
+    hideEventName: ANDROID_KEYBOARD_DID_HIDE,
   };
 }
 
-function subscribeToKeyboardVisibility(setIsKeyboardVisible) {
-  const { showEventName, hideEventName } = keyboardEventNames();
-  const showSubscription = Keyboard.addListener(showEventName, () => {
-    setIsKeyboardVisible(true);
+/**
+ * Subscribe once; return cleanup that removes both listeners.
+ * vocab: Keyboard.addListener = RN keyboard event; .remove() stops it
+ */
+function startWatchingKeyboard(setKeyboardIsOpen) {
+  const eventNames = keyboardShowAndHideEventNames();
+  const showEventName = eventNames.showEventName;
+  const hideEventName = eventNames.hideEventName;
+
+  const showListener = Keyboard.addListener(showEventName, function markKeyboardOpen() {
+    setKeyboardIsOpen(true);
   });
-  const hideSubscription = Keyboard.addListener(hideEventName, () => {
-    setIsKeyboardVisible(false);
+  const hideListener = Keyboard.addListener(hideEventName, function markKeyboardClosed() {
+    setKeyboardIsOpen(false);
   });
-  return function removeKeyboardListeners() {
-    showSubscription.remove();
-    hideSubscription.remove();
+
+  return function stopWatchingKeyboard() {
+    showListener.remove();
+    hideListener.remove();
   };
 }
 
-function shouldHideBottomMenu(shell, isKeyboardVisible) {
-  const hasNavProps = shell && shell.navProviderProps;
-  if (!hasNavProps) return true;
-  if (isKeyboardVisible) return true;
+/**
+ * Hide when shell is not ready yet (no nav props) or the keyboard covers the bottom.
+ * vocab: shell = client app context from ClientOpenScreenTracker (navProviderProps, mainTabActiveKey, …)
+ */
+function bottomMenuShouldStayHidden(shell, keyboardIsOpen) {
+  if (!shell) return true;
+  if (!shell.navProviderProps) return true;
+  if (keyboardIsOpen) return true;
   return false;
 }
 
-function highlightedTabKeyForMenu(activeTabKey, shell) {
-  if (activeTabKey != null) return activeTabKey;
-  if (shell.mainTabActiveKey != null) return shell.mainTabActiveKey;
-  return DEFAULT_TAB_KEY;
+/**
+ * Prefer the explicit activeTabKey from the wrapper; else shell's main tab; else home.
+ */
+function pickHighlightedTabKey(activeTabKey, shell) {
+  if (activeTabKey != null) {
+    return activeTabKey;
+  }
+
+  if (shell.mainTabActiveKey != null) {
+    return shell.mainTabActiveKey;
+  }
+
+  return FALLBACK_HIGHLIGHTED_TAB;
 }
 
-function ClientBottomMenuBar({ shell, highlightedTabKey }) {
+const pinnedMenuBarStyle = {
+  position: 'absolute',
+  left: 0,
+  right: 0,
+  bottom: 0,
+  zIndex: MENU_BAR_Z_INDEX,
+};
+
+/**
+ * Absolute pin so the bar sits above stack content at the physical bottom.
+ * Spread navProviderProps so tab presses use the same handlers as MainTabs.
+ */
+function PinnedClientMenuBar({ shell, highlightedTabKey }) {
+  const navProviderProps = shell.navProviderProps;
+
   return (
-    <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: MENU_Z_INDEX }}>
-      <BottomMenuBar {...shell.navProviderProps} activeTabKey={highlightedTabKey} />
+    <View style={pinnedMenuBarStyle}>
+      <BottomMenuBar {...navProviderProps} activeTabKey={highlightedTabKey} />
     </View>
   );
 }
 
 // ===== MAIN FUNCTION =====
 
+/**
+ * Client stack floating tab bar.
+ * Flow: 1. watch keyboard  2. hide if needed  3. highlight tab  4. paint bar
+ * @param {object} props
+ * @param {object} props.shell
+ * @param {string} [props.activeTabKey]
+ */
 export default function ClientBottomMenu({ shell, activeTabKey }) {
-  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+  const [keyboardIsOpen, setKeyboardIsOpen] = useState(false);
 
+  // 1. Subscribe once on mount; remove listeners on unmount.
+  // vocab: empty deps [] = run after first paint only
   useEffect(() => {
-    return subscribeToKeyboardVisibility(setIsKeyboardVisible);
+    return startWatchingKeyboard(setKeyboardIsOpen);
   }, []);
 
-  if (shouldHideBottomMenu(shell, isKeyboardVisible)) return null;
+  // 2. Fail closed — no bar until shell is ready or while keyboard is up.
+  const shouldHideMenu = bottomMenuShouldStayHidden(shell, keyboardIsOpen);
+  if (shouldHideMenu) {
+    return null;
+  }
 
-  const highlightedTabKey = highlightedTabKeyForMenu(activeTabKey, shell);
-  return <ClientBottomMenuBar shell={shell} highlightedTabKey={highlightedTabKey} />;
+  // 3. Match the highlight MainTabs would show for this destination.
+  const highlightedTabKey = pickHighlightedTabKey(activeTabKey, shell);
+
+  // 4. Pin BottomMenuBar above the pushed screen content.
+  return <PinnedClientMenuBar shell={shell} highlightedTabKey={highlightedTabKey} />;
 }

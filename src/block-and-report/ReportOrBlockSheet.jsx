@@ -1,9 +1,6 @@
-// Design Law “Why are you reporting?” sheet (settings PNG 29).
-// Flow: pick reason → optional Also block → Cancel / Send report → parent submits + blocks.
-// Used by ChatScreen and TrainerProfilePopup (replaces native ActionSheet reason picker).
-//
-// vocab: REPORT_REASONS ids stay the Firestore keys; labels are PNG copy
-// Manipulate here: ALSO_BLOCK copy, button labels
+// Design Law “Why are you reporting?” bottom sheet (settings flow PNG 29).
+// Flow: pick a reason (radio) → optional Also block toggle → Cancel or Send report → parent submits.
+// Used by: ChatScreen and TrainerProfilePopup instead of the native reason ActionSheet on Android.
 
 import React, { useEffect, useState } from 'react';
 import { Text, View, StyleSheet, Pressable } from 'react-native';
@@ -16,17 +13,143 @@ import { REPORT_REASONS } from './reportReasons';
 
 // ===== NAMED CONSTANTS =====
 
-const TITLE = 'Why are you reporting?';
+const SHEET_TITLE = 'Why are you reporting?';
 const ALSO_BLOCK_TITLE = 'Also block this person';
-const ALSO_BLOCK_SUB = 'They will not be able to message you.';
+const ALSO_BLOCK_SUBTITLE = 'They will not be able to message you.';
+const CANCEL_LABEL = 'Cancel';
+const SEND_LABEL = 'Send report';
+const SENDING_LABEL = 'Sending…';
+const FALLBACK_REASON_ID = 'harassment';
 
-// ===== MAIN =====
+// ===== HELPER FUNCTIONS =====
+
+function firstReportReasonId() {
+  if (REPORT_REASONS.length === 0) {
+    return FALLBACK_REASON_ID;
+  }
+  const firstReason = REPORT_REASONS[0];
+  if (!firstReason) {
+    return FALLBACK_REASON_ID;
+  }
+  if (!firstReason.id) {
+    return FALLBACK_REASON_ID;
+  }
+  return firstReason.id;
+}
+
+function labelForSendButton(busy) {
+  if (busy) {
+    return SENDING_LABEL;
+  }
+  return SEND_LABEL;
+}
+
+function sendReportToParent(onSubmit, selectedReasonId, alsoBlockPeer) {
+  if (!selectedReasonId) {
+    return;
+  }
+  if (!onSubmit) {
+    return;
+  }
+  onSubmit({ reasonId: selectedReasonId, alsoBlock: alsoBlockPeer });
+}
+
+function buildReasonRadioRows(selectedReasonId, colors, onSelectReason) {
+  const reasonRows = [];
+  for (let index = 0; index < REPORT_REASONS.length; index += 1) {
+    const reason = REPORT_REASONS[index];
+    const isSelected = reason.id === selectedReasonId;
+    reasonRows.push(
+      <ReportReasonRow
+        key={reason.id}
+        reason={reason}
+        isSelected={isSelected}
+        inkColor={colors.nbInk}
+        borderColor={colors.nbBorder}
+        fillColor={colors.nbFill}
+        onSelect={onSelectReason}
+      />,
+    );
+  }
+  return reasonRows;
+}
+
+// ===== SMALL UI PIECES =====
+
+function ReportReasonRow({ reason, isSelected, inkColor, borderColor, fillColor, onSelect }) {
+  const radioOuterStyle = [styles.radioOuter, { borderColor }];
+  const reasonLabelStyle = [styles.reasonLabel, { color: inkColor }];
+
+  let filledDot = null;
+  if (isSelected) {
+    filledDot = <View style={[styles.radioInner, { backgroundColor: fillColor }]} />;
+  }
+
+  function handlePress() {
+    onSelect(reason.id);
+  }
+
+  return (
+    <Pressable
+      onPress={handlePress}
+      style={styles.reasonRow}
+      accessibilityRole="radio"
+      accessibilityState={{ selected: isSelected }}
+    >
+      <View style={radioOuterStyle}>{filledDot}</View>
+      <Text style={reasonLabelStyle}>{reason.label}</Text>
+    </Pressable>
+  );
+}
+
+function AlsoBlockCard({ colors, alsoBlockPeer, onAlsoBlockChange }) {
+  const cardStyle = [
+    styles.blockCard,
+    { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface },
+  ];
+  const titleStyle = [styles.blockTitle, { color: colors.nbInk }];
+  const subtitleStyle = [styles.blockSub, { color: colors.nbMuted }];
+
+  return (
+    <View style={cardStyle}>
+      <View style={styles.blockText}>
+        <Text style={titleStyle}>{ALSO_BLOCK_TITLE}</Text>
+        <Text style={subtitleStyle}>{ALSO_BLOCK_SUBTITLE}</Text>
+      </View>
+      <NbSwitch value={alsoBlockPeer} onValueChange={onAlsoBlockChange} />
+    </View>
+  );
+}
+
+function ReportSheetActions({ busy, sendIsDisabled, onCancel, onSend }) {
+  const sendButtonLabel = labelForSendButton(busy);
+
+  return (
+    <View style={styles.actions}>
+      <NbButton variant="plain" onPress={onCancel} style={styles.half} disabled={busy}>
+        {CANCEL_LABEL}
+      </NbButton>
+      <NbButton
+        variant="fill"
+        style={styles.half}
+        disabled={sendIsDisabled}
+        onPress={onSend}
+      >
+        {sendButtonLabel}
+      </NbButton>
+    </View>
+  );
+}
+
+// ===== MAIN FUNCTION =====
 
 /**
+ * Bottom sheet: pick why you are reporting, optionally also block, then Send.
+ * Parent owns the real Firestore report + block writes via onSubmit.
  * @param {{
  *   visible: boolean,
  *   onClose: Function,
- *   onSubmit: Function, // ({ reasonId: string, alsoBlock: boolean }) => void|Promise
+ *   onSubmit: Function,
  *   peerName?: string,
  *   busy?: boolean,
  *   defaultAlsoBlock?: boolean,
@@ -41,73 +164,56 @@ export default function ReportOrBlockSheet({
   defaultAlsoBlock = true,
 }) {
   const { colors } = useTheme();
-  const [reasonId, setReasonId] = useState(REPORT_REASONS[0]?.id || 'harassment');
-  const [alsoBlock, setAlsoBlock] = useState(defaultAlsoBlock);
+
+  const startingReasonId = firstReportReasonId();
+  const [selectedReasonId, setSelectedReasonId] = useState(startingReasonId);
+  const [alsoBlockPeer, setAlsoBlockPeer] = useState(defaultAlsoBlock);
 
   useEffect(() => {
-    if (!visible) return;
-    setReasonId(REPORT_REASONS[0]?.id || 'harassment');
-    setAlsoBlock(defaultAlsoBlock);
+    if (!visible) {
+      return;
+    }
+    setSelectedReasonId(firstReportReasonId());
+    setAlsoBlockPeer(defaultAlsoBlock);
   }, [visible, defaultAlsoBlock]);
 
+  // 1. Hand reason + also-block to the parent when Send is pressed.
+  function handleSendReportPress() {
+    sendReportToParent(onSubmit, selectedReasonId, alsoBlockPeer);
+  }
+
+  // 2. Name the send-button rules before JSX.
+  const sendIsDisabled = busy || !selectedReasonId;
+  const reasonRadioRows = buildReasonRadioRows(
+    selectedReasonId,
+    colors,
+    setSelectedReasonId,
+  );
+
+  // 3. Paint reason radios → Also block card → Cancel / Send.
   return (
-    <NbSheet visible={visible} onClose={onClose} title={TITLE}>
+    <NbSheet visible={visible} onClose={onClose} title={SHEET_TITLE}>
       <View style={styles.body}>
-        {REPORT_REASONS.map((reason) => {
-          const selected = reason.id === reasonId;
-          return (
-            <Pressable
-              key={reason.id}
-              onPress={() => setReasonId(reason.id)}
-              style={styles.reasonRow}
-              accessibilityRole="radio"
-              accessibilityState={{ selected }}
-            >
-              <View
-                style={[
-                  styles.radioOuter,
-                  { borderColor: colors.nbBorder },
-                ]}
-              >
-                {selected ? (
-                  <View style={[styles.radioInner, { backgroundColor: colors.nbFill }]} />
-                ) : null}
-              </View>
-              <Text style={[styles.reasonLabel, { color: colors.nbInk }]}>{reason.label}</Text>
-            </Pressable>
-          );
-        })}
+        {reasonRadioRows}
 
-        <View
-          style={[
-            styles.blockCard,
-            { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface },
-          ]}
-        >
-          <View style={styles.blockText}>
-            <Text style={[styles.blockTitle, { color: colors.nbInk }]}>{ALSO_BLOCK_TITLE}</Text>
-            <Text style={[styles.blockSub, { color: colors.nbMuted }]}>{ALSO_BLOCK_SUB}</Text>
-          </View>
-          <NbSwitch value={alsoBlock} onValueChange={setAlsoBlock} />
-        </View>
+        <AlsoBlockCard
+          colors={colors}
+          alsoBlockPeer={alsoBlockPeer}
+          onAlsoBlockChange={setAlsoBlockPeer}
+        />
 
-        <View style={styles.actions}>
-          <NbButton variant="plain" onPress={onClose} style={styles.half} disabled={busy}>
-            Cancel
-          </NbButton>
-          <NbButton
-            variant="fill"
-            style={styles.half}
-            disabled={busy || !reasonId}
-            onPress={() => onSubmit?.({ reasonId, alsoBlock })}
-          >
-            {busy ? 'Sending…' : 'Send report'}
-          </NbButton>
-        </View>
+        <ReportSheetActions
+          busy={busy}
+          sendIsDisabled={sendIsDisabled}
+          onCancel={onClose}
+          onSend={handleSendReportPress}
+        />
       </View>
     </NbSheet>
   );
 }
+
+// ===== PLUMBING — skip unless debugging =====
 
 const styles = StyleSheet.create({
   body: {

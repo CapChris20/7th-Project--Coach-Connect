@@ -1,9 +1,6 @@
 // Confirm / sent / error sheets for marketplace connection requests (PNG 17 / 19 / 21).
 // Flow: confirm timeline → Cancel/Confirm; sent → Got it; error → Try again / Send message.
-// Used by SearchTrainersScreen. Price is read from price, then pricing.perMonth, then rate.
-//
-// vocab: variant = 'confirm' | 'sent' | 'error' — same Modal shell, different body
-// vocab: HardShadow sheet = Design Law bottom modal with 3px border + grabber
+// Used by SearchTrainersScreen. Monthly rate falls back price → pricing.perMonth → rate.
 
 import React from 'react';
 import {
@@ -26,57 +23,154 @@ const MIN_BOTTOM_PAD = 16;
 const VARIANT_CONFIRM = 'confirm';
 const VARIANT_SENT = 'sent';
 const VARIANT_ERROR = 'error';
+const CONFIRM_TITLE = 'Confirm your request';
+const CONFIRM_BUSY_LABEL = 'Sending…';
+const CONFIRM_READY_LABEL = 'Confirm';
+const SENT_BADGE_TEXT = 'Request sent';
+const ERROR_EYEBROW = 'UNABLE TO CONNECT';
+const ERROR_TITLE = 'Connection requests are not available right now.';
+const ERROR_BODY =
+  'Nothing was sent. Try again in a minute, or message the coach directly.';
+const SENT_SUBTITLE =
+  'You are told as soon as they reply. Until then you can keep browsing.';
+// Manipulate here: which accent pair paints the "Request sent" badge
+const SENT_BADGE_GRADIENT_INDEX = 3;
 
 // ===== HELPER FUNCTIONS =====
 
-/**
- * Marketplace cards store the monthly rate in three different fields. First one that exists wins.
- * @param {object} trainer
- * @returns {*}
- */
-function getTrainerPrice(trainer) {
-  if (!trainer) return null;
-  if (trainer.price != null) return trainer.price;
-  const perMonth = trainer.pricing && trainer.pricing.perMonth != null ? trainer.pricing.perMonth : null;
-  if (perMonth != null) return perMonth;
-  return trainer.rate != null ? trainer.rate : null;
+function readMonthlyRateFromTrainer(trainer) {
+  if (!trainer) {
+    return null;
+  }
+  if (trainer.price != null) {
+    return trainer.price;
+  }
+
+  const pricingBlock = trainer.pricing;
+  if (pricingBlock && pricingBlock.perMonth != null) {
+    return pricingBlock.perMonth;
+  }
+
+  if (trainer.rate != null) {
+    return trainer.rate;
+  }
+  return null;
 }
 
-/**
- * @param {object} trainer
- */
-function trainerConfirmFields(trainer) {
-  const name = trainer?.displayName || trainer?.name || TRAINER_NAME_DEFAULT;
-  const firstName = name.trim().split(/\s+/)[0] || name;
-  const price = getTrainerPrice(trainer);
-  const hasPrice = price != null && price !== '' && Number.isFinite(Number(price)) && Number(price) > 0;
-  return { name, firstName, price, hasPrice };
+function trainerFullName(trainer) {
+  if (!trainer) {
+    return TRAINER_NAME_DEFAULT;
+  }
+  if (trainer.displayName) {
+    return trainer.displayName;
+  }
+  if (trainer.name) {
+    return trainer.name;
+  }
+  return TRAINER_NAME_DEFAULT;
 }
 
-/**
- * One numbered step in the confirm timeline (PNG 17).
- */
+function firstNameFromFullName(fullName) {
+  const nameParts = fullName.trim().split(/\s+/);
+  if (nameParts[0]) {
+    return nameParts[0];
+  }
+  return fullName;
+}
+
+function monthlyRateIsValid(monthlyRate) {
+  if (monthlyRate == null) {
+    return false;
+  }
+  if (monthlyRate === '') {
+    return false;
+  }
+  const rateAsNumber = Number(monthlyRate);
+  if (!Number.isFinite(rateAsNumber)) {
+    return false;
+  }
+  if (rateAsNumber <= 0) {
+    return false;
+  }
+  return true;
+}
+
+function buildTrainerConfirmCopy(trainer) {
+  const fullName = trainerFullName(trainer);
+  const firstName = firstNameFromFullName(fullName);
+  const monthlyRate = readMonthlyRateFromTrainer(trainer);
+  const hasValidMonthlyRate = monthlyRateIsValid(monthlyRate);
+
+  return {
+    name: fullName,
+    firstName,
+    price: monthlyRate,
+    hasPrice: hasValidMonthlyRate,
+  };
+}
+
+function trialPriceSubtitle(hasPrice, price) {
+  if (hasPrice) {
+    return `Then $${Number(price)} per month. Cancel any time.`;
+  }
+  return 'Then their listed monthly rate. Cancel any time.';
+}
+
+function sentBadgeGradientColors() {
+  const chosen = accentGradients[SENT_BADGE_GRADIENT_INDEX];
+  if (chosen) {
+    return chosen;
+  }
+  return accentGradients[0];
+}
+
+function pickBackdropCloseHandler(busy, onCancel, onGotIt) {
+  if (busy) {
+    return undefined;
+  }
+  if (onCancel) {
+    return onCancel;
+  }
+  return onGotIt;
+}
+
+function resolveActiveVariant(variant) {
+  if (variant) {
+    return variant;
+  }
+  return VARIANT_CONFIRM;
+}
+
+// ===== SMALL UI PIECES =====
+
 function TimelineStep({ index, title, subtitle, current, colors, isLast }) {
-  const filled = current;
+  const stepIsFilled = Boolean(current);
+  let dotBackground = colors.nbSurface;
+  let numberColor = colors.nbInk;
+  if (stepIsFilled) {
+    dotBackground = colors.nbFill;
+    numberColor = colors.nbOnFill;
+  }
+
+  let connectorLine = null;
+  if (!isLast) {
+    connectorLine = (
+      <View style={[styles.stepLine, { backgroundColor: colors.nbBorder }]} />
+    );
+  }
+
   return (
     <View style={styles.stepRow}>
       <View style={styles.stepRail}>
         <View
           style={[
             styles.stepDot,
-            {
-              backgroundColor: filled ? colors.nbFill : colors.nbSurface,
-              borderColor: colors.nbBorder,
-            },
+            { backgroundColor: dotBackground, borderColor: colors.nbBorder },
           ]}
         >
-          <Text style={[styles.stepNum, { color: filled ? colors.nbOnFill : colors.nbInk }]}>
-            {index}
-          </Text>
+          <Text style={[styles.stepNum, { color: numberColor }]}>{index}</Text>
         </View>
-        {!isLast ? (
-          <View style={[styles.stepLine, { backgroundColor: colors.nbBorder }]} />
-        ) : null}
+        {connectorLine}
       </View>
       <View style={styles.stepCopy}>
         <Text style={[styles.stepTitle, { color: colors.nbInk }]}>{title}</Text>
@@ -87,6 +181,8 @@ function TimelineStep({ index, title, subtitle, current, colors, isLast }) {
 }
 
 function SheetChrome({ colors, insets, children }) {
+  const bottomPad = Math.max(insets.bottom, MIN_BOTTOM_PAD);
+
   return (
     <View
       style={[
@@ -94,7 +190,7 @@ function SheetChrome({ colors, insets, children }) {
         {
           backgroundColor: colors.nbSurface,
           borderColor: colors.nbBorder,
-          paddingBottom: Math.max(insets.bottom, MIN_BOTTOM_PAD),
+          paddingBottom: bottomPad,
         },
       ]}
     >
@@ -107,13 +203,15 @@ function SheetChrome({ colors, insets, children }) {
 }
 
 function ConfirmBody({ firstName, hasPrice, price, busy, onCancel, onConfirm, colors }) {
-  const trialPriceLine = hasPrice
-    ? `Then $${Number(price)} per month. Cancel any time.`
-    : 'Then their listed monthly rate. Cancel any time.';
+  const trialPriceLine = trialPriceSubtitle(hasPrice, price);
+  let confirmButtonLabel = CONFIRM_READY_LABEL;
+  if (busy) {
+    confirmButtonLabel = CONFIRM_BUSY_LABEL;
+  }
 
   return (
     <>
-      <Text style={[styles.title, { color: colors.nbInk }]}>Confirm your request</Text>
+      <Text style={[styles.title, { color: colors.nbInk }]}>{CONFIRM_TITLE}</Text>
       <View style={styles.timeline}>
         <TimelineStep
           index={1}
@@ -141,7 +239,7 @@ function ConfirmBody({ firstName, hasPrice, price, busy, onCancel, onConfirm, co
           Cancel
         </NbButton>
         <NbButton variant="fill" onPress={onConfirm} disabled={busy} style={styles.actionBtn}>
-          {busy ? 'Sending…' : 'Confirm'}
+          {confirmButtonLabel}
         </NbButton>
       </View>
     </>
@@ -149,22 +247,25 @@ function ConfirmBody({ firstName, hasPrice, price, busy, onCancel, onConfirm, co
 }
 
 function SentBody({ firstName, onGotIt, colors }) {
+  // Manipulate here: SENT_BADGE_GRADIENT_INDEX picks which accentGradients pair
+  const badgeGradient = sentBadgeGradientColors();
+
   return (
     <>
       <LinearGradient
-        colors={accentGradients[3] || accentGradients[0]}
+        colors={badgeGradient}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={[styles.sentBadge, { borderColor: colors.nbBorder }]}
       >
-        <Text style={[styles.sentBadgeText, { color: colors.nbInk }]}>Request sent</Text>
+        <Text style={[styles.sentBadgeText, { color: colors.nbInk }]}>
+          {SENT_BADGE_TEXT}
+        </Text>
       </LinearGradient>
       <Text style={[styles.title, { color: colors.nbInk }]}>
         {firstName} has your request
       </Text>
-      <Text style={[styles.sentSub, { color: colors.nbMuted }]}>
-        You are told as soon as they reply. Until then you can keep browsing.
-      </Text>
+      <Text style={[styles.sentSub, { color: colors.nbMuted }]}>{SENT_SUBTITLE}</Text>
       <NbButton variant="fill" onPress={onGotIt}>
         Got it
       </NbButton>
@@ -173,6 +274,21 @@ function SentBody({ firstName, onGotIt, colors }) {
 }
 
 function ErrorBody({ onRetry, onMessage, onCancel, colors }) {
+  let retryHandler = onCancel;
+  if (onRetry) {
+    retryHandler = onRetry;
+  }
+  const showMessageButton = typeof onMessage === 'function';
+
+  let messageButton = null;
+  if (showMessageButton) {
+    messageButton = (
+      <NbButton variant="plain" onPress={onMessage} style={styles.messageBtnGap}>
+        Send message
+      </NbButton>
+    );
+  }
+
   return (
     <View
       style={[
@@ -180,29 +296,60 @@ function ErrorBody({ onRetry, onMessage, onCancel, colors }) {
         { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface },
       ]}
     >
-      <Text style={[styles.errorEyebrow, { color: colors.nbMuted }]}>UNABLE TO CONNECT</Text>
-      <Text style={[styles.errorTitle, { color: colors.nbInk }]}>
-        Connection requests are not available right now.
-      </Text>
-      <Text style={[styles.sentSub, { color: colors.nbMuted }]}>
-        Nothing was sent. Try again in a minute, or message the coach directly.
-      </Text>
-      <NbButton variant="fill" onPress={onRetry || onCancel}>
+      <Text style={[styles.errorEyebrow, { color: colors.nbMuted }]}>{ERROR_EYEBROW}</Text>
+      <Text style={[styles.errorTitle, { color: colors.nbInk }]}>{ERROR_TITLE}</Text>
+      <Text style={[styles.sentSub, { color: colors.nbMuted }]}>{ERROR_BODY}</Text>
+      <NbButton variant="fill" onPress={retryHandler}>
         Try again
       </NbButton>
-      {typeof onMessage === 'function' ? (
-        <NbButton variant="plain" onPress={onMessage} style={{ marginTop: spacing.sm }}>
-          Send message
-        </NbButton>
-      ) : null}
+      {messageButton}
     </View>
+  );
+}
+
+function sheetBodyForVariant(activeVariant, bodyProps) {
+  if (activeVariant === VARIANT_SENT) {
+    let gotItHandler = bodyProps.onCancel;
+    if (bodyProps.onGotIt) {
+      gotItHandler = bodyProps.onGotIt;
+    }
+    return (
+      <SentBody
+        firstName={bodyProps.firstName}
+        onGotIt={gotItHandler}
+        colors={bodyProps.colors}
+      />
+    );
+  }
+
+  if (activeVariant === VARIANT_ERROR) {
+    return (
+      <ErrorBody
+        onRetry={bodyProps.onRetry}
+        onMessage={bodyProps.onMessage}
+        onCancel={bodyProps.onCancel}
+        colors={bodyProps.colors}
+      />
+    );
+  }
+
+  return (
+    <ConfirmBody
+      firstName={bodyProps.firstName}
+      hasPrice={bodyProps.hasPrice}
+      price={bodyProps.price}
+      busy={bodyProps.busy}
+      onCancel={bodyProps.onCancel}
+      onConfirm={bodyProps.onConfirm}
+      colors={bodyProps.colors}
+    />
   );
 }
 
 // ===== MAIN FUNCTION =====
 
 /**
- * Trial confirm / request-sent / unable-to-connect sheets.
+ * Marketplace connection-request bottom sheet (confirm / sent / error).
  * @param {object} props
  */
 export default function ConfirmRequestPopup({
@@ -216,44 +363,53 @@ export default function ConfirmRequestPopup({
   onMessage,
   variant = VARIANT_CONFIRM,
 }) {
+  // 1. Theme + home-indicator insets for the sheet pad.
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const { firstName, price, hasPrice } = trainerConfirmFields(trainer);
-  const closeIfNotBusy = busy ? undefined : (onCancel || onGotIt);
-  const mode = variant || VARIANT_CONFIRM;
 
+  // 2. Trainer copy shared by every variant (name + optional price).
+  const confirmCopy = buildTrainerConfirmCopy(trainer);
+  const firstName = confirmCopy.firstName;
+  const price = confirmCopy.price;
+  const hasPrice = confirmCopy.hasPrice;
+  const activeVariant = resolveActiveVariant(variant);
+
+  // 3. Busy blocks backdrop dismiss so a half-sent request cannot be cancelled by accident.
+  const backdropCloseHandler = pickBackdropCloseHandler(busy, onCancel, onGotIt);
+
+  // 4. Same shell — body swaps on variant.
+  const sheetBody = sheetBodyForVariant(activeVariant, {
+    firstName,
+    hasPrice,
+    price,
+    busy,
+    onCancel,
+    onConfirm,
+    onGotIt,
+    onRetry,
+    onMessage,
+    colors,
+  });
+
+  // 5. Modal overlay + grabber sheet.
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={closeIfNotBusy}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={backdropCloseHandler}
+    >
       <View style={styles.overlay}>
-        <Pressable style={styles.backdrop} onPress={closeIfNotBusy} />
+        <Pressable style={styles.backdrop} onPress={backdropCloseHandler} />
         <SheetChrome colors={colors} insets={insets}>
-          {mode === VARIANT_SENT ? (
-            <SentBody firstName={firstName} onGotIt={onGotIt || onCancel} colors={colors} />
-          ) : null}
-          {mode === VARIANT_ERROR ? (
-            <ErrorBody
-              onRetry={onRetry}
-              onMessage={onMessage}
-              onCancel={onCancel}
-              colors={colors}
-            />
-          ) : null}
-          {mode === VARIANT_CONFIRM ? (
-            <ConfirmBody
-              firstName={firstName}
-              hasPrice={hasPrice}
-              price={price}
-              busy={busy}
-              onCancel={onCancel}
-              onConfirm={onConfirm}
-              colors={colors}
-            />
-          ) : null}
+          {sheetBody}
         </SheetChrome>
       </View>
     </Modal>
   );
 }
+
+// ===== PLUMBING — skip unless debugging =====
 
 const styles = StyleSheet.create({
   overlay: {
@@ -372,5 +528,8 @@ const styles = StyleSheet.create({
     fontFamily: 'SpaceGrotesk_700Bold',
     letterSpacing: -0.3,
     lineHeight: 26,
+  },
+  messageBtnGap: {
+    marginTop: spacing.sm,
   },
 });

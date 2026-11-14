@@ -1,6 +1,7 @@
 // Design Law past-chats drawer: New chat, search, Today/Yesterday/Earlier, swipe to delete.
 // Flow: filter by search → group → tap to open or swipe left to delete.
 // Used by: CoachConversationScreen and CoachHomeScreen. PNG: screens/ai-coach/13–14.
+// Read order: constants → search/drawer helpers → row/panel subcomponents → PastChatsPanel main → styles.
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -42,310 +43,74 @@ const NARROW_WINDOW_WIDTH = 768;
 // Manipulate here: how long the drawer slides in, in milliseconds.
 const DRAWER_SLIDE_MS = 260;
 const DRAWER_ELEVATION = 24;
+// Manipulate here: scrim behind overlay drawer — 0.50 is how dark the main screen gets.
+const OVERLAY_SCRIM_COLOR = 'rgba(0,0,0,0.50)';
+// Manipulate here: how faded a pressed session row looks (1 = full, lower = more dim).
+const SESSION_ROW_PRESSED_OPACITY = 0.88;
+const SESSION_ROW_IDLE_OPACITY = 1;
+const CLOSE_ICON_SHADOW_OFFSET = 3;
+const CLOSE_ICON_ELEVATION = 3;
+const GROUP_BOTTOM_GAP_EXTRA = 4;
+const HEADER_TOP_PAD_EXTRA = 10;
+const RAIL_TOP_PAD_EXTRA = 8;
+const SEARCH_BOTTOM_GAP_EXTRA = 2;
+const GROUP_LABEL_SIDE_PAD_EXTRA = 2;
+const SESSION_TITLE_FONT_SIZE = 15;
+const SESSION_COUNT_FONT_SIZE = 13;
+const SESSION_COUNT_TOP_GAP = 3;
+const PAST_CHATS_TITLE_SIZE = 22;
+const PAST_CHATS_TITLE_LETTER_SPACING = -0.4;
+const SWIPE_HINT_FONT_SIZE = 13;
+const EMPTY_ICON_SIZE = 28;
+const SEARCH_ICON_SIZE = 16;
+const CLOSE_ICON_SIZE = 20;
+const RAIL_CHAT_ICON_SIZE = 20;
+const RAIL_ADD_ICON_SIZE = 22;
+const RAIL_CHEVRON_SIZE = 16;
+const MODE_OVERLAY = 'overlay';
+const MODE_DOCKED = 'docked';
 
 // ===== HELPER FUNCTIONS =====
+
+function buildSearchableHaystack(session) {
+  const titlePart = session.title || '';
+  const lastUserPart = session.lastUserMessage || '';
+  const lastAssistantPart = session.lastAssistantMessage || '';
+  const datePart = session.date || '';
+  const parts = [titlePart, lastUserPart, lastAssistantPart, datePart];
+  const nonEmptyParts = [];
+  for (let index = 0; index < parts.length; index += 1) {
+    if (parts[index]) nonEmptyParts.push(parts[index]);
+  }
+  return nonEmptyParts.join(' ').toLowerCase();
+}
 
 function sessionsMatchingSearch(sessions, searchQuery) {
   const searchNeedle = searchQuery.trim().toLowerCase();
   if (!searchNeedle) return sessions;
+
   const matches = [];
-  for (const session of sessions) {
-    const hay = [session.title, session.lastUserMessage, session.lastAssistantMessage, session.date]
-      .filter(Boolean)
-      .join(' ')
-      .toLowerCase();
-    if (hay.includes(searchNeedle)) matches.push(session);
+  for (let index = 0; index < sessions.length; index += 1) {
+    const session = sessions[index];
+    const haystack = buildSearchableHaystack(session);
+    if (haystack.includes(searchNeedle)) matches.push(session);
   }
   return matches;
 }
 
-function SessionRowDivider({ isLast, colors }) {
-  if (isLast) return null;
-  return <View style={[styles.rowDivider, { backgroundColor: colors.nbBorder, opacity: 0.2 }]} />;
-}
-
-// vocab: Swipeable = react-native-gesture-handler row that reveals a delete action under a swipe.
-function SessionRow({
-  session,
-  isActive,
-  colors,
-  onPress,
-  onDelete,
-  isLast,
-}) {
-  const swipeRef = useRef(null);
-
-  const msgCount = Number(session?.messageCount ?? 0);
-  const countLabel =
-    Number.isFinite(msgCount) && msgCount > 0
-      ? `${msgCount} message${msgCount === 1 ? '' : 's'}`
-      : session.date || '';
-
-  // Design Law swipe delete — solid fill panel (not red soft action)
-  const renderRightActions = () => (
-    <TouchableOpacity
-      onPress={() => {
-        swipeRef.current?.close();
-        onDelete?.(session);
-      }}
-      activeOpacity={0.85}
-      style={[styles.deleteAction, { backgroundColor: colors.nbFill }]}
-    >
-      <Text style={[styles.deleteLabel, { color: colors.nbOnFill }]}>Delete</Text>
-    </TouchableOpacity>
-  );
-
-  return (
-    <Swipeable ref={swipeRef} renderRightActions={renderRightActions} overshootRight={false}>
-      <Pressable
-        onPress={onPress}
-        style={({ pressed }) => [
-          styles.sessionRow,
-          {
-            backgroundColor: isActive ? colors.nbSoft : colors.nbSurface,
-            borderBottomColor: colors.nbBorder,
-            borderBottomWidth: isLast ? 0 : 2,
-            opacity: pressed ? 0.88 : 1,
-          },
-        ]}
-      >
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <Text
-            style={{
-              color: colors.nbInk,
-              fontSize: 15,
-              fontWeight: '800',
-            }}
-            numberOfLines={2}
-          >
-            {formatSessionDisplayTitle(session.title)}
-          </Text>
-          <Text
-            style={{
-              color: colors.nbMuted,
-              fontSize: 13,
-              fontWeight: '500',
-              marginTop: 3,
-            }}
-          >
-            {countLabel}
-          </Text>
-        </View>
-      </Pressable>
-    </Swipeable>
-  );
-}
-
-function EmptyHistory({ colors }) {
-  // Design Law empty shell — dashed card + icon chip (PNG past-chats drawer)
-  return (
-    <NbEmptyState
-      title="No history yet"
-      subtitle="Start a conversation — your chats will appear here."
-      iconChildren={<Ionicons name="time-outline" size={28} color={colors.nbInk} />}
-      iconIndex={2}
-    />
-  );
-}
-
-function NoSearchMatches({ colors }) {
-  return (
-    <NbEmptyState
-      title="No matches"
-      subtitle="Try a different search term."
-      iconChildren={<Ionicons name="search-outline" size={28} color={colors.nbInk} />}
-      iconIndex={4}
-    />
-  );
-}
-
-function SessionGroups({
-  sessions,
-  filteredSessions,
-  groups,
-  activeSessionId,
-  colors,
-  onSessionPress,
-  onDeleteSession,
-}) {
-  if (sessions.length === 0) return <EmptyHistory colors={colors} />;
-  if (filteredSessions.length === 0) return <NoSearchMatches colors={colors} />;
-  return groups.map((group) => (
-    <View key={group.key} style={{ marginBottom: spacing.md + 4 }}>
-      <Text
-        style={[
-          styles.groupLabel,
-          {
-            color: colors.nbMuted,
-            fontFamily: 'SpaceGrotesk_700Bold',
-          },
-        ]}
-      >
-        {group.label}
-      </Text>
-      {group.items.map((session, rowIndex) => (
-        <SessionRow
-          key={session.id}
-          session={session}
-          isActive={(session.sessionId || session.id) === activeSessionId}
-          colors={colors}
-          onPress={() => onSessionPress?.(session)}
-          onDelete={onDeleteSession}
-          isLast={rowIndex === group.items.length - 1}
-        />
-      ))}
-    </View>
-  ));
-}
-
-function SidebarPanel({
-  sessions,
-  filteredSessions,
-  activeSessionId,
-  searchQuery,
-  onSearchChange,
-  onSessionPress,
-  onDeleteSession,
-  onNewChat,
-  onClose,
-  colors,
-  insets,
-  showClose = true,
-}) {
-  const groups = groupSessionsForSidebar(filteredSessions);
-
-  return (
-    <View style={{ flex: 1 }}>
-      <View
-        style={{
-          paddingTop: (insets?.top || 0) + 10,
-          paddingHorizontal: spacing.md,
-          paddingBottom: spacing.md,
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-        }}
-      >
-        <Text
-          style={{
-            color: colors.nbInk,
-            fontSize: 22,
-            fontWeight: '900',
-            letterSpacing: -0.4,
-            flex: 1,
-          }}
-        >
-          Past chats
-        </Text>
-        {showClose ? (
-          <TouchableOpacity
-            onPress={onClose}
-            hitSlop={8}
-            style={[
-              styles.iconBtn,
-              {
-                backgroundColor: colors.nbSurface,
-                borderColor: colors.nbBorder,
-                borderWidth: nb.borderWidth,
-                shadowColor: colors.nbShadow,
-                shadowOffset: { width: 3, height: 3 },
-                shadowOpacity: 1,
-                shadowRadius: 0,
-                elevation: 3,
-              },
-            ]}
-            accessibilityLabel="Close past chats"
-          >
-            <Ionicons name="close" size={20} color={colors.nbInk} />
-          </TouchableOpacity>
-        ) : null}
-      </View>
-
-      <View style={{ paddingHorizontal: spacing.md, marginBottom: spacing.sm }}>
-        <NbButton variant="fill" onPress={onNewChat} style={{ width: '100%' }}>
-          + New chat
-        </NbButton>
-      </View>
-
-      <View style={{ paddingHorizontal: spacing.md, marginBottom: spacing.sm + 2 }}>
-        <HardShadow offset={nb.shadowOffsetSmall} radius={borderRadius.nbInput}>
-          <View
-            style={[
-              styles.searchWrap,
-              {
-                borderColor: colors.nbBorder,
-                backgroundColor: colors.nbSurface,
-                borderWidth: nb.borderWidth,
-              },
-            ]}
-          >
-            <Ionicons name="search-outline" size={16} color={colors.nbMuted} />
-            <TextInput
-              value={searchQuery}
-              onChangeText={onSearchChange}
-              placeholder="Search your chats"
-              placeholderTextColor={colors.nbMuted}
-              style={[styles.searchInput, { color: colors.nbInk }]}
-              autoCorrect={false}
-              clearButtonMode="while-editing"
-            />
-            {searchQuery ? (
-              <TouchableOpacity onPress={() => onSearchChange('')} hitSlop={8}>
-                <Ionicons name="close-circle" size={16} color={colors.nbMuted} />
-              </TouchableOpacity>
-            ) : null}
-          </View>
-        </HardShadow>
-      </View>
-
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={{
-          paddingHorizontal: spacing.md,
-          paddingBottom: spacing.lg + (insets?.bottom || 0),
-        }}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-      >
-        <SessionGroups
-          sessions={sessions}
-          filteredSessions={filteredSessions}
-          groups={groups}
-          activeSessionId={activeSessionId}
-          colors={colors}
-          onSessionPress={onSessionPress}
-          onDeleteSession={onDeleteSession}
-        />
-        <Text
-          style={{
-            marginTop: spacing.lg,
-            textAlign: 'center',
-            color: colors.nbMuted,
-            fontSize: 13,
-            fontWeight: '500',
-          }}
-        >
-          Swipe a chat left to delete it.
-        </Text>
-      </ScrollView>
-    </View>
-  );
-}
-
-
 function overlayIsOpen(mode, open, collapsed, isNarrow) {
-  if (mode === 'overlay') return open;
-  return mode === 'docked' && !collapsed && isNarrow;
+  if (mode === MODE_OVERLAY) return open;
+  return mode === MODE_DOCKED && !collapsed && isNarrow;
 }
 
 function drawerSlideTarget(open, mode, collapsed) {
-  const drawerOpen = open || (mode === 'docked' && !collapsed);
+  const drawerOpen = open || (mode === MODE_DOCKED && !collapsed);
   if (drawerOpen) return 0;
   return -COACH_SIDEBAR_WIDTH;
 }
 
 function drawerContentVisible(mode, open, collapsed) {
-  if (mode === 'overlay') return open;
+  if (mode === MODE_OVERLAY) return open;
   return !collapsed;
 }
 
@@ -362,7 +127,401 @@ function drawerShadowStyle(colors) {
   return { elevation: DRAWER_ELEVATION };
 }
 
+function messageCountFromSession(session) {
+  if (!session) return 0;
+  if (session.messageCount == null) return 0;
+  return Number(session.messageCount);
+}
+
+function sessionRowCountLabel(session) {
+  const messageCount = messageCountFromSession(session);
+  const hasPositiveCount = Number.isFinite(messageCount) && messageCount > 0;
+  if (!hasPositiveCount) {
+    if (session && session.date) return session.date;
+    return '';
+  }
+
+  if (messageCount === 1) return '1 message';
+  return `${messageCount} messages`;
+}
+
+function closeIconButtonStyle(colors) {
+  return {
+    backgroundColor: colors.nbSurface,
+    borderColor: colors.nbBorder,
+    borderWidth: nb.borderWidth,
+    shadowColor: colors.nbShadow,
+    shadowOffset: { width: CLOSE_ICON_SHADOW_OFFSET, height: CLOSE_ICON_SHADOW_OFFSET },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: CLOSE_ICON_ELEVATION,
+  };
+}
+
+function sessionKeyForRow(session) {
+  return session.sessionId || session.id;
+}
+
+function themeColorsForPanel(isDark) {
+  if (isDark) return darkColors;
+  return lightColors;
+}
+
+function windowIsNarrow() {
+  return WINDOW_WIDTH < NARROW_WINDOW_WIDTH;
+}
+
+function shouldShowExpandedInline(mode, collapsed, isNarrowWindow) {
+  return mode === MODE_DOCKED && !collapsed && !isNarrowWindow;
+}
+
+// vocab: Swipeable = react-native-gesture-handler row that reveals a delete action under a swipe.
+function SessionRow({
+  session,
+  isActive,
+  colors,
+  onPress,
+  onDelete,
+  isLast,
+}) {
+  const swipeRef = useRef(null);
+  const countLabel = sessionRowCountLabel(session);
+  const rowTitle = formatSessionDisplayTitle(session.title);
+  const rowBackground = isActive ? colors.nbSoft : colors.nbSurface;
+  const bottomBorderWidth = isLast ? 0 : 2;
+
+  const handleSwipeDelete = () => {
+    if (swipeRef.current && typeof swipeRef.current.close === 'function') {
+      swipeRef.current.close();
+    }
+    if (typeof onDelete === 'function') {
+      onDelete(session);
+    }
+  };
+
+  const renderRightActions = () => (
+    <TouchableOpacity
+      onPress={handleSwipeDelete}
+      activeOpacity={0.85}
+      style={[styles.deleteAction, { backgroundColor: colors.nbFill }]}
+    >
+      <Text style={[styles.deleteLabel, { color: colors.nbOnFill }]}>Delete</Text>
+    </TouchableOpacity>
+  );
+
+  return (
+    <Swipeable ref={swipeRef} renderRightActions={renderRightActions} overshootRight={false}>
+      <Pressable
+        onPress={onPress}
+        style={({ pressed }) => {
+          const rowOpacity = pressed ? SESSION_ROW_PRESSED_OPACITY : SESSION_ROW_IDLE_OPACITY;
+          return [
+            styles.sessionRow,
+            {
+              backgroundColor: rowBackground,
+              borderBottomColor: colors.nbBorder,
+              borderBottomWidth: bottomBorderWidth,
+              opacity: rowOpacity,
+            },
+          ];
+        }}
+      >
+        <View style={styles.sessionRowTextWrap}>
+          <Text
+            style={{
+              color: colors.nbInk,
+              fontSize: SESSION_TITLE_FONT_SIZE,
+              fontWeight: '800',
+            }}
+            numberOfLines={2}
+          >
+            {rowTitle}
+          </Text>
+          <Text
+            style={{
+              color: colors.nbMuted,
+              fontSize: SESSION_COUNT_FONT_SIZE,
+              fontWeight: '500',
+              marginTop: SESSION_COUNT_TOP_GAP,
+            }}
+          >
+            {countLabel}
+          </Text>
+        </View>
+      </Pressable>
+    </Swipeable>
+  );
+}
+
+function EmptyHistory({ colors }) {
+  return (
+    <NbEmptyState
+      title="No history yet"
+      subtitle="Start a conversation — your chats will appear here."
+      iconChildren={<Ionicons name="time-outline" size={EMPTY_ICON_SIZE} color={colors.nbInk} />}
+      iconIndex={2}
+    />
+  );
+}
+
+function NoSearchMatches({ colors }) {
+  return (
+    <NbEmptyState
+      title="No matches"
+      subtitle="Try a different search term."
+      iconChildren={<Ionicons name="search-outline" size={EMPTY_ICON_SIZE} color={colors.nbInk} />}
+      iconIndex={4}
+    />
+  );
+}
+
+function SessionGroupBlock({
+  group,
+  activeSessionId,
+  colors,
+  onSessionPress,
+  onDeleteSession,
+}) {
+  const groupBottomMargin = spacing.md + GROUP_BOTTOM_GAP_EXTRA;
+  const rowNodes = [];
+
+  for (let rowIndex = 0; rowIndex < group.items.length; rowIndex += 1) {
+    const session = group.items[rowIndex];
+    const sessionKey = sessionKeyForRow(session);
+    const isActive = sessionKey === activeSessionId;
+    const isLastRow = rowIndex === group.items.length - 1;
+
+    rowNodes.push(
+      <SessionRow
+        key={session.id}
+        session={session}
+        isActive={isActive}
+        colors={colors}
+        onPress={() => {
+          if (typeof onSessionPress === 'function') onSessionPress(session);
+        }}
+        onDelete={onDeleteSession}
+        isLast={isLastRow}
+      />,
+    );
+  }
+
+  return (
+    <View key={group.key} style={{ marginBottom: groupBottomMargin }}>
+      <Text
+        style={[
+          styles.groupLabel,
+          {
+            color: colors.nbMuted,
+            fontFamily: 'SpaceGrotesk_700Bold',
+          },
+        ]}
+      >
+        {group.label}
+      </Text>
+      {rowNodes}
+    </View>
+  );
+}
+
+function SessionGroups({
+  sessions,
+  filteredSessions,
+  activeSessionId,
+  colors,
+  onSessionPress,
+  onDeleteSession,
+}) {
+  if (sessions.length === 0) return <EmptyHistory colors={colors} />;
+  if (filteredSessions.length === 0) return <NoSearchMatches colors={colors} />;
+
+  const groups = groupSessionsForSidebar(filteredSessions);
+  const groupNodes = [];
+
+  for (let groupIndex = 0; groupIndex < groups.length; groupIndex += 1) {
+    const group = groups[groupIndex];
+    groupNodes.push(
+      <SessionGroupBlock
+        key={group.key}
+        group={group}
+        activeSessionId={activeSessionId}
+        colors={colors}
+        onSessionPress={onSessionPress}
+        onDeleteSession={onDeleteSession}
+      />,
+    );
+  }
+
+  return groupNodes;
+}
+
+function insetTopPadding(insets) {
+  if (insets && insets.top) return insets.top;
+  return 0;
+}
+
+function insetBottomPadding(insets) {
+  if (insets && insets.bottom) return insets.bottom;
+  return 0;
+}
+
+function PastChatsHeader({ colors, insets, showClose, onClose }) {
+  const headerPaddingTop = insetTopPadding(insets) + HEADER_TOP_PAD_EXTRA;
+
+  let closeButton = null;
+  if (showClose) {
+    closeButton = (
+      <TouchableOpacity
+        onPress={onClose}
+        hitSlop={8}
+        style={[styles.iconBtn, closeIconButtonStyle(colors)]}
+        accessibilityLabel="Close past chats"
+      >
+        <Ionicons name="close" size={CLOSE_ICON_SIZE} color={colors.nbInk} />
+      </TouchableOpacity>
+    );
+  }
+
+  return (
+    <View
+      style={{
+        paddingTop: headerPaddingTop,
+        paddingHorizontal: spacing.md,
+        paddingBottom: spacing.md,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+      }}
+    >
+      <Text
+        style={{
+          color: colors.nbInk,
+          fontSize: PAST_CHATS_TITLE_SIZE,
+          fontWeight: '900',
+          letterSpacing: PAST_CHATS_TITLE_LETTER_SPACING,
+          flex: 1,
+        }}
+      >
+        Past chats
+      </Text>
+      {closeButton}
+    </View>
+  );
+}
+
+function PastChatsSearchBox({ colors, searchQuery, onSearchChange }) {
+  const handleClearSearch = () => {
+    onSearchChange('');
+  };
+
+  const showClearButton = Boolean(searchQuery);
+  let clearButton = null;
+  if (showClearButton) {
+    clearButton = (
+      <TouchableOpacity onPress={handleClearSearch} hitSlop={8}>
+        <Ionicons name="close-circle" size={SEARCH_ICON_SIZE} color={colors.nbMuted} />
+      </TouchableOpacity>
+    );
+  }
+
+  return (
+    <View style={{ paddingHorizontal: spacing.md, marginBottom: spacing.sm + SEARCH_BOTTOM_GAP_EXTRA }}>
+      <HardShadow offset={nb.shadowOffsetSmall} radius={borderRadius.nbInput}>
+        <View
+          style={[
+            styles.searchWrap,
+            {
+              borderColor: colors.nbBorder,
+              backgroundColor: colors.nbSurface,
+              borderWidth: nb.borderWidth,
+            },
+          ]}
+        >
+          <Ionicons name="search-outline" size={SEARCH_ICON_SIZE} color={colors.nbMuted} />
+          <TextInput
+            value={searchQuery}
+            onChangeText={onSearchChange}
+            placeholder="Search your chats"
+            placeholderTextColor={colors.nbMuted}
+            style={[styles.searchInput, { color: colors.nbInk }]}
+            autoCorrect={false}
+            clearButtonMode="while-editing"
+          />
+          {clearButton}
+        </View>
+      </HardShadow>
+    </View>
+  );
+}
+
+function SidebarPanel({
+  sessions,
+  filteredSessions,
+  activeSessionId,
+  searchQuery,
+  onSearchChange,
+  onSessionPress,
+  onDeleteSession,
+  onNewChat,
+  onClose,
+  colors,
+  insets,
+  showClose = true,
+}) {
+  const scrollBottomPadding = spacing.lg + insetBottomPadding(insets);
+
+  return (
+    <View style={{ flex: 1 }}>
+      <PastChatsHeader colors={colors} insets={insets} showClose={showClose} onClose={onClose} />
+
+      <View style={{ paddingHorizontal: spacing.md, marginBottom: spacing.sm }}>
+        <NbButton variant="fill" onPress={onNewChat} style={{ width: '100%' }}>
+          + New chat
+        </NbButton>
+      </View>
+
+      <PastChatsSearchBox
+        colors={colors}
+        searchQuery={searchQuery}
+        onSearchChange={onSearchChange}
+      />
+
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{
+          paddingHorizontal: spacing.md,
+          paddingBottom: scrollBottomPadding,
+        }}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        <SessionGroups
+          sessions={sessions}
+          filteredSessions={filteredSessions}
+          activeSessionId={activeSessionId}
+          colors={colors}
+          onSessionPress={onSessionPress}
+          onDeleteSession={onDeleteSession}
+        />
+        <Text
+          style={{
+            marginTop: spacing.lg,
+            textAlign: 'center',
+            color: colors.nbMuted,
+            fontSize: SWIPE_HINT_FONT_SIZE,
+            fontWeight: '500',
+          }}
+        >
+          Swipe a chat left to delete it.
+        </Text>
+      </ScrollView>
+    </View>
+  );
+}
+
 function CollapsedChatRail({ colors, insets, onToggleCollapse, onNewChat }) {
+  const railPaddingTop = insetTopPadding(insets) + RAIL_TOP_PAD_EXTRA;
+
   return (
     <View
       style={[
@@ -372,7 +531,7 @@ function CollapsedChatRail({ colors, insets, onToggleCollapse, onNewChat }) {
           backgroundColor: colors.nbBackground,
           borderRightColor: colors.nbBorder,
           borderRightWidth: nb.borderWidth,
-          paddingTop: (insets?.top || 0) + 8,
+          paddingTop: railPaddingTop,
         },
       ]}
     >
@@ -388,7 +547,7 @@ function CollapsedChatRail({ colors, insets, onToggleCollapse, onNewChat }) {
         ]}
         accessibilityLabel="Open chat history"
       >
-        <Ionicons name="chatbubbles-outline" size={20} color={colors.nbInk} />
+        <Ionicons name="chatbubbles-outline" size={RAIL_CHAT_ICON_SIZE} color={colors.nbInk} />
       </TouchableOpacity>
       <TouchableOpacity
         onPress={onNewChat}
@@ -403,69 +562,44 @@ function CollapsedChatRail({ colors, insets, onToggleCollapse, onNewChat }) {
         ]}
         accessibilityLabel="New conversation"
       >
-        <Ionicons name="add-outline" size={22} color={colors.nbInk} />
+        <Ionicons name="add-outline" size={RAIL_ADD_ICON_SIZE} color={colors.nbInk} />
       </TouchableOpacity>
       <View style={{ flex: 1 }} />
-      <TouchableOpacity
-        onPress={onToggleCollapse}
-        style={styles.railBtn}
-        accessibilityLabel="Expand sidebar"
-      >
-        <Ionicons name="chevron-forward" size={16} color={colors.nbMuted} />
+      <TouchableOpacity onPress={onToggleCollapse} style={styles.railBtn} accessibilityLabel="Expand sidebar">
+        <Ionicons name="chevron-forward" size={RAIL_CHEVRON_SIZE} color={colors.nbMuted} />
       </TouchableOpacity>
     </View>
   );
 }
 
-function PastChatsPanelLayout({
-  mode,
-  collapsed,
-  showExpandedInline,
-  showOverlay,
-  open,
-  onToggleCollapse,
-  onClose,
+function DockedExpandedSidebar({ colors, panelProps, onToggleCollapse }) {
+  return (
+    <View
+      style={{
+        width: COACH_SIDEBAR_WIDTH,
+        backgroundColor: colors.nbBackground,
+        borderRightWidth: nb.borderWidth,
+        borderRightColor: colors.nbBorder,
+      }}
+    >
+      <SidebarPanel {...panelProps} showClose={false} onClose={onToggleCollapse} />
+    </View>
+  );
+}
+
+function OverlayPastChatsDrawer({
   colors,
-  insets,
   panelProps,
   slideAnim,
+  closeDrawer,
 }) {
-  if (mode === 'docked' && collapsed) {
-    return (
-      <CollapsedChatRail
-        colors={colors}
-        insets={insets}
-        onToggleCollapse={onToggleCollapse}
-        onNewChat={panelProps.onNewChat}
-      />
-    );
-  }
-
-  if (showExpandedInline) {
-    return (
-      <View
-        style={{
-          width: COACH_SIDEBAR_WIDTH,
-          backgroundColor: colors.nbBackground,
-          borderRightWidth: nb.borderWidth,
-          borderRightColor: colors.nbBorder,
-        }}
-      >
-        <SidebarPanel {...panelProps} showClose={false} onClose={onToggleCollapse} />
-      </View>
-    );
-  }
-
-  if (!showOverlay) return null;
-  if (!drawerContentVisible(mode, open, collapsed)) return null;
-
-  const closeDrawer = onClose || onToggleCollapse;
+  const drawerShadow = drawerShadowStyle(colors);
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={closeDrawer}>
       <View style={{ flex: 1 }}>
         <TouchableOpacity
-          style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.50)' }]}
+          style={[StyleSheet.absoluteFillObject, { backgroundColor: OVERLAY_SCRIM_COLOR }]}
           activeOpacity={1}
           onPress={closeDrawer}
           accessibilityLabel="Close chat history"
@@ -482,13 +616,65 @@ function PastChatsPanelLayout({
             borderRightWidth: nb.borderWidth,
             borderRightColor: colors.nbBorder,
             zIndex: 2,
-            ...drawerShadowStyle(colors),
+            ...drawerShadow,
           }}
         >
           <SidebarPanel {...panelProps} />
         </Animated.View>
       </View>
     </Modal>
+  );
+}
+
+function PastChatsPanelLayout({
+  mode,
+  collapsed,
+  showExpandedInline,
+  showOverlay,
+  open,
+  onToggleCollapse,
+  onClose,
+  colors,
+  insets,
+  panelProps,
+  slideAnim,
+}) {
+  // Docked + collapsed → thin rail with open / new-chat shortcuts.
+  if (mode === MODE_DOCKED && collapsed) {
+    return (
+      <CollapsedChatRail
+        colors={colors}
+        insets={insets}
+        onToggleCollapse={onToggleCollapse}
+        onNewChat={panelProps.onNewChat}
+      />
+    );
+  }
+
+  // Wide docked window → inline sidebar (no modal).
+  if (showExpandedInline) {
+    return (
+      <DockedExpandedSidebar
+        colors={colors}
+        panelProps={panelProps}
+        onToggleCollapse={onToggleCollapse}
+      />
+    );
+  }
+
+  // Overlay only when the drawer should be visible.
+  if (!showOverlay) return null;
+  if (!drawerContentVisible(mode, open, collapsed)) return null;
+
+  const closeDrawer = onClose || onToggleCollapse;
+
+  return (
+    <OverlayPastChatsDrawer
+      colors={colors}
+      panelProps={panelProps}
+      slideAnim={slideAnim}
+      closeDrawer={closeDrawer}
+    />
   );
 }
 
@@ -500,7 +686,7 @@ function PastChatsPanelLayout({
  * @param {{ mode?: string, open?: boolean, collapsed?: boolean, onToggleCollapse?: Function, onClose?: Function, sessions?: Array, activeSessionId?: string, onSessionPress?: Function, onDeleteSession?: Function, onNewChat?: Function, isDark?: boolean, insets?: object }} props
  */
 export default function PastChatsPanel({
-  mode = 'overlay',
+  mode = MODE_OVERLAY,
   open = false,
   collapsed = true,
   onToggleCollapse,
@@ -514,18 +700,26 @@ export default function PastChatsPanel({
   insets,
 }) {
   // Prefer the parent isDark prop so coach chrome matches ThemeProvider (not only OS scheme).
-  const colors = isDark ? darkColors : lightColors;
+  const colors = themeColorsForPanel(isDark);
+
+  // Hook order frozen: search → slide ref → filtered memo → slide effect.
   const [searchQuery, setSearchQuery] = useState('');
   const slideAnim = useRef(new Animated.Value(-COACH_SIDEBAR_WIDTH)).current;
-  const isNarrow = WINDOW_WIDTH < NARROW_WINDOW_WIDTH;
-  const showExpandedInline = mode === 'docked' && !collapsed && !isNarrow;
-  const showOverlay = overlayIsOpen(mode, open, collapsed, isNarrow);
 
+  // 1. Decide which chrome to show: collapsed rail, inline dock, or overlay drawer.
+  const isNarrowWindow = windowIsNarrow();
+  const showExpandedInline = shouldShowExpandedInline(mode, collapsed, isNarrowWindow);
+  const showOverlay = overlayIsOpen(mode, open, collapsed, isNarrowWindow);
+
+  // 2. Filter the live session list by the search box.
   const filteredSessions = useMemo(
     () => sessionsMatchingSearch(sessions, searchQuery),
     [sessions, searchQuery],
   );
 
+  // 3. When the overlay is up, slide the drawer to open (0) or closed (−width).
+  // vocab: useNativeDriver = slide runs on the native thread so JS stays responsive.
+  // vocab: Animated.timing = animate a value over DRAWER_SLIDE_MS milliseconds.
   useEffect(() => {
     if (!showOverlay) return;
     Animated.timing(slideAnim, {
@@ -535,6 +729,7 @@ export default function PastChatsPanel({
     }).start();
   }, [showOverlay, open, collapsed, mode, slideAnim]);
 
+  // 4. Bundle props the shared SidebarPanel needs in every layout branch.
   const panelProps = {
     sessions,
     filteredSessions,
@@ -549,6 +744,7 @@ export default function PastChatsPanel({
     insets,
   };
 
+  // 5. Hand layout + chrome choice to the pure layout helper (no hooks there).
   return (
     <PastChatsPanelLayout
       mode={mode}
@@ -605,8 +801,8 @@ const styles = StyleSheet.create({
     fontSize: 10,
     letterSpacing: 0.9,
     textTransform: 'uppercase',
-    marginBottom: spacing.xs + 2,
-    paddingHorizontal: spacing.xs + 2,
+    marginBottom: spacing.xs + GROUP_LABEL_SIDE_PAD_EXTRA,
+    paddingHorizontal: spacing.xs + GROUP_LABEL_SIDE_PAD_EXTRA,
   },
   sessionRow: {
     paddingVertical: spacing.sm + 3,
@@ -614,6 +810,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
+  },
+  sessionRowTextWrap: {
+    flex: 1,
+    minWidth: 0,
   },
   rowDivider: {
     height: StyleSheet.hairlineWidth,

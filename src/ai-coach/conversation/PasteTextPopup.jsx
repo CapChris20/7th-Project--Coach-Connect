@@ -1,17 +1,9 @@
-// Sheet for pasting coach-chat text (neobrutalist design).
-// Flow: open → try clipboard prefill → focus field → confirm sends the draft, cancel just closes.
-// Used by: CoachConversationScreen. Uses NbSheet and NbButton components.
-//
-// vocab: NbSheet = neobrutalist bottom sheet with thick border
-// vocab: NbButton = neobrutalist button with hard shadow
+// Bottom sheet where the coach-chat user pastes workout notes, labels, or messages.
+// Flow: sheet opens → read clipboard when possible → focus the TEXT field → Add sends draft, Cancel closes.
+// Used by CoachConversationScreen / CoachHomeScreen. Chrome: NbSheet + NbButton (Design Law paste PNG 11).
 
 import React, { useEffect, useRef, useState } from 'react';
-import {
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { StyleSheet, Text, TextInput, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { spacing, borderRadius, nb } from '../../look-and-feel/colorPalette';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
@@ -20,72 +12,76 @@ import NbButton from '../../look-and-feel/NbButton';
 
 // ===== NAMED CONSTANTS =====
 
-// Manipulate here: delay before focusing so the slide animation finishes first.
+// Manipulate here: wait for slide-in before focus so the keyboard does not fight the animation.
 const FOCUS_AFTER_OPEN_MS = 120;
 const SHEET_TITLE = 'Paste text';
-// Design Law PNG 11: full hint sentence + TEXT label + Cancel (not “Not now”).
-const SHEET_HINT = 'Add a workout, a nutrition label or a message. The coach reads it with your question.';
+// Design Law PNG 11: full hint, TEXT label, Cancel (not “Not now”).
+const SHEET_HINT =
+  'Add a workout, a nutrition label or a message. The coach reads it with your question.';
 const DRAFT_LABEL = 'TEXT';
 const DRAFT_PLACEHOLDER = 'Paste your text…';
 const CANCEL_LABEL = 'Cancel';
 const CONFIRM_LABEL = 'Add to message';
-// Manipulate here: hard cap so a huge clipboard dump cannot blow the composer
+// Manipulate here: cap pasted length so a huge clipboard dump cannot blow the composer.
 const PASTE_MAX_CHARS = 4000;
 
 // ===== HELPER FUNCTIONS =====
 
-/**
- * Empty or whitespace-only drafts cannot be added.
- * @param {string} draft
- * @returns {boolean}
- */
-function hasPasteDraftText(draft) {
-  if (!draft) return false;
-  return Boolean(String(draft).trim());
+function pasteDraftHasVisibleText(draftText) {
+  const asString = String(draftText || '');
+  if (!asString) return false;
+  const trimmedText = asString.trim();
+  if (!trimmedText) return false;
+  return true;
 }
 
-/**
- * Soft-trim clipboard so we never prefill noise or overflow the field.
- * @param {string} raw
- * @returns {string}
- */
-function clipboardPrefillText(raw) {
-  const trimmed = String(raw || '').trim();
+function clipboardTextTrimmedAndCapped(rawClipboard) {
+  const trimmed = String(rawClipboard || '').trim();
   if (!trimmed) return '';
   if (trimmed.length <= PASTE_MAX_CHARS) return trimmed;
   return trimmed.slice(0, PASTE_MAX_CHARS);
 }
 
-function focusPasteField(inputRef) {
-  const input = inputRef.current;
-  if (!input) return;
-  if (typeof input.focus !== 'function') return;
-  input.focus();
+function keepDraftUnderMaxLength(nextText) {
+  const asString = String(nextText || '');
+  return asString.slice(0, PASTE_MAX_CHARS);
 }
 
-function sendPastedDraft(onConfirm, draft) {
-  if (!onConfirm) return;
-  onConfirm(draft);
+function focusTextInputWhenReady(inputRef) {
+  const field = inputRef.current;
+  if (!field) return;
+  if (typeof field.focus !== 'function') return;
+  field.focus();
 }
 
-/**
- * Cancel + confirm row using NbButton components.
- * @param {{ canConfirmPaste: boolean, onClose: Function, onConfirmDraft: Function }} props
- */
-function PasteSheetActions({ canConfirmPaste, onClose, onConfirmDraft }) {
+async function readClipboardPrefillForSheet() {
+  try {
+    // vocab: getStringAsync = Expo read of the system pasteboard (may be empty on Simulator).
+    const clipboardRaw = await Clipboard.getStringAsync();
+    return clipboardTextTrimmedAndCapped(clipboardRaw);
+  } catch (clipboardUnavailable) {
+    void clipboardUnavailable;
+    return '';
+  }
+}
+
+async function applyClipboardPrefillIfStillOpen(effectCancelled, setDraft) {
+  const prefillFromClipboard = await readClipboardPrefillForSheet();
+  if (effectCancelled()) return;
+  if (!prefillFromClipboard) return;
+  setDraft(prefillFromClipboard);
+}
+
+function PasteSheetFooter({ canConfirmPaste, onClose, onConfirmDraft }) {
   return (
     <View style={styles.actionsRow}>
-      <View style={{ flex: 1 }}>
+      <View style={styles.actionFlex}>
         <NbButton variant="ghost" onPress={onClose}>
           {CANCEL_LABEL}
         </NbButton>
       </View>
-      <View style={{ flex: 1 }}>
-        <NbButton
-          variant="fill"
-          onPress={onConfirmDraft}
-          disabled={!canConfirmPaste}
-        >
+      <View style={styles.actionFlex}>
+        <NbButton variant="fill" onPress={onConfirmDraft} disabled={!canConfirmPaste}>
           {CONFIRM_LABEL}
         </NbButton>
       </View>
@@ -93,110 +89,126 @@ function PasteSheetActions({ canConfirmPaste, onClose, onConfirmDraft }) {
   );
 }
 
+function characterCapHintOrNull(draftAtCharacterCap, hintColor) {
+  if (!draftAtCharacterCap) return null;
+  return (
+    <Text style={[styles.limitHint, { color: hintColor }]}>
+      Max {PASTE_MAX_CHARS.toLocaleString()} characters
+    </Text>
+  );
+}
+
 // ===== MAIN FUNCTION =====
 
 /**
- * Dedicated paste surface using NbSheet — prefers clipboard prefill, then manual edit.
- * @param {{ visible: boolean, onClose: Function, onConfirm?: Function, t?: object, isDark?: boolean }} props
+ * Paste-text NbSheet for coach chat — clipboard prefill, capped draft, Add / Cancel.
+ * Hook order frozen: useTheme → useState → useRef → useEffect.
  */
-export default function PasteTextPopup({ visible, onClose, onConfirm, t, isDark: isDarkProp }) {
-  // Prefer app theme (Design Law light/dark), not the OS scheme alone.
+export default function PasteTextPopup({
+  visible,
+  onClose,
+  onConfirm,
+  t: unusedTranslations,
+  isDark: isDarkProp,
+}) {
+  // 1. Theme colors for ink, border, and shadow.
+  // vocab: useTheme = app light/dark palette provider
   const { colors: themeColors, isDark: themeIsDark } = useTheme();
   const colors = themeColors;
   void isDarkProp;
   void themeIsDark;
-  void t;
+  void unusedTranslations;
+
+  // vocab: useState = React local state; draft is what the TEXT field shows
   const [draft, setDraft] = useState('');
+  // vocab: useRef = stable box for the TextInput instance so we can .focus() after open
   const inputRef = useRef(null);
 
+  // 2. On open: clipboard prefill + delayed focus. On close: clear draft.
   useEffect(() => {
     if (!visible) {
       setDraft('');
       return undefined;
     }
 
-    let cancelled = false;
-    (async () => {
-      try {
-        // vocab: getStringAsync = Expo clipboard read (Simulator may still return empty)
-        const fromClipboard = clipboardPrefillText(await Clipboard.getStringAsync());
-        if (!cancelled && fromClipboard) setDraft(fromClipboard);
-      } catch (_) {
-        /* clipboard optional — user can still type */
-      }
-    })();
+    let effectWasCancelled = false;
+    function effectCancelled() {
+      return effectWasCancelled;
+    }
 
-    const focusTimeoutId = setTimeout(() => focusPasteField(inputRef), FOCUS_AFTER_OPEN_MS);
+    applyClipboardPrefillIfStillOpen(effectCancelled, setDraft);
+
+    const focusTimerId = setTimeout(() => {
+      focusTextInputWhenReady(inputRef);
+    }, FOCUS_AFTER_OPEN_MS);
+
     return () => {
-      cancelled = true;
-      clearTimeout(focusTimeoutId);
+      effectWasCancelled = true;
+      clearTimeout(focusTimerId);
     };
   }, [visible]);
 
-  const canConfirmPaste = hasPasteDraftText(draft);
-  const overLimit = String(draft || '').length >= PASTE_MAX_CHARS;
+  // 3. Name decisions before JSX.
+  const userCanConfirm = pasteDraftHasVisibleText(draft);
+  const draftLength = String(draft || '').length;
+  const draftAtCharacterCap = draftLength >= PASTE_MAX_CHARS;
 
-  function handleConfirmPaste() {
-    sendPastedDraft(onConfirm, draft);
+  const hintColor = colors.nbMuted;
+  const hintFont = 'Inter_400Regular';
+  const labelFont = 'SpaceGrotesk_700Bold';
+  const fieldBorderColor = colors.nbBorder;
+  const fieldTextColor = colors.nbInk;
+  const fieldBackgroundColor = colors.nbSurface;
+  const fieldShadowColor = colors.nbShadow;
+  const characterCapHint = characterCapHintOrNull(draftAtCharacterCap, hintColor);
+
+  function handleDraftTextChange(nextValue) {
+    setDraft(keepDraftUnderMaxLength(nextValue));
+  }
+
+  function handleConfirmPressed() {
+    if (!onConfirm) return;
+    onConfirm(draft);
   }
 
   return (
-    <NbSheet
-      visible={visible}
-      onClose={onClose}
-      title={SHEET_TITLE}
-    >
-      <Text
-        style={[
-          styles.sheetHint,
-          { color: colors.nbMuted, fontFamily: 'Inter_400Regular' },
-        ]}
-      >
-        {SHEET_HINT}
-      </Text>
-      <Text
-        style={[
-          styles.draftLabel,
-          { color: colors.nbMuted, fontFamily: 'SpaceGrotesk_700Bold' },
-        ]}
-      >
-        {DRAFT_LABEL}
-      </Text>
+    <NbSheet visible={visible} onClose={onClose} title={SHEET_TITLE}>
+      <Text style={[styles.sheetHint, { color: hintColor, fontFamily: hintFont }]}>{SHEET_HINT}</Text>
+      <Text style={[styles.draftLabel, { color: hintColor, fontFamily: labelFont }]}>{DRAFT_LABEL}</Text>
       <TextInput
         ref={inputRef}
         value={draft}
-        onChangeText={(next) => setDraft(String(next || '').slice(0, PASTE_MAX_CHARS))}
+        onChangeText={handleDraftTextChange}
         multiline
         maxLength={PASTE_MAX_CHARS}
         placeholder={DRAFT_PLACEHOLDER}
-        placeholderTextColor={colors.nbMuted}
+        placeholderTextColor={hintColor}
         style={[
           styles.draftInput,
           {
-            borderColor: colors.nbBorder,
+            borderColor: fieldBorderColor,
             borderWidth: nb.borderWidth,
-            color: colors.nbInk,
-            backgroundColor: colors.nbSurface,
-            shadowColor: colors.nbShadow,
-            fontFamily: 'SpaceGrotesk_700Bold',
+            color: fieldTextColor,
+            backgroundColor: fieldBackgroundColor,
+            shadowColor: fieldShadowColor,
+            fontFamily: labelFont,
           },
         ]}
       />
-      {overLimit ? (
-        <Text style={[styles.limitHint, { color: colors.nbMuted }]}>
-          Max {PASTE_MAX_CHARS.toLocaleString()} characters
-        </Text>
-      ) : null}
-      <PasteSheetActions
-        canConfirmPaste={canConfirmPaste}
+      {characterCapHint}
+      <PasteSheetFooter
+        canConfirmPaste={userCanConfirm}
         onClose={onClose}
-        onConfirmDraft={handleConfirmPaste}
+        onConfirmDraft={handleConfirmPressed}
       />
     </NbSheet>
   );
 }
 
+// ===== PLUMBING — skip unless debugging layout tokens below =====
+
 const styles = StyleSheet.create({
+  actionFlex: { flex: 1 },
   sheetHint: {
     fontSize: 13,
     marginBottom: spacing.md,
@@ -213,7 +225,7 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.nbCard,
     padding: spacing.md,
     fontSize: 15,
-    // Design Law: hard offset shadow on the TEXT field (same as meal food input)
+    // Design Law: hard offset shadow on the TEXT field (same as meal food input).
     shadowOffset: { width: 3, height: 3 },
     shadowOpacity: 1,
     shadowRadius: 0,

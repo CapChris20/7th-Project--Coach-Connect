@@ -30,6 +30,11 @@ import { getClientDateKey } from '../../helpers/dateStrings';
 
 const USERS_COLLECTION = 'users';
 const MOOD_LOGS_COLLECTION = 'mood_logs';
+const FALLBACK_MOOD_ID = 'tired';
+const NOTE_SECTION_LABEL = 'WHAT IS BEHIND IT? (OPTIONAL)';
+const PRIVACY_LINE = 'Only your coach reads this note.';
+const SAVE_LABEL = 'Save mood';
+const SAVING_LABEL = 'Saving…';
 
 // Manipulate here: tile copy + icons must match PNG 09/10; ids must match LogMoodPopup / carryOutAction
 const MOOD_TILES = [
@@ -70,34 +75,95 @@ const MOOD_TILES = [
   },
 ];
 
-// ===== UI PIECES =====
+// ===== HELPER FUNCTIONS =====
 
-function MoodTile({ tile, selected, colors, onPress }) {
-  const fill = selected ? colors.nbFill : colors.nbSurface;
-  const ink = selected ? colors.nbOnFill : colors.nbInk;
-  const muted = selected ? colors.nbOnFill : colors.nbMuted;
+function moodIdIsKnown(moodId) {
+  for (let index = 0; index < MOOD_TILES.length; index += 1) {
+    const tile = MOOD_TILES[index];
+    if (tile.id === moodId) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Accept a prop mood id if it is one of the five tiles; otherwise fall back to tired.
+function moodIdFromProp(initialMood) {
+  const normalized = String(initialMood || '').toLowerCase();
+  if (moodIdIsKnown(normalized)) {
+    return normalized;
+  }
+  return FALLBACK_MOOD_ID;
+}
+
+// Selected tiles invert to fill/onFill so the checkmark stays readable.
+function tileColorsWhenSelected(isSelected, colors) {
+  if (isSelected) {
+    return {
+      fill: colors.nbFill,
+      ink: colors.nbOnFill,
+      muted: colors.nbOnFill,
+    };
+  }
+  return {
+    fill: colors.nbSurface,
+    ink: colors.nbInk,
+    muted: colors.nbMuted,
+  };
+}
+
+function pressOffsetStyle(pressed) {
+  if (pressed) {
+    return {
+      opacity: 0.94,
+      transform: [{ translateX: 2 }, { translateY: 2 }],
+    };
+  }
+  return {
+    opacity: 1,
+    transform: [{ translateX: 0 }, { translateY: 0 }],
+  };
+}
+
+// ===== SMALL UI PIECES =====
+
+function MoodPickTile({ tile, selected, colors, onPress }) {
+  const tileColors = tileColorsWhenSelected(selected, colors);
+  const fill = tileColors.fill;
+  const ink = tileColors.ink;
+  const muted = tileColors.muted;
+
+  let checkmark = null;
+  if (selected) {
+    checkmark = (
+      <View style={styles.checkAbs}>
+        <Ionicons name="checkmark" size={16} color={ink} />
+      </View>
+    );
+  }
+
+  function buildPressableStyle({ pressed }) {
+    const pressLook = pressOffsetStyle(pressed);
+    return [
+      styles.tile,
+      {
+        backgroundColor: fill,
+        borderColor: colors.nbBorder,
+        shadowColor: colors.nbShadow,
+        opacity: pressLook.opacity,
+        transform: pressLook.transform,
+      },
+    ];
+  }
 
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
       accessibilityState={{ selected }}
-      style={({ pressed }) => [
-        styles.tile,
-        {
-          backgroundColor: fill,
-          borderColor: colors.nbBorder,
-          shadowColor: colors.nbShadow,
-          opacity: pressed ? 0.94 : 1,
-          transform: [{ translateX: pressed ? 2 : 0 }, { translateY: pressed ? 2 : 0 }],
-        },
-      ]}
+      style={buildPressableStyle}
     >
-      {selected ? (
-        <View style={styles.checkAbs}>
-          <Ionicons name="checkmark" size={16} color={ink} />
-        </View>
-      ) : null}
+      {checkmark}
       <View style={[styles.iconChip, { borderColor: colors.nbBorder }]}>
         <LinearGradient
           colors={tile.gradient}
@@ -113,9 +179,62 @@ function MoodTile({ tile, selected, colors, onPress }) {
   );
 }
 
-// ===== MAIN =====
+function MoodTileGrid({ colors, selectedMoodId, onPickMood }) {
+  const tileNodes = [];
+
+  for (let index = 0; index < MOOD_TILES.length; index += 1) {
+    const tile = MOOD_TILES[index];
+    const isSelected = selectedMoodId === tile.id;
+
+    tileNodes.push(
+      <MoodPickTile
+        key={tile.id}
+        tile={tile}
+        selected={isSelected}
+        colors={colors}
+        onPress={function onPressTile() {
+          onPickMood(tile.id);
+        }}
+      />,
+    );
+  }
+
+  return <View style={styles.grid}>{tileNodes}</View>;
+}
+
+function MoodNoteField({ colors, note, onNoteChange }) {
+  const noteBoxStyle = [
+    styles.noteBox,
+    {
+      borderColor: colors.nbBorder,
+      backgroundColor: colors.nbSurface,
+      color: colors.nbInk,
+    },
+  ];
+
+  return (
+    <>
+      <Text style={[styles.noteLabel, { color: colors.nbMuted }]}>{NOTE_SECTION_LABEL}</Text>
+      <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard}>
+        <TextInput
+          style={noteBoxStyle}
+          value={note}
+          onChangeText={onNoteChange}
+          placeholder="Long day at work and a poor night of sleep."
+          placeholderTextColor={colors.nbMuted}
+          multiline
+          textAlignVertical="top"
+        />
+      </HardShadow>
+      <Text style={[styles.privacy, { color: colors.nbMuted }]}>{PRIVACY_LINE}</Text>
+    </>
+  );
+}
+
+// ===== MAIN FUNCTION =====
 
 /**
+ * Full-screen mood check-in: five tiles + optional note, dual-write on Save.
  * @param {{ userId?: string|null, initialMood?: string, initialNote?: string, onBack?: Function }} props
  */
 export default function MoodCheckInScreen({
@@ -124,54 +243,52 @@ export default function MoodCheckInScreen({
   initialNote = '',
   onBack,
 }) {
+  // 1. Theme + who we write for + today's date key.
   const { colors } = useTheme();
-  const uid = userIdProp || auth?.currentUser?.uid || null;
-  const dateKey = getClientDateKey();
+  const clientUserId = userIdProp || auth?.currentUser?.uid || null;
+  const todayDateKey = getClientDateKey();
 
-  const validInitial = useMemo(() => {
-    const id = String(initialMood || '').toLowerCase();
-    return MOOD_TILES.some((t) => t.id === id) ? id : 'tired';
-  }, [initialMood]);
+  // 2. Starting mood from the prop (must be one of the five tile ids).
+  const startingMoodId = useMemo(() => moodIdFromProp(initialMood), [initialMood]);
 
-  const [mood, setMood] = useState(validInitial);
+  // 3. Local mood id + optional note + saving lock.
+  // Keep hook order: useMemo above, then these three useState calls.
+  const [mood, setMood] = useState(startingMoodId);
   const [note, setNote] = useState(String(initialNote || ''));
   const [saving, setSaving] = useState(false);
 
-  const saveMood = async () => {
-    if (!uid || !db || saving) return;
+  const rootStyle = [styles.root, { backgroundColor: colors.nbBackground }];
+
+  let saveButtonLabel = SAVE_LABEL;
+  if (saving) {
+    saveButtonLabel = SAVING_LABEL;
+  }
+
+  // 4. Save — mood_logs doc + dashboard_mood in daily metrics (same as LogMoodPopup).
+  async function saveMood() {
+    // 1. Need Firebase + user; ignore double-taps while saving
+    if (!clientUserId || !db || saving) {
+      return;
+    }
+
     setSaving(true);
     try {
-      const trimmed = String(note || '').trim();
-      // Same dual write LogMoodPopup → executeLogMoodClient uses (mood_logs + daily metrics)
-      await Promise.all([
-        setDoc(
-          doc(db, USERS_COLLECTION, uid, MOOD_LOGS_COLLECTION, dateKey),
-          {
-            mood,
-            notes: trimmed,
-            date: dateKey,
-            logged_at: serverTimestamp(),
-          },
-          { merge: true },
-        ),
-        mergeClientDailyMetrics(uid, dateKey, {
-          logs: { dashboard_mood: mood },
-          tracking: { mood },
-        }),
-      ]);
-      onBack?.();
-    } catch (err) {
-      console.warn('MoodCheckInScreen save:', err?.message);
+      // 2. Write mood_logs doc and dashboard_mood in daily metrics (parallel)
+      await writeMoodCheckInToFirestore(clientUserId, todayDateKey, mood, note);
+      // 3. Close this full-screen check-in
+      if (onBack) {
+        onBack();
+      }
+    } catch (error) {
+      console.warn('MoodCheckInScreen save:', error?.message);
     } finally {
       setSaving(false);
     }
-  };
+  }
 
+  // 5. Header → tile grid → optional note → Save.
   return (
-    <SafeAreaView
-      style={[styles.root, { backgroundColor: colors.nbBackground }]}
-      edges={SHELL_SAFE_AREA_EDGES}
-    >
+    <SafeAreaView style={rootStyle} edges={SHELL_SAFE_AREA_EDGES}>
       <NbPageHeader
         title="Mood check-in"
         subtitle="How are you feeling?"
@@ -182,42 +299,9 @@ export default function MoodCheckInScreen({
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.grid}>
-          {MOOD_TILES.map((tile) => (
-            <MoodTile
-              key={tile.id}
-              tile={tile}
-              selected={mood === tile.id}
-              colors={colors}
-              onPress={() => setMood(tile.id)}
-            />
-          ))}
-        </View>
+        <MoodTileGrid colors={colors} selectedMoodId={mood} onPickMood={setMood} />
 
-        <Text style={[styles.noteLabel, { color: colors.nbMuted }]}>
-          WHAT IS BEHIND IT? (OPTIONAL)
-        </Text>
-        <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard}>
-          <TextInput
-            style={[
-              styles.noteBox,
-              {
-                borderColor: colors.nbBorder,
-                backgroundColor: colors.nbSurface,
-                color: colors.nbInk,
-              },
-            ]}
-            value={note}
-            onChangeText={setNote}
-            placeholder="Long day at work and a poor night of sleep."
-            placeholderTextColor={colors.nbMuted}
-            multiline
-            textAlignVertical="top"
-          />
-        </HardShadow>
-        <Text style={[styles.privacy, { color: colors.nbMuted }]}>
-          Only your coach reads this note.
-        </Text>
+        <MoodNoteField colors={colors} note={note} onNoteChange={setNote} />
 
         <NbButton
           variant="fill"
@@ -225,11 +309,37 @@ export default function MoodCheckInScreen({
           disabled={saving}
           style={{ marginTop: spacing.lg }}
         >
-          {saving ? 'Saving…' : 'Save mood'}
+          {saveButtonLabel}
         </NbButton>
       </ScrollView>
     </SafeAreaView>
   );
+}
+
+// ===== PLUMBING — skip unless debugging =====
+
+// Same dual write LogMoodPopup → executeLogMoodClient uses (mood_logs + daily metrics).
+async function writeMoodCheckInToFirestore(userId, dateKey, moodId, noteText) {
+  const trimmedNote = String(noteText || '').trim();
+
+  // vocab: serverTimestamp = Firestore server clock, not the phone clock
+  // vocab: setDoc merge:true = create or patch; do not wipe other fields on the doc
+  await Promise.all([
+    setDoc(
+      doc(db, USERS_COLLECTION, userId, MOOD_LOGS_COLLECTION, dateKey),
+      {
+        mood: moodId,
+        notes: trimmedNote,
+        date: dateKey,
+        logged_at: serverTimestamp(),
+      },
+      { merge: true },
+    ),
+    mergeClientDailyMetrics(userId, dateKey, {
+      logs: { dashboard_mood: moodId },
+      tracking: { mood: moodId },
+    }),
+  ]);
 }
 
 const styles = StyleSheet.create({

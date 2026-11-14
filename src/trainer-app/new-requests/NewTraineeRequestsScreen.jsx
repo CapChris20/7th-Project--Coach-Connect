@@ -1,6 +1,7 @@
-// Trainer inbox of “a client wants to work with you” — Design Law screen 11/12 (trainer-home).
-// Flow: pendingRequestCount → expand card → vitals from message payload or users/{clientUid} → accept/reject.
-// Used by trainer shell (TrainerMainScreen). Firebase projectId stays anatrox-auth (cloudConnection only).
+// Trainer inbox — “a client wants to work with you” (Design Law trainer-home 11/12).
+// Flow: pendingRequestCount → expand card → vitals from message or users/{clientUid} → accept/reject popup.
+// Used by TrainerMainScreen shell. Firebase projectId stays anatrox-auth (cloudConnection only).
+// Read order: constants → display helpers → subcomponents → main screen → PLUMBING vitals → styles.
 
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
@@ -52,150 +53,183 @@ const DETAIL_FIELD_SPECS = [
   { label: 'Injuries', keys: ['clientLimitations', 'clientInjuries', 'injuries'] },
 ];
 
+// Manipulate here: max plausible age when deriving from birthDate.
+const MAX_PLAUSIBLE_AGE_YEARS = 120;
+const MIN_PLAUSIBLE_AGE_YEARS = 1;
+const HEIGHT_INCHES_MIN = 36;
+const HEIGHT_INCHES_MAX = 96;
+const INCHES_PER_FOOT = 12;
+
+const EMPTY_MESSAGE_COPY = 'No message provided.';
+const EMPTY_DETAILS_HINT =
+  'No vitals on this request yet — check the message tab.';
+const EMPTY_SUBTITLE = '—';
+
 // ===== HELPER FUNCTIONS =====
 
+/**
+ * First letters of the client name for NbAvatar (max two chars).
+ * @param {string} clientName
+ * @returns {string}
+ */
 function clientInitials(clientName) {
-  return (clientName || UNKNOWN_INITIAL)
+  const nameOrFallback = clientName || UNKNOWN_INITIAL;
+  const letters = nameOrFallback
     .split(' ')
     .map((word) => word[0])
     .join('')
-    .toUpperCase()
-    .substring(0, INITIALS_MAX_CHARS);
+    .toUpperCase();
+  return letters.substring(0, INITIALS_MAX_CHARS);
 }
 
-/** vocab: snake_case onboarding values → Title Case for display chips */
+/**
+ * vocab: snake_case onboarding values → Title Case for display chips.
+ * @param {*} value
+ * @returns {string}
+ */
 function formatDisplayValue(value) {
   if (value == null || value === '') return '';
   if (typeof value !== 'string') return String(value);
-  return value
-    .split('_')
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ');
+
+  const words = value.split('_');
+  const titledWords = words.map((word) => {
+    const firstLetter = word.charAt(0).toUpperCase();
+    const restOfWord = word.slice(1);
+    return firstLetter + restOfWord;
+  });
+  return titledWords.join(' ');
 }
 
-function firstDefinedField(item, keys) {
-  for (const key of keys) {
-    const raw = item[key];
-    if (raw != null && raw !== '') return raw;
+/**
+ * First non-empty field among alternate keys on a request row.
+ * Message docs and profile overlays use different letterings for the same fact.
+ * @param {object} requestItem
+ * @param {string[]} fieldKeys
+ * @returns {*|null}
+ */
+function firstNonEmptyRequestField(requestItem, fieldKeys) {
+  for (const fieldKey of fieldKeys) {
+    const fieldValue = requestItem[fieldKey];
+    if (fieldValue != null && fieldValue !== '') return fieldValue;
   }
   return null;
 }
 
-/** Experience · times · place — only segments that exist on the request object (never invented). */
-function requestSubtitleLine(item) {
-  const parts = [];
-  const experience = formatDisplayValue(item.clientExperienceLevel);
-  if (experience) parts.push(experience);
-  const times = firstDefinedField(item, ['clientPreferredTimes', 'preferredTimes', 'trainingTimes']);
-  if (times) parts.push(formatDisplayValue(String(times)));
-  const place = firstDefinedField(item, ['clientTrainingLocation', 'trainingLocation', 'workoutLocation']);
-  if (place) parts.push(formatDisplayValue(String(place)));
-  return parts.length ? parts.join(' · ') : '—';
-}
+/**
+ * Experience · times · place — only segments that exist on the request (never invented).
+ * @param {object} requestItem
+ * @returns {string}
+ */
+function requestSubtitleLine(requestItem) {
+  const subtitleParts = [];
 
-function buildDetailRows(item) {
-  const rows = [];
-  for (const spec of DETAIL_FIELD_SPECS) {
-    const raw = firstDefinedField(item, spec.keys);
-    if (raw == null || raw === '') continue;
-    let value;
-    if (spec.label === 'Height') {
-      value = formatHeightForKv(raw);
-    } else if (spec.label === 'Weight') {
-      value = formatWeightForKv(raw);
-    } else {
-      value = formatDisplayValue(String(raw));
-    }
-    if (value) rows.push({ label: spec.label, value });
+  const experience = formatDisplayValue(requestItem.clientExperienceLevel);
+  if (experience) subtitleParts.push(experience);
+
+  const preferredTimes = firstNonEmptyRequestField(requestItem, [
+    'clientPreferredTimes',
+    'preferredTimes',
+    'trainingTimes',
+  ]);
+  if (preferredTimes) {
+    subtitleParts.push(formatDisplayValue(String(preferredTimes)));
   }
-  return rows;
+
+  const trainingPlace = firstNonEmptyRequestField(requestItem, [
+    'clientTrainingLocation',
+    'trainingLocation',
+    'workoutLocation',
+  ]);
+  if (trainingPlace) {
+    subtitleParts.push(formatDisplayValue(String(trainingPlace)));
+  }
+
+  if (subtitleParts.length === 0) return EMPTY_SUBTITLE;
+  return subtitleParts.join(' · ');
 }
 
-/** True when Age, Weight, or Height is still missing on the merged request object. */
-function requestMissingAnyVital(item) {
-  if (!item) return false;
-  for (const label of VITAL_LABELS) {
-    const spec = DETAIL_FIELD_SPECS.find((row) => row.label === label);
-    if (!spec) continue;
-    if (firstDefinedField(item, spec.keys) == null) return true;
+/**
+ * Format one detail-row value by label (Height / Weight get special display).
+ * @param {string} label
+ * @param {*} rawValue
+ * @returns {string}
+ */
+function formatDetailFieldValue(label, rawValue) {
+  if (label === 'Height') return formatHeightForKv(rawValue);
+  if (label === 'Weight') return formatWeightForKv(rawValue);
+  return formatDisplayValue(String(rawValue));
+}
+
+/**
+ * Build Age / Weight / Height / Equipment / Injuries rows for the details tab.
+ * @param {object} requestItem
+ * @returns {Array<{ label: string, value: string }>}
+ */
+function buildDetailRows(requestItem) {
+  const detailRows = [];
+  for (const fieldSpec of DETAIL_FIELD_SPECS) {
+    const rawValue = firstNonEmptyRequestField(requestItem, fieldSpec.keys);
+    if (rawValue == null || rawValue === '') continue;
+
+    const displayValue = formatDetailFieldValue(fieldSpec.label, rawValue);
+    if (displayValue) {
+      detailRows.push({ label: fieldSpec.label, value: displayValue });
+    }
+  }
+  return detailRows;
+}
+
+/**
+ * True when Age, Weight, or Height is still missing on the merged request object.
+ * @param {object|null} requestItem
+ * @returns {boolean}
+ */
+function requestMissingAnyVital(requestItem) {
+  if (!requestItem) return false;
+
+  for (const vitalLabel of VITAL_LABELS) {
+    const fieldSpec = DETAIL_FIELD_SPECS.find((row) => row.label === vitalLabel);
+    if (!fieldSpec) continue;
+    const vitalValue = firstNonEmptyRequestField(requestItem, fieldSpec.keys);
+    if (vitalValue == null) return true;
   }
   return false;
 }
 
 /**
- * vocab: Firestore Timestamp exposes toDate(); strings and numbers are also accepted.
- * Manipulate here: max plausible age for birthDate-derived values.
+ * Overlay profile vitals onto a request row without inventing fields.
+ * @param {object} requestItem
+ * @param {object} overlayByUid
+ * @returns {object}
  */
-function ageFromBirthDate(birthDate) {
-  if (birthDate == null || birthDate === '') return null;
-  let dateValue;
-  if (typeof birthDate?.toDate === 'function') dateValue = birthDate.toDate();
-  else if (birthDate instanceof Date) dateValue = birthDate;
-  else if (typeof birthDate === 'number') dateValue = new Date(birthDate);
-  else if (typeof birthDate === 'string') dateValue = new Date(birthDate);
-  else return null;
-  if (Number.isNaN(dateValue.getTime())) return null;
-  const today = new Date();
-  let years = today.getFullYear() - dateValue.getFullYear();
-  const monthDelta = today.getMonth() - dateValue.getMonth();
-  if (monthDelta < 0 || (monthDelta === 0 && today.getDate() < dateValue.getDate())) years -= 1;
-  if (!Number.isFinite(years) || years < 1 || years > 120) return null;
-  return years;
-}
-
-function formatWeightForKv(raw) {
-  if (raw == null || raw === '') return '';
-  if (typeof raw === 'number' && Number.isFinite(raw)) return `${raw} lbs`;
-  const text = String(raw).trim();
-  return text ? formatDisplayValue(text) : '';
-}
-
-/** Map users/{id}.height objects, strings, or inch totals — never invent a value. */
-function formatHeightForKv(raw) {
-  if (raw == null || raw === '') return '';
-  if (typeof raw === 'object' && raw !== null && !Array.isArray(raw) && raw.feet != null) {
-    const inch = Number(raw.inches) || 0;
-    return `${raw.feet}'${inch}"`;
-  }
-  const totalInches = typeof raw === 'number' ? raw : Number(String(raw).replace(/[^0-9.]/g, ''));
-  if (Number.isFinite(totalInches) && totalInches >= 36 && totalInches <= 96) {
-    const total = Math.round(totalInches);
-    return `${Math.floor(total / 12)}'${total % 12}"`;
-  }
-  const text = typeof raw === 'string' ? raw.trim() : '';
-  return text ? formatDisplayValue(text) : '';
+function mergeRequestWithProfileOverlay(requestItem, overlayByUid) {
+  if (!requestItem?.clientUid) return requestItem;
+  const overlay = overlayByUid[requestItem.clientUid];
+  if (!overlay || !Object.keys(overlay).length) return requestItem;
+  return { ...requestItem, ...overlay };
 }
 
 /**
- * Only copy fields that exist on the Firestore user doc — used to enrich the request card.
- * @param {object} userData
- * @returns {object}
+ * @param {number} count
+ * @returns {string}
  */
-function vitalsOverlayFromUserDoc(userData) {
-  const overlay = {};
-  if (!userData || typeof userData !== 'object') return overlay;
-
-  const ageRaw = userData.age;
-  if (ageRaw != null && ageRaw !== '') overlay.age = ageRaw;
-  else {
-    const derived = ageFromBirthDate(userData.birthDate);
-    if (derived != null) overlay.age = derived;
-  }
-
-  if (userData.weight != null && userData.weight !== '') overlay.weight = userData.weight;
-  if (userData.height != null && userData.height !== '') overlay.height = userData.height;
-  return overlay;
-}
-
-function mergeRequestWithProfileOverlay(item, overlayByUid) {
-  if (!item?.clientUid) return item;
-  const overlay = overlayByUid[item.clientUid];
-  if (!overlay || !Object.keys(overlay).length) return item;
-  return { ...item, ...overlay };
-}
-
 function waitingPillLabel(count) {
   return `${count} waiting`;
+}
+
+/**
+ * Keep expandedId on a row that still exists; otherwise default to the first request.
+ * @param {string|null} previousExpandedId
+ * @param {Array} requestList
+ * @returns {string|null}
+ */
+function nextExpandedIdAfterListChange(previousExpandedId, requestList) {
+  if (!requestList.length) return null;
+  const stillInList =
+    previousExpandedId &&
+    requestList.some((requestRow) => requestRow.id === previousExpandedId);
+  if (stillInList) return previousExpandedId;
+  return requestList[0].id;
 }
 
 // ===== SUBCOMPONENTS =====
@@ -224,6 +258,8 @@ function RequestsBackButton({ onPress, colors }) {
 
 function WaitingPill({ count, colors }) {
   if (count < 1) return null;
+
+  const pillLabel = waitingPillLabel(count);
   return (
     <LinearGradient
       colors={gradients.brand.colors}
@@ -231,7 +267,7 @@ function WaitingPill({ count, colors }) {
       end={gradients.brand.end}
       style={[styles.waitingPill, { borderColor: colors.nbBorder }]}
     >
-      <Text style={[styles.waitingPillText, { color: colors.nbInk }]}>{waitingPillLabel(count)}</Text>
+      <Text style={[styles.waitingPillText, { color: colors.nbInk }]}>{pillLabel}</Text>
     </LinearGradient>
   );
 }
@@ -250,6 +286,7 @@ function RequestsHeader({ colors, requestCount, onBack }) {
 
 function PayoutNudgeCard({ colors, onOpenPayout }) {
   if (!onOpenPayout) return null;
+
   return (
     <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard} style={styles.blockGap}>
       <NbCard noShadow style={styles.payoutCard}>
@@ -268,29 +305,30 @@ function DetailKvRows({ rows, colors }) {
   if (!rows.length) {
     return (
       <Text style={[styles.emptyDetailsHint, { color: colors.nbMuted }]}>
-        No vitals on this request yet — check the message tab.
+        {EMPTY_DETAILS_HINT}
       </Text>
     );
   }
+
   return (
     <View>
-      {rows.map((row, index) => (
-        <View
-          key={row.label}
-          style={[
-            styles.kvRow,
-            index < rows.length - 1 && {
+      {rows.map((row, rowIndex) => {
+        const isLastRow = rowIndex >= rows.length - 1;
+        const rowBorderStyle = isLastRow
+          ? null
+          : {
               borderBottomWidth: nb.borderWidthDivider,
               borderBottomColor: colors.nbBorder,
-            },
-          ]}
-        >
-          <Text style={[styles.kvLabel, { color: colors.nbMuted }]}>{row.label}</Text>
-          <Text style={[styles.kvValue, { color: colors.nbInk }]} numberOfLines={2}>
-            {row.value}
-          </Text>
-        </View>
-      ))}
+            };
+        return (
+          <View key={row.label} style={[styles.kvRow, rowBorderStyle]}>
+            <Text style={[styles.kvLabel, { color: colors.nbMuted }]}>{row.label}</Text>
+            <Text style={[styles.kvValue, { color: colors.nbInk }]} numberOfLines={2}>
+              {row.value}
+            </Text>
+          </View>
+        );
+      })}
     </View>
   );
 }
@@ -303,20 +341,25 @@ function ExpandedRequestCard({
   onReject,
   onAccept,
 }) {
+  // Named locals above JSX — decisions before paint.
   const detailRows = useMemo(() => buildDetailRows(item), [item]);
   const goalLabel = formatDisplayValue(item.clientGoals);
+  const avatarInitials = clientInitials(item.clientName);
+  const subtitleText = requestSubtitleLine(item);
+  const showingDetails = segment === SEGMENT_DETAILS;
+  const messageBodyText = item.message?.trim() ? item.message : EMPTY_MESSAGE_COPY;
 
   return (
     <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard} style={styles.blockGap}>
       <NbCard noShadow style={styles.expandedCard}>
         <View style={styles.expandedHead}>
-          <NbAvatar initials={clientInitials(item.clientName)} size={48} />
+          <NbAvatar initials={avatarInitials} size={48} />
           <View style={styles.expandedHeadText}>
             <Text style={[styles.requestName, { color: colors.nbInk }]} numberOfLines={1}>
               {item.clientName}
             </Text>
             <Text style={[styles.requestSubtitle, { color: colors.nbMuted }]} numberOfLines={2}>
-              {requestSubtitleLine(item)}
+              {subtitleText}
             </Text>
           </View>
           {goalLabel ? (
@@ -340,7 +383,7 @@ function ExpandedRequestCard({
           style={styles.segmented}
         />
 
-        {segment === SEGMENT_DETAILS ? (
+        {showingDetails ? (
           <DetailKvRows rows={detailRows} colors={colors} />
         ) : (
           <View
@@ -350,7 +393,7 @@ function ExpandedRequestCard({
             ]}
           >
             <Text style={[styles.messageBody, { color: colors.nbInk }]}>
-              {item.message?.trim() ? item.message : 'No message provided.'}
+              {messageBodyText}
             </Text>
           </View>
         )}
@@ -369,6 +412,9 @@ function ExpandedRequestCard({
 }
 
 function CollapsedRequestCard({ item, colors, onPress }) {
+  const avatarInitials = clientInitials(item.clientName);
+  const subtitleText = requestSubtitleLine(item);
+
   return (
     <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard} style={styles.blockGap}>
       <Pressable
@@ -377,13 +423,13 @@ function CollapsedRequestCard({ item, colors, onPress }) {
         style={({ pressed }) => [{ opacity: pressed ? 0.9 : 1 }]}
       >
         <NbCard noShadow style={styles.collapsedCard}>
-          <NbAvatar initials={clientInitials(item.clientName)} size={44} />
+          <NbAvatar initials={avatarInitials} size={44} />
           <View style={styles.collapsedText}>
             <Text style={[styles.requestName, { color: colors.nbInk }]} numberOfLines={1}>
               {item.clientName}
             </Text>
             <Text style={[styles.requestSubtitle, { color: colors.nbMuted }]} numberOfLines={2}>
-              {requestSubtitleLine(item)}
+              {subtitleText}
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={20} color={colors.nbInk} />
@@ -429,12 +475,49 @@ function EmptyInboxCard({ colors }) {
   );
 }
 
+/**
+ * One row in the inbox list — expanded or collapsed. Keeps the map callback shallow.
+ */
+function RequestListRow({
+  requestRow,
+  isExpanded,
+  displayItem,
+  colors,
+  segment,
+  onSegmentChange,
+  onOpenPopup,
+  onExpand,
+}) {
+  if (isExpanded) {
+    return (
+      <ExpandedRequestCard
+        key={requestRow.id}
+        item={displayItem}
+        colors={colors}
+        segment={segment}
+        onSegmentChange={onSegmentChange}
+        onReject={onOpenPopup}
+        onAccept={onOpenPopup}
+      />
+    );
+  }
+
+  return (
+    <CollapsedRequestCard
+      key={requestRow.id}
+      item={displayItem}
+      colors={colors}
+      onPress={onExpand}
+    />
+  );
+}
+
 // ===== MAIN FUNCTION =====
 
 /**
- * Trainer pending-request inbox (Design Law). Accept/reject logic stays in TrainerListingPopup.
- * @param {object} props
- * @param {Function} [props.onOpenPayout] — when set, show payout nudge card (parent decides if payout incomplete)
+ * Trainer “New requests” inbox screen.
+ * Flow: 1. theme + pending list  2. expand/segment/vitals state  3. sync expandedId
+ *       4. backfill missing vitals  5. accept/reject sync  6. paint list + popup
  */
 export default function NewTraineeRequestsScreen({
   onClose,
@@ -442,57 +525,76 @@ export default function NewTraineeRequestsScreen({
   embedInLayout,
   onOpenPayout,
 }) {
+  // 1. Theme, shell inset, and live pending list from pendingRequestCount (hook order frozen).
   const { colors } = useTheme();
   const listBottomPad = useShellBottomNavInset(LIST_BOTTOM_INSET);
   const trainerUid = auth.currentUser?.uid;
   const { requests, loading, error, refresh } = pendingRequestCount(trainerUid);
+
+  // 2. Local UI state — expanded row, detail/message segment, profile vitals cache.
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [expandedId, setExpandedId] = useState(null);
   const [segmentByRequestId, setSegmentByRequestId] = useState({});
-  /** Cached vitals from users/{clientUid} — only keys that exist on the profile doc. */
   const [vitalsByClientUid, setVitalsByClientUid] = useState({});
+  // vocab: useRef Set = “uids we already kicked off a fetch for” (survives re-renders without re-fetch).
   const vitalsFetchStartedRef = useRef(new Set());
 
+  // 3. Keep expandedId pointing at a row that still exists (or default to first).
   useEffect(() => {
     if (!requests.length) {
       setExpandedId(null);
       return;
     }
-    setExpandedId((prev) => (prev && requests.some((r) => r.id === prev) ? prev : requests[0].id));
+    setExpandedId((previousExpandedId) =>
+      nextExpandedIdAfterListChange(previousExpandedId, requests),
+    );
   }, [requests]);
 
-  // When the expanded request lacks vitals, one-shot read users/{clientUid} (loadPendingTraineeRequests.clientUid).
+  // 4. One-shot users/{clientUid} when message payload is missing Age/Weight/Height.
   useEffect(() => {
     if (!expandedId || !db) return undefined;
-    const item = requests.find((row) => row.id === expandedId);
-    if (!item?.clientUid) return undefined;
 
-    const merged = mergeRequestWithProfileOverlay(item, vitalsByClientUid);
-    if (!requestMissingAnyVital(merged)) return undefined;
-    if (vitalsFetchStartedRef.current.has(item.clientUid)) return undefined;
+    const expandedRequest = requests.find((requestRow) => requestRow.id === expandedId);
+    if (!expandedRequest?.clientUid) return undefined;
 
-    vitalsFetchStartedRef.current.add(item.clientUid);
-    let cancelled = false;
+    const mergedForDisplay = mergeRequestWithProfileOverlay(expandedRequest, vitalsByClientUid);
+    if (!requestMissingAnyVital(mergedForDisplay)) return undefined;
+    if (vitalsFetchStartedRef.current.has(expandedRequest.clientUid)) return undefined;
+
+    vitalsFetchStartedRef.current.add(expandedRequest.clientUid);
+    let effectCancelled = false;
 
     (async () => {
       try {
-        const snap = await getDoc(doc(db, 'users', item.clientUid));
-        if (cancelled) return;
-        if (!snap.exists()) return;
-        const overlay = vitalsOverlayFromUserDoc(snap.data());
+        // vocab: getDoc = one-shot Firestore read of users/{clientUid}.
+        const userSnap = await getDoc(doc(db, 'users', expandedRequest.clientUid));
+        if (effectCancelled) return;
+        if (!userSnap.exists()) return;
+
+        const overlay = vitalsOverlayFromUserDoc(userSnap.data());
         if (!Object.keys(overlay).length) return;
-        setVitalsByClientUid((prev) => ({ ...prev, [item.clientUid]: overlay }));
+
+        setVitalsByClientUid((previous) => ({
+          ...previous,
+          [expandedRequest.clientUid]: overlay,
+        }));
       } catch (fetchError) {
-        vitalsFetchStartedRef.current.delete(item.clientUid);
-        if (__DEV__) console.warn('NewTraineeRequestsScreen vitals fetch:', fetchError?.message || fetchError);
+        vitalsFetchStartedRef.current.delete(expandedRequest.clientUid);
+        if (__DEV__) {
+          console.warn(
+            'NewTraineeRequestsScreen vitals fetch:',
+            fetchError?.message || fetchError,
+          );
+        }
       }
     })();
 
     return () => {
-      cancelled = true;
+      effectCancelled = true;
     };
   }, [expandedId, requests, vitalsByClientUid]);
 
+  // 5. After accept/reject — refresh list and tell parent (TrainerMainScreen clients tab).
   const syncListWithParent = useCallback(async () => {
     setSelectedRequest(null);
     await refresh();
@@ -500,69 +602,79 @@ export default function NewTraineeRequestsScreen({
   }, [refresh, onClientAdded]);
 
   const handleClientAdded = async () => {
+    // 1. Close popup + refresh inbox + notify parent.
     await syncListWithParent();
   };
 
-  const getSegment = useCallback(
+  const readSegmentForRequest = useCallback(
     (requestId) => segmentByRequestId[requestId] || SEGMENT_DETAILS,
     [segmentByRequestId],
   );
 
-  const setSegmentFor = useCallback((requestId, segment) => {
-    setSegmentByRequestId((prev) => ({ ...prev, [requestId]: segment }));
+  const saveSegmentForRequest = useCallback((requestId, segmentChoice) => {
+    setSegmentByRequestId((previous) => ({ ...previous, [requestId]: segmentChoice }));
   }, []);
 
   const openListingPopup = useCallback((request) => {
     setSelectedRequest(request);
   }, []);
 
+  // 6. Header + list + accept/reject popup (body is shared by SafeArea and embedded layouts).
   const shellStyle = [styles.container, { backgroundColor: colors.nbBackground }];
+  const showLoading = loading;
+  const showError = !loading && !!error;
+  const showEmpty = !loading && !error && requests.length === 0;
+  const showList = !loading && !error && requests.length > 0;
+  const popupIsVisible = !!selectedRequest;
+
+  const requestRows = requests.map((requestRow) => {
+    const isExpanded = requestRow.id === expandedId;
+    const displayItem = mergeRequestWithProfileOverlay(requestRow, vitalsByClientUid);
+    return (
+      <RequestListRow
+        key={requestRow.id}
+        requestRow={requestRow}
+        isExpanded={isExpanded}
+        displayItem={displayItem}
+        colors={colors}
+        segment={readSegmentForRequest(requestRow.id)}
+        onSegmentChange={(segmentChoice) => saveSegmentForRequest(requestRow.id, segmentChoice)}
+        onOpenPopup={() => openListingPopup(requestRow)}
+        onExpand={() => setExpandedId(requestRow.id)}
+      />
+    );
+  });
+
+  // Name the inbox body before JSX — early returns keep nesting flat (no else-if chain).
+  let mainContent = null;
+  if (showLoading) {
+    mainContent = <LoadingRequests colors={colors} />;
+  }
+  if (showError) {
+    mainContent = <RequestsError error={error} colors={colors} onRetry={refresh} />;
+  }
+  if (showEmpty) {
+    mainContent = <EmptyInboxCard colors={colors} />;
+  }
+  if (showList) {
+    mainContent = (
+      <ScrollView
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: listBottomPad }]}
+        showsVerticalScrollIndicator={false}
+        {...FORM_SCROLL_PROPS}
+      >
+        <PayoutNudgeCard colors={colors} onOpenPayout={onOpenPayout} />
+        {requestRows}
+      </ScrollView>
+    );
+  }
 
   const body = (
     <>
       <RequestsHeader colors={colors} requestCount={requests.length} onBack={onClose} />
-      {loading ? (
-        <LoadingRequests colors={colors} />
-      ) : error ? (
-        <RequestsError error={error} colors={colors} onRetry={refresh} />
-      ) : requests.length === 0 ? (
-        <EmptyInboxCard colors={colors} />
-      ) : (
-        <ScrollView
-          contentContainerStyle={[styles.scrollContent, { paddingBottom: listBottomPad }]}
-          showsVerticalScrollIndicator={false}
-          {...FORM_SCROLL_PROPS}
-        >
-          <PayoutNudgeCard colors={colors} onOpenPayout={onOpenPayout} />
-          {requests.map((item) => {
-            const isExpanded = item.id === expandedId;
-            const displayItem = mergeRequestWithProfileOverlay(item, vitalsByClientUid);
-            if (isExpanded) {
-              return (
-                <ExpandedRequestCard
-                  key={item.id}
-                  item={displayItem}
-                  colors={colors}
-                  segment={getSegment(item.id)}
-                  onSegmentChange={(seg) => setSegmentFor(item.id, seg)}
-                  onReject={() => openListingPopup(item)}
-                  onAccept={() => openListingPopup(item)}
-                />
-              );
-            }
-            return (
-              <CollapsedRequestCard
-                key={item.id}
-                item={displayItem}
-                colors={colors}
-                onPress={() => setExpandedId(item.id)}
-              />
-            );
-          })}
-        </ScrollView>
-      )}
+      {mainContent}
       <TrainerListingPopup
-        visible={!!selectedRequest}
+        visible={popupIsVisible}
         clientRequest={selectedRequest}
         trainerUid={trainerUid}
         onClose={() => setSelectedRequest(null)}
@@ -572,6 +684,7 @@ export default function NewTraineeRequestsScreen({
     </>
   );
 
+  // 7. Embedded in trainer shell vs standalone SafeArea screen.
   if (embedInLayout) {
     return <View style={[shellStyle, { flex: 1 }]}>{body}</View>;
   }
@@ -581,6 +694,121 @@ export default function NewTraineeRequestsScreen({
       {body}
     </SafeAreaView>
   );
+}
+
+// ===== PLUMBING — skip unless debugging vitals backfill =====
+
+/**
+ * vocab: Firestore Timestamp exposes toDate(); strings and numbers also accepted for birthDate.
+ * @param {*} birthDate
+ * @returns {Date|null}
+ */
+function dateFromBirthDateValue(birthDate) {
+  if (birthDate == null || birthDate === '') return null;
+  if (typeof birthDate?.toDate === 'function') return birthDate.toDate();
+  if (birthDate instanceof Date) return birthDate;
+  if (typeof birthDate === 'number') return new Date(birthDate);
+  if (typeof birthDate === 'string') return new Date(birthDate);
+  return null;
+}
+
+/**
+ * Whole years from a birthDate field (Firestore Timestamp, Date, number, or string).
+ * @param {*} birthDate
+ * @returns {number|null}
+ */
+function ageFromBirthDate(birthDate) {
+  const dateValue = dateFromBirthDateValue(birthDate);
+  if (!dateValue || Number.isNaN(dateValue.getTime())) return null;
+
+  const today = new Date();
+  let years = today.getFullYear() - dateValue.getFullYear();
+  const monthDelta = today.getMonth() - dateValue.getMonth();
+  const birthdayNotYetThisYear =
+    monthDelta < 0 || (monthDelta === 0 && today.getDate() < dateValue.getDate());
+  if (birthdayNotYetThisYear) years -= 1;
+
+  const ageIsPlausible =
+    Number.isFinite(years) &&
+    years >= MIN_PLAUSIBLE_AGE_YEARS &&
+    years <= MAX_PLAUSIBLE_AGE_YEARS;
+  if (!ageIsPlausible) return null;
+  return years;
+}
+
+function formatWeightForKv(weightValue) {
+  if (weightValue == null || weightValue === '') return '';
+  if (typeof weightValue === 'number' && Number.isFinite(weightValue)) {
+    return `${weightValue} lbs`;
+  }
+  const text = String(weightValue).trim();
+  if (!text) return '';
+  return formatDisplayValue(text);
+}
+
+/**
+ * Height as feet'inches" when we can parse inches or a { feet, inches } object.
+ * @param {*} heightValue
+ * @returns {string}
+ */
+function formatHeightForKv(heightValue) {
+  if (heightValue == null || heightValue === '') return '';
+
+  const isFeetInchesObject =
+    typeof heightValue === 'object' &&
+    heightValue !== null &&
+    !Array.isArray(heightValue) &&
+    heightValue.feet != null;
+  if (isFeetInchesObject) {
+    const inchPart = Number(heightValue.inches) || 0;
+    return `${heightValue.feet}'${inchPart}"`;
+  }
+
+  const totalInches =
+    typeof heightValue === 'number'
+      ? heightValue
+      : Number(String(heightValue).replace(/[^0-9.]/g, ''));
+  const inchesArePlausible =
+    Number.isFinite(totalInches) &&
+    totalInches >= HEIGHT_INCHES_MIN &&
+    totalInches <= HEIGHT_INCHES_MAX;
+  if (inchesArePlausible) {
+    const rounded = Math.round(totalInches);
+    const feetPart = Math.floor(rounded / INCHES_PER_FOOT);
+    const leftoverInches = rounded % INCHES_PER_FOOT;
+    return `${feetPart}'${leftoverInches}"`;
+  }
+
+  const text = typeof heightValue === 'string' ? heightValue.trim() : '';
+  if (!text) return '';
+  return formatDisplayValue(text);
+}
+
+/**
+ * Pull age/weight/height from users/{uid} for overlay when the request message omitted them.
+ * Field letters on the overlay match DETAIL_FIELD_SPECS keys (age, weight, height).
+ * @param {object} userData
+ * @returns {object}
+ */
+function vitalsOverlayFromUserDoc(userData) {
+  const overlay = {};
+  if (!userData || typeof userData !== 'object') return overlay;
+
+  const ageOnProfile = userData.age;
+  if (ageOnProfile != null && ageOnProfile !== '') {
+    overlay.age = ageOnProfile;
+  } else {
+    const ageFromBirth = ageFromBirthDate(userData.birthDate);
+    if (ageFromBirth != null) overlay.age = ageFromBirth;
+  }
+
+  if (userData.weight != null && userData.weight !== '') {
+    overlay.weight = userData.weight;
+  }
+  if (userData.height != null && userData.height !== '') {
+    overlay.height = userData.height;
+  }
+  return overlay;
 }
 
 const styles = StyleSheet.create({

@@ -1,31 +1,16 @@
 // Design Law “Add food” search (PNG 05–08): header → field → Scan|Quick add → segment → card → basket.
 // Flow: debounce search → normalize hits → Results/Favorites/Recent → toggle basket → ConfirmFoodPopup → logFood.
 // Used by DailyLogContent (embedded + reserveShellBottomNav). Props wire barcode / quick-add into the parent shell.
+// Read order: constants → row/empty UI → normalize helpers → FoodSearchScreen → PLUMBING styles.
 //
 // vocab: HardShadow = solid offset shadow (no blur); nbFill = selected / primary solid (black light, white dark)
 // vocab: basket = foods toggled with +; Log-to-Meal opens ConfirmFoodPopup sequentially for each pick
+// KEEP food-card keys: name, food_name, brand, servingSize, calories, protein, carbs, fat, …
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import {
-  searchFoods,
-  getRecentFoods,
-  getFoodSearchHint,
-  getFavoriteFoods,
-} from '../daily-log/saveLoggedFood';
+import { searchFoods, getRecentFoods, getFoodSearchHint, getFavoriteFoods } from '../daily-log/saveLoggedFood';
 import { resolveFoodBrandLabel } from '../food-details/tidyBrandName';
 import { cleanSerperFoodTitle, isJunkWebSearchTitle } from '../food-search/tidyFoodTitles';
 import { formatServingDisplayLine } from '../food-search/guessServingLabel';
@@ -55,102 +40,77 @@ const DEFAULT_SERVING_GRAMS = 100;
 // Manipulate here: floating basket clearance above the shell dock (PNG floats above Nutrition tab)
 const BASKET_ABOVE_DOCK_GAP = 10;
 const BASKET_CLEARANCE = 72;
-
+const NEXT_BASKET_ITEM_DELAY_MS = 180;
 const SCALES_ICON = require('../../assets/icons/handoff/scales.png');
 
 // Manipulate here: quick-pick chip labels (PNG 07/08 empty state)
-const QUICK_PICKS = [
-  'Greek Yogurt',
-  'Salmon',
-  'Oatmeal',
-  'Chicken Breast',
-  'Brown Rice',
-  'Avocado',
-];
-
-const BROWSE_SEGMENTS = [
-  { id: 'results', label: 'Search results' },
-  { id: 'favorites', label: 'Favorites' },
-  { id: 'recent', label: 'Recent' },
-];
+const QUICK_PICKS = ['Greek Yogurt', 'Salmon', 'Oatmeal', 'Chicken Breast', 'Brown Rice', 'Avocado'];
+const BROWSE_SEGMENTS = [{
+  id: 'results',
+  label: 'Search results'
+}, {
+  id: 'favorites',
+  label: 'Favorites'
+}, {
+  id: 'recent',
+  label: 'Recent'
+}];
+const BROWSE_TAB_RESULTS = 'results';
+const BROWSE_TAB_FAVORITES = 'favorites';
+const BROWSE_TAB_RECENT = 'recent';
 
 // Manipulate here: soft disc copy under the results card (PNG 05/06 `.disc`)
-const DISCLAIMER_COPY =
-  'Search packaged foods, restaurants, and groceries. Nutrition data comes from public databases and can be off. Check the label when it matters.';
+const DISCLAIMER_COPY = 'Search packaged foods, restaurants, and groceries. Nutrition data comes from public databases and can be off. Check the label when it matters.';
+const GENERIC_UNIT_PATTERN = /^(serving|portion|each|g|gram|grams|ml)$/i;
 
 // ===== HELPER FUNCTIONS =====
 
-/**
- * Title-case meal key for header subtitle / “Log to {Meal}” copy.
- * @param {string} mealType
- * @returns {string}
- */
-function mealLabel(mealType) {
-  const raw = String(mealType || 'meal');
-  return raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
+function mealTypeAsTitle(mealType) {
+  const mealKey = String(mealType || 'meal');
+  return mealKey.charAt(0).toUpperCase() + mealKey.slice(1).toLowerCase();
 }
 
-/**
- * Household serving text when the API only gave a unit (not "serving"/"g").
- * @param {object} item
- * @returns {string|null}
- */
+// Household serving text when the API only gave a unit (not "serving"/"g").
 function portionTextFromServingUnit(item) {
   const servingUnit = String(item.serving_unit || item.servingUnit || '').trim();
   if (!servingUnit) return null;
-  if (/^(serving|portion|each|g|gram|grams|ml)$/i.test(servingUnit)) return null;
+  if (GENERIC_UNIT_PATTERN.test(servingUnit)) return null;
   return servingUnit;
 }
+function roundMacroNumber(value) {
+  return Math.round(value ?? 0);
+}
 
-/**
- * Normalize a search / recent / favorite hit into the shape nutritionService.addFoodLog expects.
- * Keep both camelCase + snake_case keys — ConfirmFoodPopup and logFood still read both.
- * @param {object} item
- * @param {string} [searchQuery]
- * @returns {object}
- */
+// Flatten a search / recent / favorite hit for ConfirmFoodPopup and logFood (camelCase + snake_case keys).
 function normalizeFood(item, searchQuery = '') {
-  const roundCalories = (rawValue) => Math.round(rawValue ?? 0);
-  const meta = item?.metadata && typeof item.metadata === 'object' ? item.metadata : {};
-
-  const portion_text =
-    item.serving_label ||
-    item.servingLabel ||
-    item.householdServingFullText ||
-    meta.serving_label ||
-    meta.servingLabel ||
-    meta.householdServingFullText ||
-    portionTextFromServingUnit(item);
-
-  const rawName = item.name || item.food_name || item.description || 'Unknown Food';
-  // vocab: serper = web search source — titles are messy, so we tidy when the user typed a query
-  const foodName =
-    (item.source === 'serper' || item.source === 'mixed') && searchQuery
-      ? cleanSerperFoodTitle(rawName, searchQuery)
-      : rawName;
-  const brandLabel = resolveFoodBrandLabel(
-    foodName,
-    item.brand || item.brand_name || item.brand_owner || item.brandOwner || '',
-  );
-
+  const metadataBag = (item == null ? void 0 : item.metadata) && typeof item.metadata === 'object' ? item.metadata : {};
+  const portion_text = item.serving_label || item.servingLabel || item.householdServingFullText || metadataBag.serving_label || metadataBag.servingLabel || metadataBag.householdServingFullText || portionTextFromServingUnit(item);
+  const nameFromApi = item.name || item.food_name || item.description || 'Unknown Food';
+  const isWebSearchSource = item.source === 'serper' || item.source === 'mixed';
+  const shouldTidyWebTitle = isWebSearchSource && Boolean(searchQuery);
+  let foodName = nameFromApi;
+  if (shouldTidyWebTitle) {
+    foodName = cleanSerperFoodTitle(nameFromApi, searchQuery);
+  }
+  const explicitBrand = item.brand || item.brand_name || item.brand_owner || item.brandOwner || '';
+  const brandLabel = resolveFoodBrandLabel(foodName, explicitBrand);
   return {
     name: foodName,
     brand: brandLabel,
     servingSize: item.servingSize || item.serving_qty || item.serving_size || 1,
     servingUnit: item.servingUnit || item.serving_unit || item.servingSizeUnit || 'serving',
     servingGrams: item.servingGrams || item.serving_weight_grams || item.serving_grams || DEFAULT_SERVING_GRAMS,
-    calories: roundCalories(item.calories ?? item.nf_calories),
-    protein: roundCalories(item.protein ?? item.nf_protein),
-    carbs: roundCalories(item.carbs ?? item.nf_total_carbohydrate),
-    fat: roundCalories(item.fat ?? item.nf_total_fat),
-    fiber: roundCalories(item.fiber ?? item.nf_dietary_fiber),
-    sugar: roundCalories(item.sugar ?? item.nf_sugars),
-    sodium: roundCalories(item.sodium ?? item.nf_sodium),
+    calories: roundMacroNumber(item.calories ?? item.nf_calories),
+    protein: roundMacroNumber(item.protein ?? item.nf_protein),
+    carbs: roundMacroNumber(item.carbs ?? item.nf_total_carbohydrate),
+    fat: roundMacroNumber(item.fat ?? item.nf_total_fat),
+    fiber: roundMacroNumber(item.fiber ?? item.nf_dietary_fiber),
+    sugar: roundMacroNumber(item.sugar ?? item.nf_sugars),
+    sodium: roundMacroNumber(item.sodium ?? item.nf_sodium),
     source: item.source || 'server',
     nutrition_unverified: Boolean(item.nutrition_unverified),
     multiServingFallback: Boolean(item.multiServingFallback),
     servingMultiplier: item.servingMultiplier ?? null,
-
     food_name: foodName,
     brand_name: brandLabel,
     serving_size: item.serving_qty || item.servingSize || 1,
@@ -158,349 +118,409 @@ function normalizeFood(item, searchQuery = '') {
     serving_grams: item.serving_weight_grams || item.servingGrams || DEFAULT_SERVING_GRAMS,
     serving_label: item.serving_label || item.servingLabel || item.householdServingFullText || null,
     portion_text,
-
-    metadata: item,
+    metadata: item
   };
 }
-
-/**
- * Serving line shown under the food name (brand · portion).
- * @param {object} item
- * @param {string} [userQuery]
- * @returns {string}
- */
 function formatServingLine(item, userQuery = '') {
-  return formatServingDisplayLine(item, userQuery || item?.metadata?.matchedQuery || '');
+  var _optObj;
+  const matchedQuery = ((_optObj = item == null ? void 0 : item.metadata) == null ? void 0 : _optObj.matchedQuery) || '';
+  const queryForServing = userQuery || matchedQuery;
+  return formatServingDisplayLine(item, queryForServing);
 }
-
-/**
- * Map a favorite Firestore row into normalizeFood input.
- * @param {object} favorite
- * @returns {object}
- */
 function normalizeFavoriteRow(favorite) {
+  var _optObj2, _optObj3, _optObj4;
   return normalizeFood({
     id: favorite.foodId,
     name: favorite.foodName,
     food_name: favorite.foodName,
     calories: favorite.calories,
-    protein: favorite.macros?.protein,
-    carbs: favorite.macros?.carbs,
-    fat: favorite.macros?.fat,
-    brand: favorite.brand,
+    protein: (_optObj2 = favorite.macros) == null ? void 0 : _optObj2.protein,
+    carbs: (_optObj3 = favorite.macros) == null ? void 0 : _optObj3.carbs,
+    fat: (_optObj4 = favorite.macros) == null ? void 0 : _optObj4.fat,
+    brand: favorite.brand
   });
 }
-
-/**
- * Drop junk web titles, then normalize each hit with the active query.
- * @param {Array} rawHits
- * @param {string} trimmedQuery
- * @returns {Array}
- */
 function normalizeSearchHits(rawHits, trimmedQuery) {
-  return (rawHits || [])
-    .filter((item) => {
-      const title = item?.name || item?.food_name || '';
-      return !isJunkWebSearchTitle(title);
-    })
-    .map((item) => normalizeFood(item, trimmedQuery));
+  const safeHits = rawHits || [];
+  const cleanedHits = [];
+  for (let index = 0; index < safeHits.length; index += 1) {
+    const item = safeHits[index];
+    const title = (item == null ? void 0 : item.name) || (item == null ? void 0 : item.food_name) || '';
+    if (isJunkWebSearchTitle(title)) continue;
+    cleanedHits.push(normalizeFood(item, trimmedQuery));
+  }
+  return cleanedHits;
 }
-
-/**
- * Meta line under the title: "Brand · serving" (PNG row subtext).
- * @param {object} item
- * @param {string} query
- * @returns {string}
- */
 function rowMetaLine(item, query) {
   const brand = String(item.brand || item.brand_name || '').trim() || 'Generic';
   const serving = formatServingLine(item, query);
-  return serving ? `${brand} · ${serving}` : brand;
+  if (serving) return `${brand} · ${serving}`;
+  return brand;
 }
-
-/**
- * Stable React key for a list row.
- * @param {object} item
- * @param {number} index
- * @param {string} listKey
- * @returns {string}
- */
 function rowKey(item, index, listKey) {
-  const id = item?.id || item?.food_id || item?.name || item?.food_name || index;
+  const id = (item == null ? void 0 : item.id) || (item == null ? void 0 : item.food_id) || (item == null ? void 0 : item.name) || (item == null ? void 0 : item.food_name) || index;
   return `${listKey}-${id}-${index}`;
 }
-
-/**
- * Basket membership id — prefer a real food id, else name.
- * @param {object} item
- * @returns {string}
- */
 function foodRowId(item) {
-  return String(item?.id || item?.food_id || item?.name || item?.food_name || '')
-    .trim()
-    .toLowerCase();
+  return String((item == null ? void 0 : item.id) || (item == null ? void 0 : item.food_id) || (item == null ? void 0 : item.name) || (item == null ? void 0 : item.food_name) || '').trim().toLowerCase();
+}
+function browseListForTab(browseTab, favoriteFoods, recentFoods, results) {
+  if (browseTab === BROWSE_TAB_FAVORITES) {
+    return {
+      listData: favoriteFoods,
+      listKey: BROWSE_TAB_FAVORITES
+    };
+  }
+  if (browseTab === BROWSE_TAB_RECENT) {
+    return {
+      listData: recentFoods,
+      listKey: BROWSE_TAB_RECENT
+    };
+  }
+  return {
+    listData: results,
+    listKey: BROWSE_TAB_RESULTS
+  };
+}
+function shouldShowEmptyBrowseState({
+  loading,
+  browseTab,
+  hasSearched,
+  results,
+  recentFoods,
+  favoriteFoods
+}) {
+  if (loading) return false;
+  const onResultsTab = browseTab === BROWSE_TAB_RESULTS;
+  const onRecentTab = browseTab === BROWSE_TAB_RECENT;
+  const onFavoritesTab = browseTab === BROWSE_TAB_FAVORITES;
+  if (onResultsTab && hasSearched && results.length === 0) return true;
+  if (onRecentTab && recentFoods.length === 0 && !hasSearched) return true;
+  if (onFavoritesTab && favoriteFoods.length === 0) return true;
+  if (onResultsTab && !hasSearched && results.length === 0 && recentFoods.length === 0) {
+    return true;
+  }
+  return false;
+}
+function sumBasketCalories(basketFoods) {
+  let totalCalories = 0;
+  for (let index = 0; index < basketFoods.length; index += 1) {
+    totalCalories += Number(basketFoods[index].calories) || 0;
+  }
+  return totalCalories;
+}
+function foodIsInBasket(basketFoods, food) {
+  const foodId = foodRowId(food);
+  for (let index = 0; index < basketFoods.length; index += 1) {
+    if (foodRowId(basketFoods[index]) === foodId) return true;
+  }
+  return false;
+}
+function removeFoodFromBasket(basketFoods, foodId) {
+  const remaining = [];
+  for (let index = 0; index < basketFoods.length; index += 1) {
+    if (foodRowId(basketFoods[index]) !== foodId) {
+      remaining.push(basketFoods[index]);
+    }
+  }
+  return remaining;
 }
 
 // ===== UI PIECES (PNG) =====
 
-/**
- * PNG result row: bold name · muted brand·serving · bold kcal · 44² + (selected = nbFill).
- * Dividers live on the parent card so the ink line spans the padded list width.
- */
-function FoodResultRow({ item, onToggle, selected = false, colors, query = '', showDivider = false }) {
+// PNG result row: bold name · muted brand·serving · bold kcal · 44² + (selected = nbFill).
+function FoodResultRow({
+  item,
+  onToggle,
+  selected = false,
+  colors,
+  query = '',
+  showDivider = false
+}) {
   const title = item.name || item.food_name || 'Food';
-  const meta = rowMetaLine(item, query);
-  const kcal = Math.round(Number(item.calories) || 0);
-
-  return (
-    <View
-      style={[
-        rowStyles.row,
-        showDivider && { borderTopWidth: nb.borderWidthDivider, borderTopColor: colors.nbBorder },
-      ]}
-    >
+  const metaLine = rowMetaLine(item, query);
+  const calorieLabel = Math.round(Number(item.calories) || 0);
+  let rowBorderStyle;
+  if (showDivider) {
+    rowBorderStyle = {
+      borderTopWidth: nb.borderWidthDivider,
+      borderTopColor: colors.nbBorder
+    };
+  } else {
+    rowBorderStyle = null;
+  }
+  let addButtonBackground;
+  if (selected) {
+    addButtonBackground = colors.nbFill;
+  } else {
+    addButtonBackground = colors.nbSurfaceChip;
+  }
+  let addIconColor;
+  if (selected) {
+    addIconColor = colors.nbOnFill;
+  } else {
+    addIconColor = colors.nbInk;
+  }
+  let accessibilityLabel;
+  if (selected) {
+    accessibilityLabel = `Remove ${title}`;
+  } else {
+    accessibilityLabel = `Add ${title}`;
+  }
+  return <View style={[rowStyles.row, rowBorderStyle]}>
       <View style={rowStyles.grow}>
-        <Text style={[rowStyles.title, { color: colors.nbInk }]} numberOfLines={2}>
+        <Text style={[rowStyles.title, {
+        color: colors.nbInk
+      }]} numberOfLines={2}>
           {title}
         </Text>
-        <Text style={[rowStyles.meta, { color: colors.nbMuted }]} numberOfLines={1}>
-          {meta}
+        <Text style={[rowStyles.meta, {
+        color: colors.nbMuted
+      }]} numberOfLines={1}>
+          {metaLine}
         </Text>
       </View>
-      <Text style={[rowStyles.kcal, { color: colors.nbInk }]}>{kcal}</Text>
+      <Text style={[rowStyles.kcal, {
+      color: colors.nbInk
+    }]}>{calorieLabel}</Text>
       {/* PNG: selected + = solid fill + onFill glyph; unselected = surface chip */}
-      <TouchableOpacity
-        onPress={() => onToggle(item)}
-        accessibilityRole="button"
-        accessibilityState={{ selected }}
-        accessibilityLabel={selected ? `Remove ${title}` : `Add ${title}`}
-        style={[
-          rowStyles.addSq,
-          {
-            borderColor: colors.nbBorder,
-            backgroundColor: selected ? colors.nbFill : colors.nbSurfaceChip,
-          },
-        ]}
-        activeOpacity={0.88}
-      >
-        <Ionicons name="add" size={20} color={selected ? colors.nbOnFill : colors.nbInk} />
+      <TouchableOpacity onPress={() => onToggle(item)} accessibilityRole="button" accessibilityState={{
+      selected
+    }} accessibilityLabel={accessibilityLabel} style={[rowStyles.addSq, {
+      borderColor: colors.nbBorder,
+      backgroundColor: addButtonBackground
+    }]} activeOpacity={0.88}>
+        <Ionicons name="add" size={20} color={addIconColor} />
       </TouchableOpacity>
-    </View>
-  );
+    </View>;
 }
-
-const rowStyles = StyleSheet.create({
-  // Manipulate here: row height / gap (Design Law list row ≈ 56–64)
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    minHeight: 56,
-    paddingVertical: 8,
-  },
-  grow: { flex: 1, minWidth: 0 },
-  title: {
-    fontFamily: 'SpaceGrotesk_700Bold',
-    fontSize: 15,
-    lineHeight: 18,
-    letterSpacing: -0.2,
-  },
-  meta: {
-    fontFamily: 'Inter_400Regular',
-    fontSize: 13,
-    marginTop: 2,
-  },
-  kcal: {
-    fontFamily: 'SpaceGrotesk_700Bold',
-    fontSize: 17,
-    fontVariant: ['tabular-nums'],
-    minWidth: 36,
-    textAlign: 'right',
-  },
-  // Manipulate here: square + chip — PNG / mockup `.addb` is 44×44, radius 10
-  addSq: {
-    width: nb.minTouchTarget,
-    height: nb.minTouchTarget,
-    borderRadius: borderRadius.nbButton,
-    borderWidth: nb.borderWidth,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-});
-
-/**
- * Soft accuracy note under the results card (PNG `.disc` — soft fill, corner accent, NO HardShadow).
- */
-function SoftDisclaimer({ colors }) {
-  return (
-    <View
-      accessibilityRole="summary"
-      accessibilityLabel="Nutrition data accuracy notice"
-      style={[
-        discStyles.box,
-        {
-          backgroundColor: colors.nbSoft,
-          borderColor: colors.nbBorder,
-        },
-      ]}
-    >
-      <Text style={[discStyles.text, { color: colors.nbMuted }]}>{DISCLAIMER_COPY}</Text>
-    </View>
-  );
+function SoftDisclaimer({
+  colors
+}) {
+  return <View accessibilityRole="summary" accessibilityLabel="Nutrition data accuracy notice" style={[discStyles.box, {
+    backgroundColor: colors.nbSoft,
+    borderColor: colors.nbBorder
+  }]}>
+      <Text style={[discStyles.text, {
+      color: colors.nbMuted
+    }]}>{DISCLAIMER_COPY}</Text>
+    </View>;
 }
-
-const discStyles = StyleSheet.create({
-  // Manipulate here: disc corner accent (mockup `2 14 14 14`) — soft note, not a HardShadow card
-  box: {
-    borderWidth: nb.borderWidth,
-    borderTopLeftRadius: 2,
-    borderTopRightRadius: 14,
-    borderBottomRightRadius: 14,
-    borderBottomLeftRadius: 14,
-    padding: 12,
-    marginTop: 4,
-  },
-  text: {
-    fontFamily: 'Inter_400Regular',
-    fontSize: 14,
-    lineHeight: 20,
-  },
-});
-
-/**
- * PNG 07/08 empty / no-matches: dashed emp card (no shadow) + Quick add instead + quick-pick chips.
- */
-function EmptyState({ query, onSuggestionPress, onQuickAdd, colors, hint }) {
-  const isNoResults = Boolean(query?.trim());
-
-  return (
-    <View style={empty.wrap}>
-      <View
-        style={[
-          empty.card,
-          {
-            borderColor: colors.nbBorder,
-          },
-        ]}
-      >
-        <Text style={[empty.kicker, { color: colors.nbMuted }]}>
-          {isNoResults ? 'NO MATCHES' : 'START TYPING'}
-        </Text>
-        <Text style={[empty.title, { color: colors.nbInk }]}>
-          {isNoResults ? `Nothing for "${query}"` : 'What are you eating?'}
-        </Text>
-        <Text style={[empty.subtitle, { color: colors.nbMuted }]}>
-          {isNoResults
-            ? hint || 'Try a shorter name or a brand.'
-            : 'Search packaged foods, restaurants, and groceries.'}
-        </Text>
-        {isNoResults && typeof onQuickAdd === 'function' ? (
-          <View style={empty.ctaWrap}>
+function EmptyState({
+  query,
+  onSuggestionPress,
+  onQuickAdd,
+  colors,
+  hint
+}) {
+  var _optFn;
+  const typedSomething = Boolean((_optFn = query == null ? void 0 : query.trim) == null ? void 0 : _optFn());
+  let kickerText = 'START TYPING';
+  let titleText = 'What are you eating?';
+  let subtitleText = 'Search packaged foods, restaurants, and groceries.';
+  if (typedSomething) {
+    kickerText = 'NO MATCHES';
+    titleText = `Nothing for "${query}"`;
+    subtitleText = hint || 'Try a shorter name or a brand.';
+  }
+  const showQuickAddCta = typedSomething && typeof onQuickAdd === 'function';
+  return <View style={empty.wrap}>
+      <View style={[empty.card, {
+      borderColor: colors.nbBorder
+    }]}>
+        <Text style={[empty.kicker, {
+        color: colors.nbMuted
+      }]}>{kickerText}</Text>
+        <Text style={[empty.title, {
+        color: colors.nbInk
+      }]}>{titleText}</Text>
+        <Text style={[empty.subtitle, {
+        color: colors.nbMuted
+      }]}>{subtitleText}</Text>
+        {showQuickAddCta ? <View style={empty.ctaWrap}>
             <NbButton variant="ghost" onPress={onQuickAdd}>
               Quick add instead
             </NbButton>
-          </View>
-        ) : null}
+          </View> : null}
       </View>
 
       {/* Quick picks — PNG chips that seed the search field */}
-      <Text style={[empty.sectionLabel, { color: colors.nbMuted }]}>QUICK PICKS</Text>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={empty.chipRow}
-      >
-        {QUICK_PICKS.map((label) => (
-          <Pressable
-            key={label}
-            onPress={() => onSuggestionPress?.(label)}
-            accessibilityRole="button"
-            accessibilityLabel={`Search ${label}`}
-            style={[
-              empty.chip,
-              {
-                borderColor: colors.nbBorder,
-                backgroundColor: colors.nbSurfaceChip,
-              },
-            ]}
-          >
+      <Text style={[empty.sectionLabel, {
+      color: colors.nbMuted
+    }]}>QUICK PICKS</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={empty.chipRow}>
+        {QUICK_PICKS.map(label => <Pressable key={label} onPress={() => onSuggestionPress == null ? void 0 : onSuggestionPress(label)} accessibilityRole="button" accessibilityLabel={`Search ${label}`} style={[empty.chip, {
+        borderColor: colors.nbBorder,
+        backgroundColor: colors.nbSurfaceChip
+      }]}>
             <Ionicons name="add" size={18} color={colors.nbInk} />
-            <Text style={[empty.chipLabel, { color: colors.nbInk }]} numberOfLines={1}>
+            <Text style={[empty.chipLabel, {
+          color: colors.nbInk
+        }]} numberOfLines={1}>
               {label}
             </Text>
-          </Pressable>
-        ))}
+          </Pressable>)}
       </ScrollView>
-    </View>
-  );
+    </View>;
 }
-
-const empty = StyleSheet.create({
-  wrap: {
-    paddingTop: 4,
-    paddingBottom: 12,
-    width: '100%',
-    gap: 12,
-  },
-  // Manipulate here: dashed empty card — Design Law emp = dashed, transparent, NO shadow
-  card: {
-    borderWidth: nb.borderWidth,
-    borderStyle: 'dashed',
-    borderRadius: borderRadius.nbCard,
-    backgroundColor: 'transparent',
-    padding: 16,
-    gap: 8,
-  },
-  kicker: {
-    fontFamily: 'SpaceGrotesk_700Bold',
-    fontSize: 12,
-    letterSpacing: 1.3,
-  },
-  title: {
-    fontFamily: 'SpaceGrotesk_700Bold',
-    fontSize: 18,
-    letterSpacing: -0.3,
-  },
-  subtitle: {
-    fontFamily: 'Inter_400Regular',
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  ctaWrap: { marginTop: 8 },
-  sectionLabel: {
-    fontFamily: 'SpaceGrotesk_700Bold',
-    fontSize: 12,
-    letterSpacing: 1.3,
-  },
-  chipRow: {
-    flexDirection: 'row',
-    gap: 10,
-    paddingVertical: 2,
-    paddingRight: 8,
-  },
-  // Manipulate here: quick-pick pill (mockup chip sm — 999 radius, 3px border)
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    borderWidth: nb.borderWidth,
-    borderRadius: borderRadius.round,
-    paddingHorizontal: 16,
-    minHeight: 44,
-  },
-  chipLabel: {
-    fontFamily: 'SpaceGrotesk_700Bold',
-    fontSize: 15,
-  },
-});
+function SearchFieldBlock({
+  query,
+  colors,
+  onChangeText,
+  onSubmitSearch,
+  onClearSearch
+}) {
+  const showClearButton = query.length > 0;
+  return <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbInput} style={styles.searchShadow}>
+      <View style={[styles.searchInner, {
+      backgroundColor: colors.nbSurface,
+      borderColor: colors.nbBorder
+    }]}>
+        <TextInput style={[styles.searchInput, {
+        color: colors.nbInk
+      }]} placeholder="What are you eating?" placeholderTextColor={colors.nbMuted} value={query} onChangeText={onChangeText} autoFocus returnKeyType="search" onSubmitEditing={onSubmitSearch} accessibilityLabel="Search foods" accessibilityHint="Search by food name, brand, or restaurant" />
+        {showClearButton ? <TouchableOpacity onPress={onClearSearch} accessibilityRole="button" accessibilityLabel="Clear search" hitSlop={{
+        top: 8,
+        bottom: 8,
+        left: 8,
+        right: 8
+      }}>
+            <Ionicons name="close" size={18} color={colors.nbMuted} />
+          </TouchableOpacity> : null}
+      </View>
+    </HardShadow>;
+}
+function ScanAndQuickAddRow({
+  colors,
+  onOpenBarcode,
+  onOpenQuickAdd
+}) {
+  const barcodeEnabled = typeof onOpenBarcode === 'function';
+  const quickAddEnabled = typeof onOpenQuickAdd === 'function';
+  let barcodeOpacity;
+  if (barcodeEnabled) {
+    barcodeOpacity = 1;
+  } else {
+    barcodeOpacity = 0.45;
+  }
+  let quickAddOpacity;
+  if (quickAddEnabled) {
+    quickAddOpacity = 1;
+  } else {
+    quickAddOpacity = 0.45;
+  }
+  return <View style={styles.actionRow}>
+      <HardShadow offset={nb.shadowOffsetSmall} radius={borderRadius.nbButton} style={styles.actionHalf}>
+        <TouchableOpacity onPress={() => onOpenBarcode == null ? void 0 : onOpenBarcode()} disabled={!barcodeEnabled} accessibilityRole="button" accessibilityLabel="Scan barcode" style={[styles.actionBtn, {
+        borderColor: colors.nbBorder,
+        backgroundColor: colors.nbSurface,
+        opacity: barcodeOpacity
+      }]} activeOpacity={0.88}>
+          {/* Manipulate here: scales chip size — keep small; accentGradients only on this chip */}
+          <NbIconChip source={SCALES_ICON} size={36} index={1} />
+          <Text style={[styles.actionLabel, {
+          color: colors.nbInk
+        }]} numberOfLines={1}>
+            Scan barcode
+          </Text>
+        </TouchableOpacity>
+      </HardShadow>
+      <HardShadow offset={nb.shadowOffsetSmall} radius={borderRadius.nbButton} style={styles.actionHalf}>
+        <TouchableOpacity onPress={() => onOpenQuickAdd == null ? void 0 : onOpenQuickAdd()} disabled={!quickAddEnabled} accessibilityRole="button" accessibilityLabel="Quick add" style={[styles.actionBtn, {
+        borderColor: colors.nbBorder,
+        backgroundColor: colors.nbSurface,
+        opacity: quickAddOpacity
+      }]} activeOpacity={0.88}>
+          <Text style={[styles.actionLabel, {
+          color: colors.nbInk
+        }]} numberOfLines={1}>
+            Quick add
+          </Text>
+        </TouchableOpacity>
+      </HardShadow>
+    </View>;
+}
+function FloatingBasketBar({
+  basket,
+  basketKcal,
+  basketBottom,
+  isDark,
+  colors,
+  mealSubtitle,
+  onLogBasket
+}) {
+  const foodWord = basket.length === 1 ? 'food' : 'foods';
+  let pillBackground;
+  if (isDark) {
+    pillBackground = colors.nbSoft;
+  } else {
+    pillBackground = colors.nbFill;
+  }
+  let countColor;
+  if (isDark) {
+    countColor = colors.nbInk;
+  } else {
+    countColor = colors.nbOnFill;
+  }
+  let kcalColor;
+  if (isDark) {
+    kcalColor = colors.nbMuted;
+  } else {
+    kcalColor = colors.nbOnFill;
+  }
+  let ctaBackground;
+  if (isDark) {
+    ctaBackground = colors.nbFill;
+  } else {
+    ctaBackground = colors.nbOnFill;
+  }
+  let ctaTextColor;
+  if (isDark) {
+    ctaTextColor = colors.nbOnFill;
+  } else {
+    ctaTextColor = colors.nbFill;
+  }
+  return <View style={[styles.basketWrap, {
+    bottom: basketBottom
+  }]} pointerEvents="box-none">
+      {/* PNG 05 light = fill bar + onFill CTA; PNG 06 dark = soft bar + fill CTA */}
+      <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard}>
+        <View style={[styles.basketPill, {
+        backgroundColor: pillBackground,
+        borderColor: colors.nbBorder
+      }]}>
+          <View style={styles.basketGrow}>
+            <Text style={[styles.basketCount, {
+            color: countColor
+          }]}>
+              {basket.length} {foodWord}
+            </Text>
+            <Text style={[styles.basketKcal, {
+            color: kcalColor
+          }]}>
+              {basketKcal.toLocaleString()} kcal
+            </Text>
+          </View>
+          <HardShadow offset={nb.shadowOffsetSmall} radius={borderRadius.nbButton}>
+            <TouchableOpacity onPress={onLogBasket} style={[styles.basketCta, {
+            backgroundColor: ctaBackground,
+            borderColor: colors.nbBorder,
+            borderWidth: nb.borderWidth
+          }]} activeOpacity={0.9} accessibilityRole="button" accessibilityLabel={`Log to ${mealSubtitle}`}>
+              <Text style={[styles.basketCtaText, {
+              color: ctaTextColor
+            }]}>
+                Log to {mealSubtitle}
+              </Text>
+            </TouchableOpacity>
+          </HardShadow>
+        </View>
+      </HardShadow>
+    </View>;
+}
 
 // ===== MAIN FUNCTION =====
 
-/**
- * Search foods, browse recent/favorites, then confirm & log into the active meal.
- * @param {{ mealType?: string, defaultMeal?: string, onFoodSelected?: Function, onSelectFood?: Function, onClose?: Function, onOpenBarcode?: Function, onOpenQuickAdd?: Function, userId?: string, embedded?: boolean, reserveShellBottomNav?: boolean, initialQuery?: string }} props
- */
 function FoodSearchScreen({
   mealType: mealTypeProp,
   defaultMeal,
@@ -513,19 +533,19 @@ function FoodSearchScreen({
   userId,
   embedded = false,
   reserveShellBottomNav = false,
-  initialQuery = '',
+  initialQuery = ''
 }) {
-  const { isDark, colors } = useTheme();
+  var _optFn2, _optObj5;
+  // vocab: useTheme = Design Law light/dark tokens (nbBackground, nbInk, nbFill, …)
+  const {
+    isDark,
+    colors
+  } = useTheme();
   const insets = useSafeAreaInsets();
   const shellBottomPad = useShellBottomNavInset(SHELL_BOTTOM_INSET_EXTRA);
-
-  const mealType = useMemo(
-    () => String(mealTypeProp || defaultMeal || 'breakfast').toLowerCase(),
-    [mealTypeProp, defaultMeal],
-  );
-  const mealSubtitle = mealLabel(mealType);
+  const mealType = useMemo(() => String(mealTypeProp || defaultMeal || 'breakfast').toLowerCase(), [mealTypeProp, defaultMeal]);
+  const mealSubtitle = mealTypeAsTitle(mealType);
   const logFood = onFoodSelected || onSelectFood;
-
   const [query, setQuery] = useState(initialQuery || '');
   const [results, setResults] = useState([]);
   const [recentFoods, setRecentFoods] = useState([]);
@@ -538,57 +558,60 @@ function FoodSearchScreen({
   // vocab: basket = foods toggled with +; Log-to-Meal pill opens confirm for the first pick
   const [basket, setBasket] = useState([]);
   // vocab: browseTab = which NbSegmented cell is active (results | favorites | recent)
-  const [browseTab, setBrowseTab] = useState(initialQuery?.trim() ? 'results' : 'recent');
-  const uid = userId || auth.currentUser?.uid;
+  const [browseTab, setBrowseTab] = useState(((_optFn2 = initialQuery == null ? void 0 : initialQuery.trim) == null ? void 0 : _optFn2()) ? BROWSE_TAB_RESULTS : BROWSE_TAB_RECENT);
+  const uid = userId || ((_optObj5 = auth.currentUser) == null ? void 0 : _optObj5.uid);
 
   // Confirm sheet theme — nb tokens only (no pink/purple chrome)
-  const confirmTheme = useMemo(
-    () => ({
-      screenBg: colors.nbBackground,
-      cardBg: colors.nbSurface,
-      cardBorder: colors.nbBorder,
-      text: colors.nbInk,
-      textMuted: colors.nbMuted,
-      inputBg: colors.nbSurfaceChip,
-      secondaryAction: colors.nbMuted,
-      isDark,
-    }),
-    [colors, isDark],
-  );
+  const confirmTheme = useMemo(() => ({
+    screenBg: colors.nbBackground,
+    cardBg: colors.nbSurface,
+    cardBorder: colors.nbBorder,
+    text: colors.nbInk,
+    textMuted: colors.nbMuted,
+    inputBg: colors.nbSurfaceChip,
+    secondaryAction: colors.nbMuted,
+    isDark
+  }), [colors, isDark]);
 
   // Load recent + favorites once we know the uid (Firestore)
   useEffect(() => {
     if (!uid) return;
-
     const loadRecent = async () => {
       try {
         const recent = await getRecentFoods(uid, RECENT_FOODS_LIMIT);
-        setRecentFoods((recent || []).map(normalizeFood));
+        const normalizedRecent = [];
+        const safeRecent = recent || [];
+        for (let index = 0; index < safeRecent.length; index += 1) {
+          normalizedRecent.push(normalizeFood(safeRecent[index]));
+        }
+        setRecentFoods(normalizedRecent);
       } catch (err) {
         console.log('Recent foods unavailable:', err.message);
         setRecentFoods([]);
       }
     };
-
     const loadFavorites = async () => {
       try {
-        const favs = await getFavoriteFoods(uid);
-        setFavoriteFoods((favs || []).map(normalizeFavoriteRow));
+        const favorites = await getFavoriteFoods(uid);
+        const normalizedFavorites = [];
+        const safeFavorites = favorites || [];
+        for (let index = 0; index < safeFavorites.length; index += 1) {
+          normalizedFavorites.push(normalizeFavoriteRow(safeFavorites[index]));
+        }
+        setFavoriteFoods(normalizedFavorites);
       } catch (err) {
         console.log('Favorite foods unavailable:', err.message);
         setFavoriteFoods([]);
       }
     };
-
     loadRecent();
     loadFavorites();
   }, [uid]);
 
   // vocab: searchRaceId = increments per typed search so a slow older response cannot overwrite newer results
   const searchRaceIdRef = useRef(0);
-
-  // Ask the server, drop junk titles, normalize for the confirm sheet
-  const handleSearch = useCallback(async (searchQuery) => {
+  const handleSearch = useCallback(async searchQuery => {
+    // 1. Empty query clears results and cancels in-flight work.
     if (!searchQuery.trim()) {
       searchRaceIdRef.current += 1;
       setResults([]);
@@ -596,29 +619,31 @@ function FoodSearchScreen({
       setLoading(false);
       return;
     }
+
+    // 2. Stamp a race id so slower responses cannot overwrite newer keystrokes.
     const raceId = searchRaceIdRef.current + 1;
     searchRaceIdRef.current = raceId;
     setLoading(true);
     setSearchError(null);
     setEmptyHint(null);
     setHasSearched(true);
-    setBrowseTab('results');
+    setBrowseTab(BROWSE_TAB_RESULTS);
     try {
+      // 3. Fetch, then drop junk web titles and normalize for the confirm sheet.
       const rawHits = await searchFoods(searchQuery, SEARCH_RESULT_LIMIT);
-      // Stale response from an earlier keystroke — drop it.
       if (raceId !== searchRaceIdRef.current) return;
       const trimmedQuery = searchQuery.trim();
-      const cleaned = normalizeSearchHits(rawHits, trimmedQuery);
+      const cleanedHits = normalizeSearchHits(rawHits, trimmedQuery);
       if (__DEV__) {
         console.log('[FoodSearch]', {
           raceId,
           query: trimmedQuery,
           raw: Array.isArray(rawHits) ? rawHits.length : 0,
-          afterJunkFilter: cleaned.length,
-          hint: getFoodSearchHint(),
+          afterJunkFilter: cleanedHits.length,
+          hint: getFoodSearchHint()
         });
       }
-      setResults(cleaned);
+      setResults(cleanedHits);
       setEmptyHint(getFoodSearchHint());
     } catch (err) {
       if (raceId !== searchRaceIdRef.current) return;
@@ -636,7 +661,7 @@ function FoodSearchScreen({
     if (trimmedQuery.length === 0) {
       setResults([]);
       setHasSearched(false);
-      if (browseTab === 'results') setBrowseTab('recent');
+      if (browseTab === BROWSE_TAB_RESULTS) setBrowseTab(BROWSE_TAB_RECENT);
       return;
     }
     if (trimmedQuery.length < MIN_CHARS_AUTO_SEARCH) {
@@ -650,374 +675,318 @@ function FoodSearchScreen({
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-run when query text changes
   }, [query, handleSearch]);
+  const toggleBasket = food => {
+    // 1. Read a stable id for this row (id / food_id / name).
+    const foodId = foodRowId(food);
 
-  const toggleBasket = (food) => {
-    const id = foodRowId(food);
-    setBasket((prev) => {
-      const exists = prev.some((f) => foodRowId(f) === id);
-      if (exists) return prev.filter((f) => foodRowId(f) !== id);
-      return [...prev, food];
+    // 2. Toggle: remove if already in the basket, otherwise append.
+    setBasket(previousBasket => {
+      if (foodIsInBasket(previousBasket, food)) {
+        return removeFoodFromBasket(previousBasket, foodId);
+      }
+      return [...previousBasket, food];
     });
   };
-
-  const inBasket = (food) => basket.some((f) => foodRowId(f) === foodRowId(food));
-
+  const inBasket = food => foodIsInBasket(basket, food);
   const handleLogBasket = () => {
+    // 1. Nothing selected → do nothing.
     if (!basket.length) return;
+    // 2. Open ConfirmFoodPopup for the first pick (rest follow after confirm).
     setPendingFood(basket[0]);
   };
 
   // Confirm sheet may pass a meal key (Breakfast→breakfast) as the second arg.
   // After one log, open the next basket item so multi-select still gets serving edit (PNG basket).
   const handleConfirmFood = async (confirmedFood, mealKeyFromSheet) => {
+    // 1. Remove the food we just confirmed from the basket.
     const loggedId = foodRowId(pendingFood);
-    const remaining = basket.filter((f) => foodRowId(f) !== loggedId);
+    const remaining = removeFoodFromBasket(basket, loggedId);
     setBasket(remaining);
     setPendingFood(null);
+
+    // 2. Hand off to the parent logger (DailyLogContent).
     if (logFood && confirmedFood) {
       await logFood(confirmedFood, mealKeyFromSheet || mealType);
     }
+
+    // 3. Queue the next basket item after the sheet dismisses.
     if (remaining.length > 0) {
-      // Brief defer so the modal can dismiss then reopen for the next food
-      setTimeout(() => setPendingFood(remaining[0]), 180);
+      setTimeout(() => setPendingFood(remaining[0]), NEXT_BASKET_ITEM_DELAY_MS);
     }
   };
-
-  const basketKcal = basket.reduce((sum, f) => sum + (Number(f.calories) || 0), 0);
-
+  const basketKcal = sumBasketCalories(basket);
   const clearSearch = () => {
     setQuery('');
     setResults([]);
     setHasSearched(false);
-    setBrowseTab('recent');
+    setBrowseTab(BROWSE_TAB_RECENT);
   };
-
-  const showFavorites = browseTab === 'favorites';
-  const showRecent = browseTab === 'recent';
-  const showResults = browseTab === 'results';
-
-  const listData = showFavorites
-    ? favoriteFoods
-    : showRecent
-      ? recentFoods
-      : showResults
-        ? results
-        : [];
-  const listKey = showFavorites ? 'favorites' : showRecent ? 'recent' : 'results';
-
-  const showEmpty =
-    !loading &&
-    ((showResults && hasSearched && results.length === 0) ||
-      (showRecent && recentFoods.length === 0 && !hasSearched) ||
-      (showFavorites && favoriteFoods.length === 0) ||
-      (showResults && !hasSearched && results.length === 0 && recentFoods.length === 0));
+  const {
+    listData,
+    listKey
+  } = browseListForTab(browseTab, favoriteFoods, recentFoods, results);
+  const showEmpty = shouldShowEmptyBrowseState({
+    loading,
+    browseTab,
+    hasSearched,
+    results,
+    recentFoods,
+    favoriteFoods
+  });
 
   // Clearance for absolute dock + floating basket so the last row stays readable
-  const scrollBottomPad =
-    (embedded || reserveShellBottomNav
-      ? shellBottomPad
-      : Math.max(insets.bottom, MIN_SAFE_BOTTOM) + DEFAULT_LIST_BOTTOM_EXTRA) +
-    (basket.length ? BASKET_CLEARANCE : 0);
+  const usesShellBottomPad = embedded || reserveShellBottomNav;
+  let scrollBottomPad;
+  if (usesShellBottomPad) {
+    scrollBottomPad = shellBottomPad;
+  } else {
+    scrollBottomPad = Math.max(insets.bottom, MIN_SAFE_BOTTOM) + DEFAULT_LIST_BOTTOM_EXTRA;
+  }
+  if (basket.length) {
+    scrollBottomPad += BASKET_CLEARANCE;
+  }
 
   // Basket floats above the shell dock when the parent keeps BottomMenuBar mounted.
   // shellBottomPad = bar + safe + extra; drop the extra so the bar hugs the dock like PNG.
-  const basketBottom =
-    reserveShellBottomNav || embedded
-      ? shellBottomPad - SHELL_BOTTOM_INSET_EXTRA + BASKET_ABOVE_DOCK_GAP
-      : Math.max(insets.bottom, MIN_SAFE_BOTTOM) + BASKET_ABOVE_DOCK_GAP;
-
-  const onSuggestionPress = (suggestion) => {
+  let basketBottom = Math.max(insets.bottom, MIN_SAFE_BOTTOM) + BASKET_ABOVE_DOCK_GAP;
+  if (reserveShellBottomNav || embedded) {
+    basketBottom = shellBottomPad - SHELL_BOTTOM_INSET_EXTRA + BASKET_ABOVE_DOCK_GAP;
+  }
+  const onSuggestionPress = suggestion => {
     setQuery(suggestion);
     handleSearch(suggestion);
   };
-
-  const emptyQueryForHero = hasSearched && showResults ? query : '';
-  const emptyHintForHero = hasSearched && showResults ? emptyHint : null;
-
-  const screenBg = embedded ? 'transparent' : colors.nbBackground;
-
-  return (
-    <>
-      <View style={[styles.root, { backgroundColor: screenBg }]}>
+  const showResultsTab = browseTab === BROWSE_TAB_RESULTS;
+  let emptyQueryForHero;
+  if (hasSearched && showResultsTab) {
+    emptyQueryForHero = query;
+  } else {
+    emptyQueryForHero = '';
+  }
+  let emptyHintForHero;
+  if (hasSearched && showResultsTab) {
+    emptyHintForHero = emptyHint;
+  } else {
+    emptyHintForHero = null;
+  }
+  let screenBg;
+  if (embedded) {
+    screenBg = 'transparent';
+  } else {
+    screenBg = colors.nbBackground;
+  }
+  let keyboardVerticalOffset;
+  if (embedded) {
+    keyboardVerticalOffset = 0;
+  } else {
+    keyboardVerticalOffset = Math.max(insets.top, MIN_SAFE_BOTTOM);
+  }
+  const keyboardAvoidBehavior = Platform.OS === 'ios' ? 'padding' : undefined;
+  const backHandler = typeof onClose === 'function' ? onClose : undefined;
+  const showConfirmModal = Boolean(pendingFood);
+  const showListCard = !loading && listData.length > 0;
+  const showSoftDisclaimer = !loading && listData.length > 0;
+  const showBasket = basket.length > 0;
+  return <>
+      <View style={[styles.root, {
+      backgroundColor: screenBg
+    }]}>
         {/* Header sits OUTSIDE the gutter scroll — NbPageHeader already owns its 16px side pad */}
-        <NbPageHeader
-          title="Add food"
-          subtitle={mealSubtitle}
-          onBack={typeof onClose === 'function' ? onClose : undefined}
-          skipTopSafeInset={embedded}
-        />
+        <NbPageHeader title="Add food" subtitle={mealSubtitle} onBack={backHandler} skipTopSafeInset={embedded} />
 
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={styles.flex}
-          keyboardVerticalOffset={embedded ? 0 : Math.max(insets.top, MIN_SAFE_BOTTOM)}
-        >
-          <ScrollView
-            style={styles.flex}
-            contentContainerStyle={[
-              styles.scrollBody,
-              { paddingBottom: scrollBottomPad },
-            ]}
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="on-drag"
-            showsVerticalScrollIndicator={false}
-            nestedScrollEnabled
-          >
-            {/* HardShadow search field — PNG 05/06 full-width 3px bordered input */}
-            <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbInput} style={styles.searchShadow}>
-              <View
-                style={[
-                  styles.searchInner,
-                  {
-                    backgroundColor: colors.nbSurface,
-                    borderColor: colors.nbBorder,
-                  },
-                ]}
-              >
-                <TextInput
-                  style={[styles.searchInput, { color: colors.nbInk }]}
-                  placeholder="What are you eating?"
-                  placeholderTextColor={colors.nbMuted}
-                  value={query}
-                  onChangeText={setQuery}
-                  autoFocus
-                  returnKeyType="search"
-                  onSubmitEditing={() => handleSearch(query)}
-                  accessibilityLabel="Search foods"
-                  accessibilityHint="Search by food name, brand, or restaurant"
-                />
-                {query.length > 0 ? (
-                  <TouchableOpacity
-                    onPress={clearSearch}
-                    accessibilityRole="button"
-                    accessibilityLabel="Clear search"
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  >
-                    <Ionicons name="close" size={18} color={colors.nbMuted} />
-                  </TouchableOpacity>
-                ) : null}
-              </View>
-            </HardShadow>
+        <KeyboardAvoidingView behavior={keyboardAvoidBehavior} style={styles.flex} keyboardVerticalOffset={keyboardVerticalOffset}>
+          <ScrollView style={styles.flex} contentContainerStyle={[styles.scrollBody, {
+          paddingBottom: scrollBottomPad
+        }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" showsVerticalScrollIndicator={false} nestedScrollEnabled>
+            <SearchFieldBlock query={query} colors={colors} onChangeText={setQuery} onSubmitSearch={() => handleSearch(query)} onClearSearch={clearSearch} />
 
-            {/* Scan barcode | Quick add — equal HardShadow ghost buttons; scales chip = accentGradients only */}
-            <View style={styles.actionRow}>
-              <HardShadow
-                offset={nb.shadowOffsetSmall}
-                radius={borderRadius.nbButton}
-                style={styles.actionHalf}
-              >
-                <TouchableOpacity
-                  onPress={() => onOpenBarcode?.()}
-                  disabled={typeof onOpenBarcode !== 'function'}
-                  accessibilityRole="button"
-                  accessibilityLabel="Scan barcode"
-                  style={[
-                    styles.actionBtn,
-                    {
-                      borderColor: colors.nbBorder,
-                      backgroundColor: colors.nbSurface,
-                      opacity: typeof onOpenBarcode === 'function' ? 1 : 0.45,
-                    },
-                  ]}
-                  activeOpacity={0.88}
-                >
-                  {/* Manipulate here: scales chip size — keep small; accentGradients only on this chip */}
-                  <NbIconChip source={SCALES_ICON} size={36} index={1} />
-                  <Text style={[styles.actionLabel, { color: colors.nbInk }]} numberOfLines={1}>
-                    Scan barcode
-                  </Text>
-                </TouchableOpacity>
-              </HardShadow>
-              <HardShadow
-                offset={nb.shadowOffsetSmall}
-                radius={borderRadius.nbButton}
-                style={styles.actionHalf}
-              >
-                <TouchableOpacity
-                  onPress={() => onOpenQuickAdd?.()}
-                  disabled={typeof onOpenQuickAdd !== 'function'}
-                  accessibilityRole="button"
-                  accessibilityLabel="Quick add"
-                  style={[
-                    styles.actionBtn,
-                    {
-                      borderColor: colors.nbBorder,
-                      backgroundColor: colors.nbSurface,
-                      opacity: typeof onOpenQuickAdd === 'function' ? 1 : 0.45,
-                    },
-                  ]}
-                  activeOpacity={0.88}
-                >
-                  <Text style={[styles.actionLabel, { color: colors.nbInk }]} numberOfLines={1}>
-                    Quick add
-                  </Text>
-                </TouchableOpacity>
-              </HardShadow>
-            </View>
+            <ScanAndQuickAddRow colors={colors} onOpenBarcode={onOpenBarcode} onOpenQuickAdd={onOpenQuickAdd} />
 
-            {searchError ? (
-              <View
-                style={[
-                  styles.errorBanner,
-                  { borderColor: colors.nbBorder, backgroundColor: colors.nbSoft },
-                ]}
-              >
+            {searchError ? <View style={[styles.errorBanner, {
+            borderColor: colors.nbBorder,
+            backgroundColor: colors.nbSoft
+          }]}>
                 <Ionicons name="warning-outline" size={14} color={colors.nbInk} />
-                <Text style={[styles.errorText, { color: colors.nbInk }]}>{searchError}</Text>
-              </View>
-            ) : null}
+                <Text style={[styles.errorText, {
+              color: colors.nbInk
+            }]}>{searchError}</Text>
+              </View> : null}
 
             {/* NbSegmented — active cell = SOLID nbFill + nbOnFill text (never pink pills) */}
-            <NbSegmented
-              segments={BROWSE_SEGMENTS}
-              selected={browseTab}
-              onSelect={setBrowseTab}
-              style={styles.segment}
-            />
+            <NbSegmented segments={BROWSE_SEGMENTS} selected={browseTab} onSelect={setBrowseTab} style={styles.segment} />
 
-            {loading ? (
-              <View style={styles.loadingBlock}>
+            {loading ? <View style={styles.loadingBlock}>
                 <ActivityIndicator color={colors.nbInk} size="large" />
-                <Text style={[styles.loadingText, { color: colors.nbMuted }]}>Searching foods...</Text>
-              </View>
-            ) : null}
+                <Text style={[styles.loadingText, {
+              color: colors.nbMuted
+            }]}>
+                  Searching foods...
+                </Text>
+              </View> : null}
 
-            {showEmpty && !loading ? (
-              <EmptyState
-                query={emptyQueryForHero}
-                hint={emptyHintForHero}
-                colors={colors}
-                onSuggestionPress={onSuggestionPress}
-                onQuickAdd={onOpenQuickAdd}
-              />
-            ) : null}
+            {showEmpty && !loading ? <EmptyState query={emptyQueryForHero} hint={emptyHintForHero} colors={colors} onSuggestionPress={onSuggestionPress} onQuickAdd={onOpenQuickAdd} /> : null}
 
             {/* ONE HardShadow white/surface card — rows join inside with 2px ink dividers */}
-            {!loading && listData.length > 0 ? (
-              <HardShadow
-                offset={nb.shadowOffsetCard}
-                radius={borderRadius.nbCard}
-                style={styles.listCardShadow}
-              >
-                <View
-                  style={[
-                    styles.listCardShell,
-                    {
-                      backgroundColor: colors.nbSurface,
-                      borderColor: colors.nbBorder,
-                    },
-                  ]}
-                >
-                  {listData.map((item, index) => (
-                    <FoodResultRow
-                      key={rowKey(item, index, listKey)}
-                      item={item}
-                      onToggle={toggleBasket}
-                      selected={inBasket(item)}
-                      colors={colors}
-                      query={query}
-                      showDivider={index > 0}
-                    />
-                  ))}
+            {showListCard ? <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard} style={styles.listCardShadow}>
+                <View style={[styles.listCardShell, {
+              backgroundColor: colors.nbSurface,
+              borderColor: colors.nbBorder
+            }]}>
+                  {listData.map((item, index) => <FoodResultRow key={rowKey(item, index, listKey)} item={item} onToggle={toggleBasket} selected={inBasket(item)} colors={colors} query={query} showDivider={index > 0} />)}
                 </View>
-              </HardShadow>
-            ) : null}
+              </HardShadow> : null}
 
-            {!loading && listData.length > 0 ? <SoftDisclaimer colors={colors} /> : null}
+            {showSoftDisclaimer ? <SoftDisclaimer colors={colors} /> : null}
           </ScrollView>
         </KeyboardAvoidingView>
 
-        {/* Floating basket — fill block + onFill CTA, HardShadow, sits above shell dock */}
-        {basket.length > 0 ? (
-          <View
-            style={[styles.basketWrap, { bottom: basketBottom }]}
-            pointerEvents="box-none"
-          >
-            {/* PNG 05 light = fill bar + onFill CTA; PNG 06 dark = soft bar + fill CTA */}
-            <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard}>
-              <View
-                style={[
-                  styles.basketPill,
-                  {
-                    backgroundColor: isDark ? colors.nbSoft : colors.nbFill,
-                    borderColor: colors.nbBorder,
-                  },
-                ]}
-              >
-                <View style={styles.basketGrow}>
-                  <Text
-                    style={[
-                      styles.basketCount,
-                      { color: isDark ? colors.nbInk : colors.nbOnFill },
-                    ]}
-                  >
-                    {basket.length} {basket.length === 1 ? 'food' : 'foods'}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.basketKcal,
-                      { color: isDark ? colors.nbMuted : colors.nbOnFill },
-                    ]}
-                  >
-                    {basketKcal.toLocaleString()} kcal
-                  </Text>
-                </View>
-                <HardShadow offset={nb.shadowOffsetSmall} radius={borderRadius.nbButton}>
-                  <TouchableOpacity
-                    onPress={handleLogBasket}
-                    style={[
-                      styles.basketCta,
-                      {
-                        backgroundColor: isDark ? colors.nbFill : colors.nbOnFill,
-                        borderColor: colors.nbBorder,
-                        borderWidth: nb.borderWidth,
-                      },
-                    ]}
-                    activeOpacity={0.9}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Log to ${mealSubtitle}`}
-                  >
-                    <Text
-                      style={[
-                        styles.basketCtaText,
-                        { color: isDark ? colors.nbOnFill : colors.nbFill },
-                      ]}
-                    >
-                      Log to {mealSubtitle}
-                    </Text>
-                  </TouchableOpacity>
-                </HardShadow>
-              </View>
-            </HardShadow>
-          </View>
-        ) : null}
+        {showBasket ? <FloatingBasketBar basket={basket} basketKcal={basketKcal} basketBottom={basketBottom} isDark={isDark} colors={colors} mealSubtitle={mealSubtitle} onLogBasket={handleLogBasket} /> : null}
       </View>
 
-      <Modal visible={!!pendingFood} animationType="slide" presentationStyle="pageSheet">
-        <FoodConfirmSheet
-          food={pendingFood}
-          mealType={mealType}
-          theme={confirmTheme}
-          showVerification={false}
-          onConfirm={handleConfirmFood}
-          onCancel={() => setPendingFood(null)}
-        />
+      <Modal visible={showConfirmModal} animationType="slide" presentationStyle="pageSheet">
+        <FoodConfirmSheet food={pendingFood} mealType={mealType} theme={confirmTheme} showVerification={false} onConfirm={handleConfirmFood} onCancel={() => setPendingFood(null)} />
       </Modal>
-    </>
-  );
+    </>;
 }
 
+// ===== PLUMBING — skip unless debugging =====
+
+const rowStyles = StyleSheet.create({
+  // Manipulate here: row height / gap (Design Law list row ≈ 56–64)
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    minHeight: 56,
+    paddingVertical: 8
+  },
+  grow: {
+    flex: 1,
+    minWidth: 0
+  },
+  title: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 15,
+    lineHeight: 18,
+    letterSpacing: -0.2
+  },
+  meta: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 13,
+    marginTop: 2
+  },
+  kcal: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 17,
+    fontVariant: ['tabular-nums'],
+    minWidth: 36,
+    textAlign: 'right'
+  },
+  // Manipulate here: square + chip — PNG / mockup `.addb` is 44×44, radius 10
+  addSq: {
+    width: nb.minTouchTarget,
+    height: nb.minTouchTarget,
+    borderRadius: borderRadius.nbButton,
+    borderWidth: nb.borderWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0
+  }
+});
+const discStyles = StyleSheet.create({
+  // Manipulate here: disc corner accent (mockup `2 14 14 14`) — soft note, not a HardShadow card
+  box: {
+    borderWidth: nb.borderWidth,
+    borderTopLeftRadius: 2,
+    borderTopRightRadius: 14,
+    borderBottomRightRadius: 14,
+    borderBottomLeftRadius: 14,
+    padding: 12,
+    marginTop: 4
+  },
+  text: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 14,
+    lineHeight: 20
+  }
+});
+const empty = StyleSheet.create({
+  wrap: {
+    paddingTop: 4,
+    paddingBottom: 12,
+    width: '100%',
+    gap: 12
+  },
+  // Manipulate here: dashed empty card — Design Law emp = dashed, transparent, NO shadow
+  card: {
+    borderWidth: nb.borderWidth,
+    borderStyle: 'dashed',
+    borderRadius: borderRadius.nbCard,
+    backgroundColor: 'transparent',
+    padding: 16,
+    gap: 8
+  },
+  kicker: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 12,
+    letterSpacing: 1.3
+  },
+  title: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 18,
+    letterSpacing: -0.3
+  },
+  subtitle: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 14,
+    lineHeight: 20
+  },
+  ctaWrap: {
+    marginTop: 8
+  },
+  sectionLabel: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 12,
+    letterSpacing: 1.3
+  },
+  chipRow: {
+    flexDirection: 'row',
+    gap: 10,
+    paddingVertical: 2,
+    paddingRight: 8
+  },
+  // Manipulate here: quick-pick pill (mockup chip sm — 999 radius, 3px border)
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: nb.borderWidth,
+    borderRadius: borderRadius.round,
+    paddingHorizontal: 16,
+    minHeight: 44
+  },
+  chipLabel: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 15
+  }
+});
 const styles = StyleSheet.create({
-  root: { flex: 1, minHeight: 0 },
-  flex: { flex: 1, minHeight: 0 },
+  root: {
+    flex: 1,
+    minHeight: 0
+  },
+  flex: {
+    flex: 1,
+    minHeight: 0
+  },
   // Manipulate here: side gutter 16 (Design Law screenGutter) — header is outside this pad
   scrollBody: {
     paddingHorizontal: nb.screenGutter,
     paddingTop: spacing.sm,
-    gap: 0,
+    gap: 0
   },
   searchShadow: {
-    marginBottom: spacing.sm,
+    marginBottom: spacing.sm
   },
   searchInner: {
     flexDirection: 'row',
@@ -1026,20 +995,22 @@ const styles = StyleSheet.create({
     minHeight: 48,
     borderWidth: nb.borderWidth,
     borderRadius: borderRadius.nbInput,
-    gap: 10,
+    gap: 10
   },
   searchInput: {
     flex: 1,
     fontFamily: 'SpaceGrotesk_700Bold',
     fontSize: 16,
-    paddingVertical: 10,
+    paddingVertical: 10
   },
   actionRow: {
     flexDirection: 'row',
     gap: 10,
-    marginBottom: spacing.sm,
+    marginBottom: spacing.sm
   },
-  actionHalf: { flex: 1 },
+  actionHalf: {
+    flex: 1
+  },
   actionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1048,15 +1019,15 @@ const styles = StyleSheet.create({
     minHeight: nb.minTouchTarget,
     borderWidth: nb.borderWidth,
     borderRadius: borderRadius.nbButton,
-    paddingHorizontal: 12,
+    paddingHorizontal: 12
   },
   actionLabel: {
     fontFamily: 'SpaceGrotesk_700Bold',
     fontSize: 13,
-    flexShrink: 1,
+    flexShrink: 1
   },
   segment: {
-    marginBottom: spacing.sm,
+    marginBottom: spacing.sm
   },
   errorBanner: {
     flexDirection: 'row',
@@ -1066,21 +1037,25 @@ const styles = StyleSheet.create({
     borderWidth: nb.borderWidth,
     borderRadius: borderRadius.nbCard,
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 8
   },
-  errorText: { fontSize: 12, flex: 1, fontFamily: 'Inter_500Medium' },
+  errorText: {
+    fontSize: 12,
+    flex: 1,
+    fontFamily: 'Inter_500Medium'
+  },
   loadingBlock: {
     paddingVertical: 40,
-    alignItems: 'center',
+    alignItems: 'center'
   },
   loadingText: {
     fontSize: 13,
     marginTop: 12,
-    fontFamily: 'Inter_500Medium',
+    fontFamily: 'Inter_500Medium'
   },
   listCardShadow: {
     marginTop: 4,
-    marginBottom: 12,
+    marginBottom: 12
   },
   // Manipulate here: card padding 14 matches Design Law / mockup `.card`
   listCardShell: {
@@ -1088,13 +1063,13 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.nbCard,
     paddingHorizontal: 14,
     paddingVertical: 4,
-    overflow: 'hidden',
+    overflow: 'hidden'
   },
   basketWrap: {
     position: 'absolute',
     left: 12,
     right: 12,
-    zIndex: 4,
+    zIndex: 4
   },
   // Manipulate here: basket radius — PNG floating pill (fat rounded bar), 3px border + HardShadow
   basketPill: {
@@ -1105,30 +1080,32 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 12,
+    gap: 12
   },
-  basketGrow: { flex: 1, minWidth: 0 },
+  basketGrow: {
+    flex: 1,
+    minWidth: 0
+  },
   basketCount: {
     fontFamily: 'SpaceGrotesk_700Bold',
-    fontSize: 15,
+    fontSize: 15
   },
   basketKcal: {
     fontFamily: 'Inter_500Medium',
     fontSize: 13,
     opacity: 0.85,
-    marginTop: 1,
+    marginTop: 1
   },
   basketCta: {
     borderRadius: 999,
     paddingHorizontal: 16,
     minHeight: 44,
     justifyContent: 'center',
-    alignItems: 'center',
+    alignItems: 'center'
   },
   basketCtaText: {
     fontFamily: 'SpaceGrotesk_700Bold',
-    fontSize: 14,
-  },
+    fontSize: 14
+  }
 });
-
 export default FoodSearchScreen;

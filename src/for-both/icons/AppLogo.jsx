@@ -1,6 +1,6 @@
-// Draws the official Coach Connect logo (square or transparent infinity mark).
-// Flow: width from caller → height from aspect → Image. Transparent variant for welcome stage.
-// Used by: login welcome, signup header, trainer pro offer.
+// Official Coach Connect logo — square mark or transparent infinity for dark stages.
+// Flow: pick asset from variant → height from brand aspect → expo-image with contain fit.
+// Used by login welcome, signup header, trainer pro offer.
 
 import React from 'react';
 import { Image } from 'expo-image';
@@ -13,19 +13,39 @@ import {
 
 // ===== NAMED CONSTANTS =====
 
+// Manipulate here: default width when the parent does not pass one.
 const DEFAULT_LOGO_WIDTH = 220;
 const DEFAULT_ACCESSIBILITY_LABEL = 'Coach Connect';
+const LOGO_VARIANT_TRANSPARENT = 'transparent';
+const LOGO_VARIANT_SQUARE = 'square';
 
 // ===== HELPER FUNCTIONS =====
 
-/**
- * Height follows the stored brand aspect so the PNG does not stretch.
- * @param {number} width
- * @param {number} aspect
- * @returns {number}
- */
-function logoHeightFromWidth(width, aspect) {
-  return Math.round(width / aspect);
+// Height follows stored aspect so the PNG never stretches.
+function logoHeightForWidth(logoWidth, aspectRatio) {
+  return Math.round(logoWidth / aspectRatio);
+}
+
+// Pick square vs transparent handoff PNG and its aspect ratio.
+function pickLogoAsset(variantName) {
+  // vocab: transparent = cc-logo-transparent.png with black removed for B/W welcome stages.
+  const wantsTransparentMark = variantName === LOGO_VARIANT_TRANSPARENT;
+  if (wantsTransparentMark) {
+    return {
+      imageSource: TRANSPARENT_BRAND_LOGO_SOURCE,
+      aspectRatio: TRANSPARENT_BRAND_LOGO_ASPECT,
+    };
+  }
+  return {
+    imageSource: BRAND_LOGO_SOURCE,
+    aspectRatio: BRAND_LOGO_ASPECT,
+  };
+}
+
+// Fixed box first, then any parent style overrides.
+function combineLogoStyles(logoWidth, logoHeight, styleFromParent) {
+  const sizeBox = { width: logoWidth, height: logoHeight };
+  return [sizeBox, styleFromParent];
 }
 
 // ===== MAIN FUNCTION =====
@@ -43,19 +63,22 @@ export default function AppLogo({
   width = DEFAULT_LOGO_WIDTH,
   style,
   accessibilityLabel = DEFAULT_ACCESSIBILITY_LABEL,
-  variant = 'square',
+  variant = LOGO_VARIANT_SQUARE,
 }) {
-  // vocab: transparent = handoff cc-logo-transparent.png (black removed) for black/white stages
-  const useTransparent = variant === 'transparent';
-  const source = useTransparent ? TRANSPARENT_BRAND_LOGO_SOURCE : BRAND_LOGO_SOURCE;
-  const aspect = useTransparent ? TRANSPARENT_BRAND_LOGO_ASPECT : BRAND_LOGO_ASPECT;
-  const height = logoHeightFromWidth(width, aspect);
+  // 1. Pick square vs transparent handoff asset and its aspect ratio.
+  const logoAsset = pickLogoAsset(variant);
 
-  // vocab: contentFit contain = scale the PNG down to fit, no crop.
+  // 2. Lock height to aspect so layout does not squish the mark.
+  const logoHeight = logoHeightForWidth(width, logoAsset.aspectRatio);
+  const imageStyle = combineLogoStyles(width, logoHeight, style);
+
+  // 3. Paint with contain fit so the PNG scales down without cropping.
+  // vocab: contentFit contain = scale down to fit box without cropping.
+  // vocab: accessibilityIgnoresInvertColors = keep logo colors when iOS Smart Invert is on.
   return (
     <Image
-      source={source}
-      style={[{ width, height }, style]}
+      source={logoAsset.imageSource}
+      style={imageStyle}
       contentFit="contain"
       accessibilityLabel={accessibilityLabel}
       accessibilityIgnoresInvertColors

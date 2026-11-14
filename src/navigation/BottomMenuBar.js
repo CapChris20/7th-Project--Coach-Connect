@@ -5,6 +5,7 @@
 // Tab glyphs are ink/muted outline Ionicons (same black/white language as TopHeader).
 // vocab: navAccentGradient = brand pink→orange — kept ONLY on the center + button
 // Active chip hugs the icon only (never the label) — soft fill + border, not a black slab over the text.
+// Read order: constants → BottomMenuTabSlot / CenterPlusButton → BottomMenuBar → PLUMBING styles.
 
 import React, { useEffect, useRef, useState } from 'react';
 import {
@@ -46,7 +47,6 @@ const PLUS_SIZE = 58;
 // Manipulate here: how far the + peeks above the bar top (was 30 — felt too high)
 const PLUS_OVERHANG = 8;
 
-// Friendly slot names → outline Ionicons (match ColorfulIcon’s old map, minus the gradient fill)
 const TAB_IONICON_BY_NAME = {
   home: 'home-outline',
   barbell: 'barbell-outline',
@@ -55,46 +55,65 @@ const TAB_IONICON_BY_NAME = {
   sparkles: 'sparkles',
 };
 
-// ===== HELPERS =====
+// ===== HELPER FUNCTIONS =====
 
-function springHighlight(animValue, isActive) {
-  return Animated.spring(animValue, {
-    toValue: isActive ? 1 : 0,
+function runTabHighlightSpring(highlightOpacity, tabIsActive) {
+  return Animated.spring(highlightOpacity, {
+    toValue: tabIsActive ? 1 : 0,
     friction: TAB_HIGHLIGHT_SPRING_FRICTION,
     useNativeDriver: true,
   });
 }
 
-function TabSlot({
+function pickDockThemeColors(isDark) {
+  if (isDark) {
+    return {
+      surface: darkColors.nbSurface,
+      soft: darkColors.nbSoft,
+      border: darkColors.nbBorder,
+      ink: darkColors.nbInk,
+      muted: darkColors.nbMuted,
+    };
+  }
+  return {
+    surface: lightColors.nbSurface,
+    soft: lightColors.nbSoft,
+    border: lightColors.nbBorder,
+    ink: lightColors.nbInk,
+    muted: lightColors.nbMuted,
+  };
+}
+
+function BottomMenuTabSlot({
   label,
   iconName,
   iconSize,
   active,
-  anim,
+  highlightOpacity,
   onPress,
   themeColors,
   badge,
   maxWidth,
 }) {
-  // Chip size = glyph + pad. Label stays outside so the highlight never covers text.
   const chipSize = iconSize + ICON_CHIP_PAD * 2;
-  // Match label: ink when active, muted when idle — no gradient on tab glyphs
   const glyphColor = active ? themeColors.ink : themeColors.muted;
+  const labelColor = active ? themeColors.ink : themeColors.muted;
+  const labelWeight = active ? '800' : '700';
   const ioniconName = TAB_IONICON_BY_NAME[iconName] || 'ellipse-outline';
+  const slotWidthStyle = maxWidth ? { maxWidth } : null;
 
   return (
     <TouchableOpacity
-      style={[styles.navItem, maxWidth ? { maxWidth } : null]}
+      style={[styles.navItem, slotWidthStyle]}
       activeOpacity={0.92}
       hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
       onPress={onPress}
     >
       <View style={styles.navContent}>
-        {/* Icon column: soft bordered chip fades in behind the glyph only. */}
         <View style={[styles.navIcon, { width: chipSize, height: chipSize }]} collapsable={false}>
           <Animated.View
             pointerEvents="none"
-            style={[styles.activeChipAnim, { opacity: anim }]}
+            style={[styles.activeChipAnim, { opacity: highlightOpacity }]}
           >
             <HardShadow offset={nb.shadowOffsetSmall} radius={12}>
               <View
@@ -114,13 +133,7 @@ function TabSlot({
           {badge ? <View style={styles.tabBadgeDot} /> : null}
         </View>
         <Text
-          style={[
-            styles.navLabel,
-            {
-              color: active ? themeColors.ink : themeColors.muted,
-              fontWeight: active ? '800' : '700',
-            },
-          ]}
+          style={[styles.navLabel, { color: labelColor, fontWeight: labelWeight }]}
           numberOfLines={1}
         >
           {label}
@@ -130,8 +143,35 @@ function TabSlot({
   );
 }
 
+function CenterPlusButton({ topOffset, borderColor, onPress }) {
+  return (
+    <View style={[styles.plusWrap, { top: topOffset }]} pointerEvents="box-none">
+      <HardShadow offset={nb.shadowOffsetCard} radius={PLUS_SIZE / 2}>
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={onPress}
+          style={[styles.plusHit, { borderColor }]}
+        >
+          <LinearGradient
+            colors={navAccentGradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.plusFab}
+          >
+            <Ionicons name="add" size={32} color={lightColors.nbInk} />
+          </LinearGradient>
+        </TouchableOpacity>
+      </HardShadow>
+    </View>
+  );
+}
+
 // ===== MAIN FUNCTION =====
 
+/**
+ * Production bottom dock — four tab slots + center + FAB.
+ * Hook order frozen: merged nav → theme → safe area → AI flag → active tab state → highlight refs → effects.
+ */
 export default function BottomMenuBar({
   onPlusPress: onPlusPressProp,
   onVoicePress: onVoicePressProp,
@@ -144,6 +184,7 @@ export default function BottomMenuBar({
   workoutTabBadge = false,
   appearanceIsDark,
 }) {
+  // 1. Merge shell handlers with any props the parent passed in.
   const mergedNav = useMergedNavigation({
     onHomePress: onHomePressProp,
     onPlusPress: onPlusPressProp,
@@ -161,71 +202,80 @@ export default function BottomMenuBar({
     onWorkoutPress,
   } = mergedNav;
 
+  // 2. Theme, safe area, and whether the AI tab slot should show.
   const { isDark: globalIsDark } = useTheme();
   const isDark = appearanceIsDark !== undefined ? appearanceIsDark : globalIsDark;
   const insets = useSafeAreaInsets();
   const { aiEnabled } = useAI();
-  const aiOn = aiEnabled === true;
+  const showAiCoachTab = aiEnabled === true;
+  const themeColors = pickDockThemeColors(isDark);
 
-  const themeColors = {
-    surface: isDark ? darkColors.nbSurface : lightColors.nbSurface,
-    soft: isDark ? darkColors.nbSoft : lightColors.nbSoft,
-    border: isDark ? darkColors.nbBorder : lightColors.nbBorder,
-    ink: isDark ? darkColors.nbInk : lightColors.nbInk,
-    muted: isDark ? darkColors.nbMuted : lightColors.nbMuted,
-  };
-
-  // Prefer the controlled prop immediately so remounts never flash the AsyncStorage tab first.
-  const [activeKey, setActiveKey] = useState(activeTabKeyProp || DEFAULT_ACTIVE_TAB);
-  const homeAnim = useRef(new Animated.Value(0)).current;
-  const workoutAnim = useRef(new Animated.Value(0)).current;
-  const filesAnim = useRef(new Animated.Value(0)).current;
-  const nutritionAnim = useRef(new Animated.Value(0)).current;
-  const aiAnim = useRef(new Animated.Value(0)).current;
+  // 3. Which tab looks selected — prop wins on first paint so remounts do not flash storage.
+  const [activeTabKey, setActiveTabKey] = useState(activeTabKeyProp || DEFAULT_ACTIVE_TAB);
+  const homeHighlight = useRef(new Animated.Value(0)).current;
+  const workoutHighlight = useRef(new Animated.Value(0)).current;
+  const filesHighlight = useRef(new Animated.Value(0)).current;
+  const nutritionHighlight = useRef(new Animated.Value(0)).current;
+  const aiHighlight = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     Animated.parallel([
-      springHighlight(homeAnim, activeKey === 'home'),
-      springHighlight(workoutAnim, activeKey === 'workout'),
-      springHighlight(filesAnim, activeKey === 'files'),
-      springHighlight(nutritionAnim, activeKey === 'nutrition'),
-      springHighlight(aiAnim, activeKey === 'ai'),
+      runTabHighlightSpring(homeHighlight, activeTabKey === 'home'),
+      runTabHighlightSpring(workoutHighlight, activeTabKey === 'workout'),
+      runTabHighlightSpring(filesHighlight, activeTabKey === 'files'),
+      runTabHighlightSpring(nutritionHighlight, activeTabKey === 'nutrition'),
+      runTabHighlightSpring(aiHighlight, activeTabKey === 'ai'),
     ]).start();
-  }, [activeKey, homeAnim, workoutAnim, filesAnim, nutritionAnim, aiAnim]);
+  }, [activeTabKey, homeHighlight, workoutHighlight, filesHighlight, nutritionHighlight, aiHighlight]);
 
   useEffect(() => {
     if (activeTabKeyProp) {
-      setActiveKey(activeTabKeyProp);
+      setActiveTabKey(activeTabKeyProp);
       return undefined;
     }
-    // Uncontrolled only: restore last highlight. Skip when parent drives activeTabKey.
-    let cancelled = false;
+
+    let effectCancelled = false;
     (async () => {
       try {
-        const saved = await AsyncStorage.getItem(ACTIVE_KEY_STORAGE);
-        if (!cancelled && saved && ALLOWED_TAB_KEYS.has(saved)) setActiveKey(saved);
-      } catch (_) {}
+        const savedTabKey = await AsyncStorage.getItem(ACTIVE_KEY_STORAGE);
+        const savedKeyIsAllowed = savedTabKey && ALLOWED_TAB_KEYS.has(savedTabKey);
+        if (!effectCancelled && savedKeyIsAllowed) {
+          setActiveTabKey(savedTabKey);
+        }
+      } catch (unusedError) {
+        // Ignore storage read failures — keep DEFAULT_ACTIVE_TAB.
+      }
     })();
+
     return () => {
-      cancelled = true;
+      effectCancelled = true;
     };
   }, [activeTabKeyProp]);
 
-  const activate = (key, handler) => {
-    setActiveKey(key);
-    AsyncStorage.setItem(ACTIVE_KEY_STORAGE, key).catch(() => {});
-    if (typeof handler === 'function') handler();
-  };
+  function pressTabAndRemember(tabKey, tabHandler) {
+    setActiveTabKey(tabKey);
+    AsyncStorage.setItem(ACTIVE_KEY_STORAGE, tabKey).catch(() => {});
+    if (typeof tabHandler === 'function') {
+      tabHandler();
+    }
+  }
 
-  const slotMax = aiOn ? '18%' : '25%';
-  const thirdKey = aiOn ? 'ai' : 'files';
-  const thirdLabel = aiOn ? 'AI Coach' : 'Files';
-  const thirdName = aiOn ? 'sparkles' : 'document-text';
-  const thirdAnim = aiOn ? aiAnim : filesAnim;
-  const thirdHandler = aiOn ? onVoicePress : onPlusPress;
+  // 4. Third slot swaps between Files and AI Coach depending on the permission flag.
+  const tabSlotMaxWidth = showAiCoachTab ? '18%' : '25%';
+  const thirdTabKey = showAiCoachTab ? 'ai' : 'files';
+  const thirdTabLabel = showAiCoachTab ? 'AI Coach' : 'Files';
+  const thirdTabIconName = showAiCoachTab ? 'sparkles' : 'document-text';
+  const thirdTabHighlight = showAiCoachTab ? aiHighlight : filesHighlight;
+  const thirdTabHandler = showAiCoachTab ? onVoicePress : onPlusPress;
 
-  // Sit the + mostly inside the bar — only a small overhang above the top border.
-  const plusTop = -PLUS_OVERHANG;
+  const plusButtonTopOffset = -PLUS_OVERHANG;
+  const barMinHeight = BAR_VISUAL_HEIGHT + insets.bottom;
+  const noopHandler = () => {};
+
+  const homeIsActive = activeTabKey === 'home';
+  const workoutIsActive = activeTabKey === 'workout';
+  const thirdTabIsActive = activeTabKey === thirdTabKey;
+  const nutritionIsActive = activeTabKey === 'nutrition';
 
   return (
     <View
@@ -235,77 +285,65 @@ export default function BottomMenuBar({
           backgroundColor: themeColors.surface,
           borderTopColor: themeColors.border,
           paddingBottom: insets.bottom,
-          minHeight: BAR_VISUAL_HEIGHT + insets.bottom,
+          minHeight: barMinHeight,
         },
       ]}
     >
       <View style={styles.row}>
-        <TabSlot
+        <BottomMenuTabSlot
           label="Home"
           iconName="home"
           iconSize={ICON_SIZE}
-          active={activeKey === 'home'}
-          anim={homeAnim}
-          onPress={() => activate('home', onHomePress || (() => {}))}
+          active={homeIsActive}
+          highlightOpacity={homeHighlight}
+          onPress={() => pressTabAndRemember('home', onHomePress || noopHandler)}
           themeColors={themeColors}
-          maxWidth={slotMax}
+          maxWidth={tabSlotMaxWidth}
         />
-        <TabSlot
+        <BottomMenuTabSlot
           label="Workout"
           iconName="barbell"
           iconSize={ICON_SIZE_WORKOUT}
-          active={activeKey === 'workout'}
-          anim={workoutAnim}
-          onPress={() => activate('workout', onWorkoutPress || (() => {}))}
+          active={workoutIsActive}
+          highlightOpacity={workoutHighlight}
+          onPress={() => pressTabAndRemember('workout', onWorkoutPress || noopHandler)}
           themeColors={themeColors}
           badge={workoutTabBadge}
-          maxWidth={slotMax}
+          maxWidth={tabSlotMaxWidth}
         />
         <View style={{ width: PLUS_SIZE, flexShrink: 0 }} />
-        <TabSlot
-          label={thirdLabel}
-          iconName={thirdName}
+        <BottomMenuTabSlot
+          label={thirdTabLabel}
+          iconName={thirdTabIconName}
           iconSize={ICON_SIZE}
-          active={activeKey === thirdKey}
-          anim={thirdAnim}
-          onPress={() => activate(thirdKey, thirdHandler || (() => {}))}
+          active={thirdTabIsActive}
+          highlightOpacity={thirdTabHighlight}
+          onPress={() => pressTabAndRemember(thirdTabKey, thirdTabHandler || noopHandler)}
           themeColors={themeColors}
-          maxWidth={slotMax}
+          maxWidth={tabSlotMaxWidth}
         />
-        <TabSlot
+        <BottomMenuTabSlot
           label="Nutrition"
           iconName="restaurant"
           iconSize={ICON_SIZE}
-          active={activeKey === 'nutrition'}
-          anim={nutritionAnim}
-          onPress={() => activate('nutrition', onNutritionPress || (() => {}))}
+          active={nutritionIsActive}
+          highlightOpacity={nutritionHighlight}
+          onPress={() => pressTabAndRemember('nutrition', onNutritionPress || noopHandler)}
           themeColors={themeColors}
-          maxWidth={slotMax}
+          maxWidth={tabSlotMaxWidth}
         />
       </View>
 
-      {/* Center + stays gradient — the only accent left on the dock. */}
-      <View style={[styles.plusWrap, { top: plusTop }]} pointerEvents="box-none">
-        <HardShadow offset={nb.shadowOffsetCard} radius={PLUS_SIZE / 2}>
-          <TouchableOpacity
-            activeOpacity={0.85}
-            onPress={onPlusPress}
-            style={[styles.plusHit, { borderColor: themeColors.border }]}
-          >
-            <LinearGradient
-              colors={navAccentGradient}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.plusFab}
-            >
-              <Ionicons name="add" size={32} color={lightColors.nbInk} />
-            </LinearGradient>
-          </TouchableOpacity>
-        </HardShadow>
-      </View>
+      <CenterPlusButton
+        topOffset={plusButtonTopOffset}
+        borderColor={themeColors.border}
+        onPress={onPlusPress}
+      />
     </View>
   );
 }
+
+// ===== PLUMBING — skip unless debugging =====
 
 const styles = StyleSheet.create({
   container: {
@@ -338,7 +376,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 4,
   },
-  // Absolute inside the icon box only — never stretches over the label.
   activeChipAnim: {
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',

@@ -1,5 +1,3 @@
-// NewUserSetupScreen.jsx
-//
 // First-run setup questionnaire for clients and trainers (role comes from signup).
 // Flow: answer each step → validate → save phone + Firestore + server → enter the app.
 // Used by: LoginGate after signup. Named exports are shared onboarding UI primitives.
@@ -130,6 +128,7 @@ import {
   spacing,
 } from '../look-and-feel/colorPalette';
 
+
 // ===== NAMED CONSTANTS =====
 
 const { width } = Dimensions.get('window');
@@ -147,8 +146,11 @@ const PHILOSOPHY_MIN_CHARS = 50;
 // Day-of-week picker shows Mon–Sun as 1…7.
 const DAYS_IN_WEEK = 7;
 const DAY_OF_WEEK_NUMBERS = [1, 2, 3, 4, 5, 6, DAYS_IN_WEEK];
-// Client step tint index for trainer-code / invite step.
-const CLIENT_INVITE_STEP = 7;
+// Client Design Law steps (see ClientOnboardingScreens): AI = 7, All set = 8.
+// CLIENT_INVITE_STEP kept as alias used by glass tint for the AI step.
+const CLIENT_AI_STEP = 7;
+const CLIENT_ALL_SET_STEP = 8;
+const CLIENT_INVITE_STEP = CLIENT_AI_STEP;
 // Trainer invite-code step — Design Law part 1 step 4 (see TrainerOnboardingScreens).
 // Invite code display "XXX-XXX" is 7 chars including the dash.
 const INVITE_CODE_DISPLAY_LENGTH = 7;
@@ -167,7 +169,1444 @@ const STYLE_SPACE_LG = 24;
 const STYLE_FONT_TITLE = 24;
 const STYLE_UNIT_MIN_WIDTH = 60;
 
+
 // ===== HELPER FUNCTIONS =====
+
+// PLUMBING — nullish property readers (same short-circuit as former ?.)
+function readProp(objectValue, propName) {
+  if (objectValue == null) return undefined;
+  return objectValue[propName];
+}
+
+function readProp2(objectValue, propName1, propName2) {
+  if (objectValue == null) return undefined;
+  const midValue = objectValue[propName1];
+  if (midValue == null) return undefined;
+  return midValue[propName2];
+}
+
+function readProp3(objectValue, propName1, propName2, propName3) {
+  if (objectValue == null) return undefined;
+  const midValue = objectValue[propName1];
+  if (midValue == null) return undefined;
+  const deeperValue = midValue[propName2];
+  if (deeperValue == null) return undefined;
+  return deeperValue[propName3];
+}
+
+
+// Small pure helpers the wizard calls. Shared onboarding chrome lives under PLUMBING.
+
+function clientFooterIsAiStep(role, currentStep) {
+  return role === 'client' && currentStep === CLIENT_AI_STEP;
+}
+
+function clientFooterIsAllSetStep(role, currentStep) {
+  return role === 'client' && currentStep === CLIENT_ALL_SET_STEP;
+}
+
+function trainerFooterIsCompleteStep(role, currentStep) {
+  return role === 'trainer' && currentStep === TRAINER_COMPLETE_STEP;
+}
+
+/**
+ * Footer Continue label for the trainer path (client always uses "Continue >").
+ * Named before JSX so we never nest ternaries in the button.
+ */
+function trainerContinueButtonLabel(currentStep, totalSteps) {
+  if (currentStep === 3) return 'Get my invite code >';
+  if (currentStep === 2) return 'Continue to rates >';
+  if (currentStep === 1) return 'Continue to proof >';
+  if (currentStep === totalSteps) return 'Continue';
+  return 'Continue >';
+}
+
+function footerContinueButtonLabel(role, currentStep, totalSteps) {
+  if (role === 'client') return 'Continue >';
+  return trainerContinueButtonLabel(currentStep, totalSteps);
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Full client/trainer onboarding wizard. Role is fixed from signup — no role picker here.
+ * @param {object} props
+ */
+export default function NewUserSetupScreen({
+  route,
+  onComplete,
+  role: roleProp,
+  previewMode = false,
+  previewInitialStep = 1,
+  onPreviewClose,
+}) {
+  // Follow ThemeProvider (defaults light). Never invent a parallel “dark first” default.
+  const { colors, typography, spacing, isDark: contextIsDark = false, toggleTheme } = useTheme();
+  const insets = useSafeAreaInsets();
+  const [isDark, setIsDark] = useState(Boolean(contextIsDark));
+  const [role, setRole] = useState(() => cleanUpRoleName(roleProp, readProp2(route, 'params', 'role')));
+
+  const [currentStep, setCurrentStep] = useState(previewMode ? previewInitialStep : 1);
+  /** Step 1 height field — feet'in" text while typing (e.g. 5'11"). */
+  const [heightDraft, setHeightDraft] = useState('');
+  const [loading, setLoading] = useState(false);
+  const { setAIFromOnboarding } = useAI();
+  const { accessState: trainerSubscriptionAccess } = useSubscription();
+  // Paywall plan selected on trainer step 8 (annual is the recommended default).
+  const [trainerPlanId, setTrainerPlanId] = useState('pro_annual');
+  const [faceCamOpen, setFaceCamOpen] = useState(false);
+  const [faceCapturing, setFaceCapturing] = useState(false);
+  // Design Law sheets: camera ask (PNG part-2 05) + payout skip warning (PNG 17)
+  const [cameraPermissionSheetOpen, setCameraPermissionSheetOpen] = useState(false);
+  const [payoutSkipSheetOpen, setPayoutSkipSheetOpen] = useState(false);
+  const [notice, setNotice] = useState(null);
+  const showNotice = (title, message, extras = {}) => setNotice({ title, message, ...extras });
+  const [certUploading, setCertUploading] = useState(false);
+  const faceCamRef = useRef(null);
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
+  const [onboardingData, setOnboardingData] = useState(() => withClientSliderDefaults({
+    // Client fields - Basic Info (Design Law sliders seed weight/height/age defaults)
+    weight: null, // lbs
+    height: null, // { feet, inches }
+    age: null,
+    gender: null, // 'male', 'female', 'other', 'prefer_not_to_say'
+    // Client fields - Fitness Info
+    fitnessLevel: null,
+    primaryGoal: null,
+    goals: [],
+    equipmentAccess: [],
+    daysPerWeek: null,
+    // Default to editable input; `null` is reserved to mean "no limitations"
+    injuries: '',
+    exercisesDislike: '', // recommended
+    preferredWorkoutTime: null, // 'morning' | 'afternoon' | 'evening'
+    trainingEnvironment: null, // 'home' | 'gym' | 'both'
+    currentStressLevel: null, // 'low' | 'moderate' | 'high'
+    sleepQuality: null, // 'poor' | 'fair' | 'good'
+    energyLevels: null, // 'low' | 'moderate' | 'high'
+    supplementsCurrentlyTaking: '',
+    hydrationHabits: null, // 'less_than_4' | '4_8' | 'more_than_8'
+    trainerId: null,
+    situationDescription: '', // Step 8 - detailed situation/goals description
+    aiEnabled: null, // Step 9 - AI opt-in (client only)
+    // Trainer fields
+    certifications: [],
+    yearsExperience: null,
+    location: '',
+    specialties: [],
+    trainingPhilosophy: '',
+    sessionType: null,
+    offerFreeConsultation: false,
+    flexiblePricingAvailable: false,
+    pricing: { perSession: null, perMonth: null, initialConsult: null },
+    inviteCode: null,
+    certificationOther: '',
+    faceVerificationPhotoURL: null,
+    faceVerificationStatus: 'unsubmitted',
+    isVerified: false,
+    certificationSheetURLs: [],
+    /** Trainer display name (step 6) */
+    name: '',
+    /** Short public bio; long-form philosophy stays in trainingPhilosophy */
+    trainerProfileBio: '',
+    /** 'available' | 'waitlist' */
+    trainerAvailabilityStatus: null,
+    // Design Law availability chips (morning/afternoon/evening/weekends) — optional
+    preferredSessionTimes: [],
+  }));
+
+  // Design Law trainer step: Yes / Not yet segmented (not two separate old cards).
+  const [trainerChoice, setTrainerChoice] = useState('yes');
+
+  // Stay in sync with the app-wide theme (single source of truth: ThemeProvider).
+  useEffect(() => {
+    setIsDark(Boolean(contextIsDark));
+  }, [contextIsDark]);
+
+  useEffect(() => {
+    // Mirror local flips into ThemeProvider so Settings / home stay consistent.
+    if (typeof toggleTheme === 'function') {
+      const themeTogglePromise = toggleTheme(isDark ? 'dark' : 'light');
+      if (themeTogglePromise && typeof themeTogglePromise.catch === 'function') {
+        themeTogglePromise.catch(() => {});
+      }
+    }
+  }, [isDark, toggleTheme]);
+
+  useLayoutEffect(() => {
+    const next = cleanUpRoleName(roleProp, readProp2(route, 'params', 'role'));
+    setRole((prev) => (prev === next ? prev : next));
+  }, [roleProp, readProp2(route, 'params', 'role')]);
+
+  const theme = isDark
+    ? {
+        bg: lightColors.nbInk,
+        card: 'rgba(255,255,255,0.05)',
+        cardBorder: 'rgba(255,255,255,0.08)',
+        cardSelected: 'rgba(255,107,157,0.15)',
+        cardSelectedBorder: lightColors.primary,
+        text: lightColors.white,
+        subtext: 'rgba(255,255,255,0.55)',
+        input: 'rgba(255,255,255,0.05)',
+        inputBorder: 'rgba(255,255,255,0.08)',
+        inputText: lightColors.white,
+        placeholder: 'rgba(255,255,255,0.3)',
+        progressBg: 'rgba(255,255,255,0.08)',
+        backBtn: 'rgba(255,255,255,0.08)',
+        backBtnText: 'rgba(255,255,255,0.6)',
+        toggleIcon: 'sunny-outline',
+      }
+    : {
+        bg: lightColors.nbBackground,
+        card: lightColors.white,
+        cardBorder: 'rgba(0,0,0,0.08)',
+        cardSelected: 'rgba(255,107,157,0.1)',
+        cardSelectedBorder: lightColors.primary,
+        text: lightColors.nbInk,
+        subtext: 'rgba(0,0,0,0.5)',
+        input: lightColors.white,
+        inputBorder: 'rgba(0,0,0,0.12)',
+        inputText: lightColors.nbInk,
+        placeholder: 'rgba(0,0,0,0.3)',
+        progressBg: 'rgba(0,0,0,0.08)',
+        backBtn: 'rgba(0,0,0,0.06)',
+        backBtnText: 'rgba(0,0,0,0.5)',
+        toggleIcon: 'moon-outline',
+      };
+
+  // Trainer invite code generation state
+  const [inviteCode, setInviteCode] = useState('');
+  const [generatingCode, setGeneratingCode] = useState(false);
+  const inviteBorderRotation = useRef(new Animated.Value(0)).current;
+  const inviteBorderPulse = useRef(new Animated.Value(0)).current;
+  
+  // Client trainer code validation state
+  const [trainerCode, setTrainerCode] = useState('');
+  const [validatingCode, setValidatingCode] = useState(false);
+  const [codeValid, setCodeValid] = useState(null);
+  const [codeError, setCodeError] = useState(null);
+  const shakeAnimation = useRef(new Animated.Value(0)).current;
+  
+  // Enhanced input animations
+  const [focusedInputs, setFocusedInputs] = useState({});
+  const [inputValues, setInputValues] = useState({});
+  
+  // Animation values for neumorphic cards
+  const cardAnimations = useRef({}).current;
+
+  // Generate unique invite code for trainers (final step)
+  useEffect(() => {
+    if (role === 'trainer' && currentStep === TRAINER_INVITE_STEP && !inviteCode) {
+      if (previewMode) {
+        setInviteCode('DEM-O12');
+        setOnboardingData((prev) => ({ ...prev, inviteCode: 'DEM-O12' }));
+        return;
+      }
+      generateInviteCode();
+    }
+  }, [role, currentStep, previewMode]);
+
+  useEffect(() => {
+    if (!(role === 'trainer' && currentStep === TRAINER_INVITE_STEP)) return;
+
+    inviteBorderRotation.stopAnimation();
+    inviteBorderPulse.stopAnimation();
+    inviteBorderRotation.setValue(0);
+    inviteBorderPulse.setValue(0);
+
+    const rotateLoop = Animated.loop(
+      Animated.timing(inviteBorderRotation, { toValue: 1, duration: INVITE_BORDER_SPIN_MS, useNativeDriver: true })
+    );
+    const pulseLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(inviteBorderPulse, { toValue: 1, duration: 900, useNativeDriver: true }),
+        Animated.timing(inviteBorderPulse, { toValue: 0, duration: 900, useNativeDriver: true }),
+      ])
+    );
+
+    rotateLoop.start();
+    pulseLoop.start();
+    return () => {
+      rotateLoop.stop();
+      pulseLoop.stop();
+    };
+  }, [role, currentStep, inviteBorderRotation, inviteBorderPulse]);
+
+  // Design Law client = 8 screens (7 questions + All set). Trainer unchanged at 8.
+  let totalSteps = TRAINER_ONBOARDING_STEPS;
+  if (role === 'client') {
+    totalSteps = CLIENT_ONBOARDING_STEPS;
+  }
+
+  // Design Law chapter bar — YOU / HOW YOU TRAIN / SUPPORT with partial fill per PNG.
+  const trainerChapterMeta =
+    role === 'trainer' ? getTrainerChapterMeta(currentStep) : null;
+
+  const clientChapterMeta = role === 'client'
+    ? getClientChapterMeta(currentStep)
+    : { chapter: 1, fraction: 1, label: 'YOU', stepLabel: `${currentStep}/${totalSteps}` };
+
+  /** CTA gradient for onboarding Continue */
+  const getStepGradient = () => ONBOARDING_CTA_GRADIENT;
+
+  // Current step Lottie (all client + trainer steps that have a mapping)
+  const getCurrentLottie = () => {
+    const key = `${role}-${currentStep}`;
+    const animation = LOTTIE_ANIMATIONS[key];
+    return animation || null;
+  };
+
+  const getSafeLottie = () => {
+    const src = getCurrentLottie();
+    
+    // If no source available, return null (will be handled by conditional render)
+    if (!src) {
+      return null;
+    }
+
+    // For require() statements that return numbers (asset refs)
+    // NOTE: LottieView can accept the numeric asset ref directly; do NOT convert to { uri }.
+    if (typeof src === 'number') {
+      return src;
+    }
+
+    // For objects (already resolved JSON)
+    if (typeof src === 'object' && src !== null) {
+      return src;
+    }
+    
+    // For strings (URI paths)
+    if (typeof src === 'string') {
+      return { uri: src };
+    }
+    
+    return null;
+  };
+
+  const StepLottie = ({ style }) => {
+    const src = getSafeLottie();
+    if (!src) return null;
+    return <LottieView source={src} autoPlay loop style={style || styles.lottieAnimation} />;
+  };
+
+
+  /**
+   * POST JSON to one onboarding API base with a Firebase ID token and timeout.
+   */
+  const fetchOnboardingWithToken = async (baseUrl, path, body, firebaseUser) => {
+    await firebaseUser.reload();
+    const idToken = await firebaseUser.getIdToken(true);
+    if (!idToken || typeof idToken !== 'string') {
+      throw new Error('Missing/invalid Firebase ID token');
+    }
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), ONBOARDING_API_TIMEOUT_MS);
+    try {
+      return await fetch(`${baseUrl}${path}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify(body ?? {}),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  };
+
+  /** Read error text; on 401 retry once with a fresh token. */
+  const fetchOnboardingUntilOk = async (baseUrl, path, body, firebaseUser) => {
+    let resp = await fetchOnboardingWithToken(baseUrl, path, body, firebaseUser);
+    if (resp.ok) return resp;
+
+    const text = await resp.text().catch(() => '');
+    if (resp.status !== HTTP_UNAUTHORIZED) {
+      throw new Error(`Server ${path} failed (${resp.status}) ${text}`.trim());
+    }
+
+    resp = await fetchOnboardingWithToken(baseUrl, path, body, firebaseUser);
+    if (resp.ok) return resp;
+    const retryText = await resp.text().catch(() => '');
+    throw new Error(`Server ${path} failed (${resp.status}) ${retryText}`.trim());
+  };
+
+  /** Map a fetch failure into a clearer lastErr for the caller. */
+  const onboardingFetchFailure = (error, baseUrl, path) => {
+    const msg = (error == null ? undefined : error.message) || String(error);
+    if (msg.includes('Network request failed')) {
+      return new Error(`Network request failed for ${baseUrl}${path}`);
+    }
+    if (msg.includes('aborted') || msg.includes('AbortError')) {
+      return new Error(`Request timed out for ${baseUrl}${path}`);
+    }
+    return error;
+  };
+
+  // 1. Try each API base until one accepts the onboarding POST.
+  const postOnboardingApi = async (path, body) => {
+    const baseUrls = getApiBaseCandidates();
+    const firebaseUser = (auth == null ? undefined : auth.currentUser);
+    if (!firebaseUser) throw new Error('Missing Firebase auth user.');
+
+    let lastErr = null;
+    const tried = [];
+    for (const baseUrl of baseUrls) {
+      tried.push(baseUrl);
+      try {
+        const resp = await fetchOnboardingUntilOk(baseUrl, path, body, firebaseUser);
+        return await resp.json();
+      } catch (error) {
+        lastErr = onboardingFetchFailure(error, baseUrl, path);
+      }
+    }
+
+    if (lastErr) {
+      throw new Error(`${lastErr.message || String(lastErr)} (tried: ${tried.join(', ')})`);
+    }
+    throw new Error(`Request failed: ${path} (tried: ${tried.join(', ')})`);
+  };
+
+  /** Build one XXX-XXX invite code from random A–Z / 0–9 chars. */
+  const buildRandomInviteCode = () => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    const part1 = Array.from({ length: 3 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+    const part2 = Array.from({ length: 3 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+    return `${part1}-${part2}`;
+  };
+
+  /** Ask the server if this invite code is free; on network error, assume unique. */
+  const isInviteCodeAvailable = async (code) => {
+    try {
+      const resp = await postOnboardingApi('/api/onboarding/check-invite-code', { code });
+      return !(resp == null ? undefined : resp.exists);
+    } catch (error) {
+      console.warn('Invite code uniqueness check failed; assuming unique:', (error == null ? undefined : error.message) || error);
+      return true;
+    }
+  };
+
+  const generateInviteCode = async () => {
+    setGeneratingCode(true);
+    let code = '';
+    let isUnique = false;
+    let attempts = 0;
+    const maxAttempts = 10;
+
+    while (!isUnique && attempts < maxAttempts) {
+      code = buildRandomInviteCode();
+      isUnique = await isInviteCodeAvailable(code);
+      attempts += 1;
+    }
+
+    if (isUnique) {
+      setInviteCode(code);
+      setOnboardingData((prev) => ({ ...prev, inviteCode: code }));
+    } else {
+      showNotice('Error', 'Could not generate unique invite code. Please try again.');
+    }
+    setGeneratingCode(false);
+  };
+
+  /** Normalize client input to match stored format (XXX-XXX). Returns null if invalid. */
+  const normalizeInviteCodeForQuery = (raw) => {
+    let rawText = String(raw || '').trim();
+    if (!rawText) return null;
+    // Strip TRAINER- prefix (case-insensitive)
+    if (/^trainer/i.test(rawText)) {
+      rawText = rawText.replace(/^trainer[\-\s]*/i, '').trim();
+    }
+    // Remove ALL non-alphanumeric characters, uppercase
+    const cleaned = rawText.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+    // Must be exactly 6 alphanumeric chars for XXX-XXX format
+    if (cleaned.length !== 6) return null;
+    const result = `${cleaned.slice(0, 3)}-${cleaned.slice(3, 6)}`;
+    return result.length === INVITE_CODE_DISPLAY_LENGTH ? result : null;
+  };
+
+  const validateTrainerCode = async (code) =>
+    validateTrainerCodeWithDeps(code, {
+      postOnboardingApi,
+      setCodeValid,
+      setCodeError,
+      setOnboardingData,
+      setValidatingCode,
+      triggerShake,
+    });
+
+  const triggerShake = () => {
+    Animated.sequence([
+      Animated.timing(shakeAnimation, {
+        toValue: 10,
+        duration: 50,
+        useNativeDriver: true,
+      }),
+      Animated.timing(shakeAnimation, {
+        toValue: -10,
+        duration: 50,
+        useNativeDriver: true,
+      }),
+      Animated.timing(shakeAnimation, {
+        toValue: 10,
+        duration: 50,
+        useNativeDriver: true,
+      }),
+      Animated.timing(shakeAnimation, {
+        toValue: 0,
+        duration: 50,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
+
+  const copyToClipboard = async (text) => {
+    try {
+      const { default: Clipboard } = await import('@react-native-clipboard/clipboard');
+      await Clipboard.setString(text);
+      showNotice('Copied!', 'Invite code copied to clipboard');
+    } catch (error) {
+      // Fallback for Expo
+      showNotice('Copied!', `Invite code: ${text}`);
+    }
+  };
+
+  const shareInviteCode = async () => {
+    try {
+      await Share.share({
+        message: `Join me on CoachConnect! Use my invite code: ${inviteCode}`,
+        title: 'CoachConnect Invite Code',
+      });
+    } catch (error) {
+      console.error('Error sharing:', error);
+    }
+  };
+
+  const handleSelect = (field, value, isMultiSelect = false) => {
+    if (isMultiSelect) {
+      const currentValues = onboardingData[field] || [];
+      const alreadySelected = currentValues.includes(value);
+      const nextValues = alreadySelected
+        ? currentValues.filter((selectedValue) => selectedValue !== value)
+        : [...currentValues, value];
+      setOnboardingData((previousData) => ({ ...previousData, [field]: nextValues }));
+      return;
+    }
+    setOnboardingData((previousData) => ({ ...previousData, [field]: value }));
+  };
+
+  useEffect(() => {
+    if (role === 'client' && currentStep === 1) {
+      setHeightDraft(formatHeightInputDisplay(onboardingData.height));
+    }
+  }, [role, currentStep]);
+
+  const resolveClientHeight = () => {
+    if (isHeightComplete(onboardingData.height)) return onboardingData.height;
+    return finalizeHeightFromDraft(heightDraft);
+  };
+
+  const validateStep = () => {
+    if (role === 'client') {
+      return validateClientOnboardingStep(currentStep, onboardingData, {
+        trainerChoice,
+        codeValid,
+        trainerCode,
+      });
+    }
+    return validateTrainerOnboardingStep(
+      currentStep,
+      withTrainerSliderDefaults(onboardingData),
+    );
+  };
+
+  const handleNext = () => {
+    // Client Design Law: height is a slider → already a complete {feet,inches} object.
+    if (!validateStep()) return;
+
+    if (currentStep < totalSteps) {
+      setCurrentStep(currentStep + 1);
+    } else {
+      handleFinish();
+    }
+  };
+
+  const handleBack = () => {
+    if (currentStep > 1) {
+      setCurrentStep(currentStep - 1);
+    }
+  };
+
+  const handleLogout = async () => {
+    if (previewMode) {
+      if (onPreviewClose) {
+        onPreviewClose();
+      }
+      return;
+    }
+    showNotice('Sign Out', 'Are you sure you want to sign out and return to the login screen?', {
+      cancelLabel: 'Cancel',
+      confirmLabel: 'Sign Out',
+      destructive: true,
+      onConfirm: async () => {
+        try {
+          await signOut(auth);
+        } catch (error) {
+          console.error('Error signing out:', error);
+        }
+      },
+    });
+  };
+
+  // Which steps may be skipped from the footer Skip button.
+  // Client: step 6 (injuries) and step 7 (trainer invite code) — steps 8-9 are required.
+  // Trainer: step 4 (training philosophy) and step 8 (Pro offer) are optional.
+  const isOptionalStep = () => {
+    if (role === 'client') {
+      // Health + trainer are skippable in Design Law (Continue always enabled).
+      return currentStep === 4 || currentStep === 5;
+    }
+    return currentStep === TRAINER_PAYOUT_STEP || currentStep === TRAINER_PRO_STEP;
+  };
+
+  const handleSkip = () => {
+    if (currentStep < totalSteps) setCurrentStep(currentStep + 1);
+    else handleFinish();
+  };
+
+  /** Queue a deferred server sync when Firestore saved but API did not. */
+  const queueOnboardingServerSync = async (userId, finalRole, updateData, overrideData) => {
+    if (!userId) return;
+    const queuedUpdate =
+      updateData || buildOnboardingUpdatePayload(finalRole, onboardingData, overrideData);
+    await AsyncStorage.setItem(`onboarding_data_${userId}`, JSON.stringify(queuedUpdate)).catch(() => {});
+    await queuePendingOnboardingSync(userId, {
+      path: '/api/onboarding/complete',
+      body: {
+        finalRole,
+        onboardingData: queuedUpdate,
+        displayName: readProp2(auth, 'currentUser', 'displayName') || null,
+      },
+    });
+  };
+
+  /** Firestore OK but server failed — welcome the user and sync later. */
+  const finishAfterDeferredServerSync = async ({
+    userId,
+    finalRole,
+    updateData,
+    overrideData,
+    finishToApp,
+    error,
+  }) => {
+    if (__DEV__) {
+      console.log(
+        '[onboarding] Server sync deferred (Firestore OK):',
+        (error == null ? undefined : error.message) || String(error),
+      );
+    }
+    try {
+      await queueOnboardingServerSync(userId, finalRole, updateData, overrideData);
+    } catch (_) {
+      /* queue best-effort */
+    }
+    showNotice(
+      "You're all set",
+      'Your profile was saved. Any remaining account setup will finish in the background when the connection is stable.',
+      { confirmLabel: 'Continue', onConfirm: finishToApp },
+    );
+  };
+
+  /** Neither Firestore nor server — offer continue-anyway with a queued sync. */
+  const finishAfterHardSaveFailure = async ({
+    userId,
+    finalRole,
+    updateData,
+    overrideData,
+    error,
+  }) => {
+    console.error('❌ Error saving onboarding data:', error);
+    try {
+      await queueOnboardingServerSync(userId, finalRole, updateData, overrideData);
+    } catch (_) {
+      /* queue best-effort */
+    }
+    showNotice(
+      'Save Failed',
+      "Failed to save onboarding data. You can continue, but your preferences won't be saved.",
+      {
+        cancelLabel: 'Try Again',
+        confirmLabel: 'Continue Anyway',
+        onCancel: handleFinish,
+        onConfirm: () => {
+          const fallback =
+            updateData || buildOnboardingUpdatePayload(finalRole, onboardingData, overrideData);
+          onComplete && onComplete(finalRole, fallback);
+        },
+      },
+    );
+  };
+
+  const handleFinish = async (overrideData = null) => {
+    if (previewMode) {
+      showNotice('Preview mode', 'Onboarding would finish here — nothing was saved.');
+      return;
+    }
+    if (!(auth == null ? undefined : auth.currentUser)) {
+      showNotice('Error', 'You must be logged in to save onboarding data.');
+      if (onComplete) onComplete();
+      return;
+    }
+
+    setLoading(true);
+    let firestoreSynced = false;
+    let updateData = null;
+    const userId = auth.currentUser.uid;
+    const finalRole = role || onboardingData.role || 'client';
+    const finishToApp = () => {
+      if (onComplete) onComplete(finalRole, updateData);
+    };
+
+    try {
+      const result = await completeOnboardingClient({
+        userId,
+        finalRole,
+        onboardingData,
+        overrideData,
+        db,
+        doc,
+        setDoc,
+        serverTimestamp,
+        AsyncStorage,
+        postOnboardingApi,
+        displayName: (auth.currentUser == null ? undefined : auth.currentUser.displayName) || null,
+      });
+
+      updateData = result.updateData;
+      firestoreSynced = result.firestoreSynced;
+      if (result.error) throw result.error;
+
+      if (firestoreSynced) {
+        console.log('✅ Onboarding merged to Firestore (users/' + userId + ')');
+      }
+      console.log('✅ Onboarding data saved locally + synced to server');
+      console.log('✅ Onboarding completed for user:', userId);
+
+      showNotice("You're all set", 'Welcome to CoachConnect. Your profile is ready.', {
+        confirmLabel: 'Continue',
+        onConfirm: finishToApp,
+      });
+    } catch (error) {
+      if (firestoreSynced) {
+        await finishAfterDeferredServerSync({
+          userId,
+          finalRole,
+          updateData,
+          overrideData,
+          finishToApp,
+          error,
+        });
+        return;
+      }
+      await finishAfterHardSaveFailure({
+        userId,
+        finalRole,
+        updateData,
+        overrideData,
+        error,
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getStepTitle = () => {
+    if (role === 'client') {
+      return getClientScreenTitle(currentStep);
+    }
+    return getTrainerScreenTitle(currentStep);
+  };
+
+  const enableAIFromStep = async () => {
+    setOnboardingData((prev) => ({ ...prev, aiEnabled: true }));
+    await AsyncStorage.setItem('aiEnabled', 'true');
+    setAIFromOnboarding(true);
+    setCurrentStep(8);
+  };
+
+  const skipAIFromStep = async () => {
+    setOnboardingData((prev) => ({ ...prev, aiEnabled: false }));
+    await AsyncStorage.setItem('aiEnabled', 'false');
+    setAIFromOnboarding(false);
+    setCurrentStep(8);
+  };
+
+  // Design Law client bodies — structure matches screens/client-onboarding PNGs 01–16.
+  const renderClientStep = () => (
+    <View style={styles.stepContainer}>
+      <ClientOnboardingStep
+        step={currentStep}
+        data={onboardingData}
+        setData={setOnboardingData}
+        trainerChoice={trainerChoice}
+        setTrainerChoice={setTrainerChoice}
+        trainerCode={trainerCode}
+        setTrainerCode={setTrainerCode}
+        codeValid={codeValid}
+        setCodeValid={setCodeValid}
+        setCodeError={setCodeError}
+        validateTrainerCode={validateTrainerCode}
+        shakeAnimation={shakeAnimation}
+        matchedTrainer={
+          codeValid === true && onboardingData.trainerId
+            ? { name: 'Trainer', subtitle: 'Coach Connect trainer', initials: 'TR' }
+            : null
+        }
+        onEnableAI={enableAIFromStep}
+        onSkipAI={skipAIFromStep}
+      />
+    </View>
+  );
+
+
+  /** Pick a cert sheet, upload it, then optionally AI-verify image uploads. */
+  const handleUploadCertificationSheet = async () => {
+    const trainerUid = readProp2(auth, 'currentUser', 'uid');
+    if (!trainerUid) {
+      showNotice('Sign in required', 'Finish signup first so we can save your certification sheet.');
+      return;
+    }
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: [
+          'application/pdf',
+          'application/msword',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'image/*',
+          '*/*',
+        ],
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled) return;
+      const file = result.assets[0];
+      setCertUploading(true);
+      const { url, meta } = await uploadTrainerCertificationSheet(trainerUid, {
+        localUri: file.uri,
+        filename: file.name || 'certification.pdf',
+        mimeType: file.mimeType,
+        fileSize: file.size,
+      });
+      setOnboardingData((prev) => ({
+        ...prev,
+        certificationSheetURLs: [...(prev.certificationSheetURLs || []), url],
+        certificationSheets: [...(prev.certificationSheets || []), meta].filter(Boolean),
+      }));
+
+      const trainerName =
+        String(onboardingData.name || '').trim() ||
+        String(readProp2(auth, 'currentUser', 'displayName') || '').trim() ||
+        'Trainer';
+      const verifyMessage = await verifyUploadedCertificationSheet({
+        trainerUid,
+        trainerName,
+        file,
+        url,
+        meta,
+        setOnboardingData,
+      });
+      showNotice('Certification', verifyMessage);
+    } catch (error) {
+      showNotice('Upload failed', (error == null ? undefined : error.message) || 'Could not upload certification.');
+    } finally {
+      setCertUploading(false);
+    }
+  };
+
+  // Design Law trainer bodies — trainer-setup + trainer-setup-part-2 PNGs.
+  const renderTrainerStep = () => (
+    <View style={styles.stepContainer}>
+      <TrainerOnboardingStep
+        step={currentStep}
+        data={onboardingData}
+        setData={setOnboardingData}
+        onToggleField={handleSelect}
+        onUploadCert={handleUploadCertificationSheet}
+        certUploading={certUploading}
+        inviteCode={inviteCode}
+        generatingCode={generatingCode}
+        onCopyInvite={() => copyToClipboard(inviteCode)}
+        onShareInvite={shareInviteCode}
+        onEditReviewStep={(reviewStep) => setCurrentStep(reviewStep)}
+        onReviewGoLive={handleNext}
+        onReviewSaveLater={() => handleFinish()}
+        onStartFace={() => {
+          // PNG: camera permission is an NbSheet first; OS prompt only after Allow.
+          if (!(cameraPermission == null ? undefined : cameraPermission.granted)) {
+            setCameraPermissionSheetOpen(true);
+            return;
+          }
+          setFaceCamOpen(true);
+        }}
+        faceCapturing={faceCapturing}
+        payoutEmail={readProp2(auth, 'currentUser', 'email')}
+        identitySubmitted={!!onboardingData.faceVerificationPhotoURL}
+        onPayoutSkip={() => setPayoutSkipSheetOpen(true)}
+        onPayoutComplete={() => setCurrentStep(TRAINER_PRO_STEP)}
+        isDark={isDark}
+        trainerPlanId={trainerPlanId}
+        setTrainerPlanId={setTrainerPlanId}
+        onProSkip={() => setCurrentStep(TRAINER_COMPLETE_STEP)}
+        displayName={readProp2(auth, 'currentUser', 'displayName')}
+      />
+    </View>
+  );
+
+  const dynamicStyles = getStyles(isDark);
+  const onboardingTokens = getOnboardingUiTokens(isDark);
+  // Trainer Pro paywall uses its sticky footer. Client Design Law always uses the bottom bar
+  // (Continue / AI Not now+Turn on / Open my Today).
+  const hideBottomNav =
+    role === 'trainer' &&
+    (currentStep === TRAINER_PAYOUT_STEP ||
+      currentStep === TRAINER_PRO_STEP ||
+      currentStep === 5);
+  const isTrainerPaywallStep = false;
+  const onboardingFooterPadTop = 12;
+  const onboardingFooterPadBottom = Math.max(insets.bottom, 12);
+  const onboardingFooterBarHeight = onboardingFooterPadTop + 56 + onboardingFooterPadBottom;
+  // Paywall footer is taller (CTA + price/restore row below it).
+  const scrollBottomPad = onboardingFooterBarHeight + (isTrainerPaywallStep ? TRAINER_PAYWALL_EXTRA_PAD : 28);
+  const ScreenRoot = previewMode ? View : SafeAreaView;
+
+  return (
+    <ScreenRoot style={{ flex: 1, backgroundColor: theme.bg }}>
+      <View style={{ flex: 1, backgroundColor: theme.bg }}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.keyboardView}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}
+        >
+          <ScrollView
+            style={{ flex: 1, backgroundColor: theme.bg }}
+            contentContainerStyle={[styles.scrollContent, { paddingHorizontal: 24, paddingBottom: scrollBottomPad }]}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
+            {/* Design Law header: hard-shadow back + title + 3 chapter bars + step meta */}
+            <View style={{ marginBottom: 12 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+                <TouchableOpacity
+                  onPress={currentStep > 1 ? handleBack : handleLogout}
+                  activeOpacity={0.85}
+                  style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: 12,
+                    borderWidth: 3,
+                    borderColor: onboardingTokens.cardBorder,
+                    backgroundColor: onboardingTokens.cardBg,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    shadowColor: onboardingTokens.shadow || onboardingTokens.cardBorder,
+                    shadowOffset: { width: 3, height: 3 },
+                    shadowOpacity: 1,
+                    shadowRadius: 0,
+                    elevation: 3,
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={currentStep > 1 ? 'Go back' : 'Close setup'}
+                >
+                  <Ionicons
+                    // Design Law client PNGs always show a back chevron (step 1 exits setup).
+                    name={role === 'client' || currentStep > 1 ? 'chevron-back' : 'close'}
+                    size={22}
+                    color={onboardingTokens.textPrimary}
+                  />
+                </TouchableOpacity>
+                <Text
+                  style={{
+                    flex: 1,
+                    fontSize: 25,
+                    fontWeight: '900',
+                    letterSpacing: -0.6,
+                    color: onboardingTokens.textPrimary,
+                  }}
+                  numberOfLines={1}
+                >
+                  {role === 'client' ? getClientScreenTitle(currentStep) : getTrainerScreenTitle(currentStep)}
+                </Text>
+                {role === 'client' ? null : (
+                  <TouchableOpacity
+                    onPress={() => setIsDark(!isDark)}
+                    activeOpacity={0.85}
+                    style={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: 12,
+                      borderWidth: 3,
+                      borderColor: onboardingTokens.cardBorder,
+                      backgroundColor: onboardingTokens.cardBg,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      shadowColor: onboardingTokens.shadow || onboardingTokens.cardBorder,
+                      shadowOffset: { width: 3, height: 3 },
+                      shadowOpacity: 1,
+                      shadowRadius: 0,
+                      elevation: 3,
+                    }}
+                  >
+                    <Ionicons name={theme.toggleIcon} size={20} color={onboardingTokens.textPrimary} />
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {role === 'client' ? (
+                <>
+                  <NbProgressSteps
+                    total={3}
+                    current={clientChapterMeta.done ? 4 : clientChapterMeta.chapter}
+                    fraction={clientChapterMeta.done ? 1 : clientChapterMeta.fraction}
+                    style={{ marginBottom: clientChapterMeta.done ? 16 : 8 }}
+                  />
+                  {/* Design Law All set (PNG 15): filled bars only — no CHAPTER / 7/7 row */}
+                  {clientChapterMeta.done ? null : (
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          fontWeight: '900',
+                          letterSpacing: 1.1,
+                          color: onboardingTokens.textLabel,
+                        }}
+                      >
+                        {`CHAPTER ${clientChapterMeta.chapter} OF ${clientChapterMeta.of} · ${clientChapterMeta.label}`}
+                      </Text>
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          fontWeight: '900',
+                          color: onboardingTokens.textLabel,
+                        }}
+                      >
+                        {clientChapterMeta.stepLabel}
+                      </Text>
+                    </View>
+                  )}
+                </>
+              ) : (
+                <>
+                  <NbProgressSteps
+                    total={3}
+                    current={(trainerChapterMeta == null ? undefined : trainerChapterMeta.done) ? 4 : (trainerChapterMeta == null ? undefined : trainerChapterMeta.chapter)}
+                    fraction={(trainerChapterMeta == null ? undefined : trainerChapterMeta.done) ? 1 : (trainerChapterMeta == null ? undefined : trainerChapterMeta.fraction)}
+                    style={{ marginBottom: (trainerChapterMeta == null ? undefined : trainerChapterMeta.done) ? 16 : 8 }}
+                  />
+                  {(trainerChapterMeta == null ? undefined : trainerChapterMeta.done) ? null : (
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          fontWeight: '900',
+                          letterSpacing: 1.1,
+                          color: onboardingTokens.textLabel,
+                        }}
+                      >
+                        {`CHAPTER ${(trainerChapterMeta == null ? undefined : trainerChapterMeta.chapter)} OF ${(trainerChapterMeta == null ? undefined : trainerChapterMeta.of)} · ${(trainerChapterMeta == null ? undefined : trainerChapterMeta.label)}`}
+                      </Text>
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          fontWeight: '900',
+                          color: onboardingTokens.textLabel,
+                        }}
+                      >
+                        {(trainerChapterMeta == null ? undefined : trainerChapterMeta.stepLabel)}
+                      </Text>
+                    </View>
+                  )}
+                  {(trainerChapterMeta == null ? undefined : trainerChapterMeta.heroTime) && currentStep === 1 ? (
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: onboardingTokens.textSecondary, marginTop: 6 }}>
+                      {trainerChapterMeta.heroTime}
+                    </Text>
+                  ) : null}
+                </>
+              )}
+            </View>
+
+            {role === 'client' ? renderClientStep() : renderTrainerStep()}
+          </ScrollView>
+
+          {/* Design Law bottom bar: back square + Continue / AI pair / Open my Today */}
+          {hideBottomNav ? null : (
+            <View
+              style={[
+                dynamicStyles.navigationBar,
+                {
+                  paddingTop: onboardingFooterPadTop,
+                  paddingBottom: onboardingFooterPadBottom,
+                  paddingHorizontal: 16,
+                  borderTopWidth: 3,
+                  borderTopColor: onboardingTokens.cardBorder,
+                  gap: 10,
+                },
+              ]}
+            >
+              {loading ? (
+                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', height: 56 }}>
+                  <ActivityIndicator size="small" color={onboardingTokens.textPrimary} />
+                </View>
+              ) : clientFooterIsAiStep(role, currentStep) ? (
+                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <NbButton variant="ghost" onPress={skipAIFromStep} style={{ flex: 1 }}>
+                    Not now
+                  </NbButton>
+                  <NbButton variant="fill" onPress={enableAIFromStep} style={{ flex: 1 }}>
+                    Turn on
+                  </NbButton>
+                </View>
+              ) : clientFooterIsAllSetStep(role, currentStep) ? (
+                <NbButton variant="fill" onPress={() => handleFinish()} style={{ flex: 1 }}>
+                  Open my Today >
+                </NbButton>
+              ) : trainerFooterIsCompleteStep(role, currentStep) ? (
+                <NbButton variant="fill" onPress={() => handleFinish()} style={{ flex: 1 }}>
+                  Open my trainer home >
+                </NbButton>
+              ) : (
+                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  {(role === 'client' || role === 'trainer') && currentStep > 1 ? (
+                    <TouchableOpacity
+                      onPress={handleBack}
+                      activeOpacity={0.85}
+                      style={{
+                        width: 56,
+                        height: 56,
+                        borderRadius: 12,
+                        borderWidth: 3,
+                        borderColor: onboardingTokens.cardBorder,
+                        backgroundColor: onboardingTokens.cardBg,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        shadowColor: onboardingTokens.shadow || onboardingTokens.cardBorder,
+                        shadowOffset: { width: 3, height: 3 },
+                        shadowOpacity: 1,
+                        shadowRadius: 0,
+                        elevation: 3,
+                      }}
+                      accessibilityLabel="Back"
+                    >
+                      <Ionicons name="chevron-back" size={22} color={onboardingTokens.textPrimary} />
+                    </TouchableOpacity>
+                  ) : role === 'trainer' && isOptionalStep() ? (
+                    <TouchableOpacity style={styles.skipButton} onPress={handleSkip} disabled={loading}>
+                      <Text style={dynamicStyles.skipButtonText}>Skip</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <OnboardingPrimaryButton
+                      variant="footer"
+                      themeColors={onboardingTokens}
+                      disabled={!validateStep()}
+                      onDisabledPress={() => {
+                        if (role === 'client') {
+                          showNotice('Almost there', 'Finish the required fields on this screen to continue.');
+                        }
+                      }}
+                      onPress={handleNext}
+                      label={footerContinueButtonLabel(role, currentStep, totalSteps)}
+                    />
+                  </View>
+                </View>
+              )}
+            </View>
+          )}
+        </KeyboardAvoidingView>
+      </View>
+
+      {/* Design Law camera permission sheet (trainer-setup-part-2 PNG 05) */}
+      <NbSheet
+        visible={cameraPermissionSheetOpen}
+        onClose={() => setCameraPermissionSheetOpen(false)}
+      >
+        <View style={{ gap: 14, paddingBottom: 8 }}>
+          <View
+            style={{
+              alignSelf: 'flex-start',
+              overflow: 'hidden',
+              borderWidth: nb.borderWidth,
+              borderColor: onboardingTokens.cardBorder,
+              borderRadius: 999,
+              paddingHorizontal: 12,
+              paddingVertical: 6,
+            }}
+          >
+            <LinearGradient
+              colors={accentGradients[0]}
+              start={{ x: 0, y: 0.5 }}
+              end={{ x: 1, y: 0.5 }}
+              style={StyleSheet.absoluteFillObject}
+            />
+            <Text style={{ fontSize: 12, fontWeight: '900', color: lightColors.nbInk }}>Camera needed</Text>
+          </View>
+          <Text style={{ fontSize: 24, fontWeight: '900', color: onboardingTokens.textPrimary, letterSpacing: -0.4 }}>
+            Allow camera access
+          </Text>
+          <Text style={{ fontSize: 14, fontWeight: '600', color: onboardingTokens.textSecondary, lineHeight: 20 }}>
+            Allow camera access to verify your face for your trainer profile. The photo is used for review only.
+          </Text>
+          <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
+            <NbButton
+              variant="ghost"
+              style={{ flex: 1 }}
+              onPress={() => setCameraPermissionSheetOpen(false)}
+            >
+              Cancel
+            </NbButton>
+            <NbButton
+              variant="fill"
+              style={{ flex: 1 }}
+              onPress={async () => {
+                setCameraPermissionSheetOpen(false);
+                const res = await requestCameraPermission();
+                if (!(res == null ? undefined : res.granted)) return;
+                setFaceCamOpen(true);
+              }}
+            >
+              Allow camera
+            </NbButton>
+          </View>
+        </View>
+      </NbSheet>
+
+      {/* Design Law payout skip warning (trainer-setup-part-2 PNG 17) */}
+      <NbSheet
+        visible={payoutSkipSheetOpen}
+        onClose={() => setPayoutSkipSheetOpen(false)}
+      >
+        <View style={{ gap: 14, paddingBottom: 8 }}>
+          <View
+            style={{
+              alignSelf: 'flex-start',
+              overflow: 'hidden',
+              borderWidth: nb.borderWidth,
+              borderColor: onboardingTokens.cardBorder,
+              borderRadius: 999,
+              paddingHorizontal: 12,
+              paddingVertical: 6,
+            }}
+          >
+            <LinearGradient
+              colors={accentGradients[0]}
+              start={{ x: 0, y: 0.5 }}
+              end={{ x: 1, y: 0.5 }}
+              style={StyleSheet.absoluteFillObject}
+            />
+            <Text style={{ fontSize: 12, fontWeight: '900', color: lightColors.nbInk }}>Clients wait</Text>
+          </View>
+          <Text style={{ fontSize: 22, fontWeight: '900', color: onboardingTokens.textPrimary, letterSpacing: -0.4 }}>
+            Complete payout setup to accept clients
+          </Text>
+          <Text style={{ fontSize: 14, fontWeight: '600', color: onboardingTokens.textSecondary, lineHeight: 20 }}>
+            You can finish this any time from Settings. Until then you can build plans and share your code, but new
+            client requests wait.
+          </Text>
+          <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
+            <NbButton
+              variant="ghost"
+              style={{ flex: 1 }}
+              onPress={() => {
+                setPayoutSkipSheetOpen(false);
+                setCurrentStep(TRAINER_PRO_STEP);
+              }}
+            >
+              Skip anyway
+            </NbButton>
+            <NbButton
+              variant="fill"
+              style={{ flex: 1 }}
+              onPress={() => setPayoutSkipSheetOpen(false)}
+            >
+              Finish setup
+            </NbButton>
+          </View>
+        </View>
+      </NbSheet>
+
+      {/* Design Law face capture (trainer-setup-part-2 PNG 07) — Verify your face */}
+      <Modal visible={faceCamOpen} animationType="slide" onRequestClose={() => setFaceCamOpen(false)}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: onboardingTokens.bg }}>
+          <View style={{ flex: 1, paddingHorizontal: 16, paddingTop: 8 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+              <TouchableOpacity
+                onPress={() => setFaceCamOpen(false)}
+                activeOpacity={0.85}
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 12,
+                  borderWidth: 3,
+                  borderColor: onboardingTokens.cardBorder,
+                  backgroundColor: onboardingTokens.cardBg,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  shadowColor: onboardingTokens.shadow || onboardingTokens.cardBorder,
+                  shadowOffset: { width: 3, height: 3 },
+                  shadowOpacity: 1,
+                  shadowRadius: 0,
+                  elevation: 3,
+                }}
+                accessibilityLabel="Back"
+              >
+                <Ionicons name="chevron-back" size={22} color={onboardingTokens.textPrimary} />
+              </TouchableOpacity>
+              <Text style={{ flex: 1, fontSize: 24, fontWeight: '900', color: onboardingTokens.textPrimary, letterSpacing: -0.5 }}>
+                Verify your face
+              </Text>
+            </View>
+
+            <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbHero} style={{ marginBottom: 16 }}>
+              <View
+                style={{
+                  height: 320,
+                  borderWidth: nb.borderWidth,
+                  borderRadius: borderRadius.nbHero,
+                  overflow: 'hidden',
+                  borderColor: onboardingTokens.cardBorder,
+                  backgroundColor: onboardingTokens.cardBg,
+                }}
+              >
+                <CameraView ref={faceCamRef} style={StyleSheet.absoluteFillObject} facing="front" />
+                <View
+                  pointerEvents="none"
+                  style={{
+                    ...StyleSheet.absoluteFillObject,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <View
+                    style={{
+                      width: 180,
+                      height: 230,
+                      borderRadius: 115,
+                      borderWidth: 3,
+                      borderStyle: 'dashed',
+                      borderColor: onboardingTokens.cardBorder,
+                      backgroundColor: 'transparent',
+                    }}
+                  />
+                </View>
+              </View>
+            </HardShadow>
+
+            {[
+              'Face the camera in good light.',
+              'Take off hats and sunglasses.',
+              'Fill the oval with your face.',
+            ].map((tip) => (
+              <View key={tip} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+                <View
+                  style={{
+                    width: 16,
+                    height: 16,
+                    borderRadius: 3,
+                    backgroundColor: onboardingTokens.textPrimary,
+                  }}
+                />
+                <Text style={{ flex: 1, fontSize: 15, fontWeight: '700', color: onboardingTokens.textPrimary }}>{tip}</Text>
+              </View>
+            ))}
+
+            <View style={{ flex: 1 }} />
+
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 10,
+                paddingBottom: Math.max(insets.bottom, 12),
+              }}
+            >
+              <TouchableOpacity
+                onPress={() => setFaceCamOpen(false)}
+                activeOpacity={0.85}
+                style={{
+                  width: 56,
+                  height: 56,
+                  borderRadius: 12,
+                  borderWidth: 3,
+                  borderColor: onboardingTokens.cardBorder,
+                  backgroundColor: onboardingTokens.cardBg,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  shadowColor: onboardingTokens.shadow || onboardingTokens.cardBorder,
+                  shadowOffset: { width: 3, height: 3 },
+                  shadowOpacity: 1,
+                  shadowRadius: 0,
+                  elevation: 3,
+                }}
+                accessibilityLabel="Back"
+              >
+                <Ionicons name="chevron-back" size={22} color={onboardingTokens.textPrimary} />
+              </TouchableOpacity>
+              <View style={{ flex: 1 }}>
+                <NbButton
+                  variant="fill"
+                  disabled={faceCapturing}
+                  onPress={async () => {
+                    const tid = readProp2(auth, 'currentUser', 'uid');
+                    if (!tid) {
+                      showNotice('Sign in required', 'Complete signup first.');
+                      return;
+                    }
+                    try {
+                      setFaceCapturing(true);
+                      const photo = (await (faceCamRef.current == null ? undefined : faceCamRef.current.takePictureAsync) == null ? undefined : await (faceCamRef.current == null ? undefined : faceCamRef.current.takePictureAsync)({
+                        quality: 0.7,
+                        skipProcessing: false,
+                      }));
+                      if (!(photo == null ? undefined : photo.uri)) throw new Error('Could not capture photo');
+                      const { url } = await uploadTrainerFaceVerification(tid, { localUri: photo.uri });
+                      setOnboardingData((prev) => ({
+                        ...prev,
+                        faceVerificationPhotoURL: url,
+                        faceVerificationStatus: 'pending',
+                        isVerified: false,
+                        faceVerificationSubmittedAt: new Date().toISOString(),
+                      }));
+                      setFaceCamOpen(false);
+                    } catch (e) {
+                      showNotice('Capture failed', (e == null ? undefined : e.message) || 'Could not save face verification.');
+                    } finally {
+                      setFaceCapturing(false);
+                    }
+                  }}
+                >
+                  {faceCapturing ? 'Saving…' : 'Take photo'}
+                </NbButton>
+              </View>
+            </View>
+          </View>
+        </SafeAreaView>
+      </Modal>
+
+      <NbNoticeSheet
+        visible={!!notice}
+        onClose={() => setNotice(null)}
+        title={(notice == null ? undefined : notice.title) || ''}
+        message={(notice == null ? undefined : notice.message)}
+        confirmLabel={(notice == null ? undefined : notice.confirmLabel) || 'OK'}
+        cancelLabel={(notice == null ? undefined : notice.cancelLabel)}
+        onConfirm={(notice == null ? undefined : notice.onConfirm)}
+        onCancel={(notice == null ? undefined : notice.onCancel)}
+        destructive={!!(notice == null ? undefined : notice.destructive)}
+      />
+    </ScreenRoot>
+  );
+}
+
+// ===== PLUMBING — skip unless debugging (shared onboarding UI, cert upload, theme styles) =====
 
 
 /**
@@ -182,7 +1621,7 @@ async function verifyUploadedCertificationSheet({
   setOnboardingData,
 }) {
   let verifyMessage = 'Certification sheet saved for review.';
-  const mime = String(file.mimeType || meta?.fileType || '').toLowerCase();
+  const mime = String(file.mimeType || (meta == null ? undefined : meta.fileType) || '').toLowerCase();
   const isImage =
     mime.startsWith('image/') || /\.(jpe?g|png|webp|gif)$/i.test(String(file.name || ''));
 
@@ -205,8 +1644,8 @@ async function verifyUploadedCertificationSheet({
       localUri: file.uri,
       imageUrl: url,
       mediaType: file.mimeType || 'image/jpeg',
-      storagePath: meta?.storagePath,
-      fileName: meta?.fileName,
+      storagePath: (meta == null ? undefined : meta.storagePath),
+      fileName: (meta == null ? undefined : meta.fileName),
     });
     verifyMessage =
       verification.userMessage ||
@@ -223,7 +1662,7 @@ async function verifyUploadedCertificationSheet({
     }));
     return verifyMessage;
   } catch (verifyErr) {
-    if (__DEV__) console.warn('cert AI verify:', verifyErr?.message || verifyErr);
+    if (__DEV__) console.warn('cert AI verify:', (verifyErr == null ? undefined : verifyErr.message) || verifyErr);
     setOnboardingData((prev) => ({
       ...prev,
       certificationVerificationStatus: 'manual_review',
@@ -236,8 +1675,17 @@ async function verifyUploadedCertificationSheet({
 
 function CardLeadingIcon({ iconSource, iconName, iconColor, grid, large, row }) {
   const [imageFailed, setImageFailed] = useState(false);
-  const dim = grid ? 40 : large ? 36 : row ? 28 : 28;
-  const ionSize = grid ? 26 : large ? ICON_SIZE_LARGE : 20;
+
+  // Named sizes before JSX — avoid nested ternaries.
+  let chipSize = 28;
+  if (grid) chipSize = 40;
+  else if (large) chipSize = 36;
+
+  let ionSize = 20;
+  if (grid) ionSize = 26;
+  else if (large) ionSize = ICON_SIZE_LARGE;
+
+  const dim = chipSize;
 
   useEffect(() => {
     setImageFailed(false);
@@ -261,10 +1709,10 @@ function CardLeadingIcon({ iconSource, iconName, iconColor, grid, large, row }) 
 
 /**
  * Thin legacy % bar — prefer NbProgressSteps for Design Law chapter chrome.
- * @param {{current: number, total: number, t: object, gradientColors?: string[]}} props
+ * @param {{current: number, total: number, themeColors: object, gradientColors?: string[]}} props
  */
-export function OnboardingProgressBar({ current, total, t, gradientColors }) {
-  const pct = Math.min((current / total) * 100, 100);
+export function OnboardingProgressBar({ current, total, themeColors, gradientColors }) {
+  const percentFilled = Math.min((current / total) * 100, 100);
   return (
     <View
       style={{
@@ -272,17 +1720,17 @@ export function OnboardingProgressBar({ current, total, t, gradientColors }) {
         height: 10,
         borderRadius: 999,
         borderWidth: 3,
-        borderColor: t.cardBorder,
-        backgroundColor: t.progressTrack,
+        borderColor: themeColors.cardBorder,
+        backgroundColor: themeColors.progressTrack,
         marginHorizontal: 12,
         overflow: 'hidden',
       }}
     >
       <View
         style={{
-          width: `${pct}%`,
+          width: `${percentFilled}%`,
           height: '100%',
-          backgroundColor: t.fill || t.cardSelectedBg,
+          backgroundColor: themeColors.fill || themeColors.cardSelectedBg,
         }}
       />
     </View>
@@ -301,18 +1749,18 @@ export function SelectionCard({
   label,
   description,
   variant = 'full',
-  t,
+  themeColors,
   accentGradient,
 }) {
-  const cardBackground = selected ? t.cardSelectedBg : t.cardBg;
-  const border = t.cardBorder;
-  const labelColor = selected ? (t.cardSelectedText || t.onFill || '#FFFFFF') : t.textPrimary;
-  const descColor = selected ? labelColor : t.textSecondary;
+  const cardBackground = selected ? themeColors.cardSelectedBg : themeColors.cardBg;
+  const border = themeColors.cardBorder;
+  const labelColor = selected ? (themeColors.cardSelectedText || themeColors.onFill || '#FFFFFF') : themeColors.textPrimary;
+  const descColor = selected ? labelColor : themeColors.textSecondary;
   const gradient = accentGradient || ONBOARDING_BRAND_GRADIENT;
   const iconColor = selected ? labelColor : gradient[0];
   const hasIcon = !!(iconSource || iconName);
   const hardShadow = {
-    shadowColor: t.shadow || t.cardBorder,
+    shadowColor: themeColors.shadow || themeColors.cardBorder,
     shadowOffset: { width: 3, height: 3 },
     shadowOpacity: 1,
     shadowRadius: 0,
@@ -425,7 +1873,7 @@ export function OnboardingTextArea({
   placeholder,
   maxLength = DEFAULT_TEXTAREA_MAX_CHARS,
   numberOfLines = 5,
-  t,
+  themeColors,
   editable = true,
 }) {
   return (
@@ -433,30 +1881,30 @@ export function OnboardingTextArea({
       <TextInput
         value={value}
         editable={editable}
-        onChangeText={(v) => onChangeText(v.slice(0, maxLength))}
+        onChangeText={(typedText) => onChangeText(typedText.slice(0, maxLength))}
         placeholder={placeholder}
-        placeholderTextColor={t.textLabel}
+        placeholderTextColor={themeColors.textLabel}
         multiline
         numberOfLines={numberOfLines}
         style={{
-          backgroundColor: t.inputBg,
+          backgroundColor: themeColors.inputBg,
           borderWidth: 3,
-          borderColor: t.cardBorder,
+          borderColor: themeColors.cardBorder,
           borderRadius: 8,
           paddingHorizontal: 14,
           paddingVertical: 12,
           fontSize: 14,
           fontWeight: '600',
-          color: t.textPrimary,
+          color: themeColors.textPrimary,
           textAlignVertical: 'top',
           minHeight: numberOfLines * 22 + 24,
-          shadowColor: t.shadow || t.cardBorder,
+          shadowColor: themeColors.shadow || themeColors.cardBorder,
           shadowOffset: { width: 3, height: 3 },
           shadowOpacity: 1,
           shadowRadius: 0,
         }}
       />
-      <Text style={{ fontSize: 12, color: t.textLabel, textAlign: 'right', marginTop: 4, fontWeight: '700' }}>
+      <Text style={{ fontSize: 12, color: themeColors.textLabel, textAlign: 'right', marginTop: 4, fontWeight: '700' }}>
         {value.length}/{maxLength}
       </Text>
     </View>
@@ -464,7 +1912,7 @@ export function OnboardingTextArea({
 }
 
 /** Small uppercase label above an onboarding field group. */
-export function OnboardingSectionLabel({ text, t, style }) {
+export function OnboardingSectionLabel({ text, themeColors, style }) {
   return (
     <Text
       style={[
@@ -472,7 +1920,7 @@ export function OnboardingSectionLabel({ text, t, style }) {
           fontSize: 11,
           fontWeight: '700',
           letterSpacing: 1.2,
-          color: t.textLabel,
+          color: themeColors.textLabel,
           marginBottom: 10,
           marginTop: 20,
         },
@@ -495,7 +1943,7 @@ export function OnboardingInputRow({
   placeholder,
   keyboardType = 'default',
   rightElement,
-  t,
+  themeColors,
   textInputProps = {},
 }) {
   return (
@@ -503,14 +1951,14 @@ export function OnboardingInputRow({
       style={{
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: t.inputBg,
+        backgroundColor: themeColors.inputBg,
         borderWidth: 3,
-        borderColor: t.cardBorder,
+        borderColor: themeColors.cardBorder,
         borderRadius: 8,
         paddingHorizontal: 14,
         height: 64,
         marginBottom: 10,
-        shadowColor: t.shadow || t.cardBorder,
+        shadowColor: themeColors.shadow || themeColors.cardBorder,
         shadowOffset: { width: 3, height: 3 },
         shadowOpacity: 1,
         shadowRadius: 0,
@@ -520,27 +1968,29 @@ export function OnboardingInputRow({
       {iconSource ? (
         <Image source={iconSource} style={{ width: 22, height: 22, marginRight: 12 }} resizeMode="contain" />
       ) : iconName ? (
-        <Ionicons name={iconName} size={20} color={t.textSecondary} style={{ marginRight: 12 }} />
+        <Ionicons name={iconName} size={20} color={themeColors.textSecondary} style={{ marginRight: 12 }} />
       ) : null}
       <View style={{ flex: 1 }}>
-        <Text style={{ fontSize: 12, fontWeight: '900', letterSpacing: 1.2, color: t.textLabel, marginBottom: 2 }}>
+        <Text style={{ fontSize: 12, fontWeight: '900', letterSpacing: 1.2, color: themeColors.textLabel, marginBottom: 2 }}>
           {label}
         </Text>
         <TextInput
           value={value}
           onChangeText={onChangeText}
           placeholder={placeholder}
-          placeholderTextColor={t.textLabel}
+          placeholderTextColor={themeColors.textLabel}
           keyboardType={keyboardType}
           onBlur={() => {
-            onBlur?.();
+            if (onBlur) {
+              onBlur();
+            }
           }}
           autoCorrect={false}
           autoComplete="off"
           spellCheck={false}
           textContentType="none"
           importantForAutofill="no"
-          style={{ fontSize: 16, fontWeight: '700', color: t.textPrimary, padding: 0 }}
+          style={{ fontSize: 16, fontWeight: '700', color: themeColors.textPrimary, padding: 0 }}
           {...textInputProps}
         />
       </View>
@@ -550,11 +2000,14 @@ export function OnboardingInputRow({
 }
 
 /** Week-day chip row (1–7) for training-frequency answers. */
-export function OnboardingDayPicker({ value, onChange, t }) {
+export function OnboardingDayPicker({ value, onChange, themeColors }) {
   return (
     <View style={{ flexDirection: 'row', justifyContent: 'center', flexWrap: 'wrap', gap: 8, marginTop: 20, marginBottom: 8 }}>
       {DAY_OF_WEEK_NUMBERS.map((dayNumber) => {
-        const on = value === dayNumber;
+        const isSelected = value === dayNumber;
+        const dayLabelColor = isSelected
+          ? themeColors.cardSelectedText || themeColors.onFill || '#FFFFFF'
+          : themeColors.textPrimary;
         return (
           <TouchableOpacity
             key={dayNumber}
@@ -566,23 +2019,17 @@ export function OnboardingDayPicker({ value, onChange, t }) {
               borderRadius: 12,
               alignItems: 'center',
               justifyContent: 'center',
-              backgroundColor: on ? t.cardSelectedBg : t.dayBtnBg,
+              backgroundColor: isSelected ? themeColors.cardSelectedBg : themeColors.dayBtnBg,
               borderWidth: 3,
-              borderColor: t.cardBorder,
-              shadowColor: t.shadow || t.cardBorder,
+              borderColor: themeColors.cardBorder,
+              shadowColor: themeColors.shadow || themeColors.cardBorder,
               shadowOffset: { width: 3, height: 3 },
               shadowOpacity: 1,
               shadowRadius: 0,
               elevation: 3,
             }}
           >
-            <Text
-              style={{
-                fontSize: 14,
-                fontWeight: '900',
-                color: on ? (t.cardSelectedText || t.onFill || '#FFFFFF') : t.textPrimary,
-              }}
-            >
+            <Text style={{ fontSize: 14, fontWeight: '900', color: dayLabelColor }}>
               {dayNumber}
             </Text>
           </TouchableOpacity>
@@ -593,7 +2040,7 @@ export function OnboardingDayPicker({ value, onChange, t }) {
 }
 
 /** Horizontal chip list for single-select onboarding options. */
-export function OnboardingOptionChips({ options, selected, onSelect, t }) {
+export function OnboardingOptionChips({ options, selected, onSelect, themeColors }) {
   return (
     <View
       style={{
@@ -604,25 +2051,25 @@ export function OnboardingOptionChips({ options, selected, onSelect, t }) {
         marginTop: 10,
       }}
     >
-      {options.map((o) => {
-        const on = selected === o.value;
+      {options.map((optionRow) => {
+        const isSelected = selected === optionRow.value;
         return (
           <TouchableOpacity
-            key={o.value}
-            onPress={() => onSelect(o.value)}
+            key={optionRow.value}
+            onPress={() => onSelect(optionRow.value)}
             activeOpacity={0.85}
             style={{
               paddingVertical: 12,
               paddingHorizontal: 18,
               borderRadius: 999,
               borderWidth: 3,
-              borderColor: t.cardBorder,
-              backgroundColor: on ? t.cardSelectedBg : t.cardBg,
+              borderColor: themeColors.cardBorder,
+              backgroundColor: isSelected ? themeColors.cardSelectedBg : themeColors.cardBg,
               minWidth: 104,
               minHeight: 44,
               alignItems: 'center',
               justifyContent: 'center',
-              shadowColor: t.shadow || t.cardBorder,
+              shadowColor: themeColors.shadow || themeColors.cardBorder,
               shadowOffset: { width: 3, height: 3 },
               shadowOpacity: 1,
               shadowRadius: 0,
@@ -633,10 +2080,12 @@ export function OnboardingOptionChips({ options, selected, onSelect, t }) {
               style={{
                 fontSize: 15,
                 fontWeight: '800',
-                color: on ? (t.cardSelectedText || t.onFill || '#FFFFFF') : t.textPrimary,
+                color: isSelected
+                  ? themeColors.cardSelectedText || themeColors.onFill || '#FFFFFF'
+                  : themeColors.textPrimary,
               }}
             >
-              {o.label}
+              {optionRow.label}
             </Text>
           </TouchableOpacity>
         );
@@ -646,16 +2095,16 @@ export function OnboardingOptionChips({ options, selected, onSelect, t }) {
 }
 
 /** Wrap of pills for multi-select answers (injuries, specialties, …). */
-export function OnboardingMultiSelectPills({ options, selectedValues, onToggle, t }) {
-  const set = new Set(selectedValues || []);
+export function OnboardingMultiSelectPills({ options, selectedValues, onToggle, themeColors }) {
+  const selectedSet = new Set(selectedValues || []);
   return (
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 8 }}>
-      {options.map((o) => {
-        const on = set.has(o.value);
+      {options.map((optionRow) => {
+        const isSelected = selectedSet.has(optionRow.value);
         return (
           <TouchableOpacity
-            key={o.value}
-            onPress={() => onToggle(o.value)}
+            key={optionRow.value}
+            onPress={() => onToggle(optionRow.value)}
             activeOpacity={0.85}
             style={{
               paddingVertical: 10,
@@ -666,9 +2115,9 @@ export function OnboardingMultiSelectPills({ options, selectedValues, onToggle, 
               minHeight: 44,
               justifyContent: 'center',
               borderWidth: 3,
-              borderColor: t.cardBorder,
-              backgroundColor: on ? t.cardSelectedBg : t.cardBg,
-              shadowColor: t.shadow || t.cardBorder,
+              borderColor: themeColors.cardBorder,
+              backgroundColor: isSelected ? themeColors.cardSelectedBg : themeColors.cardBg,
+              shadowColor: themeColors.shadow || themeColors.cardBorder,
               shadowOffset: { width: 3, height: 3 },
               shadowOpacity: 1,
               shadowRadius: 0,
@@ -679,10 +2128,12 @@ export function OnboardingMultiSelectPills({ options, selectedValues, onToggle, 
               style={{
                 fontSize: 13,
                 fontWeight: '800',
-                color: on ? (t.cardSelectedText || t.onFill || '#FFFFFF') : t.textPrimary,
+                color: isSelected
+                  ? themeColors.cardSelectedText || themeColors.onFill || '#FFFFFF'
+                  : themeColors.textPrimary,
               }}
             >
-              {o.label}
+              {optionRow.label}
             </Text>
           </TouchableOpacity>
         );
@@ -875,7 +2326,7 @@ const CLIENT_ONBOARDING_LOTTIE_STYLE_WIDE = Object.freeze({
                         style={styles.inputIconImage}
                         onError={(e) => {
                           setIconFailed(true);
-                          console.warn('❌ Failed to load input icon:', { label, iconSource, nativeEvent: e?.nativeEvent });
+                          console.warn('❌ Failed to load input icon:', { label, iconSource, nativeEvent: (e == null ? undefined : e.nativeEvent) });
                         }}
                       />
                     ) : (
@@ -899,11 +2350,13 @@ const CLIENT_ONBOARDING_LOTTIE_STYLE_WIDE = Object.freeze({
                 placeholder=""
                       placeholderTextColor={isDark ? 'rgba(255,255,255,0.55)' : 'rgba(15,23,42,0.45)'}
                 keyboardType={keyboardType}
-                value={value?.toString() || ''}
+                value={(value == null ? undefined : value.toString()) || ''}
                 onChangeText={onChangeText}
                 onFocus={() => {
                   setIsFocused(true);
-                  Haptics.selectionAsync?.();
+                  if (Haptics.selectionAsync) {
+                    Haptics.selectionAsync();
+                  }
                 }}
                 onBlur={() => setIsFocused(false)}
               />
@@ -938,7 +2391,9 @@ const CLIENT_ONBOARDING_LOTTIE_STYLE_WIDE = Object.freeze({
     const pressOut = () => {
       setPressed(false);
       Animated.spring(scale, { toValue: 1, stiffness: 320, damping: 22, useNativeDriver: true }).start();
-      onPress?.();
+      if (onPress) {
+        onPress();
+      }
     };
 
     const borderColors = isDark
@@ -969,7 +2424,7 @@ const CLIENT_ONBOARDING_LOTTIE_STYLE_WIDE = Object.freeze({
                     <Image
                       source={iconSource}
                       style={styles.liquidCardIcon}
-                      onError={(e) => console.warn('❌ Failed to load card icon:', { title, iconSource, nativeEvent: e?.nativeEvent })}
+                      onError={(e) => console.warn('❌ Failed to load card icon:', { title, iconSource, nativeEvent: (e == null ? undefined : e.nativeEvent) })}
                     />
                   ) : (
                     icon && <Text style={[styles.liquidCardEmoji, { color: titleColor }]}>{icon}</Text>
@@ -1016,7 +2471,9 @@ const CLIENT_ONBOARDING_LOTTIE_STYLE_WIDE = Object.freeze({
         damping: 22,
         useNativeDriver: true,
       }).start();
-      onPress?.();
+      if (onPress) {
+        onPress();
+      }
     };
 
     return (
@@ -1075,7 +2532,7 @@ const CLIENT_ONBOARDING_LOTTIE_STYLE_WIDE = Object.freeze({
                     source={iconSource}
                     style={styles.liquidSelectIcon}
                     onError={(e) => {
-                      console.warn('❌ Failed to load liquid select icon:', { title, iconSource, nativeEvent: e?.nativeEvent });
+                      console.warn('❌ Failed to load liquid select icon:', { title, iconSource, nativeEvent: (e == null ? undefined : e.nativeEvent) });
                     }}
                   />
                 )}
@@ -1119,7 +2576,9 @@ const CLIENT_ONBOARDING_LOTTIE_STYLE_WIDE = Object.freeze({
     const pressOut = () => {
       setPressed(false);
       Animated.spring(scale, { toValue: 1, stiffness: 320, damping: 22, useNativeDriver: true }).start();
-      onPress?.();
+      if (onPress) {
+        onPress();
+      }
     };
 
     const borderColors = isDark
@@ -1258,7 +2717,7 @@ const CLIENT_ONBOARDING_LOTTIE_STYLE_WIDE = Object.freeze({
                   <Image
                     source={iconSource}
                     style={styles.equipmentIconImage}
-                    onError={(e) => console.warn('❌ Failed to load equipment icon:', { label, iconSource, nativeEvent: e?.nativeEvent })}
+                    onError={(e) => console.warn('❌ Failed to load equipment icon:', { label, iconSource, nativeEvent: (e == null ? undefined : e.nativeEvent) })}
                   />
                 ) : (
                   <Text style={[styles.equipmentIcon, { color: labelColor }]}>{icon}</Text>
@@ -1291,7 +2750,9 @@ const CLIENT_ONBOARDING_LOTTIE_STYLE_WIDE = Object.freeze({
     const pressOut = () => {
       setPressed(false);
       Animated.spring(scale, { toValue: 1, stiffness: 320, damping: 22, useNativeDriver: true }).start();
-      onSelect?.();
+      if (onSelect) {
+        onSelect();
+      }
     };
 
     const borderColors = isDark
@@ -1340,7 +2801,7 @@ const CLIENT_ONBOARDING_LOTTIE_STYLE_WIDE = Object.freeze({
 
   const MultiLineCounterInput = ({ label, value, onChangeText, placeholder, disabled, isDark = true, tintColor }) => {
     const [isFocused, setIsFocused] = useState(false);
-    const count = value?.length || 0;
+    const count = (value == null ? undefined : value.length) || 0;
     const counterColor =
       count >= BIO_WARN_AT_LIMIT ? '#EF4444' : count >= BIO_WARN_NEAR_LIMIT ? '#F97316' : isFocused ? (isDark ? 'rgba(255,255,255,0.90)' : 'rgba(15,23,42,0.92)') : (isDark ? 'rgba(255,255,255,0.62)' : 'rgba(51,65,85,0.65)');
 
@@ -1374,7 +2835,7 @@ const CLIENT_ONBOARDING_LOTTIE_STYLE_WIDE = Object.freeze({
               placeholder={placeholder}
                   placeholderTextColor={placeholderColor}
               value={value}
-              onChangeText={(t) => onChangeText(t)}
+              onChangeText={(typedText) => onChangeText(typedText)}
               multiline
               numberOfLines={7}
               maxLength={500}
@@ -1465,7 +2926,7 @@ Examples:
 • Any lifestyle factors we should know?`}
                     placeholderTextColor={placeholderColor}
             value={situationDescription}
-            onChangeText={(text) => {
+            onChangeText={(typedText) => {
                       if (text.length <= maxChars) setSituationDescription(text);
             }}
             multiline
@@ -1596,11 +3057,13 @@ Examples:
                 placeholder="ABC-123"
                 placeholderTextColor={tokens.textLabel}
                 value={trainerCode}
-                onChangeText={(text) => {
+                onChangeText={(typedText) => {
                   const next = text.toUpperCase();
                   setTrainerCode(next);
                   setCodeValid(null);
-                  setCodeError?.(null);
+                  if (setCodeError) {
+                    setCodeError(null);
+                  }
                   if (debounceTimer.current) clearTimeout(debounceTimer.current);
                   if (next.trim().length > 0) {
                     debounceTimer.current = setTimeout(() => {
@@ -1651,1389 +3114,6 @@ Examples:
 function cleanUpRoleName(roleProp, routeRole) {
   const roleText = String(roleProp ?? routeRole ?? '').toLowerCase().trim();
   return roleText === 'trainer' ? 'trainer' : 'client';
-}
-
-// ===== MAIN FUNCTION =====
-
-/**
- * Full client/trainer onboarding wizard. Role is fixed from signup — no role picker here.
- * @param {object} props
- */
-export default function NewUserSetupScreen({
-  route,
-  onComplete,
-  role: roleProp,
-  previewMode = false,
-  previewInitialStep = 1,
-  onPreviewClose,
-}) {
-  // Follow ThemeProvider (defaults light). Never invent a parallel “dark first” default.
-  const { colors, typography, spacing, isDark: contextIsDark = false, toggleTheme } = useTheme();
-  const insets = useSafeAreaInsets();
-  const [isDark, setIsDark] = useState(Boolean(contextIsDark));
-  const [role, setRole] = useState(() => cleanUpRoleName(roleProp, route?.params?.role));
-
-  const [currentStep, setCurrentStep] = useState(previewMode ? previewInitialStep : 1);
-  /** Step 1 height field — feet'in" text while typing (e.g. 5'11"). */
-  const [heightDraft, setHeightDraft] = useState('');
-  const [loading, setLoading] = useState(false);
-  const { setAIFromOnboarding } = useAI();
-  const { accessState: trainerSubscriptionAccess } = useSubscription();
-  // Paywall plan selected on trainer step 8 (annual is the recommended default).
-  const [trainerPlanId, setTrainerPlanId] = useState('pro_annual');
-  const [faceCamOpen, setFaceCamOpen] = useState(false);
-  const [faceCapturing, setFaceCapturing] = useState(false);
-  // Design Law sheets: camera ask (PNG part-2 05) + payout skip warning (PNG 17)
-  const [cameraPermissionSheetOpen, setCameraPermissionSheetOpen] = useState(false);
-  const [payoutSkipSheetOpen, setPayoutSkipSheetOpen] = useState(false);
-  const [notice, setNotice] = useState(null);
-  const showNotice = (title, message, extras = {}) => setNotice({ title, message, ...extras });
-  const [certUploading, setCertUploading] = useState(false);
-  const faceCamRef = useRef(null);
-  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
-  const [onboardingData, setOnboardingData] = useState(() => withClientSliderDefaults({
-    // Client fields - Basic Info (Design Law sliders seed weight/height/age defaults)
-    weight: null, // lbs
-    height: null, // { feet, inches }
-    age: null,
-    gender: null, // 'male', 'female', 'other', 'prefer_not_to_say'
-    // Client fields - Fitness Info
-    fitnessLevel: null,
-    primaryGoal: null,
-    goals: [],
-    equipmentAccess: [],
-    daysPerWeek: null,
-    // Default to editable input; `null` is reserved to mean "no limitations"
-    injuries: '',
-    exercisesDislike: '', // recommended
-    preferredWorkoutTime: null, // 'morning' | 'afternoon' | 'evening'
-    trainingEnvironment: null, // 'home' | 'gym' | 'both'
-    currentStressLevel: null, // 'low' | 'moderate' | 'high'
-    sleepQuality: null, // 'poor' | 'fair' | 'good'
-    energyLevels: null, // 'low' | 'moderate' | 'high'
-    supplementsCurrentlyTaking: '',
-    hydrationHabits: null, // 'less_than_4' | '4_8' | 'more_than_8'
-    trainerId: null,
-    situationDescription: '', // Step 8 - detailed situation/goals description
-    aiEnabled: null, // Step 9 - AI opt-in (client only)
-    // Trainer fields
-    certifications: [],
-    yearsExperience: null,
-    location: '',
-    specialties: [],
-    trainingPhilosophy: '',
-    sessionType: null,
-    offerFreeConsultation: false,
-    flexiblePricingAvailable: false,
-    pricing: { perSession: null, perMonth: null, initialConsult: null },
-    inviteCode: null,
-    certificationOther: '',
-    faceVerificationPhotoURL: null,
-    faceVerificationStatus: 'unsubmitted',
-    isVerified: false,
-    certificationSheetURLs: [],
-    /** Trainer display name (step 6) */
-    name: '',
-    /** Short public bio; long-form philosophy stays in trainingPhilosophy */
-    trainerProfileBio: '',
-    /** 'available' | 'waitlist' */
-    trainerAvailabilityStatus: null,
-    // Design Law availability chips (morning/afternoon/evening/weekends) — optional
-    preferredSessionTimes: [],
-  }));
-
-  // Design Law trainer step: Yes / Not yet segmented (not two separate old cards).
-  const [trainerChoice, setTrainerChoice] = useState('yes');
-
-  // Stay in sync with the app-wide theme (single source of truth: ThemeProvider).
-  useEffect(() => {
-    setIsDark(Boolean(contextIsDark));
-  }, [contextIsDark]);
-
-  useEffect(() => {
-    // Mirror local flips into ThemeProvider so Settings / home stay consistent.
-    if (typeof toggleTheme === 'function') {
-      toggleTheme(isDark ? 'dark' : 'light').catch?.(() => {});
-    }
-  }, [isDark, toggleTheme]);
-
-  useLayoutEffect(() => {
-    const next = cleanUpRoleName(roleProp, route?.params?.role);
-    setRole((prev) => (prev === next ? prev : next));
-  }, [roleProp, route?.params?.role]);
-
-  const theme = isDark
-    ? {
-        bg: lightColors.nbInk,
-        card: 'rgba(255,255,255,0.05)',
-        cardBorder: 'rgba(255,255,255,0.08)',
-        cardSelected: 'rgba(255,107,157,0.15)',
-        cardSelectedBorder: lightColors.primary,
-        text: lightColors.white,
-        subtext: 'rgba(255,255,255,0.55)',
-        input: 'rgba(255,255,255,0.05)',
-        inputBorder: 'rgba(255,255,255,0.08)',
-        inputText: lightColors.white,
-        placeholder: 'rgba(255,255,255,0.3)',
-        progressBg: 'rgba(255,255,255,0.08)',
-        backBtn: 'rgba(255,255,255,0.08)',
-        backBtnText: 'rgba(255,255,255,0.6)',
-        toggleIcon: 'sunny-outline',
-      }
-    : {
-        bg: lightColors.nbBackground,
-        card: lightColors.white,
-        cardBorder: 'rgba(0,0,0,0.08)',
-        cardSelected: 'rgba(255,107,157,0.1)',
-        cardSelectedBorder: lightColors.primary,
-        text: lightColors.nbInk,
-        subtext: 'rgba(0,0,0,0.5)',
-        input: lightColors.white,
-        inputBorder: 'rgba(0,0,0,0.12)',
-        inputText: lightColors.nbInk,
-        placeholder: 'rgba(0,0,0,0.3)',
-        progressBg: 'rgba(0,0,0,0.08)',
-        backBtn: 'rgba(0,0,0,0.06)',
-        backBtnText: 'rgba(0,0,0,0.5)',
-        toggleIcon: 'moon-outline',
-      };
-
-  // Trainer invite code generation state
-  const [inviteCode, setInviteCode] = useState('');
-  const [generatingCode, setGeneratingCode] = useState(false);
-  const inviteBorderRotation = useRef(new Animated.Value(0)).current;
-  const inviteBorderPulse = useRef(new Animated.Value(0)).current;
-  
-  // Client trainer code validation state
-  const [trainerCode, setTrainerCode] = useState('');
-  const [validatingCode, setValidatingCode] = useState(false);
-  const [codeValid, setCodeValid] = useState(null);
-  const [codeError, setCodeError] = useState(null);
-  const shakeAnimation = useRef(new Animated.Value(0)).current;
-  
-  // Enhanced input animations
-  const [focusedInputs, setFocusedInputs] = useState({});
-  const [inputValues, setInputValues] = useState({});
-  
-  // Animation values for neumorphic cards
-  const cardAnimations = useRef({}).current;
-
-  // Generate unique invite code for trainers (final step)
-  useEffect(() => {
-    if (role === 'trainer' && currentStep === TRAINER_INVITE_STEP && !inviteCode) {
-      if (previewMode) {
-        setInviteCode('DEM-O12');
-        setOnboardingData((prev) => ({ ...prev, inviteCode: 'DEM-O12' }));
-        return;
-      }
-      generateInviteCode();
-    }
-  }, [role, currentStep, previewMode]);
-
-  useEffect(() => {
-    if (!(role === 'trainer' && currentStep === TRAINER_INVITE_STEP)) return;
-
-    inviteBorderRotation.stopAnimation();
-    inviteBorderPulse.stopAnimation();
-    inviteBorderRotation.setValue(0);
-    inviteBorderPulse.setValue(0);
-
-    const rotateLoop = Animated.loop(
-      Animated.timing(inviteBorderRotation, { toValue: 1, duration: INVITE_BORDER_SPIN_MS, useNativeDriver: true })
-    );
-    const pulseLoop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(inviteBorderPulse, { toValue: 1, duration: 900, useNativeDriver: true }),
-        Animated.timing(inviteBorderPulse, { toValue: 0, duration: 900, useNativeDriver: true }),
-      ])
-    );
-
-    rotateLoop.start();
-    pulseLoop.start();
-    return () => {
-      rotateLoop.stop();
-      pulseLoop.stop();
-    };
-  }, [role, currentStep, inviteBorderRotation, inviteBorderPulse]);
-
-  // Design Law client = 8 screens (7 questions + All set). Trainer unchanged at 8.
-  const totalSteps = role === 'client' ? CLIENT_ONBOARDING_STEPS : TRAINER_ONBOARDING_STEPS;
-
-  // Design Law chapter bar — YOU / HOW YOU TRAIN / SUPPORT with partial fill per PNG.
-  const trainerChapterMeta =
-    role === 'trainer' ? getTrainerChapterMeta(currentStep) : null;
-
-  const clientChapterMeta = role === 'client'
-    ? getClientChapterMeta(currentStep)
-    : { chapter: 1, fraction: 1, label: 'YOU', stepLabel: `${currentStep}/${totalSteps}` };
-
-  /** CTA gradient for onboarding Continue */
-  const getStepGradient = () => ONBOARDING_CTA_GRADIENT;
-
-  // Current step Lottie (all client + trainer steps that have a mapping)
-  const getCurrentLottie = () => {
-    const key = `${role}-${currentStep}`;
-    const animation = LOTTIE_ANIMATIONS[key];
-    return animation || null;
-  };
-
-  const getSafeLottie = () => {
-    const src = getCurrentLottie();
-    
-    // If no source available, return null (will be handled by conditional render)
-    if (!src) {
-      return null;
-    }
-
-    // For require() statements that return numbers (asset refs)
-    // NOTE: LottieView can accept the numeric asset ref directly; do NOT convert to { uri }.
-    if (typeof src === 'number') {
-      return src;
-    }
-
-    // For objects (already resolved JSON)
-    if (typeof src === 'object' && src !== null) {
-      return src;
-    }
-    
-    // For strings (URI paths)
-    if (typeof src === 'string') {
-      return { uri: src };
-    }
-    
-    return null;
-  };
-
-  const StepLottie = ({ style }) => {
-    const src = getSafeLottie();
-    if (!src) return null;
-    return <LottieView source={src} autoPlay loop style={style || styles.lottieAnimation} />;
-  };
-
-
-  /**
-   * POST JSON to one onboarding API base with a Firebase ID token and timeout.
-   */
-  const fetchOnboardingWithToken = async (baseUrl, path, body, firebaseUser) => {
-    await firebaseUser.reload();
-    const idToken = await firebaseUser.getIdToken(true);
-    if (!idToken || typeof idToken !== 'string') {
-      throw new Error('Missing/invalid Firebase ID token');
-    }
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), ONBOARDING_API_TIMEOUT_MS);
-    try {
-      return await fetch(`${baseUrl}${path}`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${idToken}`,
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-        },
-        body: JSON.stringify(body ?? {}),
-        signal: controller.signal,
-      });
-    } finally {
-      clearTimeout(timeoutId);
-    }
-  };
-
-  /** Read error text; on 401 retry once with a fresh token. */
-  const fetchOnboardingUntilOk = async (baseUrl, path, body, firebaseUser) => {
-    let resp = await fetchOnboardingWithToken(baseUrl, path, body, firebaseUser);
-    if (resp.ok) return resp;
-
-    const text = await resp.text().catch(() => '');
-    if (resp.status !== HTTP_UNAUTHORIZED) {
-      throw new Error(`Server ${path} failed (${resp.status}) ${text}`.trim());
-    }
-
-    resp = await fetchOnboardingWithToken(baseUrl, path, body, firebaseUser);
-    if (resp.ok) return resp;
-    const retryText = await resp.text().catch(() => '');
-    throw new Error(`Server ${path} failed (${resp.status}) ${retryText}`.trim());
-  };
-
-  /** Map a fetch failure into a clearer lastErr for the caller. */
-  const onboardingFetchFailure = (error, baseUrl, path) => {
-    const msg = error?.message || String(error);
-    if (msg.includes('Network request failed')) {
-      return new Error(`Network request failed for ${baseUrl}${path}`);
-    }
-    if (msg.includes('aborted') || msg.includes('AbortError')) {
-      return new Error(`Request timed out for ${baseUrl}${path}`);
-    }
-    return error;
-  };
-
-  // 1. Try each API base until one accepts the onboarding POST.
-  const postOnboardingApi = async (path, body) => {
-    const baseUrls = getApiBaseCandidates();
-    const firebaseUser = auth?.currentUser;
-    if (!firebaseUser) throw new Error('Missing Firebase auth user.');
-
-    let lastErr = null;
-    const tried = [];
-    for (const baseUrl of baseUrls) {
-      tried.push(baseUrl);
-      try {
-        const resp = await fetchOnboardingUntilOk(baseUrl, path, body, firebaseUser);
-        return await resp.json();
-      } catch (error) {
-        lastErr = onboardingFetchFailure(error, baseUrl, path);
-      }
-    }
-
-    if (lastErr) {
-      throw new Error(`${lastErr.message || String(lastErr)} (tried: ${tried.join(', ')})`);
-    }
-    throw new Error(`Request failed: ${path} (tried: ${tried.join(', ')})`);
-  };
-
-  /** Build one XXX-XXX invite code from random A–Z / 0–9 chars. */
-  const buildRandomInviteCode = () => {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    const part1 = Array.from({ length: 3 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
-    const part2 = Array.from({ length: 3 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
-    return `${part1}-${part2}`;
-  };
-
-  /** Ask the server if this invite code is free; on network error, assume unique. */
-  const isInviteCodeAvailable = async (code) => {
-    try {
-      const resp = await postOnboardingApi('/api/onboarding/check-invite-code', { code });
-      return !resp?.exists;
-    } catch (error) {
-      console.warn('Invite code uniqueness check failed; assuming unique:', error?.message || error);
-      return true;
-    }
-  };
-
-  const generateInviteCode = async () => {
-    setGeneratingCode(true);
-    let code = '';
-    let isUnique = false;
-    let attempts = 0;
-    const maxAttempts = 10;
-
-    while (!isUnique && attempts < maxAttempts) {
-      code = buildRandomInviteCode();
-      isUnique = await isInviteCodeAvailable(code);
-      attempts += 1;
-    }
-
-    if (isUnique) {
-      setInviteCode(code);
-      setOnboardingData((prev) => ({ ...prev, inviteCode: code }));
-    } else {
-      showNotice('Error', 'Could not generate unique invite code. Please try again.');
-    }
-    setGeneratingCode(false);
-  };
-
-  /** Normalize client input to match stored format (XXX-XXX). Returns null if invalid. */
-  const normalizeInviteCodeForQuery = (raw) => {
-    let rawText = String(raw || '').trim();
-    if (!rawText) return null;
-    // Strip TRAINER- prefix (case-insensitive)
-    if (/^trainer/i.test(rawText)) {
-      rawText = rawText.replace(/^trainer[\-\s]*/i, '').trim();
-    }
-    // Remove ALL non-alphanumeric characters, uppercase
-    const cleaned = rawText.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
-    // Must be exactly 6 alphanumeric chars for XXX-XXX format
-    if (cleaned.length !== 6) return null;
-    const result = `${cleaned.slice(0, 3)}-${cleaned.slice(3, 6)}`;
-    return result.length === INVITE_CODE_DISPLAY_LENGTH ? result : null;
-  };
-
-  const validateTrainerCode = async (code) =>
-    validateTrainerCodeWithDeps(code, {
-      postOnboardingApi,
-      setCodeValid,
-      setCodeError,
-      setOnboardingData,
-      setValidatingCode,
-      triggerShake,
-    });
-
-  const triggerShake = () => {
-    Animated.sequence([
-      Animated.timing(shakeAnimation, {
-        toValue: 10,
-        duration: 50,
-        useNativeDriver: true,
-      }),
-      Animated.timing(shakeAnimation, {
-        toValue: -10,
-        duration: 50,
-        useNativeDriver: true,
-      }),
-      Animated.timing(shakeAnimation, {
-        toValue: 10,
-        duration: 50,
-        useNativeDriver: true,
-      }),
-      Animated.timing(shakeAnimation, {
-        toValue: 0,
-        duration: 50,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  };
-
-  const copyToClipboard = async (text) => {
-    try {
-      const { default: Clipboard } = await import('@react-native-clipboard/clipboard');
-      await Clipboard.setString(text);
-      showNotice('Copied!', 'Invite code copied to clipboard');
-    } catch (error) {
-      // Fallback for Expo
-      showNotice('Copied!', `Invite code: ${text}`);
-    }
-  };
-
-  const shareInviteCode = async () => {
-    try {
-      await Share.share({
-        message: `Join me on CoachConnect! Use my invite code: ${inviteCode}`,
-        title: 'CoachConnect Invite Code',
-      });
-    } catch (error) {
-      console.error('Error sharing:', error);
-    }
-  };
-
-  const handleSelect = (field, value, isMultiSelect = false) => {
-    if (isMultiSelect) {
-      const current = onboardingData[field] || [];
-      const newValue = current.includes(value)
-        ? current.filter(v => v !== value)
-        : [...current, value];
-      setOnboardingData(prev => ({ ...prev, [field]: newValue }));
-    } else {
-      setOnboardingData(prev => ({ ...prev, [field]: value }));
-    }
-  };
-
-  useEffect(() => {
-    if (role === 'client' && currentStep === 1) {
-      setHeightDraft(formatHeightInputDisplay(onboardingData.height));
-    }
-  }, [role, currentStep]);
-
-  const resolveClientHeight = () => {
-    if (isHeightComplete(onboardingData.height)) return onboardingData.height;
-    return finalizeHeightFromDraft(heightDraft);
-  };
-
-  const validateStep = () => {
-    if (role === 'client') {
-      return validateClientOnboardingStep(currentStep, onboardingData, {
-        trainerChoice,
-        codeValid,
-        trainerCode,
-      });
-    }
-    return validateTrainerOnboardingStep(
-      currentStep,
-      withTrainerSliderDefaults(onboardingData),
-    );
-  };
-
-  const handleNext = () => {
-    // Client Design Law: height is a slider → already a complete {feet,inches} object.
-    if (!validateStep()) return;
-
-    if (currentStep < totalSteps) {
-      setCurrentStep(currentStep + 1);
-    } else {
-      handleFinish();
-    }
-  };
-
-  const handleBack = () => {
-    if (currentStep > 1) {
-      setCurrentStep(currentStep - 1);
-    }
-  };
-
-  const handleLogout = async () => {
-    if (previewMode) {
-      onPreviewClose?.();
-      return;
-    }
-    showNotice('Sign Out', 'Are you sure you want to sign out and return to the login screen?', {
-      cancelLabel: 'Cancel',
-      confirmLabel: 'Sign Out',
-      destructive: true,
-      onConfirm: async () => {
-        try {
-          await signOut(auth);
-        } catch (error) {
-          console.error('Error signing out:', error);
-        }
-      },
-    });
-  };
-
-  // Which steps may be skipped from the footer Skip button.
-  // Client: step 6 (injuries) and step 7 (trainer invite code) — steps 8-9 are required.
-  // Trainer: step 4 (training philosophy) and step 8 (Pro offer) are optional.
-  const isOptionalStep = () => {
-    if (role === 'client') {
-      // Health + trainer are skippable in Design Law (Continue always enabled).
-      return currentStep === 4 || currentStep === 5;
-    }
-    return currentStep === TRAINER_PAYOUT_STEP || currentStep === TRAINER_PRO_STEP;
-  };
-
-  const handleSkip = () => {
-    if (currentStep < totalSteps) setCurrentStep(currentStep + 1);
-    else handleFinish();
-  };
-
-  /** Queue a deferred server sync when Firestore saved but API did not. */
-  const queueOnboardingServerSync = async (userId, finalRole, updateData, overrideData) => {
-    if (!userId) return;
-    const queuedUpdate =
-      updateData || buildOnboardingUpdatePayload(finalRole, onboardingData, overrideData);
-    await AsyncStorage.setItem(`onboarding_data_${userId}`, JSON.stringify(queuedUpdate)).catch(() => {});
-    await queuePendingOnboardingSync(userId, {
-      path: '/api/onboarding/complete',
-      body: {
-        finalRole,
-        onboardingData: queuedUpdate,
-        displayName: auth?.currentUser?.displayName || null,
-      },
-    });
-  };
-
-  /** Firestore OK but server failed — welcome the user and sync later. */
-  const finishAfterDeferredServerSync = async ({
-    userId,
-    finalRole,
-    updateData,
-    overrideData,
-    finishToApp,
-    error,
-  }) => {
-    if (__DEV__) {
-      console.log(
-        '[onboarding] Server sync deferred (Firestore OK):',
-        error?.message || String(error),
-      );
-    }
-    try {
-      await queueOnboardingServerSync(userId, finalRole, updateData, overrideData);
-    } catch (_) {
-      /* queue best-effort */
-    }
-    showNotice(
-      "You're all set",
-      'Your profile was saved. Any remaining account setup will finish in the background when the connection is stable.',
-      { confirmLabel: 'Continue', onConfirm: finishToApp },
-    );
-  };
-
-  /** Neither Firestore nor server — offer continue-anyway with a queued sync. */
-  const finishAfterHardSaveFailure = async ({
-    userId,
-    finalRole,
-    updateData,
-    overrideData,
-    error,
-  }) => {
-    console.error('❌ Error saving onboarding data:', error);
-    try {
-      await queueOnboardingServerSync(userId, finalRole, updateData, overrideData);
-    } catch (_) {
-      /* queue best-effort */
-    }
-    showNotice(
-      'Save Failed',
-      "Failed to save onboarding data. You can continue, but your preferences won't be saved.",
-      {
-        cancelLabel: 'Try Again',
-        confirmLabel: 'Continue Anyway',
-        onCancel: handleFinish,
-        onConfirm: () => {
-          const fallback =
-            updateData || buildOnboardingUpdatePayload(finalRole, onboardingData, overrideData);
-          onComplete && onComplete(finalRole, fallback);
-        },
-      },
-    );
-  };
-
-  const handleFinish = async (overrideData = null) => {
-    if (previewMode) {
-      showNotice('Preview mode', 'Onboarding would finish here — nothing was saved.');
-      return;
-    }
-    if (!auth?.currentUser) {
-      showNotice('Error', 'You must be logged in to save onboarding data.');
-      if (onComplete) onComplete();
-      return;
-    }
-
-    setLoading(true);
-    let firestoreSynced = false;
-    let updateData = null;
-    const userId = auth.currentUser.uid;
-    const finalRole = role || onboardingData.role || 'client';
-    const finishToApp = () => {
-      if (onComplete) onComplete(finalRole, updateData);
-    };
-
-    try {
-      const result = await completeOnboardingClient({
-        userId,
-        finalRole,
-        onboardingData,
-        overrideData,
-        db,
-        doc,
-        setDoc,
-        serverTimestamp,
-        AsyncStorage,
-        postOnboardingApi,
-        displayName: auth.currentUser?.displayName || null,
-      });
-
-      updateData = result.updateData;
-      firestoreSynced = result.firestoreSynced;
-      if (result.error) throw result.error;
-
-      if (firestoreSynced) {
-        console.log('✅ Onboarding merged to Firestore (users/' + userId + ')');
-      }
-      console.log('✅ Onboarding data saved locally + synced to server');
-      console.log('✅ Onboarding completed for user:', userId);
-
-      showNotice("You're all set", 'Welcome to CoachConnect. Your profile is ready.', {
-        confirmLabel: 'Continue',
-        onConfirm: finishToApp,
-      });
-    } catch (error) {
-      if (firestoreSynced) {
-        await finishAfterDeferredServerSync({
-          userId,
-          finalRole,
-          updateData,
-          overrideData,
-          finishToApp,
-          error,
-        });
-        return;
-      }
-      await finishAfterHardSaveFailure({
-        userId,
-        finalRole,
-        updateData,
-        overrideData,
-        error,
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const getStepTitle = () => {
-    if (role === 'client') {
-      return getClientScreenTitle(currentStep);
-    }
-    return getTrainerScreenTitle(currentStep);
-  };
-
-  const enableAIFromStep = async () => {
-    setOnboardingData((prev) => ({ ...prev, aiEnabled: true }));
-    await AsyncStorage.setItem('aiEnabled', 'true');
-    setAIFromOnboarding(true);
-    setCurrentStep(8);
-  };
-
-  const skipAIFromStep = async () => {
-    setOnboardingData((prev) => ({ ...prev, aiEnabled: false }));
-    await AsyncStorage.setItem('aiEnabled', 'false');
-    setAIFromOnboarding(false);
-    setCurrentStep(8);
-  };
-
-  // Design Law client bodies — structure matches screens/client-onboarding PNGs 01–16.
-  const renderClientStep = () => (
-    <View style={styles.stepContainer}>
-      <ClientOnboardingStep
-        step={currentStep}
-        data={onboardingData}
-        setData={setOnboardingData}
-        trainerChoice={trainerChoice}
-        setTrainerChoice={setTrainerChoice}
-        trainerCode={trainerCode}
-        setTrainerCode={setTrainerCode}
-        codeValid={codeValid}
-        setCodeValid={setCodeValid}
-        setCodeError={setCodeError}
-        validateTrainerCode={validateTrainerCode}
-        shakeAnimation={shakeAnimation}
-        matchedTrainer={
-          codeValid === true && onboardingData.trainerId
-            ? { name: 'Trainer', subtitle: 'Coach Connect trainer', initials: 'TR' }
-            : null
-        }
-        onEnableAI={enableAIFromStep}
-        onSkipAI={skipAIFromStep}
-      />
-    </View>
-  );
-
-
-  /** Pick a cert sheet, upload it, then optionally AI-verify image uploads. */
-  const handleUploadCertificationSheet = async () => {
-    const trainerUid = auth?.currentUser?.uid;
-    if (!trainerUid) {
-      showNotice('Sign in required', 'Finish signup first so we can save your certification sheet.');
-      return;
-    }
-    try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: [
-          'application/pdf',
-          'application/msword',
-          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-          'image/*',
-          '*/*',
-        ],
-        copyToCacheDirectory: true,
-      });
-      if (result.canceled) return;
-      const file = result.assets[0];
-      setCertUploading(true);
-      const { url, meta } = await uploadTrainerCertificationSheet(trainerUid, {
-        localUri: file.uri,
-        filename: file.name || 'certification.pdf',
-        mimeType: file.mimeType,
-        fileSize: file.size,
-      });
-      setOnboardingData((prev) => ({
-        ...prev,
-        certificationSheetURLs: [...(prev.certificationSheetURLs || []), url],
-        certificationSheets: [...(prev.certificationSheets || []), meta].filter(Boolean),
-      }));
-
-      const trainerName =
-        String(onboardingData.name || '').trim() ||
-        String(auth?.currentUser?.displayName || '').trim() ||
-        'Trainer';
-      const verifyMessage = await verifyUploadedCertificationSheet({
-        trainerUid,
-        trainerName,
-        file,
-        url,
-        meta,
-        setOnboardingData,
-      });
-      showNotice('Certification', verifyMessage);
-    } catch (error) {
-      showNotice('Upload failed', error?.message || 'Could not upload certification.');
-    } finally {
-      setCertUploading(false);
-    }
-  };
-
-  // Design Law trainer bodies — trainer-setup + trainer-setup-part-2 PNGs.
-  const renderTrainerStep = () => (
-    <View style={styles.stepContainer}>
-      <TrainerOnboardingStep
-        step={currentStep}
-        data={onboardingData}
-        setData={setOnboardingData}
-        onToggleField={handleSelect}
-        onUploadCert={handleUploadCertificationSheet}
-        certUploading={certUploading}
-        inviteCode={inviteCode}
-        generatingCode={generatingCode}
-        onCopyInvite={() => copyToClipboard(inviteCode)}
-        onShareInvite={shareInviteCode}
-        onEditReviewStep={(s) => setCurrentStep(s)}
-        onReviewGoLive={handleNext}
-        onReviewSaveLater={() => handleFinish()}
-        onStartFace={() => {
-          // PNG: camera permission is an NbSheet first; OS prompt only after Allow.
-          if (!cameraPermission?.granted) {
-            setCameraPermissionSheetOpen(true);
-            return;
-          }
-          setFaceCamOpen(true);
-        }}
-        faceCapturing={faceCapturing}
-        payoutEmail={auth?.currentUser?.email}
-        identitySubmitted={!!onboardingData.faceVerificationPhotoURL}
-        onPayoutSkip={() => setPayoutSkipSheetOpen(true)}
-        onPayoutComplete={() => setCurrentStep(TRAINER_PRO_STEP)}
-        isDark={isDark}
-        trainerPlanId={trainerPlanId}
-        setTrainerPlanId={setTrainerPlanId}
-        onProSkip={() => setCurrentStep(TRAINER_COMPLETE_STEP)}
-        displayName={auth?.currentUser?.displayName}
-      />
-    </View>
-  );
-
-  const dynamicStyles = getStyles(isDark);
-  const ot = getOnboardingUiTokens(isDark);
-  // Trainer Pro paywall uses its sticky footer. Client Design Law always uses the bottom bar
-  // (Continue / AI Not now+Turn on / Open my Today).
-  const hideBottomNav =
-    role === 'trainer' &&
-    (currentStep === TRAINER_PAYOUT_STEP ||
-      currentStep === TRAINER_PRO_STEP ||
-      currentStep === 5);
-  const isTrainerPaywallStep = false;
-  const onboardingFooterPadTop = 12;
-  const onboardingFooterPadBottom = Math.max(insets.bottom, 12);
-  const onboardingFooterBarHeight = onboardingFooterPadTop + 56 + onboardingFooterPadBottom;
-  // Paywall footer is taller (CTA + price/restore row below it).
-  const scrollBottomPad = onboardingFooterBarHeight + (isTrainerPaywallStep ? TRAINER_PAYWALL_EXTRA_PAD : 28);
-  const ScreenRoot = previewMode ? View : SafeAreaView;
-
-  return (
-    <ScreenRoot style={{ flex: 1, backgroundColor: theme.bg }}>
-      <View style={{ flex: 1, backgroundColor: theme.bg }}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={styles.keyboardView}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}
-        >
-          <ScrollView
-            style={{ flex: 1, backgroundColor: theme.bg }}
-            contentContainerStyle={[styles.scrollContent, { paddingHorizontal: 24, paddingBottom: scrollBottomPad }]}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-          >
-            {/* Design Law header: hard-shadow back + title + 3 chapter bars + step meta */}
-            <View style={{ marginBottom: 12 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-                <TouchableOpacity
-                  onPress={currentStep > 1 ? handleBack : handleLogout}
-                  activeOpacity={0.85}
-                  style={{
-                    width: 44,
-                    height: 44,
-                    borderRadius: 12,
-                    borderWidth: 3,
-                    borderColor: ot.cardBorder,
-                    backgroundColor: ot.cardBg,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    shadowColor: ot.shadow || ot.cardBorder,
-                    shadowOffset: { width: 3, height: 3 },
-                    shadowOpacity: 1,
-                    shadowRadius: 0,
-                    elevation: 3,
-                  }}
-                  accessibilityRole="button"
-                  accessibilityLabel={currentStep > 1 ? 'Go back' : 'Close setup'}
-                >
-                  <Ionicons
-                    // Design Law client PNGs always show a back chevron (step 1 exits setup).
-                    name={role === 'client' || currentStep > 1 ? 'chevron-back' : 'close'}
-                    size={22}
-                    color={ot.textPrimary}
-                  />
-                </TouchableOpacity>
-                <Text
-                  style={{
-                    flex: 1,
-                    fontSize: 25,
-                    fontWeight: '900',
-                    letterSpacing: -0.6,
-                    color: ot.textPrimary,
-                  }}
-                  numberOfLines={1}
-                >
-                  {role === 'client' ? getClientScreenTitle(currentStep) : getTrainerScreenTitle(currentStep)}
-                </Text>
-                {role === 'client' ? null : (
-                  <TouchableOpacity
-                    onPress={() => setIsDark(!isDark)}
-                    activeOpacity={0.85}
-                    style={{
-                      width: 44,
-                      height: 44,
-                      borderRadius: 12,
-                      borderWidth: 3,
-                      borderColor: ot.cardBorder,
-                      backgroundColor: ot.cardBg,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      shadowColor: ot.shadow || ot.cardBorder,
-                      shadowOffset: { width: 3, height: 3 },
-                      shadowOpacity: 1,
-                      shadowRadius: 0,
-                      elevation: 3,
-                    }}
-                  >
-                    <Ionicons name={theme.toggleIcon} size={20} color={ot.textPrimary} />
-                  </TouchableOpacity>
-                )}
-              </View>
-
-              {role === 'client' ? (
-                <>
-                  <NbProgressSteps
-                    total={3}
-                    current={clientChapterMeta.done ? 4 : clientChapterMeta.chapter}
-                    fraction={clientChapterMeta.done ? 1 : clientChapterMeta.fraction}
-                    style={{ marginBottom: clientChapterMeta.done ? 16 : 8 }}
-                  />
-                  {/* Design Law All set (PNG 15): filled bars only — no CHAPTER / 7/7 row */}
-                  {clientChapterMeta.done ? null : (
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Text
-                        style={{
-                          fontSize: 12,
-                          fontWeight: '900',
-                          letterSpacing: 1.1,
-                          color: ot.textLabel,
-                        }}
-                      >
-                        {`CHAPTER ${clientChapterMeta.chapter} OF ${clientChapterMeta.of} · ${clientChapterMeta.label}`}
-                      </Text>
-                      <Text
-                        style={{
-                          fontSize: 12,
-                          fontWeight: '900',
-                          color: ot.textLabel,
-                        }}
-                      >
-                        {clientChapterMeta.stepLabel}
-                      </Text>
-                    </View>
-                  )}
-                </>
-              ) : (
-                <>
-                  <NbProgressSteps
-                    total={3}
-                    current={trainerChapterMeta?.done ? 4 : trainerChapterMeta?.chapter}
-                    fraction={trainerChapterMeta?.done ? 1 : trainerChapterMeta?.fraction}
-                    style={{ marginBottom: trainerChapterMeta?.done ? 16 : 8 }}
-                  />
-                  {trainerChapterMeta?.done ? null : (
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Text
-                        style={{
-                          fontSize: 12,
-                          fontWeight: '900',
-                          letterSpacing: 1.1,
-                          color: ot.textLabel,
-                        }}
-                      >
-                        {`CHAPTER ${trainerChapterMeta?.chapter} OF ${trainerChapterMeta?.of} · ${trainerChapterMeta?.label}`}
-                      </Text>
-                      <Text
-                        style={{
-                          fontSize: 12,
-                          fontWeight: '900',
-                          color: ot.textLabel,
-                        }}
-                      >
-                        {trainerChapterMeta?.stepLabel}
-                      </Text>
-                    </View>
-                  )}
-                  {trainerChapterMeta?.heroTime && currentStep === 1 ? (
-                    <Text style={{ fontSize: 13, fontWeight: '700', color: ot.textSecondary, marginTop: 6 }}>
-                      {trainerChapterMeta.heroTime}
-                    </Text>
-                  ) : null}
-                </>
-              )}
-            </View>
-
-            {role === 'client' ? renderClientStep() : renderTrainerStep()}
-          </ScrollView>
-
-          {/* Design Law bottom bar: back square + Continue / AI pair / Open my Today */}
-          {hideBottomNav ? null : (
-            <View
-              style={[
-                dynamicStyles.navigationBar,
-                {
-                  paddingTop: onboardingFooterPadTop,
-                  paddingBottom: onboardingFooterPadBottom,
-                  paddingHorizontal: 16,
-                  borderTopWidth: 3,
-                  borderTopColor: ot.cardBorder,
-                  gap: 10,
-                },
-              ]}
-            >
-              {loading ? (
-                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', height: 56 }}>
-                  <ActivityIndicator size="small" color={ot.textPrimary} />
-                </View>
-              ) : role === 'client' && currentStep === 7 ? (
-                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                  <NbButton variant="ghost" onPress={skipAIFromStep} style={{ flex: 1 }}>
-                    Not now
-                  </NbButton>
-                  <NbButton variant="fill" onPress={enableAIFromStep} style={{ flex: 1 }}>
-                    Turn on
-                  </NbButton>
-                </View>
-              ) : role === 'client' && currentStep === 8 ? (
-                <NbButton variant="fill" onPress={() => handleFinish()} style={{ flex: 1 }}>
-                  Open my Today >
-                </NbButton>
-              ) : role === 'trainer' && currentStep === TRAINER_COMPLETE_STEP ? (
-                <NbButton variant="fill" onPress={() => handleFinish()} style={{ flex: 1 }}>
-                  Open my trainer home >
-                </NbButton>
-              ) : (
-                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                  {(role === 'client' || role === 'trainer') && currentStep > 1 ? (
-                    <TouchableOpacity
-                      onPress={handleBack}
-                      activeOpacity={0.85}
-                      style={{
-                        width: 56,
-                        height: 56,
-                        borderRadius: 12,
-                        borderWidth: 3,
-                        borderColor: ot.cardBorder,
-                        backgroundColor: ot.cardBg,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        shadowColor: ot.shadow || ot.cardBorder,
-                        shadowOffset: { width: 3, height: 3 },
-                        shadowOpacity: 1,
-                        shadowRadius: 0,
-                        elevation: 3,
-                      }}
-                      accessibilityLabel="Back"
-                    >
-                      <Ionicons name="chevron-back" size={22} color={ot.textPrimary} />
-                    </TouchableOpacity>
-                  ) : role === 'trainer' && isOptionalStep() ? (
-                    <TouchableOpacity style={styles.skipButton} onPress={handleSkip} disabled={loading}>
-                      <Text style={dynamicStyles.skipButtonText}>Skip</Text>
-                    </TouchableOpacity>
-                  ) : null}
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <OnboardingPrimaryButton
-                      variant="footer"
-                      t={ot}
-                      disabled={!validateStep()}
-                      onDisabledPress={() => {
-                        if (role === 'client') {
-                          showNotice('Almost there', 'Finish the required fields on this screen to continue.');
-                        }
-                      }}
-                      onPress={handleNext}
-                      label={
-                        role === 'client'
-                          ? 'Continue >'
-                          : currentStep === 3
-                            ? 'Get my invite code >'
-                            : currentStep === 2
-                              ? 'Continue to rates >'
-                              : currentStep === 1
-                                ? 'Continue to proof >'
-                                : currentStep === totalSteps
-                                  ? 'Continue'
-                                  : 'Continue >'
-                      }
-                    />
-                  </View>
-                </View>
-              )}
-            </View>
-          )}
-        </KeyboardAvoidingView>
-      </View>
-
-      {/* Design Law camera permission sheet (trainer-setup-part-2 PNG 05) */}
-      <NbSheet
-        visible={cameraPermissionSheetOpen}
-        onClose={() => setCameraPermissionSheetOpen(false)}
-      >
-        <View style={{ gap: 14, paddingBottom: 8 }}>
-          <View
-            style={{
-              alignSelf: 'flex-start',
-              overflow: 'hidden',
-              borderWidth: nb.borderWidth,
-              borderColor: ot.cardBorder,
-              borderRadius: 999,
-              paddingHorizontal: 12,
-              paddingVertical: 6,
-            }}
-          >
-            <LinearGradient
-              colors={accentGradients[0]}
-              start={{ x: 0, y: 0.5 }}
-              end={{ x: 1, y: 0.5 }}
-              style={StyleSheet.absoluteFillObject}
-            />
-            <Text style={{ fontSize: 12, fontWeight: '900', color: lightColors.nbInk }}>Camera needed</Text>
-          </View>
-          <Text style={{ fontSize: 24, fontWeight: '900', color: ot.textPrimary, letterSpacing: -0.4 }}>
-            Allow camera access
-          </Text>
-          <Text style={{ fontSize: 14, fontWeight: '600', color: ot.textSecondary, lineHeight: 20 }}>
-            Allow camera access to verify your face for your trainer profile. The photo is used for review only.
-          </Text>
-          <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
-            <NbButton
-              variant="ghost"
-              style={{ flex: 1 }}
-              onPress={() => setCameraPermissionSheetOpen(false)}
-            >
-              Cancel
-            </NbButton>
-            <NbButton
-              variant="fill"
-              style={{ flex: 1 }}
-              onPress={async () => {
-                setCameraPermissionSheetOpen(false);
-                const res = await requestCameraPermission();
-                if (!res?.granted) return;
-                setFaceCamOpen(true);
-              }}
-            >
-              Allow camera
-            </NbButton>
-          </View>
-        </View>
-      </NbSheet>
-
-      {/* Design Law payout skip warning (trainer-setup-part-2 PNG 17) */}
-      <NbSheet
-        visible={payoutSkipSheetOpen}
-        onClose={() => setPayoutSkipSheetOpen(false)}
-      >
-        <View style={{ gap: 14, paddingBottom: 8 }}>
-          <View
-            style={{
-              alignSelf: 'flex-start',
-              overflow: 'hidden',
-              borderWidth: nb.borderWidth,
-              borderColor: ot.cardBorder,
-              borderRadius: 999,
-              paddingHorizontal: 12,
-              paddingVertical: 6,
-            }}
-          >
-            <LinearGradient
-              colors={accentGradients[0]}
-              start={{ x: 0, y: 0.5 }}
-              end={{ x: 1, y: 0.5 }}
-              style={StyleSheet.absoluteFillObject}
-            />
-            <Text style={{ fontSize: 12, fontWeight: '900', color: lightColors.nbInk }}>Clients wait</Text>
-          </View>
-          <Text style={{ fontSize: 22, fontWeight: '900', color: ot.textPrimary, letterSpacing: -0.4 }}>
-            Complete payout setup to accept clients
-          </Text>
-          <Text style={{ fontSize: 14, fontWeight: '600', color: ot.textSecondary, lineHeight: 20 }}>
-            You can finish this any time from Settings. Until then you can build plans and share your code, but new
-            client requests wait.
-          </Text>
-          <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
-            <NbButton
-              variant="ghost"
-              style={{ flex: 1 }}
-              onPress={() => {
-                setPayoutSkipSheetOpen(false);
-                setCurrentStep(TRAINER_PRO_STEP);
-              }}
-            >
-              Skip anyway
-            </NbButton>
-            <NbButton
-              variant="fill"
-              style={{ flex: 1 }}
-              onPress={() => setPayoutSkipSheetOpen(false)}
-            >
-              Finish setup
-            </NbButton>
-          </View>
-        </View>
-      </NbSheet>
-
-      {/* Design Law face capture (trainer-setup-part-2 PNG 07) — Verify your face */}
-      <Modal visible={faceCamOpen} animationType="slide" onRequestClose={() => setFaceCamOpen(false)}>
-        <SafeAreaView style={{ flex: 1, backgroundColor: ot.bg }}>
-          <View style={{ flex: 1, paddingHorizontal: 16, paddingTop: 8 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-              <TouchableOpacity
-                onPress={() => setFaceCamOpen(false)}
-                activeOpacity={0.85}
-                style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: 12,
-                  borderWidth: 3,
-                  borderColor: ot.cardBorder,
-                  backgroundColor: ot.cardBg,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  shadowColor: ot.shadow || ot.cardBorder,
-                  shadowOffset: { width: 3, height: 3 },
-                  shadowOpacity: 1,
-                  shadowRadius: 0,
-                  elevation: 3,
-                }}
-                accessibilityLabel="Back"
-              >
-                <Ionicons name="chevron-back" size={22} color={ot.textPrimary} />
-              </TouchableOpacity>
-              <Text style={{ flex: 1, fontSize: 24, fontWeight: '900', color: ot.textPrimary, letterSpacing: -0.5 }}>
-                Verify your face
-              </Text>
-            </View>
-
-            <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbHero} style={{ marginBottom: 16 }}>
-              <View
-                style={{
-                  height: 320,
-                  borderWidth: nb.borderWidth,
-                  borderRadius: borderRadius.nbHero,
-                  overflow: 'hidden',
-                  borderColor: ot.cardBorder,
-                  backgroundColor: ot.cardBg,
-                }}
-              >
-                <CameraView ref={faceCamRef} style={StyleSheet.absoluteFillObject} facing="front" />
-                <View
-                  pointerEvents="none"
-                  style={{
-                    ...StyleSheet.absoluteFillObject,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <View
-                    style={{
-                      width: 180,
-                      height: 230,
-                      borderRadius: 115,
-                      borderWidth: 3,
-                      borderStyle: 'dashed',
-                      borderColor: ot.cardBorder,
-                      backgroundColor: 'transparent',
-                    }}
-                  />
-                </View>
-              </View>
-            </HardShadow>
-
-            {[
-              'Face the camera in good light.',
-              'Take off hats and sunglasses.',
-              'Fill the oval with your face.',
-            ].map((tip) => (
-              <View key={tip} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-                <View
-                  style={{
-                    width: 16,
-                    height: 16,
-                    borderRadius: 3,
-                    backgroundColor: ot.textPrimary,
-                  }}
-                />
-                <Text style={{ flex: 1, fontSize: 15, fontWeight: '700', color: ot.textPrimary }}>{tip}</Text>
-              </View>
-            ))}
-
-            <View style={{ flex: 1 }} />
-
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 10,
-                paddingBottom: Math.max(insets.bottom, 12),
-              }}
-            >
-              <TouchableOpacity
-                onPress={() => setFaceCamOpen(false)}
-                activeOpacity={0.85}
-                style={{
-                  width: 56,
-                  height: 56,
-                  borderRadius: 12,
-                  borderWidth: 3,
-                  borderColor: ot.cardBorder,
-                  backgroundColor: ot.cardBg,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  shadowColor: ot.shadow || ot.cardBorder,
-                  shadowOffset: { width: 3, height: 3 },
-                  shadowOpacity: 1,
-                  shadowRadius: 0,
-                  elevation: 3,
-                }}
-                accessibilityLabel="Back"
-              >
-                <Ionicons name="chevron-back" size={22} color={ot.textPrimary} />
-              </TouchableOpacity>
-              <View style={{ flex: 1 }}>
-                <NbButton
-                  variant="fill"
-                  disabled={faceCapturing}
-                  onPress={async () => {
-                    const tid = auth?.currentUser?.uid;
-                    if (!tid) {
-                      showNotice('Sign in required', 'Complete signup first.');
-                      return;
-                    }
-                    try {
-                      setFaceCapturing(true);
-                      const photo = await faceCamRef.current?.takePictureAsync?.({
-                        quality: 0.7,
-                        skipProcessing: false,
-                      });
-                      if (!photo?.uri) throw new Error('Could not capture photo');
-                      const { url } = await uploadTrainerFaceVerification(tid, { localUri: photo.uri });
-                      setOnboardingData((prev) => ({
-                        ...prev,
-                        faceVerificationPhotoURL: url,
-                        faceVerificationStatus: 'pending',
-                        isVerified: false,
-                        faceVerificationSubmittedAt: new Date().toISOString(),
-                      }));
-                      setFaceCamOpen(false);
-                    } catch (e) {
-                      showNotice('Capture failed', e?.message || 'Could not save face verification.');
-                    } finally {
-                      setFaceCapturing(false);
-                    }
-                  }}
-                >
-                  {faceCapturing ? 'Saving…' : 'Take photo'}
-                </NbButton>
-              </View>
-            </View>
-          </View>
-        </SafeAreaView>
-      </Modal>
-
-      <NbNoticeSheet
-        visible={!!notice}
-        onClose={() => setNotice(null)}
-        title={notice?.title || ''}
-        message={notice?.message}
-        confirmLabel={notice?.confirmLabel || 'OK'}
-        cancelLabel={notice?.cancelLabel}
-        onConfirm={notice?.onConfirm}
-        onCancel={notice?.onCancel}
-        destructive={!!notice?.destructive}
-      />
-    </ScreenRoot>
-  );
 }
 
 // Get theme-aware styles

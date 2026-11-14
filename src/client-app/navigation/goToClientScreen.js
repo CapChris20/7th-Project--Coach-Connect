@@ -1,6 +1,6 @@
-// Client app navigation: which tab is open, plus the overlay flags for chat, files, and AI.
+// Client app navigation: which main tab is open, plus overlay flags for chat, files, and AI.
 // Flow: bottom-nav keywords stay on MainTabs → full screens use rootNavigate → overlays are useState flags.
-// Used by ClientMainScreen. Route name strings (CLIENT_ROUTES.*) must stay as the stack registers them.
+// Used by ClientMainScreen / ClientAppStart. Route name strings (CLIENT_ROUTES.*) must stay as registered.
 
 import { useCallback, useState } from 'react';
 import { CommonActions } from '@react-navigation/native';
@@ -9,7 +9,7 @@ import { rootGoBack, rootNavigate, rootNavigationRef, rootResetTo } from '../../
 
 // ===== NAMED CONSTANTS =====
 
-/** Primary bottom-nav destinations stay on MainTabs (not stack) so the bar stays visible. */
+/** Primary bottom-nav destinations stay on MainTabs (not stack) so the tab bar stays visible. */
 export const CLIENT_MAIN_TABS = {
   home: 'home',
   nutrition: 'nutrition',
@@ -17,37 +17,38 @@ export const CLIENT_MAIN_TABS = {
   ai: 'ai',
 };
 
-const SCREEN_HOME = 'home';
-const SCREEN_PROFILE = 'profile';
-const SCREEN_PROFILE_ALIAS = 'ViewMyMyProfileScreen';
-const SCREEN_SETTINGS = 'settings';
-const SCREEN_SETTINGS_ALIAS = 'SettingsScreen';
-const SCREEN_HELP_FAQ = 'helpFaq';
-const SCREEN_TERMS = 'terms';
-const SCREEN_PRIVACY = 'privacy';
-const SCREEN_CONTACT_SUPPORT = 'contactSupport';
-const SCREEN_BUG_REPORT = 'bugReport';
-const SCREEN_PRIVACY_DATA_RIGHTS = 'privacyDataRights';
-const SCREEN_NUTRITION = 'nutrition';
-const SCREEN_WORKOUT = 'workout';
-const SCREEN_MESSAGES = 'messages';
-const SCREEN_CREATE = 'create';
-const SCREEN_VOICE = 'voice';
-const SCREEN_AI_CHAT = 'aiChat';
-const SCREEN_DASHBOARD_BILLING = 'dashboardBilling';
-const SCREEN_COACHING_PAYMENT = 'coachingPayment';
+// Keyword strings BottomMenuBar / onNavigate pass in — letters frozen.
+const NAV_KEYWORD_HOME = 'home';
+const NAV_KEYWORD_PROFILE = 'profile';
+const NAV_KEYWORD_PROFILE_LEGACY = 'ViewMyMyProfileScreen';
+const NAV_KEYWORD_SETTINGS = 'settings';
+const NAV_KEYWORD_SETTINGS_LEGACY = 'SettingsScreen';
+const NAV_KEYWORD_HELP_FAQ = 'helpFaq';
+const NAV_KEYWORD_TERMS = 'terms';
+const NAV_KEYWORD_PRIVACY = 'privacy';
+const NAV_KEYWORD_CONTACT_SUPPORT = 'contactSupport';
+const NAV_KEYWORD_BUG_REPORT = 'bugReport';
+const NAV_KEYWORD_PRIVACY_DATA_RIGHTS = 'privacyDataRights';
+const NAV_KEYWORD_NUTRITION = 'nutrition';
+const NAV_KEYWORD_WORKOUT = 'workout';
+const NAV_KEYWORD_MESSAGES = 'messages';
+const NAV_KEYWORD_CREATE = 'create';
+const NAV_KEYWORD_VOICE = 'voice';
+const NAV_KEYWORD_AI_CHAT = 'aiChat';
+const NAV_KEYWORD_DASHBOARD_BILLING = 'dashboardBilling';
+const NAV_KEYWORD_COACHING_PAYMENT = 'coachingPayment';
 
 // ===== HELPER FUNCTIONS =====
 
-/**
- * Drop stack screens so MainTabs is the only route. The bottom bar is on that screen.
- * vocab: CommonActions.reset rebuilds the nav state. index 0 = show the first (only) route.
- * @returns {void}
- */
-function resetRootToMainTabs() {
+// vocab: CommonActions.reset = wipe nav history and put one route at index 0
+function dropStackRoutesUntilOnlyMainTabs() {
   if (!rootNavigationRef.isReady()) return;
-  const navigationState = rootNavigationRef.getState();
-  if (!(navigationState?.routes?.length > 1)) return;
+
+  const currentState = rootNavigationRef.getState();
+  const howManyStackRoutes = currentState?.routes?.length || 0;
+  const stackHasPushedScreens = howManyStackRoutes > 1;
+  if (!stackHasPushedScreens) return;
+
   rootNavigationRef.dispatch(
     CommonActions.reset({
       index: 0,
@@ -56,104 +57,131 @@ function resetRootToMainTabs() {
   );
 }
 
-function openClientHome(actions) {
+// Bottom bar paints nutrition / workout / ai; everything else paints as home.
+function bottomNavKeywordForMainTab(mainTab) {
+  if (mainTab === CLIENT_MAIN_TABS.nutrition) return NAV_KEYWORD_NUTRITION;
+  if (mainTab === CLIENT_MAIN_TABS.workout) return NAV_KEYWORD_WORKOUT;
+  if (mainTab === CLIENT_MAIN_TABS.ai) return CLIENT_MAIN_TABS.ai;
+  return NAV_KEYWORD_HOME;
+}
+
+// Chat list rows pass a trainer object or just an id string.
+function trainerRecordFromConversationParticipant(otherParticipant) {
+  const participantIsObject =
+    otherParticipant && typeof otherParticipant === 'object';
+  if (participantIsObject) return otherParticipant;
+  return { id: otherParticipant };
+}
+
+function goHomeOnMainTabs(actions) {
   actions.handleHomePress();
 }
 
-function openClientProfile(actions) {
+function goHomeThenOpenProfile(actions) {
   actions.handleHomePress();
   actions.openProfile();
 }
 
-function openClientSettings(actions) {
+function goHomeThenOpenSettings(actions) {
   actions.handleHomePress();
   actions.openSettings();
 }
 
-function openAfterBack(actions, openScreen) {
+function popStackThenOpenScreen(openScreen) {
   rootGoBack();
   openScreen();
 }
 
-function openClientNutrition(actions) {
+function goHomeThenOpenNutrition(actions) {
   actions.handleHomePress();
   actions.openNutrition();
 }
 
-function openClientMessages(actions) {
+function goHomeThenOpenMessages(actions) {
   actions.handleHomePress();
   actions.handleOpenConversations();
 }
 
-function openClientAi(actions) {
+function goHomeThenOpenAiTab(actions) {
   actions.handleHomePress();
   actions.openAIChatHome();
 }
 
-function openClientCoachingPayment(actions) {
+function popStackThenOpenCoachingPayment(actions) {
   rootGoBack();
   actions.openCoachingPayment();
 }
 
-const SCREEN_KEYWORD_ACTIONS = {
-  [SCREEN_HOME]: openClientHome,
-  [SCREEN_PROFILE]: openClientProfile,
-  [SCREEN_PROFILE_ALIAS]: openClientProfile,
-  [SCREEN_SETTINGS]: openClientSettings,
-  [SCREEN_SETTINGS_ALIAS]: openClientSettings,
-  [SCREEN_HELP_FAQ]: (actions) => openAfterBack(actions, actions.openHelpFAQ),
-  [SCREEN_TERMS]: (actions) => openAfterBack(actions, actions.openTerms),
-  [SCREEN_PRIVACY]: (actions) => openAfterBack(actions, actions.openPrivacy),
-  [SCREEN_CONTACT_SUPPORT]: (actions) => openAfterBack(actions, actions.openContactSupport),
-  [SCREEN_BUG_REPORT]: (actions) => openAfterBack(actions, actions.openBugReport),
-  [SCREEN_PRIVACY_DATA_RIGHTS]: (actions) =>
-    openAfterBack(actions, actions.openPrivacyDataRights),
-  [SCREEN_NUTRITION]: openClientNutrition,
-  [SCREEN_WORKOUT]: (actions) => actions.openWorkout(),
-  [SCREEN_MESSAGES]: openClientMessages,
-  [SCREEN_CREATE]: (actions) => actions.setShowAddFilePopup(true),
-  [SCREEN_VOICE]: openClientAi,
-  [SCREEN_AI_CHAT]: openClientAi,
-  [SCREEN_DASHBOARD_BILLING]: openClientCoachingPayment,
-  [SCREEN_COACHING_PAYMENT]: openClientCoachingPayment,
-};
-
-function runClientScreenKeyword(screen, actions) {
-  const openScreen = SCREEN_KEYWORD_ACTIONS[screen];
-  if (!openScreen) return;
-  openScreen(actions);
+function openHelpFaqFromStack(actions) {
+  popStackThenOpenScreen(actions.openHelpFAQ);
 }
 
-/**
- * Bottom-bar highlight. Anything that is not nutrition/workout/ai is Home.
- * @param {string} mainTab
- * @returns {string}
- */
-function mainTabBarKey(mainTab) {
-  if (mainTab === CLIENT_MAIN_TABS.nutrition) return SCREEN_NUTRITION;
-  if (mainTab === CLIENT_MAIN_TABS.workout) return SCREEN_WORKOUT;
-  if (mainTab === CLIENT_MAIN_TABS.ai) return CLIENT_MAIN_TABS.ai;
-  return SCREEN_HOME;
+function openTermsFromStack(actions) {
+  popStackThenOpenScreen(actions.openTerms);
 }
 
-/**
- * Chat list rows pass either a user object or a raw id.
- * @param {object|string} otherParticipant
- * @returns {object}
- */
-function trainerFromParticipant(otherParticipant) {
-  if (otherParticipant && typeof otherParticipant === 'object') return otherParticipant;
-  return { id: otherParticipant };
+function openPrivacyFromStack(actions) {
+  popStackThenOpenScreen(actions.openPrivacy);
+}
+
+function openContactSupportFromStack(actions) {
+  popStackThenOpenScreen(actions.openContactSupport);
+}
+
+function openBugReportFromStack(actions) {
+  popStackThenOpenScreen(actions.openBugReport);
+}
+
+function openPrivacyDataRightsFromStack(actions) {
+  popStackThenOpenScreen(actions.openPrivacyDataRights);
+}
+
+function openWorkoutFromKeyword(actions) {
+  actions.openWorkout();
+}
+
+function openAddFilePopupFromKeyword(actions) {
+  actions.setShowAddFilePopup(true);
+}
+
+function runNavigationKeyword(screenKeyword, actionBag) {
+  const handler = NAV_KEYWORD_HANDLERS[screenKeyword];
+  if (!handler) return;
+  handler(actionBag);
+}
+
+function buildKeywordActionBag(navHelpers) {
+  return {
+    handleHomePress: navHelpers.handleHomePress,
+    openProfile: navHelpers.openProfile,
+    openSettings: navHelpers.openSettings,
+    openHelpFAQ: navHelpers.openHelpFAQ,
+    openTerms: navHelpers.openTerms,
+    openPrivacy: navHelpers.openPrivacy,
+    openContactSupport: navHelpers.openContactSupport,
+    openBugReport: navHelpers.openBugReport,
+    openPrivacyDataRights: navHelpers.openPrivacyDataRights,
+    openNutrition: navHelpers.openNutrition,
+    openWorkout: navHelpers.openWorkout,
+    handleOpenConversations: navHelpers.handleOpenConversations,
+    openAIChatHome: navHelpers.openAIChatHome,
+    openCoachingPayment: navHelpers.openCoachingPayment,
+    setShowAddFilePopup: navHelpers.setShowAddFilePopup,
+  };
 }
 
 // ===== MAIN FUNCTION =====
 
 /**
- * Screen flags for the client layout, plus navigation for full-screen flows.
- * @param {{ refetchNutritionData?: Function }} [options]
+ * Client navigation state + open helpers for MainTabs and stack overlays.
+ * Flow: 1. overlay/tab state  2. stack openers  3. tab/overlay handlers  4. keyword router  5. return bag
+ * Hook order is frozen — do not reorder useState / useCallback calls.
+ * @param {object} [options]
+ * @param {Function} [options.refetchNutritionData] passed through for shell consumers
  * @returns {object}
  */
 export function goToClientScreen({ refetchNutritionData } = {}) {
+  // 1. Tab + overlay flags (hook order frozen).
   const [mainTab, setMainTab] = useState(CLIENT_MAIN_TABS.home);
   const [showTrainerMessaging, setShowTrainerMessaging] = useState(false);
   const [showConversationsList, setShowConversationsList] = useState(false);
@@ -168,6 +196,8 @@ export function goToClientScreen({ refetchNutritionData } = {}) {
   const [aiChatState, setAiChatState] = useState(null);
   const [showCoachingPaymentModal, setShowCoachingPaymentModal] = useState(false);
 
+  // 2. Stack openers — rootNavigate pushes a registered CLIENT_ROUTES screen.
+  // vocab: useCallback = stable function identity across renders (deps listed)
   const openProfile = useCallback(() => rootNavigate(CLIENT_ROUTES.Profile), []);
   const openSettings = useCallback(() => rootNavigate(CLIENT_ROUTES.Settings), []);
   const openHelpFAQ = useCallback(() => rootNavigate(CLIENT_ROUTES.HelpFAQ), []);
@@ -180,7 +210,7 @@ export function goToClientScreen({ refetchNutritionData } = {}) {
     [],
   );
   const popStackToMainTabs = useCallback(() => {
-    resetRootToMainTabs();
+    dropStackRoutesUntilOnlyMainTabs();
   }, []);
 
   const dismissMainOverlays = useCallback(() => {
@@ -202,6 +232,7 @@ export function goToClientScreen({ refetchNutritionData } = {}) {
     dismissMainOverlays();
     setMainTab(CLIENT_MAIN_TABS.workout);
   }, [popStackToMainTabs, dismissMainOverlays]);
+
   const openTrainerSearch = useCallback(() => rootNavigate(CLIENT_ROUTES.TrainerSearch), []);
   const openTrainerProfile = useCallback(() => rootNavigate(CLIENT_ROUTES.TrainerProfile), []);
   const openWeeklyReport = useCallback(() => rootNavigate(CLIENT_ROUTES.WeeklyReport), []);
@@ -209,7 +240,6 @@ export function goToClientScreen({ refetchNutritionData } = {}) {
   const openRequestSession = useCallback(() => rootNavigate(CLIENT_ROUTES.RequestSession), []);
   const openPhotoGallery = useCallback(() => rootNavigate(CLIENT_ROUTES.PhotoGallery), []);
   const openProgressCharts = useCallback(() => rootNavigate(CLIENT_ROUTES.ProgressCharts), []);
-  // Design Law Batch 1 gap screens
   const openLogWorkout = useCallback(() => rootNavigate(CLIENT_ROUTES.LogWorkout), []);
   const openDailyCheckIn = useCallback(() => rootNavigate(CLIENT_ROUTES.DailyCheckIn), []);
   const openMoodCheckIn = useCallback(() => rootNavigate(CLIENT_ROUTES.MoodCheckIn), []);
@@ -217,24 +247,29 @@ export function goToClientScreen({ refetchNutritionData } = {}) {
   const openNotifications = useCallback(() => rootNavigate(CLIENT_ROUTES.Notifications), []);
   const openAIWorkouts = useCallback(() => rootNavigate(CLIENT_ROUTES.AIWorkouts), []);
   const openPlanViewer = useCallback(() => rootNavigate(CLIENT_ROUTES.PlanViewer), []);
+
   // vocab: session payload = { workoutName, exercises[] } from a plan day
   const openWorkoutSession = useCallback((payload = {}) => {
     rootNavigate(CLIENT_ROUTES.WorkoutSession, payload);
   }, []);
+
   const openAIChatHome = useCallback(() => {
     popStackToMainTabs();
     dismissMainOverlays();
     setAiChatState('home');
     setMainTab(CLIENT_MAIN_TABS.ai);
   }, [popStackToMainTabs, dismissMainOverlays]);
-  const openAIChatSession = useCallback((payload) => {
-    popStackToMainTabs();
-    dismissMainOverlays();
-    setAiChatState(payload);
-    setMainTab(CLIENT_MAIN_TABS.ai);
-  }, [popStackToMainTabs, dismissMainOverlays]);
 
-  // Home tab already IS the mockup client-home — no separate Dashboard overlay.
+  const openAIChatSession = useCallback(
+    (payload) => {
+      popStackToMainTabs();
+      dismissMainOverlays();
+      setAiChatState(payload);
+      setMainTab(CLIENT_MAIN_TABS.ai);
+    },
+    [popStackToMainTabs, dismissMainOverlays],
+  );
+
   const openMyDashboardBilling = useCallback(() => {
     popStackToMainTabs();
     setShowMyDashboard(false);
@@ -249,6 +284,7 @@ export function goToClientScreen({ refetchNutritionData } = {}) {
     setShowCoachingPaymentModal(false);
   }, []);
 
+  // 3. Messaging / home / workout tab handlers.
   const handleOpenConversations = useCallback(() => {
     setShowConversationsList(true);
     setShowTrainerMessaging(false);
@@ -257,7 +293,7 @@ export function goToClientScreen({ refetchNutritionData } = {}) {
 
   const handleSelectConversation = useCallback((conversation, otherParticipant) => {
     setSelectedConversation(conversation);
-    setSelectedTrainer(trainerFromParticipant(otherParticipant));
+    setSelectedTrainer(trainerRecordFromConversationParticipant(otherParticipant));
     setShowConversationsList(false);
     setShowTrainerMessaging(true);
   }, []);
@@ -296,10 +332,11 @@ export function goToClientScreen({ refetchNutritionData } = {}) {
   const handleStartWorkout = useCallback(() => openWorkout(), [openWorkout]);
   const handleAddWorkout = useCallback(() => openWorkout(), [openWorkout]);
 
+  // 4. Keyword router for BottomMenuBar / deep links.
   const onNavigate = useCallback(
-    (screen) => {
-      if (!screen) return;
-      runClientScreenKeyword(screen, {
+    (screenKeyword) => {
+      if (!screenKeyword) return;
+      const actionBag = buildKeywordActionBag({
         handleHomePress,
         openProfile,
         openSettings,
@@ -316,6 +353,7 @@ export function goToClientScreen({ refetchNutritionData } = {}) {
         openCoachingPayment,
         setShowAddFilePopup,
       });
+      runNavigationKeyword(screenKeyword, actionBag);
     },
     [
       handleHomePress,
@@ -340,6 +378,7 @@ export function goToClientScreen({ refetchNutritionData } = {}) {
     handleOpenConversations();
   }, [handleOpenConversations]);
 
+  // 5. Props bag BottomMenuBar expects, plus the full public shell object.
   const navProviderProps = {
     onProfilePress: openProfile,
     onSettingsPress: openSettings,
@@ -351,7 +390,7 @@ export function goToClientScreen({ refetchNutritionData } = {}) {
     onMessagesPress: handleOpenConversations,
   };
 
-  const mainTabActiveKey = mainTabBarKey(mainTab);
+  const mainTabActiveKey = bottomNavKeywordForMainTab(mainTab);
 
   return {
     mainTab,
@@ -431,3 +470,27 @@ export function goToClientScreen({ refetchNutritionData } = {}) {
     rootResetTo,
   };
 }
+
+// PLUMBING — skip unless a bottom-nav keyword opens the wrong screen.
+
+const NAV_KEYWORD_HANDLERS = {
+  [NAV_KEYWORD_HOME]: goHomeOnMainTabs,
+  [NAV_KEYWORD_PROFILE]: goHomeThenOpenProfile,
+  [NAV_KEYWORD_PROFILE_LEGACY]: goHomeThenOpenProfile,
+  [NAV_KEYWORD_SETTINGS]: goHomeThenOpenSettings,
+  [NAV_KEYWORD_SETTINGS_LEGACY]: goHomeThenOpenSettings,
+  [NAV_KEYWORD_HELP_FAQ]: openHelpFaqFromStack,
+  [NAV_KEYWORD_TERMS]: openTermsFromStack,
+  [NAV_KEYWORD_PRIVACY]: openPrivacyFromStack,
+  [NAV_KEYWORD_CONTACT_SUPPORT]: openContactSupportFromStack,
+  [NAV_KEYWORD_BUG_REPORT]: openBugReportFromStack,
+  [NAV_KEYWORD_PRIVACY_DATA_RIGHTS]: openPrivacyDataRightsFromStack,
+  [NAV_KEYWORD_NUTRITION]: goHomeThenOpenNutrition,
+  [NAV_KEYWORD_WORKOUT]: openWorkoutFromKeyword,
+  [NAV_KEYWORD_MESSAGES]: goHomeThenOpenMessages,
+  [NAV_KEYWORD_CREATE]: openAddFilePopupFromKeyword,
+  [NAV_KEYWORD_VOICE]: goHomeThenOpenAiTab,
+  [NAV_KEYWORD_AI_CHAT]: goHomeThenOpenAiTab,
+  [NAV_KEYWORD_DASHBOARD_BILLING]: popStackThenOpenCoachingPayment,
+  [NAV_KEYWORD_COACHING_PAYMENT]: popStackThenOpenCoachingPayment,
+};

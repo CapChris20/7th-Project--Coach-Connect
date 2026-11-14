@@ -1,7 +1,8 @@
-// Design Law full-screen PDF viewer (PNG 09–12).
-// Flow: parent sets visible + url → NbPageHeader (back + next) → WebView card → page label → actions.
+// Full-screen PDF viewer (Design Law PNG 09–12).
+// Flow: parent sets visible + url → header (back + next) → WebView card → page label → actions.
 // Used by FilesScreen and Notes & Files openers. Missing url returns null so an empty modal never mounts.
-// vocab: HardShadow = solid offset; shell SafeArea is L/R only so NbPageHeader owns top inset
+// Read order: constants → helpers → layout pieces → PdfViewer → styles.
+// vocab: HardShadow = solid offset shadow (no blur); shell SafeArea is L/R only so NbPageHeader owns top inset.
 
 import React, { useEffect, useMemo, useState } from 'react';
 import {
@@ -29,60 +30,296 @@ const TITLE_TRIM_LENGTH = 37;
 const WEBVIEW_ORIGIN_WHITELIST = ['*'];
 // Manipulate here: fallback page total when the PDF itself does not report one
 const DEFAULT_PAGE_TOTAL = 1;
+// Manipulate here: when pageCount is unknown, still allow this many “next” taps via #page=
+const MAX_GUESS_PAGES_WITHOUT_COUNT = 20;
 
 // ===== HELPER FUNCTIONS =====
 
-function shortenDocumentTitle(name) {
-  const rawTitle = String(name || DEFAULT_DOCUMENT_NAME);
-  if (rawTitle.length > TITLE_MAX_LENGTH) return `${rawTitle.slice(0, TITLE_TRIM_LENGTH)}…`;
-  return rawTitle;
+function shortenDocumentTitle(documentName) {
+  const fullTitle = String(documentName || DEFAULT_DOCUMENT_NAME);
+  if (fullTitle.length > TITLE_MAX_LENGTH) {
+    return `${fullTitle.slice(0, TITLE_TRIM_LENGTH)}…`;
+  }
+  return fullTitle;
 }
 
 /**
  * Strip an existing #page= fragment, then pin the requested page for many PDF hosts.
- * @param {string} url
- * @param {number} page
- * @returns {string}
+ * Why: some CDNs ignore hash changes unless the WebView remounts (we key by pageIndex).
  */
-function pdfUrlForPage(url, page) {
-  const raw = String(url || '').trim();
-  if (!raw) return raw;
-  const withoutHash = raw.replace(/#.*$/, '');
-  const safePage = Math.max(1, Number(page) || 1);
-  return `${withoutHash}#page=${safePage}`;
+function pdfUrlForPage(url, pageNumber) {
+  const trimmedUrl = String(url || '').trim();
+  if (!trimmedUrl) {
+    return trimmedUrl;
+  }
+  const urlWithoutHash = trimmedUrl.replace(/#.*$/, '');
+  const safePageNumber = Math.max(1, Number(pageNumber) || 1);
+  return `${urlWithoutHash}#page=${safePageNumber}`;
+}
+
+function buildPdfHeaderSubtitle(subtitle, fileSizeLabel, fromLabel) {
+  const subtitleParts = [subtitle || 'PDF'];
+  if (fileSizeLabel) {
+    subtitleParts.push(String(fileSizeLabel));
+  }
+  if (fromLabel) {
+    subtitleParts.push(String(fromLabel));
+  }
+  return subtitleParts.join(' · ');
+}
+
+function pageLabelText(pageIndex, totalPages, pageCountKnown) {
+  if (pageCountKnown) {
+    return `Page ${pageIndex} of ${totalPages}`;
+  }
+  return `Page ${pageIndex}`;
+}
+
+function canAdvanceToNextPage(pageIndex, totalPages, pageCountKnown) {
+  if (pageCountKnown) {
+    return pageIndex < totalPages;
+  }
+  return pageIndex < MAX_GUESS_PAGES_WITHOUT_COUNT;
+}
+
+// ===== IN-FILE UI PIECES (no hooks) =====
+
+function PdfWebPreviewCard({
+  pageIndex,
+  webSource,
+  isLoading,
+  colors,
+  onPreviewFinishedLoading,
+  onPreviewFailed,
+}) {
+  return (
+    <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard} style={styles.previewShadow}>
+      <View
+        style={[
+          styles.previewCard,
+          { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder },
+        ]}
+      >
+        {/* vocab: key remounts WebView when pageIndex changes so #page= is re-read */}
+        <WebView
+          key={`pdf-page-${pageIndex}`}
+          source={webSource}
+          style={styles.webview}
+          onLoadEnd={onPreviewFinishedLoading}
+          onError={onPreviewFailed}
+          originWhitelist={WEBVIEW_ORIGIN_WHITELIST}
+          mixedContentMode="always"
+        />
+        {isLoading ? (
+          <View style={[styles.loadingOverlay, { backgroundColor: colors.nbSurface }]}>
+            <ActivityIndicator size="large" color={colors.nbInk} />
+            <Text style={[styles.loadingTitle, { color: colors.nbInk }]}>Loading preview</Text>
+            <Text style={[styles.loadingSubtitle, { color: colors.nbMuted }]}>
+              If this takes too long, try again on Wi‑Fi.
+            </Text>
+          </View>
+        ) : null}
+      </View>
+    </HardShadow>
+  );
+}
+
+function PdfPrevPageControl({ canGoToPreviousPage, inkColor, onGoPrevious }) {
+  if (!canGoToPreviousPage) {
+    return <View style={styles.pageNavSpacer} />;
+  }
+  return (
+    <TouchableOpacity
+      onPress={onGoPrevious}
+      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      accessibilityRole="button"
+      accessibilityLabel="Previous page"
+    >
+      <Text style={[styles.pageNav, { color: inkColor }]}>Prev</Text>
+    </TouchableOpacity>
+  );
+}
+
+function PdfNextPageControl({ canGoToNextPage, inkColor, onGoNext }) {
+  if (!canGoToNextPage) {
+    return <View style={styles.pageNavSpacer} />;
+  }
+  return (
+    <TouchableOpacity
+      onPress={onGoNext}
+      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      accessibilityRole="button"
+      accessibilityLabel="Next page"
+    >
+      <Text style={[styles.pageNav, { color: inkColor }]}>Next</Text>
+    </TouchableOpacity>
+  );
+}
+
+function PdfPageNavigationRow({
+  pageIndex,
+  totalPages,
+  pageCountKnown,
+  canGoToPreviousPage,
+  canGoToNextPage,
+  inkColor,
+  mutedColor,
+  onGoPrevious,
+  onGoNext,
+}) {
+  const pageLabel = pageLabelText(pageIndex, totalPages, pageCountKnown);
+
+  return (
+    <View style={styles.pageRow}>
+      <PdfPrevPageControl
+        canGoToPreviousPage={canGoToPreviousPage}
+        inkColor={inkColor}
+        onGoPrevious={onGoPrevious}
+      />
+      <Text style={[styles.pageLabel, { color: mutedColor }]}>{pageLabel}</Text>
+      <PdfNextPageControl
+        canGoToNextPage={canGoToNextPage}
+        inkColor={inkColor}
+        onGoNext={onGoNext}
+      />
+    </View>
+  );
+}
+
+function downloadButtonIfPresent(onDownload) {
+  if (typeof onDownload !== 'function') return null;
+  return (
+    <NbButton variant="plain" onPress={onDownload} style={styles.half}>
+      Download
+    </NbButton>
+  );
+}
+
+function shareButtonIfPresent(onShare) {
+  if (typeof onShare !== 'function') return null;
+  return (
+    <NbButton variant="plain" onPress={onShare} style={styles.half}>
+      Share
+    </NbButton>
+  );
+}
+
+function deleteButtonIfPresent(onDelete) {
+  if (typeof onDelete !== 'function') return null;
+  return (
+    <NbButton variant="plain" onPress={onDelete}>
+      Delete from my files
+    </NbButton>
+  );
+}
+
+function PdfViewerActionBar({
+  bottomInset,
+  borderColor,
+  onDownload,
+  onShare,
+  onDelete,
+}) {
+  const downloadButton = downloadButtonIfPresent(onDownload);
+  const shareButton = shareButtonIfPresent(onShare);
+  const deleteButton = deleteButtonIfPresent(onDelete);
+  const actionBarPaddingBottom = Math.max(bottomInset, spacing.md);
+
+  return (
+    <View
+      style={[
+        styles.actions,
+        {
+          borderTopColor: borderColor,
+          paddingBottom: actionBarPaddingBottom,
+        },
+      ]}
+    >
+      <View style={styles.actionRow}>
+        {downloadButton}
+        {shareButton}
+      </View>
+      {deleteButton}
+    </View>
+  );
 }
 
 /**
- * @param {string} subtitle
- * @param {number|null|undefined} fileSizeLabel
- * @param {string|null|undefined} fromLabel
- * @returns {string}
+ * Pure layout: header + preview + page row + actions.
+ * Why extract: keeps hooks/state out of the paint tree.
  */
-function buildPdfSubtitle(subtitle, fileSizeLabel, fromLabel) {
-  const parts = [subtitle || 'PDF'];
-  if (fileSizeLabel) parts.push(String(fileSizeLabel));
-  if (fromLabel) parts.push(String(fromLabel));
-  return parts.join(' · ');
+function PdfViewerLayout({
+  headerTitle,
+  headerSubtitle,
+  pageIndex,
+  webSource,
+  isLoadingPreview,
+  totalPages,
+  pageCountKnown,
+  canGoToPreviousPage,
+  canGoToNextPage,
+  colors,
+  bottomInset,
+  onClose,
+  onGoPrevious,
+  onGoNext,
+  onPreviewFinishedLoading,
+  onPreviewFailed,
+  onDownload,
+  onShare,
+  onDelete,
+}) {
+  return (
+    <View style={[styles.container, { backgroundColor: colors.nbBackground }]}>
+      <NbPageHeader
+        title={headerTitle}
+        subtitle={headerSubtitle}
+        onBack={onClose}
+        onForward={onGoNext}
+        forwardDisabled={!canGoToNextPage}
+      />
+
+      <View style={styles.previewWrap}>
+        <PdfWebPreviewCard
+          pageIndex={pageIndex}
+          webSource={webSource}
+          isLoading={isLoadingPreview}
+          colors={colors}
+          onPreviewFinishedLoading={onPreviewFinishedLoading}
+          onPreviewFailed={onPreviewFailed}
+        />
+
+        {/* Design Law PNG 09 — page label under the preview card */}
+        <PdfPageNavigationRow
+          pageIndex={pageIndex}
+          totalPages={totalPages}
+          pageCountKnown={pageCountKnown}
+          canGoToPreviousPage={canGoToPreviousPage}
+          canGoToNextPage={canGoToNextPage}
+          inkColor={colors.nbInk}
+          mutedColor={colors.nbMuted}
+          onGoPrevious={onGoPrevious}
+          onGoNext={onGoNext}
+        />
+      </View>
+
+      <PdfViewerActionBar
+        bottomInset={bottomInset}
+        borderColor={colors.nbBorder}
+        onDownload={onDownload}
+        onShare={onShare}
+        onDelete={onDelete}
+      />
+    </View>
+  );
 }
 
 // ===== MAIN FUNCTION =====
 
 /**
- * Full-screen PDF preview with Design Law header + page chrome + action row.
- * @param {{
- *   visible: boolean,
- *   url?: string,
- *   name?: string,
- *   subtitle?: string,
- *   fileSizeLabel?: string,
- *   fromLabel?: string,
- *   pageCount?: number,
- *   isDark?: boolean,
- *   onClose: Function,
- *   onDownload?: Function,
- *   onShare?: Function,
- *   onDelete?: Function,
- * }} props
+ * Design Law full-screen PDF viewer.
+ * Hook order frozen: early null return stays above hooks (same as before).
+ * @param {object} props
  */
 export default function PdfViewer({
   visible,
@@ -98,25 +335,31 @@ export default function PdfViewer({
   onShare,
   onDelete,
 }) {
-  if (!url) return null;
+  // Fail fast — never mount a blank PDF modal.
+  if (!url) {
+    return null;
+  }
+
   const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
-  const [isLoading, setIsLoading] = useState(true);
+  const safeAreaInsets = useSafeAreaInsets();
+  const [isLoadingPreview, setIsLoadingPreview] = useState(true);
   // vocab: pageIndex = 1-based page the header forward chip advances
   const [pageIndex, setPageIndex] = useState(1);
 
   const totalPages = Math.max(DEFAULT_PAGE_TOTAL, Number(pageCount) || DEFAULT_PAGE_TOTAL);
+  const pageCountKnown = Boolean(pageCount);
 
+  // Reset page + spinner whenever the parent opens a different file.
   useEffect(() => {
     if (visible && url) {
-      setIsLoading(true);
+      setIsLoadingPreview(true);
       setPageIndex(1);
     }
   }, [visible, url]);
 
-  const title = useMemo(() => shortenDocumentTitle(name), [name]);
+  const headerTitle = useMemo(() => shortenDocumentTitle(name), [name]);
   const headerSubtitle = useMemo(
-    () => buildPdfSubtitle(subtitle, fileSizeLabel, fromLabel),
+    () => buildPdfHeaderSubtitle(subtitle, fileSizeLabel, fromLabel),
     [subtitle, fileSizeLabel, fromLabel],
   );
   const webSource = useMemo(
@@ -124,122 +367,48 @@ export default function PdfViewer({
     [url, pageIndex],
   );
 
-  const goPrevPage = () => {
-    setPageIndex((prev) => Math.max(1, prev - 1));
-    setIsLoading(true);
+  // 1. Step one page back (never below page 1).
+  const goToPreviousPage = () => {
+    setPageIndex((previousPage) => Math.max(1, previousPage - 1));
+    setIsLoadingPreview(true);
   };
 
-  const goNextPage = () => {
-    setPageIndex((prev) => Math.min(totalPages, prev + 1));
-    setIsLoading(true);
+  // 2. Step one page forward (cap at known total, or guess cap).
+  const goToNextPage = () => {
+    setPageIndex((previousPage) => Math.min(totalPages, previousPage + 1));
+    setIsLoadingPreview(true);
   };
 
-  // When we do not know the real page count, still allow advancing a few pages via #page=
-  const canGoNext = pageCount ? pageIndex < totalPages : pageIndex < 20;
-  const canGoPrev = pageIndex > 1;
+  const canGoToPreviousPage = pageIndex > 1;
+  const canGoToNextPage = canAdvanceToNextPage(pageIndex, totalPages, pageCountKnown);
 
+  // 3. Hide the overlay once the WebView finishes (success or error).
+  const clearLoadingOverlay = () => setIsLoadingPreview(false);
+
+  // 4. Paint modal → layout.
   return (
     <Modal visible={visible} animationType="slide" transparent={false} onRequestClose={onClose}>
-      <View style={[styles.container, { backgroundColor: colors.nbBackground }]}>
-        <NbPageHeader
-          title={title}
-          subtitle={headerSubtitle}
-          onBack={onClose}
-          onForward={goNextPage}
-          forwardDisabled={!canGoNext}
-        />
-
-        <View style={styles.previewWrap}>
-          <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard} style={styles.previewShadow}>
-            <View
-              style={[
-                styles.previewCard,
-                { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder },
-              ]}
-            >
-              <WebView
-                key={`pdf-page-${pageIndex}`}
-                source={webSource}
-                style={styles.webview}
-                onLoadEnd={() => setIsLoading(false)}
-                onError={() => setIsLoading(false)}
-                originWhitelist={WEBVIEW_ORIGIN_WHITELIST}
-                mixedContentMode="always"
-              />
-              {isLoading ? (
-                <View style={[styles.loadingOverlay, { backgroundColor: colors.nbSurface }]}>
-                  <ActivityIndicator size="large" color={colors.nbInk} />
-                  <Text style={[styles.loadingTitle, { color: colors.nbInk }]}>Loading preview</Text>
-                  <Text style={[styles.loadingSubtitle, { color: colors.nbMuted }]}>
-                    If this takes too long, try again on Wi‑Fi.
-                  </Text>
-                </View>
-              ) : null}
-            </View>
-          </HardShadow>
-
-          {/* Design Law PNG 09 — page label under the preview card */}
-          <View style={styles.pageRow}>
-            {canGoPrev ? (
-              <TouchableOpacity
-                onPress={goPrevPage}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                accessibilityRole="button"
-                accessibilityLabel="Previous page"
-              >
-                <Text style={[styles.pageNav, { color: colors.nbInk }]}>Prev</Text>
-              </TouchableOpacity>
-            ) : (
-              <View style={styles.pageNavSpacer} />
-            )}
-            <Text style={[styles.pageLabel, { color: colors.nbMuted }]}>
-              {pageCount
-                ? `Page ${pageIndex} of ${totalPages}`
-                : `Page ${pageIndex}`}
-            </Text>
-            {canGoNext ? (
-              <TouchableOpacity
-                onPress={goNextPage}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                accessibilityRole="button"
-                accessibilityLabel="Next page"
-              >
-                <Text style={[styles.pageNav, { color: colors.nbInk }]}>Next</Text>
-              </TouchableOpacity>
-            ) : (
-              <View style={styles.pageNavSpacer} />
-            )}
-          </View>
-        </View>
-
-        <View
-          style={[
-            styles.actions,
-            {
-              borderTopColor: colors.nbBorder,
-              paddingBottom: Math.max(insets.bottom, spacing.md),
-            },
-          ]}
-        >
-          <View style={styles.actionRow}>
-            {typeof onDownload === 'function' ? (
-              <NbButton variant="plain" onPress={onDownload} style={styles.half}>
-                Download
-              </NbButton>
-            ) : null}
-            {typeof onShare === 'function' ? (
-              <NbButton variant="plain" onPress={onShare} style={styles.half}>
-                Share
-              </NbButton>
-            ) : null}
-          </View>
-          {typeof onDelete === 'function' ? (
-            <NbButton variant="plain" onPress={onDelete}>
-              Delete from my files
-            </NbButton>
-          ) : null}
-        </View>
-      </View>
+      <PdfViewerLayout
+        headerTitle={headerTitle}
+        headerSubtitle={headerSubtitle}
+        pageIndex={pageIndex}
+        webSource={webSource}
+        isLoadingPreview={isLoadingPreview}
+        totalPages={totalPages}
+        pageCountKnown={pageCountKnown}
+        canGoToPreviousPage={canGoToPreviousPage}
+        canGoToNextPage={canGoToNextPage}
+        colors={colors}
+        bottomInset={safeAreaInsets.bottom}
+        onClose={onClose}
+        onGoPrevious={goToPreviousPage}
+        onGoNext={goToNextPage}
+        onPreviewFinishedLoading={clearLoadingOverlay}
+        onPreviewFailed={clearLoadingOverlay}
+        onDownload={onDownload}
+        onShare={onShare}
+        onDelete={onDelete}
+      />
     </Modal>
   );
 }

@@ -1,8 +1,6 @@
-// Design Law hero card that opens Notes & Files — NbCard + HardShadow, no purple gradients.
-// Flow: show file count + headline → NbButton CTA (badge when newCount > 0).
-// Used by client and trainer home/files tabs. Copy falls back to client-facing defaults when omitted.
-//
-// vocab: NbCard = thick ink border + hard shadow; accents stay on chips/CTA only
+// Notes & Files hero card on home — count, headline, and Open CTA with optional new-file badge.
+// Flow: merge copy defaults → decide badge → Pressable NbCard (label + chip, count, headline, CTA).
+// Used by client and trainer home/files tabs (ClientAppStart and related home pieces).
 
 import React from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
@@ -15,7 +13,8 @@ import { spacing } from '../../look-and-feel/colorPalette';
 // ===== NAMED CONSTANTS =====
 
 const PICTURE_ICON = require('../../assets/icons/handoff/picture.png');
-// Manipulate here: 100+ new files would overflow the badge, so digits stop at 99+.
+
+// Manipulate here: badge digits stop at 99+ so a huge newCount cannot blow the layout
 const NEW_FILE_BADGE_CAP = 99;
 
 const DEFAULT_HEADER_LABEL = 'Files & Documents';
@@ -26,41 +25,115 @@ const DEFAULT_STAT_SINGULAR = 'file';
 const DEFAULT_STAT_PLURAL = 'files';
 const DEFAULT_STAT_SHARED_SUFFIX = 'shared';
 
+const ACCESSIBILITY_SUMMARY_LABEL = 'Your files and notes';
+const ANDROID_RIPPLE_COLOR = 'rgba(0,0,0,0.08)';
+
 // ===== HELPER FUNCTIONS =====
 
-/**
- * vocab/symbol: ?? keeps an explicit empty string if a parent ever passes one.
- */
-function resolvedCardCopy({
-  headerLabel,
-  headline,
-  subhead,
-  ctaLabel,
-  fileCount,
-  statSingular,
-  statPlural,
-  statSharedSuffix,
-}) {
-  const countWord = fileCount === 1 ? statSingular : statPlural;
+function countWordForFileTotal(fileCount, singularWord, pluralWord) {
+  if (fileCount === 1) {
+    return singularWord;
+  }
+  return pluralWord;
+}
+
+function mergeFilesCardCopy(copyParts) {
+  // vocab: ?? = use the right side only when the left is null or undefined (not when "")
+  const headerLabel = copyParts.headerLabel ?? DEFAULT_HEADER_LABEL;
+  const headline = copyParts.headline ?? DEFAULT_HEADLINE;
+  const subhead = copyParts.subhead ?? DEFAULT_SUBHEAD;
+  const ctaLabel = copyParts.ctaLabel ?? DEFAULT_CTA_LABEL;
+  const countWord = countWordForFileTotal(
+    copyParts.fileCount,
+    copyParts.statSingular,
+    copyParts.statPlural,
+  );
+
   return {
-    headerLabel: headerLabel ?? DEFAULT_HEADER_LABEL,
-    headline: headline ?? DEFAULT_HEADLINE,
-    subhead: subhead ?? DEFAULT_SUBHEAD,
-    ctaLabel: ctaLabel ?? DEFAULT_CTA_LABEL,
+    headerLabel,
+    headline,
+    subhead,
+    ctaLabel,
     countWord,
-    sharedSuffix: statSharedSuffix,
+    sharedSuffix: copyParts.statSharedSuffix,
   };
 }
 
-function newFilesBadgeLabel(newCount) {
-  if (newCount > NEW_FILE_BADGE_CAP) return '99+';
+function labelForNewFilesBadge(newCount) {
+  if (newCount > NEW_FILE_BADGE_CAP) {
+    return '99+';
+  }
   return newCount;
+}
+
+function pressableStyleFromState({ pressed }) {
+  if (pressed) {
+    return [styles.pressable, styles.pressablePressed];
+  }
+  return styles.pressable;
+}
+
+function FilesCardHeaderRow({ headerLabel, mutedColor }) {
+  return (
+    <View style={styles.headerRow}>
+      <Text style={[styles.label, { color: mutedColor }]}>{headerLabel}</Text>
+      <NbIconChip source={PICTURE_ICON} index={0} size={40} />
+    </View>
+  );
+}
+
+function FilesCountRow({ fileCount, countWord, sharedSuffix, inkColor, mutedColor }) {
+  const countLine = `${countWord} ${sharedSuffix}`;
+  return (
+    <View style={styles.statRow}>
+      <Text style={[styles.statNumber, { color: inkColor }]}>{fileCount}</Text>
+      <Text style={[styles.statLabel, { color: mutedColor }]}>{countLine}</Text>
+    </View>
+  );
+}
+
+function NewFilesBadgeChip({ badgeLabel, fillColor, borderColor, onFillColor }) {
+  return (
+    <View style={[styles.badge, { backgroundColor: fillColor, borderColor }]}>
+      <Text style={[styles.badgeText, { color: onFillColor }]}>{badgeLabel}</Text>
+    </View>
+  );
+}
+
+function FilesCardCtaBlock({
+  showNewFilesBadge,
+  badgeLabel,
+  ctaLabel,
+  onPress,
+  colors,
+}) {
+  let badgeNode = null;
+  if (showNewFilesBadge) {
+    badgeNode = (
+      <NewFilesBadgeChip
+        badgeLabel={badgeLabel}
+        fillColor={colors.nbFill}
+        borderColor={colors.nbBorder}
+        onFillColor={colors.nbOnFill}
+      />
+    );
+  }
+
+  return (
+    <View style={styles.ctaWrap}>
+      {badgeNode}
+      <NbButton variant="fill" onPress={onPress}>
+        {ctaLabel}
+      </NbButton>
+    </View>
+  );
 }
 
 // ===== MAIN FUNCTION =====
 
 /**
- * Files & notes hero. `newCount` drives the badge; `fileCount` is the big number.
+ * Files & notes hero. `fileCount` is the big number; `newCount` drives the corner badge.
+ * Parent still may pass `isDark` — we ignore it and read theme from useTheme instead.
  * @param {object} props
  */
 export default function FilesHeaderCard({
@@ -76,8 +149,11 @@ export default function FilesHeaderCard({
   statPlural = DEFAULT_STAT_PLURAL,
   statSharedSuffix = DEFAULT_STAT_SHARED_SUFFIX,
 }) {
+  // vocab: useTheme = Design Law light/dark tokens (nbInk, nbMuted, nbFill, …)
   const { colors } = useTheme();
-  const copy = resolvedCardCopy({
+
+  // 1. Merge caller copy with Design Law defaults (empty string from parent still wins).
+  const cardCopy = mergeFilesCardCopy({
     headerLabel,
     headline,
     subhead,
@@ -88,46 +164,57 @@ export default function FilesHeaderCard({
     statSharedSuffix,
   });
 
+  // 2. Name badge decisions before JSX so the tree stays flat.
+  const showNewFilesBadge = newCount > 0;
+  const badgeLabel = labelForNewFilesBadge(newCount);
+
+  // 3. Paint the pressable NbCard hero.
   return (
-    <View style={styles.wrapper} accessibilityRole="summary" accessibilityLabel="Your files and notes">
+    <View
+      style={styles.wrapper}
+      accessibilityRole="summary"
+      accessibilityLabel={ACCESSIBILITY_SUMMARY_LABEL}
+    >
       <Pressable
         onPress={onPress}
-        style={({ pressed }) => [styles.pressable, pressed && styles.pressablePressed]}
-        android_ripple={{ color: 'rgba(0,0,0,0.08)' }}
+        style={pressableStyleFromState}
+        android_ripple={{ color: ANDROID_RIPPLE_COLOR }}
       >
         <NbCard style={styles.inner}>
-          <View style={styles.headerRow}>
-            <Text style={[styles.label, { color: colors.nbMuted }]}>{copy.headerLabel}</Text>
-            <NbIconChip source={PICTURE_ICON} index={0} size={40} />
-          </View>
+          <FilesCardHeaderRow
+            headerLabel={cardCopy.headerLabel}
+            mutedColor={colors.nbMuted}
+          />
 
-          <View style={styles.statRow}>
-            <Text style={[styles.statNumber, { color: colors.nbInk }]}>{fileCount}</Text>
-            <Text style={[styles.statLabel, { color: colors.nbMuted }]}>
-              {copy.countWord} {copy.sharedSuffix}
-            </Text>
-          </View>
+          <FilesCountRow
+            fileCount={fileCount}
+            countWord={cardCopy.countWord}
+            sharedSuffix={cardCopy.sharedSuffix}
+            inkColor={colors.nbInk}
+            mutedColor={colors.nbMuted}
+          />
 
-          <Text style={[styles.headline, { color: colors.nbInk }]}>{copy.headline}</Text>
-          <Text style={[styles.subhead, { color: colors.nbMuted }]}>{copy.subhead}</Text>
+          <Text style={[styles.headline, { color: colors.nbInk }]}>
+            {cardCopy.headline}
+          </Text>
+          <Text style={[styles.subhead, { color: colors.nbMuted }]}>
+            {cardCopy.subhead}
+          </Text>
 
-          <View style={styles.ctaWrap}>
-            {newCount > 0 ? (
-              <View style={[styles.badge, { backgroundColor: colors.nbFill, borderColor: colors.nbBorder }]}>
-                <Text style={[styles.badgeText, { color: colors.nbOnFill }]}>
-                  {newFilesBadgeLabel(newCount)}
-                </Text>
-              </View>
-            ) : null}
-            <NbButton variant="fill" onPress={onPress}>
-              {copy.ctaLabel}
-            </NbButton>
-          </View>
+          <FilesCardCtaBlock
+            showNewFilesBadge={showNewFilesBadge}
+            badgeLabel={badgeLabel}
+            ctaLabel={cardCopy.ctaLabel}
+            onPress={onPress}
+            colors={colors}
+          />
         </NbCard>
       </Pressable>
     </View>
   );
 }
+
+// ===== PLUMBING — skip unless debugging =====
 
 const styles = StyleSheet.create({
   wrapper: {

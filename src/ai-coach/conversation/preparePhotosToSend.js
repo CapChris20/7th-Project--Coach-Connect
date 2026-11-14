@@ -1,112 +1,168 @@
-// Turn local coach-chat photos into the base64 data URLs the coach API accepts.
-// Flow: keep the first image-like attachments → reuse a data URL if we have one →
-// otherwise read the file → drop anything too large.
-// Used by: sendMessageToCoach before the message is posted.
+// Coach chat attachments → API-ready image objects ({ type, name, dataUrl }).
+// Flow: keep image-like rows (max 3) → resolve each data URL → skip oversize payloads → return array.
+// Used by: sendMessageToCoach immediately before the network post. No UI in this file.
 
 import { readAsStringAsync, EncodingType } from 'expo-file-system/legacy';
 
 // ===== NAMED CONSTANTS =====
 
-// Manipulate here: more than three images makes the coach request too large.
-const MAX_IMAGES = 3;
+// Manipulate here: more than three images usually blows the coach request size budget.
+const MAX_PHOTO_ATTACHMENTS = 3;
 
-// Manipulate here: data URLs longer than this are skipped so the request doesn't fail upstream.
-const MAX_DATA_URL_CHARS = 5_500_000;
+// Manipulate here: skip data URLs longer than this so upstream does not reject the body.
+const MAX_ACCEPTABLE_DATA_URL_LENGTH = 5_500_000;
 
-const DEFAULT_IMAGE_MIME_TYPE = 'image/jpeg';
-const DEFAULT_PHOTO_NAME = 'photo.jpg';
-const IMAGE_ATTACHMENT_TYPE = 'image';
-const IMAGE_DATA_URL_PREFIX = 'data:image';
+const MIME_DEFAULT_JPEG = 'image/jpeg';
+const DEFAULT_FILE_NAME = 'photo.jpg';
+const ATTACHMENT_KIND_IMAGE = 'image';
+const DATA_URL_STARTS_WITH_IMAGE = 'data:image';
 
-// Some pickers hand us base64 that already includes a data-URL header for a non-image type.
-// Strip that header before we add the real mime, so we don't end up with two headers.
-const EXISTING_DATA_URL_HEADER = /^data:[^;]+;base64,/;
+// Some pickers embed a fake data-URL header on base64 blobs — strip before we add the real mime.
+const REGEX_STRIP_OLD_DATA_URL_HEADER = /^data:[^;]+;base64,/;
 
 // ===== MAIN FUNCTION =====
 
 /**
- * Convert local coach chat attachments into API image payloads.
- * @param {Array<{id?: string, preview?: string, uri?: string, base64?: string, dataUrl?: string, name?: string, type?: string, mimeType?: string}>} [attachments]
- * @returns {Promise<Array<{ type: 'image', name: string, dataUrl: string }>>}
+ * Convert local coach-chat attachments into API image payloads.
+ * @param {Array} [attachments]
+ * @returns {Promise<Array<{ type: string, name: string, dataUrl: string }>>}
  */
 export async function preparePhotosToSendForApi(attachments = []) {
-  const imageAttachments = imageAttachmentsToSend(attachments);
-  const readyImages = [];
+  // 1. Keep only rows that look like images, capped at MAX_PHOTO_ATTACHMENTS.
+  const imageRows = filterImageAttachmentsForSend(attachments);
 
-  for (const attachment of imageAttachments) {
-    const photoPayload = await photoPayloadFromAttachment(attachment);
-    if (photoPayload) readyImages.push(photoPayload);
+  // 2. Resolve each row to { type, name, dataUrl } or drop it on error / oversize.
+  const apiReadyPhotos = [];
+  for (const oneAttachment of imageRows) {
+    const onePayload = await buildOnePhotoPayloadForApi(oneAttachment);
+    if (onePayload) {
+      apiReadyPhotos.push(onePayload);
+    }
   }
 
-  return readyImages;
+  return apiReadyPhotos;
 }
 
-// ===== HELPER FUNCTIONS =====
-// PLUMBING — skip unless debugging
+// ===== PLUMBING — skip unless debugging =====
 
-function isImageDataUrl(value) {
-  return String(value).startsWith(IMAGE_DATA_URL_PREFIX);
-}
-
-function dataUrlFromAttachment(attachment) {
-  if (attachment?.dataUrl && isImageDataUrl(attachment.dataUrl)) {
-    return String(attachment.dataUrl);
+function filterImageAttachmentsForSend(attachments) {
+  let list = attachments;
+  if (!Array.isArray(attachments)) {
+    list = [];
   }
-  const rawBase64 = attachment?.base64;
-  if (!rawBase64) return null;
-  if (isImageDataUrl(rawBase64)) return String(rawBase64);
-  const mimeType = attachment?.mimeType || DEFAULT_IMAGE_MIME_TYPE;
-  const base64Payload = String(rawBase64).replace(EXISTING_DATA_URL_HEADER, '');
-  return `data:${mimeType};base64,${base64Payload}`;
+
+  const imageRows = [];
+  for (const oneAttachment of list) {
+    if (!rowCountsAsSendableImage(oneAttachment)) {
+      continue;
+    }
+    imageRows.push(oneAttachment);
+    if (imageRows.length >= MAX_PHOTO_ATTACHMENTS) {
+      break;
+    }
+  }
+  return imageRows;
 }
 
-async function readFileAsDataUrl(fileUri, mimeType = DEFAULT_IMAGE_MIME_TYPE) {
-  if (!fileUri) return null;
-  // vocab: EncodingType.Base64 reads the file as text-safe base64, not raw bytes.
-  const base64 = await readAsStringAsync(fileUri, { encoding: EncodingType.Base64 });
-  if (!base64) return null;
-  return `data:${mimeType};base64,${base64}`;
+function rowCountsAsSendableImage(attachment) {
+  if (!attachment) {
+    return false;
+  }
+  const markedImage = attachment.type === ATTACHMENT_KIND_IMAGE;
+  const hasPreview = Boolean(attachment.preview);
+  const hasBase64 = Boolean(attachment.base64);
+  const hasDataUrl = Boolean(attachment.dataUrl);
+  const hasInlineImageData = hasPreview || hasBase64 || hasDataUrl;
+  return markedImage || hasInlineImageData;
 }
 
-function isSendableImageAttachment(attachment) {
-  if (!attachment) return false;
-  const isMarkedAsImage = attachment.type === IMAGE_ATTACHMENT_TYPE;
-  const hasImagePayload = Boolean(attachment.preview || attachment.base64 || attachment.dataUrl);
-  return isMarkedAsImage || hasImagePayload;
+function valueIsImageDataUrl(maybeUrl) {
+  return String(maybeUrl).startsWith(DATA_URL_STARTS_WITH_IMAGE);
 }
 
-function isDataUrlSmallEnoughToSend(dataUrl) {
-  if (!dataUrl) return false;
-  return dataUrl.length <= MAX_DATA_URL_CHARS;
+function dataUrlLengthIsWithinLimit(dataUrl) {
+  if (!dataUrl) {
+    return false;
+  }
+  return dataUrl.length <= MAX_ACCEPTABLE_DATA_URL_LENGTH;
 }
 
-async function resolveDataUrlForAttachment(attachment) {
-  let dataUrl = dataUrlFromAttachment(attachment);
+function dataUrlAlreadyOnAttachment(attachment) {
+  if (!attachment) {
+    return null;
+  }
+
+  const fromDataUrlField = attachment.dataUrl;
+  if (fromDataUrlField && valueIsImageDataUrl(fromDataUrlField)) {
+    return String(fromDataUrlField);
+  }
+
+  const fromBase64Field = attachment.base64;
+  if (!fromBase64Field) {
+    return null;
+  }
+
+  if (valueIsImageDataUrl(fromBase64Field)) {
+    return String(fromBase64Field);
+  }
+
+  const mimeType = attachment.mimeType || MIME_DEFAULT_JPEG;
+  const base64BodyOnly = String(fromBase64Field).replace(
+    REGEX_STRIP_OLD_DATA_URL_HEADER,
+    '',
+  );
+  return `data:${mimeType};base64,${base64BodyOnly}`;
+}
+
+async function readFileUriAsJpegDataUrl(fileUri, mimeType = MIME_DEFAULT_JPEG) {
+  if (!fileUri) {
+    return null;
+  }
+  // vocab: EncodingType.Base64 = expo-file-system reads the file as base64 text.
+  const base64FromDisk = await readAsStringAsync(fileUri, {
+    encoding: EncodingType.Base64,
+  });
+  if (!base64FromDisk) {
+    return null;
+  }
+  return `data:${mimeType};base64,${base64FromDisk}`;
+}
+
+async function resolveFinalDataUrlForAttachment(attachment) {
+  let dataUrl = dataUrlAlreadyOnAttachment(attachment);
+
   if (!dataUrl && attachment.preview) {
-    dataUrl = await readFileAsDataUrl(attachment.preview, attachment.mimeType || DEFAULT_IMAGE_MIME_TYPE);
+    const mimeType = attachment.mimeType || MIME_DEFAULT_JPEG;
+    dataUrl = await readFileUriAsJpegDataUrl(attachment.preview, mimeType);
   }
+
   if (!dataUrl && attachment.uri) {
-    dataUrl = await readFileAsDataUrl(attachment.uri, attachment.mimeType || DEFAULT_IMAGE_MIME_TYPE);
+    const mimeType = attachment.mimeType || MIME_DEFAULT_JPEG;
+    dataUrl = await readFileUriAsJpegDataUrl(attachment.uri, mimeType);
   }
+
   return dataUrl;
 }
 
-function imageAttachmentsToSend(attachments) {
-  const attachmentList = Array.isArray(attachments) ? attachments : [];
-  return attachmentList.filter(isSendableImageAttachment).slice(0, MAX_IMAGES);
-}
-
-async function photoPayloadFromAttachment(attachment) {
+async function buildOnePhotoPayloadForApi(attachment) {
   try {
-    const dataUrl = await resolveDataUrlForAttachment(attachment);
-    if (!isDataUrlSmallEnoughToSend(dataUrl)) return null;
+    const dataUrl = await resolveFinalDataUrlForAttachment(attachment);
+    if (!dataUrlLengthIsWithinLimit(dataUrl)) {
+      return null;
+    }
+
+    const fileName = attachment.name || DEFAULT_FILE_NAME;
     return {
-      type: IMAGE_ATTACHMENT_TYPE,
-      name: attachment.name || DEFAULT_PHOTO_NAME,
+      type: ATTACHMENT_KIND_IMAGE,
+      name: fileName,
       dataUrl,
     };
   } catch (attachmentError) {
-    console.warn('[preparePhotosToSend] skip attachment:', attachmentError?.message || attachmentError);
+    let errorMessage = attachmentError;
+    if (attachmentError && attachmentError.message) {
+      errorMessage = attachmentError.message;
+    }
+    console.warn('[preparePhotosToSend] skip attachment:', errorMessage);
     return null;
   }
 }

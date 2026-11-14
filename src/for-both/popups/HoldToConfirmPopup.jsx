@@ -1,6 +1,7 @@
 // Design Law hold-to-confirm sheet — destructive actions need a full press-and-hold.
 // Flow: open sheet → press Hold → bar fills with nbFill → onHoldComplete; release early resets.
 // Used by: Settings delete account (and any other irreversible confirm). Theme tokens only.
+// Read order: constants → layout chunks → HoldToConfirmPopup → PLUMBING (animation helpers).
 
 import React, { useRef, useEffect, useCallback, useState } from 'react';
 import {
@@ -21,63 +22,110 @@ import { nb, spacing } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
+// Manipulate here: how long the user must hold before the action fires (milliseconds)
 const DEFAULT_HOLD_DURATION_MS = 1200;
+// Manipulate here: how fast the bar drains when they let go early
 const RESET_DURATION_MS = 180;
 const DEFAULT_PILL_LABEL = 'Hold to confirm';
 const DEFAULT_TITLE = 'Confirm';
 const DEFAULT_WARNING_PILL = 'Cannot be undone.';
+const HOLD_FAILED_ALERT_TITLE = 'Could not complete';
 const FILL_COMPLETE = 1;
 const FILL_EMPTY = 0;
+const TRACK_OPACITY_IDLE = 1;
+const TRACK_OPACITY_SUBMITTING = 0.65;
+const TRACK_OPACITY_PRESSED = 0.92;
 // Manipulate here: hold track height / corner radius
 const TRACK_HEIGHT = 52;
 const TRACK_RADIUS = 10;
 
 // ===== HELPER FUNCTIONS =====
 
-function completeErrorMessage(error) {
-  return error?.message || error?.code || 'Something went wrong. Try again.';
+// Grab bar, warning pill, title, and optional body copy.
+function HoldConfirmCopyBlock({ colors, warningPill, title, message }) {
+  const showWarningPill = Boolean(warningPill);
+  const showMessage = Boolean(message);
+
+  return (
+    <>
+      <View style={styles.handleWrap}>
+        <View style={[styles.handle, { backgroundColor: colors.nbBorder }]} />
+      </View>
+
+      {showWarningPill ? (
+        <View style={styles.warningRow}>
+          <NbPill variant="energy">{warningPill}</NbPill>
+        </View>
+      ) : null}
+
+      <Text style={[styles.title, { color: colors.nbInk }]}>{title}</Text>
+      {showMessage ? (
+        <Text style={[styles.message, { color: colors.nbMuted }]}>{message}</Text>
+      ) : null}
+    </>
+  );
 }
 
-function stopHoldAnimation(animRef, runningRef, progress) {
-  animRef.current?.stop?.();
-  animRef.current = null;
-  runningRef.current = false;
-  progress.setValue(FILL_EMPTY);
+// Press-and-hold track: solid nbFill width animation (Design Law — no gradient Save bar).
+function HoldConfirmTrack({
+  colors,
+  pillLabel,
+  submitting,
+  fillWidth,
+  onPressIn,
+  onPressOut,
+}) {
+  const trackOpacity = submitting ? TRACK_OPACITY_SUBMITTING : TRACK_OPACITY_IDLE;
+
+  return (
+    <Pressable
+      onPressIn={onPressIn}
+      onPressOut={onPressOut}
+      disabled={submitting}
+      style={({ pressed }) =>
+        holdTrackStyleList({
+          colors,
+          trackOpacity,
+          submitting,
+          pressed,
+        })
+      }
+      accessibilityRole="button"
+      accessibilityLabel={pillLabel}
+    >
+      <Animated.View
+        style={[
+          styles.fillWrap,
+          {
+            width: fillWidth,
+            backgroundColor: colors.nbFill,
+          },
+        ]}
+      />
+      <View style={styles.holdLabelWrap} pointerEvents="none">
+        {submitting ? (
+          <ActivityIndicator color={colors.nbInk} />
+        ) : (
+          <Text style={[styles.holdLabel, { color: colors.nbInk }]}>{pillLabel}</Text>
+        )}
+      </View>
+    </Pressable>
+  );
 }
 
-// vocab: Animated.timing fills 0→1 over holdDurationMs. useNativeDriver: false because we animate width %.
-function startHoldFill({ progress, holdDurationMs, animRef, runningRef, holdLockedRef, runComplete }) {
-  runningRef.current = true;
-  const anim = Animated.timing(progress, {
-    toValue: FILL_COMPLETE,
-    duration: holdDurationMs,
-    useNativeDriver: false,
-  });
-  animRef.current = anim;
-  anim.start(({ finished }) => {
-    animRef.current = null;
-    if (!finished || !runningRef.current) return;
-    runningRef.current = false;
-    holdLockedRef.current = true;
-    void runComplete();
-  });
-}
+function holdTrackStyleList({ colors, trackOpacity, submitting, pressed }) {
+  let opacityForPress = trackOpacity;
+  if (!submitting && pressed) opacityForPress = TRACK_OPACITY_PRESSED;
 
-function cancelHoldFill({ progress, animRef, runningRef }) {
-  animRef.current?.stop();
-  animRef.current = null;
-  runningRef.current = false;
-  Animated.timing(progress, {
-    toValue: FILL_EMPTY,
-    duration: RESET_DURATION_MS,
-    useNativeDriver: false,
-  }).start();
-}
-
-function holdPillOpacity(isSubmitting, isPressed) {
-  if (isSubmitting) return 0.65;
-  if (isPressed) return 0.92;
-  return 1;
+  return [
+    styles.holdTrack,
+    {
+      opacity: opacityForPress,
+      borderColor: colors.nbBorder,
+      backgroundColor: colors.nbSurface,
+      shadowColor: colors.nbShadow,
+    },
+  ];
 }
 
 // ===== MAIN FUNCTION =====
@@ -85,7 +133,7 @@ function holdPillOpacity(isSubmitting, isPressed) {
 /**
  * Bottom sheet: warning pill + title + hold track (solid fill, not a gradient Save bar).
  * `onHoldComplete` should throw on failure so the bar can reset.
- * @param {object} props
+ * Unused gradient / track / isDark props stay for call-site compat — Design Law fill uses nbFill.
  */
 export default function HoldToConfirmPopup({
   visible,
@@ -93,7 +141,6 @@ export default function HoldToConfirmPopup({
   title = DEFAULT_TITLE,
   message = '',
   holdDurationMs = DEFAULT_HOLD_DURATION_MS,
-  // kept for call-site compat — Design Law fill uses nbFill, never a pink/purple bar
   barGradient: _barGradient,
   trackColor: _trackColor,
   pillLabel = DEFAULT_PILL_LABEL,
@@ -113,6 +160,7 @@ export default function HoldToConfirmPopup({
     stopHoldAnimation(animRef, runningRef, progress);
   }, [progress]);
 
+  // When the sheet hides, drain the bar and unlock so the next open starts fresh.
   useEffect(() => {
     if (!visible) {
       resetBar();
@@ -122,13 +170,13 @@ export default function HoldToConfirmPopup({
   }, [visible, resetBar]);
 
   const runComplete = useCallback(async () => {
-    // 1. Lock so a second hold cannot fire while the action runs.
+    // 1. Lock UI while the destructive action runs.
     setSubmitting(true);
     try {
       await onHoldComplete();
       onClose();
     } catch (error) {
-      Alert.alert('Could not complete', String(completeErrorMessage(error)));
+      Alert.alert(HOLD_FAILED_ALERT_TITLE, String(messageFromHoldError(error)));
       resetBar();
     } finally {
       setSubmitting(false);
@@ -160,72 +208,45 @@ export default function HoldToConfirmPopup({
     outputRange: ['0%', '100%'],
   });
 
+  const sheetBottomPadding = Math.max(insets.bottom, spacing.md) + spacing.sm;
+  const canDismissFromScrim = !submitting;
+  const dismissHandler = canDismissFromScrim ? onClose : undefined;
+  const sheetSurfaceStyle = {
+    backgroundColor: colors.nbSurface,
+    borderColor: colors.nbBorder,
+    paddingBottom: sheetBottomPadding,
+  };
+
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={submitting ? undefined : onClose}>
-      <Pressable style={styles.scrim} onPress={submitting ? undefined : onClose}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={dismissHandler}
+    >
+      <Pressable style={styles.scrim} onPress={dismissHandler}>
         <Pressable
-          style={[
-            styles.sheet,
-            {
-              backgroundColor: colors.nbSurface,
-              borderColor: colors.nbBorder,
-              paddingBottom: Math.max(insets.bottom, spacing.md) + spacing.sm,
-            },
-          ]}
+          style={[styles.sheet, sheetSurfaceStyle]}
           onPress={(event) => event.stopPropagation?.()}
         >
-          {/* Design Law sheet grab bar */}
-          <View style={styles.handleWrap}>
-            <View style={[styles.handle, { backgroundColor: colors.nbBorder }]} />
-          </View>
+          <HoldConfirmCopyBlock
+            colors={colors}
+            warningPill={warningPill}
+            title={title}
+            message={message}
+          />
 
-          {/* Warning accent pill — Design Law allows small gradient pills, not Save buttons */}
-          {warningPill ? (
-            <View style={styles.warningRow}>
-              <NbPill variant="energy">{warningPill}</NbPill>
-            </View>
-          ) : null}
-
-          <Text style={[styles.title, { color: colors.nbInk }]}>{title}</Text>
-          {message ? <Text style={[styles.message, { color: colors.nbMuted }]}>{message}</Text> : null}
-
-          {/* Hold track: press-and-hold fills with solid nbFill (no brand gradient bar) */}
-          <Pressable
+          <HoldConfirmTrack
+            colors={colors}
+            pillLabel={pillLabel}
+            submitting={submitting}
+            fillWidth={fillWidth}
             onPressIn={onPressIn}
             onPressOut={onPressOut}
-            disabled={submitting}
-            style={({ pressed }) => [
-              styles.holdTrack,
-              {
-                opacity: holdPillOpacity(submitting, pressed),
-                borderColor: colors.nbBorder,
-                backgroundColor: colors.nbSurface,
-                shadowColor: colors.nbShadow,
-              },
-            ]}
-            accessibilityRole="button"
-            accessibilityLabel={pillLabel}
-          >
-            <Animated.View
-              style={[
-                styles.fillWrap,
-                {
-                  width: fillWidth,
-                  backgroundColor: colors.nbFill,
-                },
-              ]}
-            />
-            <View style={styles.holdLabelWrap} pointerEvents="none">
-              {submitting ? (
-                <ActivityIndicator color={colors.nbInk} />
-              ) : (
-                <Text style={[styles.holdLabel, { color: colors.nbInk }]}>{pillLabel}</Text>
-              )}
-            </View>
-          </Pressable>
+          />
 
           <View style={styles.cancelWrap}>
-            <NbButton variant="ghost" onPress={submitting ? undefined : onClose} disabled={submitting}>
+            <NbButton variant="ghost" onPress={dismissHandler} disabled={submitting}>
               Cancel
             </NbButton>
           </View>
@@ -233,6 +254,58 @@ export default function HoldToConfirmPopup({
       </Pressable>
     </Modal>
   );
+}
+
+// ===== PLUMBING — skip unless debugging hold animation or error strings =====
+
+function messageFromHoldError(error) {
+  return error?.message || error?.code || 'Something went wrong. Try again.';
+}
+
+function stopHoldAnimation(animRef, runningRef, progress) {
+  animRef.current?.stop?.();
+  animRef.current = null;
+  runningRef.current = false;
+  progress.setValue(FILL_EMPTY);
+}
+
+// vocab: Animated.timing fills 0→1 over holdDurationMs. useNativeDriver: false because we animate width %.
+function startHoldFill({ progress, holdDurationMs, animRef, runningRef, holdLockedRef, runComplete }) {
+  runningRef.current = true;
+  const fillAnimation = Animated.timing(progress, {
+    toValue: FILL_COMPLETE,
+    duration: holdDurationMs,
+    useNativeDriver: false,
+  });
+  animRef.current = fillAnimation;
+  fillAnimation.start(({ finished }) => {
+    finishHoldFillIfComplete({
+      finished,
+      animRef,
+      runningRef,
+      holdLockedRef,
+      runComplete,
+    });
+  });
+}
+
+function finishHoldFillIfComplete({ finished, animRef, runningRef, holdLockedRef, runComplete }) {
+  animRef.current = null;
+  if (!finished || !runningRef.current) return;
+  runningRef.current = false;
+  holdLockedRef.current = true;
+  void runComplete();
+}
+
+function cancelHoldFill({ progress, animRef, runningRef }) {
+  animRef.current?.stop();
+  animRef.current = null;
+  runningRef.current = false;
+  Animated.timing(progress, {
+    toValue: FILL_EMPTY,
+    duration: RESET_DURATION_MS,
+    useNativeDriver: false,
+  }).start();
 }
 
 const styles = StyleSheet.create({

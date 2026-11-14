@@ -1,9 +1,6 @@
 // Design Law certification upload sheet for trainer Edit profile.
 // Flow: open sheet → pick file → upload + optional AI verify → parent refreshes list.
 // Used by MyProfileScreen “Add Certification” (replaces bare inline button-only chrome).
-//
-// vocab: DocumentPicker = system file picker; uploadTrainerCertificationSheet writes Storage + user doc
-// Manipulate here: helper copy, max size messaging (enforced in pick helper)
 
 import React from 'react';
 import { ActivityIndicator, Text, View, StyleSheet } from 'react-native';
@@ -15,13 +12,109 @@ import { nb, spacing } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
-const TITLE = 'Add certification';
-const BODY =
+const SHEET_TITLE = 'Add certification';
+const SHEET_BODY =
   'Upload a PDF or photo of your cert. We check images automatically when we can; PDFs go to manual review.';
+// Manipulate here: progress bar never collapses to 0-width while upload is running
+const PROGRESS_MIN_WIDTH_PERCENT = 4;
+const PROGRESS_MAX_PERCENT = 100;
+const UPLOAD_ICON_NAME = 'cloud-upload-outline';
+const UPLOAD_ICON_SIZE = 28;
 
-// ===== MAIN =====
+// ===== HELPER FUNCTIONS =====
+
+function clampUploadPercent(percentValue) {
+  const asNumber = Number(percentValue);
+  if (!Number.isFinite(asNumber)) return 0;
+  if (asNumber < 0) return 0;
+  if (asNumber > PROGRESS_MAX_PERCENT) return PROGRESS_MAX_PERCENT;
+  return asNumber;
+}
+
+function barWidthPercentFromProgress(progressPercent) {
+  const safePercent = clampUploadPercent(progressPercent);
+  if (safePercent < PROGRESS_MIN_WIDTH_PERCENT) return PROGRESS_MIN_WIDTH_PERCENT;
+  return safePercent;
+}
+
+function UploadProgressPanel({ progressPercent, inkColor, mutedColor, borderColor, fillColor }) {
+  const safePercent = clampUploadPercent(progressPercent);
+  const barWidthPercent = barWidthPercentFromProgress(progressPercent);
+  const progressLabel = `Uploading… ${safePercent}%`;
+
+  return (
+    <View style={styles.progressBlock}>
+      <Text style={[styles.progressLabel, { color: mutedColor }]}>{progressLabel}</Text>
+      <View style={[styles.track, { backgroundColor: borderColor }]}>
+        <View
+          style={[
+            styles.fill,
+            {
+              width: `${barWidthPercent}%`,
+              backgroundColor: fillColor,
+            },
+          ]}
+        />
+      </View>
+      <ActivityIndicator color={inkColor} style={styles.progressSpinner} />
+    </View>
+  );
+}
+
+function UploadIdleActions({ onClose, onPickUpload }) {
+  return (
+    <View style={styles.row}>
+      <NbButton variant="plain" onPress={onClose} style={styles.half}>
+        Cancel
+      </NbButton>
+      <NbButton variant="fill" onPress={onPickUpload} style={styles.half}>
+        Choose file
+      </NbButton>
+    </View>
+  );
+}
+
+function UploadSheetIntro({ borderColor, chipBackground, inkColor, mutedColor }) {
+  return (
+    <>
+      <View
+        style={[
+          styles.iconBox,
+          { borderColor, backgroundColor: chipBackground },
+        ]}
+      >
+        <Ionicons name={UPLOAD_ICON_NAME} size={UPLOAD_ICON_SIZE} color={inkColor} />
+      </View>
+      <Text style={[styles.copy, { color: mutedColor }]}>{SHEET_BODY}</Text>
+    </>
+  );
+}
+
+function bodyActionsForUploadState({
+  showUploadProgress,
+  onClose,
+  onPickUpload,
+  progressPercent,
+  colors,
+}) {
+  if (showUploadProgress) {
+    return (
+      <UploadProgressPanel
+        progressPercent={progressPercent}
+        inkColor={colors.nbInk}
+        mutedColor={colors.nbMuted}
+        borderColor={colors.nbBorder}
+        fillColor={colors.nbFill}
+      />
+    );
+  }
+  return <UploadIdleActions onClose={onClose} onPickUpload={onPickUpload} />;
+}
+
+// ===== MAIN FUNCTION =====
 
 /**
+ * Certification upload sheet — file picker CTA and upload progress UI.
  * @param {{
  *   visible: boolean,
  *   onClose: Function,
@@ -39,51 +132,33 @@ export default function CertificationUploadSheet({
 }) {
   const { colors } = useTheme();
 
-  return (
-    <NbSheet visible={visible} onClose={onClose} title={TITLE}>
-      <View style={styles.body}>
-        <View
-          style={[
-            styles.iconBox,
-            { borderColor: colors.nbBorder, backgroundColor: colors.nbSurfaceChip },
-          ]}
-        >
-          <Ionicons name="cloud-upload-outline" size={28} color={colors.nbInk} />
-        </View>
-        <Text style={[styles.copy, { color: colors.nbMuted }]}>{BODY}</Text>
+  // 1. Decide progress panel vs Cancel / Choose file row.
+  const showUploadProgress = uploading === true;
+  const bodyActions = bodyActionsForUploadState({
+    showUploadProgress,
+    onClose,
+    onPickUpload,
+    progressPercent: progress,
+    colors,
+  });
 
-        {uploading ? (
-          <View style={styles.progressBlock}>
-            <Text style={[styles.progressLabel, { color: colors.nbMuted }]}>
-              {`Uploading… ${Math.max(0, Math.min(100, progress))}%`}
-            </Text>
-            <View style={[styles.track, { backgroundColor: colors.nbBorder }]}>
-              <View
-                style={[
-                  styles.fill,
-                  {
-                    width: `${Math.max(4, Math.min(100, progress))}%`,
-                    backgroundColor: colors.nbFill,
-                  },
-                ]}
-              />
-            </View>
-            <ActivityIndicator color={colors.nbInk} style={{ marginTop: 8 }} />
-          </View>
-        ) : (
-          <View style={styles.row}>
-            <NbButton variant="plain" onPress={onClose} style={styles.half}>
-              Cancel
-            </NbButton>
-            <NbButton variant="fill" onPress={onPickUpload} style={styles.half}>
-              Choose file
-            </NbButton>
-          </View>
-        )}
+  // 2. Sheet chrome + intro + body actions.
+  return (
+    <NbSheet visible={visible} onClose={onClose} title={SHEET_TITLE}>
+      <View style={styles.body}>
+        <UploadSheetIntro
+          borderColor={colors.nbBorder}
+          chipBackground={colors.nbSurfaceChip}
+          inkColor={colors.nbInk}
+          mutedColor={colors.nbMuted}
+        />
+        {bodyActions}
       </View>
     </NbSheet>
   );
 }
+
+// ===== PLUMBING — skip unless debugging =====
 
 const styles = StyleSheet.create({
   body: {
@@ -119,4 +194,5 @@ const styles = StyleSheet.create({
   fill: {
     height: '100%',
   },
+  progressSpinner: { marginTop: 8 },
 });

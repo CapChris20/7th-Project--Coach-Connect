@@ -1,6 +1,6 @@
-// Design Law bottom nav primitive — soft active chip on icon only, gradient + in the middle.
-// Flow: tabs → active chip + bold label → optional centerPlus. Production shell uses BottomMenuBar.js
-// (same chrome + AsyncStorage active key + AI slot). Keep this for previews / simple embeds.
+// Design Law bottom nav dock — soft active chip on the icon only, gradient + in the middle.
+// Flow: theme + safe area → split tabs left/right of + → paint each tab → optional floating plus.
+// Used by: previews / simple embeds. Production shell is BottomMenuBar.js (same chrome + storage).
 //
 // Pass ink/muted outline icons as tab.icon — the + is the only gradient accent on this dock.
 // vocab: soft chip = nbSoft fill + border behind the glyph only (never a black slab over the label)
@@ -17,13 +17,159 @@ import HardShadow from './HardShadow';
 
 // ===== NAMED CONSTANTS =====
 
+// Manipulate here: diameter of the floating +; keep matched to BottomMenuBar.js
 const PLUS_SIZE = 58;
+// Manipulate here: how far the + hangs above the dock top edge
 const PLUS_OVERHANG = 8;
+// Manipulate here: padding inside active soft chip AND idle icon so layout does not jump
 const ICON_CHIP_PAD = 8;
+const ACTIVE_CHIP_RADIUS = 12;
+const PLUS_ICON_SIZE = 30;
+const PLUS_PRESSED_OPACITY = 0.92;
+
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * Split the tab list so half sit left of the center +, half sit right.
+ * Odd counts put the extra tab on the left (same as BottomMenuBar handoff).
+ */
+function splitTabsAroundMiddle(tabList) {
+  const safeTabs = tabList || [];
+  const splitIndex = Math.ceil(safeTabs.length / 2);
+  const leftTabs = safeTabs.slice(0, splitIndex);
+  const rightTabs = safeTabs.slice(splitIndex);
+  return { leftTabs, rightTabs };
+}
+
+function centerPlusShouldShow(onPlusPress) {
+  return typeof onPlusPress === 'function';
+}
+
+function labelColorForTab(isActive, colors) {
+  if (isActive) {
+    return colors.nbInk;
+  }
+  return colors.nbMuted;
+}
+
+// Active tab: soft chip + HardShadow behind the glyph only (label stays outside).
+function ActiveTabIcon({ iconNode, softFillColor, borderColor }) {
+  return (
+    <HardShadow offset={nb.shadowOffsetSmall} radius={ACTIVE_CHIP_RADIUS}>
+      <View
+        style={[
+          styles.activeChip,
+          {
+            backgroundColor: softFillColor,
+            borderColor,
+            padding: ICON_CHIP_PAD,
+          },
+        ]}
+      >
+        {iconNode}
+      </View>
+    </HardShadow>
+  );
+}
+
+// Idle tab: same padding as the chip so the icon does not jump when selection changes.
+function IdleTabIcon({ iconNode }) {
+  return <View style={styles.iconIdle}>{iconNode}</View>;
+}
+
+/**
+ * One dock tab: icon column (chip or idle) then label under it.
+ */
+function BottomNavTab({ tab, isActive, onSelect, colors }) {
+  const labelColor = labelColorForTab(isActive, colors);
+  const labelWeightStyle = isActive ? styles.activeLabel : null;
+
+  // Name the icon branch before JSX so the Pressable stays flat.
+  let iconNode;
+  if (isActive) {
+    iconNode = (
+      <ActiveTabIcon
+        iconNode={tab.icon}
+        softFillColor={colors.nbSoft}
+        borderColor={colors.nbBorder}
+      />
+    );
+  } else {
+    iconNode = <IdleTabIcon iconNode={tab.icon} />;
+  }
+
+  function handleTabPress() {
+    onSelect(tab.id);
+  }
+
+  return (
+    <Pressable onPress={handleTabPress} style={styles.tab}>
+      <View style={styles.iconCol}>{iconNode}</View>
+      <Text
+        style={[styles.label, { color: labelColor }, labelWeightStyle]}
+        numberOfLines={1}
+      >
+        {tab.label}
+      </Text>
+    </Pressable>
+  );
+}
+
+/**
+ * Center gradient + button — only gradient accent on this primitive dock.
+ * vocab: LinearGradient = Expo ramp fill; navAccentGradient is Design Law nav accent colors
+ */
+function BottomNavCenterPlus({ onPlusPress, colors }) {
+  const plusBorderStyle = { borderColor: colors.nbBorder };
+  const plusRadius = PLUS_SIZE / 2;
+
+  function pressOpacityStyle({ pressed }) {
+    if (pressed) {
+      return { opacity: PLUS_PRESSED_OPACITY };
+    }
+    return { opacity: 1 };
+  }
+
+  return (
+    <View style={styles.plusSlot}>
+      <HardShadow offset={nb.shadowOffsetSmall} radius={plusRadius} style={styles.plusShadow}>
+        <Pressable
+          onPress={onPlusPress}
+          accessibilityRole="button"
+          accessibilityLabel="Add"
+          style={pressOpacityStyle}
+        >
+          <LinearGradient
+            colors={navAccentGradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={[styles.plusBtn, plusBorderStyle]}
+          >
+            <Ionicons name="add" size={PLUS_ICON_SIZE} color={colors.nbInk} />
+          </LinearGradient>
+        </Pressable>
+      </HardShadow>
+    </View>
+  );
+}
+
+function paintTabList(tabList, activeId, onSelect, colors) {
+  return tabList.map((tab) => (
+    <BottomNavTab
+      key={tab.id}
+      tab={tab}
+      isActive={activeId === tab.id}
+      onSelect={onSelect}
+      colors={colors}
+    />
+  ));
+}
 
 // ===== MAIN FUNCTION =====
 
 /**
+ * Soft-chip bottom nav with optional floating center +.
+ *
  * @param {{
  *   tabs: Array<{id: string, icon: React.ReactNode, label: string}>,
  *   active: string,
@@ -33,93 +179,47 @@ const ICON_CHIP_PAD = 8;
  * }} props
  */
 export default function NbBottomNav({ tabs, active, onSelect, onPlusPress, style }) {
+  // vocab: useTheme = Design Law light/dark color bag for this screen
   const { colors } = useTheme();
+  // vocab: useSafeAreaInsets = home-indicator / notch padding from the device
   const insets = useSafeAreaInsets();
-  // Split around the center + when the caller provides onPlusPress.
-  const mid = Math.ceil((tabs?.length || 0) / 2);
-  const left = (tabs || []).slice(0, mid);
-  const right = (tabs || []).slice(mid);
-  const showPlus = typeof onPlusPress === 'function';
 
-  const renderTab = (tab) => {
-    const isActive = active === tab.id;
-    return (
-      <Pressable key={tab.id} onPress={() => onSelect(tab.id)} style={styles.tab}>
-        <View style={styles.iconCol}>
-          {isActive ? (
-            <HardShadow offset={nb.shadowOffsetSmall} radius={12}>
-              <View
-                style={[
-                  styles.activeChip,
-                  {
-                    backgroundColor: colors.nbSoft,
-                    borderColor: colors.nbBorder,
-                    padding: ICON_CHIP_PAD,
-                  },
-                ]}
-              >
-                {tab.icon}
-              </View>
-            </HardShadow>
-          ) : (
-            <View style={styles.iconIdle}>{tab.icon}</View>
-          )}
-        </View>
-        <Text
-          style={[
-            styles.label,
-            { color: isActive ? colors.nbInk : colors.nbMuted },
-            isActive && styles.activeLabel,
-          ]}
-          numberOfLines={1}
-        >
-          {tab.label}
-        </Text>
-      </Pressable>
-    );
+  // 1. Split tabs around the middle so the + can sit between left and right groups.
+  const { leftTabs, rightTabs } = splitTabsAroundMiddle(tabs);
+  const showCenterPlus = centerPlusShouldShow(onPlusPress);
+
+  // 2. Pad the dock bottom by at least spacing.sm so labels clear the home indicator.
+  // Manipulate here: spacing.sm floor — raise if labels clip on thick home bars
+  const bottomInsetPadding = Math.max(insets.bottom, spacing.sm);
+
+  // 3. Theme surface + top border + caller style on the outer row.
+  const dockSurfaceStyle = {
+    backgroundColor: colors.nbSurface,
+    borderTopColor: colors.nbBorder,
+    paddingBottom: bottomInsetPadding,
   };
 
+  // 4. Paint left tabs, optional center +, right tabs — same order as BottomMenuBar handoff.
+  const leftTabNodes = paintTabList(leftTabs, active, onSelect, colors);
+  const rightTabNodes = paintTabList(rightTabs, active, onSelect, colors);
+
+  let centerPlusNode = null;
+  if (showCenterPlus) {
+    centerPlusNode = (
+      <BottomNavCenterPlus onPlusPress={onPlusPress} colors={colors} />
+    );
+  }
+
   return (
-    <View
-      style={[
-        styles.container,
-        {
-          backgroundColor: colors.nbSurface,
-          borderTopColor: colors.nbBorder,
-          paddingBottom: Math.max(insets.bottom, spacing.sm),
-        },
-        style,
-      ]}
-    >
-      {left.map(renderTab)}
-      {showPlus ? (
-        <View style={styles.plusSlot}>
-          <HardShadow offset={nb.shadowOffsetSmall} radius={PLUS_SIZE / 2} style={styles.plusShadow}>
-            <Pressable
-              onPress={onPlusPress}
-              accessibilityRole="button"
-              accessibilityLabel="Add"
-              style={({ pressed }) => [{ opacity: pressed ? 0.92 : 1 }]}
-            >
-              <LinearGradient
-                colors={navAccentGradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={[
-                  styles.plusBtn,
-                  { borderColor: colors.nbBorder },
-                ]}
-              >
-                <Ionicons name="add" size={30} color={colors.nbInk} />
-              </LinearGradient>
-            </Pressable>
-          </HardShadow>
-        </View>
-      ) : null}
-      {right.map(renderTab)}
+    <View style={[styles.container, dockSurfaceStyle, style]}>
+      {leftTabNodes}
+      {centerPlusNode}
+      {rightTabNodes}
     </View>
   );
 }
+
+// ===== PLUMBING — skip unless debugging =====
 
 const styles = StyleSheet.create({
   container: {
@@ -144,7 +244,7 @@ const styles = StyleSheet.create({
   },
   activeChip: {
     borderWidth: nb.borderWidth,
-    borderRadius: 12,
+    borderRadius: ACTIVE_CHIP_RADIUS,
     alignItems: 'center',
     justifyContent: 'center',
   },

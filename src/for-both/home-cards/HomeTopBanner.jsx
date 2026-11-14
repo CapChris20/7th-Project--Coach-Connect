@@ -1,9 +1,6 @@
 // Neobrutalist welcome hero for client + trainer home (greeting, brand, quote, live clock).
 // Flow: resolve day-part greeting → NbCard shell → brand title gradient → quote + clock.
 // Used by client home and trainer home. STYLE only — same content order as before.
-//
-// vocab: NbCard = thick ink border + hard 4/4 shadow (no glow, no aurora rim, no CardGlow)
-// Manipulate here: title sizes / lottie max — keep one gradient moment (Coach Connect title)
 
 import React, { useEffect, useState } from 'react';
 import {
@@ -25,8 +22,9 @@ import { nb, gradients, borderRadius, spacing } from '../../look-and-feel/colorP
 
 const DEFAULT_USER_NAME = 'User';
 const FALLBACK_FIRST_NAME = 'User';
+const LAYOUT_TRAINER = 'trainer';
+const LAYOUT_CLIENT = 'client';
 
-// Manipulate here: greeting windows. Clock icon uses a slightly earlier evening cutoff.
 const MORNING_START_HOUR = 5;
 const NOON_HOUR = 12;
 const AFTERNOON_END_HOUR = 17;
@@ -43,8 +41,43 @@ const LOTTIE_MIN_SIZE = 96;
 const LOTTIE_WIDTH_FRACTION = 0.36;
 const TITLE_SIZE_WIDE = 38;
 const TITLE_SIZE_NARROW = 34;
+const WIDE_LEFT_FLEX = 0.6;
+const WIDE_RIGHT_FLEX = 0.4;
+
+const WEIGHTLIFTING_LOTTIE = require('../../assets/icons/weightlifting-competition.json');
+
+const DAY_PART_MORNING = 'morning';
+const DAY_PART_AFTERNOON = 'afternoon';
+const DAY_PART_EVENING = 'evening';
+const DAY_PART_NIGHT = 'night';
+
+const GREETING_WORD_BY_DAY_PART = {
+  [DAY_PART_MORNING]: 'Morning',
+  [DAY_PART_AFTERNOON]: 'Afternoon',
+  [DAY_PART_EVENING]: 'Evening',
+  [DAY_PART_NIGHT]: 'Night',
+};
+
+const IONICON_BY_DAY_PART = {
+  [DAY_PART_MORNING]: 'sunny-outline',
+  [DAY_PART_AFTERNOON]: 'partly-sunny-outline',
+  [DAY_PART_EVENING]: 'cloudy-night-outline',
+  [DAY_PART_NIGHT]: 'moon-outline',
+};
 
 // ===== HELPER FUNCTIONS =====
+
+/**
+ * Day-part key for the greeting line (evening runs until 23).
+ * @param {number} hour
+ * @returns {'morning'|'afternoon'|'evening'|'night'}
+ */
+function dayPartForGreeting(hour) {
+  if (hour >= MORNING_START_HOUR && hour < NOON_HOUR) return DAY_PART_MORNING;
+  if (hour >= NOON_HOUR && hour < AFTERNOON_END_HOUR) return DAY_PART_AFTERNOON;
+  if (hour >= AFTERNOON_END_HOUR && hour < GREETING_EVENING_END_HOUR) return DAY_PART_EVENING;
+  return DAY_PART_NIGHT;
+}
 
 /**
  * One word for the "Good Morning," line from the current hour.
@@ -52,10 +85,8 @@ const TITLE_SIZE_NARROW = 34;
  */
 export function getAuroraHeroGreeting() {
   const hour = new Date().getHours();
-  if (hour >= MORNING_START_HOUR && hour < NOON_HOUR) return 'Morning';
-  if (hour >= NOON_HOUR && hour < AFTERNOON_END_HOUR) return 'Afternoon';
-  if (hour >= AFTERNOON_END_HOUR && hour < GREETING_EVENING_END_HOUR) return 'Evening';
-  return 'Night';
+  const dayPart = dayPartForGreeting(hour);
+  return GREETING_WORD_BY_DAY_PART[dayPart];
 }
 
 /**
@@ -66,36 +97,57 @@ export function getAuroraHeroGreetingPhrase() {
   return `Good ${getAuroraHeroGreeting().toLowerCase()}`;
 }
 
+/**
+ * Day-part key for the clock icon (evening ends earlier than the greeting).
+ * @param {number} hour
+ * @returns {string}
+ */
 function dayPartForClockIcon(hour) {
   const clockHour = Number(hour);
   if (!Number.isFinite(clockHour)) return '';
-  if (clockHour >= MORNING_START_HOUR && clockHour < NOON_HOUR) return 'morning';
-  if (clockHour >= NOON_HOUR && clockHour < AFTERNOON_END_HOUR) return 'afternoon';
-  if (clockHour >= AFTERNOON_END_HOUR && clockHour < CLOCK_ICON_EVENING_END_HOUR) return 'evening';
-  return 'night';
+  if (clockHour >= MORNING_START_HOUR && clockHour < NOON_HOUR) return DAY_PART_MORNING;
+  if (clockHour >= NOON_HOUR && clockHour < AFTERNOON_END_HOUR) return DAY_PART_AFTERNOON;
+  if (clockHour >= AFTERNOON_END_HOUR && clockHour < CLOCK_ICON_EVENING_END_HOUR) {
+    return DAY_PART_EVENING;
+  }
+  return DAY_PART_NIGHT;
 }
 
+/**
+ * Ionicons name for a day-part key.
+ * @param {string} dayPart
+ * @returns {string}
+ */
 function ioniconForDayPart(dayPart) {
-  if (dayPart === 'morning') return 'sunny-outline';
-  if (dayPart === 'afternoon') return 'partly-sunny-outline';
-  if (dayPart === 'evening') return 'cloudy-night-outline';
-  return 'moon-outline';
+  return IONICON_BY_DAY_PART[dayPart] || IONICON_BY_DAY_PART[DAY_PART_NIGHT];
 }
 
+/**
+ * Split a Date into 12-hour main time, seconds, and AM/PM.
+ * @param {Date} now
+ * @returns {{ main: string, seconds: string, ampm: string }}
+ */
 function liveClockParts(now) {
   const hour24 = now.getHours();
   const minute = now.getMinutes();
   const second = now.getSeconds();
   const hour12 = hour24 % HOURS_ON_CLOCK || HOURS_ON_CLOCK;
-  const main = `${hour12}:${String(minute).padStart(2, '0')}`;
+  const minuteText = String(minute).padStart(2, '0');
+  const main = `${hour12}:${minuteText}`;
   const seconds = String(second).padStart(2, '0');
   const ampm = hour24 >= NOON_HOUR ? 'PM' : 'AM';
   return { main, seconds, ampm };
 }
 
+/**
+ * First word of the display name, or "User".
+ * @param {string|undefined} userName
+ * @returns {string}
+ */
 function firstNameFromUserName(userName) {
   const trimmed = String(userName || DEFAULT_USER_NAME).trim();
-  return trimmed.split(/\s+/)[0] || FALLBACK_FIRST_NAME;
+  const firstWord = trimmed.split(/\s+/)[0];
+  return firstWord || FALLBACK_FIRST_NAME;
 }
 
 /**
@@ -104,74 +156,31 @@ function firstNameFromUserName(userName) {
  * @returns {string[]}
  */
 function titleGradientColors(isDark) {
-  return isDark ? gradients.title.dark.colors : gradients.title.light.colors;
+  if (isDark) return gradients.title.dark.colors;
+  return gradients.title.light.colors;
 }
 
-function HeroLiveClock({ isDark, colors }) {
-  const [now, setNow] = useState(() => new Date());
-  useEffect(() => {
-    const tickId = setInterval(() => setNow(new Date()), CLOCK_TICK_MS);
-    return () => clearInterval(tickId);
-  }, []);
+/**
+ * Lottie box size from window width and wide/narrow caps.
+ * @param {number} windowWidth
+ * @param {boolean} isWideLayout
+ * @returns {number}
+ */
+function lottieSizeForWindow(windowWidth, isWideLayout) {
+  const lottieMax = isWideLayout ? LOTTIE_MAX_WIDE : LOTTIE_MAX_NARROW;
+  const lottieFromWidth = Math.round((windowWidth - HERO_HORIZONTAL_PAD) * LOTTIE_WIDTH_FRACTION);
+  const atLeastMin = Math.max(LOTTIE_MIN_SIZE, lottieFromWidth);
+  return Math.min(lottieMax, atLeastMin);
+}
 
-  const { main, seconds, ampm } = liveClockParts(now);
-  const dateLine = now.toLocaleDateString(undefined, {
-    weekday: 'long',
-    month: 'short',
-    day: 'numeric',
-  });
-  const dayPart = dayPartForClockIcon(now.getHours());
-  const dayPartLabel = dayPart.charAt(0).toUpperCase() + dayPart.slice(1);
-
-  return (
-    <View
-      style={[
-        clockStyles.frame,
-        {
-          backgroundColor: colors.nbSurfaceChip,
-          borderWidth: nb.borderWidth,
-          borderColor: colors.nbBorder,
-        },
-      ]}
-    >
-      <View style={clockStyles.body}>
-        <View style={clockStyles.dateCol}>
-          <Text style={[clockStyles.overline, { color: colors.nbMuted }]}>Today</Text>
-          <Text style={[clockStyles.dateText, { color: colors.nbInk }]} numberOfLines={2}>
-            {dateLine}
-          </Text>
-          <View style={clockStyles.segRow}>
-            <LinearGradient
-              colors={gradients.ink.colors}
-              start={gradients.ink.start}
-              end={gradients.ink.end}
-              style={clockStyles.iconCircle}
-            >
-              <Ionicons name={ioniconForDayPart(dayPart)} size={20} color={colors.white} />
-            </LinearGradient>
-            <Text style={[clockStyles.segText, { color: colors.nbMuted }]}>{dayPartLabel}</Text>
-          </View>
-        </View>
-
-        <View style={clockStyles.timeCol}>
-          <View style={clockStyles.timeRow}>
-            <Text
-              style={[clockStyles.timeMain, { color: colors.nbInk }]}
-              numberOfLines={1}
-              adjustsFontSizeToFit
-              minimumFontScale={0.75}
-            >
-              {main}
-            </Text>
-            <Text style={[clockStyles.timeSec, { color: colors.nbMuted }]}>
-              :{seconds}
-            </Text>
-          </View>
-          <Text style={[clockStyles.timeAmPm, { color: colors.nbMuted }]}>{ampm}</Text>
-        </View>
-      </View>
-    </View>
-  );
+/**
+ * Capitalize the first letter of a day-part label for the clock chip.
+ * @param {string} dayPart
+ * @returns {string}
+ */
+function capitalizeDayPartLabel(dayPart) {
+  if (!dayPart) return '';
+  return dayPart.charAt(0).toUpperCase() + dayPart.slice(1);
 }
 
 // ===== MAIN FUNCTION =====
@@ -187,46 +196,63 @@ export default function HomeTopBanner({
   greetingPeriod,
   textColor,
   showLiveClock = true,
-  layout = 'client',
+  layout = LAYOUT_CLIENT,
 }) {
   const theme = useTheme();
+  const { width: windowWidth } = useWindowDimensions();
+
+  // 1. Theme, layout width, and spoken greeting copy.
   const isDark = typeof isDarkProp === 'boolean' ? isDarkProp : theme.isDark;
   const colors = theme.colors;
-  const { width } = useWindowDimensions();
-  const isWide = width >= WIDE_BANNER_MIN_WIDTH;
-  const titleSize = isWide ? TITLE_SIZE_WIDE : TITLE_SIZE_NARROW;
-  const lottieSize = Math.min(
-    isWide ? LOTTIE_MAX_WIDE : LOTTIE_MAX_NARROW,
-    Math.max(LOTTIE_MIN_SIZE, Math.round((width - HERO_HORIZONTAL_PAD) * LOTTIE_WIDTH_FRACTION)),
-  );
+  const isWideLayout = windowWidth >= WIDE_BANNER_MIN_WIDTH;
   const firstName = firstNameFromUserName(userName);
   const period = greetingPeriod || getAuroraHeroGreeting();
   const greetingColor = textColor ?? colors.nbInk;
-  const titleColors = titleGradientColors(isDark);
-  const shellStyle = layout === 'trainer' ? styles.outerTrainer : styles.outerClient;
+  const greetingLine = `Good ${period}, `;
 
-  // Solid NbCard — same language as Settings. No CardGlow / neon rim / soft orange shadow.
+  // 2. Hero type sizes and Lottie box — wide screens get a larger title and art cap.
+  const titleSize = isWideLayout ? TITLE_SIZE_WIDE : TITLE_SIZE_NARROW;
+  const lottieSize = lottieSizeForWindow(windowWidth, isWideLayout);
+
+  // 3. Brand gradient tokens and outer margin for client vs trainer layout.
+  const titleColors = titleGradientColors(isDark);
+  const isTrainerLayout = layout === LAYOUT_TRAINER;
+  const shellStyle = isTrainerLayout ? styles.outerTrainer : styles.outerClient;
+
+  let nameStyle = [styles.greetingName];
+  if (isTrainerLayout) {
+    nameStyle = [styles.greetingName, styles.greetingNameTrainer];
+  }
+
+  const contentRowDirection = isWideLayout ? 'row' : 'column';
+  const contentRowGap = isWideLayout ? spacing.lg : spacing.md;
+  const leftColumnFlex = isWideLayout ? WIDE_LEFT_FLEX : 1;
+  const rightColumnFlex = isWideLayout ? WIDE_RIGHT_FLEX : 1;
+  const lottieBoxStyle = { width: lottieSize, height: lottieSize };
+  const contentRowStyle = [
+    styles.contentRow,
+    { flexDirection: contentRowDirection, gap: contentRowGap },
+  ];
+
+  // 4. Paint NbCard: greeting → brand column → quote/lottie → optional live clock.
+  let liveClockNode = null;
+  if (showLiveClock) {
+    liveClockNode = <HeroLiveClock isDark={isDark} colors={colors} />;
+  }
+
   return (
     <NbCard style={[shellStyle, styles.card]}>
       <View style={styles.greetingRow}>
         <Text style={[styles.greetingTitle, { color: greetingColor }]}>
-          Good {period},{' '}
+          {greetingLine}
         </Text>
-        <ColorText
-          colors={titleColors}
-          style={[styles.greetingName, layout === 'trainer' && styles.greetingNameTrainer]}
-        >
+        <ColorText colors={titleColors} style={nameStyle}>
           {firstName}!
         </ColorText>
       </View>
 
-      <View
-        style={[
-          styles.contentRow,
-          { flexDirection: isWide ? 'row' : 'column', gap: isWide ? spacing.lg : spacing.md },
-        ]}
-      >
-        <View style={[styles.left, { flex: isWide ? 0.6 : 1 }]}>
+      <View style={contentRowStyle}>
+        <View style={[styles.left, { flex: leftColumnFlex }]}>
           <Text style={[styles.welcomeKicker, { color: colors.nbMuted }]}>WELCOME TO</Text>
           <LinearGradient
             colors={titleColors}
@@ -244,13 +270,13 @@ export default function HomeTopBanner({
           </Text>
         </View>
 
-        <View style={[styles.right, { flex: isWide ? 0.4 : 1 }]}>
+        <View style={[styles.right, { flex: rightColumnFlex }]}>
           <View style={styles.inlineRow}>
             <LottieView
-              source={require('../../assets/icons/weightlifting-competition.json')}
+              source={WEIGHTLIFTING_LOTTIE}
               autoPlay
               loop
-              style={{ width: lottieSize, height: lottieSize }}
+              style={lottieBoxStyle}
             />
             <View style={styles.quoteWrap}>
               <DailyQuotePill userId={userId} isDarkOverride={isDark} embedded />
@@ -259,7 +285,7 @@ export default function HomeTopBanner({
         </View>
       </View>
 
-      {showLiveClock ? <HeroLiveClock isDark={isDark} colors={colors} /> : null}
+      {liveClockNode}
     </NbCard>
   );
 }
@@ -270,6 +296,82 @@ export const TODAY_CARD_TOP_STRIPE = gradients.ink.colors;
 export const AURORA_HERO_BORDER = gradients.brand.colors;
 /** @deprecated Prefer AURORA_HERO_BORDER */
 export const HERO_TOP_STRIPE = AURORA_HERO_BORDER;
+
+// PLUMBING — skip unless debugging the ticking live clock sub-tree.
+
+/**
+ * Live clock strip under the hero: date + day-part chip + ticking time.
+ * Hook order frozen: useState(now) then useEffect(interval).
+ * @param {{ isDark: boolean, colors: object }} props
+ */
+function HeroLiveClock({ isDark, colors }) {
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const tickId = setInterval(() => setNow(new Date()), CLOCK_TICK_MS);
+    return () => clearInterval(tickId);
+  }, []);
+
+  const { main, seconds, ampm } = liveClockParts(now);
+  const dateLine = now.toLocaleDateString(undefined, {
+    weekday: 'long',
+    month: 'short',
+    day: 'numeric',
+  });
+  const dayPart = dayPartForClockIcon(now.getHours());
+  const dayPartLabel = capitalizeDayPartLabel(dayPart);
+  const clockIconName = ioniconForDayPart(dayPart);
+  const frameStyle = [
+    clockStyles.frame,
+    {
+      backgroundColor: colors.nbSurfaceChip,
+      borderWidth: nb.borderWidth,
+      borderColor: colors.nbBorder,
+    },
+  ];
+  const secondsText = `:${seconds}`;
+
+  return (
+    <View style={frameStyle}>
+      <View style={clockStyles.body}>
+        <View style={clockStyles.dateCol}>
+          <Text style={[clockStyles.overline, { color: colors.nbMuted }]}>Today</Text>
+          <Text style={[clockStyles.dateText, { color: colors.nbInk }]} numberOfLines={2}>
+            {dateLine}
+          </Text>
+          <View style={clockStyles.segRow}>
+            <LinearGradient
+              colors={gradients.ink.colors}
+              start={gradients.ink.start}
+              end={gradients.ink.end}
+              style={clockStyles.iconCircle}
+            >
+              <Ionicons name={clockIconName} size={20} color={colors.white} />
+            </LinearGradient>
+            <Text style={[clockStyles.segText, { color: colors.nbMuted }]}>{dayPartLabel}</Text>
+          </View>
+        </View>
+
+        <View style={clockStyles.timeCol}>
+          <View style={clockStyles.timeRow}>
+            <Text
+              style={[clockStyles.timeMain, { color: colors.nbInk }]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.75}
+            >
+              {main}
+            </Text>
+            <Text style={[clockStyles.timeSec, { color: colors.nbMuted }]}>
+              {secondsText}
+            </Text>
+          </View>
+          <Text style={[clockStyles.timeAmPm, { color: colors.nbMuted }]}>{ampm}</Text>
+        </View>
+      </View>
+    </View>
+  );
+}
 
 const styles = StyleSheet.create({
   card: {

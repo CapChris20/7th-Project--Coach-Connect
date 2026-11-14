@@ -1,6 +1,7 @@
 // Design Law month grid: bordered day tiles, session dots, selected = solid fill (not gradient).
-// Flow: build week rows for the cursor month → tap a day → onSelectDate(YYYY-MM-DD) → chevrons move the month.
+// Flow: build week rows for the cursor month → tap a day → onSelectDate(YYYY-MM-DD) → chevrons move month.
 // Used by: BookSessionScreen month view (PNG 05/06).
+// Read order: constants → date helpers → day/nav pieces → exported MonthCalendar → PLUMBING styles.
 //
 // vocab: HardShadow = solid offset shadow on nav squares; out-of-month = dashed muted tiles
 // Manipulate here: cell minHeight (44), nav button 36, session-dot size 5
@@ -19,66 +20,237 @@ const NOON_LOCAL_SUFFIX = 'T12:00:00';
 const DATE_KEY_LENGTH = 10;
 const WEEKDAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 // Manipulate here: day cell height (Design Law min touch 44)
-const DAY_CELL_MIN = 44;
+const DAY_CELL_MIN_HEIGHT = 44;
+const NAV_CHEVRON_SIZE = 18;
+const DAY_PRESS_OPACITY = 0.85;
+const NAV_PRESS_OPACITY = 0.75;
 
-// ===== HELPERS =====
+// ===== HELPER FUNCTIONS =====
 
-function dateKeyFromDate(dateValue) {
-  const y = dateValue.getFullYear();
-  const m = String(dateValue.getMonth() + 1).padStart(2, '0');
-  const d = String(dateValue.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
+/**
+ * Local calendar date → YYYY-MM-DD key the rest of scheduling already uses.
+ * @param {Date} dateValue
+ * @returns {string}
+ */
+function formatDateAsKey(dateValue) {
+  const fullYear = dateValue.getFullYear();
+  const monthNumber = dateValue.getMonth() + 1;
+  const dayNumber = dateValue.getDate();
+  const monthText = String(monthNumber).padStart(2, '0');
+  const dayText = String(dayNumber).padStart(2, '0');
+  return `${fullYear}-${monthText}-${dayText}`;
 }
 
-function selectedDateAtNoon(selectedDate) {
-  if (!selectedDate) return null;
-  return new Date(String(selectedDate).slice(0, DATE_KEY_LENGTH) + NOON_LOCAL_SUFFIX);
+/**
+ * Parse a selected YYYY-MM-DD at local noon so DST does not shift the day.
+ * @param {string|null|undefined} selectedDateKey
+ * @returns {Date|null}
+ */
+function selectedDateAtLocalNoon(selectedDateKey) {
+  if (!selectedDateKey) {
+    return null;
+  }
+  const datePrefix = String(selectedDateKey).slice(0, DATE_KEY_LENGTH);
+  return new Date(datePrefix + NOON_LOCAL_SUFFIX);
 }
 
+/**
+ * Unique day keys that have at least one session (for the solid/hollow dots).
+ * @param {Array<{ date?: string }>|null|undefined} sessions
+ * @returns {Set<string>}
+ */
 function collectSessionDayKeys(sessions) {
   const daysWithSessions = new Set();
-  for (const session of sessions || []) {
-    if (session?.date) daysWithSessions.add(String(session.date).slice(0, DATE_KEY_LENGTH));
+  const sessionList = sessions || [];
+
+  for (let index = 0; index < sessionList.length; index += 1) {
+    const session = sessionList[index];
+    // vocab: ?. = skip when session is missing; only add when date is present
+    if (session?.date) {
+      const dayKey = String(session.date).slice(0, DATE_KEY_LENGTH);
+      daysWithSessions.add(dayKey);
+    }
   }
+
   return daysWithSessions;
 }
 
-function buildMonthWeeks(year, monthIndex, startWeekday, daysInMonth) {
-  // Include trailing/leading days from adjacent months so the grid is a full rectangle (PNG dashed cells)
-  const daysInPrevMonth = new Date(year, monthIndex, 0).getDate();
-  const cells = [];
-  for (let i = 0; i < startWeekday; i += 1) {
-    const dayNum = daysInPrevMonth - startWeekday + 1 + i;
-    cells.push({ date: new Date(year, monthIndex - 1, dayNum), inMonth: false });
+/**
+ * Leading out-of-month cells so the first week starts on Sunday.
+ * @returns {Array<{ date: Date, inMonth: boolean }>}
+ */
+function buildLeadingOutOfMonthCells(year, monthIndex, startWeekday) {
+  const daysInPreviousMonth = new Date(year, monthIndex, 0).getDate();
+  const leadingCells = [];
+
+  for (let padIndex = 0; padIndex < startWeekday; padIndex += 1) {
+    const dayNumber = daysInPreviousMonth - startWeekday + 1 + padIndex;
+    const cellDate = new Date(year, monthIndex - 1, dayNumber);
+    leadingCells.push({ date: cellDate, inMonth: false });
   }
-  for (let dayNumber = 1; dayNumber <= daysInMonth; dayNumber += 1) {
-    cells.push({ date: new Date(year, monthIndex, dayNumber), inMonth: true });
-  }
-  while (cells.length % DAYS_IN_WEEK !== 0) {
-    const nextDay = cells.length - (startWeekday + daysInMonth) + 1;
-    cells.push({ date: new Date(year, monthIndex + 1, nextDay), inMonth: false });
-  }
-  const rows = [];
-  for (let index = 0; index < cells.length; index += DAYS_IN_WEEK) {
-    rows.push(cells.slice(index, index + DAYS_IN_WEEK));
-  }
-  return rows;
+
+  return leadingCells;
 }
 
+/**
+ * One cell per day inside the cursor month.
+ * @returns {Array<{ date: Date, inMonth: boolean }>}
+ */
+function buildInMonthCells(year, monthIndex, daysInMonth) {
+  const inMonthCells = [];
+
+  for (let dayNumber = 1; dayNumber <= daysInMonth; dayNumber += 1) {
+    const cellDate = new Date(year, monthIndex, dayNumber);
+    inMonthCells.push({ date: cellDate, inMonth: true });
+  }
+
+  return inMonthCells;
+}
+
+/**
+ * Trailing out-of-month cells so the last week is a full 7-day row (PNG dashed cells).
+ * @returns {Array<{ date: Date, inMonth: boolean }>}
+ */
+function buildTrailingOutOfMonthCells(
+  year,
+  monthIndex,
+  startWeekday,
+  daysInMonth,
+  flatCellCountSoFar,
+) {
+  const trailingCells = [];
+  let flatCellCount = flatCellCountSoFar;
+
+  while (flatCellCount % DAYS_IN_WEEK !== 0) {
+    const nextDayNumber = flatCellCount - (startWeekday + daysInMonth) + 1;
+    const cellDate = new Date(year, monthIndex + 1, nextDayNumber);
+    trailingCells.push({ date: cellDate, inMonth: false });
+    flatCellCount += 1;
+  }
+
+  return trailingCells;
+}
+
+/**
+ * Chunk a flat cell list into week rows of seven.
+ * @param {Array} flatCells
+ * @returns {Array<Array>}
+ */
+function chunkCellsIntoWeekRows(flatCells) {
+  const weekRows = [];
+
+  for (
+    let startIndex = 0;
+    startIndex < flatCells.length;
+    startIndex += DAYS_IN_WEEK
+  ) {
+    weekRows.push(flatCells.slice(startIndex, startIndex + DAYS_IN_WEEK));
+  }
+
+  return weekRows;
+}
+
+/**
+ * Full rectangle of day cells for one month (leading + in-month + trailing).
+ * @returns {Array<Array<{ date: Date, inMonth: boolean }>>}
+ */
+function buildMonthWeeks(year, monthIndex, startWeekday, daysInMonth) {
+  const leadingCells = buildLeadingOutOfMonthCells(
+    year,
+    monthIndex,
+    startWeekday,
+  );
+  const inMonthCells = buildInMonthCells(year, monthIndex, daysInMonth);
+  const flatSoFar = leadingCells.concat(inMonthCells);
+  const trailingCells = buildTrailingOutOfMonthCells(
+    year,
+    monthIndex,
+    startWeekday,
+    daysInMonth,
+    flatSoFar.length,
+  );
+  const flatCells = flatSoFar.concat(trailingCells);
+  return chunkCellsIntoWeekRows(flatCells);
+}
+
+/**
+ * Day-number ink: on-fill when selected, muted when out of month, else ink.
+ * @param {boolean} isSelected
+ * @param {boolean} inMonth
+ * @param {object} colors
+ * @returns {string}
+ */
+function dayNumberTextColor(isSelected, inMonth, colors) {
+  if (isSelected) {
+    return colors.nbOnFill;
+  }
+  if (inMonth) {
+    return colors.nbInk;
+  }
+  return colors.nbMuted;
+}
+
+/**
+ * Border for a day tile: solid for in-month / selected; dashed muted for padding days.
+ */
+function dayTileBorderLook(inMonth, isSelected, colors) {
+  if (inMonth || isSelected) {
+    return { borderColor: colors.nbBorder, borderStyle: 'solid' };
+  }
+  return { borderColor: colors.nbMuted, borderStyle: 'dashed' };
+}
+
+/**
+ * One tappable day tile with solid/hollow session dot.
+ */
 function DayCell({ cell, selectedDate, sessionDays, onSelectDate, colors }) {
-  const key = dateKeyFromDate(cell.date);
-  const isSelected = key === selectedDate;
-  const hasSession = sessionDays.has(key);
+  const dayKey = formatDateAsKey(cell.date);
+  const isSelected = dayKey === selectedDate;
+  const hasSession = sessionDays.has(dayKey);
   const inMonth = cell.inMonth;
 
-  const fillBg = isSelected ? colors.nbFill : colors.nbSurface;
-  const ink = isSelected ? colors.nbOnFill : inMonth ? colors.nbInk : colors.nbMuted;
+  let tileBackground = colors.nbSurface;
+  if (isSelected) {
+    tileBackground = colors.nbFill;
+  }
+
+  const numberColor = dayNumberTextColor(isSelected, inMonth, colors);
+  const { borderColor: tileBorderColor, borderStyle: tileBorderStyle } =
+    dayTileBorderLook(inMonth, isSelected, colors);
+
+  let sessionDotFill = colors.nbInk;
+  let hollowDotBorder = colors.nbMuted;
+  if (isSelected) {
+    sessionDotFill = colors.nbOnFill;
+    hollowDotBorder = colors.nbOnFill;
+  }
+
+  // Named local: selected tiles also get a soft shadow tint from theme.
+  let selectedShadowStyle = null;
+  if (isSelected) {
+    selectedShadowStyle = { shadowColor: colors.nbShadow };
+  }
+
+  const handleDayPress = () => {
+    // vocab: ?. = only call when the parent passed onSelectDate
+    onSelectDate?.(dayKey);
+  };
+
+  let sessionMarker = (
+    <View style={[styles.dotHollow, { borderColor: hollowDotBorder }]} />
+  );
+  if (hasSession) {
+    // Solid dot = day has sessions; hollow ring = empty (PNG week strip language)
+    sessionMarker = (
+      <View style={[styles.dot, { backgroundColor: sessionDotFill }]} />
+    );
+  }
 
   return (
     <TouchableOpacity
-      onPress={() => onSelectDate?.(key)}
+      onPress={handleDayPress}
       style={styles.cell}
-      activeOpacity={0.85}
+      activeOpacity={DAY_PRESS_OPACITY}
       accessibilityRole="button"
       accessibilityState={{ selected: isSelected }}
     >
@@ -86,30 +258,25 @@ function DayCell({ cell, selectedDate, sessionDays, onSelectDate, colors }) {
         style={[
           styles.dayBtn,
           {
-            backgroundColor: fillBg,
-            borderColor: inMonth || isSelected ? colors.nbBorder : colors.nbMuted,
-            borderStyle: inMonth || isSelected ? 'solid' : 'dashed',
+            backgroundColor: tileBackground,
+            borderColor: tileBorderColor,
+            borderStyle: tileBorderStyle,
           },
-          isSelected && { shadowColor: colors.nbShadow },
+          selectedShadowStyle,
         ]}
       >
-        <Text style={[styles.dayText, { color: ink }]}>{cell.date.getDate()}</Text>
-        {/* Solid dot = day has sessions; hollow ring = empty (PNG week strip language) */}
-        {hasSession ? (
-          <View style={[styles.dot, { backgroundColor: isSelected ? colors.nbOnFill : colors.nbInk }]} />
-        ) : (
-          <View
-            style={[
-              styles.dotHollow,
-              { borderColor: isSelected ? colors.nbOnFill : colors.nbMuted },
-            ]}
-          />
-        )}
+        <Text style={[styles.dayText, { color: numberColor }]}>
+          {cell.date.getDate()}
+        </Text>
+        {sessionMarker}
       </View>
     </TouchableOpacity>
   );
 }
 
+/**
+ * Single letter weekday headers across the top of the grid.
+ */
 function WeekdayHeader({ colors }) {
   return (
     <View style={styles.weekdays}>
@@ -122,16 +289,21 @@ function WeekdayHeader({ colors }) {
   );
 }
 
+/**
+ * Hard-shadow chevron square for previous / next month.
+ */
 function NavSquare({ onPress, children, colors }) {
+  const navButtonStyle = [
+    styles.navBtn,
+    { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface },
+  ];
+
   return (
     <HardShadow offset={nb.shadowOffsetSmall} radius={borderRadius.nbChip}>
       <TouchableOpacity
         onPress={onPress}
-        style={[
-          styles.navBtn,
-          { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface },
-        ]}
-        activeOpacity={0.75}
+        style={navButtonStyle}
+        activeOpacity={NAV_PRESS_OPACITY}
         accessibilityRole="button"
       >
         {children}
@@ -140,11 +312,77 @@ function NavSquare({ onPress, children, colors }) {
   );
 }
 
-// ===== MAIN =====
+/**
+ * Month title + left/right chevrons.
+ */
+function MonthCalendarHeader({ monthTitle, colors, onPreviousMonth, onNextMonth }) {
+  return (
+    <View style={styles.header}>
+      <NavSquare colors={colors} onPress={onPreviousMonth}>
+        <ChevronLeft size={NAV_CHEVRON_SIZE} color={colors.nbInk} />
+      </NavSquare>
+      <Text style={[styles.title, { color: colors.nbInk }]}>{monthTitle}</Text>
+      <NavSquare colors={colors} onPress={onNextMonth}>
+        <ChevronRight size={NAV_CHEVRON_SIZE} color={colors.nbInk} />
+      </NavSquare>
+    </View>
+  );
+}
 
 /**
- * Month calendar. `selectedDate` is a YYYY-MM-DD string. `sessions[].date` uses the same shape.
- * @param {object} props
+ * One week row of seven DayCell tiles.
+ */
+function MonthWeekRow({
+  row,
+  rowIndex,
+  selectedDate,
+  sessionDays,
+  onSelectDate,
+  colors,
+}) {
+  return (
+    <View style={styles.row}>
+      {row.map((cell, columnIndex) => (
+        <DayCell
+          key={`cell-${rowIndex}-${columnIndex}`}
+          cell={cell}
+          selectedDate={selectedDate}
+          sessionDays={sessionDays}
+          onSelectDate={onSelectDate}
+          colors={colors}
+        />
+      ))}
+    </View>
+  );
+}
+
+/**
+ * Outer card chrome — bordered surface, or borderless flush when parent asks.
+ */
+function buildMonthCardStyle(borderless, colors) {
+  const styleList = [styles.card];
+
+  if (borderless) {
+    styleList.push(styles.cardBorderless);
+  }
+
+  if (!borderless) {
+    styleList.push({
+      backgroundColor: colors.nbSurface,
+      borderColor: colors.nbBorder,
+      borderWidth: nb.borderWidth,
+    });
+  }
+
+  return styleList;
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Month grid for BookSessionScreen — select a day, page months with chevrons.
+ * Hook order frozen: theme → month cursor → onMonthChange effect → selectedDate effect → memos.
+ * @param {{ sessions?: Array, selectedDate: string, onSelectDate: Function, onMonthChange?: Function, theme?: *, borderless?: boolean }} props
  */
 export const MonthCalendar = ({
   sessions = [],
@@ -154,82 +392,98 @@ export const MonthCalendar = ({
   theme: _themeIgnored,
   borderless = false,
 }) => {
+  // 1. Theme colors (caller `theme` prop is accepted but ignored — Design Law useTheme wins).
   const { colors, isDark: _isDark } = useTheme();
-  const selected = selectedDateAtNoon(selectedDate);
-  const [cursor, setCursor] = useState(() => selected || new Date());
 
-  useEffect(() => {
-    onMonthChange?.(cursor);
-  }, [cursor, onMonthChange]);
-
-  // Keep the grid on the selected day when the parent changes selectedDate
-  useEffect(() => {
-    if (!selected) return;
-    setCursor(selected);
-  }, [selectedDate]);
-
-  const year = cursor.getFullYear();
-  const monthIndex = cursor.getMonth();
-  const first = new Date(year, monthIndex, 1);
-  const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
-  const startWeekday = first.getDay();
-  const monthTitle = cursor.toLocaleString(undefined, { month: 'long', year: 'numeric' });
-
-  const sessionDays = useMemo(() => collectSessionDayKeys(sessions), [sessions]);
-  const weeks = useMemo(
-    () => buildMonthWeeks(year, monthIndex, startWeekday, daysInMonth),
-    [year, monthIndex, startWeekday, daysInMonth],
+  // 2. Month cursor starts on the selected day (local noon) or today.
+  const selectedAtNoon = selectedDateAtLocalNoon(selectedDate);
+  const [monthCursor, setMonthCursor] = useState(
+    () => selectedAtNoon || new Date(),
   );
 
+  // 3. Tell the parent whenever the visible month changes (filter sessions, etc.).
+  // vocab: useEffect = run after paint; cleanup not needed — we only notify
+  useEffect(() => {
+    onMonthChange?.(monthCursor);
+  }, [monthCursor, onMonthChange]);
+
+  // 4. Keep the grid on the selected day when the parent changes selectedDate.
+  // Dependency stays [selectedDate] (same as before) — do not add selectedAtNoon.
+  useEffect(() => {
+    if (!selectedAtNoon) {
+      return;
+    }
+    setMonthCursor(selectedAtNoon);
+  }, [selectedDate]);
+
+  // 5. Cursor month math for the grid title and week builder.
+  const cursorYear = monthCursor.getFullYear();
+  const cursorMonthIndex = monthCursor.getMonth();
+  const firstOfMonth = new Date(cursorYear, cursorMonthIndex, 1);
+  const daysInMonth = new Date(cursorYear, cursorMonthIndex + 1, 0).getDate();
+  const startWeekday = firstOfMonth.getDay();
+  const monthTitle = monthCursor.toLocaleString(undefined, {
+    month: 'long',
+    year: 'numeric',
+  });
+
+  // 6. Session-dot set + week rows — memoized so day taps do not rebuild the whole grid.
+  // vocab: useMemo = recompute only when listed inputs change
+  const sessionDays = useMemo(
+    () => collectSessionDayKeys(sessions),
+    [sessions],
+  );
+  const weeks = useMemo(
+    () =>
+      buildMonthWeeks(
+        cursorYear,
+        cursorMonthIndex,
+        startWeekday,
+        daysInMonth,
+      ),
+    [cursorYear, cursorMonthIndex, startWeekday, daysInMonth],
+  );
+
+  // 7. Chevron handlers — jump to the 1st of the neighboring month.
+  const goToPreviousMonth = () => {
+    setMonthCursor(new Date(cursorYear, cursorMonthIndex - 1, 1));
+  };
+  const goToNextMonth = () => {
+    setMonthCursor(new Date(cursorYear, cursorMonthIndex + 1, 1));
+  };
+
+  // 8. Name card chrome before JSX.
+  const cardStyle = buildMonthCardStyle(borderless, colors);
+
   return (
-    <View
-      style={[
-        styles.card,
-        borderless && styles.cardBorderless,
-        !borderless && {
-          backgroundColor: colors.nbSurface,
-          borderColor: colors.nbBorder,
-          borderWidth: nb.borderWidth,
-        },
-      ]}
-    >
-      <View style={styles.header}>
-        <NavSquare
-          colors={colors}
-          onPress={() => setCursor(new Date(year, monthIndex - 1, 1))}
-        >
-          <ChevronLeft size={18} color={colors.nbInk} />
-        </NavSquare>
-        <Text style={[styles.title, { color: colors.nbInk }]}>{monthTitle}</Text>
-        <NavSquare
-          colors={colors}
-          onPress={() => setCursor(new Date(year, monthIndex + 1, 1))}
-        >
-          <ChevronRight size={18} color={colors.nbInk} />
-        </NavSquare>
-      </View>
+    <View style={cardStyle}>
+      <MonthCalendarHeader
+        monthTitle={monthTitle}
+        colors={colors}
+        onPreviousMonth={goToPreviousMonth}
+        onNextMonth={goToNextMonth}
+      />
 
       <WeekdayHeader colors={colors} />
 
       {weeks.map((row, rowIndex) => (
-        <View key={`wk-${rowIndex}`} style={styles.row}>
-          {row.map((cell, columnIndex) => (
-            <DayCell
-              key={`cell-${rowIndex}-${columnIndex}`}
-              cell={cell}
-              selectedDate={selectedDate}
-              sessionDays={sessionDays}
-              onSelectDate={onSelectDate}
-              colors={colors}
-            />
-          ))}
-        </View>
+        <MonthWeekRow
+          key={`wk-${rowIndex}`}
+          row={row}
+          rowIndex={rowIndex}
+          selectedDate={selectedDate}
+          sessionDays={sessionDays}
+          onSelectDate={onSelectDate}
+          colors={colors}
+        />
       ))}
     </View>
   );
 };
 
 export default MonthCalendar;
+
+// ===== PLUMBING — skip unless debugging =====
 
 const styles = StyleSheet.create({
   card: {
@@ -276,11 +530,11 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', marginBottom: 6, gap: 4 },
   cell: {
     flex: 1,
-    minHeight: DAY_CELL_MIN,
+    minHeight: DAY_CELL_MIN_HEIGHT,
   },
   dayBtn: {
     flex: 1,
-    minHeight: DAY_CELL_MIN,
+    minHeight: DAY_CELL_MIN_HEIGHT,
     borderRadius: 10,
     borderWidth: nb.borderWidth,
     alignItems: 'center',

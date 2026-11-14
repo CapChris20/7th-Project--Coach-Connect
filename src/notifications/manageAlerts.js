@@ -1,6 +1,7 @@
 // Owns the whole push-notification lifecycle on the device.
-// Flow: configure once at startup → ask permission → save Expo and native tokens on the user doc → refresh on foreground, clear on logout.
-// Called from ClientAppStart, TrainerAppStart, and the settings screen. Notification copy lives in writeAlertText.js.
+// Flow: configure once → ask permission → save Expo + native tokens on users/{uid} → refresh on foreground → clear on logout.
+// Used by: ClientAppStart, TrainerAppStart, settings screen. Alert copy lives in writeAlertText.js.
+// Read order: constants → exported recipes → PLUMBING at the bottom.
 
 // vocab: expo-notifications = Expo's wrapper over APNs (iOS) and FCM (Android)
 import * as Notifications from 'expo-notifications';
@@ -14,8 +15,9 @@ import { lightColors } from '../look-and-feel/colorPalette';
 // ===== NAMED CONSTANTS =====
 
 const USERS_COLLECTION = 'users';
+// Manipulate here: Android channel id — changing it orphans prefs the user already set
 const ANDROID_CHANNEL_ID = 'default';
-// Manipulate here: raise this if a cold-start tap navigates before the navigator exists.
+// Manipulate here: raise if a cold-start tap navigates before the navigator exists
 const COLD_START_TAP_DELAY_MS = 500;
 const TOKEN_LOG_PREFIX_LENGTH = 24;
 const TEST_NOTIFICATION_DELAY_SECONDS = 1;
@@ -24,101 +26,18 @@ const NOTIFICATION_LED_COLOR = lightColors.primary;
 const CLEARED_PUSH_TOKEN_FIELDS = {
   expoPushToken: deleteField(),
   fcmToken: deleteField(),
-  pushToken: deleteField(),
+  pushToken: deleteField()
 };
 
-// ===== HELPER FUNCTIONS =====
-
-// Module-level (not React) state. The OS listener must exist once for the process, not once per component.
-let isConfigured = false;
+// Module-level (not React) state — OS listener must exist once for the process, not once per screen.
+let notificationsAlreadyConfigured = false;
 let notificationResponseSubscription = null;
-
 /** @type {((data: Record<string, unknown>) => void) | null} */
-// The OS listener is registered once. This slot swaps the navigate function in after the nav tree mounts.
+// Slot for the navigate function; OS listener is registered once, then this swaps in after nav mounts.
 let notificationTapHandler = null;
 
-function userDocRef(uid) {
-  return doc(db, USERS_COLLECTION, uid);
-}
-
-function isNotificationPermissionGranted(permission) {
-  return Boolean(permission?.granted || permission?.status === 'granted');
-}
-
-// Dev-only peek. Push tokens are device credentials, so only a prefix is printed.
-function logTokenDebug(label, value) {
-  if (__DEV__ && value && typeof value === 'string') {
-    console.log(`[push] ${label} prefix`, value.slice(0, TOKEN_LOG_PREFIX_LENGTH) + '…');
-  }
-}
-
-function isSimulatorPushError(error) {
-  const messageText = (error?.message || String(error)).toLowerCase();
-  return messageText.includes('simulator') || messageText.includes('device');
-}
-
-// True only when the user doc explicitly says notifications are off. A read failure returns false
-// so we still try to save the token instead of dropping it.
-async function isNotificationsDisabled(uid) {
-  try {
-    const snap = await getDoc(userDocRef(uid));
-    return snap.exists() && snap.data()?.notificationsEnabled === false;
-  } catch {
-    return false;
-  }
-}
-
-function optionalFcmField(fcmToken) {
-  // vocab/symbol: ...(condition ? { key } : {}) = include the key only when we have a value.
-  // Writing undefined makes Firestore throw, and the native token is optional.
-  if (!fcmToken) return {};
-  return { fcmToken };
-}
-
-function buildPushTokenPayload(expoPushToken, fcmToken) {
-  const now = new Date().toISOString();
-  return {
-    expoPushToken,
-    // pushToken is the legacy field. It mirrors the Expo token so older Cloud Functions keep working.
-    pushToken: expoPushToken,
-    pushTokenUpdatedAt: now,
-    ...optionalFcmField(fcmToken),
-  };
-}
-
-async function rememberPendingExpoToken(uid, expoPushToken) {
-  if (!expoPushToken) return;
-  try {
-    await AsyncStorage.setItem(pendingPushTokenStorageKey(uid), expoPushToken);
-  } catch (_) {
-    /* non-fatal */
-  }
-}
-
-// Attaches the OS tap listener exactly once. Subscribing twice would navigate twice per tap.
-function ensureNotificationResponseSubscription() {
-  if (notificationResponseSubscription) return;
-  notificationResponseSubscription = Notifications.addNotificationResponseReceivedListener((response) => {
-    const data = response?.notification?.request?.content?.data || {};
-    if (notificationTapHandler) notificationTapHandler(data);
-  });
-}
-
-function readExpoProjectId() {
-  // vocab: EAS = Expo Application Services. The project id lives in a different place for EAS builds vs the dev client.
-  return (
-    Constants?.expoConfig?.extra?.eas?.projectId ||
-    Constants?.easConfig?.projectId ||
-    undefined
-  );
-}
-
-function shouldRefreshTokensOnForeground(nextAppState, uid, shouldRun) {
-  // vocab: AppState 'change' fires on background and foreground. 'active' means foreground.
-  if (nextAppState !== 'active') return false;
-  if (!uid) return false;
-  return Boolean(shouldRun?.());
-}
+// ===== HELPER FUNCTIONS =====
+// Small helpers sit under PLUMBING. Exported recipes follow.
 
 // ===== MAIN FUNCTION =====
 
@@ -138,7 +57,8 @@ export function pendingPushTokenStorageKey(uid) {
  * @param {Function|null} handler
  */
 export function setNotificationTapHandler(handler) {
-  notificationTapHandler = typeof handler === 'function' ? handler : null;
+  const handlerIsCallable = typeof handler === 'function';
+  notificationTapHandler = handlerIsCallable ? handler : null;
 }
 
 /**
@@ -149,13 +69,15 @@ export function setNotificationTapHandler(handler) {
  */
 export function flushInitialNotificationResponse(delayMs = COLD_START_TAP_DELAY_MS) {
   try {
-    // vocab: getLastNotificationResponse() = which notification, if any, opened this app.
-    const lastResponse = Notifications.getLastNotificationResponse?.();
-    if (!lastResponse?.notification?.request?.content?.data) return () => {};
-    const data = lastResponse.notification.request.content.data || {};
-    // The delay lets navigation finish mounting. Firing instantly navigates into a tree that is not there yet.
+    var _optCallObj, _optCallFn, _optObj, _optObj2, _optObj3;
+    // vocab: getLastNotificationResponse() = which notification, if any, opened this app
+    const lastResponse = (_optCallObj = Notifications, _optCallFn = _optCallObj.getLastNotificationResponse) == null ? void 0 : _optCallFn.call(_optCallObj);
+    const tapPayload = (_optObj = (_optObj2 = (_optObj3 = lastResponse == null ? void 0 : lastResponse.notification) == null ? void 0 : _optObj3.request) == null ? void 0 : _optObj2.content) == null ? void 0 : _optObj.data;
+    if (!tapPayload) return () => {};
+    const notificationData = tapPayload || {};
+    // Delay lets navigation finish mounting — firing instantly navigates into a missing tree.
     const timeoutId = setTimeout(() => {
-      if (notificationTapHandler) notificationTapHandler(data);
+      if (notificationTapHandler) notificationTapHandler(notificationData);
     }, delayMs);
     return () => clearTimeout(timeoutId);
   } catch {
@@ -167,39 +89,25 @@ export function flushInitialNotificationResponse(delayMs = COLD_START_TAP_DELAY_
  * One-time startup setup. Safe to call from both app shells and the settings screen.
  */
 export function configureNotifications() {
-  if (isConfigured) return;
+  if (notificationsAlreadyConfigured) return;
 
-  // Foreground pushes show a banner. The app-icon badge is driven by our own unread count, not by push count.
-  // Manipulate here: shouldSetBadge stays false so push count and the unread index are not added together.
+  // 1. Foreground pushes show a banner. Badge count comes from our unread index, not push count.
+  // Manipulate here: shouldSetBadge stays false so push count and unread index are not added together
   Notifications.setNotificationHandler({
     handleNotification: async () => ({
       shouldShowBanner: true,
       shouldShowList: true,
       shouldPlaySound: true,
-      shouldSetBadge: false,
-    }),
+      shouldSetBadge: false
+    })
   });
 
-  // Android needs a channel before any notification can show. iOS has no equivalent.
-  if (Platform.OS === 'android') {
-    Notifications.setNotificationChannelAsync(ANDROID_CHANNEL_ID, {
-      // Manipulate here: name and description are what the user sees in Android settings.
-      // Changing the channel id ('default') orphans the preferences they already set.
-      name: 'CoachConnect',
-      description: 'Notifications from your AI Fitness Coach',
-      // MAX = heads-up banner with sound. DEFAULT would be a silent tray alert.
-      importance: Notifications.AndroidImportance.MAX,
-      // vibrationPattern = [wait, vibrate, wait, vibrate] in milliseconds
-      vibrationPattern: ANDROID_VIBRATION_PATTERN,
-      sound: 'default',
-      enableLights: true,
-      lightColor: NOTIFICATION_LED_COLOR,
-      enableVibrate: true,
-    }).catch(() => {});
-  }
+  // 2. Android channel (no-op on iOS).
+  createAndroidNotificationChannelIfNeeded();
 
-  ensureNotificationResponseSubscription();
-  isConfigured = true;
+  // 3. Tap listener once per process.
+  attachNotificationTapListenerOnce();
+  notificationsAlreadyConfigured = true;
 }
 
 /**
@@ -211,21 +119,21 @@ export async function getNotificationPermissionsAsync() {
 }
 
 /**
- * Ask for notification permission. If it is already granted, the system dialog is not shown again.
+ * Ask for notification permission. If already granted, the system dialog is not shown again.
  * @returns {Promise<object>}
  */
 export async function requestNotificationPermissionsAsync() {
-  const existing = await Notifications.getPermissionsAsync();
-  if (isNotificationPermissionGranted(existing)) return existing;
+  const existingPermission = await Notifications.getPermissionsAsync();
+  if (permissionIsGranted(existingPermission)) return existingPermission;
 
-  // Manipulate here: iOS capabilities we ask for. Announcements (Siri reading alerts) stay off.
+  // Manipulate here: iOS capabilities we ask for — Announcements (Siri reading alerts) stay off
   return Notifications.requestPermissionsAsync({
     ios: {
       allowAlert: true,
       allowBadge: true,
       allowSound: true,
-      allowAnnouncements: false,
-    },
+      allowAnnouncements: false
+    }
   });
 }
 
@@ -244,18 +152,19 @@ export async function openSystemSettingsAsync() {
 
 /**
  * Native device token. Android: FCM registration token. iOS: APNs device token string.
- * Stored as fcmToken. Returns null instead of throwing — the Expo token can deliver on its own.
+ * Stored as fcmToken. Returns null instead of throwing — the Expo token can deliver alone.
  * @returns {Promise<string|null>}
  */
 export async function getNativeDevicePushTokenAsync() {
   try {
-    const device = await Notifications.getDevicePushTokenAsync();
-    const token = device?.data != null ? String(device.data) : null;
-    if (token) logTokenDebug('native', token);
-    return token;
+    const deviceTokenResult = await Notifications.getDevicePushTokenAsync();
+    const rawToken = deviceTokenResult == null ? void 0 : deviceTokenResult.data;
+    const tokenAsString = rawToken != null ? String(rawToken) : null;
+    if (tokenAsString) logPushTokenPrefix('native', tokenAsString);
+    return tokenAsString;
   } catch (error) {
-    const messageText = error?.message || String(error);
-    if (__DEV__) console.warn('[push] native device token unavailable:', messageText);
+    const errorMessage = (error == null ? void 0 : error.message) || String(error);
+    if (__DEV__) console.warn('[push] native device token unavailable:', errorMessage);
     return null;
   }
 }
@@ -265,21 +174,25 @@ export async function getNativeDevicePushTokenAsync() {
  * @returns {Promise<string>}
  */
 export async function getExpoPushTokenAsync() {
+  // 1. Refuse when the user has not granted alerts.
   const permission = await requestNotificationPermissionsAsync();
-  if (!isNotificationPermissionGranted(permission)) {
+  if (!permissionIsGranted(permission)) {
     throw new Error('Notification permission was not granted.');
   }
 
-  const projectId = readExpoProjectId();
-
+  // 2. Ask Expo for the token (pass project id only when we actually have one).
+  const expoProjectId = readExpoProjectId();
   try {
     // Passing undefined (not { projectId: undefined }) lets Expo detect the project itself.
-    const token = await Notifications.getExpoPushTokenAsync(projectId ? { projectId } : undefined);
-    const tokenData = token.data;
-    logTokenDebug('expo', tokenData);
-    return tokenData;
+    const tokenOptions = expoProjectId ? {
+      projectId: expoProjectId
+    } : undefined;
+    const tokenResult = await Notifications.getExpoPushTokenAsync(tokenOptions);
+    const expoTokenString = tokenResult.data;
+    logPushTokenPrefix('expo', expoTokenString);
+    return expoTokenString;
   } catch (error) {
-    if (isSimulatorPushError(error)) {
+    if (errorLooksLikeSimulator(error)) {
       throw new Error('Push notifications require a physical device (not the iOS Simulator).');
     }
     throw error;
@@ -289,36 +202,44 @@ export async function getExpoPushTokenAsync() {
 /**
  * Save the Expo token and, when we have one, the native token.
  * Keeps legacy pushToken mirroring the Expo token.
- * skipIfDisabled defaults to true — it respects notificationsEnabled: false.
+ * skipIfDisabled defaults to true — respects notificationsEnabled: false.
  * Pass a string to flush a token that was cached in AsyncStorage.
  * @param {string} uid
  * @param {{ skipIfDisabled?: boolean, pendingExpoToken?: string } | string} [optionsOrPendingToken]
  */
 export async function persistPushTokensForUid(uid, optionsOrPendingToken = {}) {
-  const options =
-    typeof optionsOrPendingToken === 'string'
-      ? { pendingExpoToken: optionsOrPendingToken }
-      : optionsOrPendingToken;
-  // Only an explicit false opts out. Turning notifications ON must pass false, because the doc still says off.
-  const skipIfDisabled = options.skipIfDisabled !== false;
+  const options = normalizePersistOptions(optionsOrPendingToken);
+  // Only an explicit false opts out. Turning notifications ON must pass false — the doc still says off.
+  const shouldSkipWhenDisabled = options.skipIfDisabled !== false;
+
+  // 1. Bail when there is nowhere to save, or the user turned alerts off.
   if (!uid || !db) return;
-
-  if (skipIfDisabled && (await isNotificationsDisabled(uid))) return;
-
-  const userRef = userDocRef(uid);
+  if (shouldSkipWhenDisabled) {
+    const alertsAreOff = await userHasNotificationsDisabled(uid);
+    if (alertsAreOff) return;
+  }
+  const userRef = firestoreUserDoc(uid);
   let expoPushToken = null;
 
+  // 2. Obtain tokens, merge into users/{uid}, clear any pending cache.
   try {
     expoPushToken = options.pendingExpoToken || (await getExpoPushTokenAsync());
     const fcmToken = await getNativeDevicePushTokenAsync();
-    await setDoc(userRef, buildPushTokenPayload(expoPushToken, fcmToken), { merge: true });
+    const tokenFields = buildPushTokenFields(expoPushToken, fcmToken);
+    await setDoc(userRef, tokenFields, {
+      merge: true
+    });
     await AsyncStorage.removeItem(pendingPushTokenStorageKey(uid)).catch(() => {});
     if (__DEV__) {
-      console.log('[push] tokens saved', { hasExpo: !!expoPushToken, hasFcm: !!fcmToken });
+      console.log('[push] tokens saved', {
+        hasExpo: !!expoPushToken,
+        hasFcm: !!fcmToken
+      });
     }
   } catch (error) {
-    console.warn('Push token save failed, retrying on next launch:', error?.message || error);
-    await rememberPendingExpoToken(uid, expoPushToken);
+    // 3. Offline or transient failure — stash Expo token for the next launch.
+    console.warn('Push token save failed, retrying on next launch:', (error == null ? void 0 : error.message) || error);
+    await stashPendingExpoToken(uid, expoPushToken);
   }
 }
 
@@ -330,13 +251,14 @@ export async function persistPushTokensForUid(uid, optionsOrPendingToken = {}) {
 export async function clearPushTokensForUid(uid) {
   if (!uid || !db) return;
   try {
-    await updateDoc(userDocRef(uid), { ...CLEARED_PUSH_TOKEN_FIELDS });
+    await updateDoc(firestoreUserDoc(uid), {
+      ...CLEARED_PUSH_TOKEN_FIELDS
+    });
     if (__DEV__) console.log('[push] tokens cleared for user');
   } catch (error) {
-    if (__DEV__) console.warn('[push] clearPushTokensForUid failed:', error?.message || error);
+    if (__DEV__) console.warn('[push] clearPushTokensForUid failed:', (error == null ? void 0 : error.message) || error);
   }
 }
-
 
 /**
  * Re-save tokens when the app returns to the foreground.
@@ -347,10 +269,12 @@ export async function clearPushTokensForUid(uid) {
  * @returns {Function}
  */
 export function subscribePushTokenRefreshOnResume(uid, shouldRun) {
-  const onAppStateChange = (nextAppState) => {
+  const onAppStateChange = nextAppState => {
     const shouldRefresh = shouldRefreshTokensOnForeground(nextAppState, uid, shouldRun);
     if (!shouldRefresh) return;
-    persistPushTokensForUid(uid, { skipIfDisabled: true }).catch(() => {});
+    persistPushTokensForUid(uid, {
+      skipIfDisabled: true
+    }).catch(() => {});
   };
   const appStateSubscription = AppState.addEventListener('change', onAppStateChange);
   return () => appStateSubscription.remove();
@@ -361,15 +285,131 @@ export function subscribePushTokenRefreshOnResume(uid, shouldRun) {
  */
 export async function sendTestLocalNotificationAsync() {
   configureNotifications();
-
   await Notifications.scheduleNotificationAsync({
-    // Manipulate here: the test notification title and body.
+    // Manipulate here: the test notification title and body
     content: {
       title: 'CoachConnect',
       body: 'Notifications are enabled.',
-      sound: true,
+      sound: true
     },
-    // One second, not immediate, so the banner arrives as a real notification instead of flashing on the tap.
-    trigger: { seconds: TEST_NOTIFICATION_DELAY_SECONDS },
+    // One second, not immediate, so the banner arrives as a real notification instead of flashing on tap.
+    trigger: {
+      seconds: TEST_NOTIFICATION_DELAY_SECONDS
+    }
   });
+}
+
+// ===== PLUMBING — skip unless debugging =====
+
+function firestoreUserDoc(uid) {
+  return doc(db, USERS_COLLECTION, uid);
+}
+function permissionIsGranted(permission) {
+  const grantedFlag = permission == null ? void 0 : permission.granted;
+  const statusIsGranted = (permission == null ? void 0 : permission.status) === 'granted';
+  return Boolean(grantedFlag || statusIsGranted);
+}
+
+// Dev-only peek. Push tokens are device credentials, so only a prefix is printed.
+function logPushTokenPrefix(label, value) {
+  if (!__DEV__) return;
+  if (!value || typeof value !== 'string') return;
+  const tokenPrefix = value.slice(0, TOKEN_LOG_PREFIX_LENGTH);
+  console.log(`[push] ${label} prefix`, tokenPrefix + '…');
+}
+function errorLooksLikeSimulator(error) {
+  const messageText = ((error == null ? void 0 : error.message) || String(error)).toLowerCase();
+  const mentionsSimulator = messageText.includes('simulator');
+  const mentionsDevice = messageText.includes('device');
+  return mentionsSimulator || mentionsDevice;
+}
+
+// True only when the user doc explicitly says notifications are off.
+// A read failure returns false so we still try to save the token instead of dropping it.
+async function userHasNotificationsDisabled(uid) {
+  try {
+    var _optObj4;
+    const userSnap = await getDoc(firestoreUserDoc(uid));
+    if (!userSnap.exists()) return false;
+    return ((_optObj4 = userSnap.data()) == null ? void 0 : _optObj4.notificationsEnabled) === false;
+  } catch {
+    return false;
+  }
+}
+function optionalFcmField(fcmToken) {
+  // vocab/symbol: returning {} vs { fcmToken } = include the key only when we have a value.
+  // Writing undefined makes Firestore throw, and the native token is optional.
+  if (!fcmToken) return {};
+  return {
+    fcmToken
+  };
+}
+function buildPushTokenFields(expoPushToken, fcmToken) {
+  const updatedAtIso = new Date().toISOString();
+  return {
+    expoPushToken,
+    // pushToken is the legacy field. It mirrors the Expo token so older Cloud Functions keep working.
+    pushToken: expoPushToken,
+    pushTokenUpdatedAt: updatedAtIso,
+    ...optionalFcmField(fcmToken)
+  };
+}
+async function stashPendingExpoToken(uid, expoPushToken) {
+  if (!expoPushToken) return;
+  try {
+    await AsyncStorage.setItem(pendingPushTokenStorageKey(uid), expoPushToken);
+  } catch (_) {
+    /* non-fatal */
+  }
+}
+
+// Attaches the OS tap listener exactly once. Subscribing twice would navigate twice per tap.
+function attachNotificationTapListenerOnce() {
+  if (notificationResponseSubscription) return;
+  notificationResponseSubscription = Notifications.addNotificationResponseReceivedListener(response => {
+    var _optObj5, _optObj6, _optObj7;
+    const notificationData = ((_optObj5 = (_optObj6 = (_optObj7 = response == null ? void 0 : response.notification) == null ? void 0 : _optObj7.request) == null ? void 0 : _optObj6.content) == null ? void 0 : _optObj5.data) || {};
+    if (notificationTapHandler) notificationTapHandler(notificationData);
+  });
+}
+function readExpoProjectId() {
+  var _optObj8, _optObj9, _optObj0, _optObj1;
+  // vocab: EAS = Expo Application Services. Project id lives in a different place for EAS builds vs the dev client.
+  const fromExpoConfig = (_optObj8 = (_optObj9 = (_optObj0 = Constants == null ? void 0 : Constants.expoConfig) == null ? void 0 : _optObj0.extra) == null ? void 0 : _optObj9.eas) == null ? void 0 : _optObj8.projectId;
+  if (fromExpoConfig) return fromExpoConfig;
+  const fromEasConfig = (_optObj1 = Constants == null ? void 0 : Constants.easConfig) == null ? void 0 : _optObj1.projectId;
+  if (fromEasConfig) return fromEasConfig;
+  return undefined;
+}
+function shouldRefreshTokensOnForeground(nextAppState, uid, shouldRun) {
+  // vocab: AppState 'change' fires on background and foreground. 'active' means foreground.
+  if (nextAppState !== 'active') return false;
+  if (!uid) return false;
+  return Boolean(shouldRun == null ? void 0 : shouldRun());
+}
+function normalizePersistOptions(optionsOrPendingToken) {
+  if (typeof optionsOrPendingToken === 'string') {
+    return {
+      pendingExpoToken: optionsOrPendingToken
+    };
+  }
+  return optionsOrPendingToken;
+}
+async function createAndroidNotificationChannelIfNeeded() {
+  if (Platform.OS !== 'android') return;
+
+  // Android needs a channel before any notification can show. iOS has no equivalent.
+  await Notifications.setNotificationChannelAsync(ANDROID_CHANNEL_ID, {
+    // Manipulate here: name and description are what the user sees in Android settings
+    name: 'CoachConnect',
+    description: 'Notifications from your AI Fitness Coach',
+    // MAX = heads-up banner with sound. DEFAULT would be a silent tray alert.
+    importance: Notifications.AndroidImportance.MAX,
+    // vibrationPattern = [wait, vibrate, wait, vibrate] in milliseconds
+    vibrationPattern: ANDROID_VIBRATION_PATTERN,
+    sound: 'default',
+    enableLights: true,
+    lightColor: NOTIFICATION_LED_COLOR,
+    enableVibrate: true
+  }).catch(() => {});
 }

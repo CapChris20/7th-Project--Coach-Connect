@@ -1,6 +1,6 @@
-// Brand gradient stroke around solid-fill text, drawn with SVG after a hidden Text measures size.
-// Flow: measure the string with an invisible Text → size the SVG → stroke then fill on top.
-// Used by: food search headlines and weekly-report bars. Falls back to plain Text before measure.
+// Headline text with brand gradient stroke — hidden Text measures, then SVG stroke + solid fill.
+// Flow: early plain Text when off/empty → measure pass → gradient stroke layer → fill on top.
+// Used by food search headlines and weekly-report bars.
 
 import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
@@ -9,6 +9,7 @@ import { lightColors } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
+// Manipulate here: stroke gradient stops (pink → orange). Exported for callers that reuse the brand pair.
 export const BRAND_GRADIENT = ['#FF6B9D', '#FB923C'];
 
 const DEFAULT_FONT_SIZE = 17;
@@ -16,12 +17,15 @@ const DEFAULT_FONT_WEIGHT = '800';
 const DEFAULT_FILL_COLOR = lightColors.white;
 const DEFAULT_LETTER_SPACING = 0;
 const DEFAULT_NUMBER_OF_LINES = 1;
+
 const ANCHOR_START = 'start';
 const ANCHOR_MIDDLE = 'middle';
 const ANCHOR_END = 'end';
 const TEXT_ALIGN_CENTER = 'center';
 const WIDTH_FULL = '100%';
 const ALIGN_STRETCH = 'stretch';
+
+// Manipulate here: stroke thickness scales with fontSize (ratio × size, floored at min).
 const STROKE_WIDTH_RATIO = 0.065;
 const MIN_STROKE_WIDTH = 1;
 const STROKE_PADDING_MULTIPLIER = 2;
@@ -29,60 +33,231 @@ const UNMEASURED_HEIGHT_RATIO = 1.35;
 const BASELINE_STROKE_OFFSET = 0.5;
 const GRADIENT_ID_PREFIX = 'brandStroke';
 
+// Module counter so two headlines never share the same url(#…) id.
 let gradientIdCounter = 0;
 
 // ===== HELPER FUNCTIONS =====
 
-/**
- * Outline thickness scales with font size so a 32px title is not using a 1px hairline.
- * @param {number} fontSize
- * @param {number} [strokeWidth]
- * @returns {number}
- */
-function resolveStrokeWidth(fontSize, strokeWidth) {
-  return strokeWidth ?? Math.max(MIN_STROKE_WIDTH, Math.round(fontSize * STROKE_WIDTH_RATIO));
+function strokePixelsForFontSize(fontSize, explicitStrokeWidth) {
+  if (explicitStrokeWidth != null) {
+    return explicitStrokeWidth;
+  }
+  const scaledStroke = Math.round(fontSize * STROKE_WIDTH_RATIO);
+  return Math.max(MIN_STROKE_WIDTH, scaledStroke);
 }
 
-/**
- * SVG textAnchor from the prop or a centered textAlign in style.
- * @param {string} textAnchor
- * @param {object} flatStyle
- * @returns {{ isCentered: boolean, anchor: string, isFullWidth: boolean }}
- */
-function resolveTextAnchor(textAnchor, flatStyle) {
-  const isCentered = textAnchor === ANCHOR_MIDDLE || flatStyle.textAlign === TEXT_ALIGN_CENTER;
+function layoutFromTextAnchor(textAnchor, flatStyle) {
+  const textAlignIsCenter = flatStyle.textAlign === TEXT_ALIGN_CENTER;
+  const anchorAskedForMiddle = textAnchor === ANCHOR_MIDDLE;
+  const isCentered = anchorAskedForMiddle || textAlignIsCenter;
   const anchor = isCentered ? ANCHOR_MIDDLE : textAnchor;
-  const isFullWidth = flatStyle.width === WIDTH_FULL || flatStyle.alignSelf === ALIGN_STRETCH;
+  const widthIsFull = flatStyle.width === WIDTH_FULL;
+  const alignSelfStretches = flatStyle.alignSelf === ALIGN_STRETCH;
+  const isFullWidth = widthIsFull || alignSelfStretches;
   return { isCentered, anchor, isFullWidth };
 }
 
-/**
- * X position of the SVG text: padded on the left, centered, or right-aligned.
- * @param {string} anchor
- * @param {number} svgWidth
- * @param {number} pad
- * @returns {number}
- */
-function svgTextX(anchor, svgWidth, pad) {
-  if (anchor === ANCHOR_MIDDLE && svgWidth) return svgWidth / 2;
-  if (anchor === ANCHOR_END && svgWidth) return svgWidth - pad;
-  return pad;
+function horizontalSvgTextPosition(anchor, svgWidth, sidePad) {
+  if (anchor === ANCHOR_MIDDLE && svgWidth) {
+    return svgWidth / 2;
+  }
+  if (anchor === ANCHOR_END && svgWidth) {
+    return svgWidth - sidePad;
+  }
+  return sidePad;
 }
 
-function textFromChildren(children) {
-  return String(children ?? '');
+function saveSizeFromLayoutEvent(layoutEvent, setMeasuredSize) {
+  const layoutBox = layoutEvent.nativeEvent.layout;
+  const measuredWidth = layoutBox.width;
+  const measuredHeight = layoutBox.height;
+  if (measuredWidth > 0) {
+    setMeasuredSize({ width: measuredWidth, height: measuredHeight });
+  }
 }
 
-function rememberMeasuredSize(layoutEvent, setSize) {
-  const { width, height } = layoutEvent.nativeEvent.layout;
-  if (width > 0) setSize({ width, height });
+function wrapStylesForAnchor({ isCentered, anchor, isFullWidth }, callerStyle) {
+  const wrapPieces = [styles.wrap];
+
+  if (isCentered && isFullWidth) {
+    wrapPieces.push(styles.wrapCenterFull);
+  }
+  if (isCentered && !isFullWidth) {
+    wrapPieces.push(styles.wrapCenter);
+  }
+  if (!isCentered && anchor === ANCHOR_END) {
+    wrapPieces.push(styles.wrapEnd);
+  }
+
+  wrapPieces.push(callerStyle);
+  return wrapPieces;
+}
+
+function svgBoxSizesFromMeasure(measuredSize, sidePad, strokePixels, fontSize) {
+  if (!measuredSize) {
+    return {
+      svgWidth: 0,
+      svgHeight: Math.ceil(fontSize * UNMEASURED_HEIGHT_RATIO),
+    };
+  }
+
+  const svgWidth =
+    Math.ceil(measuredSize.width) + sidePad * STROKE_PADDING_MULTIPLIER;
+  const svgHeight =
+    Math.ceil(measuredSize.height) + strokePixels * STROKE_PADDING_MULTIPLIER;
+  return { svgWidth, svgHeight };
+}
+
+function paintHeadlineAfterMeasure({
+  hasMeasuredBox,
+  displayText,
+  baseTextStyle,
+  fillColor,
+  numberOfLines,
+  svgWidth,
+  svgHeight,
+  gradientId,
+  textX,
+  baselineY,
+  anchor,
+  fontSize,
+  fontWeight,
+  letterSpacing,
+  strokePixels,
+}) {
+  if (!hasMeasuredBox) {
+    return (
+      <WaitingForMeasureFill
+        baseTextStyle={baseTextStyle}
+        fillColor={fillColor}
+        numberOfLines={numberOfLines}
+        text={displayText}
+      />
+    );
+  }
+
+  return (
+    <GradientStrokedSvgText
+      text={displayText}
+      svgWidth={svgWidth}
+      svgHeight={svgHeight}
+      gradientId={gradientId}
+      textX={textX}
+      baselineY={baselineY}
+      anchor={anchor}
+      fontSize={fontSize}
+      fontWeight={fontWeight}
+      letterSpacing={letterSpacing}
+      strokePixels={strokePixels}
+      fillColor={fillColor}
+    />
+  );
+}
+
+// ===== SMALL LAYOUT PIECES =====
+
+function PlainFilledHeadline({ text, baseTextStyle, callerStyle, fillColor, numberOfLines }) {
+  const filledStyle = [baseTextStyle, callerStyle, { color: fillColor }];
+  return (
+    <Text style={filledStyle} numberOfLines={numberOfLines}>
+      {text}
+    </Text>
+  );
+}
+
+function HiddenMeasureText({ text, baseTextStyle, numberOfLines, onMeasuredLayout }) {
+  const measureStyle = [baseTextStyle, styles.measure];
+  return (
+    <Text
+      style={measureStyle}
+      numberOfLines={numberOfLines}
+      onLayout={onMeasuredLayout}
+    >
+      {text}
+    </Text>
+  );
+}
+
+function GradientStrokedSvgText({
+  text,
+  svgWidth,
+  svgHeight,
+  gradientId,
+  textX,
+  baselineY,
+  anchor,
+  fontSize,
+  fontWeight,
+  letterSpacing,
+  strokePixels,
+  fillColor,
+}) {
+  const strokePaintUrl = `url(#${gradientId})`;
+  const pinkStop = BRAND_GRADIENT[0];
+  const orangeStop = BRAND_GRADIENT[1];
+
+  return (
+    <Svg width={svgWidth} height={svgHeight} style={styles.svg}>
+      <Defs>
+        <SvgGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="0%">
+          <Stop offset="0%" stopColor={pinkStop} stopOpacity="1" />
+          <Stop offset="100%" stopColor={orangeStop} stopOpacity="1" />
+        </SvgGradient>
+      </Defs>
+      <SvgText
+        x={textX}
+        y={baselineY}
+        textAnchor={anchor}
+        fontSize={fontSize}
+        fontWeight={fontWeight}
+        letterSpacing={letterSpacing}
+        fill="none"
+        stroke={strokePaintUrl}
+        strokeWidth={strokePixels}
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      >
+        {text}
+      </SvgText>
+      <SvgText
+        x={textX}
+        y={baselineY}
+        textAnchor={anchor}
+        fontSize={fontSize}
+        fontWeight={fontWeight}
+        letterSpacing={letterSpacing}
+        fill={fillColor}
+      >
+        {text}
+      </SvgText>
+    </Svg>
+  );
+}
+
+function WaitingForMeasureFill({ baseTextStyle, fillColor, numberOfLines, text }) {
+  const waitingStyle = [baseTextStyle, { color: fillColor }];
+  return (
+    <Text style={waitingStyle} numberOfLines={numberOfLines}>
+      {text}
+    </Text>
+  );
 }
 
 // ===== MAIN FUNCTION =====
 
 /**
- * Solid fill + purple→orange gradient stroke (SVG). Measures with hidden Text first.
+ * Brand-gradient outlined headline. Falls back to plain filled Text when disabled or empty.
  * @param {object} props
+ * @param {React.ReactNode} props.children
+ * @param {number} [props.fontSize]
+ * @param {string} [props.fontWeight]
+ * @param {string} [props.fillColor]
+ * @param {number} [props.strokeWidth]
+ * @param {number} [props.letterSpacing]
+ * @param {number} [props.numberOfLines]
+ * @param {object} [props.style]
+ * @param {string} [props.textAnchor]
+ * @param {boolean} [props.enabled]
  */
 export default function OutlinedColorText({
   children,
@@ -96,14 +271,19 @@ export default function OutlinedColorText({
   textAnchor = ANCHOR_START,
   enabled = true,
 }) {
-  const text = textFromChildren(children);
-  const stroke = resolveStrokeWidth(fontSize, strokeWidth);
-  // vocab: useState = remember the measured width/height. Starts null until onLayout fires.
-  const [size, setSize] = useState(null);
-  // vocab: useMemo = mint one gradient id per mount so two headlines do not share a stroke.
+  // vocab/symbol: ?? = use right side only when left is null/undefined (empty string still wins).
+  const displayText = String(children ?? '');
+  const strokePixels = strokePixelsForFontSize(fontSize, strokeWidth);
+
+  // vocab: useState holds measured box until hidden Text onLayout runs.
+  // Hook order frozen: useState → useMemo(gradientId) → useMemo(baseTextStyle).
+  const [measuredSize, setMeasuredSize] = useState(null);
+
+  // vocab: useMemo mints one gradient id per mount so two headlines do not share url(#…).
   const gradientId = useMemo(() => `${GRADIENT_ID_PREFIX}${++gradientIdCounter}`, []);
+
   const flatStyle = StyleSheet.flatten(style) || {};
-  const { isCentered, anchor, isFullWidth } = resolveTextAnchor(textAnchor, flatStyle);
+  const anchorLayout = layoutFromTextAnchor(textAnchor, flatStyle);
 
   const baseTextStyle = useMemo(
     () => ({
@@ -114,84 +294,71 @@ export default function OutlinedColorText({
     [fontSize, fontWeight, letterSpacing],
   );
 
-  // 1. Disabled or empty → plain Text, no SVG outline.
-  if (!enabled || !text) {
+  // 1. Off or empty copy → skip SVG work and show plain filled Text.
+  const shouldSkipSvg = !enabled || !displayText;
+  if (shouldSkipSvg) {
     return (
-      <Text style={[baseTextStyle, style, { color: fillColor }]} numberOfLines={numberOfLines}>
-        {text}
-      </Text>
+      <PlainFilledHeadline
+        text={displayText}
+        baseTextStyle={baseTextStyle}
+        callerStyle={style}
+        fillColor={fillColor}
+        numberOfLines={numberOfLines}
+      />
     );
   }
 
-  // 2. Before we know the width, show solid fill so the headline is not blank.
-  // 3. After measure, stroke the gradient then fill on top.
-  const pad = stroke * STROKE_PADDING_MULTIPLIER;
-  const svgWidth = size ? Math.ceil(size.width) + pad * STROKE_PADDING_MULTIPLIER : 0;
-  const svgHeight = size ? Math.ceil(size.height) + stroke * STROKE_PADDING_MULTIPLIER : Math.ceil(fontSize * UNMEASURED_HEIGHT_RATIO);
-  const baselineY = fontSize + stroke * BASELINE_STROKE_OFFSET;
-  const textX = svgTextX(anchor, svgWidth, pad);
-  const isMeasured = Boolean(size) && svgWidth > 0;
+  // 2. Size the SVG from the hidden measure pass (or a tall guess before layout).
+  const sidePad = strokePixels * STROKE_PADDING_MULTIPLIER;
+  const boxSizes = svgBoxSizesFromMeasure(
+    measuredSize,
+    sidePad,
+    strokePixels,
+    fontSize,
+  );
+  const baselineY = fontSize + strokePixels * BASELINE_STROKE_OFFSET;
+  const textX = horizontalSvgTextPosition(anchorLayout.anchor, boxSizes.svgWidth, sidePad);
+  const hasMeasuredBox = Boolean(measuredSize) && boxSizes.svgWidth > 0;
+  const wrapStyleList = wrapStylesForAnchor(anchorLayout, style);
 
+  const onMeasuredLayout = (layoutEvent) => {
+    saveSizeFromLayoutEvent(layoutEvent, setMeasuredSize);
+  };
+
+  // Named before JSX — waiting fill until measure, then stroke + fill.
+  const paintedHeadline = paintHeadlineAfterMeasure({
+    hasMeasuredBox,
+    displayText,
+    baseTextStyle,
+    fillColor,
+    numberOfLines,
+    svgWidth: boxSizes.svgWidth,
+    svgHeight: boxSizes.svgHeight,
+    gradientId,
+    textX,
+    baselineY,
+    anchor: anchorLayout.anchor,
+    fontSize,
+    fontWeight,
+    letterSpacing,
+    strokePixels,
+  });
+
+  // 3. Always run hidden measure; solid fill until box is known, then gradient stroke + fill.
   return (
-    <View
-      style={[
-        styles.wrap,
-        isCentered && (isFullWidth ? styles.wrapCenterFull : styles.wrapCenter),
-        !isCentered && anchor === ANCHOR_END && styles.wrapEnd,
-        style,
-      ]}
-      collapsable={false}
-    >
-      <Text
-        style={[baseTextStyle, styles.measure]}
+    <View style={wrapStyleList} collapsable={false}>
+      <HiddenMeasureText
+        text={displayText}
+        baseTextStyle={baseTextStyle}
         numberOfLines={numberOfLines}
-        onLayout={(layoutEvent) => rememberMeasuredSize(layoutEvent, setSize)}
-      >
-        {text}
-      </Text>
-      {!isMeasured ? (
-        <Text style={[baseTextStyle, { color: fillColor }]} numberOfLines={numberOfLines}>
-          {text}
-        </Text>
-      ) : (
-        <Svg width={svgWidth} height={svgHeight} style={styles.svg}>
-          <Defs>
-            <SvgGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="0%">
-              <Stop offset="0%" stopColor={BRAND_GRADIENT[0]} stopOpacity="1" />
-              <Stop offset="100%" stopColor={BRAND_GRADIENT[1]} stopOpacity="1" />
-            </SvgGradient>
-          </Defs>
-          <SvgText
-            x={textX}
-            y={baselineY}
-            textAnchor={anchor}
-            fontSize={fontSize}
-            fontWeight={fontWeight}
-            letterSpacing={letterSpacing}
-            fill="none"
-            stroke={`url(#${gradientId})`}
-            strokeWidth={stroke}
-            strokeLinejoin="round"
-            strokeLinecap="round"
-          >
-            {text}
-          </SvgText>
-          <SvgText
-            x={textX}
-            y={baselineY}
-            textAnchor={anchor}
-            fontSize={fontSize}
-            fontWeight={fontWeight}
-            letterSpacing={letterSpacing}
-            fill={fillColor}
-          >
-            {text}
-          </SvgText>
-        </Svg>
-      )}
+        onMeasuredLayout={onMeasuredLayout}
+      />
+      {paintedHeadline}
     </View>
   );
 }
+
+// ===== PLUMBING — skip unless debugging =====
 
 const styles = StyleSheet.create({
   wrap: {

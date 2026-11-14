@@ -1,10 +1,11 @@
-// Drops filler coaching copy and keeps the most specific lines.
-// Flow: skip blanks and duplicates → score each line → return the highest scores, capped.
-// Used by the weekly report when it picks pros and cons to show.
+// Ranks coaching sentences so the weekly report shows specific tips, not boilerplate.
+// Flow: trim and dedupe → score each unique line → sort high to low → return top N texts.
+// Used by WinsAndWorkOnsSection and prepareReportForScreen when building pros/cons.
+// Read order: constants → main recipes → PLUMBING (scoring + filler matching).
 
 // ===== NAMED CONSTANTS =====
 
-// A line at or below this never makes the list. Boring patterns and blank text land here immediately.
+// A line at or below this never makes the list. Blank text and filler patterns land here first.
 const REJECT_SCORE = -99;
 
 const SCORE_FOR_ANY_DIGIT = 4;
@@ -15,7 +16,7 @@ const SCORE_FOR_COMFORTABLE_LENGTH = 1;
 const PENALTY_FOR_SHORT_LINE = 2;
 const PENALTY_FOR_LONG_LINE = 1;
 
-// Manipulate here: the comfortable band is the length we want on a card. 24 is the short end of that band.
+// Manipulate here: comfortable band is what reads well on a card; 24 is the short end
 const COMFORTABLE_LENGTH_MIN = 24;
 const COMFORTABLE_LENGTH_MAX = 110;
 const SHORT_LINE_LENGTH = 16;
@@ -23,6 +24,7 @@ const LONG_LINE_LENGTH = 140;
 
 const DEFAULT_TIP_LIMIT = 5;
 
+// Manipulate here: add a regex when a new generator line shows up as filler on the card
 const BORING_PATTERNS = [
   /every logged day improves report accuracy/i,
   /auto report uses the same numbers/i,
@@ -50,96 +52,26 @@ const UNIT_WORD_PATTERN = /\b(night|day|week|oz|hours?|h\b|lbs)\b/i;
 const ANY_DIGIT_PATTERN = /\d/;
 const RATIO_PATTERN = /\d+\s*\/\s*\d+/;
 
-// ===== HELPER FUNCTIONS =====
-
-function matchesBoringPattern(tipText) {
-  for (const pattern of BORING_PATTERNS) {
-    if (pattern.test(tipText)) return true;
-  }
-  return false;
-}
-
-function digitScore(tipText) {
-  if (ANY_DIGIT_PATTERN.test(tipText)) return SCORE_FOR_ANY_DIGIT;
-  return 0;
-}
-
-function ratioScore(tipText) {
-  if (RATIO_PATTERN.test(tipText)) return SCORE_FOR_RATIO;
-  return 0;
-}
-
-function metricWordScore(tipText) {
-  if (METRIC_WORD_PATTERN.test(tipText)) return SCORE_FOR_METRIC_WORD;
-  return 0;
-}
-
-function unitWordScore(tipText) {
-  if (UNIT_WORD_PATTERN.test(tipText)) return SCORE_FOR_UNIT_WORD;
-  return 0;
-}
-
-function lengthScore(tipText) {
-  let score = 0;
-  const isComfortableLength =
-    tipText.length >= COMFORTABLE_LENGTH_MIN && tipText.length <= COMFORTABLE_LENGTH_MAX;
-  if (isComfortableLength) score += SCORE_FOR_COMFORTABLE_LENGTH;
-  if (tipText.length < SHORT_LINE_LENGTH) score -= PENALTY_FOR_SHORT_LINE;
-  if (tipText.length > LONG_LINE_LENGTH) score -= PENALTY_FOR_LONG_LINE;
-  return score;
-}
-
-function scorePoint(text) {
-  const tipText = String(text || '').trim();
-  if (!tipText) return REJECT_SCORE;
-  if (matchesBoringPattern(tipText)) return REJECT_SCORE;
-
-  return (
-    digitScore(tipText)
-    + ratioScore(tipText)
-    + metricWordScore(tipText)
-    + unitWordScore(tipText)
-    + lengthScore(tipText)
-  );
-}
-
-// seenLines is updated before the score check so a repeat of a rejected line is still a duplicate.
-function rememberUniqueTip(rawLine, seenLines, rankedTips) {
-  const tipText = String(rawLine || '').trim();
-  if (!tipText) return;
-
-  const dedupeKey = tipText.toLowerCase();
-  if (seenLines.has(dedupeKey)) return;
-  seenLines.add(dedupeKey);
-
-  const score = scorePoint(tipText);
-  if (score < 0) return;
-  rankedTips.push({ text: tipText, score });
-}
-
-function sortTipsHighestFirst(rankedTips) {
-  return rankedTips.slice().sort((leftTip, rightTip) => rightTip.score - leftTip.score);
-}
-
 // ===== MAIN FUNCTION =====
 
 /**
  * Keep the highest-scoring coaching lines, dropping filler and duplicates.
+ * Flow: 1. rank unique lines  2. sort high→low  3. take the top N texts
  * @param {Array<string>} [items]
  * @param {number} [maxTips] How many lines to return. Callers pass this second.
  * @returns {Array<string>}
  */
 export function pickBestTips(items = [], maxTips = DEFAULT_TIP_LIMIT) {
-  const seenLines = new Set();
-  const rankedTips = [];
+  const rawLines = items || [];
 
-  for (const rawLine of items) {
-    rememberUniqueTip(rawLine, seenLines, rankedTips);
-  }
+  // 1. Walk every raw line — dedupe and score as we go (rejected repeats still count as seen)
+  const rankedTips = collectRankedUniqueTips(rawLines);
 
-  const sortedTips = sortTipsHighestFirst(rankedTips);
-  const topTips = sortedTips.slice(0, maxTips);
-  return topTips.map((rankedTip) => rankedTip.text);
+  // 2. Best lines first
+  const sortedTips = copyTipsHighestScoreFirst(rankedTips);
+
+  // 3. Cap for the card layout, return plain strings (not { text, score })
+  return tipTextsOnly(sortedTips, maxTips);
 }
 
 /**
@@ -148,5 +80,90 @@ export function pickBestTips(items = [], maxTips = DEFAULT_TIP_LIMIT) {
  * @returns {boolean}
  */
 export function isBoringCoachingLine(text) {
-  return scorePoint(text) < 0;
+  const score = scoreOneCoachingLine(text);
+  return score < 0;
+}
+
+// ===== HELPER FUNCTIONS =====
+// Small helpers the mains call. Scoring details sit under PLUMBING.
+
+function collectRankedUniqueTips(rawLines) {
+  const seenKeys = new Set();
+  const rankedTips = [];
+
+  for (const rawLine of rawLines) {
+    tryAddRankedTip(rawLine, seenKeys, rankedTips);
+  }
+
+  return rankedTips;
+}
+
+function tipTextsOnly(sortedTips, maxTips) {
+  const tipTexts = [];
+  const tipCount = Math.min(sortedTips.length, maxTips);
+
+  for (let tipIndex = 0; tipIndex < tipCount; tipIndex += 1) {
+    tipTexts.push(sortedTips[tipIndex].text);
+  }
+
+  return tipTexts;
+}
+
+// ===== PLUMBING — skip unless debugging =====
+
+// seenKeys is updated before the score gate so a repeat of a rejected line still counts as duplicate
+function tryAddRankedTip(rawLine, seenKeys, rankedTips) {
+  const tipText = String(rawLine || '').trim();
+  if (!tipText) return;
+
+  const dedupeKey = tipText.toLowerCase();
+  if (seenKeys.has(dedupeKey)) return;
+  seenKeys.add(dedupeKey);
+
+  const score = scoreOneCoachingLine(tipText);
+  if (score < 0) return;
+
+  rankedTips.push({ text: tipText, score });
+}
+
+function copyTipsHighestScoreFirst(rankedTips) {
+  const sortedCopy = rankedTips.slice();
+  sortedCopy.sort((leftTip, rightTip) => rightTip.score - leftTip.score);
+  return sortedCopy;
+}
+
+function lineMatchesFillerCopy(tipText) {
+  for (const pattern of BORING_PATTERNS) {
+    if (pattern.test(tipText)) return true;
+  }
+  return false;
+}
+
+function pointsForLength(tipText) {
+  let points = 0;
+  const lengthIsComfortable =
+    tipText.length >= COMFORTABLE_LENGTH_MIN && tipText.length <= COMFORTABLE_LENGTH_MAX;
+
+  if (lengthIsComfortable) points += SCORE_FOR_COMFORTABLE_LENGTH;
+  if (tipText.length < SHORT_LINE_LENGTH) points -= PENALTY_FOR_SHORT_LINE;
+  if (tipText.length > LONG_LINE_LENGTH) points -= PENALTY_FOR_LONG_LINE;
+
+  return points;
+}
+
+// One pass adds digit, ratio, metric-word, unit-word, and length points together.
+// Specific numbers beat vague pep talk — that is why digits score highest.
+function scoreOneCoachingLine(text) {
+  const tipText = String(text || '').trim();
+  if (!tipText) return REJECT_SCORE;
+  if (lineMatchesFillerCopy(tipText)) return REJECT_SCORE;
+
+  let totalPoints = 0;
+  if (ANY_DIGIT_PATTERN.test(tipText)) totalPoints += SCORE_FOR_ANY_DIGIT;
+  if (RATIO_PATTERN.test(tipText)) totalPoints += SCORE_FOR_RATIO;
+  if (METRIC_WORD_PATTERN.test(tipText)) totalPoints += SCORE_FOR_METRIC_WORD;
+  if (UNIT_WORD_PATTERN.test(tipText)) totalPoints += SCORE_FOR_UNIT_WORD;
+  totalPoints += pointsForLength(tipText);
+
+  return totalPoints;
 }

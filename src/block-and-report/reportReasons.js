@@ -1,30 +1,25 @@
 // Reason codes a person can pick when they report a chat or a trainer profile.
-// Flow: the picker shows the label. The saved report stores the id.
-// Used by: reportContent.js and ReportOrBlockPopup.jsx.
+// Flow: picker shows each label → saved report stores the matching id → type string says what was reported.
+// Used by: reportContent.js, ReportOrBlockPopup.jsx, ReportOrBlockSheet.jsx.
 
 // ===== NAMED CONSTANTS =====
 
-// Manipulate here: add or remove a reason. The id is what gets stored. Do not rename an id that is already in Firestore.
-const REPORT_REASON_SPAM = { id: 'spam', label: 'Spam or scam' };
-const REPORT_REASON_HARASSMENT = { id: 'harassment', label: 'Harassment or bullying' };
-const REPORT_REASON_INAPPROPRIATE = { id: 'inappropriate', label: 'Inappropriate content' };
-const REPORT_REASON_OTHER = { id: 'other', label: 'Something else' };
-
+// Manipulate here: add a row to REPORT_REASONS. The id is what Firestore stores —
+// do not rename an id that is already live in reports.
 const REPORT_REASONS = [
-  REPORT_REASON_SPAM,
-  REPORT_REASON_HARASSMENT,
-  REPORT_REASON_INAPPROPRIATE,
-  REPORT_REASON_OTHER,
+  { id: 'spam', label: 'Spam or scam' },
+  { id: 'harassment', label: 'Harassment or bullying' },
+  { id: 'inappropriate', label: 'Inappropriate content' },
+  { id: 'other', label: 'Something else' },
 ];
 
+// Report "what was reported" strings — letters stay frozen for Firestore / API.
 const REPORT_TYPES = {
   USER: 'user',
   MESSAGE: 'message',
   TRAINER_PROFILE: 'trainer_profile',
 };
 
-// ===== HELPER FUNCTIONS =====
-
-// ===== MAIN FUNCTION =====
+// ===== MAIN EXPORTS =====
 
 export { REPORT_REASONS, REPORT_TYPES };

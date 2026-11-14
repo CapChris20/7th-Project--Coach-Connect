@@ -1,6 +1,6 @@
-// Design Law FAQ: search + accordion groups in NbCards, Contact support CTA.
-// Flow: fade in → filter questions → expand one answer → mailto from the footer card.
-// Used from Settings for both client and trainer. Copy in FAQ_SECTIONS is what ships.
+// FAQ screen — search field, accordion groups in NbCards, Contact support footer.
+// Flow: fade in → type to filter → tap one question open → mailto from the footer.
+// Used from Settings (client + trainer). FAQ_SECTIONS copy is what ships in the build.
 
 import React, { useMemo, useRef, useState } from 'react';
 import {
@@ -31,13 +31,18 @@ import { openSupportMailto } from './emailSupport';
 
 const SHELL_NAV_INSET = 24;
 const EXTRA_SCROLL_PAD = 16;
+// Manipulate here: entrance fade/rise duration (ms) — match other legal/settings screens
 const FADE_MS = 350;
 const RISE_FROM = 10;
+const SUPPORT_MAIL_SUBJECT = 'Coach Connect support';
+const SUPPORT_MAIL_BODY = 'What I was doing:\n\nWhat went wrong:\n\n';
 
+// vocab: LayoutAnimation on Android needs this experimental flag once at module load.
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
+// Manipulate here: shipping FAQ copy — headings + Q/A rows (flat list; headings start groups)
 const FAQ_SECTIONS = [
   {
     type: 'heading',
@@ -171,95 +176,271 @@ const FAQ_SECTIONS = [
 
 // ===== HELPER FUNCTIONS =====
 
-/**
- * Extra room above the shell tab bar, or the home-indicator when this screen owns the stack.
- * @param {boolean} embedShellBottomNav
- * @param {number} shellNavInset
- * @param {number} bottomInset
- * @returns {number}
- */
-function faqScrollBottomPad(embedShellBottomNav, shellNavInset, bottomInset) {
-  if (embedShellBottomNav) return shellNavInset;
-  return Math.max(bottomInset, EXTRA_SCROLL_PAD) + SHELL_NAV_INSET;
-}
-
-/** Split FAQ_SECTIONS into { title, items[] } groups for one NbCard per section. */
-function groupFaqSections(rows) {
-  const groups = [];
-  let current = null;
-  rows.forEach((item, index) => {
-    if (item.type === 'heading') {
-      current = { title: item.title, items: [] };
-      groups.push(current);
-      return;
-    }
-    if (!current) {
-      current = { title: 'FAQ', items: [] };
-      groups.push(current);
-    }
-    current.items.push({ ...item, index });
-  });
-  return groups;
-}
-
-function matchesFaqQuery(item, query) {
-  if (!query) return true;
-  const haystack = `${item.question || ''} ${item.answer || ''}`.toLowerCase();
-  return haystack.includes(query);
-}
-
-function FaqHeading({ title, styles: cardStyles }) {
+function FaqSectionHeading({ title, cardStyles }) {
   return <Text style={cardStyles.sectionHeading}>{title}</Text>;
 }
 
-function FaqAccordionRow({ item, openKey, onToggle, styles: cardStyles, colors, showDivider }) {
-  const key = `${item.question}-${item.index}`;
-  const isOpen = openKey === key;
+/**
+ * One Q row: tap toggles open; chevron flips; answer shows under the question.
+ */
+function FaqAccordionRow({ item, openAccordionKey, onAccordionPress, cardStyles, colors, showDivider }) {
+  const accordionKey = `${item.question}-${item.index}`;
+  const isExpanded = openAccordionKey === accordionKey;
+
+  let chevronName = 'chevron-forward';
+  if (isExpanded) {
+    chevronName = 'chevron-down';
+  }
+
   return (
     <View>
       {showDivider ? <View style={[cardStyles.divider, { backgroundColor: colors.nbBorder }]} /> : null}
       <Pressable
-        onPress={() => onToggle(key)}
+        onPress={() => onAccordionPress(accordionKey)}
         style={cardStyles.questionRow}
         accessibilityRole="button"
-        accessibilityState={{ expanded: isOpen }}
+        accessibilityState={{ expanded: isExpanded }}
       >
         <Text style={cardStyles.qText}>{item.question}</Text>
-        <Ionicons
-          name={isOpen ? 'chevron-down' : 'chevron-forward'}
-          size={18}
-          color={colors.nbMuted}
-        />
+        <Ionicons name={chevronName} size={18} color={colors.nbMuted} />
       </Pressable>
-      {isOpen ? <Text style={cardStyles.answerText}>{item.answer}</Text> : null}
+      {isExpanded ? <Text style={cardStyles.answerText}>{item.answer}</Text> : null}
     </View>
   );
 }
 
-function FaqFooter({ supportEmail, styles: cardStyles, colors }) {
+/**
+ * Footer card under the list — opens the support mailto with a starter body.
+ */
+function FaqSupportFooter({ supportEmail, cardStyles, colors }) {
+  let footerBody =
+    'Tell us what you were doing. We can’t give medical advice; for health emergencies, contact local emergency services.';
+  if (supportEmail) {
+    footerBody = `Tell us what you were doing — email ${supportEmail}. We can’t give medical advice; for health emergencies, contact local emergency services.`;
+  }
+
+  const openSupportEmail = () => {
+    openSupportMailto({
+      subject: SUPPORT_MAIL_SUBJECT,
+      body: SUPPORT_MAIL_BODY,
+    });
+  };
+
   return (
     <NbCard style={cardStyles.footerCard}>
       <Text style={[cardStyles.footerTitle, { color: colors.nbInk }]}>Still stuck?</Text>
-      <Text style={cardStyles.footerText}>
-        {supportEmail
-          ? `Tell us what you were doing — email ${supportEmail}. We can’t give medical advice; for health emergencies, contact local emergency services.`
-          : 'Tell us what you were doing. We can’t give medical advice; for health emergencies, contact local emergency services.'}
-      </Text>
-      <View style={{ marginTop: spacing.sm }}>
-        <NbButton
-          variant="fill"
-          onPress={() =>
-            openSupportMailto({
-              subject: 'Coach Connect support',
-              body: 'What I was doing:\n\nWhat went wrong:\n\n',
-            })
-          }
-        >
+      <Text style={cardStyles.footerText}>{footerBody}</Text>
+      <View style={styles.footerButtonWrap}>
+        <NbButton variant="fill" onPress={openSupportEmail}>
           Contact support
         </NbButton>
       </View>
     </NbCard>
   );
+}
+
+/**
+ * One heading + NbCard of accordion rows for a filtered FAQ group.
+ */
+function FaqGroupBlock({ group, openAccordionKey, onAccordionPress, screenStyles, colors }) {
+  return (
+    <View>
+      <FaqSectionHeading title={group.title} cardStyles={screenStyles} />
+      <NbCard style={screenStyles.groupCard}>
+        {group.items.map((item, rowIndex) => (
+          <FaqAccordionRow
+            key={`${item.question}-${item.index}`}
+            item={item}
+            openAccordionKey={openAccordionKey}
+            onAccordionPress={onAccordionPress}
+            cardStyles={screenStyles}
+            colors={colors}
+            showDivider={rowIndex > 0}
+          />
+        ))}
+      </NbCard>
+    </View>
+  );
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Help / FAQ screen with search + accordion groups.
+ * @param {{ onClose?: Function, embedShellBottomNav?: boolean }} props
+ */
+export default function HelpFAQScreen({ onClose, embedShellBottomNav = false }) {
+  // vocab: useTheme = Design Law tokens; isDark drives StatusBar content style
+  const { colors, isDark } = useTheme();
+  // vocab: useSafeAreaInsets = home-indicator / notch padding from the device
+  const safeAreaInsets = useSafeAreaInsets();
+  const shellNavInset = useShellBottomNavInset(SHELL_NAV_INSET);
+  const scrollBottomPad = scrollBottomPaddingForFaq(
+    embedShellBottomNav,
+    shellNavInset,
+    safeAreaInsets.bottom,
+  );
+  const supportEmail = getSupportEmail();
+
+  const [openAccordionKey, setOpenAccordionKey] = useState(null);
+  const [searchQueryText, setSearchQueryText] = useState('');
+
+  // vocab: Animated.Value = drive opacity / translateY for the entrance motion
+  const opacityAnimation = useRef(new Animated.Value(0)).current;
+  const riseAnimation = useRef(new Animated.Value(RISE_FROM)).current;
+
+  // 1. Fade and slide the list in once on mount (native driver — compositing only).
+  React.useEffect(() => {
+    Animated.parallel([
+      Animated.timing(opacityAnimation, { toValue: 1, duration: FADE_MS, useNativeDriver: true }),
+      Animated.timing(riseAnimation, { toValue: 0, duration: FADE_MS, useNativeDriver: true }),
+    ]).start();
+  }, [opacityAnimation, riseAnimation]);
+
+  // vocab: useMemo = rebuild filtered groups only when the search string changes
+  const visibleFaqGroups = useMemo(
+    () => buildFaqGroupsAfterSearch(searchQueryText, FAQ_SECTIONS),
+    [searchQueryText],
+  );
+
+  const screenStyles = buildFaqStyles(scrollBottomPad, colors);
+
+  /**
+   * Open one accordion; tapping the open one closes it.
+   * Flow: 1. animate layout  2. toggle key
+   */
+  const handleAccordionPress = (accordionKey) => {
+    // 1. Smooth height change when the answer appears/disappears.
+    // vocab: LayoutAnimation = RN animates the next layout pass
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+
+    // 2. Same key again → null (closed); otherwise open that key.
+    setOpenAccordionKey((previousKey) => {
+      if (previousKey === accordionKey) {
+        return null;
+      }
+      return accordionKey;
+    });
+  };
+
+  let statusBarStyle = 'dark-content';
+  if (isDark) {
+    statusBarStyle = 'light-content';
+  }
+
+  const hasSearchResults = visibleFaqGroups.length > 0;
+  const animatedListStyle = {
+    opacity: opacityAnimation,
+    transform: [{ translateY: riseAnimation }],
+  };
+
+  return (
+    <SafeAreaView style={screenStyles.container} edges={SHELL_SAFE_AREA_EDGES}>
+      <StatusBar barStyle={statusBarStyle} backgroundColor={colors.nbBackground} />
+      <NbPageHeader title="FAQ" onBack={onClose} />
+
+      <ScrollView
+        style={styles.flexOne}
+        contentContainerStyle={screenStyles.scrollContent}
+        {...FORM_SCROLL_PROPS}
+        showsVerticalScrollIndicator
+      >
+        <Animated.View style={animatedListStyle}>
+          <TextInput
+            value={searchQueryText}
+            onChangeText={setSearchQueryText}
+            placeholder="Search questions"
+            placeholderTextColor={colors.nbMuted}
+            style={screenStyles.searchInput}
+            autoCapitalize="none"
+            autoCorrect={false}
+            clearButtonMode="while-editing"
+            accessibilityLabel="Search FAQ questions"
+          />
+
+          {!hasSearchResults ? (
+            <Text style={screenStyles.empty}>No questions match that search.</Text>
+          ) : (
+            visibleFaqGroups.map((group) => (
+              <FaqGroupBlock
+                key={group.title}
+                group={group}
+                openAccordionKey={openAccordionKey}
+                onAccordionPress={handleAccordionPress}
+                screenStyles={screenStyles}
+                colors={colors}
+              />
+            ))
+          )}
+
+          <FaqSupportFooter supportEmail={supportEmail} cardStyles={screenStyles} colors={colors} />
+        </Animated.View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+// ===== PLUMBING — skip unless debugging =====
+
+/**
+ * Bottom pad so the last card clears the shell tab bar or home indicator.
+ */
+function scrollBottomPaddingForFaq(embedShellBottomNav, shellNavInset, bottomSafeInset) {
+  if (embedShellBottomNav) {
+    return shellNavInset;
+  }
+  const safeBottom = Math.max(bottomSafeInset, EXTRA_SCROLL_PAD);
+  return safeBottom + SHELL_NAV_INSET;
+}
+
+/**
+ * Turn the flat FAQ_SECTIONS list into { title, items[] } chunks — one NbCard per chunk.
+ */
+function splitFaqSectionsIntoGroups(sectionRows) {
+  const groupedSections = [];
+  let currentGroup = null;
+
+  sectionRows.forEach((row, rowIndex) => {
+    if (row.type === 'heading') {
+      currentGroup = { title: row.title, items: [] };
+      groupedSections.push(currentGroup);
+      return;
+    }
+    if (!currentGroup) {
+      currentGroup = { title: 'FAQ', items: [] };
+      groupedSections.push(currentGroup);
+    }
+    currentGroup.items.push({ ...row, index: rowIndex });
+  });
+
+  return groupedSections;
+}
+
+function faqRowMatchesSearchText(faqItem, normalizedQuery) {
+  if (!normalizedQuery) {
+    return true;
+  }
+  const questionText = faqItem.question || '';
+  const answerText = faqItem.answer || '';
+  const searchableText = `${questionText} ${answerText}`.toLowerCase();
+  return searchableText.includes(normalizedQuery);
+}
+
+/**
+ * Filter each group’s items by search; drop empty groups.
+ */
+function buildFaqGroupsAfterSearch(rawSearchText, allSectionRows) {
+  const normalizedQuery = String(rawSearchText || '').trim().toLowerCase();
+  const allGroups = splitFaqSectionsIntoGroups(allSectionRows);
+
+  const groupsWithMatchingRows = allGroups.map((group) => {
+    const matchingItems = group.items.filter((item) =>
+      faqRowMatchesSearchText(item, normalizedQuery),
+    );
+    return { ...group, items: matchingItems };
+  });
+
+  return groupsWithMatchingRows.filter((group) => group.items.length > 0);
 }
 
 function buildFaqStyles(scrollBottomPad, colors) {
@@ -360,95 +541,7 @@ function buildFaqStyles(scrollBottomPad, colors) {
   });
 }
 
-// ===== MAIN FUNCTION =====
-
-export default function HelpFAQScreen({ onClose, embedShellBottomNav = false }) {
-  const { colors, isDark } = useTheme();
-  const insets = useSafeAreaInsets();
-  const shellNavInset = useShellBottomNavInset(SHELL_NAV_INSET);
-  const scrollBottomPad = faqScrollBottomPad(embedShellBottomNav, shellNavInset, insets.bottom);
-  const supportEmail = getSupportEmail();
-  const [openKey, setOpenKey] = useState(null);
-  const [searchQuery, setSearchQuery] = useState('');
-
-  const fade = useRef(new Animated.Value(0)).current;
-  const rise = useRef(new Animated.Value(RISE_FROM)).current;
-  React.useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fade, { toValue: 1, duration: FADE_MS, useNativeDriver: true }),
-      Animated.timing(rise, { toValue: 0, duration: FADE_MS, useNativeDriver: true }),
-    ]).start();
-  }, [fade, rise]);
-
-  const groups = useMemo(() => {
-    const query = String(searchQuery || '')
-      .trim()
-      .toLowerCase();
-    return groupFaqSections(FAQ_SECTIONS)
-      .map((group) => ({
-        ...group,
-        items: group.items.filter((item) => matchesFaqQuery(item, query)),
-      }))
-      .filter((group) => group.items.length > 0);
-  }, [searchQuery]);
-
-  const styles = buildFaqStyles(scrollBottomPad, colors);
-
-  const toggle = (key) => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setOpenKey((previousKey) => (previousKey === key ? null : key));
-  };
-
-  return (
-    <SafeAreaView style={styles.container} edges={SHELL_SAFE_AREA_EDGES}>
-      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.nbBackground} />
-      <NbPageHeader title="FAQ" onBack={onClose} />
-
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={styles.scrollContent}
-        {...FORM_SCROLL_PROPS}
-        showsVerticalScrollIndicator
-      >
-        <Animated.View style={{ opacity: fade, transform: [{ translateY: rise }] }}>
-          <TextInput
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            placeholder="Search questions"
-            placeholderTextColor={colors.nbMuted}
-            style={styles.searchInput}
-            autoCapitalize="none"
-            autoCorrect={false}
-            clearButtonMode="while-editing"
-            accessibilityLabel="Search FAQ questions"
-          />
-
-          {groups.length === 0 ? (
-            <Text style={styles.empty}>No questions match that search.</Text>
-          ) : (
-            groups.map((group) => (
-              <View key={group.title}>
-                <FaqHeading title={group.title} styles={styles} />
-                <NbCard style={styles.groupCard}>
-                  {group.items.map((item, rowIndex) => (
-                    <FaqAccordionRow
-                      key={`${item.question}-${item.index}`}
-                      item={item}
-                      openKey={openKey}
-                      onToggle={toggle}
-                      styles={styles}
-                      colors={colors}
-                      showDivider={rowIndex > 0}
-                    />
-                  ))}
-                </NbCard>
-              </View>
-            ))
-          )}
-
-          <FaqFooter supportEmail={supportEmail} styles={styles} colors={colors} />
-        </Animated.View>
-      </ScrollView>
-    </SafeAreaView>
-  );
-}
+const styles = StyleSheet.create({
+  flexOne: { flex: 1 },
+  footerButtonWrap: { marginTop: spacing.sm },
+});

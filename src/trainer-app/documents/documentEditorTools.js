@@ -1,9 +1,9 @@
-// Sets up the rich-text editor ("DocFlow") and the command helpers its toolbar calls.
-// Flow: useDocFlowEditor configures TenTap bridges → helpers inject JavaScript into the WebView.
-// Used by: the trainer document editor toolbar. The editor is a web page, so commands are DOM strings.
+// Sets up the DocFlow rich-text editor and the toolbar helpers that talk to its WebView.
+// Flow: useDocFlowEditor wires TenTap bridges → helpers inject one DOM command each via injectJS.
+// Used by: trainer document flows on the TipTap stack (parallel to the legacy contenteditable editor).
 
 import { useMemo } from 'react';
-// vocab: TenTap = React Native wrapper around TipTap/ProseMirror rendered in a WebView.
+// vocab: TenTap = React Native wrapper around TipTap/ProseMirror in a WebView.
 // A "bridge" is one feature (link, image, history…) plugged into that editor.
 import {
   useEditorBridge,
@@ -24,7 +24,7 @@ const EMPTY_DOCUMENT_HTML = '<p></p>';
 const EDITOR_BG_DARK = '#121212';
 const EDITOR_BG_LIGHT = '#ffffff';
 const HEADING_LEVELS = [1, 2, 3, 4, 5, 6];
-// Manipulate here: undo depth. 100 steps trades a little memory for a forgiving undo stack.
+// Manipulate here: undo depth. Higher = more memory, more forgiving undo.
 const HISTORY_UNDO_DEPTH = 100;
 const FONT_SIZE_MARKER = '7';
 const LINE_HEIGHT_BLOCK_SELECTOR = 'p,h1,h2,h3,h4,h5,h6,li';
@@ -43,41 +43,20 @@ const ALIGN_COMMAND_DEFAULT = 'justifyLeft';
 // ===== HELPER FUNCTIONS =====
 
 /**
- * Swap in our configured copy of a starter-kit bridge. Unknown bridges pass through so a TenTap
- * upgrade that adds features keeps working without rewriting this list by hand.
- * @param {object} bridge
- * @returns {object}
+ * Toolbar align name → legacy document.execCommand name. Unknown → left align.
+ * @param {string} alignName
+ * @returns {string}
  */
-function configuredDocFlowBridge(bridge) {
-  if (bridge.name === 'placeholder') {
-    return PlaceholderBridge.configureExtension({ placeholder: PLACEHOLDER });
-  }
-  // openOnClick false: tapping a link should place the cursor, not navigate away.
-  if (bridge.name === 'link') {
-    return LinkBridge.configureExtension({ openOnClick: false, autolink: true });
-  }
-  // inline false = images are their own block. allowBase64 is required for pasted data-URL images.
-  if (bridge.name === 'image') {
-    return ImageBridge.configureExtension({ inline: false, allowBase64: true });
-  }
-  // multicolor true is what enables the highlight-color palette rather than one fixed yellow.
-  if (bridge.name === 'highlight') {
-    return HighlightBridge.configureExtension({ multicolor: true });
-  }
-  // Manipulate here: trim HEADING_LEVELS to restrict the H-menu.
-  if (bridge.name === 'heading') {
-    return HeadingBridge.configureExtension({ levels: HEADING_LEVELS });
-  }
-  if (bridge.name === 'history') {
-    return HistoryBridge.configureExtension({ depth: HISTORY_UNDO_DEPTH });
-  }
-  return bridge;
+function execCommandNameForAlign(alignName) {
+  return ALIGN_COMMAND_BY_NAME[alignName] || ALIGN_COMMAND_DEFAULT;
 }
 
 /**
+ * WebView chrome colors so the page flash matches light/dark.
  * @param {boolean} isDark
+ * @returns {{ webview: object, webviewContainer: object }}
  */
-function editorWebViewTheme(isDark) {
+function themeColorsForEditorWebView(isDark) {
   const backgroundColor = isDark ? EDITOR_BG_DARK : EDITOR_BG_LIGHT;
   return {
     webview: { backgroundColor },
@@ -86,61 +65,17 @@ function editorWebViewTheme(isDark) {
 }
 
 /**
- * Align names we show in the toolbar → legacy execCommand names. Unknown values become left
- * so a bad value resets alignment rather than doing nothing.
- * @param {string} align
- * @returns {string}
- */
-function execCommandForAlign(align) {
-  return ALIGN_COMMAND_BY_NAME[align] || ALIGN_COMMAND_DEFAULT;
-}
-
-// ===== MAIN FUNCTION =====
-
-/**
- * Build the DocFlow editor instance. The bridge list is memoized with [] so a new array identity
- * cannot re-initialize the editor and wipe undo history.
- * vocab: useMemo = React hook that keeps the same value until deps change (here: never).
- * vocab: useEditorBridge = TenTap hook that returns the editor handle the toolbar talks to.
- * @param {{ initialContent?: string, onUpdate?: Function, isDark: boolean }} args
- */
-export function useDocFlowEditor({ initialContent, onUpdate, isDark }) {
-  const bridgeExtensions = useMemo(
-    () => TenTapStartKit.map((bridge) => configuredDocFlowBridge(bridge)),
-    [],
-  );
-
-  const editor = useEditorBridge({
-    bridgeExtensions,
-    // '<p></p>' rather than '': TipTap needs at least one block node to place a cursor in.
-    initialContent: initialContent || EMPTY_DOCUMENT_HTML,
-    autofocus: false,
-    avoidIosKeyboard: true,
-    // dynamicHeight false = the WebView fills its container and scrolls internally.
-    dynamicHeight: false,
-    onChange: onUpdate,
-    // The WebView's own background must be themed too — otherwise a white page flashes in dark mode.
-    theme: editorWebViewTheme(isDark),
-  });
-
-  return editor;
-}
-
-/**
- * Run a snippet inside the editor page.
- * The IIFE keeps injected variables off the page global; try/catch swallows errors so a failed
- * command cannot break the editor; the trailing `true;` is required by some WebViews.
- * vocab/symbol: editor?.injectJS?.() = do nothing if the editor is not ready yet.
+ * Run a JavaScript snippet inside the editor page.
+ * vocab: IIFE keeps injected vars off window; trailing `true;` satisfies some WebViews.
  * @param {object} editor
  * @param {string} commandSource
  */
 export function injectEditorCommand(editor, commandSource) {
-  editor?.injectJS?.(`(function(){ try { ${commandSource} } catch(e) {} })(); true;`);
+  editor?.injectJS?.(`(function(){ try { ${commandSource} } catch (toolError) {} })(); true;`);
 }
 
 /**
- * Insert raw HTML at the caret. JSON.stringify escapes quotes so the HTML cannot break out of
- * the injected string and run as arbitrary code.
+ * Insert HTML at the caret. JSON.stringify prevents quote breakage in injected JS.
  * @param {object} editor
  * @param {string} html
  */
@@ -153,10 +88,9 @@ export function insertHtmlAtCursor(editor, html) {
 }
 
 /**
- * Font size workaround: execCommand('fontSize') only accepts the legacy 1–7 scale, so we apply
- * size 7 as a MARKER, then replace those tags with a real CSS pixel size.
+ * Font size via execCommand marker 7, then replace <font> tags with a real px size.
  * @param {object} editor
- * @param {number|string} pixelSize
+ * @param {number} pixelSize
  */
 export function setFontSize(editor, pixelSize) {
   injectEditorCommand(
@@ -166,17 +100,20 @@ export function setFontSize(editor, pixelSize) {
 }
 
 /**
+ * Set the font family on the current selection.
  * @param {object} editor
  * @param {string} family
  */
 export function setFontFamily(editor, family) {
-  injectEditorCommand(editor, `document.execCommand('fontName', false, ${JSON.stringify(family)});`);
+  injectEditorCommand(
+    editor,
+    `document.execCommand('fontName', false, ${JSON.stringify(family)});`,
+  );
 }
 
 /**
- * No execCommand exists for line height, so this climbs from the selection to a block node.
- * vocab: nodeType === 3 = a text node, so we take its parentElement.
- * Manipulate here: LINE_HEIGHT_BLOCK_SELECTOR is the list of blocks line height may be applied to.
+ * Line height has no execCommand — walk from selection to a block in LINE_HEIGHT_BLOCK_SELECTOR.
+ * vocab: nodeType === 3 means a text node; we use its parentElement.
  * @param {object} editor
  * @param {string|number} value
  */
@@ -188,16 +125,17 @@ export function setLineHeight(editor, value) {
 }
 
 /**
+ * Align the current block (left / center / right / justify).
  * @param {object} editor
- * @param {string} align
+ * @param {string} alignName
  */
-export function setTextAlign(editor, align) {
-  const commandName = execCommandForAlign(align);
+export function setTextAlign(editor, alignName) {
+  const commandName = execCommandNameForAlign(alignName);
   injectEditorCommand(editor, `document.execCommand('${commandName}', false, null);`);
 }
 
 /**
- * Starter 3-column table plus a trailing empty paragraph so the caret can escape the table.
+ * Insert a starter 3-column table at the caret.
  * @param {object} editor
  */
 export function insertTable(editor) {
@@ -205,6 +143,7 @@ export function insertTable(editor) {
 }
 
 /**
+ * Insert a horizontal rule at the caret.
  * @param {object} editor
  */
 export function insertHorizontalRule(editor) {
@@ -212,6 +151,7 @@ export function insertHorizontalRule(editor) {
 }
 
 /**
+ * Toggle subscript on the selection.
  * @param {object} editor
  */
 export function toggleSubscript(editor) {
@@ -219,6 +159,7 @@ export function toggleSubscript(editor) {
 }
 
 /**
+ * Toggle superscript on the selection.
  * @param {object} editor
  */
 export function toggleSuperscript(editor) {
@@ -226,6 +167,7 @@ export function toggleSuperscript(editor) {
 }
 
 /**
+ * Strip inline formatting from the selection.
  * @param {object} editor
  */
 export function clearFormatting(editor) {
@@ -233,8 +175,8 @@ export function clearFormatting(editor) {
 }
 
 /**
- * Reset the current block to a normal paragraph. Heading is cleared first because it is the more
- * visible wrapper; one call clears one wrapper.
+ * Drop heading / blockquote wrappers back to normal body text.
+ * Heading is cleared first because it is the more visible wrapper.
  * @param {object} editor
  * @param {object} [bridgeState]
  */
@@ -249,8 +191,8 @@ export function setNormalText(editor, bridgeState) {
 }
 
 /**
- * Hijack paste inside the WebView so the native side can restructure clipboard HTML (smartPaste.js).
- * Returned unchanged so registration and handling still read as one step at the call site.
+ * Hijack paste in the WebView so the native side can restructure clipboard HTML (smartPaste.js).
+ * Returns onPaste unchanged so registration and handling still read as one step at the call site.
  * @param {object} editor
  * @param {Function} onPaste
  * @returns {Function}
@@ -272,4 +214,71 @@ export function setupSmartPasteListener(editor, onPaste) {
     `,
   );
   return onPaste;
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Build the DocFlow editor instance for the toolbar to drive.
+ * Flow: 1. memoize bridges  2. create bridge  3. return handle
+ * @param {object} args
+ * @param {string} [args.initialContent]
+ * @param {Function} [args.onUpdate]
+ * @param {boolean} args.isDark
+ * @returns {object}
+ */
+export function useDocFlowEditor({ initialContent, onUpdate, isDark }) {
+  // 1. Bridge list is frozen per mount so TipTap does not reset undo history.
+  const bridgeExtensions = useMemo(
+    () => TenTapStartKit.map((starterBridge) => configuredDocFlowBridge(starterBridge)),
+    [],
+  );
+
+  // 2. Wire the WebView editor — initialContent must be at least one block (<p></p>).
+  const editor = useEditorBridge({
+    bridgeExtensions,
+    initialContent: initialContent || EMPTY_DOCUMENT_HTML,
+    autofocus: false,
+    avoidIosKeyboard: true,
+    dynamicHeight: false,
+    onChange: onUpdate,
+    theme: themeColorsForEditorWebView(isDark),
+  });
+
+  // 3. Hand the editor back to the screen / toolbar.
+  return editor;
+}
+
+// PLUMBING — skip unless debugging TenTap bridge names or paste hook internals.
+
+/**
+ * Swap in our configured copy of each starter-kit bridge.
+ * Unknown names pass through so a TenTap upgrade keeps working without rewriting this list.
+ * @param {object} starterBridge
+ * @returns {object}
+ */
+function configuredDocFlowBridge(starterBridge) {
+  if (starterBridge.name === 'placeholder') {
+    return PlaceholderBridge.configureExtension({ placeholder: PLACEHOLDER });
+  }
+  // openOnClick false: tapping a link places the cursor, does not navigate away.
+  if (starterBridge.name === 'link') {
+    return LinkBridge.configureExtension({ openOnClick: false, autolink: true });
+  }
+  // inline false = images are their own block. allowBase64 is required for pasted data-URL images.
+  if (starterBridge.name === 'image') {
+    return ImageBridge.configureExtension({ inline: false, allowBase64: true });
+  }
+  // multicolor true enables the highlight-color palette rather than one fixed yellow.
+  if (starterBridge.name === 'highlight') {
+    return HighlightBridge.configureExtension({ multicolor: true });
+  }
+  // Manipulate here: trim HEADING_LEVELS to restrict the H-menu.
+  if (starterBridge.name === 'heading') {
+    return HeadingBridge.configureExtension({ levels: HEADING_LEVELS });
+  }
+  if (starterBridge.name === 'history') {
+    return HistoryBridge.configureExtension({ depth: HISTORY_UNDO_DEPTH });
+  }
+  return starterBridge;
 }

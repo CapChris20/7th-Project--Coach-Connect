@@ -1,6 +1,7 @@
 // Trainer home — Design Law layout (docs/design/Design-Law/screens/trainer-home).
 // Flow: greeting → motivation → needs you → client carousel → today tabs → tools → weekly report.
 // Data/Firebase unchanged. Chrome lives in TrainerHomeBlocks.jsx + trainerHomePieces.jsx.
+// Read order: constants → helpers → DashboardContent main → PLUMBING Firestore loaders.
 
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import {
@@ -78,6 +79,263 @@ const ICON_ACCENT = lightColors.primary;
 
 // ===== HELPER FUNCTIONS =====
 
+// ----- optional-field readers (plain ifs — no optional chaining in callers) -----
+
+function idFromClientRow(clientRow) {
+  if (!clientRow) return null;
+  return clientRow.id;
+}
+
+function nameFromClientRow(clientRow) {
+  if (!clientRow) return null;
+  return clientRow.name;
+}
+
+function displayNameFromClientRow(clientRow) {
+  if (!clientRow) return null;
+  return clientRow.displayName;
+}
+
+function weightFromClientRow(clientRow) {
+  if (!clientRow) return null;
+  return clientRow.weight;
+}
+
+function startingWeightFromClientRow(clientRow) {
+  if (!clientRow) return null;
+  return clientRow.startingWeight;
+}
+
+function programNameFromClientRow(clientRow) {
+  if (!clientRow) return null;
+  return clientRow.programName;
+}
+
+function microsFromClientRow(clientRow) {
+  if (!clientRow) return [];
+  return clientRow.micros || [];
+}
+
+function completedDaysFromClientRow(clientRow) {
+  if (!clientRow) return [];
+  return clientRow.completedDays || [];
+}
+
+function upcomingDaysFromClientRow(clientRow) {
+  if (!clientRow) return [];
+  return clientRow.upcomingDays || [];
+}
+
+function missedDaysFromClientRow(clientRow) {
+  if (!clientRow) return [];
+  return clientRow.missedDays || [];
+}
+
+function upcomingSessionsFromClientRow(clientRow) {
+  if (!clientRow) return [];
+  return clientRow.upcomingSessions || [];
+}
+
+function profileTimezoneFromClientData(clientData) {
+  if (!clientData) return null;
+  return clientData.profileTimezone;
+}
+
+function sleepFromClientNutrition(clientData) {
+  if (!clientData) return null;
+  if (!clientData.nutrition) return null;
+  return clientData.nutrition.sleep;
+}
+
+function messageFromCaughtError(caughtError) {
+  if (!caughtError) return '';
+  if (caughtError.message) return caughtError.message;
+  return String(caughtError);
+}
+
+function snapshotDataIfExists(snapshot) {
+  if (!snapshot) return null;
+  if (typeof snapshot.exists === 'function') {
+    if (!snapshot.exists()) return null;
+    return snapshot.data() || {};
+  }
+  if (!snapshot.exists) return null;
+  return snapshot.data() || {};
+}
+
+function workoutReminderTimeZone(userData) {
+  if (!userData) return null;
+  if (!userData.workoutReminder) return null;
+  return userData.workoutReminder.timeZone;
+}
+
+function foodRowsFromNutritionLogs(nutritionLogs) {
+  const foodRows = [];
+  if (!Array.isArray(nutritionLogs)) return foodRows;
+  for (let index = 0; index < nutritionLogs.length; index += 1) {
+    const logRow = nutritionLogs[index];
+    const foodName = logRow.food_name || logRow.foodName || 'Food';
+    if (!foodName) continue;
+    foodRows.push({
+      id: logRow.id || `food-${index}`,
+      name: foodName,
+      meal: logRow.meal_type || logRow.mealType || logRow.meal || 'Meal',
+      calories: logRow.calories != null ? Number(logRow.calories) : null,
+    });
+  }
+  return foodRows;
+}
+
+function progressDocsFromSnapshot(progressSnap) {
+  const progressDocs = [];
+  if (!progressSnap || !progressSnap.docs) return progressDocs;
+  for (const progressDoc of progressSnap.docs) {
+    progressDocs.push(progressDoc.data());
+  }
+  return progressDocs;
+}
+
+function countTruthyWeeklySummaryValues(weeklySummaryMap) {
+  let count = 0;
+  const values = Object.values(weeklySummaryMap || {});
+  for (const value of values) {
+    if (value) count += 1;
+  }
+  return count;
+}
+
+
+
+/**
+ * AsyncStorage keys for the selected client's local-midnight day rollover.
+ * @param {string} clientId
+ * @returns {{ lastDateKeyStorageKey: string, pendingResetStorageKey: string }}
+ */
+function storageKeysForClientDayReset(clientId) {
+  return {
+    lastDateKeyStorageKey: `trainer_dashboard_last_dateKey_${clientId}`,
+    pendingResetStorageKey: `trainer_dashboard_pending_reset_${clientId}`,
+  };
+}
+
+/**
+ * Copy yesterday's dailyLogs (+ legacy daily_tracking) into the daily_logs archive collection.
+ * On failure, stash the prevKey so the next heartbeat can retry.
+ * @param {string} clientId
+ * @param {string} previousDateKey
+ * @param {string} pendingResetStorageKey
+ */
+async function archivePreviousClientDay(clientId, previousDateKey, pendingResetStorageKey) {
+  if (!previousDateKey) return;
+  try {
+    const [dailyLogsSnap, trackingSnap] = await Promise.all([
+      getDoc(doc(db, 'users', clientId, 'dailyLogs', previousDateKey)).catch(() => null),
+      // TODO(phase-5): remove legacy daily_tracking read after backfill
+      getDoc(doc(db, 'users', clientId, 'daily_tracking', previousDateKey)).catch(() => null),
+    ]);
+    const dailyLogsData = snapshotDataIfExists(dailyLogsSnap);
+    const trackingData = snapshotDataIfExists(trackingSnap);
+
+    const archiveDocId = `${clientId}_${previousDateKey}`;
+    await setDoc(
+      doc(db, 'daily_logs', archiveDocId),
+      {
+        userId: clientId,
+        date: previousDateKey,
+        workouts: {
+          workoutLog: (dailyLogsData ? dailyLogsData.workoutLog : null) || null,
+          workoutSummary: (trackingData ? trackingData.workoutSummary : null) || (dailyLogsData ? dailyLogsData.dashboard_workouts : null) || null,
+          workoutName: (trackingData ? trackingData.workoutName : null) || (dailyLogsData ? dailyLogsData.dashboard_workout_name : null) || null,
+          workoutExercises: (trackingData ? trackingData.workoutExercises : null) || null,
+        },
+        nutrition: {
+          caloriesConsumed: typeof (trackingData ? trackingData.caloriesConsumed : null) === 'number' ? trackingData.caloriesConsumed : null,
+          macros: (trackingData ? trackingData.macroTotals : null) || null,
+        },
+        streak_count: typeof (dailyLogsData ? dailyLogsData.streak_count : null) === 'number' ? dailyLogsData.streak_count : null,
+        timestamp: serverTimestamp(),
+      },
+      { merge: true },
+    );
+    await AsyncStorage.removeItem(pendingResetStorageKey);
+  } catch (error) {
+    await AsyncStorage.setItem(
+      pendingResetStorageKey,
+      JSON.stringify({ prevKey: previousDateKey, at: Date.now() }),
+    );
+  }
+}
+
+/**
+ * Heartbeat tick: detect local dateKey change, archive the previous day, retry pending archives.
+ * @param {string} clientId
+ * @param {string} clientTodayKey
+ */
+async function runClientDashboardDayRolloverTick(clientId, clientTodayKey) {
+  const { lastDateKeyStorageKey, pendingResetStorageKey } = storageKeysForClientDayReset(clientId);
+  const nowKey = clientTodayKey;
+  const lastKey = await AsyncStorage.getItem(lastDateKeyStorageKey);
+
+  if (!lastKey) {
+    await AsyncStorage.setItem(lastDateKeyStorageKey, nowKey);
+  } else if (lastKey !== nowKey) {
+    await AsyncStorage.setItem(lastDateKeyStorageKey, nowKey);
+    await archivePreviousClientDay(clientId, lastKey, pendingResetStorageKey);
+  }
+
+  const pendingRaw = await AsyncStorage.getItem(pendingResetStorageKey);
+  if (!pendingRaw) return;
+
+  let pendingPayload = null;
+  try {
+    pendingPayload = JSON.parse(pendingRaw);
+  } catch (ignoredError) {
+    pendingPayload = null;
+  }
+  if (pendingPayload && pendingPayload.prevKey) {
+    await archivePreviousClientDay(clientId, pendingPayload.prevKey, pendingResetStorageKey);
+  }
+}
+
+/**
+ * Greeting period from the wall clock (Morning / Afternoon / Evening).
+ * @returns {'Morning'|'Afternoon'|'Evening'}
+ */
+function greetingPeriodFromHour() {
+  const hour = new Date().getHours();
+  if (hour < MORNING_HOUR_END) return 'Morning';
+  if (hour < AFTERNOON_HOUR_END) return 'Afternoon';
+  return 'Evening';
+}
+
+/**
+ * Needs-you badge total: payout nudge + pending requests + unread messages.
+ * @param {boolean} showPayoutNudge
+ * @param {number} pendingRequestsCount
+ * @param {number} unreadMessageCount
+ * @returns {number}
+ */
+function countNeedsYouBadges(showPayoutNudge, pendingRequestsCount, unreadMessageCount) {
+  let badgeTotal = 0;
+  if (showPayoutNudge) badgeTotal += 1;
+  if (pendingRequestsCount > 0) badgeTotal += 1;
+  if (unreadMessageCount > 0) badgeTotal += 1;
+  return badgeTotal;
+}
+
+/**
+ * Subcopy under the payout needs-you row when requests are waiting.
+ * @param {number} pendingRequestsCount
+ * @returns {string|undefined}
+ */
+function payoutNeedsSubcopyFromRequests(pendingRequestsCount) {
+  if (pendingRequestsCount <= 0) return undefined;
+  const pluralSuffix = pendingRequestsCount === 1 ? '' : 's';
+  const verb = pendingRequestsCount === 1 ? 'is' : 'are';
+  return `${pendingRequestsCount} new request${pluralSuffix} ${verb} waiting on this.`;
+}
+
+
 /**
  * CRM-only dashboard shape when the client has no users/{id} row yet.
  * Same letters as TrainerAppStart's local helper of this name.
@@ -87,10 +345,10 @@ const ICON_ACCENT = lightColors.primary;
  */
 function buildTrainerDashboardClientDataFromCrm(currentClient, notesAndFiles = []) {
   return {
-    beforeWeight: currentClient?.startingWeight ?? currentClient?.weight ?? null,
-    currentWeight: currentClient?.weight ?? null,
+    beforeWeight: startingWeightFromClientRow(currentClient) ?? weightFromClientRow(currentClient) ?? null,
+    currentWeight: weightFromClientRow(currentClient) ?? null,
     trainingDays: [],
-    programName: currentClient?.programName || 'Custom Program',
+    programName: programNameFromClientRow(currentClient) || 'Custom Program',
     nutrition: {
       calories: 0,
       protein: 0,
@@ -103,14 +361,14 @@ function buildTrainerDashboardClientDataFromCrm(currentClient, notesAndFiles = [
       proteinGoal: 200,
       carbsGoal: 300,
       fatGoal: 80,
-      micros: currentClient?.micros || [],
+      micros: microsFromClientRow(currentClient) || [],
       foods: [],
     },
     calendar: {
-      completed: currentClient?.completedDays || [],
-      upcoming: currentClient?.upcomingDays || [],
-      missed: currentClient?.missedDays || [],
-      upcomingSessions: currentClient?.upcomingSessions || [],
+      completed: completedDaysFromClientRow(currentClient) || [],
+      upcoming: upcomingDaysFromClientRow(currentClient) || [],
+      missed: missedDaysFromClientRow(currentClient) || [],
+      upcomingSessions: upcomingSessionsFromClientRow(currentClient) || [],
     },
     notesAndFiles,
   };
@@ -124,7 +382,7 @@ function buildTrainerDashboardClientDataFromCrm(currentClient, notesAndFiles = [
 async function loadNotesAndFilesQuietly(ownerUid) {
   try {
     return await getNotesAndFiles(ownerUid);
-  } catch (_) {
+  } catch (ignoredError) {
     return [];
   }
 }
@@ -134,14 +392,14 @@ async function loadProgressSummary(trainerId, ownerUid) {
     const progressSnap = await getDocs(
       collection(db, `trainer_clients/${trainerId}/clients/${ownerUid}/progress`),
     );
-    const progressDocs = progressSnap.docs.map((progressDoc) => progressDoc.data());
+    const progressDocs = progressDocsFromSnapshot(progressSnap);
     if (progressDocs.length === 0) return { trainingDays: [], programName: null };
     const latest = progressDocs[progressDocs.length - 1];
     return {
       trainingDays: latest.trainingDays || [],
       programName: latest.programName || null,
     };
-  } catch (_) {
+  } catch (ignoredError) {
     return { trainingDays: [], programName: null };
   }
 }
@@ -162,12 +420,12 @@ async function loadNutritionBundle(ownerUid, todayKey) {
     const nutritionTotals = calculateMacroTotals(nutritionLogs);
     const nutritionGoals = { ...defaults.nutritionGoals };
     const goalsData = await getDailyGoals(ownerUid);
-    if (goalsData?.proteinTarget != null) nutritionGoals.proteinTarget = goalsData.proteinTarget;
-    if (goalsData?.carbsTarget != null) nutritionGoals.carbsTarget = goalsData.carbsTarget;
-    if (goalsData?.fatTarget != null) nutritionGoals.fatTarget = goalsData.fatTarget;
-    if (goalsData?.calories != null) nutritionGoals.calories = goalsData.calories;
+    if (goalsData && goalsData.proteinTarget != null) nutritionGoals.proteinTarget = goalsData.proteinTarget;
+    if (goalsData && goalsData.carbsTarget != null) nutritionGoals.carbsTarget = goalsData.carbsTarget;
+    if (goalsData && goalsData.fatTarget != null) nutritionGoals.fatTarget = goalsData.fatTarget;
+    if (goalsData && goalsData.calories != null) nutritionGoals.calories = goalsData.calories;
     return { nutritionLogs, nutritionTotals, nutritionGoals };
-  } catch (_) {
+  } catch (ignoredError) {
     return defaults;
   }
 }
@@ -183,14 +441,7 @@ function buildDashboardClientData({
   notesAndFiles,
 }) {
   // Design Law meal rows need name + meal slot + calories (not just chip strings).
-  const foodNames = nutritionLogs
-    .map((logRow, index) => ({
-      id: logRow.id || `food-${index}`,
-      name: logRow.food_name || logRow.foodName || 'Food',
-      meal: logRow.meal_type || logRow.mealType || logRow.meal || 'Meal',
-      calories: logRow.calories != null ? Number(logRow.calories) : null,
-    }))
-    .filter((row) => row.name);
+  const foodNames = foodRowsFromNutritionLogs(nutritionLogs);
   const calorieGoal =
     userData.calorieTarget ??
     userData.calorie_target ??
@@ -202,7 +453,7 @@ function buildDashboardClientData({
   const profileWeight = mergedProfile.weight ?? normalized.weight ?? null;
   return {
     profileTimezone:
-      userData.timezone || userData.timeZone || userData?.workoutReminder?.timeZone || null,
+      userData.timezone || userData.timeZone || workoutReminderTimeZone(userData) || null,
     beforeWeight: resolveTrainerProgressBeforeWeight({
       startingWeight: mergedProfile.startingWeight ?? normalized.startingWeight,
       profileWeight,
@@ -317,6 +568,8 @@ async function applyUserDocToClientData({
   }
 }
 
+
+
 // ===== MAIN FUNCTION =====
 
 /**
@@ -354,6 +607,7 @@ const DashboardContent = ({
   inviteCode = null,
   onListMe,
 }) => {
+  // 1. Shell spacing + theme tokens for every block below.
   const shellBottomPad = useShellBottomNavInset(28);
   const themeColors = trainerHomeThemeColors(isDark);
   const [activeTab, setActiveTab] = useState('Progress');
@@ -398,8 +652,8 @@ const DashboardContent = ({
         if (shouldShowPayoutSetupReminderPopup(user)) {
           setShowPaymentPopup(true);
         }
-      } catch (e) {
-        console.warn('PayoutSetupReminderPopup eligibility check failed:', e?.message || e);
+      } catch (loadError) {
+        console.warn('PayoutSetupReminderPopup eligibility check failed:', messageFromCaughtError(loadError));
       }
     }, PAYOUT_REMINDER_DELAY_MS);
 
@@ -418,7 +672,7 @@ const DashboardContent = ({
         if (!cancelled && stored === appSessionId) {
           setPayoutNudgeDismissed(true);
         }
-      } catch (_) {
+      } catch (ignoredError) {
         /* ignore */
       }
     })();
@@ -432,7 +686,7 @@ const DashboardContent = ({
     if (appSessionId) {
       try {
         await AsyncStorage.setItem(PAYOUT_NUDGE_KEY, appSessionId);
-      } catch (_) {
+      } catch (ignoredError) {
         /* ignore */
       }
     }
@@ -441,37 +695,34 @@ const DashboardContent = ({
   const showPayoutNudge =
     !payoutNudgeDismissed && stripeConnectStatus !== 'active' && !showPaymentPopup;
 
-  const currentClient = clients.find((c) => c.id === selectedClientId) || clients[0];
+  const currentClient = clients.find((clientRow) => clientRow.id === selectedClientId) || clients[0];
 
-  const needsYouCount = useMemo(() => {
-    let n = 0;
-    if (showPayoutNudge) n += 1;
-    if (pendingRequestsCount > 0) n += 1;
-    if (unreadMessageCount > 0) n += 1;
-    return n;
-  }, [showPayoutNudge, pendingRequestsCount, unreadMessageCount]);
+  const needsYouCount = useMemo(
+    () => countNeedsYouBadges(showPayoutNudge, pendingRequestsCount, unreadMessageCount),
+    [showPayoutNudge, pendingRequestsCount, unreadMessageCount],
+  );
 
   const clientsWithWeeklyReports = useMemo(
-    () => Object.values(weeklySummaryMap).filter(Boolean).length,
+    () => countTruthyWeeklySummaryValues(weeklySummaryMap),
     [weeklySummaryMap],
   );
 
   const clientDailyHints = useMemo(() => {
-    const id = currentClient?.id;
+    const id = idFromClientRow(currentClient);
     if (!id) return {};
     const sleep =
-      todayDailyLog?.sleep_hours ??
-      todayDailyLog?.sleepHours ??
-      clientData?.nutrition?.sleep ??
+      (todayDailyLog ? todayDailyLog.sleep_hours : null) ??
+      (todayDailyLog ? todayDailyLog.sleepHours : null) ??
+      sleepFromClientNutrition(clientData) ??
       null;
     const steps =
-      todayDailyLog?.steps ??
-      todayDailyLog?.dashboard_steps ??
-      todayDailyLog?.step_count ??
+      (todayDailyLog ? todayDailyLog.steps : null) ??
+      (todayDailyLog ? todayDailyLog.dashboard_steps : null) ??
+      (todayDailyLog ? todayDailyLog.step_count : null) ??
       null;
     const hasLog =
       !!todayDailyLog &&
-      (sleep != null || steps != null || todayDailyLog?.dashboard_weight != null);
+      (sleep != null || steps != null || (todayDailyLog ? todayDailyLog.dashboard_weight : null) != null);
     return {
       [id]: {
         sleep: sleep != null ? sleep : null,
@@ -479,33 +730,33 @@ const DashboardContent = ({
         loggedToday: hasLog,
       },
     };
-  }, [currentClient?.id, todayDailyLog, clientData]);
+  }, [idFromClientRow(currentClient), todayDailyLog, clientData]);
 
   const textColor = themeColors.text;
   const mutedColor = themeColors.textMuted;
 
   const clientTodayKey = useMemo(() => {
-    if (!currentClient?.id) return getLocalDateKey();
+    if (!idFromClientRow(currentClient)) return getLocalDateKey();
     return getProfileDateKey({
       ...(currentClient || {}),
-      timezone: clientData?.profileTimezone,
-      timeZone: clientData?.profileTimezone,
+      timezone: profileTimezoneFromClientData(clientData),
+      timeZone: profileTimezoneFromClientData(clientData),
     });
-  }, [currentClient, clientData?.profileTimezone]);
+  }, [currentClient, profileTimezoneFromClientData(clientData)]);
 
   const trainerDocumentsForClient = useMemo(
-    () => filterTrainerDocumentsForClient(trainerDocuments, currentClient?.id),
-    [trainerDocuments, currentClient?.id],
+    () => filterTrainerDocumentsForClient(trainerDocuments, idFromClientRow(currentClient)),
+    [trainerDocuments, idFromClientRow(currentClient)],
   );
 
   const promptRemoveClientFromDashboard = useCallback((client) => {
-    if (!client?.id || !trainerId) return;
+    if (!client || !client.id || !trainerId) return;
     setRemoveClientHold(client);
   }, [trainerId]);
 
   // Most recent dailyLogs weight (for Progress when today is empty) — cleared on client switch.
   useEffect(() => {
-    const clientId = currentClient?.id;
+    const clientId = idFromClientRow(currentClient);
     if (!clientId) {
       setLatestLoggedWeight(null);
       return undefined;
@@ -523,19 +774,19 @@ const DashboardContent = ({
     return () => {
       cancelled = true;
     };
-  }, [currentClient?.id, todayDailyLog?.dashboard_weight]);
+  }, [idFromClientRow(currentClient), (todayDailyLog ? todayDailyLog.dashboard_weight : null)]);
 
   // Report selected client to parent so plus button / modals know which client is active
   useEffect(() => {
-    if (currentClient?.id && onSelectedClientChange) {
+    if (idFromClientRow(currentClient) && onSelectedClientChange) {
       onSelectedClientChange(currentClient.id);
     }
-  }, [currentClient?.id, onSelectedClientChange]);
+  }, [idFromClientRow(currentClient), onSelectedClientChange]);
 
   // Per-client unread messages badge for the dashboard "Messages" quick action.
   // This watches the messages for the current client/trainer pair only.
   useEffect(() => {
-    if (!currentClient?.id || !trainerId || !db) {
+    if (!idFromClientRow(currentClient) || !trainerId || !db) {
       setClientUnreadCount(0);
       return;
     }
@@ -559,18 +810,18 @@ const DashboardContent = ({
       }
     );
     return () => unsubscribe();
-  }, [currentClient?.id, trainerId]);
+  }, [idFromClientRow(currentClient), trainerId]);
 
   // Sync client selection from Clients tab navigation
   useEffect(() => {
-    if (defaultClientId && clients.some((c) => c.id === defaultClientId)) {
+    if (defaultClientId && clients.some((clientRow) => clientRow.id === defaultClientId)) {
       setSelectedClientId(defaultClientId);
     }
   }, [defaultClientId]);
 
   // Real-time listener for selected client's today dailyLogs (check-in badges)
   useEffect(() => {
-    if (!currentClient?.id || !db) {
+    if (!idFromClientRow(currentClient) || !db) {
       setTodayDailyLog(null);
       return undefined;
     }
@@ -595,80 +846,26 @@ const DashboardContent = ({
       }
     );
     return () => unsubscribe();
-  }, [currentClient?.id, clientTodayKey]);
+  }, [idFromClientRow(currentClient), clientTodayKey]);
 
   // Local-midnight archive/reset for the selected client (trainer dashboard hides "today" after 12am local)
   useEffect(() => {
-    if (!currentClient?.id || !db) return;
+    if (!idFromClientRow(currentClient) || !db) return undefined;
     const clientId = currentClient.id;
-    const LAST_KEY = `trainer_dashboard_last_dateKey_${clientId}`;
-    const PENDING_KEY = `trainer_dashboard_pending_reset_${clientId}`;
-
-    const runArchive = async (prevKey) => {
-      if (!prevKey) return;
-      try {
-        const [logsSnap, trackSnap] = await Promise.all([
-          getDoc(doc(db, 'users', clientId, 'dailyLogs', prevKey)).catch(() => null),
-          // TODO(phase-5): remove legacy daily_tracking read after backfill
-          getDoc(doc(db, 'users', clientId, 'daily_tracking', prevKey)).catch(() => null),
-        ]);
-        const dailyLogsData = logsSnap?.exists?.() ? (logsSnap.data() || {}) : null;
-        const trackingData = trackSnap?.exists?.() ? (trackSnap.data() || {}) : null;
-
-        const archiveDocId = `${clientId}_${prevKey}`;
-        await setDoc(
-          doc(db, 'daily_logs', archiveDocId),
-          {
-            userId: clientId,
-            date: prevKey,
-            workouts: {
-              workoutLog: dailyLogsData?.workoutLog || null,
-              workoutSummary: trackingData?.workoutSummary || dailyLogsData?.dashboard_workouts || null,
-              workoutName: trackingData?.workoutName || dailyLogsData?.dashboard_workout_name || null,
-              workoutExercises: trackingData?.workoutExercises || null,
-            },
-            nutrition: {
-              caloriesConsumed: typeof trackingData?.caloriesConsumed === 'number' ? trackingData.caloriesConsumed : null,
-              macros: trackingData?.macroTotals || null,
-            },
-            streak_count: typeof dailyLogsData?.streak_count === 'number' ? dailyLogsData.streak_count : null,
-            timestamp: serverTimestamp(),
-          },
-          { merge: true }
-        );
-        await AsyncStorage.removeItem(PENDING_KEY);
-      } catch (e) {
-        await AsyncStorage.setItem(PENDING_KEY, JSON.stringify({ prevKey, at: Date.now() }));
-      }
-    };
 
     const tick = async () => {
-      const nowKey = clientTodayKey;
-      const lastKey = await AsyncStorage.getItem(LAST_KEY);
-      if (!lastKey) {
-        await AsyncStorage.setItem(LAST_KEY, nowKey);
-      } else if (lastKey !== nowKey) {
-        await AsyncStorage.setItem(LAST_KEY, nowKey);
-        await runArchive(lastKey);
-      }
-
-      const pending = await AsyncStorage.getItem(PENDING_KEY);
-      if (pending) {
-        let parsed = null;
-        try { parsed = JSON.parse(pending); } catch (_) {}
-        if (parsed?.prevKey) await runArchive(parsed.prevKey);
-      }
+      await runClientDashboardDayRolloverTick(clientId, clientTodayKey);
     };
 
     tick();
-    const id = setInterval(tick, HEARTBEAT_INTERVAL_MS);
-    return () => clearInterval(id);
-  }, [currentClient?.id, clientTodayKey]);
+    const intervalId = setInterval(tick, HEARTBEAT_INTERVAL_MS);
+    return () => clearInterval(intervalId);
+  }, [idFromClientRow(currentClient), clientTodayKey]);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      if (!currentClient?.id || !db) return;
+      if (!idFromClientRow(currentClient) || !db) return;
       try {
         const snap = await getDocs(collection(db, 'users', currentClient.id, 'weeklySummaries'));
         if (!cancelled) {
@@ -677,27 +874,32 @@ const DashboardContent = ({
             [currentClient.id]: snap.docs.length > 0,
           }));
         }
-      } catch (e) {
-        if (!isBenignTrainerClientFirestoreError(e)) {
-          console.error('weeklySummaries presence (dashboard):', e);
+      } catch (loadError) {
+        if (!isBenignTrainerClientFirestoreError(loadError)) {
+          console.error('weeklySummaries presence (dashboard):', loadError);
         }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [currentClient?.id]);
+  }, [idFromClientRow(currentClient)]);
 
   useEffect(() => {
-    if (clients.length === 0) { setSelectedClientId(null); return; }
-    if (!selectedClientId || !clients.some((c) => c.id === selectedClientId)) {
+    if (clients.length === 0) {
+      setSelectedClientId(null);
+      return;
+    }
+    const selectedStillOnRoster =
+      selectedClientId && clients.some((clientRow) => clientRow.id === selectedClientId);
+    if (!selectedStillOnRoster) {
       setSelectedClientId(clients[0].id);
     }
   }, [clients]);
 
   // Real-time listeners for client data updates
   useEffect(() => {
-    if (!currentClient?.id || !trainerId || !db) {
+    if (!idFromClientRow(currentClient) || !trainerId || !db) {
       setClientData(null);
       return undefined;
     }
@@ -745,14 +947,7 @@ const DashboardContent = ({
           const todayKey = clientTodayKey;
           const nutritionLogs = await getFoodLogsForDate(ownerUid, todayKey);
           const nutritionTotals = calculateMacroTotals(nutritionLogs);
-          const foodNames = nutritionLogs
-            .map((l, index) => ({
-              id: l.id || `food-${index}`,
-              name: l.food_name || l.foodName || 'Food',
-              meal: l.meal_type || l.mealType || l.meal || 'Meal',
-              calories: l.calories != null ? Number(l.calories) : null,
-            }))
-            .filter((row) => row.name);
+          const foodNames = foodRowsFromNutritionLogs(nutritionLogs);
 
           if (effectCancelled) return;
 
@@ -775,9 +970,9 @@ const DashboardContent = ({
               }
             };
           });
-        } catch (e) {
-          if (!isBenignTrainerClientFirestoreError(e)) {
-            console.error('Error updating nutrition data:', e);
+        } catch (loadError) {
+          if (!isBenignTrainerClientFirestoreError(loadError)) {
+            console.error('Error updating nutrition data:', loadError);
           }
         }
       },
@@ -801,19 +996,19 @@ const DashboardContent = ({
           setClientData((prev) => {
             if (prev) return { ...prev, notesAndFiles };
             const merged = combineTraineeProfile(currentClient, {});
-            const profileWeight = merged.weight ?? currentClient?.weight ?? null;
+            const profileWeight = merged.weight ?? weightFromClientRow(currentClient) ?? null;
             return {
               profileTimezone: null,
               beforeWeight: resolveTrainerProgressBeforeWeight({
-                startingWeight: merged.startingWeight ?? currentClient?.startingWeight,
+                startingWeight: merged.startingWeight ?? startingWeightFromClientRow(currentClient),
                 profileWeight,
-                crmStartingWeight: currentClient?.startingWeight,
-                crmWeight: currentClient?.weight,
+                crmStartingWeight: startingWeightFromClientRow(currentClient),
+                crmWeight: weightFromClientRow(currentClient),
               }),
               currentWeight: profileWeight,
               profileWeight,
               trainingDays: [],
-              programName: currentClient?.programName || 'Custom Program',
+              programName: programNameFromClientRow(currentClient) || 'Custom Program',
               nutrition: {
                 calories: 0,
                 protein: 0,
@@ -827,21 +1022,21 @@ const DashboardContent = ({
                 carbsGoal: 250,
                 fatGoal: 70,
                 caloriesGoal: DEFAULT_CALORIE_GOAL,
-                micros: currentClient?.micros || [],
+                micros: microsFromClientRow(currentClient) || [],
                 foods: [],
               },
               calendar: {
-                completed: currentClient?.completedDays || [],
-                upcoming: currentClient?.upcomingDays || [],
-                missed: currentClient?.missedDays || [],
-                upcomingSessions: currentClient?.upcomingSessions || [],
+                completed: completedDaysFromClientRow(currentClient) || [],
+                upcoming: upcomingDaysFromClientRow(currentClient) || [],
+                missed: missedDaysFromClientRow(currentClient) || [],
+                upcomingSessions: upcomingSessionsFromClientRow(currentClient) || [],
               },
               notesAndFiles,
             };
           });
-        } catch (e) {
-          if (!isBenignTrainerClientFirestoreError(e)) {
-            console.error('Error syncing notes and files:', e);
+        } catch (loadError) {
+          if (!isBenignTrainerClientFirestoreError(loadError)) {
+            console.error('Error syncing notes and files:', loadError);
           }
         }
       },
@@ -857,11 +1052,11 @@ const DashboardContent = ({
       effectCancelled = true;
       unsubscribers.forEach(unsub => unsub());
     };
-  }, [currentClient?.id, trainerId, clientTodayKey]);
+  }, [idFromClientRow(currentClient), trainerId, clientTodayKey]);
 
   // Refresh notes and files when trigger changes
   useEffect(() => {
-    if (!currentClient?.id) return;
+    if (!idFromClientRow(currentClient)) return;
     const uid = String(currentClient.id);
     let cancelled = false;
     const refreshNotes = async () => {
@@ -871,10 +1066,10 @@ const DashboardContent = ({
         setClientData((prev) => {
           if (prev) return { ...prev, notesAndFiles };
           return {
-            beforeWeight: currentClient?.startingWeight ?? currentClient?.weight ?? null,
-            currentWeight: currentClient?.weight ?? null,
+            beforeWeight: startingWeightFromClientRow(currentClient) ?? weightFromClientRow(currentClient) ?? null,
+            currentWeight: weightFromClientRow(currentClient) ?? null,
             trainingDays: [],
-            programName: currentClient?.programName || 'Custom Program',
+            programName: programNameFromClientRow(currentClient) || 'Custom Program',
             nutrition: {
               calories: 0,
               protein: 0,
@@ -888,21 +1083,21 @@ const DashboardContent = ({
               carbsGoal: 250,
               fatGoal: 70,
               caloriesGoal: DEFAULT_CALORIE_GOAL,
-              micros: currentClient?.micros || [],
+              micros: microsFromClientRow(currentClient) || [],
               foods: [],
             },
             calendar: {
-              completed: currentClient?.completedDays || [],
-              upcoming: currentClient?.upcomingDays || [],
-              missed: currentClient?.missedDays || [],
-              upcomingSessions: currentClient?.upcomingSessions || [],
+              completed: completedDaysFromClientRow(currentClient) || [],
+              upcoming: upcomingDaysFromClientRow(currentClient) || [],
+              missed: missedDaysFromClientRow(currentClient) || [],
+              upcomingSessions: upcomingSessionsFromClientRow(currentClient) || [],
             },
             notesAndFiles,
           };
         });
-      } catch (e) {
-        if (!isBenignTrainerClientFirestoreError(e)) {
-          console.error('Error refreshing notes and files:', e);
+      } catch (loadError) {
+        if (!isBenignTrainerClientFirestoreError(loadError)) {
+          console.error('Error refreshing notes and files:', loadError);
         }
       }
     };
@@ -910,7 +1105,7 @@ const DashboardContent = ({
     return () => {
       cancelled = true;
     };
-  }, [refreshNotesAndFilesTrigger, currentClient?.id]);
+  }, [refreshNotesAndFilesTrigger, idFromClientRow(currentClient)]);
 
   // Trainer documents (for Notes & Files tab)
   useEffect(() => {
@@ -919,17 +1114,13 @@ const DashboardContent = ({
   }, [trainerId, trainerDocsRefreshKey]);
 
 
-  const timeOfDay = useMemo(() => {
-    const hour = new Date().getHours();
-    if (hour < MORNING_HOUR_END) return 'Morning';
-    if (hour < AFTERNOON_HOUR_END) return 'Afternoon';
-    return 'Evening';
-  }, []);
+  const timeOfDay = useMemo(() => greetingPeriodFromHour(), []);
 
   const runTrainerTool = useCallback(
     (action) => {
+      // 1. Messages jumps to the selected client's thread.
       if (action === 'messages') {
-        onMessagesPress?.(currentClient?.id);
+        onMessagesPress && onMessagesPress(idFromClientRow(currentClient));
         return;
       }
       // PNG 05: Document maker opens the “Create something” launcher (spreadsheet editor retired).
@@ -941,17 +1132,17 @@ const DashboardContent = ({
         setActiveTab('Notes & Files');
         return;
       }
-      if (!currentClient?.id) return;
+      if (!idFromClientRow(currentClient)) return;
       const payload = {
         id: currentClient.id,
         name: currentClient.name || currentClient.displayName || currentClient.fullName || 'Client',
       };
       if (action === 'aiPlans') {
-        onOpenAIWorkouts?.(payload);
+        onOpenAIWorkouts && onOpenAIWorkouts(payload);
         return;
       }
       if (action === 'photos') {
-        onOpenPhotoGallery?.(payload);
+        onOpenPhotoGallery && onOpenPhotoGallery(payload);
       }
     },
     [
@@ -1016,10 +1207,123 @@ const DashboardContent = ({
     }
   };
 
-  const payoutNeedsSubcopy =
-    pendingRequestsCount > 0
-      ? `${pendingRequestsCount} new request${pendingRequestsCount === 1 ? '' : 's'} ${pendingRequestsCount === 1 ? 'is' : 'are'} waiting on this.`
-      : undefined;
+  const payoutNeedsSubcopy = payoutNeedsSubcopyFromRequests(pendingRequestsCount);
+
+  // Name layout decisions before JSX (no nested ternaries in the tree).
+  const hasSelectedClient = clients.length > 0 && !!idFromClientRow(currentClient);
+  const clientDisplayName =
+    nameFromClientRow(currentClient) || displayNameFromClientRow(currentClient) || 'Client';
+
+  const openDocFromNotesFile = (fileRow) => {
+    if (!fileRow) {
+      openDocumentEditor && openDocumentEditor({ documentId: null });
+      return;
+    }
+    openDocumentEditor && openDocumentEditor({
+      documentId: (fileRow && fileRow.documentId) || (fileRow && fileRow.id) || null,
+    });
+  };
+
+  const remindClientToLogMeals = () => {
+    const firstName = String(
+      nameFromClientRow(currentClient) || displayNameFromClientRow(currentClient) || 'Client',
+    ).split(/\s+/)[0];
+    showNotice('Reminder sent', `${firstName} will get a nudge to log today’s meals.`);
+  };
+
+  let todayLabelAndPills = null;
+  if (hasSelectedClient) {
+    todayLabelAndPills = (
+      <>
+        <TrainerClientTodayLabel
+          clientName={clientDisplayName}
+          themeColors={themeColors}
+        />
+        <TabPills activeTab={activeTab} onTabChange={setActiveTab} isDark={isDark} />
+      </>
+    );
+  }
+
+  let clientTabPanel = null;
+  if (hasSelectedClient && loadingClientData) {
+    clientTabPanel = (
+      <View style={{ padding: 40, alignItems: 'center' }}>
+        <ActivityIndicator color={ICON_ACCENT} />
+        <Text style={{ color: mutedColor, fontSize: 13, marginTop: 12 }}>Loading client data...</Text>
+      </View>
+    );
+  }
+  if (hasSelectedClient && !loadingClientData) {
+    clientTabPanel = (
+      <View style={{ marginBottom: 8 }}>
+        {activeTab === 'Progress' && (
+          <ProgressTab
+            key={idFromClientRow(currentClient) || 'progress'}
+            isDark={isDark}
+            clientData={clientData}
+            todayDailyLog={todayDailyLog}
+            latestLoggedWeight={latestLoggedWeight}
+          />
+        )}
+        {activeTab === 'Nutrition' && (
+          <NutritionTab
+            key={idFromClientRow(currentClient) || 'nutrition'}
+            isDark={isDark}
+            clientData={clientData}
+            clientName={nameFromClientRow(currentClient) || displayNameFromClientRow(currentClient)}
+            onRemindLog={remindClientToLogMeals}
+          />
+        )}
+        {activeTab === 'Sessions' && (
+          <CalendarTab
+            isDark={isDark}
+            clientData={clientData}
+            trainerId={trainerId}
+            clientId={idFromClientRow(currentClient)}
+            clientName={nameFromClientRow(currentClient) || 'Client'}
+            trainerName={userName}
+            onMessageClient={() => onMessagesPress && onMessagesPress(idFromClientRow(currentClient))}
+          />
+        )}
+        {activeTab === 'Notes & Files' && (
+          <TrainerNotesFilesHeroAndWorkspace
+            isDark={isDark}
+            clientName={nameFromClientRow(currentClient) || 'Client'}
+            clientData={clientData}
+            trainerDocuments={trainerDocumentsForClient}
+            clientId={idFromClientRow(currentClient)}
+            trainerId={trainerId}
+            onRefetchNotesAndFiles={() => setRefreshNotesAndFilesTrigger((previous) => previous + 1)}
+            pdfViewer={pdfViewer}
+            setPdfViewer={setPdfViewer}
+            spreadsheetViewer={spreadsheetViewer}
+            setSpreadsheetViewer={setSpreadsheetViewer}
+            onRefetchTrainerDocuments={() => getTrainerDocuments(trainerId).then(setTrainerDocuments).catch(() => {})}
+            onOpenDocumentEditor={openDocFromNotesFile}
+            onOpenShareModal={({ documentId, initialSharedWith }) =>
+              setShareModal({ visible: true, documentId, sharedWith: initialSharedWith || [] })
+            }
+          />
+        )}
+      </View>
+    );
+  }
+
+  let weeklyReportBlock = (
+    <TrainerWeeklyReportEmpty themeColors={themeColors} />
+  );
+  if (idFromClientRow(currentClient)) {
+    weeklyReportBlock = (
+      <TrainerWeeklyReportSection
+        clientId={currentClient.id}
+        clientName={currentClient.name || currentClient.displayName || ''}
+        isDark={isDark}
+        clientsLogged={clientsWithWeeklyReports}
+        clientsTotal={clients.length}
+        onOpenWeeklyReport={onOpenWeeklyReport}
+      />
+    );
+  }
 
   return (
     <>
@@ -1039,7 +1343,7 @@ const DashboardContent = ({
         greetingPeriod={timeOfDay}
         onNotificationsPress={() => {
           if (typeof onOpenNotifications === 'function') onOpenNotifications();
-          else onClientRequestsPress?.();
+          else onClientRequestsPress && onClientRequestsPress();
         }}
       />
 
@@ -1059,13 +1363,13 @@ const DashboardContent = ({
           else setShowPaymentPopup(true);
         }}
         onClientRequestsPress={onClientRequestsPress}
-        onMessagesPress={() => onMessagesPress?.(currentClient?.id)}
+        onMessagesPress={() => onMessagesPress && onMessagesPress(idFromClientRow(currentClient))}
       />
 
       <TrainerClientCarousel
         themeColors={themeColors}
         clients={clients}
-        selectedClientId={currentClient?.id}
+        selectedClientId={idFromClientRow(currentClient)}
         weeklySummaryMap={weeklySummaryMap}
         dailyHints={clientDailyHints}
         onSelectClient={setSelectedClientId}
@@ -1080,101 +1384,18 @@ const DashboardContent = ({
           try {
             await Clipboard.setStringAsync(raw);
             showNotice('Copied', 'Invite code copied.');
-          } catch (_) {
+          } catch (ignoredError) {
             showNotice('Copy failed', 'Could not copy the invite code.');
           }
         }}
         onListMe={() => {
           if (typeof onListMe === 'function') onListMe();
-          else onClientsPress?.();
+          else onClientsPress && onClientsPress();
         }}
       />
 
-      {clients.length > 0 && currentClient?.id ? (
-        <>
-          <TrainerClientTodayLabel
-            clientName={currentClient.name || currentClient.displayName || 'Client'}
-            themeColors={themeColors}
-          />
-          <TabPills activeTab={activeTab} onTabChange={setActiveTab} isDark={isDark} />
-        </>
-      ) : null}
-
-      {clients.length > 0 && currentClient?.id ? (
-        loadingClientData ? (
-        <View style={{ padding: 40, alignItems: 'center' }}>
-          <ActivityIndicator color={ICON_ACCENT} />
-          <Text style={{ color: mutedColor, fontSize: 13, marginTop: 12 }}>Loading client data...</Text>
-        </View>
-        ) : (
-        <View style={{ marginBottom: 8 }}>
-          {activeTab === 'Progress' && (
-            <ProgressTab
-              key={currentClient?.id || 'progress'}
-              isDark={isDark}
-              clientData={clientData}
-              todayDailyLog={todayDailyLog}
-              latestLoggedWeight={latestLoggedWeight}
-            />
-          )}
-          {activeTab === 'Nutrition' && (
-            <NutritionTab
-              key={currentClient?.id || 'nutrition'}
-              isDark={isDark}
-              clientData={clientData}
-              clientName={currentClient?.name || currentClient?.displayName}
-              onRemindLog={() => {
-                const first = String(
-                  currentClient?.name || currentClient?.displayName || 'Client',
-                )
-                  .split(/\s+/)[0];
-                showNotice('Reminder sent', `${first} will get a nudge to log today’s meals.`);
-              }}
-            />
-          )}
-          {activeTab === 'Sessions' && (
-            <CalendarTab
-              isDark={isDark}
-              clientData={clientData}
-              trainerId={trainerId}
-              clientId={currentClient?.id}
-              clientName={currentClient?.name || 'Client'}
-              trainerName={userName}
-              // Design Law session Message CTA → open inbox chat for this client
-              onMessageClient={() => onMessagesPress?.(currentClient?.id)}
-            />
-          )}
-          {activeTab === 'Notes & Files' && (
-            <TrainerNotesFilesHeroAndWorkspace
-              isDark={isDark}
-              clientName={currentClient?.name || 'Client'}
-              clientData={clientData}
-              trainerDocuments={trainerDocumentsForClient}
-              clientId={currentClient?.id}
-              trainerId={trainerId}
-              onRefetchNotesAndFiles={() => setRefreshNotesAndFilesTrigger((t) => t + 1)}
-              pdfViewer={pdfViewer}
-              setPdfViewer={setPdfViewer}
-              spreadsheetViewer={spreadsheetViewer}
-              setSpreadsheetViewer={setSpreadsheetViewer}
-              onRefetchTrainerDocuments={() => getTrainerDocuments(trainerId).then(setTrainerDocuments).catch(() => {})}
-              onOpenDocumentEditor={(f) => {
-                if (!f) {
-                  openDocumentEditor?.({ documentId: null });
-                  return;
-                }
-                openDocumentEditor?.({
-                  documentId: f?.documentId || f?.id || null,
-                });
-              }}
-              onOpenShareModal={({ documentId, initialSharedWith }) =>
-                setShareModal({ visible: true, documentId, sharedWith: initialSharedWith || [] })
-              }
-            />
-          )}
-        </View>
-        )
-      ) : null}
+      {todayLabelAndPills}
+      {clientTabPanel}
 
       <TrainerToolsGrid
         themeColors={themeColors}
@@ -1182,18 +1403,7 @@ const DashboardContent = ({
         messageBadge={clientUnreadCount}
       />
 
-      {currentClient?.id ? (
-        <TrainerWeeklyReportSection
-          clientId={currentClient.id}
-          clientName={currentClient.name || currentClient.displayName || ''}
-          isDark={isDark}
-          clientsLogged={clientsWithWeeklyReports}
-          clientsTotal={clients.length}
-          onOpenWeeklyReport={onOpenWeeklyReport}
-        />
-      ) : (
-        <TrainerWeeklyReportEmpty themeColors={themeColors} />
-      )}
+      {weeklyReportBlock}
 
       <View style={{ height: 16 }} />
       <SpreadsheetViewer
@@ -1210,7 +1420,10 @@ const DashboardContent = ({
         initialSharedWith={shareModal.sharedWith}
         isDark={isDark}
         onClose={() => setShareModal({ visible: false, documentId: null, sharedWith: [] })}
-        onSaved={() => { getTrainerDocuments(trainerId).then(setTrainerDocuments); setRefreshNotesAndFilesTrigger((t) => t + 1); }}
+        onSaved={() => {
+          getTrainerDocuments(trainerId).then(setTrainerDocuments);
+          setRefreshNotesAndFilesTrigger((previous) => previous + 1);
+        }}
       />
     </ScrollView>
     </View>
@@ -1219,12 +1432,12 @@ const DashboardContent = ({
       visible={!!removeClientHold}
       onClose={() => !removeClientBusy && setRemoveClientHold(null)}
       clientName={
-        String(removeClientHold?.name || removeClientHold?.displayName || 'Client').trim() || 'Client'
+        String((removeClientHold ? removeClientHold.name : null) || (removeClientHold ? removeClientHold.displayName : null) || 'Client').trim() || 'Client'
       }
       busy={removeClientBusy}
       onConfirm={async () => {
         const client = removeClientHold;
-        if (!client?.id || !trainerId) return;
+        if (!client || !client.id || !trainerId) return;
         if (!functions) {
           showNotice('Unavailable', 'Cloud Functions are not configured.');
           return;
@@ -1244,13 +1457,13 @@ const DashboardContent = ({
           setRemoveClientHold(null);
           setSelectedClientId((sel) => {
             if (sel !== removedId) return sel;
-            const remaining = clients.filter((c) => c.id !== removedId);
-            return remaining[0]?.id ?? null;
+            const remaining = clients.filter((clientRow) => clientRow.id !== removedId);
+            return remaining[0] ? remaining[0].id : null;
           });
-          onTrainerClientRemoved?.(removedId);
+          onTrainerClientRemoved && onTrainerClientRemoved(removedId);
           showNotice('Client removed', `${displayName} is no longer on your roster.`);
-        } catch (e) {
-          showNotice('Remove failed', e?.message || 'Could not remove this client.');
+        } catch (loadError) {
+          showNotice('Remove failed', messageFromCaughtError(loadError) || 'Could not remove this client.');
         } finally {
           setRemoveClientBusy(false);
         }
@@ -1268,21 +1481,20 @@ const DashboardContent = ({
       visible={showCreateSheet}
       onClose={() => setShowCreateSheet(false)}
       isDark={isDark}
-      onRichText={() => openDocumentEditor?.({ documentId: null })}
+      onRichText={() => openDocumentEditor && openDocumentEditor({ documentId: null })}
     />
     <NbNoticeSheet
       visible={!!notice}
       onClose={() => setNotice(null)}
-      title={notice?.title || ''}
-      message={notice?.message}
+      title={(notice ? notice.title : '') || ''}
+      message={notice ? notice.message : undefined}
       confirmLabel="OK"
     />
     </>
   );
 };
 
-// ─────────────────────────────────────────────
-// APP WITH THEME
-// ─────────────────────────────────────────────
-
 export default DashboardContent;
+
+// ===== PLUMBING — skip unless debugging =====
+// Firestore loaders and dashboard shape builders live under HELPER FUNCTIONS above.

@@ -1,8 +1,7 @@
 // Home welcome hero — client + trainer (Design Law hero-and-welcome-redesign).
-// Flow: eyebrow → “Welcome to” + gradient “Coach Connect” → Lottie on disc → tagline strip.
+// Flow: pick variant tokens → HardShadow card → faint grid → copy + Lottie row → tagline strip.
 // Used by TrainingHomeScreen (client) and TrainerHomeBlocks (trainer).
 // Owner rule: NO streak, week dots, session counts, countdown, or stats in this card.
-// Surface card (cardBg + ink) follows light/dark with the rest of home — not the inverted fill block.
 
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
@@ -20,16 +19,151 @@ import {
 
 // ===== NAMED CONSTANTS =====
 
-const HANDOFF_LIFTER = require('../../assets/animations/handoff/zlifter-noyellow.json');
-const HANDOFF_BOXER = require('../../assets/animations/handoff/zboxer.json');
-
-// Manipulate here: placeholder labels from UPDATE-WELCOME-AND-HEROES.md
 const CLIENT_EYEBROW = 'Your training home';
 const TRAINER_EYEBROW = 'Your coaching home';
 
-// ===== MAIN =====
+const TRAINER_VARIANT = 'trainer';
+
+const HANDOFF_LIFTER = require('../../assets/animations/handoff/zlifter-noyellow.json');
+const HANDOFF_BOXER = require('../../assets/animations/handoff/zboxer.json');
+
+const CLIENT_CORNER_RADII = {
+  borderTopLeftRadius: 6,
+  borderTopRightRadius: 30,
+  borderBottomRightRadius: 6,
+  borderBottomLeftRadius: 6,
+};
+const TRAINER_CORNER_RADII = {
+  borderTopLeftRadius: 30,
+  borderTopRightRadius: 6,
+  borderBottomRightRadius: 6,
+  borderBottomLeftRadius: 6,
+};
+
+const CARD_SHADOW_RADIUS = 10;
+const FAINT_GRID_OPACITY = 0.08;
+
+// ===== HELPER FUNCTIONS =====
+
+function homeIsTrainerVariant(variant) {
+  return variant === TRAINER_VARIANT;
+}
+
+function cornerRadiiForHomeVariant(isTrainerHome) {
+  if (isTrainerHome) return TRAINER_CORNER_RADII;
+  return CLIENT_CORNER_RADII;
+}
 
 /**
+ * Parent eyebrow wins; otherwise client vs trainer default.
+ * @param {boolean} isTrainerHome
+ * @param {string|undefined} eyebrowFromParent
+ * @returns {string}
+ */
+function eyebrowLabelForVariant(isTrainerHome, eyebrowFromParent) {
+  if (eyebrowFromParent) return eyebrowFromParent;
+  if (isTrainerHome) return TRAINER_EYEBROW;
+  return CLIENT_EYEBROW;
+}
+
+function lottieSourceForVariant(isTrainerHome) {
+  if (isTrainerHome) return HANDOFF_BOXER;
+  return HANDOFF_LIFTER;
+}
+
+function discGradientForVariant(isTrainerHome) {
+  if (isTrainerHome) return TRAINER_HERO_DISC_GRADIENT;
+  return CLIENT_HERO_DISC_GRADIENT;
+}
+
+/**
+ * Light → white surface + dark ink; dark → dark surface + light ink.
+ * Why not fill/onFill: those invert (black hero in light), which fights the rest of home.
+ * @param {object} themeColors
+ * @returns {{ cardBackground: string, inkColor: string }}
+ */
+function welcomeCardColors(themeColors) {
+  const cardBackground = themeColors.cardBg ?? themeColors.fill;
+  const inkColor = themeColors.text ?? themeColors.onFill;
+  return { cardBackground, inkColor };
+}
+
+function WelcomeTextColumn({ eyebrowText, inkColor, cardBorderColor }) {
+  return (
+    <View style={styles.copy}>
+      <Text style={[styles.eyebrow, { color: inkColor }]}>{eyebrowText}</Text>
+      <View style={styles.welcomeBlock}>
+        <Text style={[styles.welcomeLead, { color: inkColor }]}>Welcome to</Text>
+        <BrandHighlight style={styles.brandMark} borderColor={cardBorderColor}>
+          Coach Connect
+        </BrandHighlight>
+      </View>
+    </View>
+  );
+}
+
+function HeroLottieColumn({ isTrainerHome, inkColor, lottieSource, discGradientColors }) {
+  let discMirroredStyle = null;
+  let lottieMirroredStyle = null;
+  if (isTrainerHome) {
+    discMirroredStyle = styles.discMirrored;
+    lottieMirroredStyle = styles.lotMirrored;
+  }
+
+  const discStyle = [styles.disc, { borderColor: inkColor }, discMirroredStyle];
+  const lottieStyle = [styles.lot, lottieMirroredStyle];
+
+  return (
+    <View style={styles.art}>
+      <LinearGradient
+        colors={discGradientColors}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={discStyle}
+      />
+      <LottieView source={lottieSource} autoPlay loop style={lottieStyle} />
+    </View>
+  );
+}
+
+function WelcomeHeroRow({
+  isTrainerHome,
+  eyebrowText,
+  inkColor,
+  cardBorderColor,
+  lottieSource,
+  discGradientColors,
+}) {
+  let rowMirroredStyle = null;
+  let rowReverseStyle = null;
+  if (isTrainerHome) {
+    rowMirroredStyle = styles.rowMirrored;
+    rowReverseStyle = { flexDirection: 'row-reverse' };
+  }
+
+  const rowStyle = [styles.row, rowMirroredStyle, rowReverseStyle];
+
+  return (
+    <View style={rowStyle}>
+      <WelcomeTextColumn
+        eyebrowText={eyebrowText}
+        inkColor={inkColor}
+        cardBorderColor={cardBorderColor}
+      />
+      <HeroLottieColumn
+        isTrainerHome={isTrainerHome}
+        inkColor={inkColor}
+        lottieSource={lottieSource}
+        discGradientColors={discGradientColors}
+      />
+    </View>
+  );
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Welcome hero for client home or trainer home.
  * @param {{
  *   themeColors: {
  *     cardBg?: string,
@@ -47,101 +181,54 @@ export default function HomeWelcomeHero({
   variant = 'client',
   eyebrow,
 }) {
-  // Trainer mirrors client: animation on the LEFT (mockup `.hero4.rev`).
-  const mirrored = variant === 'trainer';
-  const label = eyebrow || (mirrored ? TRAINER_EYEBROW : CLIENT_EYEBROW);
-  const lottieSource = mirrored ? HANDOFF_BOXER : HANDOFF_LIFTER;
-  const discColors = mirrored ? TRAINER_HERO_DISC_GRADIENT : CLIENT_HERO_DISC_GRADIENT;
+  const isTrainerHome = homeIsTrainerVariant(variant);
 
-  // Light → white surface + dark ink; dark → dark surface + light ink.
-  // Why not fill/onFill: those invert (black hero in light), which fights the rest of home.
-  const cardBg = themeColors.cardBg ?? themeColors.fill;
-  const ink = themeColors.text ?? themeColors.onFill;
+  // 1. Pick eyebrow copy, Lottie asset, and disc gradient for client vs trainer.
+  const eyebrowText = eyebrowLabelForVariant(isTrainerHome, eyebrow);
+  const lottieSource = lottieSourceForVariant(isTrainerHome);
+  const discGradientColors = discGradientForVariant(isTrainerHome);
 
-  // Asymmetric radii: client opens top-right; trainer opens top-left.
-  const radii = mirrored
-    ? {
-        borderTopLeftRadius: 30,
-        borderTopRightRadius: 6,
-        borderBottomRightRadius: 6,
-        borderBottomLeftRadius: 6,
-      }
-    : {
-        borderTopLeftRadius: 6,
-        borderTopRightRadius: 30,
-        borderBottomRightRadius: 6,
-        borderBottomLeftRadius: 6,
-      };
+  // 2. Surface card (cardBg + ink) follows light/dark with the rest of home.
+  const { cardBackground, inkColor } = welcomeCardColors(themeColors);
+  const cornerRadii = cornerRadiiForHomeVariant(isTrainerHome);
+  const cardBorderColor = themeColors.cardBorder;
 
-  const copy = (
-    <View style={styles.copy}>
-      <Text style={[styles.eyebrow, { color: ink }]}>{label}</Text>
-      <View style={styles.welcomeBlock}>
-        <Text style={[styles.welcomeLead, { color: ink }]}>Welcome to</Text>
-        <BrandHighlight
-          style={styles.brandMark}
-          borderColor={themeColors.cardBorder}
-        >
-          Coach Connect
-        </BrandHighlight>
-      </View>
-    </View>
-  );
+  const cardShellStyle = [
+    styles.card,
+    cornerRadii,
+    {
+      backgroundColor: cardBackground,
+      borderColor: cardBorderColor,
+    },
+  ];
+  const hardShadowStyle = { marginBottom: nb.blockGap };
 
-  const art = (
-    <View style={styles.art}>
-      <LinearGradient
-        colors={discColors}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={[
-          styles.disc,
-          { borderColor: ink },
-          mirrored ? styles.discMirrored : null,
-        ]}
-      />
-      <LottieView
-        source={lottieSource}
-        autoPlay
-        loop
-        style={[styles.lot, mirrored ? styles.lotMirrored : null]}
-      />
-    </View>
-  );
-
+  // 3. HardShadow shell → faint grid → copy + art row → tagline strip.
   return (
-    <HardShadow offset={nb.shadowOffsetHero} radius={10} style={{ marginBottom: nb.blockGap }}>
-      <View
-        style={[
-          styles.card,
-          radii,
-          {
-            backgroundColor: cardBg,
-            borderColor: themeColors.cardBorder,
-          },
-        ]}
-      >
-        <FaintGrid lineColor={ink} opacity={0.08} />
+    <HardShadow
+      offset={nb.shadowOffsetHero}
+      radius={CARD_SHADOW_RADIUS}
+      style={hardShadowStyle}
+    >
+      <View style={cardShellStyle}>
+        <FaintGrid lineColor={inkColor} opacity={FAINT_GRID_OPACITY} />
 
-        {/* row-reverse puts art on the left for trainer without duplicating markup */}
-        <View
-          style={[
-            styles.row,
-            mirrored ? styles.rowMirrored : null,
-            mirrored ? { flexDirection: 'row-reverse' } : null,
-          ]}
-        >
-          {copy}
-          {art}
-        </View>
+        <WelcomeHeroRow
+          isTrainerHome={isTrainerHome}
+          eyebrowText={eyebrowText}
+          inkColor={inkColor}
+          cardBorderColor={cardBorderColor}
+          lottieSource={lottieSource}
+          discGradientColors={discGradientColors}
+        />
 
-        <TaglineStrip textColor={ink} borderColor={ink} />
+        <TaglineStrip textColor={inkColor} borderColor={inkColor} />
       </View>
     </HardShadow>
   );
 }
 
-// ===== STYLES =====
+// ===== PLUMBING — skip unless debugging =====
 
 const styles = StyleSheet.create({
   card: {

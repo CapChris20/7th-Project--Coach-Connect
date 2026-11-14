@@ -1,12 +1,9 @@
-// Live list of message threads for the signed-in user, plus "load more."
-// Flow: query conversations that include this user, newest first → if the index
-//       is not ready, fall back to an unordered read and sort here → fill in the
-//       other person's name → hand the page to the screen.
-// Used by the inbox screen and the client app start (unread counts are re-exported below).
+// Inbox conversation pages for the signed-in user (live first page + "load more").
+// Flow: query conversations that include this user, newest first → index-missing fallback →
+//       sort here when unordered → fill other participant names → callback to the screen.
+// Used by InboxScreen and ClientAppStart (unread counts re-exported at the bottom).
 
 import { db } from '../../app-start/cloudConnection';
-// vocab: onSnapshot = Firestore live listener. It keeps calling back until the cleanup runs.
-// vocab: startAfter = "the next page begins after this document."
 import {
   collection,
   query,
@@ -38,143 +35,7 @@ const COULD_NOT_LOAD_MESSAGE = 'Could not load conversations';
 const LISTENER_MODE_PRIMARY = 'primary';
 const LISTENER_MODE_FALLBACK = 'fallback';
 
-// ===== MAIN FUNCTION =====
-
-/**
- * Next page of conversations. Call this from Load more.
- * @param {string} userId
- * @param {object} startAfterDoc The last document from the previous page
- * @returns {Promise<{ conversations: object[], lastDoc: object|null, hasMore: boolean }>}
- */
-export async function fetchMoreConversations(userId, startAfterDoc) {
-  const uid = typeof userId === 'string' ? userId.trim() : '';
-  if (!uid || !startAfterDoc) {
-    return { conversations: [], lastDoc: null, hasMore: false };
-  }
-
-  const snapshot = await getDocsWithIndexFallback(
-    buildConversationsQuery(uid, CONVERSATIONS_PAGE_SIZE, startAfterDoc),
-    () => conversationsFallbackQuery(uid),
-    LOAD_MORE_LABEL,
-  );
-
-  const documents = sortDocumentsWhenUnordered(snapshot.docs);
-  const conversations = documents.map(mapConversationDoc);
-  const { lastDoc, hasMore } = pageMetaFromDocuments(documents);
-
-  return { conversations, lastDoc, hasMore };
-}
-
-/**
- * Live first page of conversations. The function it returns is the unsubscribe.
- * Call that when the screen goes away so the listener does not keep running.
- * @param {string} userId
- * @param {Function} callback
- * @returns {Function}
- */
-export function subscribeToConversations(userId, callback) {
-  const uid = typeof userId === 'string' ? userId.trim() : '';
-  if (!uid || !callback) {
-    console.error('❌ subscribeToConversations: Missing userId or callback');
-    return () => {};
-  }
-
-  const participantNamesCache = {};
-  const participantDataCache = {};
-  const primaryQuery = buildConversationsQuery(uid, CONVERSATIONS_PAGE_SIZE);
-
-  let unsubscribe = () => {};
-  let isCancelled = false;
-
-  const handleSnapshot = async (querySnapshot) => {
-    try {
-      const documents = sortDocumentsWhenUnordered(querySnapshot.docs, CONVERSATIONS_PAGE_SIZE);
-      const { lastDoc, hasMore } = pageMetaFromDocuments(documents);
-      const conversations = sortConversations(documents.map(mapConversationDoc));
-
-      await hydrateParticipants(uid, conversations, participantNamesCache, participantDataCache);
-
-      callback({
-        conversations,
-        participantNames: { ...participantNamesCache },
-        participantData: { ...participantDataCache },
-        lastDoc,
-        hasMore,
-        error: null,
-      });
-    } catch (error) {
-      console.error('❌ Error in conversations listener:', error);
-      callback(emptyConversationPage(error?.message || COULD_NOT_LOAD_MESSAGE));
-    }
-  };
-
-  const attachListener = (mode) => {
-    const conversationsQuery = mode === LISTENER_MODE_FALLBACK
-      ? conversationsFallbackQuery(uid)
-      : primaryQuery;
-    safeUnsubscribe(unsubscribe);
-    unsubscribe = onSnapshot(
-      conversationsQuery,
-      (snapshot) => {
-        void handleSnapshot(snapshot);
-      },
-      (error) => handleListenerError(error, mode),
-    );
-  };
-
-  const attachIfStillActive = (mode) => {
-    if (isCancelled) return;
-    attachListener(mode);
-  };
-
-  // A missing index on the first try switches to the unordered query. Any other error
-  // is reported to the screen. Index errors look like Firestore's failed-precondition.
-  const handleListenerError = (error, mode) => {
-    if (isCancelled) return;
-    if (isFirestoreIndexError(error) && mode === LISTENER_MODE_PRIMARY) {
-      attachListener(LISTENER_MODE_FALLBACK);
-      return;
-    }
-    console.error('❌ Firestore listener error:', error);
-    callback(emptyConversationPage(error?.message || COULD_NOT_LOAD_MESSAGE));
-  };
-
-  // Probe with getDocs first. If the index is missing, that throws here, before we
-  // attach a listener that would immediately error the same way.
-  const boot = async () => {
-    try {
-      await getDocs(primaryQuery);
-      attachIfStillActive(LISTENER_MODE_PRIMARY);
-    } catch (error) {
-      handleProbeError(error);
-    }
-  };
-
-  const handleProbeError = (error) => {
-    if (isFirestoreIndexError(error)) {
-      attachIfStillActive(LISTENER_MODE_FALLBACK);
-      return;
-    }
-    console.error('❌ conversations probe failed:', error);
-    callback(emptyConversationPage(error?.message || COULD_NOT_LOAD_MESSAGE));
-  };
-
-  void boot();
-
-  return () => {
-    isCancelled = true;
-    safeUnsubscribe(unsubscribe);
-  };
-}
-
-export {
-  subscribeToUnreadCount,
-  subscribeToUnreadByConversation,
-  rebuildUnreadIndexForUser,
-} from '../../messaging/unreadMessageCounts';
-
 // ===== HELPER FUNCTIONS =====
-// PLUMBING — skip unless debugging
 
 function emptyConversationPage(errorMessage) {
   return {
@@ -188,26 +49,234 @@ function emptyConversationPage(errorMessage) {
 }
 
 function mapConversationDoc(conversationDocument) {
-  return { id: conversationDocument.id, ...conversationDocument.data() };
+  const data = conversationDocument.data();
+  return { id: conversationDocument.id, ...data };
 }
 
-function sortConversations(conversations) {
-  return [...conversations].sort((first, second) => {
-    const firstTime = first.updatedAt?.toMillis?.() || first.updatedAt || 0;
-    const secondTime = second.updatedAt?.toMillis?.() || second.updatedAt || 0;
+function conversationListFromDocuments(documents) {
+  const conversations = [];
+  for (let index = 0; index < documents.length; index += 1) {
+    conversations.push(mapConversationDoc(documents[index]));
+  }
+  return conversations;
+}
+
+function pageMetaFromDocuments(documents) {
+  let lastDoc = null;
+  if (documents.length) {
+    lastDoc = documents[documents.length - 1];
+  }
+  const hasMore = documents.length >= CONVERSATIONS_PAGE_SIZE;
+  return { lastDoc, hasMore };
+}
+
+function trimmedUserId(userId) {
+  if (typeof userId !== 'string') return '';
+  return userId.trim();
+}
+
+function messageFromLoadError(error) {
+  if (error && error.message) return error.message;
+  return COULD_NOT_LOAD_MESSAGE;
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Next page of conversations. Call from Load more.
+ * @param {string} userId
+ * @param {object} startAfterDoc
+ * @returns {Promise<{ conversations: object[], lastDoc: object|null, hasMore: boolean }>}
+ */
+export async function fetchMoreConversations(userId, startAfterDoc) {
+  // 1. Need a real uid and a cursor doc; otherwise return an empty page.
+  const uid = trimmedUserId(userId);
+  if (!uid || !startAfterDoc) {
+    return { conversations: [], lastDoc: null, hasMore: false };
+  }
+
+  // 2. Ordered page query; if the composite index is missing, fall back unordered.
+  const pagedQuery = buildConversationsQuery(uid, CONVERSATIONS_PAGE_SIZE, startAfterDoc);
+  const snapshot = await getDocsWithIndexFallback(
+    pagedQuery,
+    () => conversationsFallbackQuery(uid),
+    LOAD_MORE_LABEL,
+  );
+
+  // 3. Sort when the fallback had no updatedAt order, then map docs → conversation rows.
+  const documents = sortDocumentsWhenUnordered(snapshot.docs);
+  const conversations = conversationListFromDocuments(documents);
+  const pageMeta = pageMetaFromDocuments(documents);
+
+  return {
+    conversations,
+    lastDoc: pageMeta.lastDoc,
+    hasMore: pageMeta.hasMore,
+  };
+}
+
+/**
+ * Live first page of conversations. The returned function unsubscribes the listener.
+ * @param {string} userId
+ * @param {Function} callback
+ * @returns {Function}
+ */
+export function subscribeToConversations(userId, callback) {
+  // 1. Need uid + callback; otherwise no-op unsubscribe.
+  const uid = trimmedUserId(userId);
+  if (!uid || !callback) {
+    console.error('❌ subscribeToConversations: Missing userId or callback');
+    return () => {};
+  }
+
+  // 2. Caches survive across snapshot fires so we do not re-fetch every name.
+  const participantNamesCache = {};
+  const participantDataCache = {};
+  const primaryQuery = buildConversationsQuery(uid, CONVERSATIONS_PAGE_SIZE);
+
+  let unsubscribeListener = () => {};
+  let listenerWasCancelled = false;
+
+  // 3. One snapshot → sort → map → hydrate names → publish to the screen.
+  const publishConversationPage = async (querySnapshot) => {
+    try {
+      const documents = sortDocumentsWhenUnordered(querySnapshot.docs, CONVERSATIONS_PAGE_SIZE);
+      const pageMeta = pageMetaFromDocuments(documents);
+      const rawConversations = conversationListFromDocuments(documents);
+      const conversations = sortConversationsNewestFirst(rawConversations);
+
+      await hydrateParticipantProfiles(uid, conversations, participantNamesCache, participantDataCache);
+
+      callback({
+        conversations,
+        participantNames: { ...participantNamesCache },
+        participantData: { ...participantDataCache },
+        lastDoc: pageMeta.lastDoc,
+        hasMore: pageMeta.hasMore,
+        error: null,
+      });
+    } catch (error) {
+      console.error('❌ Error in conversations listener:', error);
+      callback(emptyConversationPage(messageFromLoadError(error)));
+    }
+  };
+
+  // 4. Attach (or re-attach) onSnapshot for primary or fallback mode.
+  const attachFirestoreListener = (mode) => {
+    let conversationsQuery = primaryQuery;
+    if (mode === LISTENER_MODE_FALLBACK) {
+      conversationsQuery = conversationsFallbackQuery(uid);
+    }
+
+    safeUnsubscribe(unsubscribeListener);
+    unsubscribeListener = onSnapshot(
+      conversationsQuery,
+      (snapshot) => {
+        void publishConversationPage(snapshot);
+      },
+      (error) => handleListenerError(error, mode),
+    );
+  };
+
+  const attachListenerIfStillActive = (mode) => {
+    if (listenerWasCancelled) return;
+    attachFirestoreListener(mode);
+  };
+
+  // Missing composite index → switch to unordered query. Other errors surface to the screen.
+  const handleListenerError = (error, mode) => {
+    if (listenerWasCancelled) return;
+
+    const isIndexError = isFirestoreIndexError(error);
+    const onPrimaryMode = mode === LISTENER_MODE_PRIMARY;
+    if (isIndexError && onPrimaryMode) {
+      attachFirestoreListener(LISTENER_MODE_FALLBACK);
+      return;
+    }
+
+    console.error('❌ Firestore listener error:', error);
+    callback(emptyConversationPage(messageFromLoadError(error)));
+  };
+
+  // Probe with getDocs before onSnapshot so a missing index fails once, not in a tight error loop.
+  const handleProbeError = (error) => {
+    if (isFirestoreIndexError(error)) {
+      attachListenerIfStillActive(LISTENER_MODE_FALLBACK);
+      return;
+    }
+    console.error('❌ conversations probe failed:', error);
+    callback(emptyConversationPage(messageFromLoadError(error)));
+  };
+
+  // 5. Probe primary query once, then attach the matching listener.
+  const bootListener = async () => {
+    try {
+      await getDocs(primaryQuery);
+      attachListenerIfStillActive(LISTENER_MODE_PRIMARY);
+    } catch (error) {
+      handleProbeError(error);
+    }
+  };
+
+  void bootListener();
+
+  // 6. Cleanup: mark cancelled + unsubscribe so late snapshots do not call back.
+  return () => {
+    listenerWasCancelled = true;
+    safeUnsubscribe(unsubscribeListener);
+  };
+}
+
+export {
+  subscribeToUnreadCount,
+  subscribeToUnreadByConversation,
+  rebuildUnreadIndexForUser,
+} from '../../messaging/unreadMessageCounts';
+
+// ===== HELPER FUNCTIONS =====
+// PLUMBING — skip unless debugging
+
+function millisFromUpdatedAt(updatedAt) {
+  if (!updatedAt) return 0;
+  if (typeof updatedAt.toMillis === 'function') {
+    const asMillis = updatedAt.toMillis();
+    if (asMillis) return asMillis;
+  }
+  return updatedAt || 0;
+}
+
+function sortConversationsNewestFirst(conversations) {
+  const sorted = [...conversations];
+  sorted.sort((first, second) => {
+    const firstTime = millisFromUpdatedAt(first.updatedAt);
+    const secondTime = millisFromUpdatedAt(second.updatedAt);
     return secondTime - firstTime;
   });
+  return sorted;
 }
 
 function displayNameFromUserData(userData) {
-  const fullName = `${userData.firstName || ''} ${userData.lastName || ''}`.trim();
-  return userData.name || fullName || userData.displayName || DEFAULT_PARTICIPANT_NAME;
+  const firstName = userData.firstName || '';
+  const lastName = userData.lastName || '';
+  const fullName = `${firstName} ${lastName}`.trim();
+  if (userData.name) return userData.name;
+  if (fullName) return fullName;
+  if (userData.displayName) return userData.displayName;
+  return DEFAULT_PARTICIPANT_NAME;
 }
 
 function otherParticipantId(conversation, uid) {
-  return conversation.participants?.find(
-    (participantId) => typeof participantId === 'string' && participantId.trim() && participantId !== uid,
-  );
+  const participants = conversation.participants;
+  if (!Array.isArray(participants)) return undefined;
+
+  for (let index = 0; index < participants.length; index += 1) {
+    const participantId = participants[index];
+    if (typeof participantId !== 'string') continue;
+    if (!participantId.trim()) continue;
+    if (participantId === uid) continue;
+    return participantId;
+  }
+  return undefined;
 }
 
 function loadOneParticipant(participantId, namesCache, dataCache) {
@@ -222,26 +291,32 @@ function loadOneParticipant(participantId, namesCache, dataCache) {
     });
 }
 
-async function hydrateParticipants(uid, conversations, namesCache, dataCache) {
+async function hydrateParticipantProfiles(uid, conversations, namesCache, dataCache) {
   const loadPromises = [];
-  for (const conversation of conversations) {
+
+  for (let index = 0; index < conversations.length; index += 1) {
+    const conversation = conversations[index];
     const participantId = otherParticipantId(conversation, uid);
-    if (!participantId || namesCache[participantId]) continue;
+    if (!participantId) continue;
+    if (namesCache[participantId]) continue;
     loadPromises.push(loadOneParticipant(participantId, namesCache, dataCache));
   }
+
   await Promise.all(loadPromises);
 }
 
 function buildConversationsQuery(uid, pageSize, startAfterDoc = null) {
   const conversationsRef = collection(db, CONVERSATIONS_COLLECTION);
-  const sharedFilters = [
-    where(PARTICIPANTS_FIELD, 'array-contains', uid),
-    orderBy(UPDATED_AT_FIELD, 'desc'),
-    limit(pageSize),
-  ];
+
   if (!startAfterDoc) {
-    return query(conversationsRef, ...sharedFilters);
+    return query(
+      conversationsRef,
+      where(PARTICIPANTS_FIELD, 'array-contains', uid),
+      orderBy(UPDATED_AT_FIELD, 'desc'),
+      limit(pageSize),
+    );
   }
+
   return query(
     conversationsRef,
     where(PARTICIPANTS_FIELD, 'array-contains', uid),
@@ -259,18 +334,22 @@ function conversationsFallbackQuery(uid) {
   );
 }
 
-function sortDocumentsWhenUnordered(documents, maxCount) {
-  const firstHasTimestamp = documents.length > 0 && documents[0].data()?.updatedAt;
-  if (firstHasTimestamp) return documents;
-  if (documents.length === 0) return documents;
-  const sorted = sortDocsByMillis(documents, UPDATED_AT_FIELD, 'desc');
-  return maxCount ? sorted.slice(0, maxCount) : sorted;
+function documentHasUpdatedAt(document) {
+  const data = document.data();
+  if (!data) return false;
+  if (!data.updatedAt) return false;
+  return true;
 }
 
-function pageMetaFromDocuments(documents) {
-  const lastDoc = documents.length ? documents[documents.length - 1] : null;
-  const hasMore = documents.length >= CONVERSATIONS_PAGE_SIZE;
-  return { lastDoc, hasMore };
+function sortDocumentsWhenUnordered(documents, maxCount) {
+  if (documents.length === 0) return documents;
+
+  const firstDocument = documents[0];
+  if (documentHasUpdatedAt(firstDocument)) return documents;
+
+  const sorted = sortDocsByMillis(documents, UPDATED_AT_FIELD, 'desc');
+  if (!maxCount) return sorted;
+  return sorted.slice(0, maxCount);
 }
 
 function safeUnsubscribe(unsubscribe) {

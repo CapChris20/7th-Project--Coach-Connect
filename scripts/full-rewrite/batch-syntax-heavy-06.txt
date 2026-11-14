@@ -1,0 +1,5 @@
+src/trainer-app/my-trainees/MyTraineesScreen.jsx
+src/workouts/exercise-videos/findExerciseVideos.js
+src/client-app/home/homeScreenPieces.jsx
+src/login-and-signup/TrainerOnboardingScreens.jsx
+src/for-both/setup-steps/TrainerProOfferStep.jsx

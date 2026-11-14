@@ -1,6 +1,9 @@
-// Bug report form: expected vs actual, optional steps/device, optional screenshots (up to 3).
+// Bug report form: expected vs actual, optional when/device, optional screenshots (up to 3).
 // Flow: fade in → ImagePicker for screenshots → POST /api/support/contact → open Mail as backup.
 // Used from Settings. Field order (expected, happened, when, device, shots) is what the email body uses.
+//
+// vocab: ImagePicker = expo-image-picker library assets (uri + fileName) staged locally
+// vocab: NbNoticeSheet = Design Law sheet instead of Alert.alert
 
 import React, { useRef, useState } from 'react';
 import {
@@ -23,7 +26,11 @@ import { openSupportMailto, offerSupportMailtoFallback } from './emailSupport';
 import { getApiBase } from '../for-both/online-connection/whereToConnect';
 import { getAuth } from 'firebase/auth';
 import NbPageHeader from '../look-and-feel/NbPageHeader';
-import { SHELL_SAFE_AREA_EDGES, FORM_SCROLL_PROPS, useShellBottomNavInset } from '../navigation/bottomMenuSpacing';
+import {
+  SHELL_SAFE_AREA_EDGES,
+  FORM_SCROLL_PROPS,
+  useShellBottomNavInset,
+} from '../navigation/bottomMenuSpacing';
 import { Ionicons } from '@expo/vector-icons';
 import NbButton from '../look-and-feel/NbButton';
 import NbNoticeSheet from '../look-and-feel/NbNoticeSheet';
@@ -33,6 +40,7 @@ import { nb, spacing } from '../look-and-feel/colorPalette';
 
 const SHELL_NAV_INSET = 24;
 const EXTRA_SCROLL_PAD = 16;
+// Manipulate here: entrance fade/rise duration (ms)
 const FADE_MS = 350;
 const RISE_FROM = 10;
 const SUPPORT_CONTACT_PATH = '/api/support/contact';
@@ -41,6 +49,7 @@ const DELIVERY_FIRESTORE = 'firestore';
 // Manipulate here: Design Law dashed zone — max optional screenshots
 const MAX_BUG_SCREENSHOTS = 3;
 const PICKER_QUALITY = 0.8;
+const PERMISSION_GRANTED = 'granted';
 
 const BUG_MAIL_BODY_TEMPLATE =
   'What I was doing:\n\n' +
@@ -50,44 +59,72 @@ const BUG_MAIL_BODY_TEMPLATE =
 
 // ===== HELPER FUNCTIONS =====
 
-function openBugMail() {
-  openSupportMailto({ subject: BUG_MAIL_SUBJECT, body: BUG_MAIL_BODY_TEMPLATE });
+/**
+ * Coerce any value to a trimmed string (empty when missing).
+ * @param {*} value
+ * @returns {string}
+ */
+function asTrimmedString(value) {
+  return asTrimmedString(value);
 }
 
+
 /**
+ * Bottom padding for the bug form scroll.
  * @param {boolean} embedShellBottomNav
  * @param {number} shellNavInset
  * @param {number} bottomInset
  * @returns {number}
  */
-function bugScrollBottomPad(embedShellBottomNav, shellNavInset, bottomInset) {
+function scrollPaddingForBugForm(embedShellBottomNav, shellNavInset, bottomInset) {
   if (embedShellBottomNav) return shellNavInset;
   return Math.max(bottomInset, EXTRA_SCROLL_PAD) + SHELL_NAV_INSET;
 }
 
 /**
- * @param {{ expectedText: string, happenedText: string, whenText: string, deviceText: string, screenshotNames: string[] }} fields
+ * Plain-text email body from the five form fields + screenshot file names.
  * @returns {string}
  */
-function buildBugMessage({ expectedText, happenedText, whenText, deviceText, screenshotNames }) {
-  const shotLines =
-    Array.isArray(screenshotNames) && screenshotNames.length > 0
-      ? `Screenshots ready on device (${screenshotNames.length}):\n${screenshotNames.map((n) => `- ${n}`).join('\n')}\n\n`
-      : '';
+function buildBugReportEmailBody({
+  expectedText,
+  happenedText,
+  whenText,
+  deviceText,
+  screenshotNames,
+}) {
+  const hasScreenshotNames =
+    Array.isArray(screenshotNames) && screenshotNames.length > 0;
+
+  let shotLines = '';
+  if (hasScreenshotNames) {
+    const bulletList = screenshotNames.map((name) => `- ${name}`).join('\n');
+    shotLines = `Screenshots ready on device (${screenshotNames.length}):\n${bulletList}\n\n`;
+  }
+
+  let whenBlock = '';
+  if (whenText) {
+    whenBlock = `Rough date and time:\n${whenText}\n\n`;
+  }
+  let deviceBlock = '';
+  if (deviceText) {
+    deviceBlock = `Device:\n${deviceText}\n\n`;
+  }
+
   return (
     `What I was trying to do:\n${expectedText}\n\n` +
     `What happened instead:\n${happenedText}\n\n` +
-    (whenText ? `Rough date and time:\n${whenText}\n\n` : '') +
-    (deviceText ? `Device:\n${deviceText}\n\n` : '') +
+    whenBlock +
+    deviceBlock +
     shotLines
   );
 }
 
 /**
+ * POST the bug report message with the signed-in user's ID token.
  * @param {string} message
  * @returns {Promise<object>}
  */
-async function postBugReport(message) {
+async function postBugReportToApi(message) {
   const auth = getAuth();
   const user = auth.currentUser;
   const token = await user.getIdToken(true);
@@ -101,18 +138,20 @@ async function postBugReport(message) {
     body: JSON.stringify({ subject: BUG_MAIL_SUBJECT, message }),
   });
   const json = await response.json().catch(() => ({}));
-  if (!response.ok || json?.ok !== true) {
+  const sendFailed = !response.ok || json?.ok !== true;
+  if (sendFailed) {
     throw new Error(json?.error || 'Failed to send bug report.');
   }
   return json;
 }
 
 /**
- * @param {string} supportEmail
+ * Notice copy after a successful API send.
+ * @param {string|null} supportEmail
  * @param {object} json
  * @returns {{ title: string, message: string }}
  */
-function noticeAfterBugSend(supportEmail, json) {
+function buildNoticeAfterBugSend(supportEmail, json) {
   if (json?.delivery === DELIVERY_FIRESTORE) {
     return {
       title: 'Almost done',
@@ -125,10 +164,19 @@ function noticeAfterBugSend(supportEmail, json) {
   };
 }
 
-function buildBugStyles(scrollBottomPad, colors) {
+/**
+ * Theme-bound StyleSheet for the bug form (padding depends on shell inset).
+ * @param {number} scrollBottomPad
+ * @param {object} colors
+ */
+function createBugReportStyles(scrollBottomPad, colors) {
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.nbBackground },
-    scroll: { paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: scrollBottomPad },
+    scroll: {
+      paddingHorizontal: spacing.md,
+      paddingTop: spacing.md,
+      paddingBottom: scrollBottomPad,
+    },
     label: {
       fontFamily: 'SpaceGrotesk_700Bold',
       fontSize: 11,
@@ -215,64 +263,113 @@ function buildBugStyles(scrollBottomPad, colors) {
   });
 }
 
+/**
+ * Map ImagePicker assets into local screenshot rows (id / uri / name).
+ * @param {Array} assets
+ * @param {number} slotsRemaining
+ * @returns {Array<{ id: string, uri: string, name: string }>}
+ */
+function mapPickerAssetsToScreenshots(assets, slotsRemaining) {
+  const limitedAssets = assets.slice(0, slotsRemaining);
+  return limitedAssets.map((asset, index) => {
+    const fallbackName = `screenshot-${index + 1}.jpg`;
+    const pathTail = asset.uri.split('/').pop();
+    return {
+      id: `${Date.now()}-${index}`,
+      uri: asset.uri,
+      name: asset.fileName || pathTail || fallbackName,
+    };
+  });
+}
+
+/**
+ * Thumbnail row with a remove control on each shot.
+ */
+function ScreenshotThumbRow({ screenshots, onRemove, colors, styles }) {
+  if (screenshots.length === 0) return null;
+
+  return (
+    <View style={styles.thumbRow}>
+      {screenshots.map((screenshot) => (
+        <View key={screenshot.id} style={styles.thumbWrap}>
+          <Image
+            source={{ uri: screenshot.uri }}
+            style={[styles.thumb, { borderColor: colors.nbBorder }]}
+            resizeMode="cover"
+          />
+          <TouchableOpacity
+            onPress={() => onRemove(screenshot.id)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            style={[
+              styles.thumbRemove,
+              { backgroundColor: colors.nbFill, borderColor: colors.nbBorder },
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="Remove screenshot"
+          >
+            <Ionicons name="close" size={14} color={colors.nbOnFill} />
+          </TouchableOpacity>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 // ===== MAIN FUNCTION =====
 
+/**
+ * Settings → Report a bug form with optional screenshots.
+ */
 export default function BugReportScreen({ onClose, embedShellBottomNav = false }) {
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const shellNavInset = useShellBottomNavInset(SHELL_NAV_INSET);
-  const scrollBottomPad = bugScrollBottomPad(embedShellBottomNav, shellNavInset, insets.bottom);
+  const scrollBottomPad = scrollPaddingForBugForm(
+    embedShellBottomNav,
+    shellNavInset,
+    insets.bottom,
+  );
   const supportEmail = getSupportEmail();
+
   const [whatExpected, setWhatExpected] = useState('');
   const [whatHappened, setWhatHappened] = useState('');
-  const [steps, setSteps] = useState('');
+  const [whenItHappened, setWhenItHappened] = useState('');
   const [deviceInfo, setDeviceInfo] = useState('');
   // vocab: screenshots = local ImagePicker assets staged before send (not uploaded yet)
   const [screenshots, setScreenshots] = useState([]);
   const [submitting, setSubmitting] = useState(false);
-  // vocab: notice = NbNoticeSheet payload — Design Law sheet instead of Alert.alert
   const [notice, setNotice] = useState(null);
 
-  const fade = useRef(new Animated.Value(0)).current;
-  const rise = useRef(new Animated.Value(RISE_FROM)).current;
+  const opacityAnimated = useRef(new Animated.Value(0)).current;
+  const riseAnimated = useRef(new Animated.Value(RISE_FROM)).current;
+
   React.useEffect(() => {
     Animated.parallel([
-      Animated.timing(fade, { toValue: 1, duration: FADE_MS, useNativeDriver: true }),
-      Animated.timing(rise, { toValue: 0, duration: FADE_MS, useNativeDriver: true }),
+      Animated.timing(opacityAnimated, {
+        toValue: 1,
+        duration: FADE_MS,
+        useNativeDriver: true,
+      }),
+      Animated.timing(riseAnimated, {
+        toValue: 0,
+        duration: FADE_MS,
+        useNativeDriver: true,
+      }),
     ]).start();
-  }, [fade, rise]);
+  }, [opacityAnimated, riseAnimated]);
 
-  async function pickScreenshots() {
-    const room = Math.max(0, MAX_BUG_SCREENSHOTS - screenshots.length);
-    if (room <= 0) {
+  async function addScreenshotsFromLibrary() {
+    const slotsRemaining = Math.max(0, MAX_BUG_SCREENSHOTS - screenshots.length);
+    if (slotsRemaining <= 0) {
       setNotice({
         title: 'Limit reached',
         message: `You can attach up to ${MAX_BUG_SCREENSHOTS} screenshots.`,
       });
       return;
     }
+
     try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') {
-        setNotice({
-          title: 'Permission needed',
-          message: 'Allow photo library access to attach screenshots.',
-        });
-        return;
-      }
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsMultipleSelection: true,
-        selectionLimit: room,
-        quality: PICKER_QUALITY,
-      });
-      if (result.canceled || !result.assets?.length) return;
-      const next = result.assets.slice(0, room).map((asset, index) => ({
-        id: `${Date.now()}-${index}`,
-        uri: asset.uri,
-        name: asset.fileName || asset.uri.split('/').pop() || `screenshot-${index + 1}.jpg`,
-      }));
-      setScreenshots((prev) => [...prev, ...next].slice(0, MAX_BUG_SCREENSHOTS));
+      await pickAndAppendScreenshots(slotsRemaining);
     } catch (error) {
       setNotice({
         title: 'Could not open photos',
@@ -281,14 +378,41 @@ export default function BugReportScreen({ onClose, embedShellBottomNav = false }
     }
   }
 
-  function removeScreenshot(id) {
-    setScreenshots((prev) => prev.filter((shot) => shot.id !== id));
+  async function pickAndAppendScreenshots(slotsRemaining) {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== PERMISSION_GRANTED) {
+      setNotice({
+        title: 'Permission needed',
+        message: 'Allow photo library access to attach screenshots.',
+      });
+      return;
+    }
+
+    const pickerResult = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsMultipleSelection: true,
+      selectionLimit: slotsRemaining,
+      quality: PICKER_QUALITY,
+    });
+
+    const nothingPicked =
+      pickerResult.canceled || !pickerResult.assets || pickerResult.assets.length === 0;
+    if (nothingPicked) return;
+
+    const picked = mapPickerAssetsToScreenshots(pickerResult.assets, slotsRemaining);
+    setScreenshots((previous) => [...previous, ...picked].slice(0, MAX_BUG_SCREENSHOTS));
   }
 
-  async function submitBug() {
-    const expectedText = String(whatExpected || '').trim();
-    const happenedText = String(whatHappened || '').trim();
-    const whenText = String(steps || '').trim();
+  function removeScreenshotById(screenshotId) {
+    setScreenshots((previous) => previous.filter((shot) => shot.id !== screenshotId));
+  }
+
+  async function sendBugReport() {
+    const expectedText = asTrimmedString(whatExpected);
+    const happenedText = asTrimmedString(whatHappened);
+    const whenText = asTrimmedString(whenItHappened);
+
+    // 1. Require the two fields support needs to reproduce the bug.
     if (!expectedText || !happenedText) {
       setNotice({
         title: 'Missing details',
@@ -297,6 +421,7 @@ export default function BugReportScreen({ onClose, embedShellBottomNav = false }
       return;
     }
 
+    // 2. Need a signed-in Firebase user for the Bearer token.
     const auth = getAuth();
     const user = auth.currentUser;
     if (!user) {
@@ -304,40 +429,77 @@ export default function BugReportScreen({ onClose, embedShellBottomNav = false }
       return;
     }
 
+    // 3. Build the email body, POST it, clear the form, open Mail as backup.
     setSubmitting(true);
-    const message = buildBugMessage({
+    const screenshotNames = screenshots.map((shot) => shot.name);
+    const messageBody = buildBugReportEmailBody({
       expectedText,
       happenedText,
       whenText,
       deviceText: deviceInfo,
-      screenshotNames: screenshots.map((s) => s.name),
+      screenshotNames,
     });
 
     try {
-      const json = await postBugReport(message);
+      const json = await postBugReportToApi(messageBody);
       setWhatExpected('');
       setWhatHappened('');
-      setSteps('');
+      setWhenItHappened('');
       setDeviceInfo('');
       setScreenshots([]);
-      openSupportMailto({ subject: BUG_MAIL_SUBJECT, body: message });
-      setNotice(noticeAfterBugSend(supportEmail, json));
+      openSupportMailto({ subject: BUG_MAIL_SUBJECT, body: messageBody });
+      setNotice(buildNoticeAfterBugSend(supportEmail, json));
     } catch (error) {
-      offerSupportMailtoFallback({ subject: BUG_MAIL_SUBJECT, body: message, apiError: error?.message });
+      offerSupportMailtoFallback({
+        subject: BUG_MAIL_SUBJECT,
+        body: messageBody,
+        apiError: error?.message,
+      });
     } finally {
       setSubmitting(false);
     }
   }
 
-  const styles = buildBugStyles(scrollBottomPad, colors);
+  function openBugMailShortcut() {
+    openSupportMailto({ subject: BUG_MAIL_SUBJECT, body: BUG_MAIL_BODY_TEMPLATE });
+  }
+
+  function closeNoticeSheet() {
+    setNotice(null);
+  }
+
+  const screenStyles = createBugReportStyles(scrollBottomPad, colors);
   const footerCopy = supportEmail
     ? `Questions? Email ${supportEmail}. We can’t give medical advice; for health emergencies, contact local emergency services.`
     : 'We can’t give medical advice; for health emergencies, contact local emergency services.';
-  const canAddMore = screenshots.length < MAX_BUG_SCREENSHOTS;
+  const canAddMoreScreenshots = screenshots.length < MAX_BUG_SCREENSHOTS;
+  const dashZoneIsActive = canAddMoreScreenshots && !submitting;
+  let dashZoneOpacity = 0.7;
+  if (canAddMoreScreenshots) {
+    dashZoneOpacity = 1;
+  }
+  let dashZonePressHandler = undefined;
+  if (dashZoneIsActive) {
+    dashZonePressHandler = addScreenshotsFromLibrary;
+  }
+  const screenshotCountHint =
+    screenshots.length > 0 ? ` · ${screenshots.length} added` : '';
+  let sendButtonLabel = 'Send bug report';
+  if (submitting) {
+    sendButtonLabel = 'Sending…';
+  }
+  let statusBarStyle = 'dark-content';
+  if (isDark) {
+    statusBarStyle = 'light-content';
+  }
+  const animatedFormStyle = {
+    opacity: opacityAnimated,
+    transform: [{ translateY: riseAnimated }],
+  };
 
   return (
-    <SafeAreaView style={styles.container} edges={SHELL_SAFE_AREA_EDGES}>
-      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.nbBackground} />
+    <SafeAreaView style={screenStyles.container} edges={SHELL_SAFE_AREA_EDGES}>
+      <StatusBar barStyle={statusBarStyle} backgroundColor={colors.nbBackground} />
       <NbPageHeader
         title="Report a bug"
         subtitle="Help us make it better."
@@ -346,121 +508,113 @@ export default function BugReportScreen({ onClose, embedShellBottomNav = false }
 
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={styles.scroll}
+        contentContainerStyle={screenStyles.scroll}
         {...FORM_SCROLL_PROPS}
         showsVerticalScrollIndicator
       >
-        <Animated.View style={{ opacity: fade, transform: [{ translateY: rise }] }}>
-          <Text style={styles.label}>WHAT YOU WERE TRYING TO DO</Text>
+        <Animated.View style={animatedFormStyle}>
+          <Text style={screenStyles.label}>WHAT YOU WERE TRYING TO DO</Text>
           <TextInput
             value={whatExpected}
             onChangeText={setWhatExpected}
             placeholder="Log my lunch with a barcode."
             placeholderTextColor={colors.nbMuted}
-            style={[styles.input, styles.inputMultiline]}
+            style={[screenStyles.input, screenStyles.inputMultiline]}
             multiline
             editable={!submitting}
           />
 
-          <Text style={styles.label}>WHAT HAPPENED INSTEAD</Text>
+          <Text style={screenStyles.label}>WHAT HAPPENED INSTEAD</Text>
           <TextInput
             value={whatHappened}
             onChangeText={setWhatHappened}
             placeholder="The scanner opened, found the product, then the app closed."
             placeholderTextColor={colors.nbMuted}
-            style={[styles.input, styles.inputMultiline]}
+            style={[screenStyles.input, screenStyles.inputMultiline]}
             multiline
             editable={!submitting}
           />
 
-          <Text style={styles.label}>ROUGH DATE AND TIME</Text>
+          <Text style={screenStyles.label}>ROUGH DATE AND TIME</Text>
           <TextInput
-            value={steps}
-            onChangeText={setSteps}
+            value={whenItHappened}
+            onChangeText={setWhenItHappened}
             placeholder="Today, about 12:30 PM"
             placeholderTextColor={colors.nbMuted}
-            style={styles.input}
+            style={screenStyles.input}
             editable={!submitting}
           />
 
-          <Text style={styles.label}>DEVICE (OPTIONAL)</Text>
+          <Text style={screenStyles.label}>DEVICE (OPTIONAL)</Text>
           <TextInput
             value={deviceInfo}
             onChangeText={setDeviceInfo}
             placeholder="iPhone 15"
             placeholderTextColor={colors.nbMuted}
-            style={styles.input}
+            style={screenStyles.input}
             editable={!submitting}
           />
 
           {/* Design Law dashed drop zone — optional screenshots via ImagePicker */}
           <Pressable
-            onPress={canAddMore && !submitting ? pickScreenshots : undefined}
-            disabled={!canAddMore || submitting}
+            onPress={dashZonePressHandler}
+            disabled={!dashZoneIsActive}
             style={[
-              styles.dashZone,
-              { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface, opacity: canAddMore ? 1 : 0.7 },
+              screenStyles.dashZone,
+              {
+                borderColor: colors.nbBorder,
+                backgroundColor: colors.nbSurface,
+                opacity: dashZoneOpacity,
+              },
             ]}
             accessibilityRole="button"
             accessibilityLabel="Add screenshots"
           >
             <Ionicons name="images-outline" size={28} color={colors.nbInk} />
             <View style={{ flex: 1, marginLeft: spacing.sm }}>
-              <Text style={[styles.dashTitle, { color: colors.nbInk }]}>
+              <Text style={[screenStyles.dashTitle, { color: colors.nbInk }]}>
                 Screenshots if something looks wrong
               </Text>
-              <Text style={[styles.helper, { marginTop: 2 }]}>
+              <Text style={[screenStyles.helper, { marginTop: 2 }]}>
                 Optional. Up to {MAX_BUG_SCREENSHOTS} images
-                {screenshots.length > 0 ? ` · ${screenshots.length} added` : ''}
+                {screenshotCountHint}
               </Text>
             </View>
-            {canAddMore ? <Ionicons name="add" size={22} color={colors.nbInk} /> : null}
+            {canAddMoreScreenshots ? (
+              <Ionicons name="add" size={22} color={colors.nbInk} />
+            ) : null}
           </Pressable>
 
-          {screenshots.length > 0 ? (
-            <View style={styles.thumbRow}>
-              {screenshots.map((shot) => (
-                <View key={shot.id} style={styles.thumbWrap}>
-                  <Image
-                    source={{ uri: shot.uri }}
-                    style={[styles.thumb, { borderColor: colors.nbBorder }]}
-                    resizeMode="cover"
-                  />
-                  <TouchableOpacity
-                    onPress={() => removeScreenshot(shot.id)}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    style={[
-                      styles.thumbRemove,
-                      { backgroundColor: colors.nbFill, borderColor: colors.nbBorder },
-                    ]}
-                    accessibilityRole="button"
-                    accessibilityLabel="Remove screenshot"
-                  >
-                    <Ionicons name="close" size={14} color={colors.nbOnFill} />
-                  </TouchableOpacity>
-                </View>
-              ))}
-            </View>
-          ) : null}
+          <ScreenshotThumbRow
+            screenshots={screenshots}
+            onRemove={removeScreenshotById}
+            colors={colors}
+            styles={screenStyles}
+          />
 
-          <View style={styles.buttonWrap}>
-            <NbButton variant="fill" onPress={submitBug} disabled={submitting}>
-              {submitting ? 'Sending…' : 'Send bug report'}
+          <View style={screenStyles.buttonWrap}>
+            <NbButton variant="fill" onPress={sendBugReport} disabled={submitting}>
+              {sendButtonLabel}
             </NbButton>
           </View>
 
           {supportEmail ? (
-            <Pressable onPress={openBugMail}>
-              <Text style={[styles.helper, { marginTop: spacing.sm }]}>Or email instead</Text>
+            <Pressable onPress={openBugMailShortcut}>
+              <Text style={[screenStyles.helper, { marginTop: spacing.sm }]}>
+                Or email instead
+              </Text>
             </Pressable>
           ) : null}
 
-          <Text style={[styles.footerText, { marginTop: spacing.lg }]}>{footerCopy}</Text>
+          <Text style={[screenStyles.footerText, { marginTop: spacing.lg }]}>
+            {footerCopy}
+          </Text>
         </Animated.View>
       </ScrollView>
+
       <NbNoticeSheet
         visible={!!notice}
-        onClose={() => setNotice(null)}
+        onClose={closeNoticeSheet}
         title={notice?.title || ''}
         message={notice?.message}
         confirmLabel="OK"
@@ -468,3 +622,6 @@ export default function BugReportScreen({ onClose, embedShellBottomNav = false }
     </SafeAreaView>
   );
 }
+
+// PLUMBING — skip unless debugging
+// (theme styles are built in createBugReportStyles above)

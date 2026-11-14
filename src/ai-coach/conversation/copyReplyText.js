@@ -1,17 +1,17 @@
-// Turn a coach reply into plain text and put it on the clipboard.
-// Flow: strip citations or markdown → write the clipboard → on iOS, read it back →
-// if that fails, open the share sheet so the user can still copy.
-// Used by: the coach conversation (via copyableReplyText) and the reply text views.
+// Copy coach reply text to the clipboard (plain prose, no markdown or [1] citation crumbs).
+// Flow: strip formatting → write clipboard → on iOS verify pasteboard → else open share sheet.
+// Used by CoachConversationScreen via copyableReplyText and reply text views.
 
 import { Alert, Platform, Share } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 
 // ===== NAMED CONSTANTS =====
 
-// [1] [2] markers the web-search reply leaves in the prose. They are not part of the answer.
+// [1] [2] markers from web-search replies are not part of the answer body.
 const INLINE_CITATION_PATTERN = /\s*\[\d+\]/g;
 const EXTRA_SPACES_PATTERN = /[ \t]{2,}/g;
-const PLATFORM_IOS = 'ios';
+const IOS_PLATFORM = 'ios';
+
 const NOTHING_TO_COPY_TITLE = 'Nothing to copy';
 const NOTHING_TO_COPY_MESSAGE = 'This message has no text to copy.';
 const COPIED_TITLE = 'Copied';
@@ -20,9 +20,9 @@ const COPY_FAILED_TITLE = 'Copy failed';
 const COPY_FAILED_FALLBACK_MESSAGE =
   'Could not copy. Long-press the message text and use the system Copy menu.';
 
-// Order matters. Bold (**) has to go before italic (*), or the bold markers get eaten as italics.
-// The bullet character is what the user actually pastes — markdown asterisks would look broken.
-const MARKDOWN_TO_PLAIN_TEXT = [
+// Order matters: bold (**) before single-asterisk italic, or bold markers get eaten.
+// Bullet output uses • so pasted text does not look like broken markdown.
+const MARKDOWN_TO_PLAIN_RULES = [
   [/\r\n/g, '\n'],
   [/\*\*(.*?)\*\*/g, '$1'],
   [/__(.*?)__/g, '$1'],
@@ -36,59 +36,91 @@ const MARKDOWN_TO_PLAIN_TEXT = [
   [/(?:\s*\[\d+\])+/g, ''],
 ];
 
-// ===== HELPER FUNCTIONS =====
+// ===== MAIN FUNCTIONS =====
 
 /**
- * Android and web: a thrown setStringAsync is the only failure we trust.
- * iOS can report success while the pasteboard still holds the previous string,
- * so we read it back before telling the user the message copied.
- * @param {string} expectedText
- * @returns {Promise<boolean>}
- */
-async function isClipboardHoldingText(expectedText) {
-  if (Platform.OS !== PLATFORM_IOS) return true;
-  const pastedBack = await Clipboard.getStringAsync();
-  const trimmedExpected = expectedText.trim();
-  const trimmedPasted = trimmedClipboardText(pastedBack);
-  return Boolean(trimmedPasted && trimmedPasted === trimmedExpected);
-}
-
-function trimmedClipboardText(pastedBack) {
-  if (!pastedBack) return '';
-  return pastedBack.trim();
-}
-
-/**
- * Run each markdown cleanup rule in order.
- * @param {string} rawText
+ * Remove [1] [2] without rewriting newlines or other markdown (lighter than full coachPlainText).
+ * @param {string} text
  * @returns {string}
  */
-function applyMarkdownToPlainRules(rawText) {
-  let plainText = rawText;
-  for (let ruleIndex = 0; ruleIndex < MARKDOWN_TO_PLAIN_TEXT.length; ruleIndex += 1) {
-    const rulePair = MARKDOWN_TO_PLAIN_TEXT[ruleIndex];
-    const pattern = rulePair[0];
-    const replacement = rulePair[1];
-    plainText = plainText.replace(pattern, replacement);
-  }
-  return plainText.trim();
+export function stripInlineWebCitations(text) {
+  const asString = textAsString(text);
+  const withoutCitations = asString.replace(INLINE_CITATION_PATTERN, '');
+  const withoutExtraSpaces = withoutCitations.replace(EXTRA_SPACES_PATTERN, ' ');
+  return withoutExtraSpaces.trim();
 }
 
 /**
- * Prefer Design Law NbNoticeSheet when the host passed presentNotice; else native Alert.
- * @param {boolean} shouldAnnounce
- * @param {((title: string, message: string) => void)|undefined} presentNotice
+ * Full markdown → plain for paste / share.
+ * @param {string} text
+ * @returns {string}
  */
-function announceCopied(shouldAnnounce, presentNotice) {
-  if (!shouldAnnounce) return;
-  if (typeof presentNotice === 'function') {
-    presentNotice(COPIED_TITLE, COPIED_MESSAGE);
-    return;
-  }
-  Alert.alert(COPIED_TITLE, COPIED_MESSAGE);
+export function coachPlainText(text) {
+  return runMarkdownPlainRules(textAsString(text));
 }
 
-function presentUserNotice(presentNotice, title, message) {
+/**
+ * Copy coach reply text. On iOS, verify the pasteboard; fall back to the share sheet if it lies.
+ * @param {string} text
+ * @param {{ announce?: boolean, presentNotice?: Function }} [options]
+ * @returns {Promise<boolean>}
+ */
+export async function copyCoachText(text, { announce = true, presentNotice } = {}) {
+  // 1. Build plain string; abort with notice if empty.
+  const textToCopy = pickTextForClipboard(text);
+  if (!textToCopy) {
+    showNoticeToUser(presentNotice, NOTHING_TO_COPY_TITLE, NOTHING_TO_COPY_MESSAGE);
+    return false;
+  }
+
+  // 2. Write pasteboard, then verify on iOS (setString can report success while holding old data).
+  const wroteToClipboard = await tryWriteClipboardAndVerify(textToCopy);
+  if (wroteToClipboard) {
+    tellUserCopySucceeded(announce, presentNotice);
+    return true;
+  }
+
+  // 3. Share sheet backup; surface failure only if that also throws.
+  return tryShareSheetOrFail(textToCopy, presentNotice);
+}
+
+// ===== PLUMBING — skip unless debugging =====
+
+function textAsString(maybeText) {
+  if (!maybeText) {
+    return '';
+  }
+  return String(maybeText);
+}
+
+function trimPasteboardReadback(readback) {
+  if (!readback) {
+    return '';
+  }
+  return readback.trim();
+}
+
+function runMarkdownPlainRules(rawReply) {
+  let plain = rawReply;
+  for (let ruleIndex = 0; ruleIndex < MARKDOWN_TO_PLAIN_RULES.length; ruleIndex += 1) {
+    const rulePair = MARKDOWN_TO_PLAIN_RULES[ruleIndex];
+    const searchPattern = rulePair[0];
+    const replaceWith = rulePair[1];
+    plain = plain.replace(searchPattern, replaceWith);
+  }
+  return plain.trim();
+}
+
+function pickTextForClipboard(replyText) {
+  const asString = textAsString(replyText);
+  const afterMarkdown = runMarkdownPlainRules(asString);
+  if (afterMarkdown) {
+    return afterMarkdown;
+  }
+  return asString.trim();
+}
+
+function showNoticeToUser(presentNotice, title, message) {
   if (typeof presentNotice === 'function') {
     presentNotice(title, message);
     return;
@@ -96,83 +128,54 @@ function presentUserNotice(presentNotice, title, message) {
   Alert.alert(title, message);
 }
 
-function stringOrBlank(text) {
-  if (!text) return '';
-  return String(text);
+function tellUserCopySucceeded(shouldAnnounce, presentNotice) {
+  if (!shouldAnnounce) {
+    return;
+  }
+  showNoticeToUser(presentNotice, COPIED_TITLE, COPIED_MESSAGE);
 }
 
-function messageFromShareError(error) {
-  if (error && error.message) return error.message;
+function shareSheetErrorMessage(error) {
+  if (error && error.message) {
+    return error.message;
+  }
   return COPY_FAILED_FALLBACK_MESSAGE;
 }
 
-/**
- * Pick plain text for the clipboard, falling back to a raw trim when markdown stripping empties the string.
- * @param {string} text
- * @returns {string}
- */
-function textReadyForClipboard(text) {
-  const replyText = stringOrBlank(text);
-  const fromMarkdown = applyMarkdownToPlainRules(replyText);
-  if (fromMarkdown) return fromMarkdown;
-  return replyText.trim();
-}
-
-// ===== MAIN FUNCTION =====
-
-/**
- * Remove [1] [2] citation markers without collapsing newlines or markdown.
- * @param {string} text
- * @returns {string}
- */
-export function stripInlineWebCitations(text) {
-  return stringOrBlank(text)
-    .replace(INLINE_CITATION_PATTERN, '')
-    .replace(EXTRA_SPACES_PATTERN, ' ')
-    .trim();
-}
-
-/**
- * Strip lightweight markdown so a coach reply pastes as one plain paragraph.
- * @param {string} text
- * @returns {string}
- */
-export function coachPlainText(text) {
-  return applyMarkdownToPlainRules(stringOrBlank(text));
-}
-
-/**
- * Copy a coach reply. Falls back to the system share sheet when the clipboard write can't be verified.
- * @param {string} text
- * @param {{ announce?: boolean, presentNotice?: (title: string, message: string) => void }} [options]
- *   announce: false skips the "Copied" notice. presentNotice routes to NbNoticeSheet when provided.
- * @returns {Promise<boolean>} True when the clipboard or the share sheet accepted the text.
- */
-export async function copyCoachText(text, { announce = true, presentNotice } = {}) {
-  const textToCopy = textReadyForClipboard(text);
-  if (!textToCopy) {
-    presentUserNotice(presentNotice, NOTHING_TO_COPY_TITLE, NOTHING_TO_COPY_MESSAGE);
+async function tryWriteClipboardAndVerify(textToCopy) {
+  try {
+    // vocab: setStringAsync = Expo clipboard write; getStringAsync reads it back
+    await Clipboard.setStringAsync(textToCopy);
+    const pasteboardOk = await iosPasteboardMatchesExpected(textToCopy);
+    return pasteboardOk;
+  } catch (_clipboardWriteFailed) {
     return false;
   }
+}
 
-  try {
-    await Clipboard.setStringAsync(textToCopy);
-    const isClipboardVerified = await isClipboardHoldingText(textToCopy);
-    if (isClipboardVerified) {
-      announceCopied(announce, presentNotice);
-      return true;
-    }
-  } catch (_clipboardWriteError) {
-    // Clipboard threw, or the iOS read-back threw. The share sheet is the backup.
+async function iosPasteboardMatchesExpected(expectedText) {
+  if (Platform.OS !== IOS_PLATFORM) {
+    return true;
   }
 
+  const readback = await Clipboard.getStringAsync();
+  const expectedTrimmed = expectedText.trim();
+  const readbackTrimmed = trimPasteboardReadback(readback);
+
+  if (!readbackTrimmed) {
+    return false;
+  }
+  return readbackTrimmed === expectedTrimmed;
+}
+
+async function tryShareSheetOrFail(textToShare, presentNotice) {
   try {
-    // vocab: Share.share opens the system sheet. message is the text the user can then copy.
-    await Share.share({ message: textToCopy });
+    // vocab: Share.share opens the system sheet — user can copy from there when pasteboard lies.
+    await Share.share({ message: textToShare });
     return true;
   } catch (error) {
-    const failureMessage = messageFromShareError(error);
-    presentUserNotice(presentNotice, COPY_FAILED_TITLE, failureMessage);
+    const failureMessage = shareSheetErrorMessage(error);
+    showNoticeToUser(presentNotice, COPY_FAILED_TITLE, failureMessage);
     return false;
   }
 }

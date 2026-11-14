@@ -1,6 +1,9 @@
-// Trainer paywall: price line, free-trial button, restore, and the support fallback.
-// Flow: read the store product → build the price line → start the trial or open mail.
-// Used by the trainer pro-plan flow when a trainer still needs a subscription.
+// Trainer paywall screen — price line, free trial CTA, restore, and support escape hatch.
+// Flow: subscription hook → build price text → hand props to ProUpgradeOffer → trial or restore.
+// Used when a trainer still needs an Apple subscription before full Pro features unlock.
+//
+// vocab: useSubscription = ProPlanSetup hook (storeProduct, startFreeTrial, restorePurchases, …)
+// vocab: displayPrice = StoreKit localized price string when the product loaded
 
 import React from 'react';
 import { Linking, Platform } from 'react-native';
@@ -14,36 +17,112 @@ import ProUpgradeOffer from './ProUpgradeOffer';
 
 // ===== NAMED CONSTANTS =====
 
-// Subject is percent-encoded so the mail app keeps the words "Subscription verification issue".
+const PAYWALL_VARIANT = 'paywall';
+const IOS_PLATFORM = 'ios';
+// Manipulate here: subject is percent-encoded so mail clients keep the words intact
 const SUPPORT_MAIL_URL =
   'mailto:coachconnect0@gmail.com?subject=Subscription%20verification%20issue';
 
 // ===== HELPER FUNCTIONS =====
 
-// The store price wins when the native product has loaded. Otherwise show the label we ship in the app.
-function storePriceLineOrFallback(storeProduct) {
-  const hasStorePrice = storeProduct?.displayPrice != null;
-  if (hasStorePrice) {
-    return `${storeProduct.displayPrice}/month · ${TRAINER_SUBSCRIPTION_TRIAL_LABEL}`;
+/**
+ * Prefer live StoreKit price; fall back to static labels from proPlanSwitches.
+ * @param {object|null|undefined} storeProduct
+ * @returns {string}
+ */
+function priceLineFromStoreOrStaticLabels(storeProduct) {
+  const nativePrice = storeProduct?.displayPrice;
+  const hasNativePrice = nativePrice != null;
+  if (hasNativePrice) {
+    return `${nativePrice}/month · ${TRAINER_SUBSCRIPTION_TRIAL_LABEL}`;
   }
   return `${TRAINER_SUBSCRIPTION_PRICE_LABEL} · ${TRAINER_SUBSCRIPTION_TRIAL_LABEL}`;
 }
 
-// Android and web have no App Store connection flag. Only iOS should look disconnected.
-function isCardStoreReady(isStoreConnected) {
-  if (Platform.OS !== 'ios') return true;
+/**
+ * Non-iOS always looks “connected”; iOS mirrors StoreKit connected flag.
+ * @param {boolean} isStoreConnected
+ * @returns {boolean}
+ */
+function paywallShouldLookStoreConnected(isStoreConnected) {
+  const runningOnIos = Platform.OS === IOS_PLATFORM;
+  if (!runningOnIos) {
+    return true;
+  }
   return isStoreConnected;
 }
 
-function canOpenSettings(onOpenSettings) {
+/**
+ * True when the shell passed a real Settings opener.
+ * @param {Function|undefined} onOpenSettings
+ * @returns {boolean}
+ */
+function shellPassedSettingsHandler(onOpenSettings) {
   return typeof onOpenSettings === 'function';
+}
+
+/**
+ * Clear any stale IAP error, then kick off the free-trial purchase path.
+ * @param {Function} clearError
+ * @param {Function} startFreeTrial
+ */
+async function runFreeTrialAfterClearingError(clearError, startFreeTrial) {
+  clearError();
+  await startFreeTrial();
+}
+
+/**
+ * Settings handler wins; otherwise open the support mailto.
+ * @param {Function|undefined} onOpenSettings
+ */
+function openSupportMailWhenNoSettingsHandler(onOpenSettings) {
+  if (shellPassedSettingsHandler(onOpenSettings)) {
+    onOpenSettings();
+    return;
+  }
+  Linking.openURL(SUPPORT_MAIL_URL);
+}
+
+/**
+ * Pure layout — chrome only; actions come from the screen below.
+ * @param {object} props
+ */
+function ProUpgradeScreenLayout({
+  isDark,
+  priceLine,
+  actionLoading,
+  lastError,
+  storeReadyForCard,
+  onPrimary,
+  onRestore,
+  onContactSupport,
+  onOpenSettings,
+  onOpenTerms,
+  onOpenPrivacy,
+}) {
+  return (
+    <ProUpgradeOffer
+      isDark={isDark}
+      variant={PAYWALL_VARIANT}
+      priceLine={priceLine}
+      actionLoading={actionLoading}
+      lastError={lastError}
+      onPrimary={onPrimary}
+      onRestore={onRestore}
+      onContactSupport={onContactSupport}
+      onOpenSettings={onOpenSettings}
+      onOpenTerms={onOpenTerms}
+      onOpenPrivacy={onOpenPrivacy}
+      connected={storeReadyForCard}
+    />
+  );
 }
 
 // ===== MAIN FUNCTION =====
 
 /**
- * Paywall screen. The offer component draws the buttons; this screen wires trial, restore, and support.
- * @param {{ onOpenSettings?: function, onOpenTerms?: function, onOpenPrivacy?: function }} props
+ * Paywall screen. ProUpgradeOffer draws chrome; this file wires store actions and support.
+ * @param {{ onOpenSettings?: Function, onOpenTerms?: Function, onOpenPrivacy?: Function }} props
  * @returns {import('react').ReactElement}
  */
 export default function ProUpgradeScreen({ onOpenSettings, onOpenTerms, onOpenPrivacy }) {
@@ -58,36 +137,29 @@ export default function ProUpgradeScreen({ onOpenSettings, onOpenTerms, onOpenPr
     connected: isStoreConnected,
   } = useSubscription();
 
-  const priceLine = storePriceLineOrFallback(storeProduct);
+  // 1. Price line — StoreKit displayPrice when loaded, else static labels.
+  const priceLine = priceLineFromStoreOrStaticLabels(storeProduct);
+  const storeReadyForCard = paywallShouldLookStoreConnected(isStoreConnected);
 
-  const handleCta = async () => {
-    clearError();
-    await startFreeTrial();
-  };
+  // 2. Primary CTA — clear last error, then start the free-trial purchase.
+  const handlePrimaryCta = () => runFreeTrialAfterClearingError(clearError, startFreeTrial);
 
-  // Settings wins when the shell passed a handler. Otherwise mail support from this screen.
-  const handleContactSupport = () => {
-    if (canOpenSettings(onOpenSettings)) {
-      onOpenSettings();
-      return;
-    }
-    Linking.openURL(SUPPORT_MAIL_URL);
-  };
+  // 3. Support — Settings if the shell passed one, otherwise mailto.
+  const handleContactSupport = () => openSupportMailWhenNoSettingsHandler(onOpenSettings);
 
   return (
-    <ProUpgradeOffer
+    <ProUpgradeScreenLayout
       isDark={isDark}
-      variant="paywall"
       priceLine={priceLine}
       actionLoading={actionLoading}
       lastError={lastError}
-      onPrimary={handleCta}
+      storeReadyForCard={storeReadyForCard}
+      onPrimary={handlePrimaryCta}
       onRestore={restorePurchases}
       onContactSupport={handleContactSupport}
       onOpenSettings={onOpenSettings}
       onOpenTerms={onOpenTerms}
       onOpenPrivacy={onOpenPrivacy}
-      connected={isCardStoreReady(isStoreConnected)}
     />
   );
 }

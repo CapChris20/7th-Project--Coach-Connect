@@ -1,6 +1,7 @@
 // Loads one client's daily food/workout logs for a week, then shapes a day into workouts for the report.
 // Flow: date keys for the range → one Firestore read per day → merge maps → workoutsFromDailyLog for the UI.
 // Used by trainer and client weekly-report screens.
+// Read order: constants → main recipes → PLUMBING at the bottom.
 
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../app-start/cloudConnection';
@@ -12,100 +13,10 @@ const USERS_COLLECTION = 'users';
 const DAILY_LOGS_COLLECTION = 'dailyLogs';
 // Parsing a bare 'YYYY-MM-DD' is UTC midnight, which in western timezones displays as the previous day.
 const NOON_LOCAL_SUFFIX = 'T12:00:00';
-const ISO_DATE_LENGTH = 10;
+const ISO_DATE_KEY_LENGTH = 10;
 const REST_DAY_PATTERN = /\brest\b|off day|recovery|no workout|take a rest/i;
-const WORKOUT_DAY_HINT_PATTERN = /\b(day|body|cardio|hiit|push|pull|legs?|arms?|chest|back|shoulders?)\b/i;
-
-// ===== HELPER FUNCTIONS =====
-
-function addDays(isoDate, dayCount) {
-  const dateAtNoon = new Date(`${isoDate}${NOON_LOCAL_SUFFIX}`);
-  dateAtNoon.setDate(dateAtNoon.getDate() + dayCount);
-  return dateAtNoon.toISOString().slice(0, ISO_DATE_LENGTH);
-}
-
-function dateRangeKeys(weekStart, weekEnd) {
-  const keys = [];
-  let cursor = weekStart;
-  const end = weekEnd || weekStart;
-  while (cursor && cursor <= end) {
-    keys.push(cursor);
-    cursor = addDays(cursor, 1);
-  }
-  return keys;
-}
-
-function doesTextLookLikeWorkoutDayLabel(text) {
-  const value = String(text || '').trim();
-  if (!value) return false;
-  if (isAllowedClientWorkoutDayLabel(value)) return true;
-  return WORKOUT_DAY_HINT_PATTERN.test(value);
-}
-
-function firstNonEmptyLine(block) {
-  return block.split('\n').map((line) => line.trim()).find(Boolean) || '';
-}
-
-function resolveWorkoutName(log, workouts = []) {
-  const explicitName = log?.dashboard_workout_name != null ? String(log.dashboard_workout_name).trim() : '';
-  if (explicitName) return explicitName;
-
-  const legacySummary = log?.dashboard_workouts != null ? String(log.dashboard_workouts).trim() : '';
-  if (legacySummary) {
-    const firstLine = firstNonEmptyLine(legacySummary);
-    if (doesTextLookLikeWorkoutDayLabel(firstLine)) return firstLine;
-  }
-
-  if (workouts.length === 1 && doesTextLookLikeWorkoutDayLabel(workouts[0]?.name)) {
-    return workouts[0].name;
-  }
-
-  return null;
-}
-
-function setDetailText(workoutSet) {
-  return `${workoutSet.reps || 0}×${workoutSet.weight || 0}`;
-}
-
-function exercisesFromStructuredLog(workoutLog) {
-  return workoutLog
-    .filter((exercise) => exercise && exercise.exerciseName)
-    .map((exercise) => {
-      const sets = Array.isArray(exercise.sets) ? exercise.sets : [];
-      const setStrings = sets.map((workoutSet) => setDetailText(workoutSet));
-      return {
-        name: String(exercise.exerciseName).trim(),
-        setsCount: sets.length ? String(sets.length) : null,
-        setsDetail: setStrings.length ? setStrings.join(', ') : null,
-      };
-    });
-}
-
-function workoutsFromSummaryLines(summary, title) {
-  const lines = summary.split('\n').map((line) => line.trim()).filter(Boolean);
-  const exerciseLines = title && lines[0] === title ? lines.slice(1) : lines;
-  if (exerciseLines.length > 0) {
-    return exerciseLines.map((line) => ({ name: line, setsCount: null, setsDetail: null }));
-  }
-  return [{ name: summary, setsCount: null, setsDetail: null }];
-}
-
-async function loadDailyLogForDate(userId, date) {
-  try {
-    const logSnapshot = await getDoc(doc(db, USERS_COLLECTION, userId, DAILY_LOGS_COLLECTION, date));
-    return [date, logSnapshot.exists() ? logSnapshot.data() || {} : null];
-  } catch {
-    return [date, null];
-  }
-}
-
-function dailyLogsByDate(entries) {
-  const byDay = {};
-  entries.forEach(([date, data]) => {
-    if (data) byDay[date] = data;
-  });
-  return byDay;
-}
+const WORKOUT_DAY_HINT_PATTERN =
+  /\b(day|body|cardio|hiit|push|pull|legs?|arms?|chest|back|shoulders?)\b/i;
 
 // ===== MAIN FUNCTION =====
 
@@ -116,36 +27,19 @@ function dailyLogsByDate(entries) {
  * @returns {{ workouts: Array, workoutName: string|null, isRest: boolean }}
  */
 export function workoutsFromDailyLog(log) {
-  if (!log) return { workouts: [], workoutName: null, isRest: false };
-
-  if (Array.isArray(log.workoutLog) && log.workoutLog.length > 0) {
-    const workouts = exercisesFromStructuredLog(log.workoutLog);
-    if (workouts.length) {
-      return {
-        workouts,
-        workoutName: resolveWorkoutName(log, workouts),
-        isRest: false,
-      };
-    }
+  // 1. No log document → empty day for the report UI.
+  if (!log) {
+    return { workouts: [], workoutName: null, isRest: false };
   }
 
-  const summary = log.dashboard_workouts != null ? String(log.dashboard_workouts).trim() : '';
-  const isRest = REST_DAY_PATTERN.test(summary);
-  if (summary && !isRest) {
-    const title = resolveWorkoutName(log, []);
-    const workouts = workoutsFromSummaryLines(summary, title);
-    return {
-      workouts,
-      workoutName: title || resolveWorkoutName(log, workouts),
-      isRest: false,
-    };
+  // 2. Prefer the structured exercise list when the phone wrote workoutLog.
+  const structuredExercises = tryWorkoutsFromStructuredLog(log);
+  if (structuredExercises) {
+    return structuredExercises;
   }
 
-  return {
-    workouts: [],
-    workoutName: resolveWorkoutName(log, []),
-    isRest: isRest && Boolean(summary),
-  };
+  // 3. Fall back to the legacy dashboard_workouts multi-line string.
+  return workoutsFromLegacyDashboardSummary(log);
 }
 
 /**
@@ -156,11 +50,22 @@ export function workoutsFromDailyLog(log) {
  * @returns {Promise<Record<string, object>>}
  */
 export async function fetchDailyLogsByDayForRange(userId, weekStart, weekEnd) {
+  // 1. Need a user, a live db, and a week start key.
   if (!userId || !db || !weekStart) return {};
 
-  const keys = dateRangeKeys(weekStart, weekEnd);
-  const entries = await Promise.all(keys.map((date) => loadDailyLogForDate(userId, date)));
-  return dailyLogsByDate(entries);
+  // 2. Build every YYYY-MM-DD key from start through end (inclusive).
+  const dateKeys = listDateKeysInRange(weekStart, weekEnd);
+
+  // 3. One Firestore read per day, in parallel.
+  // vocab: Promise.all = wait until every day read finishes (success or caught null)
+  const loadPromises = [];
+  for (let index = 0; index < dateKeys.length; index += 1) {
+    loadPromises.push(loadOneDailyLogPair(userId, dateKeys[index]));
+  }
+  const dateAndLogPairs = await Promise.all(loadPromises);
+
+  // 4. Shape into a date → log map (missing days stay absent).
+  return buildDailyLogsByDateMap(dateAndLogPairs);
 }
 
 /**
@@ -169,5 +74,196 @@ export async function fetchDailyLogsByDayForRange(userId, weekStart, weekEnd) {
  * @returns {object}
  */
 export function mergeDailyLogMaps(...maps) {
-  return Object.assign({}, ...maps.filter(Boolean));
+  // 1. Drop null/undefined overlays so Object.assign does not choke.
+  const mapsThatExist = [];
+  for (let index = 0; index < maps.length; index += 1) {
+    if (maps[index]) mapsThatExist.push(maps[index]);
+  }
+
+  // 2. Left-to-right merge — later maps overwrite the same date key.
+  // vocab: Object.assign = copy enumerable keys from each map onto a fresh object
+  return Object.assign({}, ...mapsThatExist);
+}
+
+// ===== HELPER FUNCTIONS =====
+// PLUMBING — skip unless debugging (date math, Firestore day reads, legacy string parse)
+
+function addDaysToIsoDateKey(isoDateKey, dayCount) {
+  const dateAtLocalNoon = new Date(`${isoDateKey}${NOON_LOCAL_SUFFIX}`);
+  dateAtLocalNoon.setDate(dateAtLocalNoon.getDate() + dayCount);
+  return dateAtLocalNoon.toISOString().slice(0, ISO_DATE_KEY_LENGTH);
+}
+
+function listDateKeysInRange(weekStart, weekEnd) {
+  const dateKeys = [];
+  let cursorDateKey = weekStart;
+  const endDateKey = weekEnd || weekStart;
+
+  while (cursorDateKey && cursorDateKey <= endDateKey) {
+    dateKeys.push(cursorDateKey);
+    cursorDateKey = addDaysToIsoDateKey(cursorDateKey, 1);
+  }
+  return dateKeys;
+}
+
+function textLooksLikeWorkoutDayLabel(text) {
+  const trimmedText = String(text || '').trim();
+  if (!trimmedText) return false;
+  if (isAllowedClientWorkoutDayLabel(trimmedText)) return true;
+  return WORKOUT_DAY_HINT_PATTERN.test(trimmedText);
+}
+
+function firstNonEmptyLineFromBlock(textBlock) {
+  const lines = textBlock.split('\n');
+  for (let index = 0; index < lines.length; index += 1) {
+    const trimmedLine = lines[index].trim();
+    if (trimmedLine) return trimmedLine;
+  }
+  return '';
+}
+
+/**
+ * Prefer explicit dashboard_workout_name; else a day-label first line; else a lone exercise name.
+ * Field letters stay dashboard_workout_name / dashboard_workouts (freeze).
+ */
+function resolveWorkoutDayName(log, workouts = []) {
+  const hasExplicitName = log && log.dashboard_workout_name != null;
+  const explicitName = hasExplicitName ? String(log.dashboard_workout_name).trim() : '';
+  if (explicitName) return explicitName;
+
+  const hasLegacySummary = log && log.dashboard_workouts != null;
+  const legacySummary = hasLegacySummary ? String(log.dashboard_workouts).trim() : '';
+  if (legacySummary) {
+    const firstLine = firstNonEmptyLineFromBlock(legacySummary);
+    if (textLooksLikeWorkoutDayLabel(firstLine)) return firstLine;
+  }
+
+  const onlyOneWorkout = workouts.length === 1;
+  if (onlyOneWorkout) {
+    const loneWorkoutName = workouts[0] && workouts[0].name;
+    if (textLooksLikeWorkoutDayLabel(loneWorkoutName)) return loneWorkoutName;
+  }
+
+  return null;
+}
+
+function setDetailTextFromRepsAndWeight(workoutSet) {
+  const reps = workoutSet.reps || 0;
+  const weight = workoutSet.weight || 0;
+  return `${reps}×${weight}`;
+}
+
+function exercisesFromStructuredWorkoutLog(workoutLog) {
+  const workouts = [];
+  for (let index = 0; index < workoutLog.length; index += 1) {
+    const exercise = workoutLog[index];
+    if (!exercise || !exercise.exerciseName) continue;
+
+    const sets = Array.isArray(exercise.sets) ? exercise.sets : [];
+    const setDetailStrings = [];
+    for (let setIndex = 0; setIndex < sets.length; setIndex += 1) {
+      setDetailStrings.push(setDetailTextFromRepsAndWeight(sets[setIndex]));
+    }
+
+    let setsCount = null;
+    if (sets.length) setsCount = String(sets.length);
+
+    let setsDetail = null;
+    if (setDetailStrings.length) setsDetail = setDetailStrings.join(', ');
+
+    workouts.push({
+      name: String(exercise.exerciseName).trim(),
+      setsCount,
+      setsDetail,
+    });
+  }
+  return workouts;
+}
+
+function workoutsFromSummaryLines(summary, dayTitle) {
+  const rawLines = summary.split('\n');
+  const nonEmptyLines = [];
+  for (let index = 0; index < rawLines.length; index += 1) {
+    const trimmedLine = rawLines[index].trim();
+    if (trimmedLine) nonEmptyLines.push(trimmedLine);
+  }
+
+  let exerciseLines = nonEmptyLines;
+  const firstLineIsTheDayTitle = dayTitle && nonEmptyLines[0] === dayTitle;
+  if (firstLineIsTheDayTitle) {
+    exerciseLines = nonEmptyLines.slice(1);
+  }
+
+  if (exerciseLines.length === 0) {
+    return [{ name: summary, setsCount: null, setsDetail: null }];
+  }
+
+  const workouts = [];
+  for (let index = 0; index < exerciseLines.length; index += 1) {
+    workouts.push({
+      name: exerciseLines[index],
+      setsCount: null,
+      setsDetail: null,
+    });
+  }
+  return workouts;
+}
+
+function tryWorkoutsFromStructuredLog(log) {
+  const workoutLog = log.workoutLog;
+  const hasStructuredLog = Array.isArray(workoutLog) && workoutLog.length > 0;
+  if (!hasStructuredLog) return null;
+
+  const workouts = exercisesFromStructuredWorkoutLog(workoutLog);
+  if (!workouts.length) return null;
+
+  return {
+    workouts,
+    workoutName: resolveWorkoutDayName(log, workouts),
+    isRest: false,
+  };
+}
+
+function workoutsFromLegacyDashboardSummary(log) {
+  const hasSummaryField = log.dashboard_workouts != null;
+  const summary = hasSummaryField ? String(log.dashboard_workouts).trim() : '';
+  const looksLikeRestDay = REST_DAY_PATTERN.test(summary);
+
+  if (summary && !looksLikeRestDay) {
+    const dayTitle = resolveWorkoutDayName(log, []);
+    const workouts = workoutsFromSummaryLines(summary, dayTitle);
+    return {
+      workouts,
+      workoutName: dayTitle || resolveWorkoutDayName(log, workouts),
+      isRest: false,
+    };
+  }
+
+  return {
+    workouts: [],
+    workoutName: resolveWorkoutDayName(log, []),
+    isRest: looksLikeRestDay && Boolean(summary),
+  };
+}
+
+async function loadOneDailyLogPair(userId, dateKey) {
+  try {
+    // vocab: getDoc = one-shot Firestore read; path users/{uid}/dailyLogs/{YYYY-MM-DD}
+    const logRef = doc(db, USERS_COLLECTION, userId, DAILY_LOGS_COLLECTION, dateKey);
+    const logSnapshot = await getDoc(logRef);
+    if (!logSnapshot.exists()) return [dateKey, null];
+    return [dateKey, logSnapshot.data() || {}];
+  } catch {
+    return [dateKey, null];
+  }
+}
+
+function buildDailyLogsByDateMap(dateAndLogPairs) {
+  const logsByDate = {};
+  for (let index = 0; index < dateAndLogPairs.length; index += 1) {
+    const dateKey = dateAndLogPairs[index][0];
+    const logData = dateAndLogPairs[index][1];
+    if (logData) logsByDate[dateKey] = logData;
+  }
+  return logsByDate;
 }

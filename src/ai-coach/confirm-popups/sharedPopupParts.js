@@ -1,9 +1,6 @@
 // Shared Design Law chrome for AI-coach confirm popups.
 // Flow: CoachWantsBadge → title → editable chips/slider/fields → Not now / confirm.
-// Used by: every confirm-popup in this folder. Visual law: screens/ai-coach-popups/*.png
-//
-// vocab: fill-selected = solid nbFill + onFill text (black chip), not brand gradient
-// vocab: Coach wants badge = gradient pill naming the pending tool
+// Used by every confirm-popup in this folder. Visual law: screens/ai-coach-popups/*.png
 
 import React from 'react';
 import {
@@ -31,45 +28,64 @@ import {
 // ===== NAMED CONSTANTS =====
 
 const DEFAULT_CONFIRM_LABEL = 'Confirm';
-// Design Law popups use “Not now” instead of Cancel on the ghost side
 const CANCEL_LABEL = 'Not now';
+const TODAY_DATE_LABEL = 'Today';
+
 // Manipulate here: Coach-wants pill uses brand pink→orange (accentGradients[0]), not nav gold
 const COACH_WANTS_GRADIENT = accentGradients[0] || navAccentGradient;
 
-// ===== HELPERS =====
+const FILL_CHIP_PRESSED_OPACITY = 0.92;
+const FILL_CHIP_PRESS_NUDGE_X = 2;
+const FILL_CHIP_PRESS_NUDGE_Y = 2;
 
-/** Theme tokens for popups — always app theme, never OS scheme alone. */
+const TABLE_ROW_DIVIDER_WIDTH = 2;
+const EMPTY_MACRO_PLACEHOLDER = '—';
+
+const MACRO_CELL_PROTEIN = { key: 'p', label: 'Protein' };
+const MACRO_CELL_CARBS = { key: 'c', label: 'Carbs' };
+const MACRO_CELL_FATS = { key: 'f', label: 'Fats' };
+
+// ===== HELPER FUNCTIONS =====
+
 export function usePopupColors() {
   const { isDark } = useTheme();
-  return isDark ? darkColors : lightColors;
+  if (isDark) {
+    return darkColors;
+  }
+  return lightColors;
 }
 
-/**
- * Date row text for a log popup: the tool's date, or "Today" when it omits one.
- * @param {object|undefined} params
- * @returns {string}
- */
 export function logDateLabel(params) {
-  const date = params?.date;
-  return date ? String(date) : 'Today';
+  if (!params) {
+    return TODAY_DATE_LABEL;
+  }
+  const dateFromTool = params.date;
+  if (!dateFromTool) {
+    return TODAY_DATE_LABEL;
+  }
+  return String(dateFromTool);
 }
 
-/**
- * Gradient “Coach wants to …” pill — Design Law top chrome on every confirm sheet.
- * @param {{ text: string }} props
- */
 export function CoachWantsBadge({ text }) {
   const colors = usePopupColors();
-  if (!text) return null;
+
+  if (!text) {
+    return null;
+  }
+
+  const badgeBorderStyle = { borderColor: colors.nbBorder };
+  // Badge ink stays light-theme black so it reads on the pink→orange gradient in both themes
+  const badgeInkStyle = { color: lightColors.nbInk };
+
   return (
     <View style={sharedStyles.badgeWrap}>
       <LinearGradient
         colors={COACH_WANTS_GRADIENT}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 0 }}
-        style={[sharedStyles.badge, { borderColor: colors.nbBorder }]}
+        style={[sharedStyles.badge, badgeBorderStyle]}
       >
-        <Text style={[sharedStyles.badgeText, { color: lightColors.nbInk }]} numberOfLines={1}>
+        <Text style={[sharedStyles.badgeText, badgeInkStyle]} numberOfLines={1}>
           {text}
         </Text>
       </LinearGradient>
@@ -77,44 +93,63 @@ export function CoachWantsBadge({ text }) {
   );
 }
 
-function ReasoningLine({ reasoning, colors }) {
-  if (!reasoning) return null;
-  return <Text style={[sharedStyles.reasoning, { color: colors.nbMuted }]}>{reasoning}</Text>;
+function ReasoningLine({ reasoning, mutedInkColor }) {
+  if (!reasoning) {
+    return null;
+  }
+  return (
+    <Text style={[sharedStyles.reasoning, { color: mutedInkColor }]}>{reasoning}</Text>
+  );
 }
 
-/**
- * One labeled value. Hidden when empty so blank rows never show.
- * @param {{ label?: string, value?: * }} props
- */
 export function DetailRow({ label, value }) {
   const colors = usePopupColors();
   const valueIsMissing = value == null || value === '';
-  if (valueIsMissing) return null;
+
+  if (valueIsMissing) {
+    return null;
+  }
+
+  let labelNode = null;
+  if (label) {
+    labelNode = (
+      <Text style={[sharedStyles.label, { color: colors.nbMuted }]}>{label}</Text>
+    );
+  }
 
   return (
     <View style={sharedStyles.section}>
-      {label ? <Text style={[sharedStyles.label, { color: colors.nbMuted }]}>{label}</Text> : null}
+      {labelNode}
       <Text style={[sharedStyles.value, { color: colors.nbInk }]}>{String(value)}</Text>
     </View>
   );
 }
 
-/**
- * Uppercase field label (FOOD / NOTE / …).
- * @param {{ label: string }} props
- */
 export function FieldLabel({ label }) {
   const colors = usePopupColors();
-  if (!label) return null;
+
+  if (!label) {
+    return null;
+  }
+
   return <Text style={[sharedStyles.label, { color: colors.nbMuted }]}>{label}</Text>;
 }
 
-/**
- * 3px bordered text field — editable draft before confirm.
- * @param {{ value: string, onChangeText: Function, placeholder?: string, multiline?: boolean }} props
- */
 export function PopupTextField({ value, onChangeText, placeholder, multiline = false }) {
   const colors = usePopupColors();
+
+  const fieldThemeStyle = {
+    borderColor: colors.nbBorder,
+    backgroundColor: colors.nbSurface,
+    color: colors.nbInk,
+    shadowColor: colors.nbShadow,
+  };
+
+  let fieldStyle = [sharedStyles.textField, fieldThemeStyle];
+  if (multiline) {
+    fieldStyle = [sharedStyles.textField, sharedStyles.textFieldMulti, fieldThemeStyle];
+  }
+
   return (
     <TextInput
       value={value}
@@ -122,257 +157,373 @@ export function PopupTextField({ value, onChangeText, placeholder, multiline = f
       placeholder={placeholder}
       placeholderTextColor={colors.nbMuted}
       multiline={multiline}
-      style={[
-        sharedStyles.textField,
-        multiline && sharedStyles.textFieldMulti,
-        {
-          borderColor: colors.nbBorder,
-          backgroundColor: colors.nbSurface,
-          color: colors.nbInk,
-          // Design Law PNG 01: food field carries a hard offset shadow
-          shadowColor: colors.nbShadow,
-        },
-      ]}
+      style={fieldStyle}
     />
   );
 }
 
-/**
- * One bordered table of label / value rows (open plan, delete entry).
- * vocab: InfoTable = 3px card with hairline dividers between rows — not loose DetailRows.
- * @param {{ rows: Array<{ label: string, value?: * }> }} props
- */
+function listVisibleInfoRows(rows) {
+  const list = rows || [];
+  const visible = [];
+
+  for (let index = 0; index < list.length; index += 1) {
+    const row = list[index];
+    if (!row) {
+      continue;
+    }
+    if (row.value == null || row.value === '') {
+      continue;
+    }
+    visible.push(row);
+  }
+
+  return visible;
+}
+
+function tableRowStyle(isLastRow, borderColor) {
+  if (isLastRow) {
+    return [sharedStyles.tableRow];
+  }
+  return [
+    sharedStyles.tableRow,
+    { borderBottomWidth: TABLE_ROW_DIVIDER_WIDTH, borderBottomColor: borderColor },
+  ];
+}
+
 export function InfoTable({ rows }) {
   const colors = usePopupColors();
-  const visible = (rows || []).filter(
-    (row) => row && row.value != null && row.value !== '',
-  );
-  if (!visible.length) return null;
+  const visible = listVisibleInfoRows(rows);
+
+  if (!visible.length) {
+    return null;
+  }
+
+  const rowViews = [];
+  for (let index = 0; index < visible.length; index += 1) {
+    const row = visible[index];
+    const isLastRow = index === visible.length - 1;
+    const rowStyle = tableRowStyle(isLastRow, colors.nbBorder);
+
+    rowViews.push(
+      <View key={`${row.label}-${index}`} style={rowStyle}>
+        <Text style={[sharedStyles.tableLabel, { color: colors.nbMuted }]}>{row.label}</Text>
+        <Text style={[sharedStyles.tableValue, { color: colors.nbInk }]}>{String(row.value)}</Text>
+      </View>,
+    );
+  }
+
+  const cardThemeStyle = {
+    borderColor: colors.nbBorder,
+    backgroundColor: colors.nbSurface,
+    shadowColor: colors.nbShadow,
+  };
 
   return (
-    <View
-      style={[
-        sharedStyles.tableCard,
-        {
-          borderColor: colors.nbBorder,
-          backgroundColor: colors.nbSurface,
-          shadowColor: colors.nbShadow,
-        },
-      ]}
-    >
-      {visible.map((row, index) => (
-        <View
-          key={`${row.label}-${index}`}
-          style={[
-            sharedStyles.tableRow,
-            index < visible.length - 1 && {
-              borderBottomWidth: 2,
-              borderBottomColor: colors.nbBorder,
-            },
-          ]}
-        >
-          <Text style={[sharedStyles.tableLabel, { color: colors.nbMuted }]}>{row.label}</Text>
-          <Text style={[sharedStyles.tableValue, { color: colors.nbInk }]}>{String(row.value)}</Text>
-        </View>
-      ))}
+    <View style={[sharedStyles.tableCard, cardThemeStyle]}>
+      {rowViews}
     </View>
   );
 }
 
-/**
- * Before → after rows inside one bordered card (macros, workout edits).
- * vocab: DiffTable = strikethrough “before” + bold “after” when both exist.
- * @param {{ rows: Array<{ label: string, before?: *, after?: * }> }} props
- */
+function listVisibleDiffRows(rows) {
+  const list = rows || [];
+  const visible = [];
+
+  for (let index = 0; index < list.length; index += 1) {
+    const row = list[index];
+    if (!row) {
+      continue;
+    }
+    const hasBefore = row.before != null && row.before !== '';
+    const hasAfter = row.after != null && row.after !== '';
+    if (!hasBefore && !hasAfter) {
+      continue;
+    }
+    visible.push(row);
+  }
+
+  return visible;
+}
+
+function diffAfterDisplayText(row, hasBefore, hasAfter) {
+  if (hasAfter) {
+    return String(row.after);
+  }
+  if (hasBefore) {
+    return String(row.before);
+  }
+  return '';
+}
+
+function DiffTableRow({ row, index, isLastRow, colors }) {
+  const hasBefore = row.before != null && row.before !== '';
+  const hasAfter = row.after != null && row.after !== '';
+  const beforeMatchesAfter =
+    hasBefore && hasAfter && String(row.before) === String(row.after);
+
+  const showStrikethroughBefore = hasBefore && !beforeMatchesAfter;
+  const afterText = diffAfterDisplayText(row, hasBefore, hasAfter);
+  const showAfter = afterText !== '';
+  const rowStyle = tableRowStyle(isLastRow, colors.nbBorder);
+
+  let beforeNode = null;
+  if (showStrikethroughBefore) {
+    beforeNode = (
+      <Text style={[sharedStyles.diffBefore, { color: colors.nbMuted }]}>
+        {String(row.before)}
+      </Text>
+    );
+  }
+
+  let afterNode = null;
+  if (showAfter) {
+    afterNode = (
+      <Text style={[sharedStyles.diffAfter, { color: colors.nbInk }]}>{afterText}</Text>
+    );
+  }
+
+  return (
+    <View key={`${row.label}-${index}`} style={rowStyle}>
+      <Text style={[sharedStyles.tableLabel, { color: colors.nbMuted }]}>{row.label}</Text>
+      <View style={sharedStyles.diffValues}>
+        {beforeNode}
+        {afterNode}
+      </View>
+    </View>
+  );
+}
+
 export function DiffTable({ rows }) {
   const colors = usePopupColors();
-  const visible = (rows || []).filter((row) => {
-    if (!row) return false;
-    return (row.before != null && row.before !== '') || (row.after != null && row.after !== '');
-  });
-  if (!visible.length) return null;
+  const visible = listVisibleDiffRows(rows);
+
+  if (!visible.length) {
+    return null;
+  }
+
+  const rowViews = [];
+  for (let index = 0; index < visible.length; index += 1) {
+    const row = visible[index];
+    const isLastRow = index === visible.length - 1;
+    rowViews.push(
+      <DiffTableRow
+        key={`${row.label}-${index}`}
+        row={row}
+        index={index}
+        isLastRow={isLastRow}
+        colors={colors}
+      />,
+    );
+  }
+
+  const cardThemeStyle = {
+    borderColor: colors.nbBorder,
+    backgroundColor: colors.nbSurface,
+    shadowColor: colors.nbShadow,
+  };
 
   return (
-    <View
-      style={[
-        sharedStyles.tableCard,
-        {
-          borderColor: colors.nbBorder,
-          backgroundColor: colors.nbSurface,
-          shadowColor: colors.nbShadow,
-        },
-      ]}
-    >
-      {visible.map((row, index) => {
-        const hasBefore = row.before != null && row.before !== '';
-        const hasAfter = row.after != null && row.after !== '';
-        const beforeMatchesAfter =
-          hasBefore && hasAfter && String(row.before) === String(row.after);
-        return (
-          <View
-            key={`${row.label}-${index}`}
-            style={[
-              sharedStyles.tableRow,
-              index < visible.length - 1 && {
-                borderBottomWidth: 2,
-                borderBottomColor: colors.nbBorder,
-              },
-            ]}
-          >
-            <Text style={[sharedStyles.tableLabel, { color: colors.nbMuted }]}>{row.label}</Text>
-            <View style={sharedStyles.diffValues}>
-              {hasBefore && !beforeMatchesAfter ? (
-                <Text style={[sharedStyles.diffBefore, { color: colors.nbMuted }]}>
-                  {String(row.before)}
-                </Text>
-              ) : null}
-              {hasAfter ? (
-                <Text style={[sharedStyles.diffAfter, { color: colors.nbInk }]}>
-                  {String(row.after)}
-                </Text>
-              ) : hasBefore ? (
-                <Text style={[sharedStyles.diffAfter, { color: colors.nbInk }]}>
-                  {String(row.before)}
-                </Text>
-              ) : null}
-            </View>
-          </View>
-        );
-      })}
+    <View style={[sharedStyles.tableCard, cardThemeStyle]}>
+      {rowViews}
     </View>
   );
 }
 
-/**
- * Fill-selected chip — solid black when on (Design Law popup chips, not brand gradient).
- * @param {{ label: string, selected?: boolean, onPress?: Function }} props
- */
+function fillChipBackgroundColor(selected, colors) {
+  if (selected) {
+    return colors.nbFill;
+  }
+  return colors.nbSurface;
+}
+
+function fillChipLabelColor(selected, colors) {
+  if (selected) {
+    return colors.nbOnFill;
+  }
+  return colors.nbInk;
+}
+
+function fillChipPressStyle(pressed, colors, chipBackgroundColor) {
+  let opacity = 1;
+  let translateX = 0;
+  let translateY = 0;
+
+  if (pressed) {
+    opacity = FILL_CHIP_PRESSED_OPACITY;
+    translateX = FILL_CHIP_PRESS_NUDGE_X;
+    translateY = FILL_CHIP_PRESS_NUDGE_Y;
+  }
+
+  return [
+    sharedStyles.fillChip,
+    {
+      borderColor: colors.nbBorder,
+      backgroundColor: chipBackgroundColor,
+      opacity,
+      transform: [{ translateX }, { translateY }],
+      shadowColor: colors.nbShadow,
+    },
+  ];
+}
+
 export function FillChip({ label, selected = false, onPress }) {
   const colors = usePopupColors();
+  const chipBackgroundColor = fillChipBackgroundColor(selected, colors);
+  const chipLabelColor = fillChipLabelColor(selected, colors);
+
   return (
     <Pressable
       onPress={onPress}
-      style={({ pressed }) => [
-        sharedStyles.fillChip,
-        {
-          borderColor: colors.nbBorder,
-          backgroundColor: selected ? colors.nbFill : colors.nbSurface,
-          opacity: pressed ? 0.92 : 1,
-          transform: [{ translateX: pressed ? 2 : 0 }, { translateY: pressed ? 2 : 0 }],
-          shadowColor: colors.nbShadow,
-        },
-      ]}
+      style={({ pressed }) => fillChipPressStyle(pressed, colors, chipBackgroundColor)}
     >
-      <Text
-        style={[
-          sharedStyles.fillChipText,
-          { color: selected ? colors.nbOnFill : colors.nbInk },
-        ]}
-      >
-        {label}
-      </Text>
+      <Text style={[sharedStyles.fillChipText, { color: chipLabelColor }]}>{label}</Text>
     </Pressable>
   );
 }
 
-/**
- * Wrapping row of fill chips (mood / meal type / quality).
- * @param {{ options: Array<{id:string,label:string}>, value: string, onChange: Function }} props
- */
-export function FillChipRow({ options, value, onChange }) {
-  return (
-    <View style={sharedStyles.chipWrap}>
-      {(options || []).map((opt) => (
-        <FillChip
-          key={opt.id}
-          label={opt.label}
-          selected={value === opt.id}
-          onPress={() => onChange?.(opt.id)}
-        />
-      ))}
-    </View>
-  );
+function buildFillChipElements(options, value, onChange) {
+  const list = options || [];
+  const chips = [];
+
+  for (let index = 0; index < list.length; index += 1) {
+    const option = list[index];
+    const isSelected = value === option.id;
+
+    chips.push(
+      <FillChip
+        key={option.id}
+        label={option.label}
+        selected={isSelected}
+        onPress={() => {
+          if (typeof onChange === 'function') {
+            onChange(option.id);
+          }
+        }}
+      />,
+    );
+  }
+
+  return chips;
 }
 
-/**
- * Three macro mini-cards (protein / carbs / fats) — Design Law meal sheet.
- * @param {{ protein?: string|number, carbs?: string|number, fats?: string|number }} props
- */
+export function FillChipRow({ options, value, onChange }) {
+  const chips = buildFillChipElements(options, value, onChange);
+  return <View style={sharedStyles.chipWrap}>{chips}</View>;
+}
+
+function macroCellDisplayValue(value) {
+  if (value == null || value === '') {
+    return EMPTY_MACRO_PLACEHOLDER;
+  }
+  return String(value);
+}
+
+function buildMacroStatCardElements(protein, carbs, fats, colors) {
+  const cells = [
+    { key: MACRO_CELL_PROTEIN.key, label: MACRO_CELL_PROTEIN.label, value: protein },
+    { key: MACRO_CELL_CARBS.key, label: MACRO_CELL_CARBS.label, value: carbs },
+    { key: MACRO_CELL_FATS.key, label: MACRO_CELL_FATS.label, value: fats },
+  ];
+
+  const cards = [];
+  for (let index = 0; index < cells.length; index += 1) {
+    const cell = cells[index];
+    const displayValue = macroCellDisplayValue(cell.value);
+    const cardThemeStyle = {
+      borderColor: colors.nbBorder,
+      backgroundColor: colors.nbSurface,
+      shadowColor: colors.nbShadow,
+    };
+
+    cards.push(
+      <View key={cell.key} style={[sharedStyles.macroCard, cardThemeStyle]}>
+        <Text style={[sharedStyles.macroValue, { color: colors.nbInk }]}>{displayValue}</Text>
+        <Text style={[sharedStyles.macroLabel, { color: colors.nbMuted }]}>{cell.label}</Text>
+      </View>,
+    );
+  }
+
+  return cards;
+}
+
 export function MacroStatCards({ protein, carbs, fats }) {
   const colors = usePopupColors();
-  const cells = [
-    { key: 'p', label: 'Protein', value: protein },
-    { key: 'c', label: 'Carbs', value: carbs },
-    { key: 'f', label: 'Fats', value: fats },
-  ];
-  return (
-    <View style={sharedStyles.macroRow}>
-      {cells.map((cell) => (
-        <View
-          key={cell.key}
-          style={[
-            sharedStyles.macroCard,
-            {
-              borderColor: colors.nbBorder,
-              backgroundColor: colors.nbSurface,
-              shadowColor: colors.nbShadow,
-            },
-          ]}
-        >
-          <Text style={[sharedStyles.macroValue, { color: colors.nbInk }]}>
-            {cell.value == null || cell.value === '' ? '—' : String(cell.value)}
-          </Text>
-          <Text style={[sharedStyles.macroLabel, { color: colors.nbMuted }]}>{cell.label}</Text>
-        </View>
-      ))}
-    </View>
-  );
+  const cards = buildMacroStatCardElements(protein, carbs, fats, colors);
+  return <View style={sharedStyles.macroRow}>{cards}</View>;
 }
 
-/**
- * Big hero number above a slider (sleep hours, steps, energy).
- * @param {{ label?: string, valueLabel: string, children?: * }} props
- */
 export function BigValueBlock({ label, valueLabel, children }) {
   const colors = usePopupColors();
+  const inkColor = colors.nbInk;
+
+  let labelNode = null;
+  if (label) {
+    labelNode = (
+      <Text style={[sharedStyles.heroLabel, { color: inkColor }]}>{label}</Text>
+    );
+  }
+
   return (
     <View style={{ marginBottom: spacing.md }}>
-      {label ? (
-        <Text style={[sharedStyles.heroLabel, { color: colors.nbInk }]}>{label}</Text>
-      ) : null}
-      <Text style={[sharedStyles.heroValue, { color: colors.nbInk }]}>{valueLabel}</Text>
+      {labelNode}
+      <Text style={[sharedStyles.heroValue, { color: inkColor }]}>{valueLabel}</Text>
       {children}
     </View>
   );
 }
 
-/**
- * NbSlider wrapper with Design Law accent ramp.
- * @param {object} props — forwarded to NbSlider
- */
 export function PopupSlider(props) {
-  return <NbSlider colors={props.colors || accentGradients[0]} {...props} />;
+  let sliderColors = accentGradients[0];
+  if (props.colors) {
+    sliderColors = props.colors;
+  }
+  return <NbSlider colors={sliderColors} {...props} />;
 }
+
+// ===== MAIN FUNCTION =====
 
 /**
  * Title, optional Coach-wants badge, optional reasoning, then popup fields.
- * @param {{ title: string, badge?: string, children?: *, reasoning?: string }} props
+ * Flow: 1. theme  2. optional badge  3. title  4. reasoning  5. children
  */
 export function ToolModalBody({ title, badge, children, reasoning }) {
+  // 1. Theme tokens for title + reasoning ink.
   const colors = usePopupColors();
+  const titleInkStyle = { color: colors.nbInk };
+  const mutedInkColor = colors.nbMuted;
+
+  let badgeNode = null;
+  if (badge) {
+    badgeNode = <CoachWantsBadge text={badge} />;
+  }
+
+  // 2–5. Badge (if any) → title → reasoning → body fields from the caller.
   return (
     <View>
-      {badge ? <CoachWantsBadge text={badge} /> : null}
-      <Text style={[sharedStyles.title, { color: colors.nbInk }]}>{title}</Text>
-      <ReasoningLine reasoning={reasoning} colors={colors} />
+      {badgeNode}
+      <Text style={[sharedStyles.title, titleInkStyle]}>{title}</Text>
+      <ReasoningLine reasoning={reasoning} mutedInkColor={mutedInkColor} />
       {children}
+    </View>
+  );
+}
+
+function confirmButtonContent(loading, confirmLabel, onFillColor) {
+  if (!loading) {
+    return confirmLabel;
+  }
+
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+      <ActivityIndicator color={onFillColor} size="small" />
+      <Text style={{ color: onFillColor, fontWeight: '800' }}>{confirmLabel}</Text>
     </View>
   );
 }
 
 /**
  * Not now (ghost) + Confirm (fill). Confirm shows a spinner while the action runs.
- * @param {{ onConfirm: Function, onCancel: Function, loading?: boolean, confirmLabel?: string, cancelLabel?: string }} props
+ * Flow: 1. theme  2. pick confirm content  3. render both buttons
  */
 export function ConfirmCancelRow({
   onConfirm,
@@ -381,16 +532,13 @@ export function ConfirmCancelRow({
   confirmLabel = DEFAULT_CONFIRM_LABEL,
   cancelLabel = CANCEL_LABEL,
 }) {
+  // 1. Theme tokens for the fill spinner / label.
   const colors = usePopupColors();
-  const confirmContent = loading ? (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
-      <ActivityIndicator color={colors.nbOnFill} size="small" />
-      <Text style={{ color: colors.nbOnFill, fontWeight: '800' }}>{confirmLabel}</Text>
-    </View>
-  ) : (
-    confirmLabel
-  );
 
+  // 2. Spinner + label while the tool promise is in flight.
+  const confirmContent = confirmButtonContent(loading, confirmLabel, colors.nbOnFill);
+
+  // 3. Ghost cancel on the left, fill confirm on the right.
   return (
     <View style={sharedStyles.buttons}>
       <View style={{ flex: 1 }}>
@@ -416,6 +564,8 @@ export function ConfirmCancelRow({
     </View>
   );
 }
+
+// ===== PLUMBING — skip unless debugging =====
 
 const sharedStyles = StyleSheet.create({
   badgeWrap: {

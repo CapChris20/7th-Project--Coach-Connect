@@ -1,6 +1,7 @@
 // Wraps the app in Stripe's provider so card fields can create a token.
-// Flow: if this phone has no Stripe module or no publishable key, render the children plain → otherwise wrap them.
-// Used by: the root of the app. Stripe hooks crash without this ancestor.
+// Flow: no Stripe module or key → children render plain → otherwise StripeProvider wraps them.
+// Used by: app root. Stripe hooks crash without this ancestor — see canThisPhoneTakeCards
+//   before showing card UI.
 
 import React from 'react';
 import {
@@ -10,43 +11,63 @@ import {
 
 // ===== NAMED CONSTANTS =====
 
+// Manipulate here: Apple Pay merchant id passed into StripeProvider.
 const MERCHANT_IDENTIFIER = 'merchant.com.coachconnect';
 
 // ===== HELPER FUNCTIONS =====
 
-const stripeModule = getStripeNativeModule();
-const PUBLISHABLE_KEY = getStripePublishableKey();
-const StripeProvider = stripeModule?.StripeProvider || null;
+/**
+ * Read the StripeProvider component and publishable key for this install.
+ * vocab: publishable key = Stripe's public key safe to ship in the app binary
+ * @returns {{ providerComponent: Function|null, publishableKey: string|null }}
+ */
+function readStripeProviderPieces() {
+  const nativeStripe = getStripeNativeModule();
+  const providerComponent = nativeStripe?.StripeProvider || null;
+  const publishableKey = getStripePublishableKey();
+  return { providerComponent, publishableKey };
+}
 
 /**
- * @returns {boolean}
+ * Dev-only console warning when card payments cannot mount a provider.
+ * @param {{ providerComponent: Function|null, publishableKey: string|null }} stripePieces
  */
-function canTakeCardPayments() {
-  return Boolean(StripeProvider && PUBLISHABLE_KEY);
+function logStripeDisabledInDev(stripePieces) {
+  if (!__DEV__) {
+    return;
+  }
+  console.warn('[Stripe] Card payments disabled:', {
+    hasProvider: Boolean(stripePieces.providerComponent),
+    hasPublishableKey: Boolean(stripePieces.publishableKey),
+  });
 }
 
 // ===== MAIN FUNCTION =====
 
 /**
- * Wrap the app so Stripe card fields can create a token.
- * Flow: 1. no module/key → children plain  2. wrap with StripeProvider
+ * Wrap children in StripeProvider when this phone can take cards.
+ * Flow: 1. missing module/key → plain children  2. wrap with publishable key + merchant id
  * @param {{ children: import('react').ReactNode }} props
+ * @returns {import('react').ReactElement}
  */
 export function CardPaymentWrapper({ children }) {
-  // 1. No Stripe module or publishable key → render children without a provider.
-  //    Stripe hooks crash if they mount without this ancestor, so callers check canTakeCardPayments first.
-  if (!canTakeCardPayments()) {
-    if (__DEV__) {
-      const hasProvider = Boolean(StripeProvider);
-      const hasPublishableKey = Boolean(PUBLISHABLE_KEY);
-      console.warn('[Stripe] Card payments disabled:', { hasProvider, hasPublishableKey });
-    }
+  const stripePieces = readStripeProviderPieces();
+
+  // 1. Missing native module or publishable key — render children without a provider.
+  const paymentsAllowed =
+    stripePieces.providerComponent && stripePieces.publishableKey;
+  if (!paymentsAllowed) {
+    logStripeDisabledInDev(stripePieces);
     return <>{children}</>;
   }
 
-  // 2. Wrap so CardField / createToken work. merchantIdentifier is the Apple Pay merchant id.
+  // 2. Wrap so CardField and createToken work under this tree.
+  const StripeProvider = stripePieces.providerComponent;
   return (
-    <StripeProvider publishableKey={PUBLISHABLE_KEY} merchantIdentifier={MERCHANT_IDENTIFIER}>
+    <StripeProvider
+      publishableKey={stripePieces.publishableKey}
+      merchantIdentifier={MERCHANT_IDENTIFIER}
+    >
       {children}
     </StripeProvider>
   );

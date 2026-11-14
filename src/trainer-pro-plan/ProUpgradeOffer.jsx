@@ -1,8 +1,10 @@
 // Onboarding-style Pro paywall: hero, benefit cards, subscribe CTA, restore, legal links.
-// Flow: pick expired vs first-subscribe copy → list TRAINER_SUBSCRIPTION_BENEFITS → primary IAP action.
-// Used by trainer Pro upgrade / expired-subscription screens. Product ids live in the parent, not here.
+// Flow: theme palette → benefit list + copy for expired vs paywall → IAP buttons + ProLegalFooter.
+// Used by trainer Pro upgrade and expired screens. SKU ids stay in ProPlanPurchases, not here.
 //
-// vocab: NbCard / NbButton / NbListRow = neobrutalist shells; brand gradient is the single CTA moment
+// vocab: NbCard / NbButton / NbListRow = Design Law neobrutalist shells
+// vocab: HardShadow = hard offset shadow (not a soft glow)
+// vocab: SafeAreaView edges = which device insets this screen respects
 
 import React, { useMemo } from 'react';
 import {
@@ -36,8 +38,15 @@ const VARIANT_PAYWALL = 'paywall';
 const DEFAULT_FEATURE_ICON = 'checkmark-circle';
 const ERROR_TYPE_NETWORK = 'network';
 const ERROR_TYPE_VERIFICATION = 'verification';
+const FEATURE_CHECKMARK_SIZE = 18;
+const PAYWALL_STEP_HINT = 'Trainer platform subscription';
+const RESTORE_PURCHASES_LABEL = 'Restore purchases';
+const SETTINGS_LINK_LABEL = 'Settings';
+const RETRY_LINK_LABEL = 'Retry';
+const CONTACT_SUPPORT_LINK_LABEL = 'Contact support';
 
-const FEATURE_META = [
+// Manipulate here: icon per benefit row — extra benefits fall back to checkmark
+const FEATURE_ICON_BY_INDEX = [
   { icon: 'people' },
   { icon: 'flash' },
   { icon: 'restaurant-outline' },
@@ -48,69 +57,50 @@ const FEATURE_META = [
 // ===== HELPER FUNCTIONS =====
 
 /**
- * Pair each benefit string with an icon. Extra benefits reuse the checkmark fallback.
- * @returns {Array<{ title: string, icon: string }>}
- */
-function featureCardsFromBenefits() {
-  return TRAINER_SUBSCRIPTION_BENEFITS.map((title, index) => ({
-    title,
-    icon: FEATURE_META[index]?.icon || DEFAULT_FEATURE_ICON,
-  }));
-}
-
-/**
- * @param {string} variant
- * @returns {boolean}
- */
-function isExpiredOfferVariant(variant) {
-  return variant === VARIANT_EXPIRED;
-}
-
-/**
- * Expired vs first-subscribe headlines. Price line from the parent wins on the paywall variant.
- * @param {object} args
- */
-function buildOfferCopy({ variant, priceLine, primaryLabel }) {
-  const isExpired = isExpiredOfferVariant(variant);
-  const defaultSubtitle = `${TRAINER_SUBSCRIPTION_PRICE_LABEL} · ${TRAINER_SUBSCRIPTION_TRIAL_LABEL}`;
-  const expiredSubtitle = `Renew Pro (${TRAINER_SUBSCRIPTION_PRICE_LABEL}) to keep managing clients, AI tools, and your dashboard.`;
-  const defaultCta = isExpired ? 'Re-subscribe' : 'Start free trial';
-  const paywallSubtitle = priceLine || defaultSubtitle;
-  return {
-    title: isExpired ? 'Subscription expired' : 'Coach Connect Pro',
-    subtitle: isExpired ? expiredSubtitle : paywallSubtitle,
-    ctaLabel: primaryLabel || defaultCta,
-    showPaywallHint: variant === VARIANT_PAYWALL,
-  };
-}
-
-/**
- * StoreKit / network failures. Only the matching type shows its extra link.
+ * Error card under the benefit list. Retry for network; support for verification.
  * @param {object} props
  */
 function OfferErrorBox({ lastError, onPrimary, onContactSupport, palette }) {
-  if (!lastError) return null;
-  const showRetry = lastError.type === ERROR_TYPE_NETWORK && onPrimary;
-  const showSupport = lastError.type === ERROR_TYPE_VERIFICATION && onContactSupport;
+  if (!lastError) {
+    return null;
+  }
+
+  const showRetryLink = lastError.type === ERROR_TYPE_NETWORK && onPrimary;
+  const showSupportLink = lastError.type === ERROR_TYPE_VERIFICATION && onContactSupport;
+  const errorBoxStyle = [styles.errorBox, { borderColor: palette.nbBorder }];
+  const errorTextStyle = [styles.errorText, { color: palette.nbInk }];
+  const errorLinkStyle = [styles.errorLink, { color: palette.nbInk }];
+
+  let retryLinkNode = null;
+  if (showRetryLink) {
+    retryLinkNode = (
+      <TouchableOpacity onPress={onPrimary}>
+        <Text style={errorLinkStyle}>{RETRY_LINK_LABEL}</Text>
+      </TouchableOpacity>
+    );
+  }
+
+  let supportLinkNode = null;
+  if (showSupportLink) {
+    supportLinkNode = (
+      <TouchableOpacity onPress={onContactSupport}>
+        <Text style={errorLinkStyle}>{CONTACT_SUPPORT_LINK_LABEL}</Text>
+      </TouchableOpacity>
+    );
+  }
+
   return (
-    <NbCard style={[styles.errorBox, { borderColor: palette.nbBorder }]}>
-      <Text style={[styles.errorText, { color: palette.nbInk }]}>{lastError.message}</Text>
-      {showRetry ? (
-        <TouchableOpacity onPress={onPrimary}>
-          <Text style={[styles.errorLink, { color: palette.nbInk }]}>Retry</Text>
-        </TouchableOpacity>
-      ) : null}
-      {showSupport ? (
-        <TouchableOpacity onPress={onContactSupport}>
-          <Text style={[styles.errorLink, { color: palette.nbInk }]}>Contact support</Text>
-        </TouchableOpacity>
-      ) : null}
+    <NbCard style={errorBoxStyle}>
+      <Text style={errorTextStyle}>{lastError.message}</Text>
+      {retryLinkNode}
+      {supportLinkNode}
     </NbCard>
   );
 }
 
 /**
- * @param {object} props
+ * HardShadow + NbListRow stack for each Pro benefit title.
+ * @param {{ features: Array<{ title: string }>, palette: object }} props
  */
 function FeatureCardList({ features, palette }) {
   return (
@@ -119,7 +109,13 @@ function FeatureCardList({ features, palette }) {
         <HardShadow key={feature.title} offset={nb.shadowOffsetCard} radius={10}>
           <NbListRow
             title={feature.title}
-            right={<Ionicons name="checkmark-circle" size={18} color={palette.nbInk} />}
+            right={
+              <Ionicons
+                name="checkmark-circle"
+                size={FEATURE_CHECKMARK_SIZE}
+                color={palette.nbInk}
+              />
+            }
           />
         </HardShadow>
       ))}
@@ -128,7 +124,7 @@ function FeatureCardList({ features, palette }) {
 }
 
 /**
- * Subscribe stays tappable while StoreKit is still connecting so the user can retry and see lastError.
+ * Primary CTA (or spinner), Restore, optional Settings link.
  * @param {object} props
  */
 function OfferActionButtons({
@@ -140,82 +136,111 @@ function OfferActionButtons({
   onRestore,
   onOpenSettings,
 }) {
+  const showRestoreButton = typeof onRestore === 'function';
+  const showSettingsLink = typeof onOpenSettings === 'function';
+  const settingsLinkTextStyle = [styles.settingsLinkText, { color: palette.nbMuted }];
+
+  let primaryActionNode = null;
+  if (actionLoading) {
+    primaryActionNode = (
+      <View style={styles.loadingBtn}>
+        <ActivityIndicator color={palette.nbInk} />
+      </View>
+    );
+  } else {
+    primaryActionNode = (
+      <NbButton variant="brand" onPress={onPrimary} disabled={ctaDisabled} style={styles.ctaWidth}>
+        {ctaLabel}
+      </NbButton>
+    );
+  }
+
+  let restoreButtonNode = null;
+  if (showRestoreButton) {
+    restoreButtonNode = (
+      <NbButton
+        variant="plain"
+        onPress={onRestore}
+        disabled={actionLoading}
+        style={styles.ctaWidth}
+      >
+        {RESTORE_PURCHASES_LABEL}
+      </NbButton>
+    );
+  }
+
+  let settingsLinkNode = null;
+  if (showSettingsLink) {
+    settingsLinkNode = (
+      <TouchableOpacity onPress={onOpenSettings} style={styles.settingsLink}>
+        <Text style={settingsLinkTextStyle}>{SETTINGS_LINK_LABEL}</Text>
+      </TouchableOpacity>
+    );
+  }
+
   return (
     <View style={styles.buttonContainer}>
-      {actionLoading ? (
-        <View style={styles.loadingBtn}>
-          <ActivityIndicator color={palette.nbInk} />
-        </View>
-      ) : (
-        <NbButton variant="brand" onPress={onPrimary} disabled={ctaDisabled} style={styles.ctaWidth}>
-          {ctaLabel}
-        </NbButton>
-      )}
-
-      {typeof onRestore === 'function' ? (
-        <NbButton variant="plain" onPress={onRestore} disabled={actionLoading} style={styles.ctaWidth}>
-          Restore purchases
-        </NbButton>
-      ) : null}
-
-      {typeof onOpenSettings === 'function' ? (
-        <TouchableOpacity onPress={onOpenSettings} style={styles.settingsLink}>
-          <Text style={[styles.settingsLinkText, { color: palette.nbMuted }]}>Settings</Text>
-        </TouchableOpacity>
-      ) : null}
+      {primaryActionNode}
+      {restoreButtonNode}
+      {settingsLinkNode}
     </View>
   );
 }
 
-// ===== MAIN FUNCTION =====
-
 /**
- * Onboarding step-9 style Pro subscription offer (hero image + feature cards + CTA).
- * IAP product ids (com.coachconnect.month / year) stay in the purchase parent — this screen only labels the CTA.
+ * Full scroll layout for the offer screen.
  * @param {object} props
  */
-export default function ProUpgradeOffer({
-  isDark = true,
-  variant = VARIANT_PAYWALL,
-  priceLine,
-  actionLoading = false,
-  lastError = null,
+function ProUpgradeOfferLayout({
+  palette,
+  copy,
+  features,
+  actionLoading,
+  lastError,
+  ctaDisabled,
   onPrimary,
-  primaryLabel,
   onRestore,
   onOpenSettings,
   onContactSupport,
   onOpenTerms,
   onOpenPrivacy,
-  connected = true,
 }) {
-  const palette = isDark ? darkColors : lightColors;
-  void connected;
+  const safeAreaStyle = [styles.safe, { backgroundColor: palette.nbBackground }];
+  const heroWrapStyle = [
+    styles.heroWrap,
+    { backgroundColor: palette.nbSurface, borderColor: palette.nbBorder },
+  ];
+  const titleStyle = [styles.title, { color: palette.nbInk }];
+  const subtitleStyle = [styles.subtitle, { color: palette.nbMuted }];
+  const stepHintStyle = [styles.stepHint, { color: palette.nbMuted }];
 
-  const features = useMemo(() => featureCardsFromBenefits(), []);
-  const copy = buildOfferCopy({ variant, priceLine, primaryLabel });
-  // Don't hard-disable when StoreKit is still connecting — user can retry and see lastError.
-  const ctaDisabled = actionLoading;
+  let paywallHintNode = null;
+  if (copy.showPaywallHint) {
+    paywallHintNode = <Text style={stepHintStyle}>{PAYWALL_STEP_HINT}</Text>;
+  }
 
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: palette.nbBackground }]} edges={['top', 'bottom']}>
+    <SafeAreaView style={safeAreaStyle} edges={['top', 'bottom']}>
       <ScrollView
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
         <HardShadow offset={nb.shadowOffsetCard} radius={10} style={styles.heroShadow}>
-          <View style={[styles.heroWrap, { backgroundColor: palette.nbSurface, borderColor: palette.nbBorder }]}>
-            <Image source={SUBSCRIPTION_HERO} style={styles.heroImage} contentFit="contain" accessibilityIgnoresInvertColors />
+          <View style={heroWrapStyle}>
+            <Image
+              source={SUBSCRIPTION_HERO}
+              style={styles.heroImage}
+              contentFit="contain"
+              accessibilityIgnoresInvertColors
+            />
           </View>
         </HardShadow>
 
         <View style={styles.titleSection}>
-          <Text style={[styles.title, { color: palette.nbInk }]}>{copy.title}</Text>
-          <Text style={[styles.subtitle, { color: palette.nbMuted }]}>{copy.subtitle}</Text>
-          {copy.showPaywallHint ? (
-            <Text style={[styles.stepHint, { color: palette.nbMuted }]}>Trainer platform subscription</Text>
-          ) : null}
+          <Text style={titleStyle}>{copy.title}</Text>
+          <Text style={subtitleStyle}>{copy.subtitle}</Text>
+          {paywallHintNode}
         </View>
 
         <FeatureCardList features={features} palette={palette} />
@@ -249,6 +274,102 @@ export default function ProUpgradeOffer({
   );
 }
 
+// ===== MAIN FUNCTION =====
+
+/**
+ * Shared Pro offer chrome for paywall and expired variants.
+ * @param {object} props
+ */
+export default function ProUpgradeOffer({
+  isDark = true,
+  variant = VARIANT_PAYWALL,
+  priceLine,
+  actionLoading = false,
+  lastError = null,
+  onPrimary,
+  primaryLabel,
+  onRestore,
+  onOpenSettings,
+  onContactSupport,
+  onOpenTerms,
+  onOpenPrivacy,
+  connected = true,
+}) {
+  // 1. Theme tokens for every Nb shell on this screen.
+  const palette = isDark ? darkColors : lightColors;
+  // Parent still passes connected; keep accepting it without gating the CTA.
+  void connected;
+
+  // 2. Benefit cards — stable list from proPlanSwitches copy.
+  const features = useMemo(() => benefitRowsWithIcons(), []);
+
+  // 3. Headlines and CTA label depend on expired vs first-subscribe variant.
+  const copy = buildOfferCopy({ variant, priceLine, primaryLabel });
+
+  // Keep CTA tappable while StoreKit connects so retry can surface lastError (not hard-disabled).
+  const ctaDisabled = actionLoading;
+
+  return (
+    <ProUpgradeOfferLayout
+      palette={palette}
+      copy={copy}
+      features={features}
+      actionLoading={actionLoading}
+      lastError={lastError}
+      ctaDisabled={ctaDisabled}
+      onPrimary={onPrimary}
+      onRestore={onRestore}
+      onOpenSettings={onOpenSettings}
+      onContactSupport={onContactSupport}
+      onOpenTerms={onOpenTerms}
+      onOpenPrivacy={onOpenPrivacy}
+    />
+  );
+}
+
+// PLUMBING — skip unless debugging
+
+/**
+ * Pair each benefit title with an icon name (UI currently shows a checkmark).
+ * @returns {Array<{ title: string, icon: string }>}
+ */
+function benefitRowsWithIcons() {
+  return TRAINER_SUBSCRIPTION_BENEFITS.map((title, index) => ({
+    title,
+    icon: FEATURE_ICON_BY_INDEX[index]?.icon || DEFAULT_FEATURE_ICON,
+  }));
+}
+
+function offerIsExpiredVariant(variant) {
+  return variant === VARIANT_EXPIRED;
+}
+
+/**
+ * Title / subtitle / CTA strings for paywall vs expired.
+ * @param {{ variant: string, priceLine?: string, primaryLabel?: string }} args
+ */
+function buildOfferCopy({ variant, priceLine, primaryLabel }) {
+  const isExpired = offerIsExpiredVariant(variant);
+  const defaultSubtitle = `${TRAINER_SUBSCRIPTION_PRICE_LABEL} · ${TRAINER_SUBSCRIPTION_TRIAL_LABEL}`;
+  const expiredSubtitle = `Renew Pro (${TRAINER_SUBSCRIPTION_PRICE_LABEL}) to keep managing clients, AI tools, and your dashboard.`;
+  const defaultCtaLabel = isExpired ? 'Re-subscribe' : 'Start free trial';
+  const paywallSubtitle = priceLine || defaultSubtitle;
+
+  let title = 'Coach Connect Pro';
+  let subtitle = paywallSubtitle;
+  if (isExpired) {
+    title = 'Subscription expired';
+    subtitle = expiredSubtitle;
+  }
+
+  return {
+    title,
+    subtitle,
+    ctaLabel: primaryLabel || defaultCtaLabel,
+    showPaywallHint: variant === VARIANT_PAYWALL,
+  };
+}
+
 const styles = StyleSheet.create({
   safe: { flex: 1 },
   scroll: {
@@ -260,6 +381,7 @@ const styles = StyleSheet.create({
   heroShadow: {
     marginBottom: spacing.sm,
   },
+  // Manipulate here: hero frame height — keep edge-to-edge feel inside the HardShadow card
   heroWrap: {
     height: 240,
     justifyContent: 'center',
@@ -320,6 +442,11 @@ const styles = StyleSheet.create({
   ctaWidth: {
     width: '100%',
   },
-  settingsLink: { paddingVertical: 8, minHeight: nb.minTouchTarget, justifyContent: 'center', alignItems: 'center' },
+  settingsLink: {
+    paddingVertical: 8,
+    minHeight: nb.minTouchTarget,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   settingsLinkText: { fontFamily: 'Inter_600SemiBold', fontSize: 14 },
 });

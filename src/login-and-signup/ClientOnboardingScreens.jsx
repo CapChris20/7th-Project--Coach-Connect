@@ -14,6 +14,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+// vocab: LottieView = JSON animation player (Design Law handoff lotties)
 import LottieView from 'lottie-react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -45,10 +46,25 @@ const STORY_MAX = 600;
 const DAYS_MIN = 1;
 const DAYS_MAX = 7;
 const DAYS_DEFAULT = 4;
+const DAYS_IN_WEEK = 7;
+const TRAINER_CODE_DEBOUNCE_MS = 400;
+const TRAINER_CODE_MAX_LENGTH = 24;
+const INJURY_SNIPPET_MAX_CHARS = 36;
+const INCHES_PER_FOOT = 12;
+const CHAPTER_COUNT = 3;
+const ONBOARDING_STEP_ABOUT = 1;
+const ONBOARDING_STEP_GOAL = 2;
+const ONBOARDING_STEP_SETUP = 3;
+const ONBOARDING_STEP_HEALTH = 4;
+const ONBOARDING_STEP_TRAINER = 5;
+const ONBOARDING_STEP_SITUATION = 6;
+const ONBOARDING_STEP_AI = 7;
+const ONBOARDING_STEP_ALL_SET = 8;
+const SUMMARY_SKIP_PREVIEW_COUNT = 2;
 
 const LOTTIE_PERSON = require('../assets/animations/app-flows/personal-info');
 const LOTTIE_GOAL = require('../assets/animations/app-flows/fitness-goal');
-const LOTTIE_INJ = require('../assets/animations/app-flows/injuries');
+const LOTTIE_INJURIES = require('../assets/animations/app-flows/injuries');
 const LOTTIE_CODE = require('../assets/animations/app-flows/invite-code');
 const LOTTIE_DIET = require('../assets/animations/app-flows/fitness-experience');
 
@@ -171,29 +187,42 @@ const VITAL_ROWS = [
 
 // Chapter map: Design Law steps() frac values from onboarding.py
 const CHAPTER_BY_STEP = {
-  1: { chapter: 1, fraction: 0.4, label: 'YOU', n: 1 },
-  2: { chapter: 1, fraction: 0.85, label: 'YOU', n: 2 },
-  3: { chapter: 2, fraction: 0.4, label: 'HOW YOU TRAIN', n: 3 },
-  4: { chapter: 2, fraction: 0.85, label: 'HOW YOU TRAIN', n: 4 },
-  5: { chapter: 3, fraction: 0.25, label: 'SUPPORT', n: 5 },
-  6: { chapter: 3, fraction: 0.6, label: 'SUPPORT', n: 6 },
-  7: { chapter: 3, fraction: 0.95, label: 'SUPPORT', n: 7 },
-  8: { chapter: 3, fraction: 1, label: 'SUPPORT', n: 7, done: true },
+  [ONBOARDING_STEP_ABOUT]: { chapter: 1, fraction: 0.4, label: 'YOU', n: 1 },
+  [ONBOARDING_STEP_GOAL]: { chapter: 1, fraction: 0.85, label: 'YOU', n: 2 },
+  [ONBOARDING_STEP_SETUP]: { chapter: 2, fraction: 0.4, label: 'HOW YOU TRAIN', n: 3 },
+  [ONBOARDING_STEP_HEALTH]: { chapter: 2, fraction: 0.85, label: 'HOW YOU TRAIN', n: 4 },
+  [ONBOARDING_STEP_TRAINER]: { chapter: 3, fraction: 0.25, label: 'SUPPORT', n: 5 },
+  [ONBOARDING_STEP_SITUATION]: { chapter: 3, fraction: 0.6, label: 'SUPPORT', n: 6 },
+  [ONBOARDING_STEP_AI]: {
+    chapter: 3,
+    fraction: 0.95,
+    label: 'SUPPORT',
+    n: CLIENT_QUESTION_COUNT,
+  },
+  [ONBOARDING_STEP_ALL_SET]: {
+    chapter: 3,
+    fraction: 1,
+    label: 'SUPPORT',
+    n: CLIENT_QUESTION_COUNT,
+    done: true,
+  },
 };
 
 const SCREEN_TITLES = {
-  1: 'About you',
-  2: 'Your goal',
-  3: 'Your setup',
-  4: 'Health',
-  5: 'Your trainer',
-  6: 'Your situation',
-  7: 'AI coach',
-  8: 'All set',
+  [ONBOARDING_STEP_ABOUT]: 'About you',
+  [ONBOARDING_STEP_GOAL]: 'Your goal',
+  [ONBOARDING_STEP_SETUP]: 'Your setup',
+  [ONBOARDING_STEP_HEALTH]: 'Health',
+  [ONBOARDING_STEP_TRAINER]: 'Your trainer',
+  [ONBOARDING_STEP_SITUATION]: 'Your situation',
+  [ONBOARDING_STEP_AI]: 'AI coach',
+  [ONBOARDING_STEP_ALL_SET]: 'All set',
 };
 
-const GOAL_LABELS = Object.fromEntries(GOAL_OPTIONS.map((g) => [g.value, g.label]));
-const EQUIP_LABELS = Object.fromEntries(EQUIPMENT_OPTIONS.map((e) => [e.value, e.label]));
+const GOAL_LABELS = Object.fromEntries(GOAL_OPTIONS.map((goalOption) => [goalOption.value, goalOption.label]));
+const EQUIP_LABELS = Object.fromEntries(
+  EQUIPMENT_OPTIONS.map((equipmentOption) => [equipmentOption.value, equipmentOption.label]),
+);
 const TIME_LABELS = {
   morning: 'Mornings',
   afternoon: 'Afternoons',
@@ -211,74 +240,54 @@ const GOAL_PHRASE = {
   build_habits: 'building habits',
 };
 
-// ===== HELPER FUNCTIONS =====
+// ===== MAIN FUNCTION =====
 
+/** Title string for the Design Law onboarding header for this step index. */
 export function getClientScreenTitle(step) {
   return SCREEN_TITLES[step] || 'Setup';
 }
 
 /** Chapter bar + “N / 7” meta for the Design Law header. */
 export function getClientChapterMeta(step) {
-  const meta = CHAPTER_BY_STEP[step] || CHAPTER_BY_STEP[1];
+  const chapterRow = CHAPTER_BY_STEP[step] || CHAPTER_BY_STEP[ONBOARDING_STEP_ABOUT];
+  // Done screens show 7/7; otherwise “current question / 7”
+  let stepLabel = `${chapterRow.n} / ${CLIENT_QUESTION_COUNT}`;
+  if (chapterRow.done) {
+    stepLabel = `${CLIENT_QUESTION_COUNT} / ${CLIENT_QUESTION_COUNT}`;
+  }
   return {
-    chapter: meta.chapter,
-    of: 3,
-    fraction: meta.fraction,
-    label: meta.label,
-    stepLabel: meta.done ? `${CLIENT_QUESTION_COUNT} / ${CLIENT_QUESTION_COUNT}` : `${meta.n} / ${CLIENT_QUESTION_COUNT}`,
-    done: !!meta.done,
+    chapter: chapterRow.chapter,
+    of: CHAPTER_COUNT,
+    fraction: chapterRow.fraction,
+    label: chapterRow.label,
+    stepLabel,
+    done: !!chapterRow.done,
   };
 }
 
+/** Height from Firestore object or plain inches — defaults when missing. */
 export function heightObjectToInches(height) {
   if (height == null) return HEIGHT_IN_DEFAULT;
   if (typeof height === 'number' && Number.isFinite(height)) return Math.round(height);
   const feet = Number(height?.feet);
   const inches = Number(height?.inches);
   if (!Number.isFinite(feet) || !Number.isFinite(inches)) return HEIGHT_IN_DEFAULT;
-  return feet * 12 + inches;
+  return feet * INCHES_PER_FOOT + inches;
 }
 
+/** Clamps total inches and splits into { feet, inches } for Firestore. */
 export function inchesToHeightObject(totalInches) {
   const clamped = Math.min(HEIGHT_IN_MAX, Math.max(HEIGHT_IN_MIN, Math.round(totalInches)));
   return {
-    feet: Math.floor(clamped / 12),
-    inches: clamped % 12,
+    feet: Math.floor(clamped / INCHES_PER_FOOT),
+    inches: clamped % INCHES_PER_FOOT,
   };
 }
 
+/** Design Law display string e.g. 5'11". */
 export function formatHeightInches(totalInches) {
   const { feet, inches } = inchesToHeightObject(totalInches);
   return `${feet}'${inches}"`;
-}
-
-function parseSkipList(raw) {
-  if (Array.isArray(raw)) return raw.map(String).filter(Boolean);
-  if (!raw) return [];
-  return String(raw)
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
-}
-
-function serializeSkipList(list) {
-  return list.join(', ');
-}
-
-function prettyGoal(value) {
-  return GOAL_LABELS[value] || String(value || '').replace(/_/g, ' ');
-}
-
-function prettyEquip(list) {
-  if (!Array.isArray(list) || !list.length) return 'Your gear';
-  return list
-    .map((v) => EQUIP_LABELS[v] || String(v).replace(/_/g, ' '))
-    .join(', ');
-}
-
-function titleCase(value) {
-  if (!value) return '';
-  return String(value).charAt(0).toUpperCase() + String(value).slice(1);
 }
 
 /** Seed Design Law slider defaults so step 1 is never empty (matches PNG numbers). */
@@ -292,56 +301,62 @@ export function withClientSliderDefaults(data) {
   };
 }
 
+function aboutStepIsComplete(data) {
+  if (data.weight == null) return false;
+  if (data.age == null) return false;
+  if (data.age < AGE_MIN) return false;
+  if (data.height == null) return false;
+  if (!data.gender) return false;
+  return true;
+}
+
+function goalStepIsComplete(data) {
+  if (!Array.isArray(data.goals)) return false;
+  if (data.goals.length === 0) return false;
+  if (!data.fitnessLevel) return false;
+  return true;
+}
+
+function setupStepIsComplete(data) {
+  if (!Array.isArray(data.equipmentAccess)) return false;
+  if (data.equipmentAccess.length === 0) return false;
+  if (!data.trainingEnvironment) return false;
+  if (data.daysPerWeek == null) return false;
+  if (!data.preferredWorkoutTime) return false;
+  return true;
+}
+
+function situationStepIsComplete(data) {
+  const story = String(data.situationDescription || '').trim();
+  if (story.length === 0) return false;
+  if (story.length > STORY_MAX) return false;
+  return true;
+}
+
+/**
+ * Whether Continue should unlock for this onboarding step (Firestore keys unchanged).
+ * Flow: pick step → run that step's completeness check → true unlocks Continue.
+ * @param {number} step
+ * @param {object} data
+ * @param {{ trainerChoice?: string, codeValid?: boolean }} [extras]
+ * @returns {boolean}
+ */
 export function validateClientOnboardingStep(step, data, extras = {}) {
-  const { trainerChoice, codeValid } = extras;
-  switch (step) {
-    case 1:
-      return (
-        data.weight != null &&
-        data.age != null &&
-        data.age >= AGE_MIN &&
-        data.height != null &&
-        !!data.gender
-      );
-    case 2:
-      return (
-        Array.isArray(data.goals) &&
-        data.goals.length > 0 &&
-        !!data.fitnessLevel
-      );
-    case 3:
-      return (
-        Array.isArray(data.equipmentAccess) &&
-        data.equipmentAccess.length > 0 &&
-        !!data.trainingEnvironment &&
-        data.daysPerWeek != null &&
-        !!data.preferredWorkoutTime
-      );
-    case 4:
-      return true; // injuries / skips / supplements optional
-    case 5:
-      // Trainer link is optional — Continue is always available (matches Design Law).
-      return true;
-    case 6: {
-      const story = String(data.situationDescription || '').trim();
-      return story.length > 0 && story.length <= STORY_MAX;
-    }
-    case 7:
-    case 8:
-      return true;
-    default:
-      return false;
-  }
+  // extras kept for callers (trainerChoice / codeValid); health/trainer/AI stay always-unlock
+  void extras;
+
+  if (step === ONBOARDING_STEP_ABOUT) return aboutStepIsComplete(data);
+  if (step === ONBOARDING_STEP_GOAL) return goalStepIsComplete(data);
+  if (step === ONBOARDING_STEP_SETUP) return setupStepIsComplete(data);
+  if (step === ONBOARDING_STEP_HEALTH) return true;
+  if (step === ONBOARDING_STEP_TRAINER) return true;
+  if (step === ONBOARDING_STEP_SITUATION) return situationStepIsComplete(data);
+  if (step === ONBOARDING_STEP_AI) return true;
+  if (step === ONBOARDING_STEP_ALL_SET) return true;
+  return false;
 }
 
-function iconSource(key) {
-  return (
-    getOnboardingIconSource(key) ||
-    getOnboardingIconSource(`${key}_png`)
-  );
-}
-
-// ===== SMALL UI PIECES =====
+// ===== HELPER FUNCTIONS =====
 
 function SectionLabel({ text, right, colors }) {
   return (
@@ -353,13 +368,18 @@ function SectionLabel({ text, right, colors }) {
 }
 
 function PillTag({ label, fill, colors }) {
+  let tagBackground = colors.nbSurface;
+  if (fill) tagBackground = colors.nbFill;
+  let tagTextColor = colors.nbMuted;
+  if (fill) tagTextColor = colors.nbInk;
+
   return (
     <View
       style={[
         styles.pillTag,
         {
           borderColor: colors.nbBorder,
-          backgroundColor: fill ? colors.nbFill : colors.nbSurface,
+          backgroundColor: tagBackground,
         },
       ]}
     >
@@ -371,7 +391,7 @@ function PillTag({ label, fill, colors }) {
           style={StyleSheet.absoluteFillObject}
         />
       ) : null}
-      <Text style={[styles.pillTagText, { color: fill ? colors.nbInk : colors.nbMuted }]}>{label}</Text>
+      <Text style={[styles.pillTagText, { color: tagTextColor }]}>{label}</Text>
     </View>
   );
 }
@@ -380,26 +400,32 @@ function PillTag({ label, fill, colors }) {
 function FillSegmented({ options, selected, onSelect, colors }) {
   return (
     <View style={[styles.seg, { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface }]}>
-      {options.map((opt, index) => {
-        const on = selected === opt.id;
+      {options.map((segmentOption, index) => {
+        const isSegmentSelected = selected === segmentOption.id;
+        let segmentTextColor = colors.nbInk;
+        if (isSegmentSelected) segmentTextColor = colors.nbOnFill;
+
+        let leftBorder = null;
+        if (index > 0) {
+          leftBorder = { borderLeftWidth: nb.borderWidth, borderLeftColor: colors.nbBorder };
+        }
+
+        let selectedBackground = null;
+        if (isSegmentSelected) {
+          selectedBackground = { backgroundColor: colors.nbFill };
+        }
+
         return (
           <TouchableOpacity
-            key={opt.id}
+            key={segmentOption.id}
             activeOpacity={0.88}
-            onPress={() => onSelect(opt.id)}
-            style={[
-              styles.segCell,
-              on ? { backgroundColor: colors.nbFill } : null,
-              index > 0 ? { borderLeftWidth: nb.borderWidth, borderLeftColor: colors.nbBorder } : null,
-            ]}
+            onPress={() => onSelect(segmentOption.id)}
+            style={[styles.segCell, selectedBackground, leftBorder]}
             accessibilityRole="button"
-            accessibilityState={{ selected: on }}
+            accessibilityState={{ selected: isSegmentSelected }}
           >
-            <Text
-              style={[styles.segText, { color: on ? colors.nbOnFill : colors.nbInk }]}
-              numberOfLines={1}
-            >
-              {opt.label}
+            <Text style={[styles.segText, { color: segmentTextColor }]} numberOfLines={1}>
+              {segmentOption.label}
             </Text>
           </TouchableOpacity>
         );
@@ -410,7 +436,7 @@ function FillSegmented({ options, selected, onSelect, colors }) {
 
 function IconWell({ iconKey, gradient, size = 40 }) {
   const { colors } = useTheme();
-  const src = iconSource(iconKey);
+  const src = onboardingIconOrPngFallback(iconKey);
   return (
     <View style={[styles.iconWell, { width: size, height: size, borderColor: colors.nbBorder }]}>
       <LinearGradient
@@ -439,14 +465,31 @@ function SelectTile({
   gradient,
 }) {
   // Wide experience rows (PNG 03): check sits on the far right, not top-right of a square tile.
-  const tick = selected ? (
-    <Ionicons
-      name="checkmark"
-      size={wide ? 20 : 18}
-      color={colors.nbOnFill}
-      style={wide ? undefined : styles.tick}
-    />
-  ) : null;
+  const checkSize = wide ? 20 : 18;
+  const checkStyle = wide ? undefined : styles.tick;
+  let tick = null;
+  if (selected) {
+    tick = (
+      <Ionicons
+        name="checkmark"
+        size={checkSize}
+        color={colors.nbOnFill}
+        style={checkStyle}
+      />
+    );
+  }
+
+  let tileBackground = colors.nbSurface;
+  if (selected) tileBackground = colors.nbFill;
+  let labelColor = colors.nbInk;
+  if (selected) labelColor = colors.nbOnFill;
+  let descriptionColor = colors.nbMuted;
+  if (selected) descriptionColor = colors.nbOnFill;
+  let descriptionOpacity = 1;
+  if (selected) descriptionOpacity = 0.78;
+  const iconWellSize = wide ? 36 : 40;
+  const spanStyle = span ? styles.tileSpan : null;
+  const wideStyle = wide ? styles.tileWide : null;
 
   return (
     <TouchableOpacity
@@ -454,11 +497,11 @@ function SelectTile({
       onPress={onPress}
       style={[
         styles.tile,
-        span ? styles.tileSpan : null,
-        wide ? styles.tileWide : null,
+        spanStyle,
+        wideStyle,
         {
           borderColor: colors.nbBorder,
-          backgroundColor: selected ? colors.nbFill : colors.nbSurface,
+          backgroundColor: tileBackground,
           shadowColor: colors.nbShadow,
         },
       ]}
@@ -466,13 +509,13 @@ function SelectTile({
       accessibilityState={{ selected }}
     >
       {!wide ? tick : null}
-      {iconKey ? <IconWell iconKey={iconKey} gradient={gradient} size={wide ? 36 : 40} /> : null}
+      {iconKey ? <IconWell iconKey={iconKey} gradient={gradient} size={iconWellSize} /> : null}
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={[styles.tileLabel, { color: selected ? colors.nbOnFill : colors.nbInk }]}>
+        <Text style={[styles.tileLabel, { color: labelColor }]}>
           {label}
         </Text>
         {description ? (
-          <Text style={[styles.tileDesc, { color: selected ? colors.nbOnFill : colors.nbMuted, opacity: selected ? 0.78 : 1 }]}>
+          <Text style={[styles.tileDesc, { color: descriptionColor, opacity: descriptionOpacity }]}>
             {description}
           </Text>
         ) : null}
@@ -484,6 +527,12 @@ function SelectTile({
 
 function GenderChip({ label, iconKey, selected, onPress, colors }) {
   // PNG 01: pill chips in a 2×2 grid — selected = fill + onFill text (no checkmark on gender).
+  let chipBackground = colors.nbSurface;
+  if (selected) chipBackground = colors.nbFill;
+  let labelColor = colors.nbInk;
+  if (selected) labelColor = colors.nbOnFill;
+  const gradientIndex = selected ? 0 : 2;
+
   return (
     <TouchableOpacity
       activeOpacity={0.88}
@@ -492,15 +541,15 @@ function GenderChip({ label, iconKey, selected, onPress, colors }) {
         styles.genderChip,
         {
           borderColor: colors.nbBorder,
-          backgroundColor: selected ? colors.nbFill : colors.nbSurface,
+          backgroundColor: chipBackground,
           shadowColor: colors.nbShadow,
         },
       ]}
       accessibilityRole="button"
       accessibilityState={{ selected }}
     >
-      <IconWell iconKey={iconKey} gradient={accentGradients[selected ? 0 : 2]} size={28} />
-      <Text style={[styles.genderLabel, { color: selected ? colors.nbOnFill : colors.nbInk }]} numberOfLines={2}>
+      <IconWell iconKey={iconKey} gradient={accentGradients[gradientIndex]} size={28} />
+      <Text style={[styles.genderLabel, { color: labelColor }]} numberOfLines={2}>
         {label}
       </Text>
     </TouchableOpacity>
@@ -508,6 +557,11 @@ function GenderChip({ label, iconKey, selected, onPress, colors }) {
 }
 
 function SkipChip({ label, selected, onPress, colors }) {
+  let chipBackground = colors.nbSurface;
+  if (selected) chipBackground = colors.nbFill;
+  let labelColor = colors.nbInk;
+  if (selected) labelColor = colors.nbOnFill;
+
   return (
     <TouchableOpacity
       activeOpacity={0.88}
@@ -516,11 +570,11 @@ function SkipChip({ label, selected, onPress, colors }) {
         styles.skipChip,
         {
           borderColor: colors.nbBorder,
-          backgroundColor: selected ? colors.nbFill : colors.nbSurface,
+          backgroundColor: chipBackground,
         },
       ]}
     >
-      <Text style={{ fontSize: 13, fontWeight: '800', color: selected ? colors.nbOnFill : colors.nbInk }}>
+      <Text style={{ fontSize: 13, fontWeight: '800', color: labelColor }}>
         {label}
       </Text>
       {selected ? <Ionicons name="checkmark" size={14} color={colors.nbOnFill} /> : null}
@@ -575,6 +629,67 @@ function FieldShell({ label, children, colors }) {
   );
 }
 
+// ===== SUMMARY / STRING HELPERS =====
+
+function exercisesDislikeStringToArray(raw) {
+  if (Array.isArray(raw)) return raw.map(String).filter(Boolean);
+  if (!raw) return [];
+  return String(raw)
+    .split(',')
+    .map((piece) => piece.trim())
+    .filter(Boolean);
+}
+
+function exercisesDislikeArrayToString(list) {
+  return list.join(', ');
+}
+
+function goalValueToDisplayLabel(value) {
+  return GOAL_LABELS[value] || String(value || '').replace(/_/g, ' ');
+}
+
+function equipmentListToDisplayLabel(list) {
+  if (!Array.isArray(list) || !list.length) return 'Your gear';
+  return list
+    .map((equipmentId) => EQUIP_LABELS[equipmentId] || String(equipmentId).replace(/_/g, ' '))
+    .join(', ');
+}
+
+function capitalizeFirstLetter(value) {
+  if (!value) return '';
+  return String(value).charAt(0).toUpperCase() + String(value).slice(1);
+}
+
+function onboardingIconOrPngFallback(key) {
+  return getOnboardingIconSource(key) || getOnboardingIconSource(`${key}_png`);
+}
+
+function injurySummaryTitle(injuriesValue, injuryRawText) {
+  if (injuriesValue === null) return 'No limitations flagged';
+  if (!injuryRawText) return 'Limits noted';
+  if (injuryRawText.length > INJURY_SNIPPET_MAX_CHARS) {
+    return `${injuryRawText.slice(0, INJURY_SNIPPET_MAX_CHARS)}…`;
+  }
+  return injuryRawText;
+}
+
+function injurySummarySubtitle(skipLabels) {
+  if (!skipLabels.length) return 'Ready to train';
+  const preview = skipLabels.slice(0, SUMMARY_SKIP_PREVIEW_COUNT).join(' and ');
+  return `${preview} skipped`;
+}
+
+function trainerSummaryTitle(matchedTrainerName, trainerId) {
+  if (matchedTrainerName) return `Trainer: ${matchedTrainerName}`;
+  if (trainerId) return 'Trainer linked';
+  return 'Solo for now';
+}
+
+function trainerSummarySubtitle(matchedTrainerName, trainerId) {
+  if (matchedTrainerName || trainerId) return 'Waiting for approval';
+  return 'You can add a code later';
+}
+
 // ===== SCREENS =====
 
 function BasicsScreen({ data, setData, colors }) {
@@ -600,7 +715,7 @@ function BasicsScreen({ data, setData, colors }) {
           max={WEIGHT_MAX}
           colors={accentGradients[1]}
           themeColors={colors}
-          onChange={(n) => setData((prev) => ({ ...prev, weight: n }))}
+          onChange={(nextWeight) => setData((previous) => ({ ...previous, weight: nextWeight }))}
         />
         <View style={[styles.statDivider, { borderTopColor: colors.nbBorder }]} />
         <StatSlider
@@ -612,7 +727,9 @@ function BasicsScreen({ data, setData, colors }) {
           max={HEIGHT_IN_MAX}
           colors={accentGradients[0]}
           themeColors={colors}
-          onChange={(n) => setData((prev) => ({ ...prev, height: inchesToHeightObject(n) }))}
+          onChange={(nextHeightInches) =>
+            setData((previous) => ({ ...previous, height: inchesToHeightObject(nextHeightInches) }))
+          }
         />
         <View style={[styles.statDivider, { borderTopColor: colors.nbBorder }]} />
         <StatSlider
@@ -624,19 +741,19 @@ function BasicsScreen({ data, setData, colors }) {
           max={AGE_MAX}
           colors={accentGradients[4]}
           themeColors={colors}
-          onChange={(n) => setData((prev) => ({ ...prev, age: n }))}
+          onChange={(nextAge) => setData((previous) => ({ ...previous, age: nextAge }))}
         />
       </NbCard>
 
       <SectionLabel text="GENDER" colors={colors} />
       <View style={styles.genderGrid}>
-        {GENDER_OPTIONS.map((g) => (
+        {GENDER_OPTIONS.map((genderOption) => (
           <GenderChip
-            key={g.id}
-            label={g.label}
-            iconKey={g.iconKey}
-            selected={data.gender === g.id}
-            onPress={() => setData((prev) => ({ ...prev, gender: g.id }))}
+            key={genderOption.id}
+            label={genderOption.label}
+            iconKey={genderOption.iconKey}
+            selected={data.gender === genderOption.id}
+            onPress={() => setData((previous) => ({ ...previous, gender: genderOption.id }))}
             colors={colors}
           />
         ))}
@@ -652,19 +769,19 @@ function GoalLevelScreen({ data, setData, colors }) {
     <View>
       <HeroWithLottie title="What is your main goal?" lottie={LOTTIE_GOAL} lottieSize={84} colors={colors} />
       <View style={styles.tileGrid}>
-        {GOAL_OPTIONS.map((g, i) => (
+        {GOAL_OPTIONS.map((goalOption, gradientIndex) => (
           <SelectTile
-            key={g.value}
-            label={g.label}
-            iconKey={g.iconKey}
-            selected={selectedGoal === g.value}
+            key={goalOption.value}
+            label={goalOption.label}
+            iconKey={goalOption.iconKey}
+            selected={selectedGoal === goalOption.value}
             colors={colors}
-            gradient={accentGradients[i % accentGradients.length]}
+            gradient={accentGradients[gradientIndex % accentGradients.length]}
             onPress={() =>
-              setData((prev) => ({
-                ...prev,
-                goals: [g.value],
-                primaryGoal: g.value,
+              setData((previous) => ({
+                ...previous,
+                goals: [goalOption.value],
+                primaryGoal: goalOption.value,
               }))
             }
           />
@@ -673,17 +790,17 @@ function GoalLevelScreen({ data, setData, colors }) {
 
       <SectionLabel text="FITNESS EXPERIENCE" colors={colors} />
       <View style={{ gap: 10 }}>
-        {LEVEL_OPTIONS.map((l, i) => (
+        {LEVEL_OPTIONS.map((levelOption, gradientIndex) => (
           <SelectTile
-            key={l.value}
+            key={levelOption.value}
             wide
-            label={l.label}
-            description={l.desc}
-            iconKey={l.iconKey}
-            selected={data.fitnessLevel === l.value}
+            label={levelOption.label}
+            description={levelOption.desc}
+            iconKey={levelOption.iconKey}
+            selected={data.fitnessLevel === levelOption.value}
             colors={colors}
-            gradient={accentGradients[i % accentGradients.length]}
-            onPress={() => setData((prev) => ({ ...prev, fitnessLevel: l.value }))}
+            gradient={accentGradients[gradientIndex % accentGradients.length]}
+            onPress={() => setData((previous) => ({ ...previous, fitnessLevel: levelOption.value }))}
           />
         ))}
       </View>
@@ -695,19 +812,27 @@ function SetupScreen({ data, setData, colors }) {
   const days = data.daysPerWeek != null ? Number(data.daysPerWeek) : DAYS_DEFAULT;
 
   const bumpDays = (delta) => {
-    setData((prev) => {
-      const cur = prev.daysPerWeek != null ? Number(prev.daysPerWeek) : DAYS_DEFAULT;
-      const next = Math.min(DAYS_MAX, Math.max(DAYS_MIN, cur + delta));
-      return { ...prev, daysPerWeek: next };
+    setData((previous) => {
+      const currentDays = previous.daysPerWeek != null ? Number(previous.daysPerWeek) : DAYS_DEFAULT;
+      const nextDays = Math.min(DAYS_MAX, Math.max(DAYS_MIN, currentDays + delta));
+      return { ...previous, daysPerWeek: nextDays };
     });
   };
 
-  const toggleEquip = (value) => {
-    setData((prev) => {
-      const current = Array.isArray(prev.equipmentAccess) ? prev.equipmentAccess : [];
-      const exists = current.includes(value);
-      const next = exists ? current.filter((v) => v !== value) : [...current, value];
-      return { ...prev, equipmentAccess: next };
+  const toggleEquipment = (equipmentValue) => {
+    // 1. Read current multi-select list (Firestore key: equipmentAccess)
+    // 2. Add or remove this gear value
+    // 3. Write the next list back onto onboarding data
+    setData((previous) => {
+      const currentList = Array.isArray(previous.equipmentAccess) ? previous.equipmentAccess : [];
+      const alreadySelected = currentList.includes(equipmentValue);
+      let nextList;
+      if (alreadySelected) {
+        nextList = currentList.filter((item) => item !== equipmentValue);
+      } else {
+        nextList = [...currentList, equipmentValue];
+      }
+      return { ...previous, equipmentAccess: nextList };
     });
   };
 
@@ -715,16 +840,16 @@ function SetupScreen({ data, setData, colors }) {
     <View>
       <Text style={[styles.h1, { color: colors.nbInk, marginBottom: 12 }]}>What can you train with?</Text>
       <View style={styles.tileGrid}>
-        {EQUIPMENT_OPTIONS.map((e, i) => (
+        {EQUIPMENT_OPTIONS.map((equipmentOption, gradientIndex) => (
           <SelectTile
-            key={e.value}
-            label={e.label}
-            iconKey={e.iconKey}
-            span={e.span}
-            selected={(data.equipmentAccess || []).includes(e.value)}
+            key={equipmentOption.value}
+            label={equipmentOption.label}
+            iconKey={equipmentOption.iconKey}
+            span={equipmentOption.span}
+            selected={(data.equipmentAccess || []).includes(equipmentOption.value)}
             colors={colors}
-            gradient={accentGradients[i % accentGradients.length]}
-            onPress={() => toggleEquip(e.value)}
+            gradient={accentGradients[gradientIndex % accentGradients.length]}
+            onPress={() => toggleEquipment(equipmentOption.value)}
           />
         ))}
       </View>
@@ -733,7 +858,7 @@ function SetupScreen({ data, setData, colors }) {
       <FillSegmented
         options={PLACE_OPTIONS}
         selected={data.trainingEnvironment}
-        onSelect={(id) => setData((prev) => ({ ...prev, trainingEnvironment: id }))}
+        onSelect={(placeId) => setData((previous) => ({ ...previous, trainingEnvironment: placeId }))}
         colors={colors}
       />
 
@@ -768,17 +893,15 @@ function SetupScreen({ data, setData, colors }) {
           </View>
         </View>
         <View style={styles.daysRow}>
-          {Array.from({ length: 7 }).map((_, i) => {
-            const on = i < days;
+          {Array.from({ length: DAYS_IN_WEEK }).map((_, dayIndex) => {
+            const dayIsActive = dayIndex < days;
+            const dayCellBackground = dayIsActive ? colors.nbFill : colors.nbSurface;
             return (
               <View
-                key={`d-${i}`}
+                key={`day-slot-${dayIndex}`}
                 style={[
                   styles.dayCell,
-                  {
-                    borderColor: colors.nbBorder,
-                    backgroundColor: on ? colors.nbFill : colors.nbSurface,
-                  },
+                  { borderColor: colors.nbBorder, backgroundColor: dayCellBackground },
                 ]}
               />
             );
@@ -788,14 +911,16 @@ function SetupScreen({ data, setData, colors }) {
 
       <SectionLabel text="BEST TIME OF DAY" colors={colors} />
       <View style={styles.tileGrid}>
-        {TIME_OPTIONS.map((t) => (
+        {TIME_OPTIONS.map((timeOption) => (
           <SelectTile
-            key={t.value}
-            label={t.label}
-            description={t.desc}
-            selected={data.preferredWorkoutTime === t.value}
+            key={timeOption.value}
+            label={timeOption.label}
+            description={timeOption.desc}
+            selected={data.preferredWorkoutTime === timeOption.value}
             colors={colors}
-            onPress={() => setData((prev) => ({ ...prev, preferredWorkoutTime: t.value }))}
+            onPress={() =>
+              setData((previous) => ({ ...previous, preferredWorkoutTime: timeOption.value }))
+            }
           />
         ))}
       </View>
@@ -805,13 +930,21 @@ function SetupScreen({ data, setData, colors }) {
 
 function HealthScreen({ data, setData, colors }) {
   const noLimitations = data.injuries === null;
-  const skips = useMemo(() => parseSkipList(data.exercisesDislike), [data.exercisesDislike]);
+  const skips = useMemo(() => exercisesDislikeStringToArray(data.exercisesDislike), [data.exercisesDislike]);
 
-  const toggleSkip = (label) => {
-    setData((prev) => {
-      const cur = parseSkipList(prev.exercisesDislike);
-      const next = cur.includes(label) ? cur.filter((x) => x !== label) : [...cur, label];
-      return { ...prev, exercisesDislike: serializeSkipList(next) };
+  const toggleSkipExercise = (exerciseLabel) => {
+    // 1. Parse stored comma string into a list
+    // 2. Add or remove this exercise label
+    // 3. Store back as comma string (Firestore key: exercisesDislike)
+    setData((previous) => {
+      const currentSkips = exercisesDislikeStringToArray(previous.exercisesDislike);
+      let nextSkips;
+      if (currentSkips.includes(exerciseLabel)) {
+        nextSkips = currentSkips.filter((item) => item !== exerciseLabel);
+      } else {
+        nextSkips = [...currentSkips, exerciseLabel];
+      }
+      return { ...previous, exercisesDislike: exercisesDislikeArrayToString(nextSkips) };
     });
   };
 
@@ -820,7 +953,7 @@ function HealthScreen({ data, setData, colors }) {
       <HeroWithLottie
         title="Any injuries or limitations?"
         subtitle="We will help you work around them safely."
-        lottie={LOTTIE_INJ}
+        lottie={LOTTIE_INJURIES}
         lottieSize={84}
         colors={colors}
       />
@@ -831,7 +964,9 @@ function HealthScreen({ data, setData, colors }) {
           <Text style={[styles.noLimLabel, { color: colors.nbInk }]}>I have no limitations</Text>
           <NbSwitch
             value={noLimitations}
-            onValueChange={(on) => setData((prev) => ({ ...prev, injuries: on ? null : '' }))}
+            onValueChange={(switchOn) =>
+              setData((previous) => ({ ...previous, injuries: switchOn ? null : '' }))
+            }
           />
         </View>
 
@@ -866,7 +1001,7 @@ function HealthScreen({ data, setData, colors }) {
             key={label}
             label={label}
             selected={skips.includes(label)}
-            onPress={() => toggleSkip(label)}
+            onPress={() => toggleSkipExercise(label)}
             colors={colors}
           />
         ))}
@@ -886,6 +1021,12 @@ function HealthScreen({ data, setData, colors }) {
       </FieldShell>
     </View>
   );
+}
+
+
+function trainerCodeBorderColor(codeValid, colors) {
+  if (codeValid === false) return '#EF4444';
+  return colors.nbBorder;
 }
 
 function TrainerScreen({
@@ -946,24 +1087,30 @@ function TrainerScreen({
               <TextInput
                 value={trainerCode}
                 onChangeText={(text) => {
-                  const next = text.toUpperCase();
-                  setTrainerCode(next);
+                  // 1. Uppercase invite codes so ABC-123 matches Firestore
+                  const nextCode = text.toUpperCase();
+                  setTrainerCode(nextCode);
+                  // 2. Clear prior match/error while typing
                   setCodeValid(null);
                   setCodeError?.(null);
+                  // 3. Debounce validate — Manipulate here: TRAINER_CODE_DEBOUNCE_MS
                   if (debounceTimer.current) clearTimeout(debounceTimer.current);
-                  if (next.trim().length > 0) {
-                    debounceTimer.current = setTimeout(() => validateTrainerCode?.(next), 400);
+                  if (nextCode.trim().length > 0) {
+                    debounceTimer.current = setTimeout(
+                      () => validateTrainerCode?.(nextCode),
+                      TRAINER_CODE_DEBOUNCE_MS,
+                    );
                   }
                 }}
                 placeholder="ABC-123"
                 placeholderTextColor={colors.nbMuted}
                 autoCapitalize="characters"
                 autoCorrect={false}
-                maxLength={24}
+                maxLength={TRAINER_CODE_MAX_LENGTH}
                 style={[
                   styles.codeInput,
                   {
-                    borderColor: codeValid === false ? '#EF4444' : colors.nbBorder,
+                    borderColor: trainerCodeBorderColor(codeValid, colors),
                     backgroundColor: colors.nbSurface,
                     color: colors.nbInk,
                   },
@@ -1089,86 +1236,154 @@ function SituationScreen({ data, setData, colors }) {
   );
 }
 
-function AllSetScreen({ data, colors, matchedTrainerName }) {
-  // All set meta (PNG 15): days hero + one-line place/time/goal phrase under it.
-  const goalKey = Array.isArray(data.goals) && data.goals.length ? data.goals[0] : data.primaryGoal;
-  const days = data.daysPerWeek != null ? data.daysPerWeek : DAYS_DEFAULT;
-  const goal = prettyGoal(goalKey);
-  const goalPhrase = GOAL_PHRASE[goalKey] || (goal ? String(goal).toLowerCase() : 'your goal');
-  const level = titleCase(data.fitnessLevel) || 'Ready';
-  const equip = prettyEquip(data.equipmentAccess);
-  const place = PLACE_LABELS[data.trainingEnvironment] || 'ready to train';
-  const time = TIME_LABELS[data.preferredWorkoutTime] || 'flexible timing';
-  const skips = parseSkipList(data.exercisesDislike);
+/**
+ * Pull goal / schedule / injury / trainer lines for the All set summary card.
+ * Kept out of AllSetScreen so the screen stays a short paint recipe.
+ */
+function buildAllSetSummaryModel(data, matchedTrainerName) {
+  let goalKey = data.primaryGoal;
+  if (Array.isArray(data.goals) && data.goals.length) {
+    goalKey = data.goals[0];
+  }
+
+  const daysPerWeek = data.daysPerWeek != null ? data.daysPerWeek : DAYS_DEFAULT;
+  const goalLabel = goalValueToDisplayLabel(goalKey);
+
+  let goalPhrase = 'your goal';
+  if (GOAL_PHRASE[goalKey]) {
+    goalPhrase = GOAL_PHRASE[goalKey];
+  } else if (goalLabel) {
+    goalPhrase = String(goalLabel).toLowerCase();
+  }
+
+  const fitnessLevelLabel = capitalizeFirstLetter(data.fitnessLevel) || 'Ready';
+  const equipmentLabel = equipmentListToDisplayLabel(data.equipmentAccess);
+  const trainingPlaceLabel = PLACE_LABELS[data.trainingEnvironment] || 'ready to train';
+  const workoutTimeLabel = TIME_LABELS[data.preferredWorkoutTime] || 'flexible timing';
+  const skippedExercises = exercisesDislikeStringToArray(data.exercisesDislike);
+
   // PNG sample: “Left knee flagged” when the injuries field has free text.
-  const injuryRaw = data.injuries === null ? '' : String(data.injuries || '').trim();
-  const injuryTitle =
-    data.injuries === null
-      ? 'No limitations flagged'
-      : injuryRaw
-        ? (injuryRaw.length > 36 ? `${injuryRaw.slice(0, 36)}…` : injuryRaw)
-        : 'Limits noted';
-  const injurySub = skips.length
-    ? `${skips.slice(0, 2).join(' and ')} skipped`
-    : 'Ready to train';
-  const trainerTitle = matchedTrainerName
-    ? `Trainer: ${matchedTrainerName}`
-    : data.trainerId
-      ? 'Trainer linked'
-      : 'Solo for now';
-  const trainerSub = matchedTrainerName || data.trainerId ? 'Waiting for approval' : 'You can add a code later';
+  const injuryRawText = data.injuries === null ? '' : String(data.injuries || '').trim();
+  const injuryTitle = injurySummaryTitle(data.injuries, injuryRawText);
+  const injurySubtitle = injurySummarySubtitle(skippedExercises);
+  const trainerTitle = trainerSummaryTitle(matchedTrainerName, data.trainerId);
+  const trainerSubtitle = trainerSummarySubtitle(matchedTrainerName, data.trainerId);
+
+  const summaryRows = [
+    { iconKey: 'muscle', title: fitnessLevelLabel, sub: `Goal: ${goalLabel || '—'}` },
+    { iconKey: 'dumbbells', title: equipmentLabel, sub: `Training ${trainingPlaceLabel}` },
+    { iconKey: 'injury', title: injuryTitle, sub: injurySubtitle },
+    { iconKey: 'people', title: trainerTitle, sub: trainerSubtitle },
+  ];
+
+  return {
+    daysPerWeek,
+    goalPhrase,
+    trainingPlaceLabel,
+    workoutTimeLabel,
+    summaryRows,
+  };
+}
+
+function AllSetPlanHero({ daysPerWeek, workoutTimeLabel, trainingPlaceLabel, goalPhrase, colors }) {
+  const heroPlanLine = `${workoutTimeLabel}, ${trainingPlaceLabel}, for ${goalPhrase}.`;
+
+  return (
+    <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbHero} style={{ marginBottom: 16 }}>
+      <View style={[styles.heroSlab, { backgroundColor: colors.nbFill, borderColor: colors.nbBorder }]}>
+        <Text style={[styles.heroEyebrow, { color: colors.nbOnFill, opacity: 0.72 }]}>
+          YOUR PLAN STARTS WITH
+        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+          <Text style={[styles.heroNum, { color: colors.nbOnFill }]}>{daysPerWeek}</Text>
+          <Text style={[styles.heroUnit, { color: colors.nbOnFill }]}>days a week</Text>
+        </View>
+        <Text style={[styles.heroSub, { color: colors.nbOnFill, opacity: 0.92 }]}>
+          {heroPlanLine}
+        </Text>
+      </View>
+    </HardShadow>
+  );
+}
+
+function AllSetSummaryRow({ summaryRow, rowIndex, showDividerUnder, colors }) {
+  let dividerUnderRow = null;
+  if (showDividerUnder) {
+    dividerUnderRow = (
+      <View style={{ height: 2, backgroundColor: colors.nbBorder, marginHorizontal: 10 }} />
+    );
+  }
 
   return (
     <View>
-      <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbHero} style={{ marginBottom: 16 }}>
-        <View style={[styles.heroSlab, { backgroundColor: colors.nbFill, borderColor: colors.nbBorder }]}>
-          <Text style={[styles.heroEyebrow, { color: colors.nbOnFill, opacity: 0.72 }]}>YOUR PLAN STARTS WITH</Text>
-          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
-            <Text style={[styles.heroNum, { color: colors.nbOnFill }]}>{days}</Text>
-            <Text style={[styles.heroUnit, { color: colors.nbOnFill }]}>days a week</Text>
-          </View>
-          <Text style={[styles.heroSub, { color: colors.nbOnFill, opacity: 0.92 }]}>
-            {`${time}, ${place}, for ${goalPhrase}.`}
+      <View style={styles.summaryRow}>
+        <IconWell
+          iconKey={summaryRow.iconKey}
+          gradient={accentGradients[rowIndex % accentGradients.length]}
+        />
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text
+            style={{ fontSize: 15, fontWeight: '900', color: colors.nbInk }}
+            numberOfLines={1}
+          >
+            {summaryRow.title}
+          </Text>
+          <Text
+            style={{ fontSize: 13, fontWeight: '600', color: colors.nbMuted }}
+            numberOfLines={2}
+          >
+            {summaryRow.sub}
           </Text>
         </View>
-      </HardShadow>
+      </View>
+      {dividerUnderRow}
+    </View>
+  );
+}
 
-      <NbCard style={{ paddingHorizontal: 4, marginBottom: 16 }}>
-        {[
-          { iconKey: 'muscle', title: level, sub: `Goal: ${goal || '—'}` },
-          { iconKey: 'dumbbells', title: equip, sub: `Training ${place}` },
-          { iconKey: 'injury', title: injuryTitle, sub: injurySub },
-          { iconKey: 'people', title: trainerTitle, sub: trainerSub },
-        ].map((row, index, arr) => (
-          <View key={row.title}>
-            <View style={styles.summaryRow}>
-              <IconWell iconKey={row.iconKey} gradient={accentGradients[index % accentGradients.length]} />
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={{ fontSize: 15, fontWeight: '900', color: colors.nbInk }} numberOfLines={1}>
-                  {row.title}
-                </Text>
-                <Text style={{ fontSize: 13, fontWeight: '600', color: colors.nbMuted }} numberOfLines={2}>
-                  {row.sub}
-                </Text>
-              </View>
-            </View>
-            {index < arr.length - 1 ? (
-              <View style={{ height: 2, backgroundColor: colors.nbBorder, marginHorizontal: 10 }} />
-            ) : null}
-          </View>
-        ))}
-      </NbCard>
+function AllSetSummaryCard({ summaryRows, colors }) {
+  const lastRowIndex = summaryRows.length - 1;
 
+  return (
+    <NbCard style={{ paddingHorizontal: 4, marginBottom: 16 }}>
+      {summaryRows.map((summaryRow, rowIndex) => (
+        <AllSetSummaryRow
+          key={summaryRow.title}
+          summaryRow={summaryRow}
+          rowIndex={rowIndex}
+          showDividerUnder={rowIndex < lastRowIndex}
+          colors={colors}
+        />
+      ))}
+    </NbCard>
+  );
+}
+
+function AllSetScreen({ data, colors, matchedTrainerName }) {
+  // All set meta (PNG 15): days hero + one-line place/time/goal phrase under it.
+  // 1. Turn wizard answers into the hero numbers + summary rows.
+  const summaryModel = buildAllSetSummaryModel(data, matchedTrainerName);
+
+  // 2. Paint hero → summary card → celebration lottie.
+  return (
+    <View>
+      <AllSetPlanHero
+        daysPerWeek={summaryModel.daysPerWeek}
+        workoutTimeLabel={summaryModel.workoutTimeLabel}
+        trainingPlaceLabel={summaryModel.trainingPlaceLabel}
+        goalPhrase={summaryModel.goalPhrase}
+        colors={colors}
+      />
+      <AllSetSummaryCard summaryRows={summaryModel.summaryRows} colors={colors} />
       <LottieView source={LOTTIE_DIET} autoPlay loop style={{ width: '100%', height: 120 }} />
     </View>
   );
 }
 
-// ===== MAIN EXPORT =====
-
 /**
  * Renders one Design Law client onboarding body (steps 1–8).
  * Footer / header chrome stay in NewUserSetupScreen so trainer flow is untouched.
+ * Flow: 1. theme  2. pick body for step  3. return that screen
  */
 export default function ClientOnboardingStep({
   step,
@@ -1187,58 +1402,69 @@ export default function ClientOnboardingStep({
   onEnableAI,
   onSkipAI,
 }) {
+  // 1. Theme tokens for every Design Law body
+  // vocab: useTheme = Design Law light/dark color bag (nbInk, nbFill, …)
   const { colors } = useTheme();
 
-  switch (step) {
-    case 1:
-      return <BasicsScreen data={data} setData={setData} colors={colors} />;
-    case 2:
-      return <GoalLevelScreen data={data} setData={setData} colors={colors} />;
-    case 3:
-      return <SetupScreen data={data} setData={setData} colors={colors} />;
-    case 4:
-      return <HealthScreen data={data} setData={setData} colors={colors} />;
-    case 5:
-      return (
-        <TrainerScreen
-          data={data}
-          setData={setData}
-          colors={colors}
-          trainerChoice={trainerChoice}
-          setTrainerChoice={setTrainerChoice}
-          trainerCode={trainerCode}
-          setTrainerCode={setTrainerCode}
-          codeValid={codeValid}
-          setCodeValid={setCodeValid}
-          setCodeError={setCodeError}
-          validateTrainerCode={validateTrainerCode}
-          shakeAnimation={shakeAnimation}
-          matchedTrainer={matchedTrainer}
-        />
-      );
-    case 6:
-      return <SituationScreen data={data} setData={setData} colors={colors} />;
-    case 7:
-      // Actions live in the Design Law bottom bar (Not now | Turn on side-by-side).
-      return (
-        <AIPermissionStep
-          hideActions
-          onEnableAI={onEnableAI}
-          onSkipAI={onSkipAI}
-        />
-      );
-    case 8:
-      return (
-        <AllSetScreen
-          data={data}
-          colors={colors}
-          matchedTrainerName={matchedTrainer?.name}
-        />
-      );
-    default:
-      return null;
+  // 2. Pick the Design Law body for this step index (header/footer stay in parent).
+  if (step === ONBOARDING_STEP_ABOUT) {
+    return <BasicsScreen data={data} setData={setData} colors={colors} />;
   }
+  if (step === ONBOARDING_STEP_GOAL) {
+    return <GoalLevelScreen data={data} setData={setData} colors={colors} />;
+  }
+  if (step === ONBOARDING_STEP_SETUP) {
+    return <SetupScreen data={data} setData={setData} colors={colors} />;
+  }
+  if (step === ONBOARDING_STEP_HEALTH) {
+    return <HealthScreen data={data} setData={setData} colors={colors} />;
+  }
+  if (step === ONBOARDING_STEP_TRAINER) {
+    return (
+      <TrainerScreen
+        data={data}
+        setData={setData}
+        colors={colors}
+        trainerChoice={trainerChoice}
+        setTrainerChoice={setTrainerChoice}
+        trainerCode={trainerCode}
+        setTrainerCode={setTrainerCode}
+        codeValid={codeValid}
+        setCodeValid={setCodeValid}
+        setCodeError={setCodeError}
+        validateTrainerCode={validateTrainerCode}
+        shakeAnimation={shakeAnimation}
+        matchedTrainer={matchedTrainer}
+      />
+    );
+  }
+  if (step === ONBOARDING_STEP_SITUATION) {
+    return <SituationScreen data={data} setData={setData} colors={colors} />;
+  }
+  if (step === ONBOARDING_STEP_AI) {
+    return (
+      <AIPermissionStep
+        hideActions
+        onEnableAI={onEnableAI}
+        onSkipAI={onSkipAI}
+      />
+    );
+  }
+  if (step === ONBOARDING_STEP_ALL_SET) {
+    return (
+      <AllSetScreen
+        data={data}
+        colors={colors}
+        matchedTrainerName={matchedTrainer?.name}
+      />
+    );
+  }
+
+  // 3. Unknown step — render nothing
+  return null;
 }
+
+// ===== PLUMBING — skip unless debugging =====
 
 const styles = StyleSheet.create({
   heroRow: {

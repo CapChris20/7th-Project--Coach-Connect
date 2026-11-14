@@ -87,17 +87,14 @@ const ROLE_TRAINER = 'trainer';
 
 /** Resolve the other person's uid from the trainer prop (object or string id). */
 function otherParticipantIdFromProp(trainerProp) {
-  if (trainerProp?.id) return trainerProp.id;
+  if ((trainerProp == null ? undefined : trainerProp.id)) return trainerProp.id;
   if (typeof trainerProp === 'string') return trainerProp;
   return null;
 }
 
-/**
- * Decide who is client vs trainer for getOrCreateConversation.
- * Prefer ids already on the conversation row; otherwise use the signed-in user's role.
- */
+// Decide client vs trainer ids for getOrCreateConversation — conversation row first, else signed-in role.
 async function resolveClientAndTrainerIds({ conversation, currentUserUid, otherParticipantId }) {
-  if (conversation?.clientId != null && conversation?.trainerId != null) {
+  if ((conversation == null ? undefined : conversation.clientId) != null && (conversation == null ? undefined : conversation.trainerId) != null) {
     return { clientId: conversation.clientId, trainerId: conversation.trainerId };
   }
   const userDoc = await getDoc(doc(db, USERS_COLLECTION, currentUserUid));
@@ -126,12 +123,7 @@ async function loadTrainerRoleAndClientFlag(currentUserUid, peerId) {
   return { isTrainer, isAlreadyClient };
 }
 
-/**
- * Turn a Firestore timestamp into a short "Just now" / "5m ago" label.
- * @param {object|number|Date|null} timestamp
- * @returns {string}
- */
-/** Firestore / Date → JS Date, or null when missing. */
+// Firestore / Date → JS Date, or null when missing.
 function messageDateFromTimestamp(timestamp) {
   if (!timestamp) return null;
   try {
@@ -181,58 +173,132 @@ function initialsFromName(name) {
     .toUpperCase();
 }
 
-/** Insert day dividers without changing message order (oldest → newest). */
-function buildThreadRenderList(messages, currentUserUid, extras = {}) {
+/**
+ * If this message is on a new calendar day, push a TODAY / YESTERDAY / date divider.
+ * Returns the day key to remember for the next row (or the previous key when no date).
+ */
+function pushDayDividerIfNeeded(items, messageDate, lastDayKey) {
+  if (!messageDate) return lastDayKey;
+  const dayKey = startOfCalendarDay(messageDate).getTime();
+  if (dayKey === lastDayKey) return lastDayKey;
+  items.push({
+    kind: 'divider',
+    id: `divider-${dayKey}`,
+    label: dateDividerLabel(messageDate),
+  });
+  return dayKey;
+}
+
+/** Caption under an image bubble — stored caption, else text when type is image. */
+function imageCaptionFromMessageRow(messageRow) {
+  if (messageRow.caption) return messageRow.caption;
+  if (messageRow.type === 'image') return messageRow.text || null;
+  return null;
+}
+
+/** Preview tap handler only when this row is an image with a URL. */
+function previewHandlerForMessageRow(messageRow, onPreview) {
+  if (messageRow.type !== 'image') return undefined;
+  if (!messageRow.fileUrl) return undefined;
+  return (onPreview == null ? undefined : onPreview(messageRow.fileUrl));
+}
+
+/** Long-press → report peer — only for messages the signed-in user did not send. */
+function longPressHandlerForMessageRow(messageRow, sentByMe, onReportPeer) {
+  if (sentByMe) return undefined;
+  return () =>
+    (onReportPeer == null ? undefined : onReportPeer({
+      messageId: messageRow.id,
+      targetUid: messageRow.senderId,
+    }));
+}
+
+/** One FlatList/ScrollView row object for a Firestore message (plus optional preview / report). */
+function messageRowToThreadItem(messageRow, currentUserUid, extras) {
   const { onPreview, onReportPeer } = extras;
+  const sentByMe = messageRow.senderId === currentUserUid;
+  return {
+    kind: 'message',
+    id: messageRow.id,
+    text: messageRow.text || '',
+    type: messageRow.type,
+    fileUrl: messageRow.fileUrl,
+    fileName: messageRow.fileName,
+    fileSize: messageRow.fileSize,
+    caption: imageCaptionFromMessageRow(messageRow),
+    sessionTitle: messageRow.sessionTitle || messageRow.title || null,
+    sessionWhen: messageRow.sessionWhen || messageRow.whenLabel || null,
+    sessionMeta: messageRow.sessionMeta || messageRow.metaLine || null,
+    sessionStatus: messageRow.sessionStatus || messageRow.status || null,
+    sessionCoachName: messageRow.sessionCoachName || null,
+    sent: sentByMe,
+    senderId: messageRow.senderId,
+    rawTimestamp: messageRow.timestamp,
+    clockLabel: formatBubbleClock(messageRow.timestamp),
+    onPreview: previewHandlerForMessageRow(messageRow, onPreview),
+    onLongPress: longPressHandlerForMessageRow(messageRow, sentByMe, onReportPeer),
+  };
+}
+
+// Insert day dividers without changing message order (oldest → newest).
+function buildThreadRenderList(messages, currentUserUid, extras = {}) {
   const items = [];
   let lastDayKey = null;
-  for (const m of messages) {
-    const date = messageDateFromTimestamp(m.timestamp);
-    if (date) {
-      const dayKey = startOfCalendarDay(date).getTime();
-      if (dayKey !== lastDayKey) {
-        items.push({ kind: 'divider', id: `divider-${dayKey}`, label: dateDividerLabel(date) });
-        lastDayKey = dayKey;
-      }
-    }
-    items.push({
-      kind: 'message',
-      id: m.id,
-      text: m.text || '',
-      type: m.type,
-      fileUrl: m.fileUrl,
-      fileName: m.fileName,
-      fileSize: m.fileSize,
-      // Image caption overlay (Design Law PNG “Squat, set 2”)
-      caption: m.caption || (m.type === 'image' ? m.text : null) || null,
-      // Session card fields (Design Law PNG session scheduled bubble)
-      sessionTitle: m.sessionTitle || m.title || null,
-      sessionWhen: m.sessionWhen || m.whenLabel || null,
-      sessionMeta: m.sessionMeta || m.metaLine || null,
-      sessionStatus: m.sessionStatus || m.status || null,
-      sessionCoachName: m.sessionCoachName || null,
-      sent: m.senderId === currentUserUid,
-      senderId: m.senderId,
-      rawTimestamp: m.timestamp,
-      clockLabel: formatBubbleClock(m.timestamp),
-      onPreview: m.type === 'image' && m.fileUrl ? onPreview?.(m.fileUrl) : undefined,
-      onLongPress:
-        m.senderId !== currentUserUid
-          ? () =>
-              onReportPeer?.({
-                messageId: m.id,
-                targetUid: m.senderId,
-              })
-          : undefined,
-    });
+  for (const messageRow of messages) {
+    const messageDate = messageDateFromTimestamp(messageRow.timestamp);
+    lastDayKey = pushDayDividerIfNeeded(items, messageDate, lastDayKey);
+    items.push(messageRowToThreadItem(messageRow, currentUserUid, extras));
   }
   return items;
 }
 
+function sessionStatusBadgeLabel(sessionStatus) {
+  const normalized = String(sessionStatus || 'scheduled').toLowerCase();
+  if (normalized === 'confirmed') return 'Session confirmed';
+  if (normalized === 'declined') return 'Session declined';
+  return 'Session scheduled';
+}
+
+function buildChatHeaderSubtitle(peerBlocked, trainerData) {
+  if (peerBlocked) return 'Blocked';
+  const hasPresence = typeof (trainerData == null ? undefined : trainerData.isOnline) === 'boolean';
+  if (hasPresence) {
+    if (trainerData.isOnline) return 'Online now';
+    return 'Offline';
+  }
+  if ((trainerData == null ? undefined : trainerData.role) === 'trainer') return 'Your coach';
+  if ((trainerData == null ? undefined : trainerData.role) === 'client') return 'Client';
+  return 'Direct message';
+}
+
+// Merge a "load earlier" page ahead of in-memory rows without duplicate ids.
+async function fetchAndMergeEarlierMessages({
+  conversationId,
+  oldestTimestamp,
+  existingMessages,
+  setMessages,
+  setHasMoreMessages,
+  oldestTimestampRef,
+}) {
+  const { messages: olderPage, hasMore } = await loadEarlierMessages(conversationId, oldestTimestamp);
+  const seenIds = new Set(existingMessages.map((row) => row.id));
+  const uniqueOlder = olderPage.filter((row) => !seenIds.has(row.id));
+  if (uniqueOlder.length) {
+    oldestTimestampRef.current = uniqueOlder[0].timestamp ?? oldestTimestampRef.current;
+    setMessages((previous) => [...uniqueOlder, ...previous]);
+  }
+  setHasMoreMessages(hasMore);
+}
+
 /** 44×44 HardShadow icon chip (back, menu, attach, send). */
 function ChatIconSquare({ onPress, accessibilityLabel, children, fill = false, colors, disabled }) {
-  const bg = fill ? colors.nbFill : colors.nbSurface;
+  // Fill chips use ink fill + onFill icon; ghost chips use surface + ink icon.
+  const chipBackgroundColor = fill ? colors.nbFill : colors.nbSurface;
   const iconColor = fill ? colors.nbOnFill : colors.nbInk;
+  const chipOpacity = disabled ? 0.45 : 1;
+  const renderChild =
+    typeof children === 'function' ? children(iconColor) : children;
+
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -240,7 +306,7 @@ function ChatIconSquare({ onPress, accessibilityLabel, children, fill = false, c
       activeOpacity={0.85}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
-      style={{ opacity: disabled ? 0.45 : 1 }}
+      style={{ opacity: chipOpacity }}
     >
       <HardShadow radius={borderRadius.nbChip} offset={nb.shadowOffsetSmall}>
         <View
@@ -250,12 +316,12 @@ function ChatIconSquare({ onPress, accessibilityLabel, children, fill = false, c
             borderRadius: borderRadius.nbChip,
             borderWidth: nb.borderWidth,
             borderColor: colors.nbBorder,
-            backgroundColor: bg,
+            backgroundColor: chipBackgroundColor,
             alignItems: 'center',
             justifyContent: 'center',
           }}
         >
-          {typeof children === 'function' ? children(iconColor) : children}
+          {renderChild}
         </View>
       </HardShadow>
     </TouchableOpacity>
@@ -297,11 +363,6 @@ const bubbleStyles = StyleSheet.create({
   fileDownloadWrap: { marginTop: 6 },
 });
 
-/**
- * Human-readable file size for attachment bubbles.
- * @param {number|null|undefined} bytes
- * @returns {string}
- */
 function formatFileSize(bytes) {
   if (bytes == null || bytes === 0) return '';
   if (bytes < BYTES_PER_KB) return `${bytes} B`;
@@ -316,12 +377,40 @@ function ChatSessionCard({ message, colors, peerFirstName, onConfirmSession, onC
   const when = message.sessionWhen || '';
   const meta = message.sessionMeta || '';
   const status = String(message.sessionStatus || 'scheduled').toLowerCase();
-  const badge =
-    status === 'confirmed'
-      ? 'Session confirmed'
-      : status === 'declined'
-        ? 'Session declined'
-        : 'Session scheduled';
+  const badge = sessionStatusBadgeLabel(status);
+
+  // Name the headline before JSX — avoid nested ternary in the title row.
+  let sessionHeadline = title;
+  if (when) {
+    sessionHeadline = `${title} · ${when}`;
+  }
+
+  let metaNode = null;
+  if (meta) {
+    metaNode = (
+      <Text style={{ fontSize: 13, fontWeight: '600', color: colors.nbMuted }}>{meta}</Text>
+    );
+  }
+
+  const showConfirmRow = status === 'scheduled' && !message.sent;
+  let confirmRow = null;
+  if (showConfirmRow) {
+    confirmRow = (
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        <View style={{ flex: 1 }}>
+          <NbButton variant="ghost" sm onPress={() => (onChangeSessionTime == null ? undefined : onChangeSessionTime(message))}>
+            Change time
+          </NbButton>
+        </View>
+        <View style={{ flex: 1 }}>
+          <NbButton variant="fill" sm onPress={() => (onConfirmSession == null ? undefined : onConfirmSession(message))}>
+            Confirm
+          </NbButton>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetCard}>
       <View
@@ -357,25 +446,10 @@ function ChatSessionCard({ message, colors, peerFirstName, onConfirmSession, onC
           ) : null}
         </View>
         <Text style={{ fontSize: 16, fontWeight: '900', color: colors.nbInk }}>
-          {when ? `${title} · ${when}` : title}
+          {sessionHeadline}
         </Text>
-        {meta ? (
-          <Text style={{ fontSize: 13, fontWeight: '600', color: colors.nbMuted }}>{meta}</Text>
-        ) : null}
-        {status === 'scheduled' && !message.sent ? (
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <View style={{ flex: 1 }}>
-              <NbButton variant="ghost" sm onPress={() => onChangeSessionTime?.(message)}>
-                Change time
-              </NbButton>
-            </View>
-            <View style={{ flex: 1 }}>
-              <NbButton variant="fill" sm onPress={() => onConfirmSession?.(message)}>
-                Confirm
-              </NbButton>
-            </View>
-          </View>
-        ) : null}
+        {metaNode}
+        {confirmRow}
       </View>
     </HardShadow>
   );
@@ -418,7 +492,7 @@ function ChatBubble({
       return (
         <TouchableOpacity
           activeOpacity={0.9}
-          onPress={() => message.onPreview?.()}
+          onPress={() => (message.onPreview == null ? undefined : message.onPreview())}
           onLongPress={onLongPress}
           style={bubbleStyles.attachmentImageWrap}
         >
@@ -483,15 +557,22 @@ function ChatBubble({
     );
   };
 
+  // Name layout decisions before JSX — sent bubbles hug the right edge.
+  const rowJustifyContent = sent ? 'flex-end' : 'flex-start';
+  const timestampTextAlign = sent ? 'right' : 'left';
+  const bubbleBackgroundColor = isFile ? colors.nbSurface : bubbleBg;
+  const bubblePaddingHorizontal = padless ? 0 : 14;
+  const bubblePaddingVertical = padless ? 0 : 12;
+
   if (isSession) {
     return (
-      <View style={[bubbleStyles.wrapper, { justifyContent: sent ? 'flex-end' : 'flex-start' }]}>
+      <View style={[bubbleStyles.wrapper, { justifyContent: rowJustifyContent }]}>
         <View style={{ maxWidth: '90%' }}>
           {renderBubbleBody()}
           <Text
             style={[
               bubbleStyles.timestamp,
-              { color: colors.nbMuted, textAlign: sent ? 'right' : 'left' },
+              { color: colors.nbMuted, textAlign: timestampTextAlign },
             ]}
           >
             {message.clockLabel}
@@ -509,9 +590,9 @@ function ChatBubble({
           {
             borderWidth: nb.borderWidth,
             borderColor: colors.nbBorder,
-            backgroundColor: isFile ? colors.nbSurface : bubbleBg,
-            paddingHorizontal: padless ? 0 : 14,
-            paddingVertical: padless ? 0 : 12,
+            backgroundColor: bubbleBackgroundColor,
+            paddingHorizontal: bubblePaddingHorizontal,
+            paddingVertical: bubblePaddingVertical,
             overflow: 'hidden',
           },
         ]}
@@ -521,25 +602,37 @@ function ChatBubble({
     </HardShadow>
   );
 
+  const timestampStyle = [
+    bubbleStyles.timestamp,
+    { color: colors.nbMuted, textAlign: timestampTextAlign },
+  ];
+
+  let bubbleBodyNode;
+  if (sent) {
+    bubbleBodyNode = (
+      <View style={{ maxWidth: '82%' }}>
+        {bubbleChrome}
+        <Text style={timestampStyle}>{message.clockLabel}</Text>
+      </View>
+    );
+  } else {
+    bubbleBodyNode = (
+      <TouchableOpacity
+        activeOpacity={0.92}
+        onLongPress={onLongPress}
+        delayLongPress={350}
+        style={{ maxWidth: '82%' }}
+        accessibilityHint="Long press to report this message"
+      >
+        {bubbleChrome}
+        <Text style={timestampStyle}>{message.clockLabel}</Text>
+      </TouchableOpacity>
+    );
+  }
+
   return (
-    <View style={[bubbleStyles.wrapper, { justifyContent: sent ? 'flex-end' : 'flex-start' }]}>
-      {sent ? (
-        <View style={{ maxWidth: '82%' }}>
-          {bubbleChrome}
-          <Text style={[bubbleStyles.timestamp, { color: colors.nbMuted, textAlign: 'right' }]}>{message.clockLabel}</Text>
-        </View>
-      ) : (
-        <TouchableOpacity
-          activeOpacity={0.92}
-          onLongPress={onLongPress}
-          delayLongPress={350}
-          style={{ maxWidth: '82%' }}
-          accessibilityHint="Long press to report this message"
-        >
-          {bubbleChrome}
-          <Text style={[bubbleStyles.timestamp, { color: colors.nbMuted, textAlign: 'left' }]}>{message.clockLabel}</Text>
-        </TouchableOpacity>
-      )}
+    <View style={[bubbleStyles.wrapper, { justifyContent: rowJustifyContent }]}>
+      {bubbleBodyNode}
     </View>
   );
 }
@@ -644,10 +737,7 @@ const chatStyles = StyleSheet.create({
 
 // ===== MAIN FUNCTION =====
 
-/**
- * Live chat thread UI for one trainer↔client conversation.
- * @param {object} props
- */
+// Live chat thread for one trainer↔client conversation (export default used as client + trainer Messaging).
 export default function ChatWithTraineeScreen({ trainer, conversation, onClose, onProfilePress, onSettingsPress, embedInLayout }) {
   const { isDark, colors } = useTheme();
   const insets = useSafeAreaInsets();
@@ -684,6 +774,7 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
   const typingPulseTimerRef = useRef(null);
   const typingStopTimerRef = useRef(null);
 
+  // 1. Open or create the Firestore conversation, subscribe to messages, load peer profile + trainer flags.
   useEffect(() => {
     if (!trainer || !currentUser) return;
     cancelledRef.current = false;
@@ -714,29 +805,30 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
     clearTimeout(typingStopTimerRef.current);
   }, [conversationId]);
 
+  // 2. Remote typing indicator — local receipt time so device clock skew does not stick the UI.
   useEffect(() => {
-    if (!conversationId || !currentUser?.uid) {
+    if (!conversationId || !(currentUser == null ? undefined : currentUser.uid)) {
       remoteTypingPulseMsRef.current = 0;
       setRemoteTyping(false);
       return undefined;
     }
     const unsub = subscribeConversationTyping(conversationId, (meta) => {
-      const tid = meta?.typingUserId;
-      const ta = meta?.typingAt;
-      if (!tid || tid === currentUser.uid) {
+      const typingUserId = (meta == null ? undefined : meta.typingUserId);
+      const typingAtTimestamp = (meta == null ? undefined : meta.typingAt);
+      if (!typingUserId || typingUserId === currentUser.uid) {
         remoteTypingPulseMsRef.current = 0;
         setRemoteTyping(false);
         return;
       }
-      if (ta) {
+      if (typingAtTimestamp) {
         // Use local receipt time so typing UI does not get stuck if device clock ≠ server.
         remoteTypingPulseMsRef.current = Date.now();
         setRemoteTyping(true);
       }
     });
     const tick = setInterval(() => {
-      const ms = remoteTypingPulseMsRef.current;
-      if (ms && Date.now() - ms > TYPING_UI_STALE_MS) {
+      const lastPulseMs = remoteTypingPulseMsRef.current;
+      if (lastPulseMs && Date.now() - lastPulseMs > TYPING_UI_STALE_MS) {
         remoteTypingPulseMsRef.current = 0;
         setRemoteTyping(false);
       }
@@ -745,13 +837,12 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
       unsub();
       clearInterval(tick);
     };
-  }, [conversationId, currentUser?.uid]);
+  }, [conversationId, (currentUser == null ? undefined : currentUser.uid)]);
 
-  // 1. Are we the trainer, and is this peer already on our client list?
   const checkTrainerRole = async () => {
     if (!currentUser || !db) return;
     try {
-      const flags = await loadTrainerRoleAndClientFlag(currentUser.uid, trainer?.id);
+      const flags = await loadTrainerRoleAndClientFlag(currentUser.uid, (trainer == null ? undefined : trainer.id));
       setIsTrainer(flags.isTrainer);
       setIsAlreadyClient(flags.isAlreadyClient);
     } catch (error) {
@@ -766,30 +857,31 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
     setTrainerData(data);
   };
 
-  // 2. Create or reuse the conversation, then subscribe to live messages.
   const initializeConversation = async () => {
     try {
       setLoading(true);
       const otherId = otherParticipantIdFromProp(trainer);
       if (!otherId) throw new Error('Other participant information missing');
 
+      // 1. Resolve clientId + trainerId, then get or create the conversation document.
       const { clientId, trainerId } = await resolveClientAndTrainerIds({
         conversation,
         currentUserUid: currentUser.uid,
         otherParticipantId: otherId,
       });
 
-      const convId = conversation?.id || await getOrCreateConversation(clientId, trainerId);
+      const convId = (conversation == null ? undefined : conversation.id) || await getOrCreateConversation(clientId, trainerId);
       if (!convId) throw new Error('Failed to create conversation');
       setConversationId(convId);
 
+      // 2. Live listener — mark read + scroll to newest after each batch.
       const unsubscribe = subscribeToMessages(convId, (newMessages, meta) => {
         setMessages(newMessages);
-        setHasMoreMessages(Boolean(meta?.hasMore));
+        setHasMoreMessages(Boolean((meta == null ? undefined : meta.hasMore)));
         oldestTimestampRef.current =
-          meta?.oldestTimestamp ?? (newMessages.length ? newMessages[0].timestamp : null);
+          (meta == null ? undefined : meta.oldestTimestamp) ?? (newMessages.length ? newMessages[0].timestamp : null);
         markMessagesAsRead(convId, currentUser.uid);
-        setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), SCROLL_AFTER_MESSAGE_MS);
+        setTimeout(() => (scrollRef.current == null ? undefined : scrollRef.current.scrollToEnd({ animated: true })), SCROLL_AFTER_MESSAGE_MS);
       });
       return () => unsubscribe();
     } catch (error) {
@@ -801,7 +893,7 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
   };
 
   const scheduleTypingPulse = (text) => {
-    if (!conversationId || !currentUser?.uid) return;
+    if (!conversationId || !(currentUser == null ? undefined : currentUser.uid)) return;
     clearTimeout(typingPulseTimerRef.current);
     clearTimeout(typingStopTimerRef.current);
     if (!String(text).trim()) {
@@ -826,7 +918,7 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
     setSending(true);
     try {
       await sendMessage(conversationId, currentUser.uid, text);
-      scrollRef.current?.scrollToEnd({ animated: true });
+      (scrollRef.current == null ? undefined : scrollRef.current.scrollToEnd({ animated: true }));
     } catch (error) {
       console.error('Error sending message:', error);
       setMessageText(text);
@@ -837,7 +929,7 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
   };
 
   const handleAddAsClient = async () => {
-    if (!currentUser || !isTrainer || !trainer?.id || !trainerData) return;
+    if (!currentUser || !isTrainer || !(trainer == null ? undefined : trainer.id) || !trainerData) return;
     setAddingClient(true);
     try {
       const existingClients = await getTrainerClients(currentUser.uid);
@@ -880,6 +972,7 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
     }, 180);
   };
 
+  // PLUMBING — skip unless debugging uploads: XHR blob read for expo file URIs before Firebase Storage.
   const uriToBlob = (uri) =>
     new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
@@ -900,8 +993,8 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
       await uploadBytes(storageRef, blob, { contentType });
       return getDownloadURL(storageRef);
     } catch (err) {
-      if (err?.code === 'storage/unknown') {
-        console.warn('Storage upload SDK unknown error (serverResponse):', err?.serverResponse);
+      if ((err == null ? undefined : err.code) === 'storage/unknown') {
+        console.warn('Storage upload SDK unknown error (serverResponse):', (err == null ? undefined : err.serverResponse));
       }
       throw err;
     }
@@ -919,7 +1012,7 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
         allowsEditing: false,
         quality: 0.8,
       });
-      if (result.canceled || !result.assets?.[0]?.uri) return;
+      if (result.canceled || !((result.assets == null ? undefined : result.assets[0]) == null ? undefined : (result.assets == null ? undefined : result.assets[0]).uri)) return;
       const { uri } = result.assets[0];
       const filename = uri.split('/').pop() || `photo_${Date.now()}.jpg`;
       // Composer text becomes the Design Law caption overlay on the image bubble.
@@ -933,10 +1026,10 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
         caption,
       });
       if (caption) setMessageText('');
-      scrollRef.current?.scrollToEnd({ animated: true });
+      (scrollRef.current == null ? undefined : scrollRef.current.scrollToEnd({ animated: true }));
     } catch (err) {
-      console.error('Photo send error:', err?.code, err?.message, err?.serverResponse);
-      showNotice('Upload failed', err?.message || 'Failed to send photo.');
+      console.error('Photo send error:', (err == null ? undefined : err.code), (err == null ? undefined : err.message), (err == null ? undefined : err.serverResponse));
+      showNotice('Upload failed', (err == null ? undefined : err.message) || 'Failed to send photo.');
     } finally {
       setUploadingFileName(null);
     }
@@ -944,7 +1037,7 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
 
   // Session card Confirm — write sessionStatus so the badge flips to confirmed.
   const handleConfirmSession = async (message) => {
-    if (!message?.id) return;
+    if (!(message == null ? undefined : message.id)) return;
     try {
       await updateMessageStatus(message.id, { sessionStatus: 'confirmed', status: 'confirmed' });
       setMessages((prev) =>
@@ -953,14 +1046,14 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
         ),
       );
     } catch (err) {
-      showNotice('Could not confirm', err?.message || 'Please try again.');
+      showNotice('Could not confirm', (err == null ? undefined : err.message) || 'Please try again.');
     }
   };
 
   // Change time — recipient asks for a new slot; we prefill composer (no silent calendar rewrite).
   const handleChangeSessionTime = (message) => {
-    const when = message?.sessionWhen ? ` (${message.sessionWhen})` : '';
-    const draft = `Can we change the time for ${message?.sessionTitle || 'this session'}${when}?`;
+    const when = (message == null ? undefined : message.sessionWhen) ? ` (${message.sessionWhen})` : '';
+    const draft = `Can we change the time for ${(message == null ? undefined : message.sessionTitle) || 'this session'}${when}?`;
     setMessageText(draft);
     showNotice('Suggest a new time', 'We put a note in the composer — send it, or edit the wording first.');
   };
@@ -968,7 +1061,7 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
   const handlePickFile = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
-      if (result.canceled || !result.assets?.[0]) return;
+      if (result.canceled || !(result.assets == null ? undefined : result.assets[0])) return;
       const asset = result.assets[0];
       const { uri, name, size } = asset;
       const filename = name || `file_${Date.now()}`;
@@ -980,44 +1073,45 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
         fileName: filename,
         fileSize: size ?? null,
       });
-      scrollRef.current?.scrollToEnd({ animated: true });
+      (scrollRef.current == null ? undefined : scrollRef.current.scrollToEnd({ animated: true }));
     } catch (err) {
-      console.error('File send error:', err?.code, err?.message, err?.serverResponse);
-      showNotice('Upload failed', err?.message || 'Failed to send file.');
+      console.error('File send error:', (err == null ? undefined : err.code), (err == null ? undefined : err.message), (err == null ? undefined : err.serverResponse));
+      showNotice('Upload failed', (err == null ? undefined : err.message) || 'Failed to send file.');
     } finally {
       setUploadingFileName(null);
     }
   };
 
-  const displayName = trainerData?.name || trainer?.name || 'User';
+  const displayName = (trainerData == null ? undefined : trainerData.name) || (trainer == null ? undefined : trainer.name) || 'User';
   const peerUid = otherParticipantIdFromProp(trainer);
   const peerFirstName = String(displayName).split(/\s+/)[0] || displayName;
 
+  // 3. Block list subscription — toggles composer between message bar and Unblock CTA.
   useEffect(() => {
-    if (!currentUser?.uid || !peerUid) {
+    if (!(currentUser == null ? undefined : currentUser.uid) || !peerUid) {
       setPeerBlocked(false);
       return undefined;
     }
     return subscribeMyBlocks(currentUser.uid, (blockedIds) => {
       setPeerBlocked(blockedIds.has(peerUid));
     });
-  }, [currentUser?.uid, peerUid]);
+  }, [(currentUser == null ? undefined : currentUser.uid), peerUid]);
 
   const handleUnblockPeer = async () => {
-    if (!currentUser?.uid || !peerUid || unblocking) return;
+    if (!(currentUser == null ? undefined : currentUser.uid) || !peerUid || unblocking) return;
     setUnblocking(true);
     try {
       await unblockUser(currentUser.uid, peerUid);
       setPeerBlocked(false);
     } catch (e) {
-      showNotice('Unblock failed', e?.message || 'Try again.');
+      showNotice('Unblock failed', (e == null ? undefined : e.message) || 'Try again.');
     } finally {
       setUnblocking(false);
     }
   };
 
   const runReport = (type, extra = {}) => {
-    if (!currentUser?.uid || !peerUid) return;
+    if (!(currentUser == null ? undefined : currentUser.uid) || !peerUid) return;
     setReportSheet({
       type,
       messageId: extra.messageId || null,
@@ -1026,7 +1120,7 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
   };
 
   const submitReportSheet = async ({ reasonId, alsoBlock }) => {
-    if (!currentUser?.uid || !reportSheet) return;
+    if (!(currentUser == null ? undefined : currentUser.uid) || !reportSheet) return;
     setReportBusy(true);
     try {
       await submitContentReport({
@@ -1047,17 +1141,17 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
         alsoBlock
           ? `${displayName} is blocked. You can unblock in Settings → Blocked users.`
           : 'Thanks — we’ll review this as soon as we can.',
-        alsoBlock ? () => onClose?.() : undefined,
+        alsoBlock ? () => (onClose == null ? undefined : onClose()) : undefined,
       );
     } catch (e) {
-      showNotice('Report failed', e?.message || 'Try again.');
+      showNotice('Report failed', (e == null ? undefined : e.message) || 'Try again.');
     } finally {
       setReportBusy(false);
     }
   };
 
   const runBlockPeer = () => {
-    if (!currentUser?.uid || !peerUid) return;
+    if (!(currentUser == null ? undefined : currentUser.uid) || !peerUid) return;
     confirmBlockUser({
       peerName: displayName,
       presentNotice: (title, message, extras = {}) => setNotice({ title, message, ...extras }),
@@ -1067,10 +1161,10 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
           showNotice(
             'Blocked',
             `${displayName} is blocked. You can unblock in Settings → Blocked users.`,
-            () => onClose?.(),
+            () => (onClose == null ? undefined : onClose()),
           );
         } catch (e) {
-          showNotice('Block failed', e?.message || 'Try again.');
+          showNotice('Block failed', (e == null ? undefined : e.message) || 'Try again.');
         }
       },
     });
@@ -1084,7 +1178,7 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
     });
   };
 
-  const threadItems = buildThreadRenderList(messages, currentUser?.uid, {
+  const threadItems = buildThreadRenderList(messages, (currentUser == null ? undefined : currentUser.uid), {
     onPreview: (url) => setPreviewImageUri(url),
     onReportPeer: (extra) =>
       runReport(REPORT_TYPES.MESSAGE, {
@@ -1101,25 +1195,15 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
     );
   }
 
-  const hasPresence = typeof trainerData?.isOnline === 'boolean';
+  const hasPresence = typeof (trainerData == null ? undefined : trainerData.isOnline) === 'boolean';
   const isPeerOnline = hasPresence && trainerData.isOnline;
-  const headerSubtitle = peerBlocked
-    ? 'Blocked'
-    : hasPresence
-      ? isPeerOnline
-        ? 'Online now'
-        : 'Offline'
-      : trainerData?.role === 'trainer'
-        ? 'Your coach'
-        : trainerData?.role === 'client'
-          ? 'Client'
-          : 'Direct message';
+  const headerSubtitle = buildChatHeaderSubtitle(peerBlocked, trainerData);
 
   const identityBlock = (
     <>
       <View style={chatStyles.avatarWrap}>
         <NbAvatar
-          source={trainerData?.photoURL || trainer?.photoURL}
+          source={(trainerData == null ? undefined : trainerData.photoURL) || (trainer == null ? undefined : trainer.photoURL)}
           initials={initialsFromName(displayName)}
           size={44}
         />
@@ -1200,7 +1284,7 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
         ref={scrollRef}
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 24 }}
-        onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
+        onContentSizeChange={() => (scrollRef.current == null ? undefined : scrollRef.current.scrollToEnd({ animated: true }))}
         scrollEventThrottle={16}
         keyboardDismissMode="on-drag"
         keyboardShouldPersistTaps="handled"
@@ -1233,19 +1317,16 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
                       if (!conversationId || loadingEarlier || !oldestTimestampRef.current) return;
                       setLoadingEarlier(true);
                       try {
-                        const { messages: older, hasMore } = await loadEarlierMessages(
+                        await fetchAndMergeEarlierMessages({
                           conversationId,
-                          oldestTimestampRef.current,
-                        );
-                        const seen = new Set(messages.map((m) => m.id));
-                        const uniqueOlder = older.filter((m) => !seen.has(m.id));
-                        if (uniqueOlder.length) {
-                          oldestTimestampRef.current = uniqueOlder[0].timestamp ?? oldestTimestampRef.current;
-                          setMessages((prev) => [...uniqueOlder, ...prev]);
-                        }
-                        setHasMoreMessages(hasMore);
-                      } catch (e) {
-                        console.error('loadEarlierMessages failed:', e);
+                          oldestTimestamp: oldestTimestampRef.current,
+                          existingMessages: messages,
+                          setMessages,
+                          setHasMoreMessages,
+                          oldestTimestampRef,
+                        });
+                      } catch (loadError) {
+                        console.error('loadEarlierMessages failed:', loadError);
                       } finally {
                         setLoadingEarlier(false);
                       }
@@ -1391,7 +1472,7 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
               onBlur={() => {
                 clearTimeout(typingPulseTimerRef.current);
                 clearTimeout(typingStopTimerRef.current);
-                if (conversationId && currentUser?.uid) {
+                if (conversationId && (currentUser == null ? undefined : currentUser.uid)) {
                   clearMyConversationTyping(conversationId, currentUser.uid);
                 }
               }}
@@ -1482,16 +1563,16 @@ export default function ChatWithTraineeScreen({ trainer, conversation, onClose, 
     <NbNoticeSheet
       visible={!!notice}
       onClose={() => {
-        const next = notice?.onOk;
+        const next = (notice == null ? undefined : notice.onOk);
         setNotice(null);
         if (typeof next === 'function') next();
       }}
-      title={notice?.title || ''}
-      message={notice?.message}
-      confirmLabel={notice?.confirmLabel || 'OK'}
-      cancelLabel={notice?.cancelLabel}
-      onConfirm={notice?.onConfirm}
-      destructive={!!notice?.destructive}
+      title={(notice == null ? undefined : notice.title) || ''}
+      message={(notice == null ? undefined : notice.message)}
+      confirmLabel={(notice == null ? undefined : notice.confirmLabel) || 'OK'}
+      cancelLabel={(notice == null ? undefined : notice.cancelLabel)}
+      onConfirm={(notice == null ? undefined : notice.onConfirm)}
+      destructive={!!(notice == null ? undefined : notice.destructive)}
     />
   );
 

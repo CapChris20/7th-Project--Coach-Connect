@@ -1,6 +1,6 @@
-// Design Law metric tile — big number + caps label, HardShadow, no gradient wash.
-// Flow: value (+ optional /max or unit) → all-caps label. Trends omitted (PNG has none).
-// Used by: WeeklyReportBody stats grid (client + trainer).
+// One metric tile on the weekly report — big number + caps label, HardShadow, no wash.
+// Flow: decide if value exists → number + optional suffix + /max → all-caps label.
+// Used by WeeklyReportBody stats grids (client + trainer).
 
 import React from 'react';
 import { Text, StyleSheet, View } from 'react-native';
@@ -10,17 +10,14 @@ import { useTheme } from '../weekly-report/reportColorSettings';
 
 // ===== NAMED CONSTANTS =====
 
+// Manipulate here: placeholder shown when the week has no value for this metric
 const EMPTY_VALUE_PLACEHOLDER = '—';
-
-// ===== HELPER FUNCTIONS =====
-
-function hasStatValue(value) {
-  return value !== EMPTY_VALUE_PLACEHOLDER && value != null && value !== '';
-}
 
 // ===== MAIN FUNCTION =====
 
 /**
+ * Hard-shadow metric card for one weekly average.
+ * Flow: 1. theme  2. value present?  3. uppercase label  4. card chrome
  * @param {{
  *   label: string,
  *   value: string|number,
@@ -30,38 +27,108 @@ function hasStatValue(value) {
  * }} props
  */
 export function StatCard({ label, value, suffix, max, testID }) {
+  // vocab: useTheme = report palette (textPrimary / textMuted / border / surface)
   const { colors } = useTheme();
-  const showValue = hasStatValue(value);
 
+  // 1. Treat em-dash, null, and empty string as “no stat yet” for this week.
+  const showRealValue = statHasDisplayableValue(value);
+
+  // 2. Label is always uppercased to match Design Law stat tiles.
+  const labelText = String(label || '').toUpperCase();
+
+  // 3. Name surface + label colors so JSX stays flat.
+  const cardSurfaceStyle = [
+    styles.card,
+    {
+      borderColor: colors.border,
+      backgroundColor: colors.surfacePrimary,
+    },
+  ];
+  const labelStyle = [styles.label, { color: colors.textMuted }];
+
+  // 4. HardShadow wrapper + outlined card body.
+  // vocab: HardShadow = Design Law hard offset shadow (not soft blur)
   return (
-    <HardShadow offset={nb.shadowOffsetSmall} radius={borderRadius.nbCard} style={styles.wrapper}>
-      <View
-        testID={testID}
-        style={[
-          styles.card,
-          {
-            borderColor: colors.border,
-            backgroundColor: colors.surfacePrimary,
-          },
-        ]}
-      >
-        <View style={styles.valueRow}>
-          <Text style={[styles.value, { color: colors.textPrimary }]} numberOfLines={1}>
-            {showValue ? value : EMPTY_VALUE_PLACEHOLDER}
-          </Text>
-          {suffix && showValue ? (
-            <Text style={[styles.suffix, { color: colors.textMuted }]}>{suffix}</Text>
-          ) : null}
-          {max != null && showValue ? (
-            <Text style={[styles.max, { color: colors.textMuted }]}>{` / ${max}`}</Text>
-          ) : null}
-        </View>
-        <Text style={[styles.label, { color: colors.textMuted }]} numberOfLines={2}>
-          {String(label || '').toUpperCase()}
+    <HardShadow
+      offset={nb.shadowOffsetSmall}
+      radius={borderRadius.nbCard}
+      style={styles.wrapper}
+    >
+      <View testID={testID} style={cardSurfaceStyle}>
+        <StatValueRow
+          value={value}
+          suffix={suffix}
+          max={max}
+          colors={colors}
+          showRealValue={showRealValue}
+        />
+        <Text style={labelStyle} numberOfLines={2}>
+          {labelText}
         </Text>
       </View>
     </HardShadow>
   );
+}
+
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * Big number row: value, optional unit suffix, optional “ / max”.
+ */
+function StatValueRow({ value, suffix, max, colors, showRealValue }) {
+  let mainNumber = EMPTY_VALUE_PLACEHOLDER;
+  if (showRealValue) {
+    mainNumber = value;
+  }
+
+  const showSuffix = Boolean(suffix) && showRealValue;
+  const showMax = max != null && showRealValue;
+
+  // Name optional pieces before JSX — no nested ternaries in the tree.
+  let suffixNode = null;
+  if (showSuffix) {
+    suffixNode = (
+      <Text style={[styles.suffix, { color: colors.textMuted }]}>{suffix}</Text>
+    );
+  }
+
+  let maxNode = null;
+  if (showMax) {
+    maxNode = (
+      <Text style={[styles.max, { color: colors.textMuted }]}>{` / ${max}`}</Text>
+    );
+  }
+
+  const valueStyle = [styles.value, { color: colors.textPrimary }];
+
+  return (
+    <View style={styles.valueRow}>
+      <Text style={valueStyle} numberOfLines={1}>
+        {mainNumber}
+      </Text>
+      {suffixNode}
+      {maxNode}
+    </View>
+  );
+}
+
+// ===== PLUMBING — skip unless debugging =====
+
+/**
+ * False for the empty placeholder, null/undefined, or blank string.
+ * Zero (0) and other real numbers still count as displayable.
+ */
+function statHasDisplayableValue(value) {
+  if (value === EMPTY_VALUE_PLACEHOLDER) {
+    return false;
+  }
+  if (value == null) {
+    return false;
+  }
+  if (value === '') {
+    return false;
+  }
+  return true;
 }
 
 const styles = StyleSheet.create({

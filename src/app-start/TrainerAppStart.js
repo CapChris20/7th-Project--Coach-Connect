@@ -2,82 +2,29 @@
 // Flow: LoginGate mounts the shell → roster, profile, and notifications → screens read the shell.
 // CRM exports are how screens read and write trainer_clients data.
 // Used by LoginGate and by screens that import getClient, getTrainerClients, and the rest.
+// Read order: constants → CRM recipes → shell → PLUMBING for roster/analytics helpers.
 
-import React, { useState, useMemo, useCallback, createContext, useContext, useEffect, useRef } from "react";
+import React, { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { NavigationContainer } from '@react-navigation/native';
 import TrainerScreenList from '../trainer-app/navigation/TrainerScreenList';
 import { TrainerAppStartShellProvider } from '../trainer-app/navigation/TrainerOpenScreenTracker';
 import { goToTrainerScreen } from '../trainer-app/navigation/goToTrainerScreen';
 import { rootNavigationRef } from '../navigation/openScreenFromAnywhere';
 import { trainerLinking } from '../navigation/webLinks';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  ScrollView,
-  SafeAreaView,
-} from "react-native";
-import * as Notifications from 'expo-notifications';
-
-
-import {
-  StatusBar,
-  TextInput,
-  Modal,
-  Pressable,
-  Image,
-  Dimensions,
-  useWindowDimensions,
-  ActivityIndicator,
-  Platform,
-  ActionSheetIOS,
-  Share,
-} from "react-native";
-import { LinearGradient } from 'expo-linear-gradient';
-import { Feather, Ionicons } from '@expo/vector-icons';
-import { ArrowRight, ChevronDown, Download, FileSpreadsheet, FileText, Folder, MessageSquare, Trash2 } from 'lucide-react-native';
-import BlurredBackground from '../look-and-feel/BlurredBackground';
-import LottieView from 'lottie-react-native';
-import DailyQuoteCard, { DailyQuotePill } from '../for-both/home-cards/DailyQuoteCard';
-import HoldToConfirmPopup from '../for-both/popups/HoldToConfirmPopup';
+import { View, Text } from "react-native";
 import NbNoticeSheet from '../look-and-feel/NbNoticeSheet';
 import NbSheet from '../look-and-feel/NbSheet';
 import NbButton from '../look-and-feel/NbButton';
 import { spacing } from '../look-and-feel/colorPalette';
-import Svg, { Path, Polyline } from 'react-native-svg';
 import {
   doc,
   getDoc,
   collection,
-  getDocs,
-  updateDoc,
-  query,
-  where,
   addDoc,
   setDoc,
   deleteDoc,
   serverTimestamp,
 } from "firebase/firestore";
-import TopHeader from "../for-both/loading-and-header/TopHeader";
-import BottomMenuBar from "../navigation/BottomMenuBar";
-import { AppNavigationProvider } from "../navigation/whichScreenIsOpen";
-import SearchTrainersScreen from '../client-app/find-a-trainer/SearchTrainersScreen';
-import ChatWithTraineeScreen from "../messaging/ChatScreen";
-import InboxScreen from "../messaging/InboxScreen";
-import VoiceCoachScreen from "../ai-coach/home-screen/CoachHomeScreen";
-import CoachConversationScreen from "../ai-coach/conversation/CoachConversationScreen";
-import DailyLogContent from "../nutrition/daily-log/DailyLogContent";
-import SettingsScreen from "../settings/SettingsScreen";
-import HelpFAQScreen from "../settings/HelpFAQScreen";
-import TermsOfServiceScreen from "../settings/TermsOfServiceScreen";
-import PrivacyPolicyScreen from "../settings/PrivacyPolicyScreen";
-import ContactSupportScreen from "../settings/ContactSupportScreen";
-import BugReportScreen from "../settings/BugReportScreen";
-import CreateWorkoutPlanScreen from "../workouts/create-plan/CreateWorkoutPlanScreen";
-import NewTraineeRequestsScreen from "../trainer-app/new-requests/NewTraineeRequestsScreen";
-import BookSessionScreen from "../trainer-app/scheduling/BookSessionScreen";
-import ScheduleSessionScreen from "../trainer-app/scheduling/ScheduleSessionScreen";
 import { pagedTraineeList } from "../trainer-app/my-trainees/pagedTraineeList";
 import { resolveTrainerClientDisplayName, isGenericClientDisplayName } from "../trainer-app/trainee-records/getTraineeDisplayName";
 import { combineTraineeProfile } from "../helpers/combineTraineeProfile";
@@ -90,67 +37,18 @@ import {
   flushInitialNotificationResponse,
   subscribePushTokenRefreshOnResume,
 } from "../notifications/manageAlerts";
-import { useTheme as useGlobalTheme } from "../look-and-feel/lightDarkMode";
 import { auth, db } from "../app-start/cloudConnection";
-import { fetchLatestLoggedWeight } from '../daily-stats/latestWeight';
-import { GestureHandlerRootView, Swipeable } from "react-native-gesture-handler";
 import { reportCrashAutomaticallySync } from "../crash-reports/reportCrashAutomatically";
 import { getOrCreateConversation } from "../ai-coach/coach-actions/alertTrainer";
-import { getDateKey } from "../helpers/dateStrings";
-import { getLocalDateKey } from "../helpers/getLocalDay";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SessionsProvider } from "../trainer-app/scheduling/SharedSessionList";
 import { unreadAlertCount } from "../notifications/unreadAlertCount";
 import { CrashCatcher } from "../crash-reports/CrashCatcher";
 import { useStartupLoadingCoverLock } from "../for-both/loading-and-header/StartupLoadingCover";
-import { getNotesAndFiles, getTrainerDocuments, deleteNotesAndFilesItem, filterTrainerDocumentsForClient } from "../for-both/files-and-notes/saveNotesAndFiles";
 import { clearAllUserData } from "../logout-cleanup/clearDataOnLogout";
-import AddFilePopup from "../for-both/files-and-notes/viewers/AddFilePopup";
-import PhotoVideoViewer from "../for-both/files-and-notes/viewers/PhotoVideoViewer";
-import WebPageViewer from "../for-both/files-and-notes/viewers/WebPageViewer";
-import {
-  isImageFile as isNotesImageFile,
-  isVideoFile as isNotesVideoFile,
-  isPdfFile as isNotesPdfFile,
-  getEmbedViewerUri,
-} from "../helpers/whichViewerForFile";
-import PdfViewer from "../for-both/files-and-notes/viewers/PdfViewer";
-import SpreadsheetViewer from "../for-both/files-and-notes/viewers/SpreadsheetViewer";
-import DocumentEditor from "../trainer-app/documents/DocumentEditor";
-import QuickActionCard from '../for-both/home-cards/QuickActionCard';
-import ShareDocumentPopup from "../trainer-app/documents/ShareDocumentPopup";
-import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
-import * as XLSX from 'xlsx';
-import RemoveTrainerPopup from "../for-both/popups/RemoveTrainerPopup";
-import { getFoodLogsForDate, calculateMacroTotals, getDailyGoals } from "../nutrition/daily-log/saveLoggedFood";
-import MyProgressPhotosScreen from "../for-both/photo-gallery/MyProgressPhotosScreen";
-import SavedWorkoutsScreen from "../for-both/workout-plans/SavedWorkoutsScreen";
-import ManualWorkoutPlanBuilderScreen from "../trainer-app/workout-plans/ManualWorkoutPlanBuilderScreen";
-import ChatIcon from "../for-both/icons/ChatIcon";
-import FileGrid from "../for-both/files-and-notes/viewers/FileGrid";
-import TrainerWeeklyReportSection from "../trainer-app/weekly-report/TrainerWeeklyReportSection";
-import TrainerWeeklyReportScreen from "../for-both/weekly-report/WeeklyReportScreen";
-import FilesHeaderCard from "../for-both/home-cards/FilesHeaderCard";
-import FilesSection from "../for-both/files-and-notes/viewers/FilesSection";
-import ProgressTab from '../trainer-app/progress-tab/TrainerProgressTab';
-import NutritionTab from '../trainer-app/nutrition-tab/TrainerNutritionTab';
-import CalendarTab from '../trainer-app/scheduling/CalendarTab';
-import ClientDetailScreen from '../trainer-app/trainee-detail/ManageTraineeScreen';
-import ClientsListScreen from '../trainer-app/my-trainees/MyTraineesScreen';
-import DashboardContent from '../trainer-app/home/TrainerHomeContent';
 import {
   TrainerStylesProvider,
   useTrainerTheme,
-  GlassCard,
-  ColorText,
-  HomeTopBanner,
-  Icon,
-  ICON_ACCENT,
-  SCREEN_WIDTH,
-  TrainerNotesFilesHeroAndWorkspace,
-  TabPills,
-  TABS,
 } from '../trainer-app/home/trainerHomePieces';
 import { isBenignTrainerClientFirestoreError } from '../trainer-app/trainee-records/calmDatabaseErrors';
 import { ProPlanSetup } from '../trainer-pro-plan/ProPlanSetup';
@@ -164,9 +62,7 @@ import {
   progressCollectionRef,
   tasksCollectionRef,
   notesCollectionRef,
-  trainerClientDocRef,
 } from '../trainer-app/trainee-records/traineeDatabaseLocations';
-import { lightColors } from '../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
@@ -182,68 +78,146 @@ const HOURS_PER_DAY = 24;
 const WEEKLY_REPORT_DAY_COUNT = 7;
 const PERMISSION_DENIED_CODE = "permission-denied";
 
+// CRM subcollections arrive unsorted; we sort in JS to avoid extra composite indexes.
+
 // ===== HELPER FUNCTIONS =====
+// Tiny helpers the CRM recipes call by name. Roster / analytics / shell plumbing is below.
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// CLIENT CRM SERVICE
-// Every function below reads/writes the trainer's client records. They share one shape:
-//   guard the arguments → delegate to a path helper in traineeDatabaseLocations →
-//   log via reportCrashAutomaticallySync on failure → READS return a safe empty value, WRITES re-throw.
-// That read/write split is deliberate: a failed read should degrade the UI, not break it, but a
-// failed write must reach the caller so it can tell the trainer their change didn't save.
-// Screens/hooks may import these through clientCRMService.js, which just re-exports these bindings.
-// ═══════════════════════════════════════════════════════════════════════════════
-
-// Converts lightColors.primary into '255, 107, 157' so it can be dropped into an `rgba(…, 0.2)` string —
-// React Native has no color-with-opacity helper, so the channels must be split out by hand.
-// vocab: parseInt(x, 16) = read the two hex characters as a base-16 number.
-// Manipulate here: '255, 107, 157' is the brand pink used as the fallback whenever the input isn't
-// a clean 6-digit hex (both guards below return it rather than producing an invalid color string).
-function hexToRgbTriple(hexColor) {
-  const hexDigits = String(hexColor || "").replace("#", "").trim();
-  if (hexDigits.length !== 6) return "255, 107, 157";
-  const redChannel = parseInt(hexDigits.slice(0, 2), 16);
-  const greenChannel = parseInt(hexDigits.slice(2, 4), 16);
-  const blueChannel = parseInt(hexDigits.slice(4, 6), 16);
-  const channels = [redChannel, greenChannel, blueChannel];
-  if (channels.some((channel) => Number.isNaN(channel))) return "255, 107, 157";
-  return `${redChannel}, ${greenChannel}, ${blueChannel}`;
+function firestoreCreatedAtMillis(entry) {
+  const createdAt = entry.createdAt;
+  if (createdAt && typeof createdAt.toMillis === 'function') {
+    const millis = createdAt.toMillis();
+    if (millis) {
+      return millis;
+    }
+  }
+  if (createdAt) {
+    return createdAt;
+  }
+  return 0;
 }
 
-// Fallback dashboard payload built purely from CRM data, used when the client's own user profile
-// can't be read (they haven't finished signup, or rules block it). Every field gets a defined value
-// so the dashboard renders a real empty state instead of crashing on undefined.
-// Manipulate here: the *Goal numbers and 'Custom Program' are placeholder defaults shown until the
-// trainer sets real ones.
-function buildTrainerDashboardClientDataFromCrm(currentClient, notesAndFiles = []) {
-  return {
-    beforeWeight: currentClient?.startingWeight ?? currentClient?.weight ?? null,
-    currentWeight: currentClient?.weight ?? null,
-    trainingDays: [],
-    programName: currentClient?.programName || 'Custom Program',
-    nutrition: {
-      calories: 0,
-      protein: 0,
-      carbs: 0,
-      fat: 0,
-      fiber: 0,
-      sugar: 0,
-      sodium: 0,
-      potassium: 0,
-      proteinGoal: 200,
-      carbsGoal: 300,
-      fatGoal: 80,
-      micros: currentClient?.micros || [],
-      foods: [],
-    },
-    calendar: {
-      completed: currentClient?.completedDays || [],
-      upcoming: currentClient?.upcomingDays || [],
-      missed: currentClient?.missedDays || [],
-      upcomingSessions: currentClient?.upcomingSessions || [],
-    },
-    notesAndFiles,
-  };
+function sortSubcollectionNewestFirst(entries) {
+  const rows = Array.isArray(entries) ? [...entries] : [];
+  rows.sort((left, right) => firestoreCreatedAtMillis(right) - firestoreCreatedAtMillis(left));
+  return rows;
+}
+
+function signedInAuthUid() {
+  if (!auth) {
+    return null;
+  }
+  if (!auth.currentUser) {
+    return null;
+  }
+  return auth.currentUser.uid;
+}
+
+function trainerIdForCrmWrites(trainerId) {
+  if (trainerId) {
+    return trainerId;
+  }
+  return signedInAuthUid();
+}
+
+function errorCodeOrName(errorValue) {
+  if (!errorValue) {
+    return null;
+  }
+  if (errorValue.code) {
+    return errorValue.code;
+  }
+  if (errorValue.name) {
+    return errorValue.name;
+  }
+  return null;
+}
+
+function errorMessageOrValue(errorValue) {
+  if (errorValue && errorValue.message) {
+    return errorValue.message;
+  }
+  return errorValue;
+}
+
+function uidFromUser(user) {
+  if (!user) {
+    return null;
+  }
+  if (!user.uid) {
+    return null;
+  }
+  return user.uid;
+}
+
+function clientDataWithoutInternalSource(row) {
+  const { _source, ...data } = row;
+  void _source;
+  return data;
+}
+
+function countCompletedTasks(tasks) {
+  let completed = 0;
+  for (let taskIndex = 0; taskIndex < tasks.length; taskIndex += 1) {
+    if (tasks[taskIndex].completed === true) {
+      completed += 1;
+    }
+  }
+  return completed;
+}
+
+async function loadWeightTasksAndProgress(clientId) {
+  const weightTrend = await getWeightTrend(clientId);
+  const taskStats = await getTaskStats(clientId);
+  const progressEntries = await getProgressHistory(clientId);
+  return { weightTrend, taskStats, progressEntries };
+}
+
+function createdAtAsDate(createdAt) {
+  if (createdAt && typeof createdAt.toDate === 'function') {
+    return createdAt.toDate();
+  }
+  if (createdAt) {
+    return createdAt;
+  }
+  return null;
+}
+
+function callIfPresent(maybeFunction, ...args) {
+  if (typeof maybeFunction === 'function') {
+    maybeFunction(...args);
+  }
+}
+
+function rosterContainsClientId(clients, clientId) {
+  if (!clientId || !clients) {
+    return false;
+  }
+  for (let clientIndex = 0; clientIndex < clients.length; clientIndex += 1) {
+    if (clients[clientIndex].id === clientId) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function preferredClientIdForPlusPress(clients, selectedClientIdFromDashboard) {
+  if (rosterContainsClientId(clients, selectedClientIdFromDashboard)) {
+    return selectedClientIdFromDashboard;
+  }
+  if (clients.length === 1) {
+    return clients[0].id;
+  }
+  return null;
+}
+
+function anyChannelIsNaN(channels) {
+  for (let channelIndex = 0; channelIndex < channels.length; channelIndex += 1) {
+    if (Number.isNaN(channels[channelIndex])) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function clientWritePayload(clientId, clientData) {
@@ -279,273 +253,24 @@ function clientWritePayload(clientId, clientData) {
   };
 }
 
-async function ensureConversationExists(clientId, trainerId) {
-  try {
-    await getOrCreateConversation(clientId, trainerId);
-  } catch (conversationError) {
-    console.error("⚠️ Error creating auto-conversation:", conversationError);
-  }
-}
-
-async function writeCanonicalClientDoc(trainerId, clientId, payload) {
-  const clientRef = doc(db, `trainer_clients/${trainerId}/clients/${clientId}`);
-  const existingDoc = await getDoc(clientRef);
-  if (existingDoc.exists()) {
-    await setDoc(clientRef, payload, { merge: true });
-    return;
-  }
-  await setDoc(clientRef, payload);
-}
-
-async function writeTrainerClientLink(trainerId, clientId, payload) {
-  try {
-    const linkId = `${trainerId}_${clientId}`;
-    const linkRef = doc(db, TRAINER_CLIENT_LINKS, linkId);
-    await setDoc(
-      linkRef,
-      {
-        trainerId,
-        clientId,
-        name: payload.name,
-        email: payload.email,
-        goals: payload.goals,
-        status: payload.status,
-        joinedAt: payload.joinedAt,
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true },
-    );
-  } catch (linkError) {
-    console.warn("⚠️ trainer_client_links write skipped:", linkError?.message);
-  }
-}
-
-async function confirmClientDocSaved(trainerId, clientId) {
-  const clientRef = doc(db, `trainer_clients/${trainerId}/clients/${clientId}`);
-  const verifyDoc = await getDoc(clientRef);
-  if (verifyDoc.exists()) return;
-  console.error("❌ ERROR: Client was not saved!");
-}
-
-async function mirrorLegacyClientDoc(clientId, trainerId, payload) {
-  try {
-    const legacyClientRef = doc(db, CRM_CLIENTS_COLLECTION, clientId);
-    await setDoc(
-      legacyClientRef,
-      {
-        id: clientId,
-        trainerId,
-        ...payload,
-      },
-      { merge: true },
-    );
-  } catch (legacyError) {
-    /* ignore */
-  }
-}
-
-function compareClientNames(leftClient, rightClient) {
-  const leftName = (leftClient.name || "").toLowerCase();
-  const rightName = (rightClient.name || "").toLowerCase();
-  return leftName.localeCompare(rightName);
-}
-
-function clientStatusIsHidden(client) {
-  const status = String(client.status || "active").toLowerCase();
-  if (status === "inactive" || status === "removed" || status === "deleted") return true;
-  return client.archived === true;
-}
-
-function clientStillBelongsToTrainer(userData, trainerId) {
-  const linkedTrainerId = userData?.trainerId;
-  if (linkedTrainerId == null || linkedTrainerId === "") return false;
-  return String(linkedTrainerId) === String(trainerId);
-}
-
-async function saveRealNameIfPlaceholder(trainerId, clientId, storedName, resolvedName) {
-  if (!resolvedName) return;
-  if (isGenericClientDisplayName(resolvedName)) return;
-  if (!isGenericClientDisplayName(storedName)) return;
-  try {
-    await setDoc(
-      doc(db, `trainer_clients/${trainerId}/clients/${clientId}`),
-      { name: resolvedName, updatedAt: serverTimestamp() },
-      { merge: true },
-    );
-  } catch (_) {
-    /* ignore */
-  }
-}
-
-async function rosterRowFromUserDoc(client, trainerId) {
-  const userDoc = await getDoc(doc(db, "users", client.id));
-  if (!userDoc.exists()) return combineTraineeProfile(client, {});
-  const userData = userDoc.data();
-  if (!clientStillBelongsToTrainer(userData, trainerId)) return null;
-  const storedName = String(client.name || "").trim();
-  const resolvedName = resolveTrainerClientDisplayName(client, userData);
-  const mergedClient = combineTraineeProfile(
-    { ...client, name: resolvedName, photoURL: client.photoURL || userData.photoURL || null },
-    userData,
-  );
-  await saveRealNameIfPlaceholder(trainerId, client.id, storedName, mergedClient.name);
-  return mergedClient;
-}
-
-async function rosterRowForClient(client, trainerId) {
-  if (clientStatusIsHidden(client)) return null;
-  try {
-    return await rosterRowFromUserDoc(client, trainerId);
-  } catch (_) {
-    return null;
-  }
-}
-
-async function loadSortedRoster(trainerId) {
-  const clients = await fetchTrainerClientRoster(trainerId, { includeLegacy: true });
-  const validClients = [];
-  for (const client of clients) {
-    const rosterRow = await rosterRowForClient(client, trainerId);
-    if (!rosterRow) continue;
-    validClients.push(rosterRow);
-  }
-  validClients.sort(compareClientNames);
-  return validClients;
-}
-
-function weightPointsFromProgress(progressEntries, limitCount) {
-  const weightData = [];
-  for (let index = 0; index < progressEntries.length; index += 1) {
-    const entry = progressEntries[index];
-    if (entry.weight == null || entry.weight <= 0) continue;
-    weightData.push({
-      date: entry.createdAt?.toDate?.() || entry.createdAt || new Date(),
-      weight: Number(entry.weight),
-    });
-    if (weightData.length >= limitCount) break;
-  }
-  return weightData;
-}
-
-function wholeDaysSince(earlierDate) {
-  if (!earlierDate) return null;
-  const millisecondsPerDay = MILLISECONDS_PER_SECOND * SECONDS_PER_MINUTE * MINUTES_PER_HOUR * HOURS_PER_DAY;
-  const elapsedMilliseconds = new Date() - earlierDate;
-  return Math.floor(elapsedMilliseconds / millisecondsPerDay);
-}
-
-function latestCheckInSummary(progressEntries) {
-  if (progressEntries.length === 0) {
-    return { lastProgressDate: null, daysSinceLastCheckIn: null };
-  }
-  const lastEntry = progressEntries[0];
-  const lastProgressDate = lastEntry.createdAt?.toDate?.() || lastEntry.createdAt || null;
-  return {
-    lastProgressDate,
-    daysSinceLastCheckIn: wholeDaysSince(lastProgressDate),
-  };
-}
-
-function emptyClientAnalytics() {
-  return {
-    weightTrend: [],
-    taskStats: { total: 0, completed: 0, pending: 0 },
-    lastProgressDate: null,
-    daysSinceLastCheckIn: null,
-    progressEntriesCount: 0,
-  };
-}
-
-// Day keys use en-CA (YYYY-MM-DD) in America/New_York. Those letters must stay.
-function recentReportDateKeys(dayCount) {
-  const today = new Date();
-  const dateKeys = [];
-  for (let dayOffset = 0; dayOffset < dayCount; dayOffset += 1) {
-    const date = new Date(today);
-    date.setDate(today.getDate() - dayOffset);
-    const dateKey = date.toLocaleDateString("en-CA", { timeZone: "America/New_York" });
-    dateKeys.push(dateKey);
-  }
-  return dateKeys;
-}
-
-function weekAvailabilityReport(dateKeys, daysWithData) {
-  return {
-    totalDays: WEEKLY_REPORT_DAY_COUNT,
-    daysWithData: daysWithData.length,
-    missingDays: WEEKLY_REPORT_DAY_COUNT - daysWithData.length,
-    details: daysWithData,
-    dateRange: {
-      start: dateKeys[dateKeys.length - 1],
-      end: dateKeys[0],
-    },
-  };
-}
-
-function emptyWeekAvailability(dateKeys) {
-  return {
-    totalDays: WEEKLY_REPORT_DAY_COUNT,
-    daysWithData: 0,
-    missingDays: WEEKLY_REPORT_DAY_COUNT,
-    details: [],
-    dateRange: {
-      start: dateKeys[dateKeys.length - 1],
-      end: dateKeys[0],
-    },
-  };
-}
-
-function loggedDayRow(dateKey, data) {
-  return {
-    date: dateKey,
-    hasWorkout: !!data.workout,
-    hasNutrition: !!data.nutrition,
-    hasWeight: !!data.weight,
-    hasMood: !!data.mood,
-    data,
-  };
-}
-
-async function dailyLogRowsForKeys(userId, dateKeys) {
-  const daysWithData = [];
-  const dailyLogsRef = collection(db, "users", userId, "dailyLogs");
-  for (const dateKey of dateKeys) {
-    const docSnap = await getDoc(doc(dailyLogsRef, dateKey));
-    if (!docSnap.exists()) continue;
-    daysWithData.push(loggedDayRow(dateKey, docSnap.data()));
-  }
-  return daysWithData;
-}
-
-function weeklyAvailabilityFailed(error, dateKeys) {
-  const code = error?.code;
-  const message = String(error?.message || error || "").toLowerCase();
-  const permissionDenied =
-    code === PERMISSION_DENIED_CODE || message.includes("missing or insufficient permissions");
-  if (permissionDenied) return emptyWeekAvailability(dateKeys);
-  console.error("Error checking weekly data availability:", error);
-  reportCrashAutomaticallySync(error, "TrainerAppStart CRM - checkWeeklyDataAvailability");
-  throw error;
-}
-
 // ===== MAIN FUNCTION =====
-
+// CLIENT CRM SERVICE — screens import these names; keep export names + return shapes frozen.
 // Read one client record.
 export async function getClient(clientId, trainerId = null) {
-  if (!clientId || !db) return null;
+  if (!clientId || !db) {
+    return null;
+  }
 
   try {
+    // 1. Load from canonical (or legacy) path helper.
     const row = await fetchTrainerClientDoc(clientId, trainerId);
-    if (row) {
-      // `_source` is internal bookkeeping from the path helper (which collection it came from);
-      // strip it so callers never persist it back into Firestore.
-      const { _source, ...data } = row;
-      return data;
+    if (!row) {
+      return null;
     }
-    return null;
+    // 2. Strip `_source` so callers never persist path-helper bookkeeping.
+    return clientDataWithoutInternalSource(row);
   } catch (error) {
     // Some Firestore errors here are expected (permission-denied while a link is being torn down).
-    // Filtering them keeps real bugs visible instead of buried in routine noise.
     if (!isBenignTrainerClientFirestoreError(error)) {
       console.error("Error getting client:", error);
       reportCrashAutomaticallySync(error, "TrainerAppStart CRM - getClient");
@@ -565,11 +290,17 @@ export async function createOrUpdateClient(clientId, trainerId, clientData) {
   }
 
   try {
+    // 1. Build the CRM row shape (field letters stay frozen).
     const payload = clientWritePayload(clientId, clientData);
+    // 2. Conversation first so messaging never points at a missing client.
     await ensureConversationExists(clientId, trainerId);
+    // 3. Canonical trainer_clients doc.
     await writeCanonicalClientDoc(trainerId, clientId, payload);
+    // 4. Flat link the client app listens to.
     await writeTrainerClientLink(trainerId, clientId, payload);
+    // 5. Confirm the canonical write landed.
     await confirmClientDocSaved(trainerId, clientId);
+    // 6. Legacy mirror (best-effort).
     await mirrorLegacyClientDoc(clientId, trainerId, payload);
     return { success: true, id: clientId };
   } catch (error) {
@@ -686,13 +417,13 @@ export async function updateClient(clientId, updates, trainerId = null) {
     throw new Error("Missing required parameter: clientId");
   }
 
-  const tid = trainerId || auth?.currentUser?.uid;
-  if (!tid) {
+  const trainerIdForWrite = trainerIdForCrmWrites(trainerId);
+  if (!trainerIdForWrite) {
     throw new Error("Missing trainerId for canonical client update");
   }
 
   try {
-    await updateTrainerClientDoc(tid, clientId, updates);
+    await updateTrainerClientDoc(trainerIdForWrite, clientId, updates);
     return { success: true };
   } catch (error) {
     console.error("Error updating client:", error);
@@ -709,10 +440,10 @@ export async function addProgress(clientId, progressData, trainerId = null) {
     throw new Error("Missing required parameter: clientId");
   }
 
-  const tid = trainerId || auth?.currentUser?.uid;
+  const trainerIdForWrite = trainerIdForCrmWrites(trainerId);
 
   try {
-    const progressRef = progressCollectionRef(tid, clientId);
+    const progressRef = progressCollectionRef(trainerIdForWrite, clientId);
     const payload = {
       weight: progressData.weight || null,
       bodyFat: progressData.bodyFat || null,
@@ -735,32 +466,23 @@ export async function addProgress(clientId, progressData, trainerId = null) {
 
 // Newest check-ins first.
 export async function getProgressHistory(clientId, trainerId = null) {
-  if (!clientId || !db) return [];
+  if (!clientId || !db) {
+    return [];
+  }
 
   try {
-    const tid = trainerId || auth?.currentUser?.uid;
+    const trainerIdForWrite = trainerIdForCrmWrites(trainerId);
     const progressEntries = await fetchTrainerClientSubcollectionDocs(
       clientId,
       CRM_PROGRESS_SUBCOLLECTION,
-      tid,
+      trainerIdForWrite,
     );
 
-    // Newest first (timeB - timeA). Sorted in JS rather than with orderBy because that would need
-    // a composite index alongside the path filtering, and these lists are small.
-    // vocab: createdAt?.toMillis?.() = Firestore Timestamps need toMillis() to become numbers, but a
-    // locally-written entry may still hold a raw value, and a pending serverTimestamp() is null —
-    // hence the chain down to 0.
-    progressEntries.sort((a, b) => {
-      const timeA = a.createdAt?.toMillis?.() || a.createdAt || 0;
-      const timeB = b.createdAt?.toMillis?.() || b.createdAt || 0;
-      return timeB - timeA;
-    });
-
-    return progressEntries;
+    return sortSubcollectionNewestFirst(progressEntries);
   } catch (error) {
     // permission-denied is routine here (the client revoked access), so stay quiet about it and
     // let anything else through to the console.
-    const code = error?.code || error?.name;
+    const code = errorCodeOrName(error);
     if (code !== "permission-denied") {
       console.error("Error getting progress history:", error);
     }
@@ -776,8 +498,13 @@ export async function deleteProgress(clientId, progressId, trainerId = null) {
   }
 
   try {
-    const tid = trainerId || auth?.currentUser?.uid;
-    await deleteTrainerClientSubdoc(tid, clientId, CRM_PROGRESS_SUBCOLLECTION, progressId);
+    const trainerIdForWrite = trainerIdForCrmWrites(trainerId);
+    await deleteTrainerClientSubdoc(
+      trainerIdForWrite,
+      clientId,
+      CRM_PROGRESS_SUBCOLLECTION,
+      progressId,
+    );
     return { success: true };
   } catch (error) {
     console.error("Error deleting progress:", error);
@@ -815,21 +542,21 @@ export async function createTask(clientId, trainerId, taskData) {
 
 // Newest tasks first.
 export async function getTasks(clientId, trainerId = null) {
-  if (!clientId || !db) return [];
+  if (!clientId || !db) {
+    return [];
+  }
 
   try {
-    const tid = trainerId || auth?.currentUser?.uid;
-    const tasks = await fetchTrainerClientSubcollectionDocs(clientId, CRM_TASKS_SUBCOLLECTION, tid);
+    const trainerIdForWrite = trainerIdForCrmWrites(trainerId);
+    const tasks = await fetchTrainerClientSubcollectionDocs(
+      clientId,
+      CRM_TASKS_SUBCOLLECTION,
+      trainerIdForWrite,
+    );
 
-    tasks.sort((a, b) => {
-      const timeA = a.createdAt?.toMillis?.() || a.createdAt || 0;
-      const timeB = b.createdAt?.toMillis?.() || b.createdAt || 0;
-      return timeB - timeA;
-    });
-
-    return tasks;
+    return sortSubcollectionNewestFirst(tasks);
   } catch (error) {
-    const code = error?.code || error?.name;
+    const code = errorCodeOrName(error);
     if (code !== "permission-denied") {
       console.error("Error getting tasks:", error);
     }
@@ -845,8 +572,14 @@ export async function updateTask(clientId, taskId, updates, trainerId = null) {
   }
 
   try {
-    const tid = trainerId || auth?.currentUser?.uid;
-    await updateTrainerClientSubdoc(tid, clientId, CRM_TASKS_SUBCOLLECTION, taskId, updates);
+    const trainerIdForWrite = trainerIdForCrmWrites(trainerId);
+    await updateTrainerClientSubdoc(
+      trainerIdForWrite,
+      clientId,
+      CRM_TASKS_SUBCOLLECTION,
+      taskId,
+      updates,
+    );
     return { success: true };
   } catch (error) {
     console.error("Error updating task:", error);
@@ -867,8 +600,13 @@ export async function deleteTask(clientId, taskId, trainerId = null) {
   }
 
   try {
-    const tid = trainerId || auth?.currentUser?.uid;
-    await deleteTrainerClientSubdoc(tid, clientId, CRM_TASKS_SUBCOLLECTION, taskId);
+    const trainerIdForWrite = trainerIdForCrmWrites(trainerId);
+    await deleteTrainerClientSubdoc(
+      trainerIdForWrite,
+      clientId,
+      CRM_TASKS_SUBCOLLECTION,
+      taskId,
+    );
     return { success: true };
   } catch (error) {
     console.error("Error deleting task:", error);
@@ -904,19 +642,19 @@ export async function createNote(clientId, trainerId, noteData) {
 
 // Newest notes first.
 export async function getNotes(clientId, trainerId = null) {
-  if (!clientId || !db) return [];
+  if (!clientId || !db) {
+    return [];
+  }
 
   try {
-    const tid = trainerId || auth?.currentUser?.uid;
-    const notes = await fetchTrainerClientSubcollectionDocs(clientId, CRM_NOTES_SUBCOLLECTION, tid);
+    const trainerIdForWrite = trainerIdForCrmWrites(trainerId);
+    const notes = await fetchTrainerClientSubcollectionDocs(
+      clientId,
+      CRM_NOTES_SUBCOLLECTION,
+      trainerIdForWrite,
+    );
 
-    notes.sort((a, b) => {
-      const timeA = a.createdAt?.toMillis?.() || a.createdAt || 0;
-      const timeB = b.createdAt?.toMillis?.() || b.createdAt || 0;
-      return timeB - timeA;
-    });
-
-    return notes;
+    return sortSubcollectionNewestFirst(notes);
   } catch (error) {
     console.error("Error getting notes:", error);
     reportCrashAutomaticallySync(error, "TrainerAppStart CRM - getNotes");
@@ -931,8 +669,14 @@ export async function updateNote(clientId, noteId, updates, trainerId = null) {
   }
 
   try {
-    const tid = trainerId || auth?.currentUser?.uid;
-    await updateTrainerClientSubdoc(tid, clientId, CRM_NOTES_SUBCOLLECTION, noteId, updates);
+    const trainerIdForWrite = trainerIdForCrmWrites(trainerId);
+    await updateTrainerClientSubdoc(
+      trainerIdForWrite,
+      clientId,
+      CRM_NOTES_SUBCOLLECTION,
+      noteId,
+      updates,
+    );
     return { success: true };
   } catch (error) {
     console.error("Error updating note:", error);
@@ -948,8 +692,13 @@ export async function deleteNote(clientId, noteId, trainerId = null) {
   }
 
   try {
-    const tid = trainerId || auth?.currentUser?.uid;
-    await deleteTrainerClientSubdoc(tid, clientId, CRM_NOTES_SUBCOLLECTION, noteId);
+    const trainerIdForWrite = trainerIdForCrmWrites(trainerId);
+    await deleteTrainerClientSubdoc(
+      trainerIdForWrite,
+      clientId,
+      CRM_NOTES_SUBCOLLECTION,
+      noteId,
+    );
     return { success: true };
   } catch (error) {
     console.error("Error deleting note:", error);
@@ -982,11 +731,11 @@ export async function getTaskStats(clientId) {
   }
 
   try {
+    // 1. Load tasks for this client.
     const tasks = await getTasks(clientId);
+    // 2. Count finished ones with strict === true (older docs may omit `completed`).
     const total = tasks.length;
-    // Strict === true: older task documents may have no `completed` field at all, and a loose truthy
-    // check would count undefined inconsistently.
-    const completed = tasks.filter((task) => task.completed === true).length;
+    const completed = countCompletedTasks(tasks);
     const pending = total - completed;
 
     return { total, completed, pending };
@@ -999,21 +748,21 @@ export async function getTaskStats(clientId) {
 
 // Weight trend, task counts, and days since the last check-in.
 export async function getClientAnalytics(clientId) {
-  if (!clientId || !db) return emptyClientAnalytics();
+  if (!clientId || !db) {
+    return emptyClientAnalytics();
+  }
 
   try {
-    const [weightTrend, taskStats, progressEntries] = await Promise.all([
-      getWeightTrend(clientId),
-      getTaskStats(clientId),
-      getProgressHistory(clientId),
-    ]);
-    const checkIn = latestCheckInSummary(progressEntries);
+    // 1. Pull weight, tasks, and check-ins (named helper owns the fetches).
+    const bundle = await loadWeightTasksAndProgress(clientId);
+    // 2. Summarize the newest check-in.
+    const checkIn = latestCheckInSummary(bundle.progressEntries);
     return {
-      weightTrend,
-      taskStats,
+      weightTrend: bundle.weightTrend,
+      taskStats: bundle.taskStats,
       lastProgressDate: checkIn.lastProgressDate,
       daysSinceLastCheckIn: checkIn.daysSinceLastCheckIn,
-      progressEntriesCount: progressEntries.length,
+      progressEntriesCount: bundle.progressEntries.length,
     };
   } catch (error) {
     console.error("Error getting client analytics:", error);
@@ -1040,10 +789,131 @@ export async function checkWeeklyDataAvailability(userId) {
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // END CLIENT CRM SERVICE
+
 // ═══════════════════════════════════════════════════════════════════════════════
 
+/**
+ * Notification taps are independent booleans, not a stack — each branch closes what would
+ * layer on top, then opens the destination screen the payload describes.
+ */
+function routeTrainerNotificationTap(data, panelActions) {
+  const type = data.type;
+
+  if (type === 'client_request') {
+    panelActions.closeConversationsAndMessaging();
+    panelActions.openClientRequests();
+    return;
+  }
+
+  if ((type === 'session_response' || type === 'notes_shared') && data.senderId) {
+    panelActions.closeMessagingAndRequests();
+    panelActions.openDashboardClient(String(data.senderId));
+    return;
+  }
+
+  if (type === 'session_reminder' || type === 'session_update') {
+    panelActions.closeConversationsAndMessaging();
+    return;
+  }
+
+  if (type === 'session_scheduled') {
+    panelActions.closeConversationsAndMessaging();
+    return;
+  }
+
+  if (type === 'message' && data.senderId) {
+    panelActions.openConversationsForClient(String(data.senderId));
+    return;
+  }
+
+  panelActions.openConversationsListFallback();
+}
+
+async function flushTrainerPendingPushToken(uid) {
+  const pendingToken = await AsyncStorage.getItem(pendingPushTokenStorageKey(uid));
+  if (!pendingToken) return;
+  await persistPushTokensForUid(uid, pendingToken);
+  await AsyncStorage.removeItem(pendingPushTokenStorageKey(uid));
+}
+
+async function loadTrainerDisplayName(uid, fallbackDisplayName) {
+  const userDoc = await getDoc(doc(db, 'users', uid));
+  const trainerDoc = await getDoc(doc(db, 'trainers', uid));
+
+  let userProfile = null;
+  if (userDoc.exists()) {
+    userProfile = userDoc.data();
+  }
+  let trainerProfile = null;
+  if (trainerDoc.exists()) {
+    trainerProfile = trainerDoc.data();
+  }
+
+  if (userProfile && userProfile.firstName) {
+    return userProfile.firstName;
+  }
+  if (userProfile && userProfile.name) {
+    return userProfile.name;
+  }
+  if (trainerProfile && trainerProfile.name) {
+    return trainerProfile.name;
+  }
+  if (fallbackDisplayName) {
+    return fallbackDisplayName;
+  }
+  return 'Coach';
+}
+
+function clientLabelForPicker(client) {
+  if (client.name) {
+    return client.name;
+  }
+  if (client.displayName) {
+    return client.displayName;
+  }
+  return 'Client';
+}
+
+function buildClientPickerButtons(shell) {
+  const clients = shell.clientPickerClients || [];
+  const buttons = [];
+  for (let clientIndex = 0; clientIndex < clients.length; clientIndex += 1) {
+    const client = clients[clientIndex];
+    buttons.push(
+      <NbButton
+        key={client.id}
+        variant="plain"
+        onPress={() => {
+          callIfPresent(shell.setAddNotesFilesClientId, client.id);
+          callIfPresent(shell.setShowAddFilePopup, true);
+          callIfPresent(shell.setClientPickerForFilesOpen, false);
+        }}
+      >
+        {clientLabelForPicker(client)}
+      </NbButton>,
+    );
+  }
+  return buttons;
+}
+
+function noticeTitle(notice) {
+  if (notice && notice.title) {
+    return notice.title;
+  }
+  return '';
+}
+
+function noticeConfirmLabel(notice) {
+  if (notice && notice.confirmLabel) {
+    return notice.confirmLabel;
+  }
+  return 'OK';
+}
 
 function TrainerShellLayout({ shell }) {
+  const notice = shell.notice;
+  const clientPickerButtons = buildClientPickerButtons(shell);
+
   return (
     <TrainerAppStartShellProvider value={shell}>
       <CrashCatcher>
@@ -1053,37 +923,28 @@ function TrainerShellLayout({ shell }) {
       </CrashCatcher>
       <NbSheet
         visible={!!shell.clientPickerForFilesOpen}
-        onClose={() => shell.setClientPickerForFilesOpen?.(false)}
+        onClose={() => callIfPresent(shell.setClientPickerForFilesOpen, false)}
         title="Add to Notes & Files"
       >
         <View style={{ gap: 10, paddingHorizontal: spacing.md, paddingBottom: spacing.lg }}>
           <Text style={{ fontSize: 14, fontWeight: '600', marginBottom: 4 }}>Select a client</Text>
-          {(shell.clientPickerClients || []).map((client) => (
-            <NbButton
-              key={client.id}
-              variant="plain"
-              onPress={() => {
-                shell.setAddNotesFilesClientId?.(client.id);
-                shell.setShowAddFilePopup?.(true);
-                shell.setClientPickerForFilesOpen?.(false);
-              }}
-            >
-              {client.name || client.displayName || 'Client'}
-            </NbButton>
-          ))}
-          <NbButton variant="ghost" onPress={() => shell.setClientPickerForFilesOpen?.(false)}>
+          {clientPickerButtons}
+          <NbButton
+            variant="ghost"
+            onPress={() => callIfPresent(shell.setClientPickerForFilesOpen, false)}
+          >
             Cancel
           </NbButton>
         </View>
       </NbSheet>
       <NbNoticeSheet
-        visible={!!shell.notice}
-        onClose={() => shell.dismissNotice?.()}
-        title={shell.notice?.title || ''}
-        message={shell.notice?.message}
-        confirmLabel={shell.notice?.confirmLabel || 'OK'}
-        cancelLabel={shell.notice?.cancelLabel}
-        onConfirm={shell.notice?.onConfirm}
+        visible={!!notice}
+        onClose={() => callIfPresent(shell.dismissNotice)}
+        title={noticeTitle(notice)}
+        message={notice ? notice.message : undefined}
+        confirmLabel={noticeConfirmLabel(notice)}
+        cancelLabel={notice ? notice.cancelLabel : undefined}
+        onConfirm={notice ? notice.onConfirm : undefined}
       />
     </TrainerAppStartShellProvider>
   );
@@ -1094,9 +955,10 @@ function TrainerShellLayout({ shell }) {
 // features), then sessions (needs to know the user). The real work lives in TrainerAppStartContent so
 // that component can USE these contexts — a component can't consume a provider it renders itself.
 export default function TrainerAppStart({ user }) {
+  const trainerUid = uidFromUser(user);
   return (
     <TrainerStylesProvider>
-      <ProPlanSetup userId={user?.uid}>
+      <ProPlanSetup userId={trainerUid}>
         <SessionsProvider>
           <TrainerAppStartContent user={user} />
         </SessionsProvider>
@@ -1108,9 +970,13 @@ export default function TrainerAppStart({ user }) {
 // The actual trainer shell: owns roster data, panel state, notifications, and the shell context.
 function TrainerAppStartContent({ user }) {
   const theme = useTrainerTheme();
+  const trainerUid = uidFromUser(user);
   // vocab/symbol: ?? false = default only when theme.isDark is null/undefined, so a real `false`
   // from the theme is preserved.
-  const isDark = theme?.isDark ?? false;
+  let isDark = false;
+  if (theme != null && theme.isDark != null) {
+    isDark = theme.isDark;
+  }
 
   // Sets up how notifications are displayed and (on Android) creates the notification channel —
   // required before any notification can appear. Empty deps: once per app launch.
@@ -1178,7 +1044,7 @@ function TrainerAppStartContent({ user }) {
   const [navSelectedClientId, setNavSelectedClientId] = useState(null);
   const [selectedClientIdForMessages, setSelectedClientIdForMessages] = useState(null);
   const [userName, setUserName] = useState(null);
-  const unreadMessageCount = unreadAlertCount(user?.uid);
+  const unreadMessageCount = unreadAlertCount(trainerUid);
   // Viewer/editor modals: objects rather than booleans so one setState both opens the modal and
   // supplies what it should show.
   const [pdfViewer, setPdfViewer] = useState({ visible: false, url: null, name: null });
@@ -1214,14 +1080,20 @@ function TrainerAppStartContent({ user }) {
   // Note both fallbacks set {} rather than leaving null: null means "still loading" to consumers,
   // so an empty object is how we say "loaded, just nothing there".
   const refreshTrainerUserDoc = useCallback(async () => {
-    if (!user?.uid || !db) return;
+    if (!trainerUid || !db) {
+      return;
+    }
     try {
-      const snap = await getDoc(doc(db, 'users', user.uid));
-      setTrainerProfileDoc(snap.exists() ? snap.data() : {});
+      const snap = await getDoc(doc(db, 'users', trainerUid));
+      if (snap.exists()) {
+        setTrainerProfileDoc(snap.data());
+      } else {
+        setTrainerProfileDoc({});
+      }
     } catch {
       setTrainerProfileDoc({});
     }
-  }, [user?.uid]);
+  }, [trainerUid]);
 
   useEffect(() => {
     refreshTrainerUserDoc();
@@ -1238,7 +1110,7 @@ function TrainerAppStartContent({ user }) {
     loadMore: loadMoreClients,
     error: clientsError,
     refresh: refreshClients,
-  } = pagedTraineeList(user?.uid);
+  } = pagedTraineeList(trainerUid);
   // First roster fetch only — mirror ClientAppStart so home does not flash under the boot poster.
   const [trainerHomeBootLocked, setTrainerHomeBootLocked] = useState(true);
   useEffect(() => {
@@ -1248,7 +1120,7 @@ function TrainerAppStartContent({ user }) {
   }, [clientsLoading, trainerHomeBootLocked]);
   useStartupLoadingCoverLock(trainerHomeBootLocked);
   // Incoming "please coach me" requests — the badge on the requests screen.
-  const { requests: pendingRequests } = pendingRequestCount(user?.uid);
+  const { requests: pendingRequests } = pendingRequestCount(trainerUid);
 
   // After a client is removed, refresh the list AND clear them from any selection that points at
   // them — otherwise the dashboard keeps rendering a client that no longer exists.
@@ -1256,18 +1128,20 @@ function TrainerAppStartContent({ user }) {
   // leaving an unrelated selection untouched.
   const handleTrainerClientRemovedFromRoster = useCallback((clientId) => {
     refreshClients();
-    setNavSelectedClientId((prev) => (prev === clientId ? null : prev));
-    setSelectedClientIdFromDashboard((prev) => (prev === clientId ? null : prev));
+    setNavSelectedClientId((previousClientId) => (previousClientId === clientId ? null : previousClientId));
+    setSelectedClientIdFromDashboard((previousClientId) => (previousClientId === clientId ? null : previousClientId));
   }, [refreshClients]);
 
   // Account-switch reset, same reasoning as the client shell: this component can survive a user
   // change, so anything user-specific is cleared or the next trainer briefly sees the last one's
   // name, selections, and cached data.
   useEffect(() => {
-    if (!user?.uid) return;
-    
-    console.log(`🔄 TrainerAppStart: User changed to ${user.uid} - resetting state`);
-    
+    if (!trainerUid) {
+      return;
+    }
+
+    console.log(`🔄 TrainerAppStart: User changed to ${trainerUid} - resetting state`);
+
     // Reset all user-specific state
     setTrainerHomeBootLocked(true);
     setUserName(null);
@@ -1276,45 +1150,46 @@ function TrainerAppStartContent({ user }) {
     setSelectedConversation(null);
     setNavSelectedClientId(null);
     setSelectedClientIdForMessages(null);
-    
+
     // Clear any cached data
-    clearAllUserData().catch(e => {
-      console.log('⚠️ Failed to clear cache in TrainerAppStart:', e.message);
+    clearAllUserData().catch((clearError) => {
+      console.log('⚠️ Failed to clear cache in TrainerAppStart:', clearError.message);
     });
-  }, [user?.uid]);
+  }, [trainerUid]);
 
   // Push-token upkeep — identical to the client shell's version: claim any token issued before
   // sign-in, refresh the current one (respecting the user's notification setting), and re-check
   // whenever the app returns from the background, since tokens can rotate while it's closed.
   useEffect(() => {
-    if (!user?.uid || !db) return undefined;
+    if (!trainerUid || !db) {
+      return undefined;
+    }
     let cancelled = false;
 
     (async () => {
       try {
-        const snap = await getDoc(doc(db, 'users', user.uid));
-        if (!snap.exists() || cancelled) return;
-
-        const pendingToken = await AsyncStorage.getItem(pendingPushTokenStorageKey(user.uid));
-        if (pendingToken) {
-          await persistPushTokensForUid(user.uid, pendingToken);
-          await AsyncStorage.removeItem(pendingPushTokenStorageKey(user.uid));
+        const snap = await getDoc(doc(db, 'users', trainerUid));
+        if (!snap.exists() || cancelled) {
+          return;
         }
-      } catch (e) {
-        if (__DEV__) console.warn('[push] pending token flush failed:', e?.message || e);
+        await flushTrainerPendingPushToken(trainerUid);
+      } catch (pushError) {
+        if (__DEV__) {
+          console.warn('[push] pending token flush failed:', errorMessageOrValue(pushError));
+        }
       }
 
       if (!cancelled) {
-        persistPushTokensForUid(user.uid, { skipIfDisabled: true }).catch(() => {});
+        persistPushTokensForUid(trainerUid, { skipIfDisabled: true }).catch(() => {});
       }
     })();
 
-    const unsubResume = subscribePushTokenRefreshOnResume(user.uid, () => true);
+    const unsubResume = subscribePushTokenRefreshOnResume(trainerUid, () => true);
     return () => {
       cancelled = true;
       unsubResume();
     };
-  }, [user?.uid]);
+  }, [trainerUid]);
 
   // "What happens when the trainer taps a notification."
   // Kept in a ref so the handler registered once below always calls the LATEST closure — registering
@@ -1324,85 +1199,75 @@ function TrainerAppStartContent({ user }) {
   useEffect(() => {
     trainerNotifTapRef.current = async (data) => {
       try {
-        if (!user?.uid || !data || typeof data !== 'object') return;
-        // Each branch closes the panels that shouldn't be showing, then opens the destination.
-        // The explicit "close everything else" calls matter because these panels are independent
-        // booleans, not a stack — leaving one true would layer it over the destination.
-        const type = data.type;
-        if (type === 'client_request') {
-          setShowConversationsList(false);
-          setShowTrainerMessaging(false);
-          setShowClientRequests(true);
+        if (!trainerUid || !data || typeof data !== 'object') {
           return;
         }
-        if ((type === 'session_response' || type === 'notes_shared') && data.senderId) {
-          setShowTrainerMessaging(false);
-          setShowConversationsList(false);
-          setShowClientRequests(false);
-          setSelectedClientIdFromDashboard(String(data.senderId));
-          return;
-        }
-        if (type === 'session_reminder' || type === 'session_update') {
-          setShowConversationsList(false);
-          setShowTrainerMessaging(false);
-          return;
-        }
-        if (type === 'session_scheduled') {
-          setShowConversationsList(false);
-          setShowTrainerMessaging(false);
-          return;
-        }
-        // Selecting the client BEFORE showing the list is what makes the list open scrolled to (and
-        // highlighting) the person who messaged.
-        if (type === 'message' && data.senderId) {
-          setShowTrainerMessaging(false);
-          setShowClientRequests(false);
-          setSelectedClientIdForMessages(String(data.senderId));
-          setShowConversationsList(true);
-          return;
-        }
-        // Unknown type, or anything that threw: fall back to the conversations list so a tap always
-        // lands somewhere useful.
-        setShowConversationsList(true);
+
+        routeTrainerNotificationTap(data, {
+          closeConversationsAndMessaging: () => {
+            setShowConversationsList(false);
+            setShowTrainerMessaging(false);
+          },
+          openClientRequests: () => setShowClientRequests(true),
+          closeMessagingAndRequests: () => {
+            setShowTrainerMessaging(false);
+            setShowConversationsList(false);
+            setShowClientRequests(false);
+          },
+          openDashboardClient: (clientId) => setSelectedClientIdFromDashboard(clientId),
+          openConversationsForClient: (clientId) => {
+            setShowTrainerMessaging(false);
+            setShowClientRequests(false);
+            setSelectedClientIdForMessages(clientId);
+            setShowConversationsList(true);
+          },
+          openConversationsListFallback: () => setShowConversationsList(true),
+        });
       } catch {
         setShowConversationsList(true);
       }
     };
-  }, [user?.uid]);
+  }, [trainerUid]);
 
   // Register once; the arrow reads through the ref each time so it's never stale.
   useEffect(() => {
-    setNotificationTapHandler((d) => trainerNotifTapRef.current?.(d));
+    setNotificationTapHandler((notificationData) => {
+      callIfPresent(trainerNotifTapRef.current, notificationData);
+    });
     return () => setNotificationTapHandler(null);
   }, []);
 
   // Replays the notification that launched the app from cold — that tap happened before any handler
   // existed. Manipulate here: 650ms gives the navigator time to mount before we act on it.
   useEffect(() => {
-    if (!user?.uid) return undefined;
+    if (!trainerUid) {
+      return undefined;
+    }
     return flushInitialNotificationResponse(650);
-  }, [user?.uid]);
+  }, [trainerUid]);
 
   // The greeting name. Read from BOTH the users and trainers documents because trainer profiles were
   // historically split across the two; the || chain picks the first that has a name and ends at
   // 'Coach' so the header is never blank or "undefined".
   useEffect(() => {
-    if (!user?.uid || !db) return;
+    if (!trainerUid || !db) {
+      return;
+    }
+    const fallbackDisplayName = user && user.displayName ? user.displayName : null;
     const load = async () => {
       try {
-        const [userDoc, trainerDoc] = await Promise.all([
-          getDoc(doc(db, 'users', user.uid)),
-          getDoc(doc(db, 'trainers', user.uid)),
-        ]);
-        const userProfile = userDoc.exists() ? userDoc.data() : null;
-        const trainerProfile = trainerDoc.exists() ? trainerDoc.data() : null;
-        setUserName(userProfile?.firstName || userProfile?.name || trainerProfile?.name || user?.displayName || 'Coach');
+        const greeting = await loadTrainerDisplayName(trainerUid, fallbackDisplayName);
+        setUserName(greeting);
       } catch {
-        setUserName(user?.displayName || 'Coach');
+        if (fallbackDisplayName) {
+          setUserName(fallbackDisplayName);
+        } else {
+          setUserName('Coach');
+        }
       }
     };
     load();
-  }, [user?.uid, user?.displayName]);
+  }, [trainerUid, user]);
 
   // Edge-detector: refresh the roster when the requests screen CLOSES (was true, now false).
   // Accepting a request adds a client, so the list behind it is stale the moment you back out.
@@ -1427,18 +1292,16 @@ function TrainerAppStartContent({ user }) {
   // specific client, so this has to answer "which one?" before opening the modal.
   const handlePlusPress = () => {
     // Manipulate here: user-facing copy for the no-clients case.
-    if (!clients?.length) {
+    const clientCount = clients ? clients.length : 0;
+    if (!clientCount) {
       showNotice('No clients', 'Add a client first to add notes or files for them.');
       return;
     }
-    // Skip the prompt when the answer is obvious: the client currently open on the dashboard (if
-    // they're still on the roster), or the only client they have. The `clients.some(...)` check
-    // guards against a stale selection pointing at a removed client.
-    const preferredId = selectedClientIdFromDashboard && clients.some((c) => c.id === selectedClientIdFromDashboard)
-      ? selectedClientIdFromDashboard
-      : clients.length === 1
-        ? clients[0].id
-        : null;
+    // Prefer the dashboard client if they are still on the roster; else the only client; else ask.
+    const preferredId = preferredClientIdForPlusPress(
+      clients,
+      selectedClientIdFromDashboard,
+    );
     if (preferredId) {
       setAddNotesFilesClientId(preferredId);
       setShowAddFilePopup(true);
@@ -1453,7 +1316,7 @@ function TrainerAppStartContent({ user }) {
   // the editors first, then performs the normal action.
   const getTrainerEditorNavChrome = useCallback((closeDashboardEditors) => {
     const closeEditors = () => {
-      closeDashboardEditors?.();
+      callIfPresent(closeDashboardEditors);
       setDocumentEditor({ visible: false, documentId: null });
     };
     return {
@@ -1637,3 +1500,356 @@ function TrainerAppStartContent({ user }) {
   return <TrainerShellLayout shell={shell} />;
 }
 
+// ===== PLUMBING — skip unless debugging =====
+// Heavy roster / write / analytics helpers the CRM recipes call.
+// Converts lightColors.primary into '255, 107, 157' so it can be dropped into an `rgba(…, 0.2)` string —
+// React Native has no color-with-opacity helper, so the channels must be split out by hand.
+// vocab: parseInt(x, 16) = read the two hex characters as a base-16 number.
+// Manipulate here: '255, 107, 157' is the brand pink used as the fallback whenever the input isn't
+// a clean 6-digit hex (both guards below return it rather than producing an invalid color string).
+function hexToRgbTriple(hexColor) {
+  const hexDigits = String(hexColor || "").replace("#", "").trim();
+  if (hexDigits.length !== 6) {
+    return "255, 107, 157";
+  }
+  const redChannel = parseInt(hexDigits.slice(0, 2), 16);
+  const greenChannel = parseInt(hexDigits.slice(2, 4), 16);
+  const blueChannel = parseInt(hexDigits.slice(4, 6), 16);
+  const channels = [redChannel, greenChannel, blueChannel];
+  if (anyChannelIsNaN(channels)) {
+    return "255, 107, 157";
+  }
+  return `${redChannel}, ${greenChannel}, ${blueChannel}`;
+}
+
+// Fallback dashboard payload built purely from CRM data, used when the client's own user profile
+// can't be read (they haven't finished signup, or rules block it). Every field gets a defined value
+// so the dashboard renders a real empty state instead of crashing on undefined.
+// Manipulate here: the *Goal numbers and 'Custom Program' are placeholder defaults shown until the
+// trainer sets real ones.
+function crmFieldOrNull(currentClient, fieldName) {
+  if (!currentClient) {
+    return null;
+  }
+  if (currentClient[fieldName] == null) {
+    return null;
+  }
+  return currentClient[fieldName];
+}
+
+function crmFieldOrEmptyList(currentClient, fieldName) {
+  if (!currentClient) {
+    return [];
+  }
+  if (!currentClient[fieldName]) {
+    return [];
+  }
+  return currentClient[fieldName];
+}
+
+function beforeWeightFromCrm(currentClient) {
+  const startingWeight = crmFieldOrNull(currentClient, 'startingWeight');
+  if (startingWeight != null) {
+    return startingWeight;
+  }
+  return crmFieldOrNull(currentClient, 'weight');
+}
+
+function buildTrainerDashboardClientDataFromCrm(currentClient, notesAndFiles = []) {
+  let programName = 'Custom Program';
+  if (currentClient && currentClient.programName) {
+    programName = currentClient.programName;
+  }
+  return {
+    beforeWeight: beforeWeightFromCrm(currentClient),
+    currentWeight: crmFieldOrNull(currentClient, 'weight'),
+    trainingDays: [],
+    programName,
+    nutrition: {
+      calories: 0,
+      protein: 0,
+      carbs: 0,
+      fat: 0,
+      fiber: 0,
+      sugar: 0,
+      sodium: 0,
+      potassium: 0,
+      proteinGoal: 200,
+      carbsGoal: 300,
+      fatGoal: 80,
+      micros: crmFieldOrEmptyList(currentClient, 'micros'),
+      foods: [],
+    },
+    calendar: {
+      completed: crmFieldOrEmptyList(currentClient, 'completedDays'),
+      upcoming: crmFieldOrEmptyList(currentClient, 'upcomingDays'),
+      missed: crmFieldOrEmptyList(currentClient, 'missedDays'),
+      upcomingSessions: crmFieldOrEmptyList(currentClient, 'upcomingSessions'),
+    },
+    notesAndFiles,
+  };
+}
+
+async function ensureConversationExists(clientId, trainerId) {
+  try {
+    await getOrCreateConversation(clientId, trainerId);
+  } catch (conversationError) {
+    console.error("⚠️ Error creating auto-conversation:", conversationError);
+  }
+}
+
+async function writeCanonicalClientDoc(trainerId, clientId, payload) {
+  const clientRef = doc(db, `trainer_clients/${trainerId}/clients/${clientId}`);
+  const existingDoc = await getDoc(clientRef);
+  if (existingDoc.exists()) {
+    await setDoc(clientRef, payload, { merge: true });
+    return;
+  }
+  await setDoc(clientRef, payload);
+}
+
+async function writeTrainerClientLink(trainerId, clientId, payload) {
+  try {
+    const linkId = `${trainerId}_${clientId}`;
+    const linkRef = doc(db, TRAINER_CLIENT_LINKS, linkId);
+    await setDoc(
+      linkRef,
+      {
+        trainerId,
+        clientId,
+        name: payload.name,
+        email: payload.email,
+        goals: payload.goals,
+        status: payload.status,
+        joinedAt: payload.joinedAt,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true },
+    );
+  } catch (linkError) {
+    console.warn("⚠️ trainer_client_links write skipped:", errorMessageOrValue(linkError));
+  }
+}
+
+async function confirmClientDocSaved(trainerId, clientId) {
+  const clientRef = doc(db, `trainer_clients/${trainerId}/clients/${clientId}`);
+  const verifyDoc = await getDoc(clientRef);
+  if (verifyDoc.exists()) return;
+  console.error("❌ ERROR: Client was not saved!");
+}
+
+async function mirrorLegacyClientDoc(clientId, trainerId, payload) {
+  try {
+    const legacyClientRef = doc(db, CRM_CLIENTS_COLLECTION, clientId);
+    await setDoc(
+      legacyClientRef,
+      {
+        id: clientId,
+        trainerId,
+        ...payload,
+      },
+      { merge: true },
+    );
+  } catch (legacyError) {
+    /* ignore */
+  }
+}
+
+function compareClientNames(leftClient, rightClient) {
+  const leftName = (leftClient.name || "").toLowerCase();
+  const rightName = (rightClient.name || "").toLowerCase();
+  return leftName.localeCompare(rightName);
+}
+
+function clientStatusIsHidden(client) {
+  const status = String(client.status || "active").toLowerCase();
+  if (status === "inactive" || status === "removed" || status === "deleted") return true;
+  return client.archived === true;
+}
+
+function clientStillBelongsToTrainer(userData, trainerId) {
+  if (!userData) {
+    return false;
+  }
+  const linkedTrainerId = userData.trainerId;
+  if (linkedTrainerId == null || linkedTrainerId === "") {
+    return false;
+  }
+  return String(linkedTrainerId) === String(trainerId);
+}
+
+async function saveRealNameIfPlaceholder(trainerId, clientId, storedName, resolvedName) {
+  if (!resolvedName) return;
+  if (isGenericClientDisplayName(resolvedName)) return;
+  if (!isGenericClientDisplayName(storedName)) return;
+  try {
+    await setDoc(
+      doc(db, `trainer_clients/${trainerId}/clients/${clientId}`),
+      { name: resolvedName, updatedAt: serverTimestamp() },
+      { merge: true },
+    );
+  } catch (ignoredError) {
+    /* ignore */
+  }
+}
+
+async function rosterRowFromUserDoc(client, trainerId) {
+  const userDoc = await getDoc(doc(db, "users", client.id));
+  if (!userDoc.exists()) return combineTraineeProfile(client, {});
+  const userData = userDoc.data();
+  if (!clientStillBelongsToTrainer(userData, trainerId)) return null;
+  const storedName = String(client.name || "").trim();
+  const resolvedName = resolveTrainerClientDisplayName(client, userData);
+  const mergedClient = combineTraineeProfile(
+    { ...client, name: resolvedName, photoURL: client.photoURL || userData.photoURL || null },
+    userData,
+  );
+  await saveRealNameIfPlaceholder(trainerId, client.id, storedName, mergedClient.name);
+  return mergedClient;
+}
+
+async function rosterRowForClient(client, trainerId) {
+  if (clientStatusIsHidden(client)) return null;
+  try {
+    return await rosterRowFromUserDoc(client, trainerId);
+  } catch (ignoredError) {
+    return null;
+  }
+}
+
+async function loadSortedRoster(trainerId) {
+  const clients = await fetchTrainerClientRoster(trainerId, { includeLegacy: true });
+  const validClients = [];
+  for (const client of clients) {
+    const rosterRow = await rosterRowForClient(client, trainerId);
+    if (!rosterRow) continue;
+    validClients.push(rosterRow);
+  }
+  validClients.sort(compareClientNames);
+  return validClients;
+}
+
+function weightPointsFromProgress(progressEntries, limitCount) {
+  const weightData = [];
+  for (let index = 0; index < progressEntries.length; index += 1) {
+    const entry = progressEntries[index];
+    if (entry.weight == null || entry.weight <= 0) {
+      continue;
+    }
+    const pointDate = createdAtAsDate(entry.createdAt);
+    weightData.push({
+      date: pointDate || new Date(),
+      weight: Number(entry.weight),
+    });
+    if (weightData.length >= limitCount) {
+      break;
+    }
+  }
+  return weightData;
+}
+
+function wholeDaysSince(earlierDate) {
+  if (!earlierDate) return null;
+  const millisecondsPerDay = MILLISECONDS_PER_SECOND * SECONDS_PER_MINUTE * MINUTES_PER_HOUR * HOURS_PER_DAY;
+  const elapsedMilliseconds = new Date() - earlierDate;
+  return Math.floor(elapsedMilliseconds / millisecondsPerDay);
+}
+
+function latestCheckInSummary(progressEntries) {
+  if (progressEntries.length === 0) {
+    return { lastProgressDate: null, daysSinceLastCheckIn: null };
+  }
+  const lastEntry = progressEntries[0];
+  const lastProgressDate = createdAtAsDate(lastEntry.createdAt);
+  return {
+    lastProgressDate,
+    daysSinceLastCheckIn: wholeDaysSince(lastProgressDate),
+  };
+}
+
+function emptyClientAnalytics() {
+  return {
+    weightTrend: [],
+    taskStats: { total: 0, completed: 0, pending: 0 },
+    lastProgressDate: null,
+    daysSinceLastCheckIn: null,
+    progressEntriesCount: 0,
+  };
+}
+
+// Day keys use en-CA (YYYY-MM-DD) in America/New_York. Those letters must stay.
+function recentReportDateKeys(dayCount) {
+  const today = new Date();
+  const dateKeys = [];
+  for (let dayOffset = 0; dayOffset < dayCount; dayOffset += 1) {
+    const date = new Date(today);
+    date.setDate(today.getDate() - dayOffset);
+    const dateKey = date.toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+    dateKeys.push(dateKey);
+  }
+  return dateKeys;
+}
+
+function weekAvailabilityReport(dateKeys, daysWithData) {
+  return {
+    totalDays: WEEKLY_REPORT_DAY_COUNT,
+    daysWithData: daysWithData.length,
+    missingDays: WEEKLY_REPORT_DAY_COUNT - daysWithData.length,
+    details: daysWithData,
+    dateRange: {
+      start: dateKeys[dateKeys.length - 1],
+      end: dateKeys[0],
+    },
+  };
+}
+
+function emptyWeekAvailability(dateKeys) {
+  return {
+    totalDays: WEEKLY_REPORT_DAY_COUNT,
+    daysWithData: 0,
+    missingDays: WEEKLY_REPORT_DAY_COUNT,
+    details: [],
+    dateRange: {
+      start: dateKeys[dateKeys.length - 1],
+      end: dateKeys[0],
+    },
+  };
+}
+
+function loggedDayRow(dateKey, data) {
+  return {
+    date: dateKey,
+    hasWorkout: !!data.workout,
+    hasNutrition: !!data.nutrition,
+    hasWeight: !!data.weight,
+    hasMood: !!data.mood,
+    data,
+  };
+}
+
+async function dailyLogRowsForKeys(userId, dateKeys) {
+  const daysWithData = [];
+  const dailyLogsRef = collection(db, "users", userId, "dailyLogs");
+  for (const dateKey of dateKeys) {
+    const docSnap = await getDoc(doc(dailyLogsRef, dateKey));
+    if (!docSnap.exists()) continue;
+    daysWithData.push(loggedDayRow(dateKey, docSnap.data()));
+  }
+  return daysWithData;
+}
+
+function weeklyAvailabilityFailed(error, dateKeys) {
+  let code = null;
+  if (error && error.code) {
+    code = error.code;
+  }
+  const message = String(errorMessageOrValue(error) || "").toLowerCase();
+  const permissionDenied =
+    code === PERMISSION_DENIED_CODE || message.includes("missing or insufficient permissions");
+  if (permissionDenied) {
+    return emptyWeekAvailability(dateKeys);
+  }
+  console.error("Error checking weekly data availability:", error);
+  reportCrashAutomaticallySync(error, "TrainerAppStart CRM - checkWeeklyDataAvailability");
+  throw error;
+}

@@ -1,6 +1,6 @@
 // Home quote card and the smaller pill. One quote per user per local day, cached on the device.
-// Flow: first visit pins quote 0 → later visits reuse today's saved index → a new day picks the day-of-year quote.
-// Used on the client and trainer home screens. Quote text lives in dailyQuotes.json (keys `q` and `a`).
+// Flow: first card visit pins quote 0 → later visits reuse today's saved index → a new day picks day-of-year.
+// Used on client and trainer home screens. Quote text lives in dailyQuotes.json (keys `q` and `a`).
 
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
@@ -12,7 +12,7 @@ import { lightColors } from '../../look-and-feel/colorPalette';
 // ===== NAMED CONSTANTS =====
 
 const QUOTE_LIST = Array.isArray(dailyQuotesData?.quotes) ? dailyQuotesData.quotes : [];
-// vocab: `q` is the sentence and `a` is the author. Those keys come from dailyQuotes.json.
+// vocab: `q` is the sentence and `a` is the author — those keys come from dailyQuotes.json.
 const FALLBACK_QUOTE = { q: 'Keep showing up.', a: 'Daily Motivation' };
 const FALLBACK_AUTHOR = 'Daily Motivation';
 const UNKNOWN_AUTHOR = 'unknown';
@@ -24,62 +24,49 @@ const HOURS_PER_DAY = 24;
 const MILLISECONDS_PER_DAY = MS_PER_SECOND * SECONDS_PER_MINUTE * MINUTES_PER_HOUR * HOURS_PER_DAY;
 const ISO_DATE_LENGTH = 10;
 const CARD_MIN_HEIGHT_DEFAULT = 96;
+const STARTER_QUOTE_INDEX = 0;
+const SEEN_FLAG_VALUE = 'true';
+
+// Embedded / standalone fill colors (keep these letters — screens depend on the look).
+const EMBEDDED_TEXT_LIGHT = '#111827';
+const AUTHOR_LIGHT = 'rgba(17,24,39,0.70)';
+const AUTHOR_DARK = 'rgba(255,255,255,0.78)';
+const CARD_FILL_DARK = 'rgba(10,10,15,0.78)';
+const CARD_FILL_LIGHT = 'rgba(255,255,255,0.92)';
+const CARD_BORDER_DARK = 'rgba(255,255,255,0.12)';
+const CARD_BORDER_LIGHT = 'rgba(17,24,39,0.10)';
+const PILL_FILL_DARK = 'rgba(10,10,15,0.80)';
+const PILL_FILL_LIGHT = 'rgba(255,255,255,0.92)';
+const PILL_BORDER_DARK = 'rgba(255,255,255,0.08)';
+const PILL_BORDER_LIGHT = 'rgba(10,10,15,0.06)';
+const PILL_EMBEDDED_BORDER_DARK = 'rgba(255,255,255,0.12)';
+const PILL_EMBEDDED_BORDER_LIGHT = 'rgba(10,10,15,0.10)';
+const PILL_AUTHOR_DARK = 'rgba(255,255,255,0.65)';
+const PILL_AUTHOR_LIGHT = 'rgba(10,10,15,0.55)';
+const PILL_RADIUS_EMBEDDED = 14;
+const PILL_RADIUS_STANDALONE = 26;
 
 // ===== HELPER FUNCTIONS =====
 
-function dailyQuoteStorageKey(userId) {
-  return `coachconnect_daily_quote_v2:${userId}`;
+function quoteAtIndex(quoteIndex) {
+  return QUOTE_LIST[quoteIndex] || QUOTE_LIST[0] || FALLBACK_QUOTE;
 }
 
-function dailyQuoteSeenKey(userId) {
-  return `coachconnect_daily_quote_seen_v1:${userId}`;
+function clampQuoteIndex(index) {
+  const lastIndex = QUOTE_LIST.length - 1;
+  return Math.max(0, Math.min(lastIndex, Number(index)));
 }
 
-function todayKeyLocal() {
-  return new Date().toISOString().slice(0, ISO_DATE_LENGTH);
-}
-
-/**
- * Embedded cards sit on a parent surface, so this card drops its own fill and border.
- * @param {boolean} isDark
- * @param {boolean} embedded
- * @returns {{ cardBackground: string, borderColor: string, textColor: string, authorColor: string }}
- */
-function cardThemeColors(isDark, embedded) {
-  if (embedded) {
-    return {
-      cardBackground: 'transparent',
-      borderColor: 'transparent',
-      textColor: isDark ? lightColors.white : '#111827',
-      authorColor: isDark ? 'rgba(255,255,255,0.78)' : 'rgba(17,24,39,0.70)',
-    };
+function displayAuthor(author) {
+  const authorText = (author || '').trim();
+  if (!authorText) {
+    return FALLBACK_AUTHOR;
   }
-  return {
-    cardBackground: isDark ? 'rgba(10,10,15,0.78)' : 'rgba(255,255,255,0.92)',
-    borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(17,24,39,0.10)',
-    textColor: isDark ? lightColors.white : '#111827',
-    authorColor: isDark ? 'rgba(255,255,255,0.78)' : 'rgba(17,24,39,0.70)',
-  };
-}
-
-/**
- * @param {boolean} isDark
- * @param {boolean} embedded
- * @returns {{ backgroundColor: string, borderColor: string, borderRadius: number }}
- */
-function pillSurfaceColors(isDark, embedded) {
-  if (embedded) {
-    return {
-      backgroundColor: 'transparent',
-      borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(10,10,15,0.10)',
-      borderRadius: 14,
-    };
+  const authorLooksUnknown = authorText.toLowerCase() === UNKNOWN_AUTHOR;
+  if (authorLooksUnknown) {
+    return FALLBACK_AUTHOR;
   }
-  return {
-    backgroundColor: isDark ? 'rgba(10,10,15,0.80)' : 'rgba(255,255,255,0.92)',
-    borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(10,10,15,0.06)',
-    borderRadius: 26,
-  };
+  return authorText;
 }
 
 function dayOfYearNumber(now) {
@@ -89,87 +76,142 @@ function dayOfYearNumber(now) {
 }
 
 function getTodayQuote() {
-  if (!QUOTE_LIST.length) return FALLBACK_QUOTE;
+  if (!QUOTE_LIST.length) {
+    return FALLBACK_QUOTE;
+  }
   const dayOfYear = dayOfYearNumber(new Date());
-  const index = (dayOfYear - 1) % QUOTE_LIST.length;
-  return QUOTE_LIST[index];
+  const indexInList = (dayOfYear - 1) % QUOTE_LIST.length;
+  return QUOTE_LIST[indexInList];
 }
 
 function quoteIndexForToday() {
   const todayQuote = getTodayQuote();
-  const index = QUOTE_LIST.findIndex((quote) => quote?.q === todayQuote?.q && quote?.a === todayQuote?.a);
-  return index >= 0 ? index : 0;
-}
-
-function clampQuoteIndex(index) {
-  return Math.max(0, Math.min(QUOTE_LIST.length - 1, Number(index)));
-}
-
-function displayAuthor(author) {
-  const authorText = (author || '').trim();
-  if (!authorText) return FALLBACK_AUTHOR;
-  if (authorText.toLowerCase() === UNKNOWN_AUTHOR) return FALLBACK_AUTHOR;
-  return authorText;
-}
-
-function quoteAtIndex(quoteIndex) {
-  return QUOTE_LIST[quoteIndex] || QUOTE_LIST[0] || FALLBACK_QUOTE;
-}
-
-async function readCachedQuoteRecord(userId) {
-  const raw = await AsyncStorage.getItem(dailyQuoteStorageKey(userId));
-  return raw ? JSON.parse(raw) : null;
-}
-
-function cachedIndexForToday(parsed, today) {
-  if (parsed?.date === today && Number.isFinite(parsed?.index)) {
-    return clampQuoteIndex(parsed.index);
+  const matchingIndex = QUOTE_LIST.findIndex((quote) => {
+    const sameSentence = quote?.q === todayQuote?.q;
+    const sameAuthor = quote?.a === todayQuote?.a;
+    return sameSentence && sameAuthor;
+  });
+  if (matchingIndex >= 0) {
+    return matchingIndex;
   }
-  return null;
+  return 0;
 }
 
-async function saveQuoteIndex(userId, today, index) {
-  await AsyncStorage.setItem(dailyQuoteStorageKey(userId), JSON.stringify({ date: today, index }));
+function embeddedCardThemeColors(isDark) {
+  let textColor = EMBEDDED_TEXT_LIGHT;
+  let authorColor = AUTHOR_LIGHT;
+  if (isDark) {
+    textColor = lightColors.white;
+    authorColor = AUTHOR_DARK;
+  }
+  return {
+    cardBackground: 'transparent',
+    borderColor: 'transparent',
+    textColor,
+    authorColor,
+  };
 }
 
-// Card-only: the first time this user opens the card, pin index 0, then rotate on later days.
-// onIndex runs at the same moment the screen used to set state, before the storage writes finish.
-async function resolveQuoteIndexForCard(userId, onIndex) {
-  const today = todayKeyLocal();
-  const parsed = await readCachedQuoteRecord(userId);
-  const hasSeenQuote = await AsyncStorage.getItem(dailyQuoteSeenKey(userId));
-  if (!hasSeenQuote) {
-    const starterIndex = 0;
-    onIndex(starterIndex);
-    await AsyncStorage.setItem(dailyQuoteSeenKey(userId), 'true');
-    await saveQuoteIndex(userId, today, starterIndex);
-    return;
+function standaloneCardThemeColors(isDark) {
+  if (isDark) {
+    return {
+      cardBackground: CARD_FILL_DARK,
+      borderColor: CARD_BORDER_DARK,
+      textColor: lightColors.white,
+      authorColor: AUTHOR_DARK,
+    };
   }
-
-  const cachedIndex = cachedIndexForToday(parsed, today);
-  if (cachedIndex !== null) {
-    onIndex(cachedIndex);
-    return;
-  }
-
-  const todayIndex = quoteIndexForToday();
-  onIndex(todayIndex);
-  await saveQuoteIndex(userId, today, todayIndex);
+  return {
+    cardBackground: CARD_FILL_LIGHT,
+    borderColor: CARD_BORDER_LIGHT,
+    textColor: EMBEDDED_TEXT_LIGHT,
+    authorColor: AUTHOR_LIGHT,
+  };
 }
 
-// Pill does not pin a starter quote. It only reads today's cache or writes the day-of-year pick.
-async function resolveQuoteIndexForPill(userId, onIndex) {
-  const today = todayKeyLocal();
-  const parsed = await readCachedQuoteRecord(userId);
-  const cachedIndex = cachedIndexForToday(parsed, today);
-  if (cachedIndex !== null) {
-    onIndex(cachedIndex);
-    return;
+function cardThemeColors(isDark, embedded) {
+  if (embedded) {
+    return embeddedCardThemeColors(isDark);
   }
+  return standaloneCardThemeColors(isDark);
+}
 
-  const todayIndex = quoteIndexForToday();
-  onIndex(todayIndex);
-  await saveQuoteIndex(userId, today, todayIndex);
+function embeddedPillSurfaceColors(isDark) {
+  let borderColor = PILL_EMBEDDED_BORDER_LIGHT;
+  if (isDark) {
+    borderColor = PILL_EMBEDDED_BORDER_DARK;
+  }
+  return {
+    backgroundColor: 'transparent',
+    borderColor,
+    borderRadius: PILL_RADIUS_EMBEDDED,
+  };
+}
+
+function standalonePillSurfaceColors(isDark) {
+  if (isDark) {
+    return {
+      backgroundColor: PILL_FILL_DARK,
+      borderColor: PILL_BORDER_DARK,
+      borderRadius: PILL_RADIUS_STANDALONE,
+    };
+  }
+  return {
+    backgroundColor: PILL_FILL_LIGHT,
+    borderColor: PILL_BORDER_LIGHT,
+    borderRadius: PILL_RADIUS_STANDALONE,
+  };
+}
+
+function pillSurfaceColors(isDark, embedded) {
+  if (embedded) {
+    return embeddedPillSurfaceColors(isDark);
+  }
+  return standalonePillSurfaceColors(isDark);
+}
+
+function lineLimitPropsForPill(maxLines) {
+  const hasLineLimit = typeof maxLines === 'number' && maxLines > 0;
+  if (!hasLineLimit) {
+    return {};
+  }
+  return { numberOfLines: maxLines, ellipsizeMode: 'tail' };
+}
+
+function quoteSentenceText(quote) {
+  return `"${quote.q}"`;
+}
+
+function authorLineText(quote) {
+  return `— ${displayAuthor(quote.a)}`;
+}
+
+function borderWidthForCard(embedded) {
+  if (embedded) {
+    return 0;
+  }
+  return 1;
+}
+
+function resolveDarkFlag(isDarkOverride, themeIsDark) {
+  if (typeof isDarkOverride === 'boolean') {
+    return isDarkOverride;
+  }
+  return themeIsDark;
+}
+
+function pillQuoteTextColor(isDark) {
+  if (isDark) {
+    return lightColors.white;
+  }
+  return lightColors.nbInk;
+}
+
+function pillAuthorTextColor(isDark) {
+  if (isDark) {
+    return PILL_AUTHOR_DARK;
+  }
+  return PILL_AUTHOR_LIGHT;
 }
 
 // ===== MAIN FUNCTION =====
@@ -179,46 +221,63 @@ async function resolveQuoteIndexForPill(userId, onIndex) {
  * @param {{ userId?: string, cardWidth?: number|string, cardMinHeight?: number, embedded?: boolean }} props
  */
 export default function DailyQuoteCard({ userId, cardWidth, cardMinHeight, embedded = false }) {
+  // vocab: useTheme = light/dark tokens for the current app theme
   const { isDark } = useTheme();
+  const [quoteIndex, setQuoteIndex] = useState(STARTER_QUOTE_INDEX);
+
   const outerWidth = cardWidth ?? '100%';
   const outerMinHeight = cardMinHeight ?? CARD_MIN_HEIGHT_DEFAULT;
-  const [quoteIndex, setQuoteIndex] = useState(0);
-  const { cardBackground, borderColor, textColor, authorColor } = cardThemeColors(isDark, embedded);
+  const themeColors = cardThemeColors(isDark, embedded);
 
+  // 1. When userId appears, read AsyncStorage and set today's quote index.
+  // 2. On unmount, ignore late callbacks so we never set state on a dead tree.
   useEffect(() => {
-    let isCancelled = false;
+    let effectIsActive = true;
 
-    const run = async () => {
-      if (!userId) return;
+    const loadQuoteIndexForCard = async () => {
+      if (!userId) {
+        return;
+      }
       try {
         await resolveQuoteIndexForCard(userId, (index) => {
-          if (!isCancelled) setQuoteIndex(index);
+          if (effectIsActive) {
+            setQuoteIndex(index);
+          }
         });
-      } catch (error) {
-        // If AsyncStorage fails, do nothing and keep default
+      } catch (storageError) {
+        // If AsyncStorage fails, keep the default index on screen.
       }
     };
 
-    run();
+    loadQuoteIndexForCard();
 
     return () => {
-      isCancelled = true;
+      effectIsActive = false;
     };
   }, [userId]);
 
+  // 3. Resolve the quote object and paint the card chrome.
   const quote = quoteAtIndex(quoteIndex);
+  const borderWidth = borderWidthForCard(embedded);
+  const quoteSentence = quoteSentenceText(quote);
+  const authorLine = authorLineText(quote);
 
   return (
     <View style={[styles.outer, { width: outerWidth, minHeight: outerMinHeight }]}>
-      <View style={[styles.border, { borderColor, borderWidth: embedded ? 0 : 1 }]}>
-        <View style={[styles.card, { backgroundColor: cardBackground, minHeight: outerMinHeight }]}>
+      <View style={[styles.border, { borderColor: themeColors.borderColor, borderWidth }]}>
+        <View
+          style={[
+            styles.card,
+            { backgroundColor: themeColors.cardBackground, minHeight: outerMinHeight },
+          ]}
+        >
           <View style={styles.content}>
-            <Text style={[styles.quoteText, { color: textColor }]}>
-              "{quote.q}"
+            <Text style={[styles.quoteText, { color: themeColors.textColor }]}>
+              {quoteSentence}
             </Text>
             <Text style={styles.inspirationLabel}>DAILY INSPIRATION</Text>
-            <Text style={[styles.authorText, { color: authorColor }]}>
-              — {displayAuthor(quote.a)}
+            <Text style={[styles.authorText, { color: themeColors.authorColor }]}>
+              {authorLine}
             </Text>
           </View>
         </View>
@@ -233,24 +292,40 @@ export default function DailyQuoteCard({ userId, cardWidth, cardMinHeight, embed
  * @returns {{ q: string, a: string }}
  */
 export function useDailyQuote(userId) {
-  const [quoteIndex, setQuoteIndex] = useState(0);
+  const [quoteIndex, setQuoteIndex] = useState(STARTER_QUOTE_INDEX);
+
+  // 1. Load the card's pin/rotate index when userId is set.
+  // 2. Ignore late storage callbacks after unmount.
   useEffect(() => {
-    let cancelled = false;
-    const run = async () => {
-      if (!userId) return;
+    let effectIsActive = true;
+
+    const loadQuoteIndexForHook = async () => {
+      if (!userId) {
+        return;
+      }
       try {
         await resolveQuoteIndexForCard(userId, (index) => {
-          if (!cancelled) setQuoteIndex(index);
+          if (effectIsActive) {
+            setQuoteIndex(index);
+          }
         });
-      } catch (_) {}
+      } catch (storageError) {
+        // Keep default index when storage is unavailable.
+      }
     };
-    run();
+
+    loadQuoteIndexForHook();
+
     return () => {
-      cancelled = true;
+      effectIsActive = false;
     };
   }, [userId]);
+
+  // 3. Hand the sentence + cleaned author to the hero.
   const quote = quoteAtIndex(quoteIndex);
-  return { q: quote?.q || FALLBACK_QUOTE.q, a: displayAuthor(quote?.a) };
+  const sentence = quote?.q || FALLBACK_QUOTE.q;
+  const authorName = displayAuthor(quote?.a);
+  return { q: sentence, a: authorName };
 }
 
 /**
@@ -259,60 +334,164 @@ export function useDailyQuote(userId) {
  */
 export function DailyQuotePill({ userId, isDarkOverride, maxLines, embedded = false }) {
   const { isDark: themeIsDark } = useTheme();
-  const isDark = typeof isDarkOverride === 'boolean' ? isDarkOverride : themeIsDark;
-  const [quoteIndex, setQuoteIndex] = useState(0);
+  const isDark = resolveDarkFlag(isDarkOverride, themeIsDark);
+  const [quoteIndex, setQuoteIndex] = useState(STARTER_QUOTE_INDEX);
 
+  // 1. Pill never pins a starter — load cache or day-of-year when userId is set.
+  // 2. Ignore late storage callbacks after unmount.
   useEffect(() => {
-    let isCancelled = false;
-    const run = async () => {
-      if (!userId) return;
+    let effectIsActive = true;
+
+    const loadQuoteIndexForPill = async () => {
+      if (!userId) {
+        return;
+      }
       try {
         await resolveQuoteIndexForPill(userId, (index) => {
-          if (!isCancelled) setQuoteIndex(index);
+          if (effectIsActive) {
+            setQuoteIndex(index);
+          }
         });
-      } catch (_) {
-        // ignore
+      } catch (storageError) {
+        // Ignore — pill keeps whatever index was already showing.
       }
     };
-    run();
+
+    loadQuoteIndexForPill();
+
     return () => {
-      isCancelled = true;
+      effectIsActive = false;
     };
   }, [userId]);
 
+  // 3. Name surface + text colors, then paint.
   const quote = quoteAtIndex(quoteIndex);
-  const hasLineLimit = typeof maxLines === 'number' && maxLines > 0;
   const surface = pillSurfaceColors(isDark, embedded);
+  const quoteTextColor = pillQuoteTextColor(isDark);
+  const authorTextColor = pillAuthorTextColor(isDark);
+  const lineLimitProps = lineLimitPropsForPill(maxLines);
+  const quoteSentence = quoteSentenceText(quote);
+  const authorLine = authorLineText(quote);
+
+  let wrapStyle = [pillStyles.wrap];
+  if (embedded) {
+    wrapStyle = [pillStyles.wrap, pillStyles.wrapEmbedded];
+  }
+
+  const innerStyle = [
+    pillStyles.inner,
+    {
+      backgroundColor: surface.backgroundColor,
+      borderColor: surface.borderColor,
+      borderWidth: 1,
+      borderRadius: surface.borderRadius,
+    },
+  ];
 
   return (
-    <View style={[pillStyles.wrap, embedded && pillStyles.wrapEmbedded]}>
-      <View
-        style={[
-          pillStyles.inner,
-          {
-            backgroundColor: surface.backgroundColor,
-            borderColor: surface.borderColor,
-            borderWidth: 1,
-            borderRadius: surface.borderRadius,
-          },
-        ]}
-      >
-        <Text
-          style={[pillStyles.text, { color: isDark ? lightColors.white : lightColors.nbInk }]}
-          {...(hasLineLimit ? { numberOfLines: maxLines, ellipsizeMode: 'tail' } : {})}
-        >
-          "{quote.q}"
+    <View style={wrapStyle}>
+      <View style={innerStyle}>
+        <Text style={[pillStyles.text, { color: quoteTextColor }]} {...lineLimitProps}>
+          {quoteSentence}
         </Text>
         <Text
-          style={[pillStyles.author, { color: isDark ? 'rgba(255,255,255,0.65)' : 'rgba(10,10,15,0.55)' }]}
+          style={[pillStyles.author, { color: authorTextColor }]}
           numberOfLines={1}
           ellipsizeMode="tail"
         >
-          — {displayAuthor(quote.a)}
+          {authorLine}
         </Text>
       </View>
     </View>
   );
+}
+
+// PLUMBING — skip unless debugging AsyncStorage keys and cache shape.
+
+function dailyQuoteStorageKey(userId) {
+  // Freeze: storage key letters must stay exactly this string.
+  return `coachconnect_daily_quote_v2:${userId}`;
+}
+
+function dailyQuoteSeenKey(userId) {
+  // Freeze: first-visit flag key letters must stay exactly this string.
+  return `coachconnect_daily_quote_seen_v1:${userId}`;
+}
+
+function todayKeyLocal() {
+  // vocab: toISOString = UTC stamp; first 10 chars are YYYY-MM-DD
+  return new Date().toISOString().slice(0, ISO_DATE_LENGTH);
+}
+
+async function readCachedQuoteRecord(userId) {
+  // vocab: AsyncStorage = on-device key/value store (survives app restarts)
+  const jsonFromStorage = await AsyncStorage.getItem(dailyQuoteStorageKey(userId));
+  if (!jsonFromStorage) {
+    return null;
+  }
+  return JSON.parse(jsonFromStorage);
+}
+
+function cachedIndexForToday(savedRecord, today) {
+  const dateMatchesToday = savedRecord?.date === today;
+  const indexIsANumber = Number.isFinite(savedRecord?.index);
+  if (dateMatchesToday && indexIsANumber) {
+    return clampQuoteIndex(savedRecord.index);
+  }
+  return null;
+}
+
+async function saveQuoteIndex(userId, today, index) {
+  const recordForToday = { date: today, index };
+  await AsyncStorage.setItem(dailyQuoteStorageKey(userId), JSON.stringify(recordForToday));
+}
+
+/**
+ * Card-only: first open pins index 0; onIndex fires before writes finish (same timing as old setState).
+ * @param {string} userId
+ * @param {(index: number) => void} onIndex
+ */
+async function resolveQuoteIndexForCard(userId, onIndex) {
+  const today = todayKeyLocal();
+  const savedRecord = await readCachedQuoteRecord(userId);
+  const hasSeenQuote = await AsyncStorage.getItem(dailyQuoteSeenKey(userId));
+
+  if (!hasSeenQuote) {
+    onIndex(STARTER_QUOTE_INDEX);
+    await AsyncStorage.setItem(dailyQuoteSeenKey(userId), SEEN_FLAG_VALUE);
+    await saveQuoteIndex(userId, today, STARTER_QUOTE_INDEX);
+    return;
+  }
+
+  const cachedIndex = cachedIndexForToday(savedRecord, today);
+  if (cachedIndex !== null) {
+    onIndex(cachedIndex);
+    return;
+  }
+
+  const todayIndex = quoteIndexForToday();
+  onIndex(todayIndex);
+  await saveQuoteIndex(userId, today, todayIndex);
+}
+
+/**
+ * Pill never pins a starter quote — only today's cache or the day-of-year pick.
+ * @param {string} userId
+ * @param {(index: number) => void} onIndex
+ */
+async function resolveQuoteIndexForPill(userId, onIndex) {
+  const today = todayKeyLocal();
+  const savedRecord = await readCachedQuoteRecord(userId);
+  const cachedIndex = cachedIndexForToday(savedRecord, today);
+
+  if (cachedIndex !== null) {
+    onIndex(cachedIndex);
+    return;
+  }
+
+  const todayIndex = quoteIndexForToday();
+  onIndex(todayIndex);
+  await saveQuoteIndex(userId, today, todayIndex);
 }
 
 const styles = StyleSheet.create({

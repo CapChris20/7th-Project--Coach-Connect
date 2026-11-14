@@ -1,5 +1,5 @@
 // Google Gemini mark filled with the brand gradient, for the AI coach tab.
-// Flow: draw the PNG as a mask → paint the gradient through that shape → size the mark slightly inside the box.
+// Flow: size the tab slot → build PNG mask → clip LinearGradient through MaskedView.
 // Used by the tab bar as the AI coach icon.
 
 import React from 'react';
@@ -15,53 +15,56 @@ import {
 
 // ===== NAMED CONSTANTS =====
 
-const GEMINI_MARK = require('../../assets/icons/google_gemini.png');
+const GEMINI_MARK_IMAGE = require('../../assets/icons/google_gemini.png');
+
+// Manipulate here: default tab slot edge when parent omits size.
 const DEFAULT_TAB_ICON_SIZE = 36;
+
 // Manipulate here: fraction of the tab slot the mark fills. Lower = more padding around the spark.
 const GEMINI_MARK_SCALE = 0.9;
 
 // ===== HELPER FUNCTIONS =====
 
-/**
- * @param {number} iconSize
- * @returns {number}
- */
-function geminiMarkSize(iconSize) {
-  return iconSize * GEMINI_MARK_SCALE;
+function markSizeInsideTabSlot(tabSlotEdge) {
+  return tabSlotEdge * GEMINI_MARK_SCALE;
 }
 
-function tabSlotStyle(iconSize) {
-  return { width: iconSize, height: iconSize };
+function makeSquareStyle(edgeLength) {
+  return { width: edgeLength, height: edgeLength };
 }
 
-function geminiMaskStyle(iconSize) {
+function makeCenteredTransparentBox(edgeLength) {
   return {
-    width: iconSize,
-    height: iconSize,
+    width: edgeLength,
+    height: edgeLength,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'transparent',
   };
 }
 
-function geminiImageStyle(markSize) {
-  return { width: markSize, height: markSize };
+// Opaque PNG silhouette — MaskedView shows the gradient only where this image is drawn.
+function makeGeminiPngMask(tabSlotEdge, markEdge) {
+  const slotStyle = makeCenteredTransparentBox(tabSlotEdge);
+  const markStyle = makeSquareStyle(markEdge);
+
+  return (
+    <View style={slotStyle}>
+      <Image source={GEMINI_MARK_IMAGE} style={markStyle} resizeMode="contain" />
+    </View>
+  );
 }
 
-/**
- * The mask is the opaque PNG. MaskedView shows the gradient only where this image is drawn.
- * Returned as an element, not a component, so the mask stays a View.
- * @param {number} iconSize
- * @param {number} markSize
- * @returns {JSX.Element}
- */
-function geminiMarkMask(iconSize, markSize) {
-  const maskStyle = geminiMaskStyle(iconSize);
-  const imageStyle = geminiImageStyle(markSize);
+// Full-slot brand gradient; the mask clips it to the Gemini shape.
+function makeBrandGradientLayer(slotStyle, gradientColors, gradientStops, gradientStart, gradientEnd) {
   return (
-    <View style={maskStyle}>
-      <Image source={GEMINI_MARK} style={imageStyle} resizeMode="contain" />
-    </View>
+    <LinearGradient
+      colors={gradientColors}
+      locations={gradientStops}
+      start={gradientStart}
+      end={gradientEnd}
+      style={slotStyle}
+    />
   );
 }
 
@@ -84,27 +87,26 @@ export default function AICoachTabIcon({
   start = BRAND_ICON_GRADIENT_START,
   end = BRAND_ICON_GRADIENT_END,
 }) {
-  const markSize = geminiMarkSize(size);
-  const boxStyle = tabSlotStyle(size);
-  const markMask = geminiMarkMask(size, markSize);
+  // 1. Tab slot is square; Gemini art is slightly smaller inside it.
+  const tabSlotStyle = makeSquareStyle(size);
+  const markEdge = markSizeInsideTabSlot(size);
 
-  // 1. Size the Gemini mark a bit inside the tab slot.
-  // 2. Mask the brand gradient through that PNG.
+  // 2. Build the PNG mask and the brand gradient fill.
+  const pngMask = makeGeminiPngMask(size, markEdge);
+  const gradientLayer = makeBrandGradientLayer(
+    tabSlotStyle,
+    colors,
+    locations,
+    start,
+    end,
+  );
+
+  // 3. Paint brand gradient, clipped to the PNG silhouette.
+  // vocab: MaskedView = show children only inside maskElement’s opaque pixels.
+  // collapsable={false} keeps Android from flattening this view away, which would drop the mask.
   return (
-    // vocab: MaskedView = show the children only inside the shape of maskElement.
-    // collapsable={false} keeps Android from flattening this view away, which would drop the mask.
-    <MaskedView
-      style={boxStyle}
-      collapsable={false}
-      maskElement={markMask}
-    >
-      <LinearGradient
-        colors={colors}
-        locations={locations}
-        start={start}
-        end={end}
-        style={boxStyle}
-      />
+    <MaskedView style={tabSlotStyle} collapsable={false} maskElement={pngMask}>
+      {gradientLayer}
     </MaskedView>
   );
 }

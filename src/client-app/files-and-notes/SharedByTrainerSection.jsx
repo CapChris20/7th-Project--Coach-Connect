@@ -1,8 +1,6 @@
-// "Trainer shared" accordion on the client's files screen: files grouped by type, unread badge, optional detail sheet.
-// Flow: keep trainer-authored items → bucket by file type → newest first → tap a category to expand FileCards.
-// Used by: the client files screen. Opening a new file marks it read, then calls onOpenItem.
-//
-// vocab: neobrutalist = thick borders, hard shadows, no gradients except for unread badge
+// "Shared by trainer" accordion on the client's files screen: files grouped by type + unread badge.
+// Flow: keep trainer-authored items → bucket by file type → newest first → tap a category to expand.
+// Used by the client files screen. Opening a new file marks it read, then calls onOpenItem.
 
 import React, { useMemo, useState } from 'react';
 import { Text, TouchableOpacity, View, useColorScheme, StyleSheet } from 'react-native';
@@ -17,60 +15,103 @@ import { getFileTypeFromItem } from '../../helpers/fileSizeAndDateText';
 const ADDED_BY_TRAINER = 'trainer';
 const DOCUMENT_TYPE = 'document';
 const DEFAULT_EXPANDED_CATEGORY = 'documents';
-const EPOCH = 0;
+const EPOCH_MS = 0;
+const SECTION_BOTTOM_GAP = 24;
+const COLOR_SCHEME_DARK = 'dark';
+const SECTION_TITLE = 'SHARED BY TRAINER';
+const EMPTY_SHARED_COPY = 'No files shared yet';
+const CHEVRON_EXPANDED = 'chevron-up';
+const CHEVRON_COLLAPSED = 'chevron-down';
+
+const CATEGORY_DOCUMENTS = {
+  id: 'documents',
+  label: 'Documents',
+  matchesFileType: (fileType) => fileType === 'document',
+};
+const CATEGORY_SPREADSHEETS = {
+  id: 'spreadsheets',
+  label: 'Spreadsheets',
+  matchesFileType: (fileType) => fileType === 'spreadsheet',
+};
+const CATEGORY_PDFS = {
+  id: 'pdfs',
+  label: 'PDFs',
+  matchesFileType: (fileType) => fileType === 'pdf',
+};
+const CATEGORY_IMAGES = {
+  id: 'images',
+  label: 'Images',
+  matchesFileType: (fileType) => fileType === 'image',
+};
+const CATEGORY_VIDEOS = {
+  id: 'videos',
+  label: 'Videos',
+  matchesFileType: (fileType) => fileType === 'video',
+};
+const CATEGORY_OTHER = {
+  id: 'other',
+  label: 'Other',
+  matchesFileType: (fileType) => fileType === 'file',
+};
 
 const CATEGORIES = [
-  { id: 'documents', label: 'Documents', match: (fileType) => fileType === 'document' },
-  { id: 'spreadsheets', label: 'Spreadsheets', match: (fileType) => fileType === 'spreadsheet' },
-  { id: 'pdfs', label: 'PDFs', match: (fileType) => fileType === 'pdf' },
-  { id: 'images', label: 'Images', match: (fileType) => fileType === 'image' },
-  { id: 'videos', label: 'Videos', match: (fileType) => fileType === 'video' },
-  { id: 'other', label: 'Other', match: (fileType) => fileType === 'file' },
+  CATEGORY_DOCUMENTS,
+  CATEGORY_SPREADSHEETS,
+  CATEGORY_PDFS,
+  CATEGORY_IMAGES,
+  CATEGORY_VIDEOS,
+  CATEGORY_OTHER,
 ];
 
-const FALLBACK_CATEGORY = CATEGORIES[CATEGORIES.length - 1];
+const FALLBACK_CATEGORY = CATEGORY_OTHER;
 
 // ===== HELPER FUNCTIONS =====
 
-/**
- * Trainer-authored files, plus documents that carry a trainerId (older docs may omit addedBy).
- * @param {object} item
- * @returns {boolean}
- */
 function isTrainerSharedItem(item) {
   if (item?.addedBy === ADDED_BY_TRAINER) return true;
-  return item?.type === DOCUMENT_TYPE && item?.trainerId;
+  // Trainer-authored document stubs may omit addedBy but still carry trainerId.
+  if (item?.type === DOCUMENT_TYPE && item?.trainerId) return true;
+  return false;
 }
 
-/**
- * createdAt arrives as a Date, a Firestore Timestamp, or a cached string.
- * @param {object} item
- * @returns {Date}
- */
 function itemCreatedAtDate(item) {
   if (item?.createdAt instanceof Date) return item.createdAt;
-  return item?.createdAt?.toDate?.() || new Date(item?.createdAt || EPOCH);
+  if (item?.createdAt?.toDate) return item.createdAt.toDate();
+  return new Date(item?.createdAt || EPOCH_MS);
 }
 
-/**
- * @param {object[]} files
- */
 function sortNewestFirst(files) {
-  files.sort((leftFile, rightFile) => itemCreatedAtDate(rightFile) - itemCreatedAtDate(leftFile));
+  files.sort((leftFile, rightFile) => {
+    return itemCreatedAtDate(rightFile) - itemCreatedAtDate(leftFile);
+  });
 }
 
-/**
- * One bucket per category id. Unknown types fall into "Other".
- * @param {object[]} trainerItems
- * @returns {object}
- */
-function groupTrainerItemsByCategory(trainerItems) {
+function trainerSharedItemsFromList(items) {
+  const list = Array.isArray(items) ? items : [];
+  return list.filter(isTrainerSharedItem);
+}
+
+function categoryForFileType(fileType) {
+  for (const category of CATEGORIES) {
+    if (category.matchesFileType(fileType)) return category;
+  }
+  return FALLBACK_CATEGORY;
+}
+
+function emptyBucketsByCategoryId() {
   const grouped = {};
-  for (const category of CATEGORIES) grouped[category.id] = [];
+  for (const category of CATEGORIES) {
+    grouped[category.id] = [];
+  }
+  return grouped;
+}
+
+function groupTrainerItemsByCategory(trainerItems) {
+  const grouped = emptyBucketsByCategoryId();
 
   for (const item of trainerItems) {
     const fileType = getFileTypeFromItem(item);
-    const category = CATEGORIES.find((entry) => entry.match(fileType)) || FALLBACK_CATEGORY;
+    const category = categoryForFileType(fileType);
     grouped[category.id].push(item);
   }
 
@@ -80,147 +121,230 @@ function groupTrainerItemsByCategory(trainerItems) {
   return grouped;
 }
 
-/**
- * Strict === false so items with no isRead field (legacy) do not light up as "new".
- * @param {object[]} trainerItems
- * @returns {number}
- */
 function countUnreadSharedItems(trainerItems) {
   return trainerItems.filter((item) => item?.isRead === false).length;
 }
 
-/**
- * Mark read first (best-effort), then open. A failed write still opens the file.
- * @param {object} item
- * @param {Function} [onMarkRead]
- * @param {Function} [onOpenItem]
- */
-async function openSharedItem(item, onMarkRead, onOpenItem) {
+async function openSharedItemThenViewer(item, onMarkRead, onOpenItem) {
+  // Mark-read is best-effort; always still open the viewer.
   if (item?.isRead === false) {
     try {
       await onMarkRead?.(item);
     } catch {
-      // mark-read is best-effort
+      // Ignore mark-read failures.
     }
   }
   onOpenItem?.(item);
 }
 
+function colorsForScheme(colorScheme) {
+  if (colorScheme === COLOR_SCHEME_DARK) return darkColors;
+  return lightColors;
+}
+
+function nextExpandedCategoryId(currentExpandedId, tappedCategoryId) {
+  const wasAlreadyOpen = currentExpandedId === tappedCategoryId;
+  if (wasAlreadyOpen) return null;
+  return tappedCategoryId;
+}
+
+function SharedSectionTitleRow({ colors, unreadCount }) {
+  const showUnreadBadge = unreadCount > 0;
+
+  return (
+    <View style={styles.headerRow}>
+      <Text style={[styles.sectionTitle, { color: colors.nbMuted }]}>{SECTION_TITLE}</Text>
+      {showUnreadBadge ? (
+        <View
+          style={[
+            styles.unreadBadge,
+            { backgroundColor: colors.nbFill, borderColor: colors.nbBorder },
+          ]}
+        >
+          <Text style={[styles.unreadText, { color: colors.nbOnFill }]}>{unreadCount}</Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function SharedEmptyState({ colors }) {
+  return (
+    <View style={styles.section}>
+      <Text style={[styles.sectionTitle, { color: colors.nbMuted }]}>{SECTION_TITLE}</Text>
+      <NbCard style={styles.emptyCard}>
+        <Text style={[styles.emptyText, { color: colors.nbMuted }]}>{EMPTY_SHARED_COPY}</Text>
+      </NbCard>
+    </View>
+  );
+}
+
 function CategoryHeader({ category, count, isExpanded, onToggle, colors }) {
+  const showCountBadge = count > 0;
+  const chevronName = isExpanded ? CHEVRON_EXPANDED : CHEVRON_COLLAPSED;
+
   return (
     <TouchableOpacity onPress={onToggle} activeOpacity={0.8}>
       <NbCard style={styles.categoryHeader} noShadow>
         <View style={styles.categoryRow}>
           <View style={styles.categoryLeft}>
             <Text style={[styles.categoryLabel, { color: colors.nbInk }]}>{category.label}</Text>
-            {count > 0 && (
-              <View style={[styles.countBadge, { backgroundColor: colors.nbSurfaceChip, borderColor: colors.nbBorder }]}>
+            {showCountBadge ? (
+              <View
+                style={[
+                  styles.countBadge,
+                  { backgroundColor: colors.nbSurfaceChip, borderColor: colors.nbBorder },
+                ]}
+              >
                 <Text style={[styles.countText, { color: colors.nbInk }]}>{count}</Text>
               </View>
-            )}
+            ) : null}
           </View>
-          <Feather 
-            name={isExpanded ? 'chevron-up' : 'chevron-down'} 
-            size={20} 
-            color={colors.nbMuted} 
-          />
+          <Feather name={chevronName} size={20} color={colors.nbMuted} />
         </View>
       </NbCard>
     </TouchableOpacity>
   );
 }
 
-// ===== MAIN FUNCTION =====
-
-/**
- * Accordion of files the trainer shared with this client.
- * Neobrutalist redesign: NbCard, thick borders, clean layout.
- * vocab: useState remembers which category is expanded (starts on Documents).
- * @param {object} props
- */
-export function SharedByTrainerSection({ items, onOpenItem, onDownloadItem, onMarkRead }) {
-  const colorScheme = useColorScheme();
-  const colors = colorScheme === 'dark' ? darkColors : lightColors;
-  const [expanded, setExpanded] = useState(DEFAULT_EXPANDED_CATEGORY);
-
-  const trainerItems = useMemo(() => {
-    const list = Array.isArray(items) ? items : [];
-    return list.filter(isTrainerSharedItem);
-  }, [items]);
-
-  const grouped = useMemo(() => groupTrainerItemsByCategory(trainerItems), [trainerItems]);
-  const unreadCount = useMemo(() => countUnreadSharedItems(trainerItems), [trainerItems]);
-
-  if (trainerItems.length === 0) {
-    return (
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: colors.nbMuted }]}>SHARED BY TRAINER</Text>
-        <NbCard style={styles.emptyCard}>
-          <Text style={[styles.emptyText, { color: colors.nbMuted }]}>
-            No files shared yet
-          </Text>
-        </NbCard>
-      </View>
-    );
-  }
-
+function SharedCategoryFileList({ categoryItems, onMarkRead, onOpenItem, onDownloadItem }) {
   return (
-    <View style={styles.section}>
-      <View style={styles.headerRow}>
-        <Text style={[styles.sectionTitle, { color: colors.nbMuted }]}>SHARED BY TRAINER</Text>
-        {unreadCount > 0 ? (
-          <View
-            style={[
-              styles.unreadBadge,
-              { backgroundColor: colors.nbFill, borderColor: colors.nbBorder },
-            ]}
-          >
-            <Text style={[styles.unreadText, { color: colors.nbOnFill }]}>{unreadCount}</Text>
-          </View>
-        ) : null}
-      </View>
+    <View style={styles.categoryContent}>
+      {categoryItems.map((item) => {
+        const itemIsNew = item?.isRead === false;
+        const openThisItem = () => openSharedItemThenViewer(item, onMarkRead, onOpenItem);
+        const downloadThisItem = () => onDownloadItem?.(item);
 
-      {CATEGORIES.map((category) => {
-        const categoryItems = grouped[category.id] || [];
-        if (categoryItems.length === 0) return null;
-        
-        const isExpanded = expanded === category.id;
-        
         return (
-          <View key={category.id} style={styles.categoryBlock}>
-            <CategoryHeader
-              category={category}
-              count={categoryItems.length}
-              isExpanded={isExpanded}
-              onToggle={() => setExpanded(isExpanded ? null : category.id)}
-              colors={colors}
-            />
-            
-            {isExpanded && (
-              <View style={styles.categoryContent}>
-                {categoryItems.map((item) => (
-                  <FileCard
-                    key={item.id}
-                    item={item}
-                    showActions
-                    isTrainerShared
-                    isNew={item?.isRead === false}
-                    onOpen={() => openSharedItem(item, onMarkRead, onOpenItem)}
-                    onDownload={() => onDownloadItem?.(item)}
-                  />
-                ))}
-              </View>
-            )}
-          </View>
+          <FileCard
+            key={item.id}
+            item={item}
+            showActions
+            isTrainerShared
+            isNew={itemIsNew}
+            onOpen={openThisItem}
+            onDownload={downloadThisItem}
+          />
         );
       })}
     </View>
   );
 }
 
+function SharedCategoryBlock({
+  category,
+  categoryItems,
+  isExpanded,
+  onToggleCategory,
+  colors,
+  onMarkRead,
+  onOpenItem,
+  onDownloadItem,
+}) {
+  if (categoryItems.length === 0) return null;
+
+  return (
+    <View style={styles.categoryBlock}>
+      <CategoryHeader
+        category={category}
+        count={categoryItems.length}
+        isExpanded={isExpanded}
+        onToggle={onToggleCategory}
+        colors={colors}
+      />
+
+      {isExpanded ? (
+        <SharedCategoryFileList
+          categoryItems={categoryItems}
+          onMarkRead={onMarkRead}
+          onOpenItem={onOpenItem}
+          onDownloadItem={onDownloadItem}
+        />
+      ) : null}
+    </View>
+  );
+}
+
+function SharedCategoryBlocks({
+  groupedByCategory,
+  expandedCategoryId,
+  onToggleCategory,
+  colors,
+  onMarkRead,
+  onOpenItem,
+  onDownloadItem,
+}) {
+  return CATEGORIES.map((category) => {
+    const categoryItems = groupedByCategory[category.id] || [];
+    const isExpanded = expandedCategoryId === category.id;
+    const toggleThisCategory = () => onToggleCategory(category.id);
+
+    return (
+      <SharedCategoryBlock
+        key={category.id}
+        category={category}
+        categoryItems={categoryItems}
+        isExpanded={isExpanded}
+        onToggleCategory={toggleThisCategory}
+        colors={colors}
+        onMarkRead={onMarkRead}
+        onOpenItem={onOpenItem}
+        onDownloadItem={onDownloadItem}
+      />
+    );
+  });
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Accordion of files the trainer shared with this client.
+ * @param {{ items: Array, onOpenItem?: Function, onDownloadItem?: Function, onMarkRead?: Function }} props
+ */
+export function SharedByTrainerSection({ items, onOpenItem, onDownloadItem, onMarkRead }) {
+  // vocab: useColorScheme = OS light/dark; this section picks palette tokens from that (not useTheme)
+  const colorScheme = useColorScheme();
+  const colors = colorsForScheme(colorScheme);
+  const [expandedCategoryId, setExpandedCategoryId] = useState(DEFAULT_EXPANDED_CATEGORY);
+
+  const trainerItems = useMemo(() => trainerSharedItemsFromList(items), [items]);
+  const groupedByCategory = useMemo(
+    () => groupTrainerItemsByCategory(trainerItems),
+    [trainerItems],
+  );
+  const unreadCount = useMemo(() => countUnreadSharedItems(trainerItems), [trainerItems]);
+
+  function toggleCategoryExpansion(categoryId) {
+    // 1. Tap an open section → collapse. Tap a closed one → show only that bucket.
+    const nextExpandedId = nextExpandedCategoryId(expandedCategoryId, categoryId);
+    setExpandedCategoryId(nextExpandedId);
+  }
+
+  const nothingSharedYet = trainerItems.length === 0;
+  if (nothingSharedYet) {
+    return <SharedEmptyState colors={colors} />;
+  }
+
+  return (
+    <View style={styles.section}>
+      <SharedSectionTitleRow colors={colors} unreadCount={unreadCount} />
+
+      <SharedCategoryBlocks
+        groupedByCategory={groupedByCategory}
+        expandedCategoryId={expandedCategoryId}
+        onToggleCategory={toggleCategoryExpansion}
+        colors={colors}
+        onMarkRead={onMarkRead}
+        onOpenItem={onOpenItem}
+        onDownloadItem={onDownloadItem}
+      />
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   section: {
-    marginBottom: 24,
+    marginBottom: SECTION_BOTTOM_GAP,
   },
   headerRow: {
     flexDirection: 'row',

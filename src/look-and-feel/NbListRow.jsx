@@ -1,66 +1,133 @@
-// Neobrutalist list row — standard list item with title, subtitle, right accessory
-// Flow: pressable row for lists, settings, navigation items
-// Where used: settings screens, menu lists, navigation lists
+// Neobrutalist list row — title, optional subtitle, right accessory, one press target.
+// Flow: Pressable wrapper → bordered surface → text stack on the left + right slot.
+// Used by: settings screens, menu lists, navigation lists, Pro upgrade benefit stacks.
 //
-// vocab: list row = standard iOS-style list item with consistent layout
+// vocab: right = trailing accessory node (icon, badge, chevron) without forcing its layout
+// vocab: Pressable = RN tap target; whole row is one hit area
+// Manipulate here: row minHeight nb.minTouchTarget; paddingVertical spacing.sm + 4
 
 import React from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
-
 import { borderRadius, nb, spacing } from './colorPalette';
 import { useTheme } from './lightDarkMode';
 
+// ===== NAMED CONSTANTS =====
+// (row padding / type sizes live in StyleSheet plumbing)
+
+// ===== HELPER FUNCTIONS =====
+
+function buildRowSurfaceColors(themeColors) {
+  return {
+    backgroundColor: themeColors.nbSurface,
+    borderColor: themeColors.nbBorder,
+  };
+}
+
+function buildTitleTextStyle(inkColor) {
+  return [styles.title, { color: inkColor }];
+}
+
+function buildSubtitleTextStyle(mutedColor) {
+  return [styles.subtitle, { color: mutedColor }];
+}
+
+function buildRowSurfaceStyle(rowSurfaceColors) {
+  return [styles.row, rowSurfaceColors];
+}
+
+// ===== SMALL UI PIECES =====
+
+function ListRowTitleLine({ titleText, inkColor }) {
+  const titleStyle = buildTitleTextStyle(inkColor);
+  return (
+    <Text style={titleStyle} numberOfLines={1}>
+      {titleText}
+    </Text>
+  );
+}
+
+function ListRowSubtitleLine({ subtitleText, mutedColor }) {
+  if (!subtitleText) {
+    return null;
+  }
+  const subtitleStyle = buildSubtitleTextStyle(mutedColor);
+  return (
+    <Text style={subtitleStyle} numberOfLines={1}>
+      {subtitleText}
+    </Text>
+  );
+}
+
+function ListRowTextStack({ titleText, subtitleText, inkColor, mutedColor }) {
+  return (
+    <View style={styles.textContainer}>
+      <ListRowTitleLine titleText={titleText} inkColor={inkColor} />
+      <ListRowSubtitleLine
+        subtitleText={subtitleText}
+        mutedColor={mutedColor}
+      />
+    </View>
+  );
+}
+
+function ListRowRightAccessory({ rightNode }) {
+  if (!rightNode) {
+    return null;
+  }
+  return <View style={styles.rightContainer}>{rightNode}</View>;
+}
+
+function ListRowSurface({
+  titleText,
+  subtitleText,
+  rightNode,
+  themeColors,
+}) {
+  const rowSurfaceColors = buildRowSurfaceColors(themeColors);
+  const rowSurfaceStyle = buildRowSurfaceStyle(rowSurfaceColors);
+
+  return (
+    <View style={rowSurfaceStyle}>
+      <ListRowTextStack
+        titleText={titleText}
+        subtitleText={subtitleText}
+        inkColor={themeColors.nbInk}
+        mutedColor={themeColors.nbMuted}
+      />
+      <ListRowRightAccessory rightNode={rightNode} />
+    </View>
+  );
+}
+
+// ===== MAIN FUNCTION =====
+
 /**
  * Standard list row with title, subtitle, and right accessory.
- * 
  * @param {object} props
  * @param {string} props.title - main title
  * @param {string} [props.subtitle] - optional subtitle
- * @param {React.ReactNode} [props.right] - right accessory (icon, text, badge)
+ * @param {import('react').ReactNode} [props.right] - right accessory (icon, text, badge)
  * @param {Function} [props.onPress] - press handler
- * @param {object} [props.style] - additional container styles
+ * @param {object} [props.style] - additional Pressable styles
  */
 export default function NbListRow({ title, subtitle, right, onPress, style }) {
-  const { colors } = useTheme();
-  
+  // vocab: useTheme = ThemeProvider hook — surface/ink/muted follow Design Law tokens
+  const { colors: themeColors } = useTheme();
+
+  // 1. Paint the bordered surface inside one press target.
   return (
     <Pressable onPress={onPress} style={style}>
-      <View
-        style={[
-          styles.row,
-          {
-            backgroundColor: colors.nbSurface,
-            borderColor: colors.nbBorder,
-          },
-        ]}
-      >
-        <View style={styles.textContainer}>
-          <Text
-            style={[
-              styles.title,
-              { color: colors.nbInk },
-            ]}
-            numberOfLines={1}
-          >
-            {title}
-          </Text>
-          {subtitle && (
-            <Text
-              style={[
-                styles.subtitle,
-                { color: colors.nbMuted },
-              ]}
-              numberOfLines={1}
-            >
-              {subtitle}
-            </Text>
-          )}
-        </View>
-        {right && <View style={styles.rightContainer}>{right}</View>}
-      </View>
+      <ListRowSurface
+        titleText={title}
+        subtitleText={subtitle}
+        rightNode={right}
+        themeColors={themeColors}
+      />
     </Pressable>
   );
 }
+
+// PLUMBING — skip unless debugging
 
 const styles = StyleSheet.create({
   row: {

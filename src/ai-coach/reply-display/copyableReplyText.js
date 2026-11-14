@@ -1,15 +1,20 @@
-// Forwards the clipboard helpers so reply views can import them from this folder.
-// Flow: this file does not copy anything itself. copyReplyText.js does the work.
-// Used by: coach reply text views.
+// Folder-local door for clipboard helpers — reply views import here, not from conversation/.
+// Flow: import the three helpers from copyReplyText → bind the same frozen export names.
+// Used by CoachReplyText, InternetAnswerReply, and CoachConversationScreen when copying.
 
-// ===== NAMED CONSTANTS =====
-
-// ===== HELPER FUNCTIONS =====
+import {
+  stripInlineWebCitations as stripCitationsHelper,
+  coachPlainText as plainTextHelper,
+  copyCoachText as copyTextHelper,
+} from '../conversation/copyReplyText';
 
 // ===== MAIN FUNCTION =====
+// No recipe body — this file only binds the three frozen names to the conversation helpers.
+// Strip / plain / copy work lives in ../conversation/copyReplyText.js.
 
-export {
-  stripInlineWebCitations,
-  coachPlainText,
-  copyCoachText,
-} from '../conversation/copyReplyText';
+export const stripInlineWebCitations = stripCitationsHelper;
+export const coachPlainText = plainTextHelper;
+export const copyCoachText = copyTextHelper;
+
+// ===== PLUMBING — skip unless debugging =====
+// Edit ../conversation/copyReplyText.js to change clipboard behavior.

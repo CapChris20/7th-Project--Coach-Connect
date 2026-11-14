@@ -1,9 +1,7 @@
-// Design Law Notes & Files workspace (PNG 01 / 06) — segmented filter + coach/my grids + notes.
+// Notes & Files workspace (Design Law PNG 01 / 06) — filter chips + coach/my grids + notes.
 // Flow: split items by who added them → filter by All/Photos/Videos/Documents → HardShadow cards.
 // Used by the client home workspace and the trainer client workspace.
-//
-// vocab: NbSegmented = mutually exclusive All/Photos/Videos/Documents track
- // Keep Firebase item keys (addedBy, type, url, documentId) unchanged.
+// Keep Firebase item keys (addedBy, type, url, documentId) unchanged.
 
 import React, { useMemo, useState } from 'react';
 import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -59,58 +57,136 @@ const TYPE_ICON = {
   file: 'file',
 };
 
+// Manipulate here: long-press before the actions sheet opens (ms)
+const FILE_CARD_LONG_PRESS_MS = 380;
+
 // ===== HELPER FUNCTIONS =====
 
-function cardsFromTrainerDocuments(trainerDocuments) {
-  const list = Array.isArray(trainerDocuments) ? trainerDocuments : [];
-  return list.map((documentRecord) => {
-    const isShared = Array.isArray(documentRecord.sharedWith) && documentRecord.sharedWith.length > 0;
-    const title = documentRecord.title || 'Untitled';
-    return {
+function callIfFunction(maybeFunction, ...args) {
+  if (typeof maybeFunction !== 'function') {
+    return;
+  }
+  maybeFunction(...args);
+}
+
+async function callIfFunctionAsync(maybeFunction, ...args) {
+  if (typeof maybeFunction !== 'function') {
+    return;
+  }
+  await maybeFunction(...args);
+}
+
+function dateValueFromField(createdAtField) {
+  if (!createdAtField) {
+    return null;
+  }
+  if (typeof createdAtField.toDate === 'function') {
+    return createdAtField.toDate();
+  }
+  return createdAtField;
+}
+
+function trainerDocumentCards(trainerDocuments) {
+  const documentList = Array.isArray(trainerDocuments) ? trainerDocuments : [];
+  const cards = [];
+  for (let index = 0; index < documentList.length; index += 1) {
+    const documentRecord = documentList[index];
+    const sharedList = documentRecord.sharedWith;
+    const sharedWithSomeone = Array.isArray(sharedList) && sharedList.length > 0;
+    const documentTitle = documentRecord.title || 'Untitled';
+    let displayName = documentTitle;
+    if (sharedWithSomeone) {
+      displayName = `${documentTitle} · Shared`;
+    }
+    cards.push({
       id: documentRecord.id,
       type: TYPE_DOCUMENT,
-      name: isShared ? `${title} · Shared` : title,
-      title,
+      name: displayName,
+      title: documentTitle,
       createdAt: documentRecord.updatedAt || documentRecord.createdAt,
       addedBy: ADDED_BY_TRAINER,
       documentId: documentRecord.id,
-    };
-  });
+    });
+  }
+  return cards;
 }
 
-function isClientFile(item) {
-  return (item?.addedBy || ADDED_BY_CLIENT) === ADDED_BY_CLIENT && item?.type !== TYPE_NOTE;
+function itemIsClientUpload(item) {
+  if (!item) {
+    return false;
+  }
+  const addedBy = item.addedBy || ADDED_BY_CLIENT;
+  if (addedBy !== ADDED_BY_CLIENT) {
+    return false;
+  }
+  if (item.type === TYPE_NOTE) {
+    return false;
+  }
+  return true;
 }
 
-function isTrainerFile(item) {
-  return item?.addedBy === ADDED_BY_TRAINER && item?.type !== TYPE_NOTE;
+function itemIsTrainerUpload(item) {
+  if (!item) {
+    return false;
+  }
+  if (item.addedBy !== ADDED_BY_TRAINER) {
+    return false;
+  }
+  if (item.type === TYPE_NOTE) {
+    return false;
+  }
+  return true;
 }
 
-function isCoachFileForClient(item) {
-  const fromTrainer = item?.addedBy === ADDED_BY_TRAINER || (item?.type === TYPE_DOCUMENT && item?.trainerId);
-  return fromTrainer && item?.type !== TYPE_NOTE;
+function itemIsCoachSideForClient(item) {
+  if (!item) {
+    return false;
+  }
+  const fromTrainer =
+    item.addedBy === ADDED_BY_TRAINER ||
+    (item.type === TYPE_DOCUMENT && item.trainerId);
+  if (!fromTrainer) {
+    return false;
+  }
+  if (item.type === TYPE_NOTE) {
+    return false;
+  }
+  return true;
 }
 
-function groupNotesAndFiles(items, isTrainer, trainerDocuments) {
-  const list = Array.isArray(items) ? items : [];
+function collectMatchingItems(itemList, matchesItem) {
+  const matched = [];
+  for (let index = 0; index < itemList.length; index += 1) {
+    const item = itemList[index];
+    if (matchesItem(item)) {
+      matched.push(item);
+    }
+  }
+  return matched;
+}
+
+function splitItemsIntoSections(items, isTrainer, trainerDocuments) {
+  const itemList = Array.isArray(items) ? items : [];
+  const notes = collectMatchingItems(itemList, (item) => item && item.type === TYPE_NOTE);
+
   if (isTrainer) {
     return {
-      coachFiles: list.filter(isTrainerFile),
-      myFiles: list.filter(isClientFile),
-      notes: list.filter((item) => item?.type === TYPE_NOTE),
-      yourDocuments: cardsFromTrainerDocuments(trainerDocuments),
+      coachFiles: collectMatchingItems(itemList, itemIsTrainerUpload),
+      myFiles: collectMatchingItems(itemList, itemIsClientUpload),
+      notes,
+      yourDocuments: trainerDocumentCards(trainerDocuments),
     };
   }
+
   return {
-    coachFiles: list.filter(isCoachFileForClient),
-    myFiles: list.filter(isClientFile),
-    // PNG 01 Coaching Notes: both directions (your note + from coach)
-    notes: list.filter((item) => item?.type === TYPE_NOTE),
+    coachFiles: collectMatchingItems(itemList, itemIsCoachSideForClient),
+    myFiles: collectMatchingItems(itemList, itemIsClientUpload),
+    notes,
     yourDocuments: [],
   };
 }
 
-function labelsForAudience(isTrainer) {
+function sectionCopyForAudience(isTrainer) {
   if (isTrainer) {
     return {
       coachSection: 'FROM YOU',
@@ -136,66 +212,475 @@ function labelsForAudience(isTrainer) {
   };
 }
 
-function fileMatchesFilter(file, filter) {
-  if (filter === FILTER_ALL) return true;
-  const fileType = getFileTypeFromItem(file);
-  if (filter === FILTER_PHOTOS) return fileType === 'image' || file?.type === 'photo';
-  if (filter === FILTER_VIDEOS) return fileType === 'video' || file?.type === 'video';
-  if (filter === FILTER_DOCUMENTS) {
-    return (
-      fileType === 'pdf' ||
-      fileType === 'document' ||
-      fileType === 'spreadsheet' ||
-      fileType === 'file' ||
-      file?.type === 'doc' ||
-      file?.type === 'pdf'
-    );
+function filePassesSegmentFilter(file, activeFilter) {
+  if (activeFilter === FILTER_ALL) {
+    return true;
+  }
+  const detectedType = getFileTypeFromItem(file);
+  const fileType = file && file.type;
+  if (activeFilter === FILTER_PHOTOS) {
+    return detectedType === 'image' || fileType === 'photo';
+  }
+  if (activeFilter === FILTER_VIDEOS) {
+    return detectedType === 'video' || fileType === 'video';
+  }
+  if (activeFilter === FILTER_DOCUMENTS) {
+    if (detectedType === 'pdf') return true;
+    if (detectedType === 'document') return true;
+    if (detectedType === 'spreadsheet') return true;
+    if (detectedType === 'file') return true;
+    if (fileType === 'doc') return true;
+    if (fileType === 'pdf') return true;
+    return false;
   }
   return true;
 }
 
-function getFileMeta(file) {
-  const fileType = getFileTypeFromItem(file);
-  const name = file?.name || file?.title || 'File';
-  const createdAt = file?.createdAt?.toDate?.() || file?.createdAt;
-  const when = createdAt ? formatDateShort(createdAt) : '';
-  const size = file?.size ? formatFileSize(file.size) : '';
-  const datePart = when ? when.replace(/,?\s*\d{4}$/, '') : '';
+function filterFilesBySegment(files, activeFilter) {
+  const filtered = [];
+  for (let index = 0; index < files.length; index += 1) {
+    const file = files[index];
+    if (filePassesSegmentFilter(file, activeFilter)) {
+      filtered.push(file);
+    }
+  }
+  return filtered;
+}
+
+function displayMetaForFile(file) {
+  const detectedType = getFileTypeFromItem(file);
+  let displayName = 'File';
+  if (file && file.name) {
+    displayName = file.name;
+  } else if (file && file.title) {
+    displayName = file.title;
+  }
+  const createdAtField = file ? file.createdAt : null;
+  const createdAtValue = dateValueFromField(createdAtField);
+  const dateText = createdAtValue ? formatDateShort(createdAtValue) : '';
+  const sizeText = file && file.size ? formatFileSize(file.size) : '';
+  const dateWithoutYear = dateText ? dateText.replace(/,?\s*\d{4}$/, '') : '';
+  const typeLabel = TYPE_LABEL[detectedType] || TYPE_LABEL.file;
+  const iconName = TYPE_ICON[detectedType] || TYPE_ICON.file;
+  const metaParts = [];
+  if (typeLabel) metaParts.push(typeLabel);
+  if (dateWithoutYear || sizeText) metaParts.push(dateWithoutYear || sizeText);
+  const metaLine = metaParts.join(' · ');
   return {
-    name,
-    when: datePart,
-    size,
-    fileType,
-    typeLabel: TYPE_LABEL[fileType] || TYPE_LABEL.file,
-    icon: TYPE_ICON[fileType] || TYPE_ICON.file,
+    displayName,
+    dateWithoutYear,
+    sizeText,
+    detectedType,
+    typeLabel,
+    iconName,
+    metaLine,
   };
 }
 
-function canDeleteFile(file, isTrainer, onDeleteItem) {
-  if (!onDeleteItem || !file) return false;
-  if (isTrainer) return file?.addedBy === ADDED_BY_TRAINER;
-  return file?.addedBy !== ADDED_BY_TRAINER;
-}
-
-function noteTitleForAudience(isTrainer, note) {
-  if (isTrainer) {
-    return note?.addedBy === ADDED_BY_TRAINER ? 'Your note' : 'From client';
+function userMayDeleteFile(file, isTrainer, onDeleteItem) {
+  if (!onDeleteItem || !file) {
+    return false;
   }
-  return note?.addedBy === ADDED_BY_CLIENT ? 'Your note' : 'From your coach';
+  if (isTrainer) {
+    return file.addedBy === ADDED_BY_TRAINER;
+  }
+  return file.addedBy !== ADDED_BY_TRAINER;
 }
 
-function unreadCoachCount(coachFiles, notes) {
-  const unreadFiles = coachFiles.filter((file) => file?.isRead === false).length;
-  const unreadNotes = notes.filter((note) => note?.isRead === false).length;
-  return unreadFiles + unreadNotes;
+function noteHeadingForAudience(isTrainer, note) {
+  const noteAddedBy = note ? note.addedBy : null;
+  if (isTrainer) {
+    if (noteAddedBy === ADDED_BY_TRAINER) {
+      return 'Your note';
+    }
+    return 'From client';
+  }
+  if (noteAddedBy === ADDED_BY_CLIENT) {
+    return 'Your note';
+  }
+  return 'From your coach';
+}
+
+function countUnreadItems(items) {
+  let unreadCount = 0;
+  for (let index = 0; index < items.length; index += 1) {
+    const item = items[index];
+    if (item && item.isRead === false) {
+      unreadCount += 1;
+    }
+  }
+  return unreadCount;
+}
+
+function unreadCoachItemsCount(coachFiles, notes) {
+  return countUnreadItems(coachFiles) + countUnreadItems(notes);
+}
+
+function heroTitleText(isTrainer, clientName) {
+  if (isTrainer) {
+    const trimmedName = String(clientName || '').trim();
+    if (trimmedName) {
+      return trimmedName;
+    }
+    return 'Client files';
+  }
+  return 'Your Notes & Files';
+}
+
+function heroSubtitleText(isTrainer) {
+  if (isTrainer) {
+    return 'Shared uploads and documents for this client';
+  }
+  return 'Everything shared between you and your coach, all in one place.';
+}
+
+async function markItemReadThenRun(onMarkRead, item, nextStep) {
+  try {
+    await callIfFunctionAsync(onMarkRead, item);
+  } catch (_ignored) {
+    // Mark-read is best-effort — opening the item still happens.
+  }
+  callIfFunction(nextStep, item);
+}
+
+function thumbnailUriForFile(file, detectedType) {
+  if (file && file.thumbnailUrl) {
+    return file.thumbnailUrl;
+  }
+  const isPhoto = detectedType === 'image' || (file && file.type === 'photo');
+  if (isPhoto) {
+    if (file && file.url) return file.url;
+    return null;
+  }
+  return null;
+}
+
+function pickCoachNotePreview(notes, isTrainer, activeFilter) {
+  if (isTrainer) return [];
+  if (activeFilter !== FILTER_ALL) return [];
+  const coachNotes = [];
+  for (let noteIndex = 0; noteIndex < notes.length; noteIndex += 1) {
+    const note = notes[noteIndex];
+    if (note && note.addedBy === ADDED_BY_TRAINER) {
+      coachNotes.push(note);
+      break;
+    }
+  }
+  return coachNotes;
+}
+
+function notesWithoutPreviewId(notes, previewNoteId) {
+  if (!previewNoteId) return notes;
+  const filtered = [];
+  for (let noteIndex = 0; noteIndex < notes.length; noteIndex += 1) {
+    const note = notes[noteIndex];
+    if (note && note.id === previewNoteId) continue;
+    filtered.push(note);
+  }
+  return filtered;
+}
+
+function primarySectionForAudience(isTrainer, sectionLabels, filteredCoachFiles, filteredMyFiles) {
+  if (isTrainer) {
+    return {
+      title: sectionLabels.coachSection,
+      hint: null,
+      files: filteredCoachFiles,
+      badge: sectionLabels.coachBadge,
+      emptyMessage: sectionLabels.coachEmpty,
+    };
+  }
+  return {
+    title: sectionLabels.mySection,
+    hint: sectionLabels.mySectionHint,
+    files: filteredMyFiles,
+    badge: sectionLabels.myBadge,
+    emptyMessage: sectionLabels.myEmpty,
+  };
+}
+
+function noticeSheetTitle(noticePayload) {
+  if (!noticePayload) return '';
+  return noticePayload.title || '';
+}
+
+function noticeSheetMessage(noticePayload) {
+  if (!noticePayload) return undefined;
+  return noticePayload.message;
+}
+
+function noticeSheetConfirmLabel(noticePayload) {
+  if (!noticePayload) return 'OK';
+  return noticePayload.confirmLabel || 'OK';
+}
+
+function noticeSheetCancelLabel(noticePayload) {
+  if (!noticePayload) return undefined;
+  return noticePayload.cancelLabel;
+}
+
+function noticeSheetOnConfirm(noticePayload) {
+  if (!noticePayload) return undefined;
+  return noticePayload.onConfirm;
+}
+
+function fileActionsSheetTitle(fileActionsTarget) {
+  if (!fileActionsTarget) return 'File';
+  return fileActionsTarget.name || 'File';
+}
+
+function fileFromActionsTarget(fileActionsTarget) {
+  if (!fileActionsTarget) return null;
+  return fileActionsTarget.file || null;
+}
+
+// ===== IN-FILE UI PIECES (no hooks) =====
+
+function FilesWorkspaceEmptyCard({ message, mutedColor, borderColor }) {
+  return (
+    <View style={[styles.emptyCard, { borderColor }]}>
+      <Feather name="upload-cloud" size={28} color={mutedColor} />
+      <Text style={[styles.emptyText, { color: mutedColor }]}>{message}</Text>
+    </View>
+  );
+}
+
+function FilesWorkspaceSectionHead({ title, hint, count, newLabel, mutedColor, fillColor, onFillColor }) {
+  const showNewPill = Boolean(newLabel);
+  const showCountOnRight = !showNewPill && count != null && count > 0;
+
+  return (
+    <View style={styles.sectionHead}>
+      <Text style={[styles.sectionTitle, { color: mutedColor }]}>{title}</Text>
+      {hint ? (
+        <Text style={[styles.sectionHint, { color: mutedColor }]}>{hint}</Text>
+      ) : null}
+      {showNewPill ? (
+        <View style={[styles.newPill, { backgroundColor: fillColor }]}>
+          <Text style={[styles.newPillText, { color: onFillColor }]}>{newLabel}</Text>
+        </View>
+      ) : null}
+      {showCountOnRight ? (
+        <Text style={[styles.sectionCount, { color: mutedColor }]}>{count}</Text>
+      ) : null}
+    </View>
+  );
+}
+
+function FilesWorkspaceNoteCard({
+  note,
+  isTrainer,
+  inkColor,
+  mutedColor,
+  softBackground,
+  borderColor,
+  onMarkRead,
+  onShowNotice,
+}) {
+  const rawContent = note && (note.content || note.preview);
+  const previewText = String(rawContent || '').trim();
+  const createdAtValue = dateValueFromField(note ? note.createdAt : null);
+  const dateText = createdAtValue ? formatDateShort(createdAtValue) : null;
+  const noteHeading = noteHeadingForAudience(isTrainer, note);
+  const metaLine = dateText ? `${noteHeading} · ${dateText}` : noteHeading;
+
+  const openNotePreview = () => {
+    markItemReadThenRun(onMarkRead, note, () => {
+      onShowNotice(noteHeading, previewText || '—');
+    });
+  };
+
+  return (
+    <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetSmall} style={{ marginBottom: 10 }}>
+      <TouchableOpacity
+        activeOpacity={0.88}
+        onPress={openNotePreview}
+        style={[styles.noteCard, { backgroundColor: softBackground, borderColor }]}
+      >
+        <Text style={[styles.noteText, { color: inkColor }]} numberOfLines={4}>
+          {previewText || '—'}
+        </Text>
+        <Text style={[styles.noteMeta, { color: mutedColor }]}>{metaLine}</Text>
+      </TouchableOpacity>
+    </HardShadow>
+  );
+}
+
+function FilesWorkspaceFileCard({
+  file,
+  badge,
+  colors,
+  onMarkRead,
+  onOpenItem,
+  onShowFileActionsMenu,
+}) {
+  const {
+    displayName,
+    dateWithoutYear,
+    sizeText,
+    detectedType,
+    typeLabel,
+    iconName,
+    metaLine,
+  } = displayMetaForFile(file);
+
+  const thumbnailUri = thumbnailUriForFile(file, detectedType);
+  const secondaryMeta = dateWithoutYear || sizeText || metaLine;
+
+  const openFile = () => {
+    markItemReadThenRun(onMarkRead, file, onOpenItem);
+  };
+
+  const openActionsMenu = () => {
+    onShowFileActionsMenu({ file, name: displayName });
+  };
+
+  return (
+    <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetCard} style={styles.cardShadow}>
+      <TouchableOpacity
+        style={[styles.fileCard, { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder }]}
+        activeOpacity={0.88}
+        onPress={openFile}
+        onLongPress={openActionsMenu}
+        delayLongPress={FILE_CARD_LONG_PRESS_MS}
+      >
+        <View style={[styles.thumb, { backgroundColor: colors.nbSoft, borderColor: colors.nbBorder }]}>
+          {thumbnailUri ? (
+            <Image source={{ uri: thumbnailUri }} style={styles.thumbImage} resizeMode="cover" />
+          ) : (
+            <>
+              <HatchedThumbFill />
+              <View style={styles.thumbIconCenter}>
+                <Feather name={iconName} size={28} color={colors.nbInk} />
+              </View>
+            </>
+          )}
+        </View>
+        <View style={styles.fileInfo}>
+          <Text style={[styles.fileName, { color: colors.nbInk }]} numberOfLines={2}>
+            {displayName}
+          </Text>
+          <View style={styles.metaRow}>
+            <NbPill variant="plain">{typeLabel}</NbPill>
+            <Text style={[styles.fileMeta, { color: colors.nbMuted }]} numberOfLines={1}>
+              {secondaryMeta}
+            </Text>
+          </View>
+          <View style={[styles.badge, { borderColor: colors.nbBorder, backgroundColor: colors.nbSoft }]}>
+            <Text style={[styles.badgeText, { color: colors.nbInk }]}>{badge}</Text>
+          </View>
+        </View>
+      </TouchableOpacity>
+    </HardShadow>
+  );
+}
+
+function buildFileCardElements(files, badge, colors, onMarkRead, onOpenItem, onShowFileActionsMenu) {
+  const cards = [];
+  for (let index = 0; index < files.length; index += 1) {
+    const file = files[index];
+    const cardKey = file.id || file.url || file.name;
+    cards.push(
+      <FilesWorkspaceFileCard
+        key={cardKey}
+        file={file}
+        badge={badge}
+        colors={colors}
+        onMarkRead={onMarkRead}
+        onOpenItem={onOpenItem}
+        onShowFileActionsMenu={onShowFileActionsMenu}
+      />,
+    );
+  }
+  return cards;
+}
+
+function FilesWorkspaceFileGrid({
+  files,
+  badge,
+  colors,
+  onMarkRead,
+  onOpenItem,
+  onShowFileActionsMenu,
+}) {
+  const cards = buildFileCardElements(
+    files,
+    badge,
+    colors,
+    onMarkRead,
+    onOpenItem,
+    onShowFileActionsMenu,
+  );
+  return <View style={styles.grid}>{cards}</View>;
+}
+
+function FilesWorkspaceGridOrEmpty({
+  files,
+  badge,
+  emptyMessage,
+  colors,
+  onMarkRead,
+  onOpenItem,
+  onShowFileActionsMenu,
+}) {
+  if (files.length > 0) {
+    return (
+      <FilesWorkspaceFileGrid
+        files={files}
+        badge={badge}
+        colors={colors}
+        onMarkRead={onMarkRead}
+        onOpenItem={onOpenItem}
+        onShowFileActionsMenu={onShowFileActionsMenu}
+      />
+    );
+  }
+  return (
+    <FilesWorkspaceEmptyCard
+      message={emptyMessage}
+      mutedColor={colors.nbMuted}
+      borderColor={colors.nbBorder}
+    />
+  );
+}
+
+function buildNoteCardElements(notes, isTrainer, colors, onMarkRead, onShowNotice, wrapInPad) {
+  const cards = [];
+  for (let index = 0; index < notes.length; index += 1) {
+    const note = notes[index];
+    const noteKey = note.id || String(note.createdAt);
+    const card = (
+      <FilesWorkspaceNoteCard
+        note={note}
+        isTrainer={isTrainer}
+        inkColor={colors.nbInk}
+        mutedColor={colors.nbMuted}
+        softBackground={colors.nbSoft}
+        borderColor={colors.nbBorder}
+        onMarkRead={onMarkRead}
+        onShowNotice={onShowNotice}
+      />
+    );
+    if (wrapInPad) {
+      cards.push(
+        <View key={noteKey} style={{ paddingHorizontal: 16 }}>
+          {card}
+        </View>,
+      );
+    } else {
+      cards.push(
+        <React.Fragment key={noteKey}>{card}</React.Fragment>,
+      );
+    }
+  }
+  return cards;
 }
 
 // ===== MAIN FUNCTION =====
 
 /**
- * Design Law files grid — client Notes & Files workspace and trainer client workspace.
- * @param {object} props
- * @param {'client'|'trainer'} [props.audience]
+ * Notes & Files workspace body (filter + sections + sheets).
+ * Hook order frozen.
  */
 export default function FilesSection({
   items = [],
@@ -214,259 +699,254 @@ export default function FilesSection({
 }) {
   const { colors } = useTheme();
   const isTrainer = audience === AUDIENCE_TRAINER;
-  const [filter, setFilter] = useState(FILTER_ALL);
-  const [pendingDelete, setPendingDelete] = useState(null);
-  const [fileActionsMenu, setFileActionsMenu] = useState(null);
-  const [notice, setNotice] = useState(null);
-  const showNotice = (title, message, extras = {}) => setNotice({ title, message, ...extras });
+  const [activeFilter, setActiveFilter] = useState(FILTER_ALL);
+  const [fileAwaitingDelete, setFileAwaitingDelete] = useState(null);
+  const [fileActionsTarget, setFileActionsTarget] = useState(null);
+  const [noticePayload, setNoticePayload] = useState(null);
 
+  const showNoticeSheet = (title, message, extras = {}) => {
+    setNoticePayload({ title, message, ...extras });
+  };
+
+  // 1. Bucket Firebase items into coach / client / notes / trainer docs.
   const { coachFiles, myFiles, notes, yourDocuments } = useMemo(
-    () => groupNotesAndFiles(items, isTrainer, trainerDocuments),
+    () => splitItemsIntoSections(items, isTrainer, trainerDocuments),
     [items, isTrainer, trainerDocuments],
   );
 
-  const labels = labelsForAudience(isTrainer);
-  const newCount = unreadCoachCount(coachFiles, notes);
+  const sectionLabels = sectionCopyForAudience(isTrainer);
+  const newFromCoachCount = unreadCoachItemsCount(coachFiles, notes);
 
-  const filteredCoach = useMemo(
-    () => coachFiles.filter((file) => fileMatchesFilter(file, filter)),
-    [coachFiles, filter],
+  // 2. Apply the segment filter to each grid.
+  const filteredCoachFiles = useMemo(
+    () => filterFilesBySegment(coachFiles, activeFilter),
+    [coachFiles, activeFilter],
   );
-  const filteredMine = useMemo(
-    () => myFiles.filter((file) => fileMatchesFilter(file, filter)),
-    [myFiles, filter],
+  const filteredMyFiles = useMemo(
+    () => filterFilesBySegment(myFiles, activeFilter),
+    [myFiles, activeFilter],
   );
-  const filteredDocs = useMemo(
-    () => yourDocuments.filter((file) => fileMatchesFilter(file, filter)),
-    [yourDocuments, filter],
+  const filteredTrainerDocs = useMemo(
+    () => filterFilesBySegment(yourDocuments, activeFilter),
+    [yourDocuments, activeFilter],
   );
-  // Coach note preview sits in FROM YOUR COACH; Coaching Notes lists the rest (avoid duplicates)
-  const coachNotePreview =
-    !isTrainer && filter === FILTER_ALL
-      ? notes.filter((note) => note?.addedBy === ADDED_BY_TRAINER).slice(0, 1)
-      : [];
-  const previewNoteId = coachNotePreview[0]?.id;
-  const notesForList = notes.filter((note) => !previewNoteId || note?.id !== previewNoteId);
-  // Notes only show on All (not media/document tabs)
-  const showNotes = filter === FILTER_ALL && notesForList.length > 0;
 
-  const FileCard = ({ file, badge }) => {
-    const { name, when, size, fileType, typeLabel, icon } = getFileMeta(file);
-    const imageUri = file?.thumbnailUrl || ((fileType === 'image' || file?.type === 'photo') ? file?.url : null);
-    const metaLine = [typeLabel, when || size].filter(Boolean).join(' · ');
+  // 3. Client “All” tab: one coach note preview above the coach file grid.
+  const coachNotePreview = pickCoachNotePreview(notes, isTrainer, activeFilter);
+  let previewNoteId = null;
+  if (coachNotePreview.length > 0 && coachNotePreview[0].id) {
+    previewNoteId = coachNotePreview[0].id;
+  }
+  const notesForCoachingList = notesWithoutPreviewId(notes, previewNoteId);
+  const showCoachingNotesSection =
+    activeFilter === FILTER_ALL && notesForCoachingList.length > 0;
 
-    const openFile = async () => {
-      try {
-        await onMarkRead?.(file);
-      } catch (_e) {
-        /* mark-read is best-effort */
-      }
-      onOpenItem?.(file);
-    };
+  const heroTitle = heroTitleText(isTrainer, clientName);
+  const heroSubtitle = heroSubtitleText(isTrainer);
+  const workspaceHasAnyContent =
+    coachFiles.length > 0 ||
+    myFiles.length > 0 ||
+    notes.length > 0 ||
+    yourDocuments.length > 0;
 
-    return (
-      <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetCard} style={styles.cardShadow}>
-        <TouchableOpacity
-          style={[styles.fileCard, { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder }]}
-          activeOpacity={0.88}
-          onPress={openFile}
-          onLongPress={() => setFileActionsMenu({ file, name })}
-          delayLongPress={380}
-        >
-          <View style={[styles.thumb, { backgroundColor: colors.nbSoft, borderColor: colors.nbBorder }]}>
-            {imageUri ? (
-              <Image source={{ uri: imageUri }} style={styles.thumbImage} resizeMode="cover" />
-            ) : (
-              <>
-                <HatchedThumbFill />
-                <View style={styles.thumbIconCenter}>
-                  <Feather name={icon} size={28} color={colors.nbInk} />
-                </View>
-              </>
-            )}
-          </View>
-          <View style={styles.fileInfo}>
-            <Text style={[styles.fileName, { color: colors.nbInk }]} numberOfLines={2}>
-              {name}
-            </Text>
-            <View style={styles.metaRow}>
-              <NbPill variant="plain">{typeLabel}</NbPill>
-              <Text style={[styles.fileMeta, { color: colors.nbMuted }]} numberOfLines={1}>
-                {when || size || metaLine}
-              </Text>
-            </View>
-            <View style={[styles.badge, { borderColor: colors.nbBorder, backgroundColor: colors.nbSoft }]}>
-              <Text style={[styles.badgeText, { color: colors.nbInk }]}>{badge}</Text>
-            </View>
-          </View>
-        </TouchableOpacity>
-      </HardShadow>
-    );
+  const showTrainerEmptyWorkspace = !workspaceHasAnyContent && isTrainer;
+  const showClientCoachSection =
+    !isTrainer && (filteredCoachFiles.length > 0 || coachNotePreview.length > 0);
+
+  let newItemsLabel = null;
+  if (newFromCoachCount > 0) {
+    newItemsLabel = `${newFromCoachCount} NEW`;
+  }
+
+  const primarySection = primarySectionForAudience(
+    isTrainer,
+    sectionLabels,
+    filteredCoachFiles,
+    filteredMyFiles,
+  );
+  const primarySectionTitle = primarySection.title;
+  const primarySectionHint = primarySection.hint;
+  const primarySectionFiles = primarySection.files;
+  const primarySectionBadge = primarySection.badge;
+  const primarySectionEmpty = primarySection.emptyMessage;
+
+  const closeFileActionsSheet = () => setFileActionsTarget(null);
+
+  const runOpenFromActionsSheet = () => {
+    const chosenFile = fileFromActionsTarget(fileActionsTarget);
+    closeFileActionsSheet();
+    callIfFunction(onOpenItem, chosenFile);
   };
 
-  const SectionHead = ({ title, hint, count, newLabel }) => (
-    <View style={styles.sectionHead}>
-      <Text style={[styles.sectionTitle, { color: colors.nbMuted }]}>{title}</Text>
-      {hint ? (
-        <Text style={[styles.sectionHint, { color: colors.nbMuted }]}>{hint}</Text>
-      ) : null}
-      {newLabel ? (
-        <View style={[styles.newPill, { backgroundColor: colors.nbFill }]}>
-          <Text style={[styles.newPillText, { color: colors.nbOnFill }]}>{newLabel}</Text>
-        </View>
-      ) : count != null && count > 0 ? (
-        <Text style={[styles.sectionCount, { color: colors.nbMuted }]}>{count}</Text>
-      ) : null}
-    </View>
-  );
-
-  const NoteCard = ({ note }) => {
-    const preview = String(note?.content || note?.preview || '').trim();
-    const createdAt = note?.createdAt?.toDate?.() || note?.createdAt;
-    const when = createdAt ? formatDateShort(createdAt) : null;
-    const noteTitle = noteTitleForAudience(isTrainer, note);
-
-    const openNote = async () => {
-      try {
-        await onMarkRead?.(note);
-      } catch (_e) {
-        /* mark-read is best-effort */
-      }
-      showNotice(noteTitle, preview || '—');
-    };
-
-    return (
-      <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetSmall} style={{ marginBottom: 10 }}>
-        <TouchableOpacity
-          activeOpacity={0.88}
-          onPress={openNote}
-          style={[
-            styles.noteCard,
-            { backgroundColor: colors.nbSoft, borderColor: colors.nbBorder },
-          ]}
-        >
-          <Text style={[styles.noteText, { color: colors.nbInk }]} numberOfLines={4}>
-            {preview || '—'}
-          </Text>
-          <Text style={[styles.noteMeta, { color: colors.nbMuted }]}>
-            {noteTitle}
-            {when ? ` · ${when}` : ''}
-          </Text>
-        </TouchableOpacity>
-      </HardShadow>
-    );
+  const runDownloadFromActionsSheet = () => {
+    const chosenFile = fileFromActionsTarget(fileActionsTarget);
+    closeFileActionsSheet();
+    callIfFunction(onDownloadItem, chosenFile);
   };
 
-  const EmptyCard = ({ message }) => (
-    <View style={[styles.emptyCard, { borderColor: colors.nbBorder }]}>
-      <Feather name="upload-cloud" size={28} color={colors.nbMuted} />
-      <Text style={[styles.emptyText, { color: colors.nbMuted }]}>{message}</Text>
-    </View>
+  const runShareFromActionsSheet = () => {
+    const chosenFile = fileFromActionsTarget(fileActionsTarget);
+    closeFileActionsSheet();
+    callIfFunction(onShareItem, chosenFile);
+  };
+
+  const runDeleteFromActionsSheet = () => {
+    const chosenFile = fileFromActionsTarget(fileActionsTarget);
+    closeFileActionsSheet();
+    if (chosenFile) {
+      setFileAwaitingDelete(chosenFile);
+    }
+  };
+
+  const confirmDeleteAwaitingFile = () => {
+    if (fileAwaitingDelete) {
+      callIfFunction(onDeleteItem, fileAwaitingDelete);
+    }
+  };
+
+  const actionsMenuFile = fileFromActionsTarget(fileActionsTarget);
+  const showDeleteInActionsMenu = userMayDeleteFile(actionsMenuFile, isTrainer, onDeleteItem);
+
+  const coachNotePreviewCards = buildNoteCardElements(
+    coachNotePreview,
+    isTrainer,
+    colors,
+    onMarkRead,
+    showNoticeSheet,
+    true,
+  );
+  const coachingNotesCards = buildNoteCardElements(
+    notesForCoachingList,
+    isTrainer,
+    colors,
+    onMarkRead,
+    showNoticeSheet,
+    false,
   );
 
-  const renderGrid = (files, badge) => (
-    <View style={styles.grid}>
-      {files.map((file) => (
-        <FileCard key={file.id || file.url || file.name} file={file} badge={badge} />
-      ))}
-    </View>
-  );
-
-  const hasAnyContent =
-    coachFiles.length > 0 || myFiles.length > 0 || notes.length > 0 || yourDocuments.length > 0;
-
-  const heroTitle = isTrainer
-    ? clientName
-      ? String(clientName).trim()
-      : 'Client files'
-    : 'Your Notes & Files';
-  const heroSub = isTrainer
-    ? 'Shared uploads and documents for this client'
-    : 'Everything shared between you and your coach, all in one place.';
-
+  // 4. Paint hero, segments, section grids, upload, and sheets.
   return (
     <View style={{ flex: 1 }}>
       {showHero ? (
         <View style={styles.heroOuter}>
           <Text style={[styles.heroTitle, { color: colors.nbInk }]}>{heroTitle}</Text>
-          <Text style={[styles.heroSub, { color: colors.nbMuted }]}>{heroSub}</Text>
+          <Text style={[styles.heroSub, { color: colors.nbMuted }]}>{heroSubtitle}</Text>
         </View>
       ) : null}
 
       <View style={styles.segmentWrap}>
         <NbSegmented
           segments={FILTER_SEGMENTS}
-          selected={filter}
-          onSelect={setFilter}
+          selected={activeFilter}
+          onSelect={setActiveFilter}
         />
       </View>
 
-      {!hasAnyContent && isTrainer ? (
+      {showTrainerEmptyWorkspace ? (
         <View style={styles.sectionWrap}>
-          <EmptyCard message="No notes or files yet — add something for your client below" />
+          <FilesWorkspaceEmptyCard
+            message="No notes or files yet — add something for your client below"
+            mutedColor={colors.nbMuted}
+            borderColor={colors.nbBorder}
+          />
         </View>
       ) : null}
 
-      {/* Trainer: client uploads first. Client: coach section when it has files/notes. */}
       {isTrainer ? (
         <View style={styles.sectionWrap}>
-          <SectionHead title={labels.mySection} count={filteredMine.length} />
-          {filteredMine.length > 0 ? (
-            renderGrid(filteredMine, labels.myBadge)
-          ) : (
-            <EmptyCard message={labels.myEmpty} />
-          )}
-        </View>
-      ) : filteredCoach.length > 0 || coachNotePreview.length > 0 ? (
-        <View style={styles.sectionWrap}>
-          <SectionHead
-            title={labels.coachSection}
-            count={filteredCoach.length}
-            newLabel={newCount > 0 ? `${newCount} NEW` : null}
+          <FilesWorkspaceSectionHead
+            title={sectionLabels.mySection}
+            count={filteredMyFiles.length}
+            mutedColor={colors.nbMuted}
+            fillColor={colors.nbFill}
+            onFillColor={colors.nbOnFill}
           />
-          {coachNotePreview.map((note) => (
-            <View key={note.id || String(note.createdAt)} style={{ paddingHorizontal: 16 }}>
-              <NoteCard note={note} />
-            </View>
-          ))}
-          {filteredCoach.length > 0 ? renderGrid(filteredCoach, labels.coachBadge) : null}
+          <FilesWorkspaceGridOrEmpty
+            files={filteredMyFiles}
+            badge={sectionLabels.myBadge}
+            emptyMessage={sectionLabels.myEmpty}
+            colors={colors}
+            onMarkRead={onMarkRead}
+            onOpenItem={onOpenItem}
+            onShowFileActionsMenu={setFileActionsTarget}
+          />
+        </View>
+      ) : null}
+
+      {showClientCoachSection ? (
+        <View style={styles.sectionWrap}>
+          <FilesWorkspaceSectionHead
+            title={sectionLabels.coachSection}
+            count={filteredCoachFiles.length}
+            newLabel={newItemsLabel}
+            mutedColor={colors.nbMuted}
+            fillColor={colors.nbFill}
+            onFillColor={colors.nbOnFill}
+          />
+          {coachNotePreviewCards}
+          {filteredCoachFiles.length > 0 ? (
+            <FilesWorkspaceFileGrid
+              files={filteredCoachFiles}
+              badge={sectionLabels.coachBadge}
+              colors={colors}
+              onMarkRead={onMarkRead}
+              onOpenItem={onOpenItem}
+              onShowFileActionsMenu={setFileActionsTarget}
+            />
+          ) : null}
         </View>
       ) : null}
 
       <View style={styles.sectionWrap}>
-        <SectionHead
-          title={isTrainer ? labels.coachSection : labels.mySection}
-          hint={!isTrainer ? labels.mySectionHint : null}
-          count={isTrainer ? filteredCoach.length : filteredMine.length}
+        <FilesWorkspaceSectionHead
+          title={primarySectionTitle}
+          hint={primarySectionHint}
+          count={primarySectionFiles.length}
+          mutedColor={colors.nbMuted}
+          fillColor={colors.nbFill}
+          onFillColor={colors.nbOnFill}
         />
-        {isTrainer ? (
-          filteredCoach.length > 0 ? (
-            renderGrid(filteredCoach, labels.coachBadge)
-          ) : (
-            <EmptyCard message={labels.coachEmpty} />
-          )
-        ) : filteredMine.length > 0 ? (
-          renderGrid(filteredMine, labels.myBadge)
-        ) : (
-          <EmptyCard message={labels.myEmpty} />
-        )}
+        <FilesWorkspaceGridOrEmpty
+          files={primarySectionFiles}
+          badge={primarySectionBadge}
+          emptyMessage={primarySectionEmpty}
+          colors={colors}
+          onMarkRead={onMarkRead}
+          onOpenItem={onOpenItem}
+          onShowFileActionsMenu={setFileActionsTarget}
+        />
       </View>
 
-      {filteredDocs.length > 0 ? (
+      {filteredTrainerDocs.length > 0 ? (
         <View style={styles.sectionWrap}>
-          <SectionHead title={labels.docsSection} count={filteredDocs.length} />
-          {renderGrid(filteredDocs, labels.coachBadge)}
+          <FilesWorkspaceSectionHead
+            title={sectionLabels.docsSection}
+            count={filteredTrainerDocs.length}
+            mutedColor={colors.nbMuted}
+            fillColor={colors.nbFill}
+            onFillColor={colors.nbOnFill}
+          />
+          <FilesWorkspaceFileGrid
+            files={filteredTrainerDocs}
+            badge={sectionLabels.coachBadge}
+            colors={colors}
+            onMarkRead={onMarkRead}
+            onOpenItem={onOpenItem}
+            onShowFileActionsMenu={setFileActionsTarget}
+          />
         </View>
       ) : null}
 
-      {showNotes ? (
+      {showCoachingNotesSection ? (
         <View style={styles.sectionWrap}>
-          <SectionHead title={labels.notesSection} count={notesForList.length} />
-          <View style={{ paddingHorizontal: 16 }}>
-            {notesForList.map((note) => (
-              <NoteCard key={note.id || String(note.createdAt)} note={note} />
-            ))}
-          </View>
+          <FilesWorkspaceSectionHead
+            title={sectionLabels.notesSection}
+            count={notesForCoachingList.length}
+            mutedColor={colors.nbMuted}
+            fillColor={colors.nbFill}
+            onFillColor={colors.nbOnFill}
+          />
+          <View style={{ paddingHorizontal: 16 }}>{coachingNotesCards}</View>
         </View>
       ) : null}
 
@@ -479,75 +959,45 @@ export default function FilesSection({
       ) : null}
 
       <NbSheet
-        visible={!!fileActionsMenu}
-        onClose={() => setFileActionsMenu(null)}
-        title={fileActionsMenu?.name || 'File'}
+        visible={!!fileActionsTarget}
+        onClose={closeFileActionsSheet}
+        title={fileActionsSheetTitle(fileActionsTarget)}
       >
         <View style={{ gap: 10, paddingHorizontal: spacing.md, paddingBottom: spacing.lg }}>
-          <NbButton
-            variant="fill"
-            onPress={() => {
-              const file = fileActionsMenu?.file;
-              setFileActionsMenu(null);
-              onOpenItem?.(file);
-            }}
-          >
+          <NbButton variant="fill" onPress={runOpenFromActionsSheet}>
             Open
           </NbButton>
-          <NbButton
-            variant="plain"
-            onPress={() => {
-              const file = fileActionsMenu?.file;
-              setFileActionsMenu(null);
-              onDownloadItem?.(file);
-            }}
-          >
+          <NbButton variant="plain" onPress={runDownloadFromActionsSheet}>
             Download
           </NbButton>
-          <NbButton
-            variant="plain"
-            onPress={() => {
-              const file = fileActionsMenu?.file;
-              setFileActionsMenu(null);
-              onShareItem?.(file);
-            }}
-          >
+          <NbButton variant="plain" onPress={runShareFromActionsSheet}>
             Share
           </NbButton>
-          {canDeleteFile(fileActionsMenu?.file, isTrainer, onDeleteItem) ? (
-            <NbButton
-              variant="plain"
-              onPress={() => {
-                const file = fileActionsMenu?.file;
-                setFileActionsMenu(null);
-                if (file) setPendingDelete(file);
-              }}
-            >
+          {showDeleteInActionsMenu ? (
+            <NbButton variant="plain" onPress={runDeleteFromActionsSheet}>
               Delete
             </NbButton>
           ) : null}
-          <NbButton variant="ghost" onPress={() => setFileActionsMenu(null)}>
+          <NbButton variant="ghost" onPress={closeFileActionsSheet}>
             Cancel
           </NbButton>
         </View>
       </NbSheet>
 
       <DeleteFileSheet
-        visible={!!pendingDelete}
-        onClose={() => setPendingDelete(null)}
-        onConfirm={() => {
-          if (pendingDelete) onDeleteItem?.(pendingDelete);
-        }}
+        visible={!!fileAwaitingDelete}
+        onClose={() => setFileAwaitingDelete(null)}
+        onConfirm={confirmDeleteAwaitingFile}
       />
 
       <NbNoticeSheet
-        visible={!!notice}
-        onClose={() => setNotice(null)}
-        title={notice?.title || ''}
-        message={notice?.message}
-        confirmLabel={notice?.confirmLabel || 'OK'}
-        cancelLabel={notice?.cancelLabel}
-        onConfirm={notice?.onConfirm}
+        visible={!!noticePayload}
+        onClose={() => setNoticePayload(null)}
+        title={noticeSheetTitle(noticePayload)}
+        message={noticeSheetMessage(noticePayload)}
+        confirmLabel={noticeSheetConfirmLabel(noticePayload)}
+        cancelLabel={noticeSheetCancelLabel(noticePayload)}
+        onConfirm={noticeSheetOnConfirm(noticePayload)}
       />
     </View>
   );

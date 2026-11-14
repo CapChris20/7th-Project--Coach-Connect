@@ -54,50 +54,46 @@ import { lightColors, darkColors } from '../../look-and-feel/colorPalette';
 const AI_CHAT_HOME = 'home';
 const DEFAULT_SELF_NAME = 'You';
 const SCROLL_BOTTOM_PAD = 130;
+const INBOX_LIGHT_BACKGROUND = '#F7F7FA';
 
 // ===== HELPER FUNCTIONS =====
 
-/**
- * Workout-tab badge: show "ready" only when a background generate finished and the user is not already on Workout.
- * A session for a different uid is ignored so a stale write cannot flip this user's badge.
- * @param {object} session
- * @param {string} uid
- * @param {string} mainTab
- * @param {Function} setWorkoutGenInFlight
- * @param {Function} setWorkoutPlanReadyBadge
- */
+// Workout-tab badge: "ready" only when background generation finished and user is not on Workout tab.
+// Ignore sessions written for a different uid so stale storage cannot flip this user's badge.
 function applyWorkoutGenerationSession(session, uid, mainTab, setWorkoutGenInFlight, setWorkoutPlanReadyBadge) {
-  if (session?.uid && session.uid !== uid) return;
-  setWorkoutGenInFlight(!!session?.inFlight);
-  const showReadyBadge =
-    !!session?.pendingReady &&
-    !session?.inFlight &&
-    mainTab !== CLIENT_MAIN_TABS.workout;
-  setWorkoutPlanReadyBadge(showReadyBadge);
+  if (session && session.uid && session.uid !== uid) return;
+  const sessionIsInFlight = Boolean(session && session.inFlight);
+  setWorkoutGenInFlight(sessionIsInFlight);
+  const generationFinished = Boolean(session && session.pendingReady) && !sessionIsInFlight;
+  const userNotOnWorkoutTab = mainTab !== CLIENT_MAIN_TABS.workout;
+  setWorkoutPlanReadyBadge(generationFinished && userNotOnWorkoutTab);
 }
 
-/**
- * Saved workoutLog rows use exerciseName + numeric reps/weight. The form uses name.
- * @param {object[]} workoutExercises
- * @returns {object[]}
- */
+// One exercise's sets → { reps, weight } rows for dailyLogs.workoutLog (freeze shape).
+function setRowsFromExerciseSets(sets) {
+  const setRows = [];
+  if (!Array.isArray(sets)) return setRows;
+  for (const setRow of sets) {
+    setRows.push({
+      reps: parseInt(setRow.reps, 10) || 0,
+      weight: parseFloat(setRow.weight) || 0,
+    });
+  }
+  return setRows;
+}
+
+// Saved workoutLog rows use exerciseName + numeric reps/weight; the editor form uses name.
 function workoutLogRowsFromExercises(workoutExercises) {
-  return workoutExercises.map((exercise) => ({
-    exerciseName: exercise.name || exercise.exerciseName || '',
-    sets: Array.isArray(exercise.sets)
-      ? exercise.sets.map((setRow) => ({
-          reps: parseInt(setRow.reps, 10) || 0,
-          weight: parseFloat(setRow.weight) || 0,
-        }))
-      : [],
-  }));
+  const logRows = [];
+  for (const exercise of workoutExercises) {
+    const exerciseName = exercise.name || exercise.exerciseName || '';
+    const setRows = setRowsFromExerciseSets(exercise.sets);
+    logRows.push({ exerciseName, sets: setRows });
+  }
+  return logRows;
 }
 
-/**
- * dailyLogs field names stay dashboard_water / dashboard_sleep / dashboard_workouts.
- * @param {object} patch
- * @returns {object}
- */
+// dailyLogs field names stay dashboard_water / dashboard_sleep / dashboard_workouts (freeze).
 function buildDailyLogsPatch(patch) {
   const logsPatch = {};
   if (typeof patch.waterIntake === 'number') {
@@ -118,14 +114,7 @@ function buildDailyLogsPatch(patch) {
   return logsPatch;
 }
 
-/**
- * Write the dashboard patch to dailyLogs + the legacy tracking copy, and mirror it onto home-row state.
- * @param {object} patch
- * @param {object} user
- * @param {object} setters
- */
-async function saveTrainerMetricsPatch(patch, user, setters) {
-  const updateData = {};
+function applyWaterSleepWorkoutToLocalState(patch, updateData, setters) {
   if (typeof patch.waterIntake === 'number') {
     updateData.waterIntake = patch.waterIntake;
     setters.setWaterIntake(patch.waterIntake);
@@ -138,15 +127,24 @@ async function saveTrainerMetricsPatch(patch, user, setters) {
     updateData.workoutSummary = patch.workoutSummary;
     setters.setDashboardWorkoutSummary(patch.workoutSummary);
   }
-  if (patch.workoutName != null || (Array.isArray(patch.workoutExercises) && patch.workoutExercises.length > 0)) {
-    updateData.workoutName = patch.workoutName;
-    updateData.workoutExercises = patch.workoutExercises;
-    setters.setTodayWorkout({
-      name: patch.workoutName || '',
-      exercises: Array.isArray(patch.workoutExercises) ? patch.workoutExercises : [],
-    });
-  }
 
+  const hasWorkoutName = patch.workoutName != null;
+  const hasWorkoutExercises =
+    Array.isArray(patch.workoutExercises) && patch.workoutExercises.length > 0;
+  if (!hasWorkoutName && !hasWorkoutExercises) return;
+
+  updateData.workoutName = patch.workoutName;
+  updateData.workoutExercises = patch.workoutExercises;
+  setters.setTodayWorkout({
+    name: patch.workoutName || '',
+    exercises: Array.isArray(patch.workoutExercises) ? patch.workoutExercises : [],
+  });
+}
+
+// Write dashboard numbers to dailyLogs + legacy tracking, then mirror onto TrainingHome state.
+async function saveTrainerMetricsPatch(patch, user, setters) {
+  const updateData = {};
+  applyWaterSleepWorkoutToLocalState(patch, updateData, setters);
   if (Object.keys(updateData).length === 0) return;
 
   const todayKey = getClientDateKey();
@@ -157,14 +155,7 @@ async function saveTrainerMetricsPatch(patch, user, setters) {
   });
 }
 
-/**
- * Wellness ratings update the home row immediately. Water / sleep / workout persist first.
- * @param {object} patch
- * @param {object} user
- * @param {object} setters
- */
-async function applyDashboardMetricsPatch(patch, user, setters) {
-  // 1. Wellness ratings update the home row immediately (empty string is ignored).
+function applyWellnessRatingsToLocalState(patch, setters) {
   if (patch.soreness != null && patch.soreness !== '') {
     setters.setSoreness(String(patch.soreness));
   }
@@ -174,6 +165,12 @@ async function applyDashboardMetricsPatch(patch, user, setters) {
   if (patch.stressLevel != null && patch.stressLevel !== '') {
     setters.setStressLevel(String(patch.stressLevel));
   }
+}
+
+// Wellness ratings touch UI immediately; water / sleep / workout persist through saveTrainerMetricsPatch.
+async function applyDashboardMetricsPatch(patch, user, setters) {
+  // 1. Wellness ratings update the home row immediately (empty string is ignored).
+  applyWellnessRatingsToLocalState(patch, setters);
 
   try {
     // 2. Water / sleep / workout persist to dailyLogs, then mirror onto home-row state.
@@ -185,18 +182,618 @@ async function applyDashboardMetricsPatch(patch, user, setters) {
 
 function unreadNotesCount(notesAndFiles) {
   if (!Array.isArray(notesAndFiles)) return 0;
-  return notesAndFiles.filter((file) => file?.isRead === false).length;
+  let unreadCount = 0;
+  for (const file of notesAndFiles) {
+    if (file && file.isRead === false) unreadCount += 1;
+  }
+  return unreadCount;
 }
 
 function notesFileCount(notesAndFiles) {
-  return Array.isArray(notesAndFiles) ? notesAndFiles.length : 0;
+  if (!Array.isArray(notesAndFiles)) return 0;
+  return notesAndFiles.length;
+}
+
+// Pull one macro row's gram value from the home nutrition macro list (Protein / Carbs / Fats).
+function gramValueFromMacroList(macroRows, label) {
+  if (!Array.isArray(macroRows)) return undefined;
+  const match = macroRows.find((row) => row.label === label);
+  if (!match) return undefined;
+  return parseFloat(String(match.value));
+}
+
+function clientSelfDisplayName(user, userData) {
+  if (userData && userData.firstName) return userData.firstName;
+  if (user && user.displayName) return user.displayName;
+  return DEFAULT_SELF_NAME;
+}
+
+function clientDay6SelfRecord(user, userData) {
+  let userId = null;
+  if (user) userId = user.uid;
+  return { id: userId, name: clientSelfDisplayName(user, userData) };
+}
+
+function buildHomeMetricsSetters(shellSetters) {
+  return {
+    setSoreness: shellSetters.setSoreness,
+    setEnergyLevel: shellSetters.setEnergyLevel,
+    setStressLevel: shellSetters.setStressLevel,
+    setWaterIntake: shellSetters.setWaterIntake,
+    setSleepHours: shellSetters.setSleepHours,
+    setDashboardWorkoutSummary: shellSetters.setDashboardWorkoutSummary,
+    setTodayWorkout: shellSetters.setTodayWorkout,
+  };
+}
+
+function decideClientTabVisibility(mainTab, nutritionOnboardingActive, showTrainerMessaging, aiChatPayload) {
+  const showHomeTab =
+    mainTab !== CLIENT_MAIN_TABS.nutrition &&
+    mainTab !== CLIENT_MAIN_TABS.ai &&
+    mainTab !== CLIENT_MAIN_TABS.workout;
+
+  const hideBottomNav =
+    (mainTab === CLIENT_MAIN_TABS.nutrition && nutritionOnboardingActive) ||
+    showTrainerMessaging;
+
+  const keepAiCoachMounted = mainTab === CLIENT_MAIN_TABS.ai || Boolean(aiChatPayload);
+
+  return { showHomeTab, hideBottomNav, keepAiCoachMounted };
+}
+
+function safeAreaThemeStyles(styles, isDark) {
+  if (!isDark) return [styles.safeArea, styles.safeAreaLight];
+  return [styles.safeArea, styles.safeAreaDark];
+}
+
+function statusBarStyleForTheme(isDark) {
+  if (!isDark) return 'dark-content';
+  return 'light-content';
+}
+
+function homeColumnBackground(isDark) {
+  if (isDark) return darkColors.nbBackground;
+  return lightColors.nbBackground;
+}
+
+function inboxBackground(isDark) {
+  if (isDark) return lightColors.nbInk;
+  return INBOX_LIGHT_BACKGROUND;
+}
+
+// vocab: absolute overlay — full-screen layer stacked above Home so tab switches do not remount Home.
+function ClientTabOverlay({ active, children }) {
+  let pointerEvents = 'none';
+  let hiddenStyle = { opacity: 0, zIndex: -1 };
+  if (active) {
+    pointerEvents = 'auto';
+    hiddenStyle = null;
+  }
+  const overlayStyle = [
+    { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
+    hiddenStyle,
+  ];
+  return (
+    <View style={overlayStyle} pointerEvents={pointerEvents} collapsable={false}>
+      {children}
+    </View>
+  );
+}
+
+function ClientReviewPromptStrip({ reviewPromptTrainer, isDark, onOpenReview, onDismiss }) {
+  if (!reviewPromptTrainer) return null;
+
+  const chipBackground = isDark ? darkColors.nbSurfaceChip : lightColors.nbSoft;
+  const borderColor = isDark ? darkColors.nbBorder : lightColors.nbBorder;
+  const inkColor = isDark ? darkColors.nbInk : lightColors.nbInk;
+  const mutedColor = isDark ? darkColors.nbMuted : lightColors.nbMuted;
+  const stripStyle = {
+    backgroundColor: chipBackground,
+    borderColor,
+    borderWidth: 3,
+    borderRadius: 10,
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 16,
+    marginTop: 8,
+  };
+  const promptTextStyle = { flex: 1, marginLeft: 10, fontSize: 13, color: inkColor };
+  const reviewLinkStyle = {
+    color: inkColor,
+    fontWeight: '900',
+    textDecorationLine: 'underline',
+  };
+
+  return (
+    <View style={stripStyle}>
+      <Ionicons name="star-outline" size={18} color={inkColor} />
+      <Text style={promptTextStyle}>
+        How was your experience with {reviewPromptTrainer.name}?{' '}
+        <Text style={reviewLinkStyle} onPress={onOpenReview}>
+          Leave a review
+        </Text>
+      </Text>
+      <TouchableOpacity onPress={onDismiss}>
+        <Ionicons name="close" size={18} color={mutedColor} />
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+function ClientNotesAndFilesPanel({
+  isDark,
+  notesAndFiles,
+  userUid,
+  deletingMyFiles,
+  onBack,
+  onOpenItem,
+  onUploadPress,
+  onDeleteItem,
+}) {
+  const panelBackground = isDark ? darkColors.nbBackground : lightColors.nbBackground;
+
+  const handleShareItem = (fileItem) => {
+    if (!fileItem || !fileItem.url) return;
+    const fileTitle = fileItem.name || fileItem.title || 'File';
+    Share.share({ message: `${fileTitle}\n${fileItem.url}` }).catch(() => {});
+  };
+
+  const handleMarkRead = async (fileItem) => {
+    if (!userUid || !fileItem || !fileItem.id) return;
+    try {
+      await markNotesAndFilesItemRead(userUid, fileItem.id);
+    } catch (_) {
+      /* read flag is best-effort */
+    }
+  };
+
+  return (
+    <View style={{ flex: 1, backgroundColor: panelBackground }}>
+      <NbPageHeader
+        title="Your Notes & Files"
+        subtitle="Everything shared between you and your coach, all in one place."
+        onBack={onBack}
+      />
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingBottom: SCROLL_BOTTOM_PAD }}
+        keyboardShouldPersistTaps="handled"
+        scrollEventThrottle={16}
+        keyboardDismissMode="on-drag"
+        showsVerticalScrollIndicator={false}
+      >
+        <FilesSection
+          items={notesAndFiles}
+          isDark={isDark}
+          showHero={false}
+          onOpenItem={onOpenItem}
+          onDownloadItem={(fileItem) => {
+            if (fileItem && fileItem.url) onOpenItem(fileItem);
+          }}
+          onShareItem={handleShareItem}
+          onDeleteItem={(fileItem) => {
+            if (deletingMyFiles) return;
+            onDeleteItem(fileItem);
+          }}
+          onMarkRead={handleMarkRead}
+          onUploadPress={onUploadPress}
+        />
+      </ScrollView>
+    </View>
+  );
+}
+
+function aiCoachConversationMountKey(aiChatPayload) {
+  const attachmentCount = Array.isArray(aiChatPayload.initialAttachments)
+    ? aiChatPayload.initialAttachments.length
+    : 0;
+  return JSON.stringify({
+    sid: aiChatPayload.sessionId ?? null,
+    pf: aiChatPayload.prefill ?? null,
+    att: attachmentCount,
+  });
+}
+
+function ClientHomeColumn({
+  isDark,
+  showHomeTab,
+  mainTab,
+  openProfile,
+  openSettings,
+  reviewPromptTrainer,
+  setShowReviewSheetForPrompt,
+  setReviewPromptTrainer,
+  trainerData,
+  userData,
+  openCoachingPayment,
+  unreadMessageCount,
+  setShowRemoveTrainerPopup,
+  setProfileTrainer,
+  openTrainerProfile,
+  caloriesConsumed,
+  calorieGoal,
+  proteinG,
+  carbsG,
+  fatsG,
+  nutritionGoals,
+  waterIntake,
+  sleepHours,
+  user,
+  homeMetricsSetters,
+  handleOpenConversations,
+  handleFindTrainers,
+  openTrainerSearch,
+  setDay6Client,
+  selfDay6,
+  selfName,
+  openPhotoGallery,
+  openProgressCharts,
+  openLogWorkout,
+  openDailyCheckIn,
+  openMoodCheckIn,
+  openAIWorkouts,
+  openWeeklyReport,
+  openNotifications,
+  openMySessions,
+  openNutrition,
+  setShowNotesFiles,
+  notesAndFiles,
+}) {
+  const columnBackground = homeColumnBackground(isDark);
+  let hideHomeWhileNutrition = null;
+  if (mainTab === CLIENT_MAIN_TABS.nutrition) {
+    hideHomeWhileNutrition = { opacity: 0 };
+  }
+  const columnStyle = [{ flex: 1, backgroundColor: columnBackground }, hideHomeWhileNutrition];
+  let pointerEvents = 'none';
+  if (showHomeTab) {
+    pointerEvents = 'auto';
+  }
+  let openRemoveTrainer;
+  if (trainerData) {
+    openRemoveTrainer = () => setShowRemoveTrainerPopup(true);
+  }
+
+  let proteinGoal;
+  let carbsGoal;
+  let fatsGoal;
+  if (nutritionGoals) {
+    if (nutritionGoals.proteinTarget) proteinGoal = nutritionGoals.proteinTarget;
+    else if (nutritionGoals.macroSplit) proteinGoal = nutritionGoals.macroSplit.protein;
+    if (nutritionGoals.carbsTarget) carbsGoal = nutritionGoals.carbsTarget;
+    else if (nutritionGoals.macroSplit) carbsGoal = nutritionGoals.macroSplit.carbs;
+    if (nutritionGoals.fatTarget) fatsGoal = nutritionGoals.fatTarget;
+    else if (nutritionGoals.macroSplit) fatsGoal = nutritionGoals.macroSplit.fat;
+  }
+
+  return (
+    <View style={columnStyle} pointerEvents={pointerEvents}>
+      <TopHeader
+        isDark={isDark}
+        onProfilePress={() => openProfile()}
+        onSettingsPress={() => openSettings()}
+      />
+      <ClientReviewPromptStrip
+        reviewPromptTrainer={reviewPromptTrainer}
+        isDark={isDark}
+        onOpenReview={() => setShowReviewSheetForPrompt(true)}
+        onDismiss={() => setReviewPromptTrainer(null)}
+      />
+      <TrainingHomeScreen
+        embedInLayout
+        trainer={trainerData}
+        userData={userData}
+        onOpenCoachingPayment={openCoachingPayment}
+        unreadMessageCount={unreadMessageCount}
+        onOpenRemoveTrainer={openRemoveTrainer}
+        onPressViewProfile={() => {
+          if (!trainerData) return;
+          setProfileTrainer(trainerData);
+          openTrainerProfile();
+        }}
+        todayCalories={caloriesConsumed}
+        calorieGoal={calorieGoal}
+        proteinG={proteinG}
+        carbsG={carbsG}
+        fatsG={fatsG}
+        proteinGoal={proteinGoal}
+        carbsGoal={carbsGoal}
+        fatsGoal={fatsGoal}
+        waterOz={waterIntake}
+        sleepHoursValue={sleepHours}
+        onMetricsChange={(patch) => applyDashboardMetricsPatch(patch, user, homeMetricsSetters)}
+        onPressMessage={handleOpenConversations}
+        onPressFindTrainer={handleFindTrainers || openTrainerSearch}
+        trainerClientId={user ? user.uid : undefined}
+        trainerClientName={selfName}
+        onOpenPhotoGallery={() => {
+          setDay6Client(selfDay6);
+          openPhotoGallery();
+        }}
+        onOpenProgressCharts={() => openProgressCharts()}
+        onOpenLogWorkout={() => {
+          if (typeof openLogWorkout === 'function') openLogWorkout();
+        }}
+        onOpenDailyCheckIn={() => {
+          if (typeof openDailyCheckIn === 'function') openDailyCheckIn();
+        }}
+        onOpenMoodCheckIn={() => {
+          if (typeof openMoodCheckIn === 'function') openMoodCheckIn();
+        }}
+        onOpenAIWorkouts={() => {
+          setDay6Client(selfDay6);
+          openAIWorkouts();
+        }}
+        onOpenWeeklyReport={() => openWeeklyReport()}
+        onOpenNotifications={() => {
+          if (typeof openNotifications === 'function') openNotifications();
+        }}
+        onOpenMySessions={() => openMySessions()}
+        onPressCalories={() => openNutrition()}
+        onOpenNotesFiles={() => setShowNotesFiles(true)}
+        notesFilesCount={notesFileCount(notesAndFiles)}
+        notesFilesNewCount={unreadNotesCount(notesAndFiles)}
+      />
+    </View>
+  );
+}
+
+function ClientFileViewers({
+  isDark,
+  showTrainerSharedFilesPopup,
+  setShowTrainerSharedFilesPopup,
+  trainerSharedFiles,
+  openNotesFile,
+  showAddFilePopup,
+  setShowAddFilePopup,
+  refreshNotesAndFiles,
+  pdfViewer,
+  setPdfViewer,
+  spreadsheetViewer,
+  setSpreadsheetViewer,
+  documentViewer,
+  setDocumentViewer,
+  mediaViewer,
+  setMediaViewer,
+  embedWebViewer,
+  setEmbedWebViewer,
+  reviewPromptTrainer,
+  showReviewSheetForPrompt,
+  setShowReviewSheetForPrompt,
+  setReviewPromptTrainer,
+  user,
+  userData,
+}) {
+  let clientFirstName;
+  if (userData && userData.firstName) {
+    clientFirstName = userData.firstName;
+  } else if (user && user.displayName) {
+    clientFirstName = user.displayName.split(' ')[0];
+  }
+
+  return (
+    <>
+      <TrainerSharedFilesPopup
+        visible={showTrainerSharedFilesPopup}
+        onClose={() => setShowTrainerSharedFilesPopup(false)}
+        isDark={isDark}
+        files={trainerSharedFiles}
+        onPressItem={(file) => {
+          setShowTrainerSharedFilesPopup(false);
+          openNotesFile(file);
+        }}
+      />
+      <AddFilePopup
+        visible={showAddFilePopup}
+        onClose={() => setShowAddFilePopup(false)}
+        onAdded={refreshNotesAndFiles}
+        isDark={isDark}
+      />
+      <PdfViewer
+        visible={pdfViewer.visible}
+        url={pdfViewer.url}
+        name={pdfViewer.name}
+        isDark={isDark}
+        onClose={() => setPdfViewer({ visible: false, url: null, name: null })}
+      />
+      <SpreadsheetViewer
+        visible={spreadsheetViewer.visible}
+        url={spreadsheetViewer.url}
+        rows={spreadsheetViewer.rows}
+        name={spreadsheetViewer.name}
+        isDark={isDark}
+        onClose={() => setSpreadsheetViewer({ visible: false, url: null, name: null, rows: null })}
+      />
+      <DocumentViewer
+        visible={documentViewer.visible}
+        trainerId={documentViewer.trainerId}
+        documentId={documentViewer.documentId}
+        title={documentViewer.title}
+        isDark={isDark}
+        onClose={() => setDocumentViewer({ visible: false, trainerId: null, documentId: null, title: null })}
+      />
+      <PhotoVideoViewer
+        visible={mediaViewer.visible}
+        url={mediaViewer.url}
+        kind={mediaViewer.kind}
+        name={mediaViewer.name}
+        isDark={isDark}
+        onClose={() => setMediaViewer({ visible: false, url: null, kind: 'image', name: null })}
+      />
+      <WebPageViewer
+        visible={embedWebViewer.visible}
+        uri={embedWebViewer.uri}
+        title={embedWebViewer.title}
+        isDark={isDark}
+        onClose={() => setEmbedWebViewer({ visible: false, uri: null, title: null })}
+      />
+      {/* RemoveTrainerPopup mounts on ClientAppShellLayout so Settings can open it too. */}
+      {reviewPromptTrainer ? (
+        <WriteTrainerReviewPopup
+          visible={showReviewSheetForPrompt}
+          onClose={() => setShowReviewSheetForPrompt(false)}
+          onSubmitComplete={() => {
+            setShowReviewSheetForPrompt(false);
+            setReviewPromptTrainer(null);
+          }}
+          trainerName={reviewPromptTrainer.name}
+          trainerId={reviewPromptTrainer.id}
+          clientId={user ? user.uid : undefined}
+          clientFirstName={clientFirstName}
+          existingReview={null}
+        />
+      ) : null}
+    </>
+  );
+}
+
+// Mutual exclusivity: chat → inbox → notes → home. Early returns keep nesting flat
+// (else-if chains count as nested IfStatements in the AST checker).
+function paintClientPrimarySurface(args) {
+  // 1. Live trainer chat takes the whole primary pane.
+  if (args.showTrainerMessaging) {
+    return (
+      <ChatWithTrainerScreen
+        embedInLayout
+        trainer={args.selectedTrainer}
+        conversation={args.selectedConversation}
+        onClose={args.handleCloseMessaging}
+        onProfilePress={() => args.openProfile()}
+        onSettingsPress={() => args.openSettings()}
+      />
+    );
+  }
+
+  // 2. Inbox list (pick a conversation).
+  if (args.showConversationsList) {
+    return (
+      <View style={{ flex: 1, backgroundColor: args.inboxPaneBackground }}>
+        <InboxScreen
+          embedInLayout
+          onSelectConversation={args.handleSelectConversation}
+          onClose={args.handleCloseConversationsList}
+          onProfilePress={() => args.openProfile()}
+          onSettingsPress={() => args.openSettings()}
+        />
+      </View>
+    );
+  }
+
+  // 3. Notes & files panel.
+  if (args.showNotesFiles) {
+    return (
+      <ClientNotesAndFilesPanel
+        isDark={args.isDark}
+        notesAndFiles={args.notesAndFiles}
+        userUid={(args.user ? args.user.uid : undefined)}
+        deletingMyFiles={args.deletingMyFiles}
+        onBack={() => args.setShowNotesFiles(false)}
+        onOpenItem={args.openNotesFile}
+        onUploadPress={() => args.setShowAddFilePopup(true)}
+        onDeleteItem={args.deleteSingleMyFile}
+      />
+    );
+  }
+
+  // 4. Default home column (hidden while AI / Workout tabs own the overlays).
+  if (args.showPrimaryHomeColumn) {
+    return (
+      <ClientHomeColumn
+        isDark={args.isDark}
+        showHomeTab={args.showHomeTab}
+        mainTab={args.mainTab}
+        openProfile={args.openProfile}
+        openSettings={args.openSettings}
+        reviewPromptTrainer={args.reviewPromptTrainer}
+        setShowReviewSheetForPrompt={args.setShowReviewSheetForPrompt}
+        setReviewPromptTrainer={args.setReviewPromptTrainer}
+        trainerData={args.trainerData}
+        userData={args.userData}
+        openCoachingPayment={args.openCoachingPayment}
+        unreadMessageCount={args.unreadMessageCount}
+        setShowRemoveTrainerPopup={args.setShowRemoveTrainerPopup}
+        setProfileTrainer={args.setProfileTrainer}
+        openTrainerProfile={args.openTrainerProfile}
+        caloriesConsumed={args.caloriesConsumed}
+        calorieGoal={args.calorieGoal}
+        proteinG={args.proteinG}
+        carbsG={args.carbsG}
+        fatsG={args.fatsG}
+        nutritionGoals={args.nutritionGoals}
+        waterIntake={args.waterIntake}
+        sleepHours={args.sleepHours}
+        user={args.user}
+        homeMetricsSetters={args.homeMetricsSetters}
+        handleOpenConversations={args.handleOpenConversations}
+        handleFindTrainers={args.handleFindTrainers}
+        openTrainerSearch={args.openTrainerSearch}
+        setDay6Client={args.setDay6Client}
+        selfDay6={args.selfDay6}
+        selfName={args.selfName}
+        openPhotoGallery={args.openPhotoGallery}
+        openProgressCharts={args.openProgressCharts}
+        openLogWorkout={args.openLogWorkout}
+        openDailyCheckIn={args.openDailyCheckIn}
+        openMoodCheckIn={args.openMoodCheckIn}
+        openAIWorkouts={args.openAIWorkouts}
+        openWeeklyReport={args.openWeeklyReport}
+        openNotifications={args.openNotifications}
+        openMySessions={args.openMySessions}
+        openNutrition={args.openNutrition}
+        setShowNotesFiles={args.setShowNotesFiles}
+        notesAndFiles={args.notesAndFiles}
+      />
+    );
+  }
+
+  return null;
+}
+
+// AI tab overlay: conversation when payload exists, otherwise Coach home.
+function paintClientAiCoachOverlay(args) {
+  if (args.aiChatPayload) {
+    return (
+      <CoachConversationScreen
+        hideBottomNav
+        key={args.conversationMountKey}
+        userId={(args.user ? args.user.uid : undefined)}
+        userProfile={args.coachUserProfile}
+        trainerId={(args.userData ? args.userData.trainerId : undefined)}
+        prefill={args.aiChatPayload.prefill}
+        sessionId={args.aiChatPayload.sessionId}
+        initialAttachments={args.aiChatPayload.initialAttachments}
+        onBack={() => {
+          args.setAiChatState(AI_CHAT_HOME);
+        }}
+        onSessionSwitch={(session) =>
+          args.openAIChatSession({ sessionId: session.sessionId || session.id })
+        }
+        onNewChat={() => args.openAIChatSession({})}
+        openAttachmentsOnMount={false}
+        {...args.aiChatNavHandlers}
+      />
+    );
+  }
+
+  return (
+    <CoachHomeScreen
+      hideBottomNav
+      userId={(args.user ? args.user.uid : undefined)}
+      onStartChat={(payload = {}) => args.openAIChatSession(payload)}
+      onSessionPress={(session) =>
+        args.openAIChatSession({ sessionId: session.sessionId || session.id })
+      }
+      {...args.aiChatNavHandlers}
+    />
+  );
 }
 
 // ===== MAIN FUNCTION =====
 
 /**
- * Client main tabs: mockup Home (TrainingHomeScreen), nutrition, workout, AI, plus overlays.
- * @returns {import('react').ReactElement}
+ * Client main tabs: Home (TrainingHomeScreen), nutrition, workout, AI coach, plus messaging / file overlays.
+ * Flow: 1. shell + badges  2. tab visibility  3. primary branch  4. overlays + viewers + nav
  */
 export default function ClientMainScreen() {
   const shell = useClientAppStartShell();
@@ -296,396 +893,244 @@ export default function ClientMainScreen() {
 
   const [workoutPlanReadyBadge, setWorkoutPlanReadyBadge] = useState(false);
   const [workoutGenInFlight, setWorkoutGenInFlight] = useState(false);
+  const [nutritionOnboardingActive, setNutritionOnboardingActive] = useState(false);
+  const [keepNutritionMounted, setKeepNutritionMounted] = useState(false);
 
+  const isMainFocused = useIsFocused();
+
+  // 1. Background workout-plan session drives Workout tab badge + keeps generator mounted while in flight.
   useEffect(() => {
-    const uid = user?.uid;
+    let uid = null;
+    if (user) uid = user.uid;
     if (!uid) {
       setWorkoutPlanReadyBadge(false);
       setWorkoutGenInFlight(false);
       return undefined;
     }
-
-    const syncSession = (session) => {
+    const syncWorkoutSession = (session) => {
       applyWorkoutGenerationSession(session, uid, mainTab, setWorkoutGenInFlight, setWorkoutPlanReadyBadge);
     };
+    readWorkoutGenerationSession(uid).then(syncWorkoutSession);
+    return subscribeWorkoutGenerationSession(syncWorkoutSession);
+  }, [user && user.uid, mainTab]);
 
-    readWorkoutGenerationSession(uid).then(syncSession);
-    return subscribeWorkoutGenerationSession(syncSession);
-  }, [user?.uid, mainTab]);
+  // 2. After first Nutrition visit, keep DailyLog mounted so Home ↔ Nutrition does not remount-flash.
+  useEffect(() => {
+    if (mainTab === CLIENT_MAIN_TABS.nutrition) {
+      setKeepNutritionMounted(true);
+    }
+  }, [mainTab]);
 
   const aiChatPayload = aiChatState && typeof aiChatState === 'object' ? aiChatState : null;
-  const isMainFocused = useIsFocused();
-  const [nutritionOnboardingActive, setNutritionOnboardingActive] = useState(false);
-  // Keep nutrition mounted after first open so Home ↔ Nutrition does not remount-flash.
-  const [keepNutritionMounted, setKeepNutritionMounted] = useState(false);
-  useEffect(() => {
-    if (mainTab === CLIENT_MAIN_TABS.nutrition) setKeepNutritionMounted(true);
-  }, [mainTab]);
-  const keepAiCoachMounted = mainTab === CLIENT_MAIN_TABS.ai || Boolean(aiChatPayload);
-  const showHomeTab =
-    mainTab !== CLIENT_MAIN_TABS.nutrition &&
+  const tabVisibility = decideClientTabVisibility(
+    mainTab,
+    nutritionOnboardingActive,
+    showTrainerMessaging,
+    aiChatPayload,
+  );
+  const { showHomeTab, hideBottomNav, keepAiCoachMounted } = tabVisibility;
+
+  const statusBarStyle = statusBarStyleForTheme(isDark);
+  const safeAreaStyle = safeAreaThemeStyles(styles, isDark);
+  const selfName = clientSelfDisplayName(user, userData);
+  const selfDay6 = clientDay6SelfRecord(user, userData);
+  const homeMetricsSetters = buildHomeMetricsSetters({
+    setSoreness,
+    setEnergyLevel,
+    setStressLevel,
+    setWaterIntake,
+    setSleepHours,
+    setDashboardWorkoutSummary,
+    setTodayWorkout,
+  });
+  const proteinG = gramValueFromMacroList(nutritionMacros, 'Protein');
+  const carbsG = gramValueFromMacroList(nutritionMacros, 'Carbs');
+  const fatsG = gramValueFromMacroList(nutritionMacros, 'Fats');
+
+  const showPrimaryHomeColumn =
+    !showTrainerMessaging &&
+    !showConversationsList &&
+    !showNotesFiles &&
     mainTab !== CLIENT_MAIN_TABS.ai &&
     mainTab !== CLIENT_MAIN_TABS.workout;
-  // Keep shell BottomMenuBar on Dashboard, Messages list, Goals, etc.
-  // Only hide for focused flows: nutrition onboarding, or an open chat thread.
-  const hideBottomNav =
-    (mainTab === CLIENT_MAIN_TABS.nutrition && nutritionOnboardingActive) ||
-    showTrainerMessaging;
 
+  const shouldMountNutrition =
+    keepNutritionMounted || mainTab === CLIENT_MAIN_TABS.nutrition;
+  const shouldMountWorkout =
+    mainTab === CLIENT_MAIN_TABS.workout || workoutGenInFlight;
+  const showBottomNav = isMainFocused && !hideBottomNav;
+  const inboxPaneBackground = inboxBackground(isDark);
+  const coachUserProfile = { ...(onboardingData || {}), ...(userData || {}) };
+  const conversationMountKey = aiChatPayload
+    ? aiCoachConversationMountKey(aiChatPayload)
+    : null;
+
+  // 3. Primary surface: messaging → inbox → notes → home column (mutually exclusive).
+  const primaryBranch = paintClientPrimarySurface({
+    showTrainerMessaging,
+    selectedTrainer,
+    selectedConversation,
+    handleCloseMessaging,
+    openProfile,
+    openSettings,
+    showConversationsList,
+    inboxPaneBackground,
+    handleSelectConversation,
+    handleCloseConversationsList,
+    showNotesFiles,
+    isDark,
+    notesAndFiles,
+    user,
+    deletingMyFiles,
+    setShowNotesFiles,
+    openNotesFile,
+    setShowAddFilePopup,
+    deleteSingleMyFile,
+    showPrimaryHomeColumn,
+    showHomeTab,
+    mainTab,
+    reviewPromptTrainer,
+    setShowReviewSheetForPrompt,
+    setReviewPromptTrainer,
+    trainerData,
+    userData,
+    openCoachingPayment,
+    unreadMessageCount,
+    setShowRemoveTrainerPopup,
+    setProfileTrainer,
+    openTrainerProfile,
+    caloriesConsumed,
+    calorieGoal,
+    proteinG,
+    carbsG,
+    fatsG,
+    nutritionGoals,
+    waterIntake,
+    sleepHours,
+    homeMetricsSetters,
+    handleOpenConversations,
+    handleFindTrainers,
+    openTrainerSearch,
+    setDay6Client,
+    selfDay6,
+    selfName,
+    openPhotoGallery,
+    openProgressCharts,
+    openLogWorkout,
+    openDailyCheckIn,
+    openMoodCheckIn,
+    openAIWorkouts,
+    openWeeklyReport,
+    openNotifications,
+    openMySessions,
+    openNutrition,
+  });
+
+  const aiCoachOverlay = paintClientAiCoachOverlay({
+    aiChatPayload,
+    conversationMountKey,
+    user,
+    coachUserProfile,
+    userData,
+    setAiChatState,
+    openAIChatSession,
+    aiChatNavHandlers,
+  });
+
+  // 4. Paint provider → SafeArea → primary + tab overlays → file viewers → bottom nav.
   return (
     <AppNavigationProvider {...navProviderProps}>
-    <SafeAreaView
-      style={[styles.safeArea, !isDark ? styles.safeAreaLight : styles.safeAreaDark]}
-      edges={SHELL_SAFE_AREA_EDGES}
-    >
-      <StatusBar barStyle={!isDark ? 'dark-content' : 'light-content'} />
-      <OfflineBanner
-        visible={isOffline}
-        retrying={offlineRetrying}
-        onRetry={retryOffline}
-      />
-      <View style={{ flex: 1 }}>
-
-      {showTrainerMessaging ? (
-        <ChatWithTrainerScreen
-          embedInLayout
-          trainer={selectedTrainer}
-          conversation={selectedConversation}
-          onClose={handleCloseMessaging}
-          onProfilePress={() => openProfile()}
-          onSettingsPress={() => openSettings()}
+      <SafeAreaView style={safeAreaStyle} edges={SHELL_SAFE_AREA_EDGES}>
+        <StatusBar barStyle={statusBarStyle} />
+        <OfflineBanner
+          visible={isOffline}
+          retrying={offlineRetrying}
+          onRetry={retryOffline}
         />
-      ) : showConversationsList ? (
-        <View
-          style={{ flex: 1, backgroundColor: isDark ? lightColors.nbInk : '#F7F7FA' }}
-        >
-          <InboxScreen
-            embedInLayout
-            onSelectConversation={handleSelectConversation}
-            onClose={handleCloseConversationsList}
-            onProfilePress={() => openProfile()}
-            onSettingsPress={() => openSettings()}
-          />
-        </View>
-      ) : showNotesFiles ? (
-        <View
-          style={{ flex: 1, backgroundColor: isDark ? darkColors.nbBackground : lightColors.nbBackground }}
-        >
-          {/* Design Law PNG 01: NbPageHeader (not TopHeader) + FilesSection segmented workspace */}
-          <NbPageHeader
-            title="Your Notes & Files"
-            subtitle="Everything shared between you and your coach, all in one place."
-            onBack={() => setShowNotesFiles(false)}
-          />
-          <ScrollView
-            style={{ flex: 1 }}
-            contentContainerStyle={{ paddingBottom: SCROLL_BOTTOM_PAD }}
-            keyboardShouldPersistTaps="handled"
-            scrollEventThrottle={16}
-            keyboardDismissMode="on-drag"
-            showsVerticalScrollIndicator={false}
-          >
-            <FilesSection
-              items={notesAndFiles}
-              isDark={isDark}
-              showHero={false}
-              onOpenItem={openNotesFile}
-              onDownloadItem={(x) => x?.url && openNotesFile(x)}
-              onShareItem={(x) => x?.url && Share.share({ message: `${x?.name || x?.title || 'File'}\n${x.url}` }).catch(() => {})}
-              onDeleteItem={(x) => {
-                if (deletingMyFiles) return;
-                deleteSingleMyFile(x);
-              }}
-              onMarkRead={async (x) => {
-                if (!user?.uid || !x?.id) return;
-                try { await markNotesAndFilesItemRead(user.uid, x.id); } catch (_) {}
-              }}
-              onUploadPress={() => setShowAddFilePopup(true)}
-            />
-          </ScrollView>
-        </View>
-      ) : mainTab === CLIENT_MAIN_TABS.ai || mainTab === CLIENT_MAIN_TABS.workout ? null : (
-        // Home stays mounted under nutrition (absolute overlay) so Home ↔ Nutrition does not remount.
-        <View
-          style={[
-            { flex: 1, backgroundColor: isDark ? darkColors.nbBackground : lightColors.nbBackground },
-            mainTab === CLIENT_MAIN_TABS.nutrition && { opacity: 0 },
-          ]}
-          pointerEvents={showHomeTab ? 'auto' : 'none'}
-        >
-          <TopHeader
-            isDark={isDark}
-            onProfilePress={() => openProfile()}
-            onSettingsPress={() => openSettings()}
-          />
-          {reviewPromptTrainer ? (
-            <View
-              style={{
-                backgroundColor: isDark ? darkColors.nbSurfaceChip : lightColors.nbSoft,
-                borderColor: isDark ? darkColors.nbBorder : lightColors.nbBorder,
-                borderWidth: 3,
-                borderRadius: 10,
-                padding: 14,
-                flexDirection: 'row',
-                alignItems: 'center',
-                marginHorizontal: 16,
-                marginTop: 8,
-              }}
-            >
-              <Ionicons name="star-outline" size={18} color={isDark ? darkColors.nbInk : lightColors.nbInk} />
-              <Text style={{ flex: 1, marginLeft: 10, fontSize: 13, color: isDark ? darkColors.nbInk : lightColors.nbInk }}>
-                How was your experience with {reviewPromptTrainer.name}?{' '}
-                <Text
-                  style={{ color: isDark ? darkColors.nbInk : lightColors.nbInk, fontWeight: '900', textDecorationLine: 'underline' }}
-                  onPress={() => setShowReviewSheetForPrompt(true)}
-                >
-                  Leave a review
-                </Text>
-              </Text>
-              <TouchableOpacity onPress={() => setReviewPromptTrainer(null)}>
-                <Ionicons name="close" size={18} color={isDark ? darkColors.nbMuted : lightColors.nbMuted} />
-              </TouchableOpacity>
-            </View>
+        <View style={{ flex: 1 }}>
+          {primaryBranch}
+
+          {shouldMountNutrition ? (
+            <ClientTabOverlay active={mainTab === CLIENT_MAIN_TABS.nutrition}>
+              <DailyLogContent
+                hideBottomNav
+                onOnboardingActiveChange={setNutritionOnboardingActive}
+                onBack={() => {
+                  handleHomePress();
+                  if (typeof refetchNutritionData === 'function') refetchNutritionData();
+                }}
+                onNutritionDataChanged={refetchNutritionData}
+                onProfilePress={openProfile}
+                onSettingsPress={openSettings}
+                onHomePress={handleHomePress}
+                onPlusPress={() => setShowAddFilePopup(true)}
+                onVoicePress={openAIChatHome}
+                onNutritionPress={openNutrition}
+                onWorkoutPress={openWorkout}
+                onMessagesPress={handleOpenConversations}
+                onOpenWeeklyMomentum={() => {
+                  if (typeof openWeeklyMomentum === 'function') openWeeklyMomentum();
+                }}
+              />
+            </ClientTabOverlay>
           ) : null}
-          <TrainingHomeScreen
-            embedInLayout
-            trainer={trainerData}
-            userData={userData}
-            onOpenCoachingPayment={openCoachingPayment}
-            unreadMessageCount={unreadMessageCount}
-            onOpenRemoveTrainer={trainerData ? () => setShowRemoveTrainerPopup(true) : undefined}
-            onPressViewProfile={() => {
-              if (!trainerData) return;
-              setProfileTrainer(trainerData);
-              openTrainerProfile();
-            }}
-            todayCalories={caloriesConsumed}
-            calorieGoal={calorieGoal}
-            proteinG={nutritionMacros?.find?.((m) => m.label === 'Protein') ? parseFloat(String(nutritionMacros.find((m) => m.label === 'Protein').value)) : undefined}
-            carbsG={nutritionMacros?.find?.((m) => m.label === 'Carbs') ? parseFloat(String(nutritionMacros.find((m) => m.label === 'Carbs').value)) : undefined}
-            fatsG={nutritionMacros?.find?.((m) => m.label === 'Fats') ? parseFloat(String(nutritionMacros.find((m) => m.label === 'Fats').value)) : undefined}
-            proteinGoal={nutritionGoals?.proteinTarget || nutritionGoals?.macroSplit?.protein}
-            carbsGoal={nutritionGoals?.carbsTarget || nutritionGoals?.macroSplit?.carbs}
-            fatsGoal={nutritionGoals?.fatTarget || nutritionGoals?.macroSplit?.fat}
-            waterOz={waterIntake}
-            sleepHoursValue={sleepHours}
-            onMetricsChange={(patch) =>
-              applyDashboardMetricsPatch(patch, user, {
-                setSoreness,
-                setEnergyLevel,
-                setStressLevel,
-                setWaterIntake,
-                setSleepHours,
-                setDashboardWorkoutSummary,
-                setTodayWorkout,
-              })
-            }
-            onPressMessage={handleOpenConversations}
-            onPressFindTrainer={handleFindTrainers || openTrainerSearch}
-            trainerClientId={user?.uid}
-            trainerClientName={userData?.firstName || user?.displayName || DEFAULT_SELF_NAME}
-            onOpenPhotoGallery={() => {
-              setDay6Client({ id: user?.uid, name: userData?.firstName || user?.displayName || DEFAULT_SELF_NAME });
-              openPhotoGallery();
-            }}
-            onOpenProgressCharts={() => openProgressCharts()}
-            onOpenLogWorkout={() => openLogWorkout?.()}
-            onOpenDailyCheckIn={() => openDailyCheckIn?.()}
-            onOpenMoodCheckIn={() => openMoodCheckIn?.()}
-            onOpenAIWorkouts={() => {
-              setDay6Client({ id: user?.uid, name: userData?.firstName || user?.displayName || DEFAULT_SELF_NAME });
-              openAIWorkouts();
-            }}
-            onOpenWeeklyReport={() => openWeeklyReport()}
-            onOpenNotifications={() => openNotifications?.()}
-            onOpenMySessions={() => openMySessions()}
-            onPressCalories={() => openNutrition()}
-            onOpenNotesFiles={() => setShowNotesFiles(true)}
-            notesFilesCount={notesFileCount(notesAndFiles)}
-            notesFilesNewCount={unreadNotesCount(notesAndFiles)}
-          />
-        </View>
-      )}
 
-      {(mainTab === CLIENT_MAIN_TABS.nutrition || keepNutritionMounted) ? (
-        <View
-          style={[
-            { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
-            mainTab !== CLIENT_MAIN_TABS.nutrition && { opacity: 0, zIndex: -1 },
-          ]}
-          pointerEvents={mainTab === CLIENT_MAIN_TABS.nutrition ? 'auto' : 'none'}
-          collapsable={false}
-        >
-          <DailyLogContent
-            hideBottomNav
-            onOnboardingActiveChange={setNutritionOnboardingActive}
-            onBack={() => {
-              handleHomePress();
-              refetchNutritionData?.();
-            }}
-            onNutritionDataChanged={refetchNutritionData}
-            onProfilePress={openProfile}
-            onSettingsPress={openSettings}
-            onHomePress={handleHomePress}
-            onPlusPress={() => setShowAddFilePopup(true)}
-            onVoicePress={openAIChatHome}
-            onNutritionPress={openNutrition}
-            onWorkoutPress={openWorkout}
-            onMessagesPress={handleOpenConversations}
-            onOpenWeeklyMomentum={() => openWeeklyMomentum?.()}
-          />
-        </View>
-      ) : null}
+          {shouldMountWorkout ? (
+            <ClientTabOverlay active={mainTab === CLIENT_MAIN_TABS.workout}>
+              <CreateWorkoutPlanScreen
+                hideBottomNav
+                onBack={handleHomePress}
+                onNavigate={onNavigate}
+                onProfilePress={openProfile}
+                onSettingsPress={openSettings}
+              />
+            </ClientTabOverlay>
+          ) : null}
 
-      {(mainTab === CLIENT_MAIN_TABS.workout || workoutGenInFlight) ? (
-        <View
-          style={[
-            { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
-            mainTab !== CLIENT_MAIN_TABS.workout && { opacity: 0, zIndex: -1 },
-          ]}
-          pointerEvents={mainTab === CLIENT_MAIN_TABS.workout ? 'auto' : 'none'}
-          collapsable={false}
-        >
-          <CreateWorkoutPlanScreen
-            hideBottomNav
-            onBack={handleHomePress}
-            onNavigate={onNavigate}
-            onProfilePress={openProfile}
-            onSettingsPress={openSettings}
-          />
+          {keepAiCoachMounted ? (
+            <ClientTabOverlay active={mainTab === CLIENT_MAIN_TABS.ai}>
+              {aiCoachOverlay}
+            </ClientTabOverlay>
+          ) : null}
         </View>
-      ) : null}
 
-      {keepAiCoachMounted ? (
-        <View
-          style={[
-            { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
-            mainTab !== CLIENT_MAIN_TABS.ai && { opacity: 0, zIndex: -1 },
-          ]}
-          pointerEvents={mainTab === CLIENT_MAIN_TABS.ai ? 'auto' : 'none'}
-          collapsable={false}
-        >
-          {aiChatPayload ? (
-            <CoachConversationScreen
-              hideBottomNav
-              key={JSON.stringify({
-                sid: aiChatPayload.sessionId ?? null,
-                pf: aiChatPayload.prefill ?? null,
-                att: Array.isArray(aiChatPayload.initialAttachments)
-                  ? aiChatPayload.initialAttachments.length
-                  : 0,
-              })}
-              userId={user?.uid}
-              userProfile={{ ...(onboardingData || {}), ...(userData || {}) }}
-              trainerId={userData?.trainerId}
-              prefill={aiChatPayload.prefill}
-              sessionId={aiChatPayload.sessionId}
-              initialAttachments={aiChatPayload.initialAttachments}
-              onBack={() => {
-                setAiChatState(AI_CHAT_HOME);
-              }}
-              onSessionSwitch={(session) =>
-                openAIChatSession({ sessionId: session.sessionId || session.id })
-              }
-              onNewChat={() => openAIChatSession({})}
-              openAttachmentsOnMount={false}
-              {...aiChatNavHandlers}
-            />
-          ) : (
-            <CoachHomeScreen
-              hideBottomNav
-              userId={user?.uid}
-              onStartChat={(payload = {}) => openAIChatSession(payload)}
-              onSessionPress={(session) =>
-                openAIChatSession({ sessionId: session.sessionId || session.id })
-              }
-              {...aiChatNavHandlers}
-            />
-          )}
-        </View>
-      ) : null}
-      </View>
-
-      <TrainerSharedFilesPopup
-        visible={showTrainerSharedFilesPopup}
-        onClose={() => setShowTrainerSharedFilesPopup(false)}
-        isDark={isDark}
-        files={trainerSharedFiles}
-        onPressItem={(file) => {
-          setShowTrainerSharedFilesPopup(false);
-          openNotesFile(file);
-        }}
-      />
-      <AddFilePopup
-        visible={showAddFilePopup}
-        onClose={() => setShowAddFilePopup(false)}
-        onAdded={refreshNotesAndFiles}
-        isDark={isDark}
-      />
-      <PdfViewer
-        visible={pdfViewer.visible}
-        url={pdfViewer.url}
-        name={pdfViewer.name}
-        isDark={isDark}
-        onClose={() => setPdfViewer({ visible: false, url: null, name: null })}
-      />
-      <SpreadsheetViewer
-        visible={spreadsheetViewer.visible}
-        url={spreadsheetViewer.url}
-        rows={spreadsheetViewer.rows}
-        name={spreadsheetViewer.name}
-        isDark={isDark}
-        onClose={() => setSpreadsheetViewer({ visible: false, url: null, name: null, rows: null })}
-      />
-      <DocumentViewer
-        visible={documentViewer.visible}
-        trainerId={documentViewer.trainerId}
-        documentId={documentViewer.documentId}
-        title={documentViewer.title}
-        isDark={isDark}
-        onClose={() => setDocumentViewer({ visible: false, trainerId: null, documentId: null, title: null })}
-      />
-      <PhotoVideoViewer
-        visible={mediaViewer.visible}
-        url={mediaViewer.url}
-        kind={mediaViewer.kind}
-        name={mediaViewer.name}
-        isDark={isDark}
-        onClose={() => setMediaViewer({ visible: false, url: null, kind: 'image', name: null })}
-      />
-      <WebPageViewer
-        visible={embedWebViewer.visible}
-        uri={embedWebViewer.uri}
-        title={embedWebViewer.title}
-        isDark={isDark}
-        onClose={() => setEmbedWebViewer({ visible: false, uri: null, title: null })}
-      />
-      {/* RemoveTrainerPopup mounts on ClientAppShellLayout so Settings can open it too. */}
-      {reviewPromptTrainer && (
-        <WriteTrainerReviewPopup
-          visible={showReviewSheetForPrompt}
-          onClose={() => setShowReviewSheetForPrompt(false)}
-          onSubmitComplete={() => {
-            setShowReviewSheetForPrompt(false);
-            setReviewPromptTrainer(null);
-          }}
-          trainerName={reviewPromptTrainer.name}
-          trainerId={reviewPromptTrainer.id}
-          clientId={user?.uid}
-          clientFirstName={userData?.firstName || user?.displayName?.split(' ')[0]}
-          existingReview={null}
+        <ClientFileViewers
+          isDark={isDark}
+          showTrainerSharedFilesPopup={showTrainerSharedFilesPopup}
+          setShowTrainerSharedFilesPopup={setShowTrainerSharedFilesPopup}
+          trainerSharedFiles={trainerSharedFiles}
+          openNotesFile={openNotesFile}
+          showAddFilePopup={showAddFilePopup}
+          setShowAddFilePopup={setShowAddFilePopup}
+          refreshNotesAndFiles={refreshNotesAndFiles}
+          pdfViewer={pdfViewer}
+          setPdfViewer={setPdfViewer}
+          spreadsheetViewer={spreadsheetViewer}
+          setSpreadsheetViewer={setSpreadsheetViewer}
+          documentViewer={documentViewer}
+          setDocumentViewer={setDocumentViewer}
+          mediaViewer={mediaViewer}
+          setMediaViewer={setMediaViewer}
+          embedWebViewer={embedWebViewer}
+          setEmbedWebViewer={setEmbedWebViewer}
+          reviewPromptTrainer={reviewPromptTrainer}
+          showReviewSheetForPrompt={showReviewSheetForPrompt}
+          setShowReviewSheetForPrompt={setShowReviewSheetForPrompt}
+          setReviewPromptTrainer={setReviewPromptTrainer}
+          user={user}
+          userData={userData}
         />
-      )}
-      {isMainFocused && !hideBottomNav ? (
-        <ShellBottomNavAnchor>
-          <BottomMenuBar
-            {...navProviderProps}
-            activeTabKey={mainTabActiveKey}
-            workoutTabBadge={workoutPlanReadyBadge}
-          />
-        </ShellBottomNavAnchor>
-      ) : null}
-    </SafeAreaView>
+
+        {showBottomNav ? (
+          <ShellBottomNavAnchor>
+            <BottomMenuBar
+              {...navProviderProps}
+              activeTabKey={mainTabActiveKey}
+              workoutTabBadge={workoutPlanReadyBadge}
+            />
+          </ShellBottomNavAnchor>
+        ) : null}
+      </SafeAreaView>
     </AppNavigationProvider>
   );
 }

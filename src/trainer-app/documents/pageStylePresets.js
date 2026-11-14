@@ -1,16 +1,20 @@
 // Document format presets (APA, MLA, Chicago, Resume, Essay, Letter, Report).
-// Flow: pick a preset key → optional empty-doc HTML scaffold → RN paper wrapper style → CSS injected into the TipTap WebView.
-// Used by: the trainer document editor. Applied as RN StyleSheet objects + optional content scaffold (only added if the doc is empty).
+// Flow: preset key → empty-doc scaffold (if empty) → RN paper wrapper → CSS for TipTap WebView.
+// Used by the trainer document editor as StyleSheet objects + optional content scaffold.
 
 import { StyleSheet } from 'react-native';
 import { lightColors, darkColors } from '../../look-and-feel/colorPalette';
 
+// Story: presets are plain objects the editor injects into the WebView page chrome.
+
 // ===== NAMED CONSTANTS =====
 
 const PRESET_KEY_DEFAULT = 'default';
+// Manipulate here: Design Law outline width on the paper card in the WebView
 const EDITOR_BORDER_WIDTH_PX = 3;
 const PLACEHOLDER_DARK = 'rgba(242,242,242,0.45)';
 const PLACEHOLDER_LIGHT = 'rgba(10,10,10,0.4)';
+// Manipulate here: hard offset shadow string for light-mode paper (dark mode uses none)
 const PAPER_HARD_SHADOW_LIGHT = '5px 5px 0 #0A0A0A';
 
 const RESUME_SCAFFOLD = `
@@ -52,6 +56,7 @@ const REPORT_SCAFFOLD = `
 <p>Conclusions and next steps.</p>
 `;
 
+// Typography CSS injected into the TipTap WebView per preset key (letters frozen).
 const PRESET_CSS_BY_KEY = {
   default: `.doc-paper-wrap { font-family: 'Outfit', sans-serif; line-height: 1.6; font-size: 14px; }`,
   apa: `.doc-paper-wrap { font-family: 'Times New Roman', Times, serif; font-size: 12pt; line-height: 2; } .ProseMirror p { text-indent: 0.5in; margin: 0; } .ProseMirror h1, .ProseMirror h2 { text-align: center; }`,
@@ -63,37 +68,96 @@ const PRESET_CSS_BY_KEY = {
   report: `.doc-paper-wrap { font-family: 'Outfit', sans-serif; font-size: 12pt; line-height: 1.65; } .ProseMirror h1 { text-align: center; font-weight: 700; } .ProseMirror h2 { border-bottom: 1px solid currentColor; padding-bottom: 4px; margin-top: 1em; }`,
 };
 
+// Shared paper padding used by every preset StyleSheet entry below.
+const SHARED_PAPER_PADDING = {
+  width: '100%',
+  paddingVertical: 12,
+  paddingHorizontal: 16,
+};
+
+/** RN wrapper styles for the paper container */
+export const paperStyles = StyleSheet.create({
+  docPaper: {
+    position: 'relative',
+    marginHorizontal: 'auto',
+    borderRadius: 10,
+  },
+  presetDefault: { ...SHARED_PAPER_PADDING },
+  presetApa: { ...SHARED_PAPER_PADDING },
+  presetMla: { ...SHARED_PAPER_PADDING },
+  presetChicago: { ...SHARED_PAPER_PADDING },
+  presetResume: { ...SHARED_PAPER_PADDING },
+  presetEssay: { ...SHARED_PAPER_PADDING },
+  presetLetter: { ...SHARED_PAPER_PADDING },
+  presetReport: { ...SHARED_PAPER_PADDING },
+});
+
 // ===== HELPER FUNCTIONS =====
 
-function definePreset(key, label, description, paperClass, scaffold) {
-  const preset = { key, label, description, paperClass };
-  if (scaffold) preset.scaffold = scaffold;
-  return preset;
+/**
+ * Build one row for the preset picker list.
+ * @param {string} key
+ * @param {string} label
+ * @param {string} description
+ * @param {string} paperClass
+ * @param {string} [scaffoldHtml]
+ * @returns {{ key: string, label: string, description: string, paperClass: string, scaffold?: string }}
+ */
+function buildOnePresetRow(key, label, description, paperClass, scaffoldHtml) {
+  const row = { key, label, description, paperClass };
+  if (scaffoldHtml) {
+    row.scaffold = scaffoldHtml;
+  }
+  return row;
 }
 
 /**
- * Design Law bg / surface / ink for the WebView canvas and paper card.
+ * Map paperClass string → StyleSheet entry used by the RN wrapper.
+ * @returns {Record<string, object>}
+ */
+function buildPaperClassToStyleMap() {
+  return {
+    'preset-default': paperStyles.presetDefault,
+    'preset-apa': paperStyles.presetApa,
+    'preset-mla': paperStyles.presetMla,
+    'preset-chicago': paperStyles.presetChicago,
+    'preset-resume': paperStyles.presetResume,
+    'preset-essay': paperStyles.presetEssay,
+    'preset-letter': paperStyles.presetLetter,
+    'preset-report': paperStyles.presetReport,
+  };
+}
+
+/**
+ * Design Law colors for the WebView canvas + paper card.
  * @param {boolean} isDark
  * @returns {object}
  */
-function editorTokenColors(isDark) {
+function pickWebViewColorsFromTheme(isDark) {
   const palette = isDark ? darkColors : lightColors;
   const tableBorder = isDark ? 'rgba(242,242,242,0.16)' : 'rgba(10,10,10,0.12)';
+  const placeholderColor = isDark ? PLACEHOLDER_DARK : PLACEHOLDER_LIGHT;
+  const paperShadow = isDark ? 'none' : PAPER_HARD_SHADOW_LIGHT;
   return {
     canvasBg: palette.nbBackground,
     surfaceBg: palette.nbSurface,
     foregroundColor: palette.nbInk,
     accentInk: palette.nbInk,
     borderColor: palette.nbBorder,
-    placeholderColor: isDark ? PLACEHOLDER_DARK : PLACEHOLDER_LIGHT,
-    paperShadow: isDark ? 'none' : PAPER_HARD_SHADOW_LIGHT,
+    placeholderColor,
+    paperShadow,
     codeBackground: palette.nbSoft,
     tableBorder,
   };
 }
 
-function buildBaseEditorCss(isDark) {
-  const colors = editorTokenColors(isDark);
+/**
+ * Shared ProseMirror + paper chrome CSS (theme tokens). Preset typography is appended later.
+ * @param {boolean} isDark
+ * @returns {string}
+ */
+function buildSharedEditorChromeCss(isDark) {
+  const colors = pickWebViewColorsFromTheme(isDark);
   return `
     html, body {
       margin: 0;
@@ -141,109 +205,85 @@ function buildBaseEditorCss(isDark) {
   `;
 }
 
-function cssForPresetKey(presetKey) {
-  return PRESET_CSS_BY_KEY[presetKey] || PRESET_CSS_BY_KEY[PRESET_KEY_DEFAULT];
+/**
+ * Look up preset typography CSS; unknown keys fall back to default.
+ * @param {string} presetKey
+ * @returns {string}
+ */
+function typographyCssForPresetKey(presetKey) {
+  const matchedCss = PRESET_CSS_BY_KEY[presetKey];
+  if (matchedCss) {
+    return matchedCss;
+  }
+  return PRESET_CSS_BY_KEY[PRESET_KEY_DEFAULT];
 }
+
+const PAPER_CLASS_TO_STYLE = buildPaperClassToStyleMap();
 
 // ===== MAIN FUNCTION =====
 
+/**
+ * Preset rows the Style picker shows (label + description + optional scaffold).
+ * Key letters stay frozen — editor stores these keys on the document.
+ */
 export const PRESETS = [
-  definePreset(PRESET_KEY_DEFAULT, 'Default', 'Comfortable defaults', 'preset-default'),
-  definePreset('apa', 'APA', 'Double-spaced, 1" margins, Times New Roman', 'preset-apa'),
-  definePreset('mla', 'MLA', 'Double-spaced, half-inch indent, Times New Roman', 'preset-mla'),
-  definePreset('chicago', 'Chicago', 'Double-spaced, indented paragraphs', 'preset-chicago'),
-  definePreset('resume', 'Resume', 'Tight spacing, sectioned layout', 'preset-resume', RESUME_SCAFFOLD),
-  definePreset('essay', 'Essay', 'Title, indented body, double-spaced', 'preset-essay', ESSAY_SCAFFOLD),
-  definePreset('letter', 'Letter', 'Business letter layout', 'preset-letter', LETTER_SCAFFOLD),
-  definePreset('report', 'Report', 'Title, sections, structured', 'preset-report', REPORT_SCAFFOLD),
+  buildOnePresetRow(PRESET_KEY_DEFAULT, 'Default', 'Comfortable defaults', 'preset-default'),
+  buildOnePresetRow('apa', 'APA', 'Double-spaced, 1" margins, Times New Roman', 'preset-apa'),
+  buildOnePresetRow('mla', 'MLA', 'Double-spaced, half-inch indent, Times New Roman', 'preset-mla'),
+  buildOnePresetRow('chicago', 'Chicago', 'Double-spaced, indented paragraphs', 'preset-chicago'),
+  buildOnePresetRow('resume', 'Resume', 'Tight spacing, sectioned layout', 'preset-resume', RESUME_SCAFFOLD),
+  buildOnePresetRow('essay', 'Essay', 'Title, indented body, double-spaced', 'preset-essay', ESSAY_SCAFFOLD),
+  buildOnePresetRow('letter', 'Letter', 'Business letter layout', 'preset-letter', LETTER_SCAFFOLD),
+  buildOnePresetRow('report', 'Report', 'Title, sections, structured', 'preset-report', REPORT_SCAFFOLD),
 ];
 
 /**
- * Find a preset by key, or the Default row if the key is unknown.
+ * Find a preset by key, or the default row when the key is unknown.
  * @param {string} key
- * @returns {object}
+ * @returns {{ key: string, label: string, description: string, paperClass: string, scaffold?: string }}
  */
 export function getPreset(key) {
-  return PRESETS.find((preset) => preset.key === key) || PRESETS[0];
+  // 1. Walk the picker list for an exact key match.
+  for (let index = 0; index < PRESETS.length; index += 1) {
+    const presetRow = PRESETS[index];
+    if (presetRow.key === key) {
+      return presetRow;
+    }
+  }
+  // 2. Unknown keys always land on Default (first row).
+  return PRESETS[0];
 }
 
-/** RN wrapper styles for the paper container */
-export const paperStyles = StyleSheet.create({
-  docPaper: {
-    position: 'relative',
-    marginHorizontal: 'auto',
-    borderRadius: 10,
-  },
-  presetDefault: {
-    width: '100%',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-  },
-  presetApa: {
-    width: '100%',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-  },
-  presetMla: {
-    width: '100%',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-  },
-  presetChicago: {
-    width: '100%',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-  },
-  presetResume: {
-    width: '100%',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-  },
-  presetEssay: {
-    width: '100%',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-  },
-  presetLetter: {
-    width: '100%',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-  },
-  presetReport: {
-    width: '100%',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-  },
-});
-
-const PRESET_STYLE_MAP = {
-  'preset-default': paperStyles.presetDefault,
-  'preset-apa': paperStyles.presetApa,
-  'preset-mla': paperStyles.presetMla,
-  'preset-chicago': paperStyles.presetChicago,
-  'preset-resume': paperStyles.presetResume,
-  'preset-essay': paperStyles.presetEssay,
-  'preset-letter': paperStyles.presetLetter,
-  'preset-report': paperStyles.presetReport,
-};
-
 /**
- * RN StyleSheet for the paper wrapper that matches a preset's paperClass.
+ * RN StyleSheet entry for the paper wrapper of this preset.
  * @param {string} presetKey
  * @returns {object}
  */
 export function getPaperStyle(presetKey) {
-  const preset = getPreset(presetKey);
-  return PRESET_STYLE_MAP[preset.paperClass] || paperStyles.presetDefault;
+  // 1. Resolve the preset so we get its paperClass string.
+  const presetRow = getPreset(presetKey);
+  // 2. Map paperClass → StyleSheet; missing class falls back to default padding.
+  const styleForClass = PAPER_CLASS_TO_STYLE[presetRow.paperClass];
+  if (styleForClass) {
+    return styleForClass;
+  }
+  return paperStyles.presetDefault;
 }
 
 /**
- * CSS injected into the TipTap WebView for typography presets.
- * Canvas uses Design Law bg; paper card uses surface + nb ink accents.
+ * Full CSS string for the TipTap WebView: shared chrome + preset typography.
  * @param {string} presetKey
  * @param {boolean} isDark
  * @returns {string}
  */
 export function getPaperCss(presetKey, isDark) {
-  return buildBaseEditorCss(isDark) + cssForPresetKey(presetKey);
+  // 1. Shared ProseMirror + paper card chrome (Design Law tokens).
+  const sharedChromeCss = buildSharedEditorChromeCss(isDark);
+  // 2. Typography rules for APA / MLA / resume / etc.
+  const presetTypographyCss = typographyCssForPresetKey(presetKey);
+  // 3. TipTap injects one concatenated stylesheet string.
+  return sharedChromeCss + presetTypographyCss;
 }
+
+// ===== PLUMBING — skip unless debugging =====
+// (helpers above cover this file; section kept for Variation 3 story shape)

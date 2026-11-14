@@ -1,12 +1,8 @@
 // Decides whether the AI Coach should load this user's app history into the system prompt.
 // Flow: empty text → skip → thread pushback after a false "I can't see logs" → personal phrases → action phrases → otherwise skip.
-// Used by: the coach conversation prompt builder. Keep patterns in sync with server/lib/coachPersonalDataRouting.js.
+// Used by: sendMessageToCoach / shouldLookUpOnInternet. Keep patterns in sync with server/lib/coachPersonalDataRouting.js.
 
 // ===== NAMED CONSTANTS =====
-
-const COACH_ROLE_ASSISTANT = 'assistant';
-const COACH_ROLE_AI = 'ai';
-const MIN_THREAD_MESSAGES_FOR_PUSHBACK = 2;
 
 // Why we gate this: loading full account context costs Firestore reads and makes the prompt large.
 // We only fetch it when the user's message is clearly about *their* data — not for generic
@@ -14,15 +10,14 @@ const MIN_THREAD_MESSAGES_FOR_PUSHBACK = 2;
 //
 // Data window (documented for the server twin): since account creation (up to 2 years),
 // with lifetime averages + last 45 days of meal detail + monthly rollups for older months.
-//
-// --- Regex cheat sheet (used in every pattern below) ---
-// / ... /     → regular expression (pattern matcher for text)
-// \b          → "word boundary" — start/end of a word (so "log" won't match "blog")
-// (a|b)       → "a OR b" — match either option inside the parentheses
-// '?          → the ? before ' makes the apostrophe optional ("arent" vs "aren't")
-// .*          → any characters (.* = "anything in between" two phrases)
 
-const PERSONAL_PATTERNS = [
+const COACH_ROLE_ASSISTANT = 'assistant';
+const COACH_ROLE_AI = 'ai';
+// Manipulate here: need at least this many turns before "coach denied logs → user pushback" can fire.
+const MIN_THREAD_MESSAGES_FOR_PUSHBACK = 2;
+
+// Phrases that mean "look at MY logs / plan / streak / history."
+const PERSONAL_DATA_PHRASE_PATTERNS = [
   /\bwhy (am|aren'?t|is|do) i\b/,
   /\bwhy (am|aren'?t) i not\b/,
   /\b(no|low|zero) energy\b/,
@@ -108,7 +103,8 @@ const PERSONAL_PATTERNS = [
   /\bnot taking progress\b/,
 ];
 
-const ACTION_PATTERNS = [
+// Phrases that mean "do a write action for me" — still needs their targets / recent context.
+const LOG_OR_CHANGE_TARGET_PHRASE_PATTERNS = [
   /\blog (my|the|a|some)\b/,
   /\b(set|change|adjust|update|bump|lower|raise) my (calor|macro|protein|carb|fat|target|goal)\b/,
   /\bmy (calorie|macro) target/,
@@ -116,95 +112,143 @@ const ACTION_PATTERNS = [
   /\b(log|track) (sleep|water|steps|mood|energy)\b/,
 ];
 
-const COACH_DENIED_DATA_PATTERNS = [
+// Coach replies that wrongly claimed zero access to the user's logged food / diary.
+const COACH_CLAIMED_NO_LOG_ACCESS_PATTERNS = [
   /\b(don'?t|do not|can'?t|cannot) (have|see|access)\b.*\b(log|logs|food|nutrition|diary|data)\b/,
   /\bnutrition diary is separate\b/,
   /\bno access to your logged\b/,
   /\bask me to check\b.*\bwhat did i eat\b/,
 ];
 
-const USER_PUSHBACK_PATTERNS = [
+// User pushback after that false denial — "what do you mean" / "my food logs" etc.
+const USER_PUSHBACK_ABOUT_LOGS_PATTERNS = [
   /\b(what do you mean|wdym|why|how come|that'?s wrong|you should|don'?t you|can'?t you)\b/,
   /\b(food logs?|nutrition (log|diary)|my logs?|my data)\b/,
 ];
 
-// ===== MAIN FUNCTION =====
+// ===== MAIN RECIPE =====
 
-/**
- * true = load account history context; false = skip it.
- * @param {string} userText — what the client typed in AI Coach chat
- * @param {Array<{role:string,content?:string,text?:string}>} [messages] — prior turns for thread-aware routing
- * @returns {boolean}
- */
 export function shouldIncludeWeeklyContextInCoachPrompt(userText, messages = null) {
-  const normalizedText = normalizeUserText(userText);
+  const loweredTrimmedText = lowerCaseTrimmedUserMessage(userText);
 
-  // 1. Empty text never loads account history.
-  if (!normalizedText) return false;
+  // 1. Empty / whitespace-only never loads account history.
+  if (!loweredTrimmedText) {
+    return false;
+  }
 
-  // 2. Reload if the last coach reply wrongly said it can't see logs.
-  if (threadNeedsPersonalDataReload(normalizedText, messages)) return true;
+  // 2. Reload if the last coach reply wrongly said it can't see logs and the user is pushing back.
+  const threadNeedsPersonalDataAfterDenial = userIsPushingBackAfterCoachDeniedLogs(
+    loweredTrimmedText,
+    messages,
+  );
+  if (threadNeedsPersonalDataAfterDenial) {
+    return true;
+  }
 
-  // 3. Personal phrases ("how am I doing", "my logs").
-  if (messageLooksPersonal(normalizedText)) return true;
+  // 3. Personal phrases ("how am I doing", "my logs", "what's on my plan").
+  const userAskedAboutTheirOwnData = textMatchesAnyPattern(
+    loweredTrimmedText,
+    PERSONAL_DATA_PHRASE_PATTERNS,
+  );
+  if (userAskedAboutTheirOwnData) {
+    return true;
+  }
 
-  // 4. Action phrases ("log sleep", "change my macros").
-  if (messageLooksLikeALogAction(normalizedText)) return true;
+  // 4. Action phrases ("log sleep", "change my macros") — still need their targets in context.
+  const userAskedToLogOrChangeTargets = textMatchesAnyPattern(
+    loweredTrimmedText,
+    LOG_OR_CHANGE_TARGET_PHRASE_PATTERNS,
+  );
+  if (userAskedToLogOrChangeTargets) {
+    return true;
+  }
 
   return false;
 }
 
-// ===== HELPER FUNCTIONS =====
-// PLUMBING — skip unless debugging
+// ===== PLUMBING — skip unless debugging =====
 
-function normalizeUserText(userText) {
+function lowerCaseTrimmedUserMessage(userText) {
   return String(userText || '')
     .toLowerCase()
     .trim();
 }
 
-function matchesAnyPattern(text, patterns) {
-  return patterns.some((pattern) => pattern.test(text));
+function textMatchesAnyPattern(text, patternList) {
+  for (let patternIndex = 0; patternIndex < patternList.length; patternIndex += 1) {
+    const onePattern = patternList[patternIndex];
+    if (onePattern.test(text)) {
+      return true;
+    }
+  }
+  return false;
 }
 
-function isCoachMessageRole(role) {
-  return role === COACH_ROLE_ASSISTANT || role === COACH_ROLE_AI;
+function messageRoleIsCoach(role) {
+  if (role === COACH_ROLE_ASSISTANT) {
+    return true;
+  }
+  if (role === COACH_ROLE_AI) {
+    return true;
+  }
+  return false;
 }
 
-function lastCoachMessageText(messages) {
-  const lastCoachMessage = [...messages].reverse().find((message) => isCoachMessageRole(message?.role));
-  return String(lastCoachMessage?.content || lastCoachMessage?.text || '').toLowerCase();
+function textFromCoachMessage(oneMessage) {
+  if (!oneMessage) {
+    return '';
+  }
+
+  if (oneMessage.content) {
+    return String(oneMessage.content);
+  }
+  if (oneMessage.text) {
+    return String(oneMessage.text);
+  }
+  return '';
 }
 
-function coachDeniedPersonalData(assistantText) {
-  return matchesAnyPattern(assistantText, COACH_DENIED_DATA_PATTERNS);
+function lowerCaseTextFromNewestCoachTurn(messages) {
+  if (!Array.isArray(messages)) {
+    return '';
+  }
+
+  for (let messageIndex = messages.length - 1; messageIndex >= 0; messageIndex -= 1) {
+    const oneMessage = messages[messageIndex];
+    if (!oneMessage) {
+      continue;
+    }
+    if (!messageRoleIsCoach(oneMessage.role)) {
+      continue;
+    }
+
+    const coachText = textFromCoachMessage(oneMessage);
+    return coachText.toLowerCase();
+  }
+
+  return '';
 }
 
-function userIsPushingBackAboutLogs(userTextLower) {
-  return matchesAnyPattern(userTextLower, USER_PUSHBACK_PATTERNS);
+function coachReplyClaimedNoLogAccess(assistantTextLower) {
+  return textMatchesAnyPattern(assistantTextLower, COACH_CLAIMED_NO_LOG_ACCESS_PATTERNS);
 }
 
-/**
- * User pushing back after coach wrongly said it can't see their app logs.
- * Reloading personal data lets the next reply actually use the food log.
- * @param {string} userText
- * @param {Array|null} messages
- * @returns {boolean}
- */
-function threadNeedsPersonalDataReload(userText, messages) {
-  if (!Array.isArray(messages) || messages.length < MIN_THREAD_MESSAGES_FOR_PUSHBACK) return false;
-
-  const assistantText = lastCoachMessageText(messages);
-  if (!coachDeniedPersonalData(assistantText)) return false;
-
-  return userIsPushingBackAboutLogs(normalizeUserText(userText));
+function userMessageSoundsLikeLogAccessPushback(userTextLower) {
+  return textMatchesAnyPattern(userTextLower, USER_PUSHBACK_ABOUT_LOGS_PATTERNS);
 }
 
-function messageLooksPersonal(normalizedText) {
-  return matchesAnyPattern(normalizedText, PERSONAL_PATTERNS);
-}
+function userIsPushingBackAfterCoachDeniedLogs(userTextLower, messages) {
+  if (!Array.isArray(messages)) {
+    return false;
+  }
+  if (messages.length < MIN_THREAD_MESSAGES_FOR_PUSHBACK) {
+    return false;
+  }
 
-function messageLooksLikeALogAction(normalizedText) {
-  return matchesAnyPattern(normalizedText, ACTION_PATTERNS);
-}
+  const lastCoachTextLower = lowerCaseTextFromNewestCoachTurn(messages);
+  if (!coachReplyClaimedNoLogAccess(lastCoachTextLower)) {
+    return false;
+  }
 
+  return userMessageSoundsLikeLogAccessPushback(userTextLower);
+}

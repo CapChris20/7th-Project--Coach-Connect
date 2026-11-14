@@ -22,38 +22,6 @@ const LOCAL_PROFILE_API_BASE_URLS = [
   'http://127.0.0.1:4001',
 ];
 
-// ===== HELPER FUNCTIONS =====
-
-function profileApiBaseUrls() {
-  const configuredBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL;
-  if (configuredBaseUrl) return [configuredBaseUrl, ...LOCAL_PROFILE_API_BASE_URLS];
-  return LOCAL_PROFILE_API_BASE_URLS;
-}
-
-// One base. Throws on a bad status, a network error, or the timeout, so the caller can try the next base.
-// A JSON body of null is returned as null and is NOT a reason to try the next base.
-async function fetchProfileFromBaseUrl(baseUrl, idToken) {
-  // vocab: AbortController is the switch that cancels this fetch when the timer fires.
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), PROFILE_REQUEST_TIMEOUT_MS);
-  try {
-    const response = await fetch(`${baseUrl}${PROFILE_API_PATH}`, {
-      method: 'GET',
-      headers: { Authorization: `Bearer ${idToken}`, Accept: 'application/json' },
-      signal: controller.signal,
-    });
-    if (!response.ok) {
-      throw new Error(`${PROFILE_API_PATH} failed (${response.status})`);
-    }
-    const profileJson = await response.json();
-    if (profileJson && profileJson.user) return profileJson.user;
-    if (profileJson) return profileJson;
-    return null;
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
-
 // ===== MAIN FUNCTION =====
 
 /**
@@ -62,12 +30,23 @@ async function fetchProfileFromBaseUrl(baseUrl, idToken) {
  * @returns {Promise<object|null>}
  */
 export async function loadMyProfileFromFirestore(uid) {
-  if (!uid || !db) return null;
+  // 1. No uid or no db handle → nothing to load.
+  if (!uid || !db) {
+    return null;
+  }
+
   try {
-    // vocab: getDoc reads the document once. exists() is false when this user has no profile doc yet.
-    const profileSnapshot = await getDoc(doc(db, USERS_COLLECTION, uid));
-    if (!profileSnapshot.exists()) return null;
-    return { uid, ...(profileSnapshot.data() || {}) };
+    // 2. One-shot read. exists() is false when this user has no profile doc yet.
+    // vocab: getDoc = read a single Firestore document once (not a live listener).
+    const profileDocumentPath = doc(db, USERS_COLLECTION, uid);
+    const profileSnapshot = await getDoc(profileDocumentPath);
+    if (!profileSnapshot.exists()) {
+      return null;
+    }
+
+    // 3. Merge the uid onto the stored fields so callers always have an id.
+    const storedFields = profileSnapshot.data() || {};
+    return { uid, ...storedFields };
   } catch (profileReadError) {
     return null;
   }
@@ -79,18 +58,23 @@ export async function loadMyProfileFromFirestore(uid) {
  * @returns {Promise<object|null>}
  */
 export async function loadMyProfileFromApi(user) {
-  if (!user?.uid) return null;
+  // 1. Need a signed-in user with an id.
+  if (!user || !user.uid) {
+    return null;
+  }
 
-  // vocab: reload() refreshes the Auth user from the server before we ask /api/me who this is.
-  // vocab: getIdToken(true) forces a new token. true means don't reuse a cached one.
+  // 2. Fresh Auth record and a new id token before we call /api/me.
+  // vocab: reload() = pull the latest Auth user from Firebase before token minting.
+  // vocab: getIdToken(true) = force a new JWT; true means do not reuse a cached token.
   await user.reload();
   const idToken = await user.getIdToken(true);
 
-  for (const baseUrl of profileApiBaseUrls()) {
-    try {
-      return await fetchProfileFromBaseUrl(baseUrl, idToken);
-    } catch (_error) {
-      // This base was down, slow, or not ok. Try the next one.
+  // 3. Walk each base until one returns a profile (or we run out of bases).
+  const basesToTry = listProfileApiBaseUrls();
+  for (const baseUrl of basesToTry) {
+    const profileFromServer = await tryFetchProfileFromOneBase(baseUrl, idToken);
+    if (profileFromServer !== undefined) {
+      return profileFromServer;
     }
   }
   return null;
@@ -103,10 +87,69 @@ export async function loadMyProfileFromApi(user) {
  */
 export async function loadMyProfile(user) {
   // 1. Firestore users/{uid} is the source of truth when the doc exists.
-  const uid = user?.uid;
-  const profileFromFirestore = await loadMyProfileFromFirestore(uid);
-  if (profileFromFirestore) return profileFromFirestore;
+  const userId = user && user.uid;
+  const profileFromFirestore = await loadMyProfileFromFirestore(userId);
+  if (profileFromFirestore) {
+    return profileFromFirestore;
+  }
 
   // 2. Miss or read error → try /api/me on each known base.
   return loadMyProfileFromApi(user);
+}
+
+// ===== HELPER FUNCTIONS =====
+// PLUMBING — skip unless debugging base-url order or the /api/me fetch.
+
+function listProfileApiBaseUrls() {
+  const configuredBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL;
+  if (configuredBaseUrl) {
+    return [configuredBaseUrl, ...LOCAL_PROFILE_API_BASE_URLS];
+  }
+  return LOCAL_PROFILE_API_BASE_URLS;
+}
+
+// Returns the profile, or undefined when this base failed so the caller can try the next one.
+// A JSON body of null is a real answer (returned as null) — do NOT try the next base for that.
+async function tryFetchProfileFromOneBase(baseUrl, idToken) {
+  try {
+    return await fetchProfileFromBaseUrl(baseUrl, idToken);
+  } catch (baseFailedError) {
+    return undefined;
+  }
+}
+
+// One base. Throws on a bad status, a network error, or the timeout.
+async function fetchProfileFromBaseUrl(baseUrl, idToken) {
+  // vocab: AbortController is the switch that cancels this fetch when the timer fires.
+  const abortController = new AbortController();
+  const timeoutId = setTimeout(function abortTimedOutFetch() {
+    abortController.abort();
+  }, PROFILE_REQUEST_TIMEOUT_MS);
+
+  try {
+    const requestUrl = `${baseUrl}${PROFILE_API_PATH}`;
+    const response = await fetch(requestUrl, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${idToken}`,
+        Accept: 'application/json',
+      },
+      signal: abortController.signal,
+    });
+
+    if (!response.ok) {
+      throw new Error(`${PROFILE_API_PATH} failed (${response.status})`);
+    }
+
+    const profileJson = await response.json();
+    if (profileJson && profileJson.user) {
+      return profileJson.user;
+    }
+    if (profileJson) {
+      return profileJson;
+    }
+    return null;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }

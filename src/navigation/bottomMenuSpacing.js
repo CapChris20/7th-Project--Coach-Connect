@@ -1,6 +1,6 @@
-// Measurements so screens clear the floating bottom menu.
-// Flow: bar height plus the phone's home-indicator inset → padding the scroll views use.
-// Used by the client and trainer shells and any long screen under the bottom menu.
+// Measurements so scroll content clears the floating bottom menu.
+// Flow: read bar height + phone home-indicator inset → hand padding to shells and long screens.
+// Used by client/trainer shells and any scroll view that sits under BottomMenuBar.
 
 import React from 'react';
 import { View } from 'react-native';
@@ -8,16 +8,24 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // ===== NAMED CONSTANTS =====
 
-// Manipulate here: this has to match the drawn height of the bottom menu (BottomMenuBar BAR_VISUAL_HEIGHT).
+// Manipulate here: must match BottomMenuBar BAR_VISUAL_HEIGHT or content will tuck under the bar.
 const BOTTOM_NAV_BAR_HEIGHT = 90;
+
+// Shell SafeAreaView only owns left/right — top/bottom padding is computed below.
 const SHELL_SAFE_AREA_EDGES = ['left', 'right'];
+
+// Manipulate here: breathing room under the last list item above the floating bar.
 const DEFAULT_CONTENT_GAP = 12;
 const DEFAULT_MODAL_EXTRA = 32;
 const DEFAULT_EMBEDDED_EXTRA = 24;
+
+// Devices that report 0 bottom inset still need a gutter so content is not flush with the glass edge.
 const MIN_EDGE_GUTTER = 16;
+
 const SCROLL_EVENT_THROTTLE = 16;
 const NAV_STACK_ORDER = 200;
 
+// Shared FlatList / ScrollView props for forms that sit above the keyboard.
 const FORM_SCROLL_PROPS = {
   scrollEventThrottle: SCROLL_EVENT_THROTTLE,
   keyboardDismissMode: 'on-drag',
@@ -28,74 +36,126 @@ const FORM_SCROLL_PROPS = {
 // ===== HELPER FUNCTIONS =====
 
 /**
- * Devices with no home indicator report 0. Content still needs a gutter so it does not sit on the glass edge.
+ * Bottom padding for a scroll view that is not behind the floating menu bar.
+ * Adds a minimum gutter when the phone reports no home-indicator inset.
  * @param {number} bottomInset
- * @param {number} extra
+ * @param {number} extraGap
  * @returns {number}
  */
-function paddingAboveDeviceEdge(bottomInset, extra) {
-  return Math.max(bottomInset, MIN_EDGE_GUTTER) + extra;
+function paddingAboveHomeIndicator(bottomInset, extraGap) {
+  const safeBottomInset = Math.max(bottomInset, MIN_EDGE_GUTTER);
+  const totalPadding = safeBottomInset + extraGap;
+  return totalPadding;
 }
 
-// ===== MAIN FUNCTION =====
+/**
+ * Bottom padding for a full-screen shell that draws the absolute bottom menu.
+ * Bar height + home indicator + breathing room.
+ * @param {number} bottomInset
+ * @param {number} extraGap
+ * @returns {number}
+ */
+function paddingAboveFloatingMenuBar(bottomInset, extraGap) {
+  const totalPadding = BOTTOM_NAV_BAR_HEIGHT + bottomInset + extraGap;
+  return totalPadding;
+}
 
 /**
- * An empty anchor would sit on top of the screen and swallow taps, so missing children render nothing.
- * @param {{ children?: import('react').ReactNode }} props
- * @returns {import('react').ReactElement|null}
+ * Top padding so a tab-root header clears the status bar / notch.
+ * @param {number} topInset
+ * @param {number} extraGap
+ * @returns {number}
  */
-export function ShellBottomNavAnchor({ children }) {
-  if (!children) return null;
-  const anchorStyle = {
+function paddingBelowStatusBar(topInset, extraGap) {
+  const statusBarInset = Math.max(topInset, 0);
+  const totalPadding = statusBarInset + extraGap;
+  return totalPadding;
+}
+
+/**
+ * Absolute pin styles for the bottom menu so it floats above scroll content.
+ * @returns {object}
+ */
+function floatingMenuAnchorStyle() {
+  return {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
     zIndex: NAV_STACK_ORDER,
   };
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Pins the bottom menu to the bottom of the shell above scroll content.
+ * @param {{ children?: import('react').ReactNode }} props
+ * @returns {import('react').ReactElement|null}
+ */
+export function ShellBottomNavAnchor({ children }) {
+  // 1. An empty anchor would cover the screen and steal taps — render nothing.
+  if (!children) {
+    return null;
+  }
+
+  // 2. Pin the real bar; z-index keeps it above scroll content.
+  const anchorStyle = floatingMenuAnchorStyle();
   return <View style={anchorStyle}>{children}</View>;
 }
 
 /**
- * The menu is taken out of layout, so screens add this much empty space at the bottom.
- * vocab: useSafeAreaInsets().bottom is the home-indicator strip.
- * @param {number} [extra]
+ * Extra bottom inset for a full screen under the floating menu bar.
+ * vocab: useSafeAreaInsets().bottom = home-indicator strip height in points.
+ * @param {number} [extraGap]
  * @returns {number}
  */
-export function useShellBottomNavInset(extra = DEFAULT_CONTENT_GAP) {
+export function useShellBottomNavInset(extraGap = DEFAULT_CONTENT_GAP) {
+  // 1. Read the phone's home-indicator height.
   const insets = useSafeAreaInsets();
-  return BOTTOM_NAV_BAR_HEIGHT + insets.bottom + extra;
+
+  // 2. Menu is position:absolute, so screens add bar + inset + gap themselves.
+  return paddingAboveFloatingMenuBar(insets.bottom, extraGap);
 }
 
 /**
- * Sheets float above the menu, so they only clear the device edge.
- * @param {number} [extra]
+ * Bottom pad for a modal scroll view (no floating menu — only home indicator).
+ * @param {number} [extraGap]
  * @returns {number}
  */
-export function useModalScrollBottomPad(extra = DEFAULT_MODAL_EXTRA) {
+export function useModalScrollBottomPad(extraGap = DEFAULT_MODAL_EXTRA) {
+  // 1. Read inset.
   const insets = useSafeAreaInsets();
-  return paddingAboveDeviceEdge(insets.bottom, extra);
+
+  // 2. Pad above the home indicator with modal breathing room.
+  return paddingAboveHomeIndicator(insets.bottom, extraGap);
 }
 
 /**
- * Panels inside a tab that draws no menu of its own.
- * @param {number} [extra]
+ * Bottom pad for an embedded scroll view inside a shell that already owns the menu.
+ * @param {number} [extraGap]
  * @returns {number}
  */
-export function useEmbeddedScrollBottomPad(extra = DEFAULT_EMBEDDED_EXTRA) {
+export function useEmbeddedScrollBottomPad(extraGap = DEFAULT_EMBEDDED_EXTRA) {
+  // 1. Read inset.
   const insets = useSafeAreaInsets();
-  return paddingAboveDeviceEdge(insets.bottom, extra);
+
+  // 2. Pad above the home indicator with embedded breathing room.
+  return paddingAboveHomeIndicator(insets.bottom, extraGap);
 }
 
 /**
- * Shell SafeArea is left/right only — section titles must clear status bar / Dynamic Island.
- * vocab: use this (or NbPageHeader) for every tab-root header; never pad with spacing.sm alone.
- * @param {number} [extra] gap under the inset (default 8)
+ * Top pad for a tab-root header. Prefer this (or NbPageHeader) over spacing.sm alone.
+ * @param {number} [extraGap]
  * @returns {number}
  */
-export function useShellTopPad(extra = 8) {
+export function useShellTopPad(extraGap = 8) {
+  // 1. Read the status-bar / notch inset.
   const insets = useSafeAreaInsets();
-  return Math.max(insets.top, 0) + extra;
+
+  // 2. Status bar height plus a small gap under it.
+  // Manipulate here: default extraGap 8 — raise if the header feels tight under the notch.
+  return paddingBelowStatusBar(insets.top, extraGap);
 }
 
 export {

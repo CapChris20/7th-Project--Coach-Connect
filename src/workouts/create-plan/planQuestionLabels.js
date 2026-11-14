@@ -1,11 +1,12 @@
-// Turns onboarding answers into short labels for the workout profile pills.
-// Flow: read the raw field → hide empty placeholders → humanize snake_case.
-// Used by: WorkoutProfileTags.
+// Turns onboarding answers into short labels for workout profile pills and plan chrome.
+// Flow: read raw field by key → hide empty placeholders → humanize snake_case tokens.
+// Used by WorkoutProfileTags and NewPlanPanel. Exports LOVABLE_ACCENTS for accent rotation.
+// Field key letters and LOVABLE_ACCENTS shape stay frozen.
 
 // ===== NAMED CONSTANTS =====
 
-import { lightColors } from '../../look-and-feel/colorPalette';
 const MISSING_VALUE = '—';
+
 // Manipulate here: height stored as total inches is only trusted in this adult range.
 const MIN_HEIGHT_INCHES = 36;
 const MAX_HEIGHT_INCHES = 96;
@@ -31,10 +32,12 @@ const ONBOARDING_TOKEN_LABELS = {
   more_than_8: 'More than 8 cups/day',
 };
 
+// Kept for historical plan-chrome letter parity (orange accent).
 const PLAN_BUILDER_COLORS = {
   orange: '#F97316',
 };
 
+// Kept for historical markdown viewer letter parity on dark plan chrome.
 const MARKDOWN_STYLES = {
   body: { color: 'rgba(255,255,255,0.9)', fontSize: 14, lineHeight: 22 },
   heading1: { color: '#ffffff', fontSize: 20, fontWeight: '800', marginBottom: 12, marginTop: 8 },
@@ -42,6 +45,7 @@ const MARKDOWN_STYLES = {
   strong: { color: '#ffffff', fontWeight: '700' },
 };
 
+// Manipulate here: warm accent rotation for profile section chips (key / gradient / text letters frozen).
 export const LOVABLE_ACCENTS = [
   { key: 'warm-a', gradient: ['#C2410C', '#F97316'], text: '#C2410C' },
   { key: 'warm-b', gradient: ['#F97316', '#C2410C'], text: '#F97316' },
@@ -49,14 +53,73 @@ export const LOVABLE_ACCENTS = [
   { key: 'warm-d', gradient: ['#9A3412', '#C2410C'], text: '#C2410C' },
 ];
 
-// ===== HELPER FUNCTIONS =====
+// ===== MAIN RECIPES (exports) =====
 
 /**
- * @param {number|string|null|undefined} rawNumber
- * @returns {boolean}
+ * Format height for a profile pill: feet/inches object, or total inches in adult range.
+ * @param {unknown} height
+ * @returns {string}
  */
+export function formatProfileHeightDisplay(height) {
+  // 1. Missing height → em dash.
+  if (height == null) return MISSING_VALUE;
+
+  // 2. Object shape { feet, inches } from onboarding forms.
+  if (typeof height === 'object') {
+    return heightFromFeetAndInches(height);
+  }
+
+  // 3. Number or digit string of total inches — only format when in believable adult range.
+  const totalInches = parseHeightAsTotalInches(height);
+  if (totalInchesAreInAdultRange(totalInches)) {
+    return heightFromTotalInches(totalInches);
+  }
+
+  // 4. Anything else (junk text, out-of-range) → em dash.
+  return MISSING_VALUE;
+}
+
+/**
+ * One pill label for a workout-builder field key.
+ * @param {string} fieldKey
+ * @param {object} onboardingData
+ * @returns {string}
+ */
+export function displayForFieldKey(fieldKey, onboardingData) {
+  // 1. One concatenated or looked-up string for this pill key.
+  const rawLine = getWorkoutBuilderFieldRawDisplay(fieldKey, onboardingData);
+
+  // 2. Drop placeholders and humanize equipment/hydration tokens.
+  const formatted = formatDisplayValue(rawLine);
+  let displayText = '';
+  if (formatted != null) {
+    displayText = String(formatted).trim();
+  }
+
+  // 3. Em dash when the trainee never answered or we got string "null".
+  if (!displayText) return MISSING_VALUE;
+  if (displayText === 'null') return MISSING_VALUE;
+  if (displayText === 'undefined') return MISSING_VALUE;
+  return displayText;
+}
+
+// ===== PLUMBING — skip unless debugging =====
+
 function isUsableNumber(rawNumber) {
   return rawNumber != null && rawNumber !== '';
+}
+
+function parseHeightAsTotalInches(height) {
+  if (typeof height === 'number') return height;
+  const digitsOnly = String(height).replace(/[^0-9.]/g, '');
+  return Number(digitsOnly);
+}
+
+function totalInchesAreInAdultRange(asNumber) {
+  if (!Number.isFinite(asNumber)) return false;
+  if (asNumber < MIN_HEIGHT_INCHES) return false;
+  if (asNumber > MAX_HEIGHT_INCHES) return false;
+  return true;
 }
 
 /**
@@ -87,10 +150,6 @@ function heightFromTotalInches(totalInches) {
   return `${feet}'${leftoverInches}"`;
 }
 
-/**
- * @param {string} text
- * @returns {string}
- */
 function capitalizeFirstLetter(text) {
   if (!text) return 'Not set';
   return text.charAt(0).toUpperCase() + text.slice(1);
@@ -107,117 +166,112 @@ function humanizeOnboardingToken(token) {
   return key.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-/**
- * @param {string} rawText
- * @returns {string}
- */
 function humanizeSnakeCaseList(rawText) {
-  return rawText
-    .split(',')
-    .map((part) => humanizeOnboardingToken(part))
-    .join(', ');
+  const parts = rawText.split(',');
+  const labeledParts = [];
+  for (const part of parts) {
+    labeledParts.push(humanizeOnboardingToken(part));
+  }
+  return labeledParts.join(', ');
 }
 
 /**
- * Hide the placeholders the form uses when a field was never answered.
- * @param {string|number|null|undefined} raw
+ * Hide empty placeholders; humanize snake_case equipment / hydration tokens.
+ * @param {unknown} raw
  * @returns {string|null}
  */
 function formatDisplayValue(raw) {
   if (raw == null || raw === '') return null;
+
   let displayText = String(raw).trim();
   if (!displayText) return null;
   if (EMPTY_DISPLAY_VALUES.has(displayText)) return null;
-  if (displayText === 'undefined' || displayText.toLowerCase() === 'undefined') return null;
+  if (displayText === 'undefined') return null;
+  if (displayText.toLowerCase() === 'undefined') return null;
   if (/^N\/A,\s*N\/Ayrs,\s*N\/Albs,\s*0'0"$/i.test(displayText)) return null;
   if (/^0\s*days\s*per\s*week$/i.test(displayText)) return null;
 
-  const looksLikeSnakeList = displayText.includes('_') && (displayText.includes(',') || /^[a-z0-9_]+$/i.test(displayText));
-  const looksLikeSingleToken = /^[a-z0-9_]+$/i.test(displayText) && displayText.includes('_');
+  const looksLikeSnakeList =
+    displayText.includes('_')
+    && (displayText.includes(',') || /^[a-z0-9_]+$/i.test(displayText));
+  const looksLikeSingleToken =
+    /^[a-z0-9_]+$/i.test(displayText) && displayText.includes('_');
+
   if (looksLikeSnakeList) {
     displayText = humanizeSnakeCaseList(displayText);
-  } else if (looksLikeSingleToken) {
+    return displayText;
+  }
+  if (looksLikeSingleToken) {
     displayText = humanizeOnboardingToken(displayText);
+    return displayText;
   }
   return displayText;
 }
 
+function formatPrimaryGoalDisplay(primaryGoal) {
+  if (!primaryGoal) return 'Not set';
+  return primaryGoal
+    .replace('_', ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function formatHydrationHabitsDisplay(hydrationHabits) {
+  if (hydrationHabits === 'less_than_4') return 'Less than 4 cups/day';
+  if (hydrationHabits === '4_8') return '4–8 cups/day';
+  if (hydrationHabits === 'more_than_8') return 'More than 8 cups/day';
+  return 'Not set';
+}
+
+function formatPersonalInfoLine(onboardingData) {
+  const gender = onboardingData.gender || 'N/A';
+  const age = onboardingData.age || 'N/A';
+  const weight = onboardingData.weight || 'N/A';
+  const heightObject = onboardingData.height;
+  const feet = (heightObject && heightObject.feet) || 0;
+  const inches = (heightObject && heightObject.inches) || 0;
+  return `${gender}, ${age}yrs, ${weight}lbs, ${feet}'${inches}"`;
+}
+
 /**
- * Raw one-line text for one profile pill, before empty values are hidden.
+ * Map of pill keys → raw string builders. Key letters stay frozen for NewPlanPanel / tags.
+ */
+const WORKOUT_BUILDER_FIELD_READERS = {
+  personalInfo: (onboardingData) => formatPersonalInfoLine(onboardingData),
+  fitnessLevel: (onboardingData) => capitalizeFirstLetter(onboardingData.fitnessLevel),
+  goal: (onboardingData) => formatPrimaryGoalDisplay(onboardingData.primaryGoal),
+  equipment: (onboardingData) => {
+    const accessList = onboardingData.equipmentAccess;
+    if (!Array.isArray(accessList)) return 'None selected';
+    const joined = accessList.join(', ');
+    return joined || 'None selected';
+  },
+  frequency: (onboardingData) => `${onboardingData.daysPerWeek || 0} days per week`,
+  injuries: (onboardingData) => onboardingData.injuries || 'None reported',
+  trainingEnvironment: (onboardingData) =>
+    capitalizeFirstLetter(onboardingData.trainingEnvironment),
+  preferredWorkoutTime: (onboardingData) =>
+    capitalizeFirstLetter(onboardingData.preferredWorkoutTime),
+  exercisesDislike: (onboardingData) => onboardingData.exercisesDislike || 'None',
+  supplementsCurrentlyTaking: (onboardingData) =>
+    onboardingData.supplementsCurrentlyTaking || 'None',
+  currentStressLevel: (onboardingData) =>
+    capitalizeFirstLetter(onboardingData.currentStressLevel),
+  sleepQuality: (onboardingData) => capitalizeFirstLetter(onboardingData.sleepQuality),
+  energyLevels: (onboardingData) => capitalizeFirstLetter(onboardingData.energyLevels),
+  hydrationHabits: (onboardingData) =>
+    formatHydrationHabitsDisplay(onboardingData.hydrationHabits),
+  situationDescription: (onboardingData) =>
+    onboardingData.situationDescription || 'Not provided',
+};
+
+/**
  * @param {string} key
- * @param {object|null|undefined} onboardingData
+ * @param {object} onboardingData
  * @returns {string}
  */
 function getWorkoutBuilderFieldRawDisplay(key, onboardingData) {
   if (!onboardingData) return '';
-  switch (key) {
-    case 'personalInfo':
-      return `${onboardingData.gender || 'N/A'}, ${onboardingData.age || 'N/A'}yrs, ${onboardingData.weight || 'N/A'}lbs, ${onboardingData.height?.feet || 0}'${onboardingData.height?.inches || 0}"`;
-    case 'fitnessLevel':
-      return capitalizeFirstLetter(onboardingData.fitnessLevel);
-    case 'goal':
-      return onboardingData.primaryGoal
-        ? onboardingData.primaryGoal.replace('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
-        : 'Not set';
-    case 'equipment':
-      return onboardingData.equipmentAccess?.join(', ') || 'None selected';
-    case 'frequency':
-      return `${onboardingData.daysPerWeek || 0} days per week`;
-    case 'injuries':
-      return onboardingData.injuries || 'None reported';
-    case 'trainingEnvironment':
-      return capitalizeFirstLetter(onboardingData.trainingEnvironment);
-    case 'preferredWorkoutTime':
-      return capitalizeFirstLetter(onboardingData.preferredWorkoutTime);
-    case 'exercisesDislike':
-      return onboardingData.exercisesDislike || 'None';
-    case 'supplementsCurrentlyTaking':
-      return onboardingData.supplementsCurrentlyTaking || 'None';
-    case 'currentStressLevel':
-      return capitalizeFirstLetter(onboardingData.currentStressLevel);
-    case 'sleepQuality':
-      return capitalizeFirstLetter(onboardingData.sleepQuality);
-    case 'energyLevels':
-      return capitalizeFirstLetter(onboardingData.energyLevels);
-    case 'hydrationHabits':
-      if (onboardingData.hydrationHabits === 'less_than_4') return 'Less than 4 cups/day';
-      if (onboardingData.hydrationHabits === '4_8') return '4–8 cups/day';
-      if (onboardingData.hydrationHabits === 'more_than_8') return 'More than 8 cups/day';
-      return 'Not set';
-    case 'situationDescription':
-      return onboardingData.situationDescription || 'Not provided';
-    default:
-      return '';
-  }
-}
-
-// ===== MAIN FUNCTION =====
-
-/**
- * Show height as feet and inches, or an em dash when it is missing.
- * @param {number|string|{ feet?: number|string, inches?: number|string }|null|undefined} height
- * @returns {string}
- */
-export function formatProfileHeightDisplay(height) {
-  if (height == null) return MISSING_VALUE;
-  if (typeof height === 'object') return heightFromFeetAndInches(height);
-
-  const totalInches = typeof height === 'number' ? height : Number(String(height).replace(/[^0-9.]/g, ''));
-  const inchesAreInRange = Number.isFinite(totalInches) && totalInches >= MIN_HEIGHT_INCHES && totalInches <= MAX_HEIGHT_INCHES;
-  if (inchesAreInRange) return heightFromTotalInches(totalInches);
-  return MISSING_VALUE;
-}
-
-/**
- * Label shown on one profile pill. Empty answers become an em dash.
- * @param {string} fieldKey
- * @param {object} onboardingData
- * @returns {string}
- */
-export function displayForFieldKey(fieldKey, onboardingData) {
-  const raw = getWorkoutBuilderFieldRawDisplay(fieldKey, onboardingData);
-  const formatted = formatDisplayValue(raw);
-  const displayText = formatted != null ? String(formatted).trim() : '';
-  if (!displayText || displayText === 'null' || displayText === 'undefined') return MISSING_VALUE;
-  return displayText;
+  const reader = WORKOUT_BUILDER_FIELD_READERS[key];
+  if (!reader) return '';
+  return reader(onboardingData);
 }

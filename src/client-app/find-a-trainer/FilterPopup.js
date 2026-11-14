@@ -1,9 +1,6 @@
 // Marketplace Filter bottom sheet — Design Law HardShadow / Nb* chrome (PNG 05).
 // Flow: copy live filters into a draft → edit → Reset restores defaults → Show N trainers applies + closes.
 // Used by SearchTrainersScreen. Parent owns the live filters; this sheet only edits a copy.
-//
-// vocab: draft = local copy so Cancel-by-backdrop never leaks half-edited filters
-// vocab: NbSegmented = mutually exclusive solid-fill tabs in one outlined track
 
 import React, { useEffect, useMemo, useState } from 'react';
 import {
@@ -37,32 +34,148 @@ import { borderRadius, nb, spacing } from '../../look-and-feel/colorPalette';
 const SHEET_SCROLL_EXTRA_PAD = 24;
 const MIN_SHEET_BOTTOM_PAD = 16;
 const SECTION_GAP = 18;
+const DEFAULT_SORT_LABEL = 'Best match';
+const DEFAULT_SESSION_TYPE = 'Both';
+const DEFAULT_QUICK_SPECIALTY = 'All';
+const RESET_HIT_SLOP = 8;
 
 // ===== HELPER FUNCTIONS =====
 
-/**
- * Multi-select specialty toggle — add if missing, remove if present.
- * @param {string[]} specialties
- * @param {string} specialty
- * @returns {string[]}
- */
-function specialtiesAfterToggle(specialties, specialty) {
-  if (specialties.includes(specialty)) {
-    return specialties.filter((entry) => entry !== specialty);
+function specialtyListWithoutName(currentList, specialtyName) {
+  const nextList = [];
+  for (let index = 0; index < currentList.length; index += 1) {
+    const entry = currentList[index];
+    if (entry !== specialtyName) {
+      nextList.push(entry);
+    }
   }
-  return [...specialties, specialty];
+  return nextList;
 }
 
-/**
- * Availability is a single exclusive pick (or null = any). Tap again to clear.
- * @param {string|null} current
- * @param {string} option
- * @returns {string|null}
- */
-function availabilityAfterTap(current, option) {
-  if (current === option) return null;
-  return option;
+function specialtyListAfterTap(specialties, specialtyName) {
+  let currentList = [];
+  if (specialties) {
+    currentList = specialties;
+  }
+  if (currentList.includes(specialtyName)) {
+    return specialtyListWithoutName(currentList, specialtyName);
+  }
+  return [...currentList, specialtyName];
 }
+
+function availabilityAfterTap(currentChoice, optionLabel) {
+  if (currentChoice === optionLabel) {
+    return null;
+  }
+  return optionLabel;
+}
+
+function labelForShowTrainersButton(matchCount) {
+  if (matchCount === 1) {
+    return 'Show 1 trainer';
+  }
+  return `Show ${matchCount} trainers`;
+}
+
+function segmentsFromOptionLabels(optionLabels) {
+  const segments = [];
+  for (let index = 0; index < optionLabels.length; index += 1) {
+    const optionLabel = optionLabels[index];
+    segments.push({
+      id: optionLabel,
+      label: optionLabel,
+    });
+  }
+  return segments;
+}
+
+function pillChrome(colors, isActive) {
+  if (isActive) {
+    return {
+      backgroundColor: colors.nbFill,
+      textColor: colors.nbOnFill,
+    };
+  }
+  return {
+    backgroundColor: colors.nbSurface,
+    textColor: colors.nbInk,
+  };
+}
+
+function buildSpecialtyPillElements(selectedSpecialties, onToggleSpecialty, colors) {
+  const pillElements = [];
+  for (let index = 0; index < FILTER_SPECIALTIES.length; index += 1) {
+    const specialtyName = FILTER_SPECIALTIES[index];
+    const isActive = selectedSpecialties.includes(specialtyName);
+    pillElements.push(
+      <FilterPill
+        key={specialtyName}
+        label={specialtyName}
+        active={isActive}
+        onPress={() => onToggleSpecialty(specialtyName)}
+        colors={colors}
+      />,
+    );
+  }
+  return pillElements;
+}
+
+function buildExperiencePillElements(selectedExperience, onSelectExperience, colors) {
+  const pillElements = [];
+  for (let index = 0; index < EXPERIENCE_OPTIONS.length; index += 1) {
+    const experienceLabel = EXPERIENCE_OPTIONS[index];
+    const isActive = selectedExperience === experienceLabel;
+    pillElements.push(
+      <FilterPill
+        key={experienceLabel}
+        label={experienceLabel}
+        active={isActive}
+        onPress={() => onSelectExperience(experienceLabel)}
+        colors={colors}
+      />,
+    );
+  }
+  return pillElements;
+}
+
+function buildAvailabilityPillElements(selectedAvailability, onSelectAvailability, colors) {
+  const pillElements = [];
+  for (let index = 0; index < AVAILABILITY_OPTIONS.length; index += 1) {
+    const optionLabel = AVAILABILITY_OPTIONS[index];
+    const isActive = selectedAvailability === optionLabel;
+    pillElements.push(
+      <FilterPill
+        key={optionLabel}
+        label={optionLabel}
+        active={isActive}
+        onPress={() => onSelectAvailability(optionLabel)}
+        colors={colors}
+      />,
+    );
+  }
+  return pillElements;
+}
+
+function callIfFunction(maybeFunction, ...args) {
+  if (typeof maybeFunction !== 'function') {
+    return;
+  }
+  maybeFunction(...args);
+}
+
+function draftFromLiveFilters(filters) {
+  return { ...DEFAULT_FILTERS, ...(filters || {}) };
+}
+
+function countMatchingTrainers(trainers, draft, search, quickSpecialty) {
+  const matching = filterTrainers(trainers, draft, {
+    query: search,
+    quickSpecialty,
+  });
+  return matching.length;
+}
+
+// ===== SMALL UI PIECES =====
 
 function SectionLabel({ children, colors }) {
   return (
@@ -70,11 +183,9 @@ function SectionLabel({ children, colors }) {
   );
 }
 
-/**
- * Solid-fill selected pill (PNG 05 specialty / experience / availability).
- * Selected = nbFill + onFill text — never brand gradient chrome.
- */
 function FilterPill({ label, active, onPress, colors }) {
+  const chrome = pillChrome(colors, active);
+
   return (
     <Pressable
       onPress={onPress}
@@ -82,16 +193,10 @@ function FilterPill({ label, active, onPress, colors }) {
       accessibilityState={{ selected: active }}
       style={[
         styles.pill,
-        {
-          borderColor: colors.nbBorder,
-          backgroundColor: active ? colors.nbFill : colors.nbSurface,
-        },
+        { borderColor: colors.nbBorder, backgroundColor: chrome.backgroundColor },
       ]}
     >
-      <Text
-        style={[styles.pillText, { color: active ? colors.nbOnFill : colors.nbInk }]}
-        numberOfLines={1}
-      >
+      <Text style={[styles.pillText, { color: chrome.textColor }]} numberOfLines={1}>
         {label}
       </Text>
     </Pressable>
@@ -99,13 +204,16 @@ function FilterPill({ label, active, onPress, colors }) {
 }
 
 function ToggleRow({ title, subtitle, value, onValueChange, colors, showDivider }) {
+  let dividerStyle = null;
+  if (showDivider) {
+    dividerStyle = {
+      borderBottomWidth: StyleSheet.hairlineWidth * 2,
+      borderBottomColor: colors.nbBorder,
+    };
+  }
+
   return (
-    <View
-      style={[
-        styles.toggleRow,
-        showDivider && { borderBottomWidth: StyleSheet.hairlineWidth * 2, borderBottomColor: colors.nbBorder },
-      ]}
-    >
+    <View style={[styles.toggleRow, dividerStyle]}>
       <View style={styles.toggleCopy}>
         <Text style={[styles.toggleTitle, { color: colors.nbInk }]}>{title}</Text>
         <Text style={[styles.toggleSub, { color: colors.nbMuted }]}>{subtitle}</Text>
@@ -115,19 +223,279 @@ function ToggleRow({ title, subtitle, value, onValueChange, colors, showDivider 
   );
 }
 
+function FilterSheetHeader({ colors, onReset }) {
+  return (
+    <View style={styles.headerRow}>
+      <Text style={[styles.title, { color: colors.nbInk }]}>Filter</Text>
+      <Pressable
+        onPress={onReset}
+        hitSlop={RESET_HIT_SLOP}
+        accessibilityRole="button"
+        accessibilityLabel="Reset filters"
+      >
+        <Text style={[styles.resetLink, { color: colors.nbInk }]}>Reset</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function SortBySection({ draft, setDraft, colors, sortSegments }) {
+  let selectedSort = DEFAULT_SORT_LABEL;
+  if (draft.sort) {
+    selectedSort = draft.sort;
+  }
+
+  function selectSort(sortId) {
+    setDraft({ ...draft, sort: sortId });
+  }
+
+  return (
+    <View style={styles.section}>
+      <SectionLabel colors={colors}>SORT BY</SectionLabel>
+      <NbSegmented
+        segments={sortSegments}
+        selected={selectedSort}
+        onSelect={selectSort}
+      />
+    </View>
+  );
+}
+
+function SpecialtySection({ draft, setDraft, colors }) {
+  let selectedSpecialties = [];
+  if (draft.specialties) {
+    selectedSpecialties = draft.specialties;
+  }
+
+  function toggleSpecialty(specialtyName) {
+    setDraft((currentDraft) => ({
+      ...currentDraft,
+      specialties: specialtyListAfterTap(currentDraft.specialties, specialtyName),
+    }));
+  }
+
+  const specialtyPills = buildSpecialtyPillElements(
+    selectedSpecialties,
+    toggleSpecialty,
+    colors,
+  );
+
+  return (
+    <View style={styles.section}>
+      <SectionLabel colors={colors}>SPECIALTY</SectionLabel>
+      <View style={styles.pillWrap}>{specialtyPills}</View>
+    </View>
+  );
+}
+
+function SessionTypeSection({ draft, setDraft, colors, sessionSegments }) {
+  let selectedSession = DEFAULT_SESSION_TYPE;
+  if (draft.sessionType) {
+    selectedSession = draft.sessionType;
+  }
+
+  function selectSessionType(sessionTypeId) {
+    setDraft({ ...draft, sessionType: sessionTypeId });
+  }
+
+  return (
+    <View style={styles.section}>
+      <SectionLabel colors={colors}>SESSION TYPE</SectionLabel>
+      <NbSegmented
+        segments={sessionSegments}
+        selected={selectedSession}
+        onSelect={selectSessionType}
+      />
+    </View>
+  );
+}
+
+function ExperienceSection({ draft, setDraft, colors }) {
+  function selectExperience(experienceLabel) {
+    setDraft({ ...draft, experience: experienceLabel });
+  }
+
+  const experiencePills = buildExperiencePillElements(
+    draft.experience,
+    selectExperience,
+    colors,
+  );
+
+  return (
+    <View style={styles.section}>
+      <SectionLabel colors={colors}>EXPERIENCE</SectionLabel>
+      <View style={styles.pillWrap}>{experiencePills}</View>
+    </View>
+  );
+}
+
+function PricePerMonthSection({ draft, setDraft, colors }) {
+  const inputChrome = {
+    color: colors.nbInk,
+    borderColor: colors.nbBorder,
+    backgroundColor: colors.nbSurface,
+  };
+
+  function setPriceMin(typedText) {
+    setDraft({ ...draft, priceMin: typedText });
+  }
+
+  function setPriceMax(typedText) {
+    setDraft({ ...draft, priceMax: typedText });
+  }
+
+  return (
+    <View style={styles.section}>
+      <SectionLabel colors={colors}>PRICE PER MONTH</SectionLabel>
+      <View style={styles.priceRow}>
+        <HardShadow
+          offset={nb.shadowOffsetSmall}
+          radius={borderRadius.nbInput}
+          style={styles.priceField}
+        >
+          <TextInput
+            placeholder="Min $/mo"
+            placeholderTextColor={colors.nbMuted}
+            keyboardType="number-pad"
+            value={draft.priceMin}
+            onChangeText={setPriceMin}
+            style={[styles.input, inputChrome]}
+          />
+        </HardShadow>
+        <HardShadow
+          offset={nb.shadowOffsetSmall}
+          radius={borderRadius.nbInput}
+          style={styles.priceField}
+        >
+          <TextInput
+            placeholder="Max $/mo"
+            placeholderTextColor={colors.nbMuted}
+            keyboardType="number-pad"
+            value={draft.priceMax}
+            onChangeText={setPriceMax}
+            style={[styles.input, inputChrome]}
+          />
+        </HardShadow>
+      </View>
+    </View>
+  );
+}
+
+function AvailabilitySection({ draft, setDraft, colors }) {
+  function selectAvailability(optionLabel) {
+    setDraft({
+      ...draft,
+      availability: availabilityAfterTap(draft.availability, optionLabel),
+    });
+  }
+
+  const availabilityPills = buildAvailabilityPillElements(
+    draft.availability,
+    selectAvailability,
+    colors,
+  );
+
+  return (
+    <View style={styles.section}>
+      <SectionLabel colors={colors}>AVAILABILITY</SectionLabel>
+      <View style={styles.pillWrap}>{availabilityPills}</View>
+    </View>
+  );
+}
+
+function VerifiedAvailableToggles({ draft, setDraft, colors }) {
+  function setVerifiedOnly(nextValue) {
+    setDraft({ ...draft, verifiedOnly: nextValue });
+  }
+
+  function setAvailableOnly(nextValue) {
+    setDraft({ ...draft, availableOnly: nextValue });
+  }
+
+  const verifiedIsOn = Boolean(draft.verifiedOnly);
+  const availableIsOn = Boolean(draft.availableOnly);
+
+  return (
+    <View
+      style={[
+        styles.toggleGroup,
+        { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface },
+      ]}
+    >
+      <ToggleRow
+        title="Verified"
+        subtitle="Credentials checked"
+        value={verifiedIsOn}
+        onValueChange={setVerifiedOnly}
+        colors={colors}
+        showDivider
+      />
+      <ToggleRow
+        title="Available only"
+        subtitle="Hide waitlists"
+        value={availableIsOn}
+        onValueChange={setAvailableOnly}
+        colors={colors}
+      />
+    </View>
+  );
+}
+
+function FilterDraftEditor({
+  draft,
+  setDraft,
+  colors,
+  matchCount,
+  onApplyAndClose,
+}) {
+  const showTrainersLabel = labelForShowTrainersButton(matchCount);
+  const sortSegments = segmentsFromOptionLabels(SORT_OPTIONS);
+  const sessionSegments = segmentsFromOptionLabels(SESSION_TYPES);
+
+  function resetDraftToDefaults() {
+    setDraft({ ...DEFAULT_FILTERS });
+  }
+
+  return (
+    <ScrollView
+      style={styles.scroll}
+      contentContainerStyle={[styles.scrollContent, { paddingBottom: SHEET_SCROLL_EXTRA_PAD }]}
+      showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+      bounces
+    >
+      <FilterSheetHeader colors={colors} onReset={resetDraftToDefaults} />
+      <SortBySection
+        draft={draft}
+        setDraft={setDraft}
+        colors={colors}
+        sortSegments={sortSegments}
+      />
+      <SpecialtySection draft={draft} setDraft={setDraft} colors={colors} />
+      <SessionTypeSection
+        draft={draft}
+        setDraft={setDraft}
+        colors={colors}
+        sessionSegments={sessionSegments}
+      />
+      <ExperienceSection draft={draft} setDraft={setDraft} colors={colors} />
+      <PricePerMonthSection draft={draft} setDraft={setDraft} colors={colors} />
+      <AvailabilitySection draft={draft} setDraft={setDraft} colors={colors} />
+      <VerifiedAvailableToggles draft={draft} setDraft={setDraft} colors={colors} />
+      <View style={styles.ctaWrap}>
+        <NbButton variant="fill" onPress={onApplyAndClose}>
+          {showTrainersLabel}
+        </NbButton>
+      </View>
+    </ScrollView>
+  );
+}
+
 // ===== MAIN FUNCTION =====
 
 /**
- * Marketplace filter sheet. Edits a draft copy; Show N trainers is the only write back to the parent.
- * @param {{
- *   visible: boolean,
- *   filters: object,
- *   onClose: Function,
- *   onApply: Function,
- *   trainers?: object[],
- *   search?: string,
- *   quickSpecialty?: string,
- * }} props
+ * Marketplace filter bottom sheet. Edits a draft copy; Apply writes back to the parent.
+ * @param {object} props
  */
 export function FilterPopup({
   visible,
@@ -136,41 +504,41 @@ export function FilterPopup({
   onApply,
   trainers = [],
   search = '',
-  quickSpecialty = 'All',
+  quickSpecialty = DEFAULT_QUICK_SPECIALTY,
 }) {
+  // 1. Theme + home-indicator insets + draft state (starts from live filters).
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const [draft, setDraft] = useState(filters || DEFAULT_FILTERS);
 
-  // Recopy live filters whenever the sheet opens so Cancel never leaks half-edits.
+  // 2. Recopy live filters whenever the sheet opens — backdrop Cancel must not leak half-edits.
   useEffect(() => {
-    if (visible) setDraft({ ...DEFAULT_FILTERS, ...(filters || {}) });
+    if (!visible) {
+      return;
+    }
+    setDraft(draftFromLiveFilters(filters));
   }, [visible, filters]);
 
-  // Live match count for the fill CTA — same rules as the list (filterTrainers).
+  // 3. Live match count for the fill CTA — same rules as the list (filterTrainers).
   const matchCount = useMemo(
-    () => filterTrainers(trainers, draft, { query: search, quickSpecialty }).length,
+    () => countMatchingTrainers(trainers, draft, search, quickSpecialty),
     [trainers, draft, search, quickSpecialty],
   );
 
-  const sortSegments = SORT_OPTIONS.map((option) => ({ id: option, label: option }));
-  const sessionSegments = SESSION_TYPES.map((option) => ({ id: option, label: option }));
+  const sheetBottomPad = Math.max(insets.bottom, MIN_SHEET_BOTTOM_PAD);
 
-  const toggleSpecialty = (specialty) => {
-    setDraft((current) => ({
-      ...current,
-      specialties: specialtiesAfterToggle(current.specialties || [], specialty),
-    }));
+  function applyDraftAndClose() {
+    callIfFunction(onApply, draft);
+    callIfFunction(onClose);
+  }
+
+  const sheetChrome = {
+    backgroundColor: colors.nbSurface,
+    borderColor: colors.nbBorder,
+    paddingBottom: sheetBottomPad,
   };
 
-  const applyDraftAndClose = () => {
-    onApply?.(draft);
-    onClose?.();
-  };
-
-  const showLabel =
-    matchCount === 1 ? 'Show 1 trainer' : `Show ${matchCount} trainers`;
-
+  // 4. Modal shell + draft editor; only “Show N trainers” writes back to the parent.
   return (
     <Modal
       visible={visible}
@@ -181,186 +549,23 @@ export function FilterPopup({
       onRequestClose={onClose}
     >
       <View style={styles.overlay}>
-        <Pressable style={styles.backdrop} onPress={onClose} accessibilityRole="button" />
-        <View
-          style={[
-            styles.sheet,
-            {
-              backgroundColor: colors.nbSurface,
-              borderColor: colors.nbBorder,
-              paddingBottom: Math.max(insets.bottom, MIN_SHEET_BOTTOM_PAD),
-            },
-          ]}
-        >
+        <Pressable
+          style={styles.backdrop}
+          onPress={onClose}
+          accessibilityRole="button"
+        />
+        <View style={[styles.sheet, sheetChrome]}>
           <View style={styles.handle}>
             <View style={[styles.handleBar, { backgroundColor: colors.nbBorder }]} />
           </View>
 
-          <ScrollView
-            style={styles.scroll}
-            contentContainerStyle={[styles.scrollContent, { paddingBottom: SHEET_SCROLL_EXTRA_PAD }]}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-            bounces
-          >
-            {/* Header: Filter + underlined Reset */}
-            <View style={styles.headerRow}>
-              <Text style={[styles.title, { color: colors.nbInk }]}>Filter</Text>
-              <Pressable
-                onPress={() => setDraft({ ...DEFAULT_FILTERS })}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel="Reset filters"
-              >
-                <Text style={[styles.resetLink, { color: colors.nbInk }]}>Reset</Text>
-              </Pressable>
-            </View>
-
-            {/* SORT BY — segmented */}
-            <View style={styles.section}>
-              <SectionLabel colors={colors}>SORT BY</SectionLabel>
-              <NbSegmented
-                segments={sortSegments}
-                selected={draft.sort || 'Best match'}
-                onSelect={(id) => setDraft({ ...draft, sort: id })}
-              />
-            </View>
-
-            {/* SPECIALTY — multi pills */}
-            <View style={styles.section}>
-              <SectionLabel colors={colors}>SPECIALTY</SectionLabel>
-              <View style={styles.pillWrap}>
-                {FILTER_SPECIALTIES.map((option) => (
-                  <FilterPill
-                    key={option}
-                    label={option}
-                    active={(draft.specialties || []).includes(option)}
-                    onPress={() => toggleSpecialty(option)}
-                    colors={colors}
-                  />
-                ))}
-              </View>
-            </View>
-
-            {/* SESSION TYPE — segmented */}
-            <View style={styles.section}>
-              <SectionLabel colors={colors}>SESSION TYPE</SectionLabel>
-              <NbSegmented
-                segments={sessionSegments}
-                selected={draft.sessionType || 'Both'}
-                onSelect={(id) => setDraft({ ...draft, sessionType: id })}
-              />
-            </View>
-
-            {/* EXPERIENCE — exclusive pills */}
-            <View style={styles.section}>
-              <SectionLabel colors={colors}>EXPERIENCE</SectionLabel>
-              <View style={styles.pillWrap}>
-                {EXPERIENCE_OPTIONS.map((option) => (
-                  <FilterPill
-                    key={option}
-                    label={option}
-                    active={draft.experience === option}
-                    onPress={() => setDraft({ ...draft, experience: option })}
-                    colors={colors}
-                  />
-                ))}
-              </View>
-            </View>
-
-            {/* PRICE PER MONTH — min / max fields (no slider in PNG 05) */}
-            <View style={styles.section}>
-              <SectionLabel colors={colors}>PRICE PER MONTH</SectionLabel>
-              <View style={styles.priceRow}>
-                <HardShadow offset={nb.shadowOffsetSmall} radius={borderRadius.nbInput} style={styles.priceField}>
-                  <TextInput
-                    placeholder="Min $/mo"
-                    placeholderTextColor={colors.nbMuted}
-                    keyboardType="number-pad"
-                    value={draft.priceMin}
-                    onChangeText={(typed) => setDraft({ ...draft, priceMin: typed })}
-                    style={[
-                      styles.input,
-                      {
-                        color: colors.nbInk,
-                        borderColor: colors.nbBorder,
-                        backgroundColor: colors.nbSurface,
-                      },
-                    ]}
-                  />
-                </HardShadow>
-                <HardShadow offset={nb.shadowOffsetSmall} radius={borderRadius.nbInput} style={styles.priceField}>
-                  <TextInput
-                    placeholder="Max $/mo"
-                    placeholderTextColor={colors.nbMuted}
-                    keyboardType="number-pad"
-                    value={draft.priceMax}
-                    onChangeText={(typed) => setDraft({ ...draft, priceMax: typed })}
-                    style={[
-                      styles.input,
-                      {
-                        color: colors.nbInk,
-                        borderColor: colors.nbBorder,
-                        backgroundColor: colors.nbSurface,
-                      },
-                    ]}
-                  />
-                </HardShadow>
-              </View>
-            </View>
-
-            {/* AVAILABILITY — exclusive pills */}
-            <View style={styles.section}>
-              <SectionLabel colors={colors}>AVAILABILITY</SectionLabel>
-              <View style={styles.pillWrap}>
-                {AVAILABILITY_OPTIONS.map((option) => (
-                  <FilterPill
-                    key={option}
-                    label={option}
-                    active={draft.availability === option}
-                    onPress={() =>
-                      setDraft({
-                        ...draft,
-                        availability: availabilityAfterTap(draft.availability, option),
-                      })
-                    }
-                    colors={colors}
-                  />
-                ))}
-              </View>
-            </View>
-
-            {/* Verified + Available only toggles in one outlined group */}
-            <View
-              style={[
-                styles.toggleGroup,
-                { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface },
-              ]}
-            >
-              <ToggleRow
-                title="Verified"
-                subtitle="Credentials checked"
-                value={!!draft.verifiedOnly}
-                onValueChange={(next) => setDraft({ ...draft, verifiedOnly: next })}
-                colors={colors}
-                showDivider
-              />
-              <ToggleRow
-                title="Available only"
-                subtitle="Hide waitlists"
-                value={!!draft.availableOnly}
-                onValueChange={(next) => setDraft({ ...draft, availableOnly: next })}
-                colors={colors}
-              />
-            </View>
-
-            {/* Primary CTA */}
-            <View style={styles.ctaWrap}>
-              <NbButton variant="fill" onPress={applyDraftAndClose}>
-                {showLabel}
-              </NbButton>
-            </View>
-          </ScrollView>
+          <FilterDraftEditor
+            draft={draft}
+            setDraft={setDraft}
+            colors={colors}
+            matchCount={matchCount}
+            onApplyAndClose={applyDraftAndClose}
+          />
         </View>
       </View>
     </Modal>
@@ -368,6 +573,8 @@ export function FilterPopup({
 }
 
 export default FilterPopup;
+
+// ===== PLUMBING — skip unless debugging =====
 
 const styles = StyleSheet.create({
   overlay: {

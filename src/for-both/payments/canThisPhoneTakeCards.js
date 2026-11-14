@@ -1,34 +1,12 @@
 // Whether this install can show a Stripe card field, and the sentence we show when it cannot.
-// Flow: require the native Stripe package → read the publishable key → return the first blocker.
+// Flow: load the native Stripe package → read the publishable key → return the first blocker.
 // Used by the card payment wrapper and the pay-trainer popup before they mount CardField.
 
 import Constants from 'expo-constants';
 
-// ===== NAMED CONSTANTS ===== 
+// ===== NAMED CONSTANTS =====
 
-let stripeModule = null;
-// The require error is kept so a missing native module is still visible in a debugger.
-let _stripeLoadError = null;
-
-try {
-  // eslint-disable-next-line global-require
-  stripeModule = require('@stripe/stripe-react-native');
-} catch (nativeLoadError) {
-  _stripeLoadError = nativeLoadError;
-  stripeModule = null;
-}
-
-// An empty env value falls through to the Expo extra field, then to a blank string.
-function readStripePublishableKey() {
-  const fromEnv =
-    typeof process !== 'undefined' ? process.env?.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY : '';
-  if (fromEnv) return fromEnv;
-  const fromExpoExtra = Constants.expoConfig?.extra?.stripePublishableKey;
-  if (fromExpoExtra) return fromExpoExtra;
-  return '';
-}
-const STRIPE_PUBLISHABLE_KEY = readStripePublishableKey();
-
+// Manipulate here: user-facing copy when this phone cannot show CardField — order matches getStripeCardPaymentBlockReason steps.
 const EXPO_GO_BLOCK = {
   title: 'Expo Go cannot take card payments',
   detail: 'Install your Coach Connect dev build on this device, then reload.',
@@ -50,20 +28,86 @@ const MISSING_PROVIDER_BLOCK = {
   detail: 'Rebuild the native app: npm run ios:run',
 };
 
+const ENV_PUBLISHABLE_KEY_NAME = 'EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY';
+const EXPO_APP_OWNERSHIP_GO = 'expo';
+
 // ===== HELPER FUNCTIONS =====
+// PLUMBING — skip unless debugging native Stripe load or publishable-key config
+
+// Loaded once at import time. null means this binary never shipped Stripe.
+let stripeNativeModuleOrNull = null;
+// Kept so a missing native module is still visible in a debugger.
+let stripeNativeLoadError = null;
+
+function tryLoadStripeNativeModule() {
+  try {
+    // eslint-disable-next-line global-require
+    const stripePackage = require('@stripe/stripe-react-native');
+    return stripePackage;
+  } catch (nativeLoadError) {
+    stripeNativeLoadError = nativeLoadError;
+    return null;
+  }
+}
+
+stripeNativeModuleOrNull = tryLoadStripeNativeModule();
+
+// An empty env value falls through to the Expo extra field, then to a blank string.
+function readStripePublishableKeyFromEnvironment() {
+  let keyFromProcessEnv = '';
+  const processExists = typeof process !== 'undefined';
+  if (processExists && process.env) {
+    keyFromProcessEnv = process.env[ENV_PUBLISHABLE_KEY_NAME] || '';
+  }
+  if (keyFromProcessEnv) {
+    return keyFromProcessEnv;
+  }
+
+  const expoConfig = Constants.expoConfig;
+  if (!expoConfig) {
+    return '';
+  }
+  if (!expoConfig.extra) {
+    return '';
+  }
+
+  const keyFromExpoExtra = expoConfig.extra.stripePublishableKey;
+  if (keyFromExpoExtra) {
+    return keyFromExpoExtra;
+  }
+
+  return '';
+}
+
+const stripePublishableKeyFromConfig = readStripePublishableKeyFromEnvironment();
 
 // vocab: appOwnership === 'expo' means the Expo Go app, which cannot load this native card field.
-function isRunningInExpoGo() {
-  return Constants.appOwnership === 'expo';
+function phoneIsRunningInExpoGo() {
+  return Constants.appOwnership === EXPO_APP_OWNERSHIP_GO;
 }
 
 // Either field is enough. A build can ship CardField, CardForm, or both.
-function isCardEntryMissing(nativeModule) {
-  return !nativeModule?.CardField && !nativeModule?.CardForm;
+function nativeModuleHasNoCardEntry(stripeModule) {
+  if (!stripeModule) {
+    return true;
+  }
+  if (stripeModule.CardField) {
+    return false;
+  }
+  if (stripeModule.CardForm) {
+    return false;
+  }
+  return true;
 }
 
-function isStripeProviderMissing(nativeModule) {
-  return !nativeModule?.StripeProvider;
+function nativeModuleHasNoStripeProvider(stripeModule) {
+  if (!stripeModule) {
+    return true;
+  }
+  if (stripeModule.StripeProvider) {
+    return false;
+  }
+  return true;
 }
 
 // ===== MAIN FUNCTION =====
@@ -73,7 +117,7 @@ function isStripeProviderMissing(nativeModule) {
  * @returns {object|null}
  */
 export function getStripeNativeModule() {
-  return stripeModule;
+  return stripeNativeModuleOrNull;
 }
 
 /**
@@ -81,7 +125,7 @@ export function getStripeNativeModule() {
  * @returns {string}
  */
 export function getStripePublishableKey() {
-  return STRIPE_PUBLISHABLE_KEY;
+  return stripePublishableKeyFromConfig;
 }
 
 /**
@@ -90,16 +134,26 @@ export function getStripePublishableKey() {
  */
 export function getStripeCardPaymentBlockReason() {
   // 1. Expo Go cannot load this native card field.
-  if (isRunningInExpoGo()) return EXPO_GO_BLOCK;
+  if (phoneIsRunningInExpoGo()) {
+    return EXPO_GO_BLOCK;
+  }
 
   // 2. Dev client built before Stripe was added (or needs a rebuild).
-  if (isCardEntryMissing(stripeModule)) return MISSING_CARD_MODULE_BLOCK;
+  const cardEntryMissing = nativeModuleHasNoCardEntry(stripeNativeModuleOrNull);
+  if (cardEntryMissing) {
+    return MISSING_CARD_MODULE_BLOCK;
+  }
 
   // 3. Missing publishable key — .env was blank and Expo extra was blank.
-  if (!STRIPE_PUBLISHABLE_KEY) return MISSING_PUBLISHABLE_KEY_BLOCK;
+  if (!stripePublishableKeyFromConfig) {
+    return MISSING_PUBLISHABLE_KEY_BLOCK;
+  }
 
   // 4. Module loaded but StripeProvider is missing from this install.
-  if (isStripeProviderMissing(stripeModule)) return MISSING_PROVIDER_BLOCK;
+  const providerMissing = nativeModuleHasNoStripeProvider(stripeNativeModuleOrNull);
+  if (providerMissing) {
+    return MISSING_PROVIDER_BLOCK;
+  }
 
   // 5. This phone can take a card.
   return null;
@@ -110,6 +164,8 @@ export function getStripeCardPaymentBlockReason() {
  * @returns {boolean}
  */
 export function isStripeCardPaymentReady() {
-  // 1. Ready only when getStripeCardPaymentBlockReason has nothing to show.
-  return !getStripeCardPaymentBlockReason();
+  // 1. Ready only when the blocker recipe returns null.
+  const blockReason = getStripeCardPaymentBlockReason();
+  const phoneCanTakeCards = !blockReason;
+  return phoneCanTakeCards;
 }

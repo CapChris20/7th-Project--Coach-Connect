@@ -1,9 +1,6 @@
 // Design Law “Review {name}” sheet (client-home PNG 13/14) — stars, tags, note, Post / Not now.
-// Flow: open with any saved stars/text → write reviews/{trainerId}_{clientId} → refresh trainer average.
+// Flow: open with saved stars/text → write reviews/{trainerId}_{clientId} → refresh trainer average.
 // Used by client home + review prompt. One review per client-trainer pair. Keep Firestore keys.
-//
-// vocab: NbSheet = Design Law bottom sheet; tags are UI-only chips (not a new Firestore field yet)
-// Manipulate here: REVIEW_TAGS match PNG chips; star fill uses nbFill (never green / soft orange)
 
 import React, { useState, useEffect } from 'react';
 import {
@@ -44,8 +41,11 @@ const EMPTY_RATING_AVERAGE = null;
 const EMPTY_REVIEW_COUNT = 0;
 const RATING_DECIMAL_PLACES = 10;
 const FALLBACK_TRAINER_NAME = 'trainer';
-// Manipulate here: PNG 13 chips — selected = fill; unselected = surface
+const FALLBACK_INITIALS = 'TR';
+const DEFAULT_STAR_RATING = 4;
+const DEFAULT_SELECTED_TAGS = ['Clear plans', 'Responsive'];
 const REVIEW_TAGS = ['Clear plans', 'Responsive', 'Pushes me', 'Great with injuries', 'On time'];
+const MAX_INITIAL_LETTERS = 2;
 
 // ===== HELPER FUNCTIONS =====
 
@@ -53,66 +53,63 @@ function reviewDocumentId(trainerId, clientId) {
   return `${trainerId}_${clientId}`;
 }
 
-function ratingSummaryFromReviews(snapshot) {
-  if (snapshot.empty) {
-    return { rating: EMPTY_RATING_AVERAGE, reviewCount: EMPTY_REVIEW_COUNT };
-  }
-  let totalStars = 0;
-  for (const reviewDoc of snapshot.docs) {
-    totalStars += reviewDoc.data().rating || 0;
-  }
-  const average = totalStars / snapshot.docs.length;
-  return {
-    rating: Math.round(average * RATING_DECIMAL_PLACES) / RATING_DECIMAL_PLACES,
-    reviewCount: snapshot.docs.length,
-  };
+function trainerFirstName(fullName) {
+  const words = String(fullName || '').split(/\s+/);
+  const firstWord = words[0];
+  if (firstWord) return firstWord;
+  return FALLBACK_TRAINER_NAME;
 }
 
-function updateTrainerRating(trainerId) {
-  const reviewsQuery = query(
-    collection(db, REVIEWS_COLLECTION),
-    where('trainerId', '==', trainerId),
-  );
-  return getDocs(reviewsQuery).then(async (snapshot) => {
-    const payload = ratingSummaryFromReviews(snapshot);
-    await setDoc(doc(db, USERS_COLLECTION, trainerId), payload, { merge: true });
-    try {
-      await setDoc(doc(db, TRAINERS_COLLECTION, trainerId), payload, { merge: true });
-    } catch (ignoredError) {
-      /* listing copy is optional */
-    }
-  });
-}
-
-function reviewDocumentPayload({
-  trainerId,
-  clientId,
-  clientFirstName,
-  rating,
-  reviewText,
-  tags,
-  existingReview,
-}) {
-  const savedCreatedAt = existingReview ? existingReview.createdAt : undefined;
-  return {
-    trainerId,
-    clientId,
-    clientFirstName: clientFirstName || null,
-    rating,
-    text: reviewText.trim() || null,
-    // tags stay optional — older reviews without tags still load fine
-    tags: Array.isArray(tags) && tags.length ? tags : null,
-    createdAt: savedCreatedAt ?? serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  };
-}
-
-function starIndexes() {
-  const indexes = [];
-  for (let starIndex = 1; starIndex <= STAR_COUNT; starIndex += 1) {
-    indexes.push(starIndex);
+function initialsFromName(name) {
+  const words = String(name || '').split(/\s+/);
+  const letters = [];
+  for (let wordIndex = 0; wordIndex < words.length; wordIndex += 1) {
+    const word = words[wordIndex];
+    if (!word) continue;
+    letters.push(word[0]);
+    if (letters.length >= MAX_INITIAL_LETTERS) break;
   }
-  return indexes;
+  if (letters.length === 0) return FALLBACK_INITIALS;
+  return letters.join('').toUpperCase();
+}
+
+function listOfStarNumbers() {
+  const starNumbers = [];
+  for (let starNumber = 1; starNumber <= STAR_COUNT; starNumber += 1) {
+    starNumbers.push(starNumber);
+  }
+  return starNumbers;
+}
+
+function tagsWithoutThisLabel(previousTags, tagToDrop) {
+  const keptTags = [];
+  for (let tagIndex = 0; tagIndex < previousTags.length; tagIndex += 1) {
+    const label = previousTags[tagIndex];
+    if (label === tagToDrop) continue;
+    keptTags.push(label);
+  }
+  return keptTags;
+}
+
+function tagsAfterTogglingChip(previousTags, tagLabel, tagWasSelected) {
+  if (tagWasSelected) {
+    return tagsWithoutThisLabel(previousTags, tagLabel);
+  }
+  return [...previousTags, tagLabel];
+}
+
+function selectedTagsFromExisting(existingReview) {
+  if (!existingReview) return DEFAULT_SELECTED_TAGS;
+  const savedTags = existingReview.tags;
+  if (!Array.isArray(savedTags)) return DEFAULT_SELECTED_TAGS;
+  if (savedTags.length === 0) return DEFAULT_SELECTED_TAGS;
+  return savedTags;
+}
+
+function postButtonLabelForState(isSubmitting, hasExistingReview) {
+  if (isSubmitting) return 'Posting…';
+  if (hasExistingReview) return 'Update review';
+  return 'Post review';
 }
 
 function finishReviewAndClose(onSubmitComplete, onClose) {
@@ -120,18 +117,91 @@ function finishReviewAndClose(onSubmitComplete, onClose) {
   if (onClose) onClose();
 }
 
-function initialsFromName(name) {
-  return String(name || '')
-    .split(/\s+/)
-    .map((word) => word[0])
-    .filter(Boolean)
-    .slice(0, 2)
-    .join('')
-    .toUpperCase() || 'TR';
+function tagIsInList(tags, tagLabel) {
+  for (let tagIndex = 0; tagIndex < tags.length; tagIndex += 1) {
+    if (tags[tagIndex] === tagLabel) return true;
+  }
+  return false;
+}
+
+function ReviewStarButton({ starNumber, rating, colors, onPickStar }) {
+  const starIsFilled = starNumber <= rating;
+  const starIconName = starIsFilled ? 'star' : 'star-outline';
+  const starIconColor = starIsFilled ? colors.nbFill : colors.nbMuted;
+
+  return (
+    <TouchableOpacity
+      onPress={() => onPickStar(starNumber)}
+      hitSlop={6}
+      accessibilityRole="button"
+      accessibilityLabel={`${starNumber} star`}
+    >
+      <Ionicons name={starIconName} size={36} color={starIconColor} />
+    </TouchableOpacity>
+  );
+}
+
+function ReviewTagChip({ tagLabel, tagIsSelected, colors, onToggleTag }) {
+  const tagBackground = tagIsSelected ? colors.nbFill : colors.nbSurface;
+  const tagTextColor = tagIsSelected ? colors.nbOnFill : colors.nbInk;
+
+  return (
+    <TouchableOpacity
+      onPress={() => onToggleTag(tagLabel, tagIsSelected)}
+      style={[
+        styles.tagChip,
+        {
+          borderColor: colors.nbBorder,
+          backgroundColor: tagBackground,
+        },
+      ]}
+    >
+      <Text style={{ fontWeight: '800', color: tagTextColor }}>{tagLabel}</Text>
+    </TouchableOpacity>
+  );
+}
+
+function buildStarButtonViews(rating, colors, onPickStar) {
+  const starNumbers = listOfStarNumbers();
+  const starViews = [];
+  for (let starIndex = 0; starIndex < starNumbers.length; starIndex += 1) {
+    const starNumber = starNumbers[starIndex];
+    starViews.push(
+      <ReviewStarButton
+        key={starNumber}
+        starNumber={starNumber}
+        rating={rating}
+        colors={colors}
+        onPickStar={onPickStar}
+      />,
+    );
+  }
+  return starViews;
+}
+
+function buildTagChipViews(tags, colors, onToggleTag) {
+  const tagViews = [];
+  for (let tagIndex = 0; tagIndex < REVIEW_TAGS.length; tagIndex += 1) {
+    const tagLabel = REVIEW_TAGS[tagIndex];
+    tagViews.push(
+      <ReviewTagChip
+        key={tagLabel}
+        tagLabel={tagLabel}
+        tagIsSelected={tagIsInList(tags, tagLabel)}
+        colors={colors}
+        onToggleTag={onToggleTag}
+      />,
+    );
+  }
+  return tagViews;
 }
 
 // ===== MAIN FUNCTION =====
 
+/**
+ * Bottom sheet to post or update one client→trainer review, then refresh the public average.
+ * Hook order is frozen: theme → seven useState → hydrate useEffect.
+ */
 export default function WriteTrainerReviewPopup({
   visible,
   onClose,
@@ -143,9 +213,9 @@ export default function WriteTrainerReviewPopup({
   existingReview,
 }) {
   const { colors } = useTheme();
-  const [rating, setRating] = useState(4);
+  const [rating, setRating] = useState(DEFAULT_STAR_RATING);
   const [reviewText, setReviewText] = useState('');
-  const [tags, setTags] = useState(['Clear plans', 'Responsive']);
+  const [tags, setTags] = useState(DEFAULT_SELECTED_TAGS);
   const [submitting, setSubmitting] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [notice, setNotice] = useState(null);
@@ -153,25 +223,51 @@ export default function WriteTrainerReviewPopup({
 
   useEffect(() => {
     if (!visible) return;
-    const savedRating = existingReview ? existingReview.rating : undefined;
-    const savedText = existingReview ? existingReview.text : undefined;
-    const savedTags = existingReview?.tags;
-    setRating(savedRating ?? 4);
+
+    let savedRating = DEFAULT_STAR_RATING;
+    let savedText = '';
+    if (existingReview) {
+      if (existingReview.rating != null) savedRating = existingReview.rating;
+      if (existingReview.text != null) savedText = existingReview.text;
+    }
+
+    setRating(savedRating ?? DEFAULT_STAR_RATING);
     setReviewText(savedText ?? '');
-    setTags(Array.isArray(savedTags) && savedTags.length ? savedTags : ['Clear plans', 'Responsive']);
+    setTags(selectedTagsFromExisting(existingReview));
   }, [visible, existingReview]);
 
-  const firstName = String(trainerName || '').split(/\s+/)[0] || FALLBACK_TRAINER_NAME;
+  const firstName = trainerFirstName(trainerName);
   const initials = initialsFromName(trainerName);
+  const hasExistingReview = Boolean(existingReview);
+  const postButtonLabel = postButtonLabelForState(submitting, hasExistingReview);
+  const canPost = rating > 0 && !submitting;
+  const sheetTitle = `Review ${firstName}`;
+  const characterCountLabel = `${reviewText.length}/${MAX_REVIEW_CHARS}`;
+  const noticeIsVisible = Boolean(notice);
 
-  const saveReview = async () => {
+  let noticeTitle = 'Error';
+  if (notice && notice.title) noticeTitle = notice.title;
+
+  let noticeMessage;
+  if (notice) noticeMessage = notice.message;
+
+  const avatarFillColor = accentGradients[1][0];
+
+  function toggleTagChip(tagLabel, tagWasSelected) {
+    setTags((previousTags) => tagsAfterTogglingChip(previousTags, tagLabel, tagWasSelected));
+  }
+
+  async function saveReview() {
+    // 1. Guard — need ids and at least one star.
     if (!trainerId || !clientId || rating <= 0) return;
+
     setSubmitting(true);
     try {
+      // 2. Upsert reviews/{trainerId}_{clientId} with stars, tags, text.
       const reviewId = reviewDocumentId(trainerId, clientId);
       await setDoc(
         doc(db, REVIEWS_COLLECTION, reviewId),
-        reviewDocumentPayload({
+        buildReviewDocumentPayload({
           trainerId,
           clientId,
           clientFirstName,
@@ -182,7 +278,9 @@ export default function WriteTrainerReviewPopup({
         }),
         { merge: true },
       );
-      await updateTrainerRating(trainerId);
+
+      // 3. Recompute this trainer's public average, then close.
+      await refreshTrainerAverageRating(trainerId);
       finishReviewAndClose(onSubmitComplete, onClose);
     } catch (error) {
       console.error('WriteTrainerReviewPopup submit error:', error);
@@ -190,14 +288,17 @@ export default function WriteTrainerReviewPopup({
     } finally {
       setSubmitting(false);
     }
-  };
+  }
 
-  const confirmRemoveReview = async () => {
+  async function confirmRemoveReview() {
+    // 1. Guard — need both ids.
     if (!trainerId || !clientId) return;
+
     setRemoving(true);
     try {
+      // 2. Delete the pair doc and refresh trainer average.
       await deleteDoc(doc(db, REVIEWS_COLLECTION, reviewDocumentId(trainerId, clientId)));
-      await updateTrainerRating(trainerId);
+      await refreshTrainerAverageRating(trainerId);
       setConfirmRemove(false);
       finishReviewAndClose(onSubmitComplete, onClose);
     } catch (error) {
@@ -207,9 +308,31 @@ export default function WriteTrainerReviewPopup({
     } finally {
       setRemoving(false);
     }
-  };
+  }
 
   if (!visible) return null;
+
+  const starButtonViews = buildStarButtonViews(rating, colors, setRating);
+  const tagChipViews = buildTagChipViews(tags, colors, toggleTagChip);
+
+  let removeReviewControl = null;
+  if (hasExistingReview) {
+    let removeContent = (
+      <Text style={{ fontSize: 13, fontWeight: '700', color: colors.nbMuted }}>Remove review</Text>
+    );
+    if (removing) {
+      removeContent = <ActivityIndicator size="small" color={colors.nbMuted} />;
+    }
+    removeReviewControl = (
+      <TouchableOpacity
+        onPress={() => setConfirmRemove(true)}
+        disabled={removing}
+        style={{ alignItems: 'center', marginTop: 12 }}
+      >
+        {removeContent}
+      </TouchableOpacity>
+    );
+  }
 
   return (
     <>
@@ -218,60 +341,21 @@ export default function WriteTrainerReviewPopup({
           <View style={styles.headRow}>
             <View
               style={[
-                styles.av,
-                { backgroundColor: accentGradients[1][0], borderColor: colors.nbBorder },
+                styles.avatarCircle,
+                { backgroundColor: avatarFillColor, borderColor: colors.nbBorder },
               ]}
             >
               <Text style={{ fontWeight: '900', color: colors.nbInk }}>{initials}</Text>
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={[styles.title, { color: colors.nbInk }]}>{`Review ${firstName}`}</Text>
-              <Text style={[styles.sub, { color: colors.nbMuted }]}>Visible on their profile.</Text>
+              <Text style={[styles.title, { color: colors.nbInk }]}>{sheetTitle}</Text>
+              <Text style={[styles.subtitle, { color: colors.nbMuted }]}>Visible on their profile.</Text>
             </View>
           </View>
 
-          <View style={styles.starRow}>
-            {starIndexes().map((starIndex) => (
-              <TouchableOpacity
-                key={starIndex}
-                onPress={() => setRating(starIndex)}
-                hitSlop={6}
-                accessibilityRole="button"
-                accessibilityLabel={`${starIndex} star`}
-              >
-                <Ionicons
-                  name={starIndex <= rating ? 'star' : 'star-outline'}
-                  size={36}
-                  color={starIndex <= rating ? colors.nbFill : colors.nbMuted}
-                />
-              </TouchableOpacity>
-            ))}
-          </View>
+          <View style={styles.starRow}>{starButtonViews}</View>
 
-          <View style={styles.tagRow}>
-            {REVIEW_TAGS.map((tag) => {
-              const on = tags.includes(tag);
-              return (
-                <TouchableOpacity
-                  key={tag}
-                  onPress={() =>
-                    setTags((prev) => (on ? prev.filter((t) => t !== tag) : [...prev, tag]))
-                  }
-                  style={[
-                    styles.tagChip,
-                    {
-                      borderColor: colors.nbBorder,
-                      backgroundColor: on ? colors.nbFill : colors.nbSurface,
-                    },
-                  ]}
-                >
-                  <Text style={{ fontWeight: '800', color: on ? colors.nbOnFill : colors.nbInk }}>
-                    {tag}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+          <View style={styles.tagRow}>{tagChipViews}</View>
 
           <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetCard}>
             <TextInput
@@ -292,46 +376,27 @@ export default function WriteTrainerReviewPopup({
             />
           </HardShadow>
           <Text style={[styles.counter, { color: colors.nbMuted }]}>
-            {reviewText.length}/{MAX_REVIEW_CHARS}
+            {characterCountLabel}
           </Text>
 
           <View style={styles.actions}>
             <NbButton variant="ghost" onPress={onClose} style={{ flex: 1 }} disabled={submitting}>
               Not now
             </NbButton>
-            <NbButton
-              variant="fill"
-              onPress={saveReview}
-              style={{ flex: 1 }}
-              disabled={rating <= 0 || submitting}
-            >
-              {submitting ? 'Posting…' : existingReview ? 'Update review' : 'Post review'}
+            <NbButton variant="fill" onPress={saveReview} style={{ flex: 1 }} disabled={!canPost}>
+              {postButtonLabel}
             </NbButton>
           </View>
 
-          {existingReview ? (
-            <TouchableOpacity
-              onPress={() => setConfirmRemove(true)}
-              disabled={removing}
-              style={{ alignItems: 'center', marginTop: 12 }}
-            >
-              {removing ? (
-                <ActivityIndicator size="small" color={colors.nbMuted} />
-              ) : (
-                <Text style={{ fontSize: 13, fontWeight: '700', color: colors.nbMuted }}>
-                  Remove review
-                </Text>
-              )}
-            </TouchableOpacity>
-          ) : null}
+          {removeReviewControl}
         </View>
       </NbSheet>
 
       <NbNoticeSheet
-        visible={!!notice}
+        visible={noticeIsVisible}
         onClose={() => setNotice(null)}
-        title={notice?.title || 'Error'}
-        message={notice?.message}
+        title={noticeTitle}
+        message={noticeMessage}
         confirmLabel="OK"
       />
       <NbNoticeSheet
@@ -358,7 +423,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
-  av: {
+  avatarCircle: {
     width: 44,
     height: 44,
     borderRadius: 22,
@@ -367,7 +432,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   title: { fontSize: 20, fontWeight: '900' },
-  sub: { fontSize: 13, fontWeight: '600', marginTop: 2 },
+  subtitle: { fontSize: 13, fontWeight: '600', marginTop: 2 },
   starRow: {
     flexDirection: 'row',
     justifyContent: 'center',
@@ -407,3 +472,72 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
 });
+
+// ===== PLUMBING — skip unless trainer average on profile looks wrong after post/remove =====
+
+function ratingSummaryFromReviews(snapshot) {
+  if (snapshot.empty) {
+    return { rating: EMPTY_RATING_AVERAGE, reviewCount: EMPTY_REVIEW_COUNT };
+  }
+  let totalStars = 0;
+  for (let docIndex = 0; docIndex < snapshot.docs.length; docIndex += 1) {
+    const reviewDoc = snapshot.docs[docIndex];
+    totalStars += reviewDoc.data().rating || 0;
+  }
+  const average = totalStars / snapshot.docs.length;
+  return {
+    rating: Math.round(average * RATING_DECIMAL_PLACES) / RATING_DECIMAL_PLACES,
+    reviewCount: snapshot.docs.length,
+  };
+}
+
+async function writeTrainerRatingToFirestore(trainerId, summary) {
+  await setDoc(doc(db, USERS_COLLECTION, trainerId), summary, { merge: true });
+  try {
+    await setDoc(doc(db, TRAINERS_COLLECTION, trainerId), summary, { merge: true });
+  } catch (ignoredError) {
+    /* listing copy is optional */
+  }
+}
+
+function refreshTrainerAverageRating(trainerId) {
+  const reviewsQuery = query(
+    collection(db, REVIEWS_COLLECTION),
+    where('trainerId', '==', trainerId),
+  );
+  return getDocs(reviewsQuery).then(async (snapshot) => {
+    const summary = ratingSummaryFromReviews(snapshot);
+    await writeTrainerRatingToFirestore(trainerId, summary);
+  });
+}
+
+function buildReviewDocumentPayload({
+  trainerId,
+  clientId,
+  clientFirstName,
+  rating,
+  reviewText,
+  tags,
+  existingReview,
+}) {
+  let savedCreatedAt;
+  if (existingReview) savedCreatedAt = existingReview.createdAt;
+
+  let trimmedText = null;
+  const cleanedText = reviewText.trim();
+  if (cleanedText) trimmedText = cleanedText;
+
+  let tagsToStore = null;
+  if (Array.isArray(tags) && tags.length) tagsToStore = tags;
+
+  return {
+    trainerId,
+    clientId,
+    clientFirstName: clientFirstName || null,
+    rating,
+    text: trimmedText,
+    tags: tagsToStore,
+    createdAt: savedCreatedAt ?? serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  };
+}

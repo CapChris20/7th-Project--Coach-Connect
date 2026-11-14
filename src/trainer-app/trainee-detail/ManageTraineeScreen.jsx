@@ -1,6 +1,7 @@
 // Trainer view of one linked trainee: profile card, Progress/Nutrition tabs, Sessions, Notes & Files.
-// Flow: live Firestore listeners fill clientData → tabs switch content → editors/modals open from the workspace.
+// Flow: live Firestore listeners fill clientData → tabs switch content → editors/modals open from workspace.
 // Used by: TrainerAppStart when the trainer taps a client on the roster.
+// Read order: constants → pure layout → ClientDetailScreen recipe → PLUMBING loaders at the bottom.
 //
 // vocab: NbCard / NbAvatar = neobrutalist profile shell; ProgressTab / NutritionTab reuse home tab bodies
 
@@ -68,289 +69,330 @@ const DEFAULT_CALORIES_GOAL = 2000;
 const MAX_LIKED_EXERCISES_SHOWN = 12;
 const HIT_SLOP_HEADER = { top: 12, bottom: 12, left: 12, right: 12 };
 const HIT_SLOP_MENU = { top: 8, bottom: 8, left: 8, right: 8 };
+const HEADER_SQUARE_SIZE = 44;
+const HEADER_SQUARE_RADIUS = 12;
 
 // ===== HELPER FUNCTIONS =====
 
-/**
- * Empty nutrition block used when CRM-only / fallback paths have no food logs yet.
- * @returns {object}
- */
-function emptyNutritionBlock() {
-  return {
-    calories: 0,
-    protein: 0,
-    carbs: 0,
-    fat: 0,
-    foods: [],
-    micros: [],
-  };
-}
-
-/**
- * Empty calendar shape matching trainer_clients/{trainer}/clients/{id}.calendar.
- * @returns {object}
- */
-function emptyCalendarBlock() {
-  return { completed: [], upcoming: [], missed: [], upcomingSessions: [] };
-}
-
-/**
- * Safe notes list — getNotesAndFiles can throw on permission flicker.
- * @param {string} clientId
- * @returns {Promise<Array>}
- */
-async function loadNotesAndFilesSafe(clientId) {
-  try {
-    return await getNotesAndFiles(clientId);
-  } catch (_loadError) {
-    return [];
+function callIfFunction(maybeFunction, ...args) {
+  if (typeof maybeFunction !== 'function') {
+    return;
   }
+  return maybeFunction(...args);
 }
 
-/**
- * Build the detail payload when we only have the trainer CRM doc (no users/{id} yet).
- * @param {object} trainerClientDoc
- * @param {object} client
- * @param {Array} notesAndFiles
- * @returns {object}
- */
-function clientDataFromTrainerCrmOnly(trainerClientDoc, client, notesAndFiles) {
-  // vocab/symbol: ?? = use right side only when left is null/undefined (keeps a real 0).
-  return {
-    beforeWeight:
-      trainerClientDoc.startingWeight
-      ?? trainerClientDoc.weight
-      ?? client?.startingWeight
-      ?? client?.weight
-      ?? null,
-    currentWeight: trainerClientDoc.weight ?? client?.weight ?? null,
-    trainingDays: [],
-    programName: trainerClientDoc.programName || DEFAULT_PROGRAM_NAME,
-    nutrition: emptyNutritionBlock(),
-    calendar: trainerClientDoc.calendar || emptyCalendarBlock(),
-    notesAndFiles,
-  };
+function clientIdOf(client) {
+  if (!client) return undefined;
+  return client.id;
 }
 
-/**
- * Food names for the nutrition summary list.
- * @param {Array} nutritionLogs
- * @returns {string[]}
- */
-function foodNamesFromLogs(nutritionLogs) {
-  const names = [];
-  for (let i = 0; i < nutritionLogs.length; i += 1) {
-    const logRow = nutritionLogs[i];
-    const foodName = logRow.food_name || logRow.foodName || 'Food';
-    if (foodName) names.push(foodName);
-  }
-  return names;
+function clientNameOf(client, fallback) {
+  if (!client || !client.name) return fallback;
+  return client.name;
 }
 
-/**
- * Push truthy micros from one log row into the accumulator.
- * @param {Array} accumulator
- * @param {Array} rowMicros
- */
-function appendTruthyMicros(accumulator, rowMicros) {
-  for (let j = 0; j < rowMicros.length; j += 1) {
-    const microEntry = rowMicros[j];
-    if (!microEntry) continue;
-    accumulator.push(microEntry);
-  }
+function noticeTitle(notice) {
+  if (!notice) return '';
+  return notice.title || '';
 }
 
-/**
- * Flatten micros arrays off each food log row.
- * @param {Array} nutritionLogs
- * @returns {Array}
- */
-function microsFromLogs(nutritionLogs) {
-  const micros = [];
-  for (let i = 0; i < nutritionLogs.length; i += 1) {
-    const logRow = nutritionLogs[i];
-    if (!logRow.micros) continue;
-    appendTruthyMicros(micros, logRow.micros || []);
-  }
-  return micros;
+function noticeMessage(notice) {
+  if (!notice) return undefined;
+  return notice.message;
 }
 
-/**
- * Resolve macro goals from daily goals + user profile fields.
- * @param {object} userData
- * @param {object} nutritionGoals
- * @returns {object}
- */
-function resolveNutritionGoals(userData, nutritionGoals) {
-  return {
-    proteinGoal: userData.proteinGoal ?? nutritionGoals.proteinTarget ?? DEFAULT_PROTEIN_GOAL,
-    carbsGoal: userData.carbsGoal ?? nutritionGoals.carbsTarget ?? DEFAULT_CARBS_GOAL,
-    fatGoal: userData.fatGoal ?? nutritionGoals.fatTarget ?? DEFAULT_FAT_GOAL,
-    caloriesGoal:
-      userData.calorieTarget
-      ?? userData.calorie_target
-      ?? nutritionGoals.calories
-      ?? DEFAULT_CALORIES_GOAL,
-  };
+function errorMessageOrFallback(errorObject, fallbackText) {
+  if (errorObject && errorObject.message) return errorObject.message;
+  return fallbackText;
 }
 
-/**
- * Load daily goals with safe defaults when the call fails.
- * @param {string} clientId
- * @returns {Promise<object>}
- */
-async function loadNutritionGoalsOrDefaults(clientId) {
-  const nutritionGoals = {
-    proteinTarget: DEFAULT_PROTEIN_GOAL,
-    carbsTarget: DEFAULT_CARBS_GOAL,
-    fatTarget: DEFAULT_FAT_GOAL,
-    calories: DEFAULT_CALORIES_GOAL,
-  };
-  try {
-    const goalsData = await getDailyGoals(clientId);
-    if (goalsData?.proteinTarget != null) nutritionGoals.proteinTarget = goalsData.proteinTarget;
-    if (goalsData?.carbsTarget != null) nutritionGoals.carbsTarget = goalsData.carbsTarget;
-    if (goalsData?.fatTarget != null) nutritionGoals.fatTarget = goalsData.fatTarget;
-    if (goalsData?.calories != null) nutritionGoals.calories = goalsData.calories;
-  } catch (_goalsError) {
-    // Keep defaults.
-  }
-  return nutritionGoals;
+function profileTimezoneFromClientData(clientData) {
+  if (!clientData) return undefined;
+  return clientData.profileTimezone;
 }
 
+function likedExercisesFromClientData(clientData) {
+  if (!clientData) return null;
+  return clientData.likedExercises;
+}
+
+
+// ===== PURE LAYOUT (no hooks) =====
+
 /**
- * Full client detail payload when users/{clientId} exists.
- * @param {object} args
- * @returns {Promise<object>}
+ * Visual shell for one trainee’s detail screen.
+ * Receives already-resolved props from ClientDetailScreen so hooks stay in the recipe below.
  */
-async function buildClientDataFromUserDoc({
-  userData,
+function ClientDetailLayout({
+  isDark,
+  screenBg,
+  textColor,
+  mutedColor,
+  divider,
+  statusBarStyle,
+  androidHeaderPad,
+  scrollBottomPad,
+  clientDisplayName,
+  clientSubtitle,
+  showLikedExercises,
+  likedExercisesText,
+  activeTab,
+  onTabChange,
+  loadingClientData,
+  showProgressTab,
+  showNutritionTab,
+  showSessionsTab,
+  showNotesFilesTab,
+  progressTabNode,
+  nutritionTabNode,
+  sessionsTabNode,
+  notesFilesTabNode,
+  onBack,
+  onOpenRemoveMenu,
+  showRemoveSheet,
+  onCloseRemoveSheet,
+  onConfirmRemove,
+  removeBusy,
+  pdfViewer,
+  onClosePdf,
+  spreadsheetViewer,
+  onCloseSpreadsheet,
+  documentEditor,
   trainerId,
-  clientId,
-  clientTodayKey,
+  onCloseDocumentEditor,
+  onDocumentSaved,
+  trainerEditorNav,
+  shareModal,
+  onCloseShareModal,
+  onShareSaved,
+  notice,
+  onCloseNotice,
 }) {
-  // Firestore paths (frozen): trainer_clients/{trainerId}/clients/{clientId}, users/{clientId}/trainingDays
-  const clientDocSnap = await getDoc(doc(db, 'trainer_clients', trainerId, 'clients', clientId));
-  const clientDocData = clientDocSnap.exists() ? clientDocSnap.data() : {};
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: screenBg }}>
+      <StatusBar barStyle={statusBarStyle} />
 
-  const notesAndFiles = await loadNotesAndFilesSafe(clientId);
+      {/* Design Law header: back square · name/subtitle · ⋯ (PNG 05/07/17) */}
+      <ClientDetailHeader
+        textColor={textColor}
+        mutedColor={mutedColor}
+        screenBg={screenBg}
+        divider={divider}
+        androidHeaderPad={androidHeaderPad}
+        clientDisplayName={clientDisplayName}
+        clientSubtitle={clientSubtitle}
+        onBack={onBack}
+        onOpenRemoveMenu={onOpenRemoveMenu}
+      />
 
-  const trainingQuery = query(collection(db, 'users', clientId, 'trainingDays'));
-  const trainingSnapshot = await getDocs(trainingQuery);
-  const trainingDays = trainingSnapshot.docs.map((trainingDoc) => trainingDoc.data());
+      <RemoveClientSheet
+        visible={showRemoveSheet}
+        onClose={onCloseRemoveSheet}
+        onConfirm={onConfirmRemove}
+        clientName={clientDisplayName}
+        busy={removeBusy}
+      />
 
-  const nutritionLogs = await getFoodLogsForDate(clientId, clientTodayKey);
-  const macroTotals = calculateMacroTotals(nutritionLogs);
-  const nutritionGoals = await loadNutritionGoalsOrDefaults(clientId);
-  const goalFields = resolveNutritionGoals(userData, nutritionGoals);
+      <View style={{ flex: 1, minHeight: 0 }}>
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{
+            paddingBottom: scrollBottomPad,
+            gap: 16,
+            paddingHorizontal: 16,
+            paddingTop: 8,
+          }}
+          {...FORM_SCROLL_PROPS}
+        >
+          {showLikedExercises ? (
+            <LikedExercisesCard
+              textColor={textColor}
+              mutedColor={mutedColor}
+              likedExercisesText={likedExercisesText}
+            />
+          ) : null}
 
-  return {
-    profileTimezone:
-      userData.timezone
-      || userData.timeZone
-      || userData?.workoutReminder?.timeZone
-      || null,
-    beforeWeight:
-      userData.startingWeight
-      ?? userData.weight
-      ?? clientDocData.startingWeight
-      ?? clientDocData.weight
-      ?? null,
-    currentWeight: userData.weight ?? clientDocData.weight ?? null,
-    trainingDays,
-    programName: clientDocData.programName || DEFAULT_PROGRAM_NAME,
-    nutrition: {
-      calories: macroTotals.calories,
-      protein: macroTotals.protein,
-      carbs: macroTotals.carbs,
-      fat: macroTotals.fat,
-      foods: foodNamesFromLogs(nutritionLogs),
-      micros: microsFromLogs(nutritionLogs),
-      ...goalFields,
-    },
-    calendar: clientDocData.calendar || emptyCalendarBlock(),
-    notesAndFiles,
-    likedExercises: Array.isArray(userData.likedExercises) ? userData.likedExercises : [],
-    exercisesPrefer: userData.exercisesPrefer || userData.exercisesDislike || '',
-  };
-}
+          <TabPills activeTab={activeTab} onTabChange={onTabChange} isDark={isDark} />
 
-/**
- * CRM-only fallback when the user doc is missing or the listener errors benignly.
- * @param {string} trainerId
- * @param {object} client
- * @returns {Promise<object>}
- */
-async function buildClientDataFromCrmFallback(trainerId, client) {
-  const trainerClientSnap = await getDoc(
-    doc(db, 'trainer_clients', trainerId, 'clients', client.id),
+          {loadingClientData ? (
+            <LoadingClientBlock mutedColor={mutedColor} />
+          ) : (
+            <View>
+              {showProgressTab ? progressTabNode : null}
+              {showNutritionTab ? nutritionTabNode : null}
+              {showSessionsTab ? sessionsTabNode : null}
+              {showNotesFilesTab ? notesFilesTabNode : null}
+            </View>
+          )}
+
+          <View style={{ height: 60 }} />
+        </ScrollView>
+      </View>
+
+      <PdfViewer
+        visible={pdfViewer.visible}
+        url={pdfViewer.url}
+        name={pdfViewer.name}
+        isDark={isDark}
+        onClose={onClosePdf}
+      />
+      <SpreadsheetViewer
+        visible={spreadsheetViewer.visible}
+        url={spreadsheetViewer.url}
+        name={spreadsheetViewer.name}
+        isDark={isDark}
+        onClose={onCloseSpreadsheet}
+      />
+      <DocumentEditor
+        visible={documentEditor.visible}
+        trainerId={trainerId}
+        documentId={documentEditor.documentId}
+        isDark={isDark}
+        onClose={onCloseDocumentEditor}
+        onSaved={onDocumentSaved}
+        trainerNavChrome={trainerEditorNav}
+      />
+      <ShareDocumentPopup
+        visible={shareModal.visible}
+        trainerId={trainerId}
+        documentId={shareModal.documentId}
+        initialSharedWith={shareModal.sharedWith}
+        isDark={isDark}
+        onClose={onCloseShareModal}
+        onSaved={onShareSaved}
+      />
+      <NbNoticeSheet
+        visible={!!notice}
+        onClose={onCloseNotice}
+        title={noticeTitle(notice)}
+        message={noticeMessage(notice)}
+        confirmLabel="OK"
+      />
+    </SafeAreaView>
   );
-  const trainerClientDoc = trainerClientSnap.exists() ? trainerClientSnap.data() : {};
-  const notesAndFiles = await loadNotesAndFilesSafe(client.id);
-  return clientDataFromTrainerCrmOnly(trainerClientDoc, client, notesAndFiles);
 }
 
-/**
- * True when today's dailyLog has any non-empty dashboard_* field.
- * @param {object|null} todayDailyLog
- * @returns {boolean}
- */
-function hasDashboardCheckInToday(todayDailyLog) {
-  if (!todayDailyLog) return false;
-  const fieldNames = Object.keys(todayDailyLog);
-  for (let i = 0; i < fieldNames.length; i += 1) {
-    const fieldName = fieldNames[i];
-    if (!fieldName.startsWith('dashboard_')) continue;
-    const fieldValue = todayDailyLog[fieldName];
-    if (fieldValue != null && fieldValue !== '') return true;
-  }
-  return false;
+function ClientDetailHeader({
+  textColor,
+  mutedColor,
+  screenBg,
+  divider,
+  androidHeaderPad,
+  clientDisplayName,
+  clientSubtitle,
+  onBack,
+  onOpenRemoveMenu,
+}) {
+  return (
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: spacing.md,
+        paddingTop: androidHeaderPad + spacing.sm,
+        paddingBottom: spacing.sm,
+        gap: 12,
+      }}
+    >
+      <HardShadow offset={nb.shadowOffsetSmall} radius={HEADER_SQUARE_RADIUS}>
+        <TouchableOpacity
+          onPress={onBack}
+          hitSlop={HIT_SLOP_HEADER}
+          style={{
+            width: HEADER_SQUARE_SIZE,
+            height: HEADER_SQUARE_SIZE,
+            borderRadius: HEADER_SQUARE_RADIUS,
+            borderWidth: nb.borderWidth,
+            borderColor: divider,
+            backgroundColor: screenBg,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+        >
+          <Ionicons name="chevron-back" size={22} color={textColor} />
+        </TouchableOpacity>
+      </HardShadow>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text
+          style={{
+            color: textColor,
+            fontSize: 20,
+            fontFamily: 'SpaceGrotesk_700Bold',
+            letterSpacing: -0.3,
+          }}
+          numberOfLines={1}
+        >
+          {clientDisplayName}
+        </Text>
+        <Text
+          style={{ color: mutedColor, fontSize: 13, marginTop: 2, fontFamily: 'Inter_500Medium' }}
+          numberOfLines={1}
+        >
+          {clientSubtitle}
+        </Text>
+      </View>
+      <HardShadow offset={nb.shadowOffsetSmall} radius={HEADER_SQUARE_RADIUS}>
+        <TouchableOpacity
+          onPress={onOpenRemoveMenu}
+          accessibilityLabel="Client options: remove from roster"
+          accessibilityRole="button"
+          hitSlop={HIT_SLOP_MENU}
+          style={{
+            width: HEADER_SQUARE_SIZE,
+            height: HEADER_SQUARE_SIZE,
+            borderRadius: HEADER_SQUARE_RADIUS,
+            borderWidth: nb.borderWidth,
+            borderColor: divider,
+            backgroundColor: screenBg,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Ionicons name="ellipsis-horizontal" size={22} color={textColor} />
+        </TouchableOpacity>
+      </HardShadow>
+    </View>
+  );
 }
 
-/**
- * Liked-exercise names for the programming tip card (max 12).
- * @param {Array} likedExercises
- * @returns {string}
- */
-function likedExercisesDisplayText(likedExercises) {
-  const names = [];
-  for (let i = 0; i < likedExercises.length; i += 1) {
-    const entry = likedExercises[i];
-    const name = typeof entry === 'string' ? entry : entry?.name || entry?.exerciseName || '';
-    if (name) names.push(name);
-  }
-  return names.slice(0, MAX_LIKED_EXERCISES_SHOWN).join(' · ');
+function LikedExercisesCard({ textColor, mutedColor, likedExercisesText }) {
+  return (
+    <NbCard style={{ padding: 14 }}>
+      <Text
+        style={{
+          color: textColor,
+          fontFamily: 'SpaceGrotesk_700Bold',
+          fontSize: 13,
+          marginBottom: 8,
+          textTransform: 'uppercase',
+          letterSpacing: 1.2,
+        }}
+      >
+        Liked exercises
+      </Text>
+      <Text style={{ color: mutedColor, fontSize: 13, lineHeight: 18, fontFamily: 'Inter_400Regular' }}>
+        {likedExercisesText}
+      </Text>
+    </NbCard>
+  );
 }
 
-/**
- * Theme-aware surface colors for this screen.
- * @param {boolean} isDark
- * @returns {{ textColor: string, mutedColor: string, screenBg: string }}
- */
-function screenColorsForTheme(isDark) {
-  const palette = isDark ? darkColors : lightColors;
-  return {
-    textColor: palette.nbInk,
-    mutedColor: palette.nbMuted,
-    screenBg: palette.nbBackground,
-    divider: palette.nbBorder,
-  };
+function LoadingClientBlock({ mutedColor }) {
+  return (
+    <View style={{ padding: 40, alignItems: 'center' }}>
+      <ActivityIndicator color={ICON_ACCENT} />
+      <Text style={{ color: mutedColor, fontSize: 13, marginTop: 12 }}>
+        Loading client data...
+      </Text>
+    </View>
+  );
 }
 
-// ===== MAIN FUNCTION =====
+// ===== MAIN RECIPE =====
 
-/**
- * Trainer — single-client detail (sessions + notes/files).
- * @param {{
- *   client: object,
- *   trainerId: string,
- *   onBack: Function,
- *   onRemoveClient?: Function,
- *   trainerName?: string,
- *   getTrainerEditorNavChrome?: Function,
- *   onMessagesPress?: (clientId: string) => void,
- * }} props
- */
+// Trainer — single-client detail (sessions + notes/files).
 const ClientDetailScreen = ({
   client,
   trainerId,
@@ -390,11 +432,13 @@ const ClientDetailScreen = ({
     [getTrainerEditorNavChrome],
   );
 
+  const linkedClientId = clientIdOf(client);
   const trainerDocumentsForClient = useMemo(
-    () => filterTrainerDocumentsForClient(trainerDocuments, client?.id),
-    [trainerDocuments, client?.id],
+    () => filterTrainerDocumentsForClient(trainerDocuments, linkedClientId),
+    [trainerDocuments, linkedClientId],
   );
 
+  // 1. Load trainer-owned document templates once we know trainerId.
   useEffect(() => {
     if (!trainerId) return;
     getTrainerDocuments(trainerId).then(setTrainerDocuments).catch(() => setTrainerDocuments([]));
@@ -405,30 +449,31 @@ const ClientDetailScreen = ({
     () =>
       getProfileDateKey({
         ...(client || {}),
-        timezone: clientData?.profileTimezone,
-        timeZone: clientData?.profileTimezone,
+        timezone: profileTimezoneFromClientData(clientData),
+        timeZone: profileTimezoneFromClientData(clientData),
       }),
-    [client, clientData?.profileTimezone],
+    [client, clientData],
   );
 
-  // Live dailyLog for "check-in logged today" on the profile card.
+  // 2. Live dailyLog for "check-in logged today" on the profile card.
   useEffect(() => {
-    if (!client?.id || !db) {
+    if (!linkedClientId || !db) {
       setTodayDailyLog(null);
       return;
     }
     const dateKey = clientTodayKey;
+    // vocab: onSnapshot = live Firestore listener; returns an unsubscribe function.
     const unsubscribe = onSnapshot(
-      doc(db, 'users', client.id, 'dailyLogs', dateKey),
+      doc(db, 'users', linkedClientId, 'dailyLogs', dateKey),
       (snap) => setTodayDailyLog(snap.exists() ? snap.data() : null),
       () => setTodayDailyLog(null),
     );
     return () => unsubscribe();
-  }, [client?.id, clientTodayKey]);
+  }, [linkedClientId, clientTodayKey]);
 
-  // Main data: user doc + CRM + nutrition + notes listeners.
+  // 3. Main data: user doc + CRM + nutrition + notes listeners (tear down all on unmount).
   useEffect(() => {
-    if (!client?.id || !trainerId || !db) {
+    if (!linkedClientId || !trainerId || !db) {
       setClientData(null);
       return;
     }
@@ -464,7 +509,7 @@ const ClientDetailScreen = ({
         const nextClientData = await buildClientDataFromUserDoc({
           userData,
           trainerId,
-          clientId: client.id,
+          clientId: linkedClientId,
           clientTodayKey,
         });
         applyLoadedClientData(nextClientData);
@@ -482,8 +527,9 @@ const ClientDetailScreen = ({
       if (!effectCancelled) setClientData(null);
     };
 
+    // users/{clientId} — profile, liked exercises, weight.
     const userUnsub = onSnapshot(
-      doc(db, 'users', client.id),
+      doc(db, 'users', linkedClientId),
       onUserDocSnapshot,
       onUserDocError,
     );
@@ -491,28 +537,16 @@ const ClientDetailScreen = ({
 
     // Nutrition logs collection — same path clients use when logging food.
     const nutritionUnsub = onSnapshot(
-      query(collection(db, 'nutrition_logs'), where('user_id', '==', client.id)),
+      query(collection(db, 'nutrition_logs'), where('user_id', '==', linkedClientId)),
       async () => {
         try {
-          const nutritionLogs = await getFoodLogsForDate(client.id, clientTodayKey);
+          const nutritionLogs = await getFoodLogsForDate(linkedClientId, clientTodayKey);
           const macroTotals = calculateMacroTotals(nutritionLogs);
           if (effectCancelled) return;
 
-          setClientData((previousData) => {
-            if (!previousData) return previousData;
-            return {
-              ...previousData,
-              nutrition: {
-                ...previousData.nutrition,
-                calories: macroTotals.calories,
-                protein: macroTotals.protein,
-                carbs: macroTotals.carbs,
-                fat: macroTotals.fat,
-                foods: foodNamesFromLogs(nutritionLogs),
-                micros: microsFromLogs(nutritionLogs),
-              },
-            };
-          });
+          setClientData((previousData) =>
+            mergeNutritionIntoClientData(previousData, nutritionLogs, macroTotals),
+          );
         } catch (nutritionError) {
           if (!isBenignTrainerClientFirestoreError(nutritionError)) {
             console.error('Error updating nutrition data:', nutritionError);
@@ -522,25 +556,17 @@ const ClientDetailScreen = ({
     );
     unsubscribers.push(nutritionUnsub);
 
-    const notesColRef = collection(db, 'users', client.id, 'notes_and_files');
+    // notes_and_files subcollection under the client user doc.
+    const notesColRef = collection(db, 'users', linkedClientId, 'notes_and_files');
     const notesUnsub = onSnapshot(
       notesColRef,
       async () => {
         try {
-          const notesAndFiles = await getNotesAndFiles(client.id);
+          const notesAndFiles = await getNotesAndFiles(linkedClientId);
           if (effectCancelled) return;
-          setClientData((previousData) => {
-            if (previousData) return { ...previousData, notesAndFiles };
-            return {
-              beforeWeight: client?.startingWeight ?? client?.weight ?? null,
-              currentWeight: client?.weight ?? null,
-              trainingDays: [],
-              programName: DEFAULT_PROGRAM_NAME,
-              nutrition: emptyNutritionBlock(),
-              calendar: emptyCalendarBlock(),
-              notesAndFiles,
-            };
-          });
+          setClientData((previousData) =>
+            mergeNotesIntoClientData(previousData, notesAndFiles, client),
+          );
         } catch (notesError) {
           console.error('Error syncing notes and files (detail):', notesError);
         }
@@ -551,291 +577,442 @@ const ClientDetailScreen = ({
 
     // CRM client doc (calendar, program name — notes live in notes_and_files).
     const clientDocUnsub = onSnapshot(
-      doc(db, 'trainer_clients', trainerId, 'clients', client.id),
+      doc(db, 'trainer_clients', trainerId, 'clients', linkedClientId),
       (clientDoc) => {
         if (!clientDoc.exists()) return;
         const clientDocData = clientDoc.data();
-        setClientData((previousData) => {
-          if (!previousData) return previousData;
-          return {
-            ...previousData,
-            calendar: clientDocData.calendar || previousData.calendar,
-            programName: clientDocData.programName || previousData.programName,
-          };
-        });
+        setClientData((previousData) =>
+          mergeCrmFieldsIntoClientData(previousData, clientDocData),
+        );
       },
     );
     unsubscribers.push(clientDocUnsub);
 
     return () => {
       effectCancelled = true;
-      unsubscribers.forEach((unsubscribe) => unsubscribe());
+      for (let index = 0; index < unsubscribers.length; index += 1) {
+        unsubscribers[index]();
+      }
     };
-  }, [client?.id, trainerId, clientTodayKey]);
+  }, [linkedClientId, trainerId, clientTodayKey]);
 
   const openRemoveClientMenu = () => setShowRemoveSheet(true);
 
   const confirmRemoveClient = useCallback(async () => {
-    if (!trainerId || !client?.id || !functions) {
+    if (!trainerId || !linkedClientId || !functions) {
       showNotice('Unavailable', 'Cloud Functions are not configured.');
       return;
     }
     setRemoveBusy(true);
     try {
-      const fn = httpsCallable(functions, 'removeTrainerClientLink');
-      await fn({
+      // vocab: httpsCallable = Firebase Cloud Function wrapper; letters of the name stay frozen.
+      const removeLinkCallable = httpsCallable(functions, 'removeTrainerClientLink');
+      await removeLinkCallable({
         trainerId,
-        clientId: client.id,
+        clientId: linkedClientId,
         reasons: [],
         otherText: null,
         removedBy: 'trainer',
       });
       setShowRemoveSheet(false);
-      onRemoveClient?.();
-    } catch (e) {
-      showNotice('Remove failed', e?.message || 'Could not remove this client.');
+      callIfFunction(onRemoveClient);
+    } catch (removeError) {
+      showNotice('Remove failed', errorMessageOrFallback(removeError, 'Could not remove this client.'));
     } finally {
       setRemoveBusy(false);
     }
-  }, [client?.id, onRemoveClient, showNotice, trainerId]);
+  }, [linkedClientId, onRemoveClient, showNotice, trainerId]);
 
-  const clientDisplayName = client?.name || DEFAULT_CLIENT_LABEL;
+  // Named decisions for layout (no nested ternaries in JSX).
+  const clientDisplayName = clientNameOf(client, DEFAULT_CLIENT_LABEL);
   const clientSubtitle = getClientSubtext(client);
+  const likedExercises = likedExercisesFromClientData(clientData);
   const showLikedExercises =
-    Array.isArray(clientData?.likedExercises) && clientData.likedExercises.length > 0;
+    Array.isArray(likedExercises) && likedExercises.length > 0;
+  const likedExercisesText = showLikedExercises
+    ? likedExercisesDisplayText(likedExercises)
+    : '';
   const statusBarStyle = isDark ? 'light-content' : 'dark-content';
   const androidHeaderPad = Platform.OS === 'android' ? 8 : 0;
 
+  const showProgressTab = activeTab === TAB_PROGRESS;
+  const showNutritionTab = activeTab === TAB_NUTRITION;
+  const showSessionsTab = activeTab === TAB_SESSIONS;
+  const showNotesFilesTab = activeTab === TAB_NOTES_FILES;
+
+  const progressTabKey = linkedClientId || 'progress';
+  const nutritionTabKey = linkedClientId || 'nutrition';
+  const progressTabNode = (
+    <ProgressTab
+      key={progressTabKey}
+      isDark={isDark}
+      clientData={clientData}
+      todayDailyLog={todayDailyLog}
+    />
+  );
+
+  const nutritionTabNode = (
+    <NutritionTab
+      key={nutritionTabKey}
+      isDark={isDark}
+      clientData={clientData}
+      clientName={clientDisplayName}
+      onRemindLog={() => {
+        const firstNameToken = String(clientDisplayName || 'Client').split(/\s+/)[0];
+        showNotice(
+          'Reminder sent',
+          `${firstNameToken} will get a nudge to log today’s meals.`,
+        );
+      }}
+    />
+  );
+
+  const sessionsTabNode = (
+    <CalendarTab
+      clientId={linkedClientId}
+      clientName={clientNameOf(client, DEFAULT_CLIENT_LABEL)}
+      onMessageClient={() => callIfFunction(onMessagesPress, linkedClientId)}
+    />
+  );
+
+  const notesFilesTabNode = (
+    <TrainerNotesFilesHeroAndWorkspace
+      isDark={isDark}
+      clientName={clientNameOf(client, DEFAULT_CLIENT_LABEL)}
+      clientData={clientData}
+      trainerDocuments={trainerDocumentsForClient}
+      clientId={linkedClientId}
+      trainerId={trainerId}
+      onRefetchNotesAndFiles={() =>
+        setRefreshNotesAndFilesTrigger((previous) => previous + 1)
+      }
+      pdfViewer={pdfViewer}
+      setPdfViewer={setPdfViewer}
+      spreadsheetViewer={spreadsheetViewer}
+      setSpreadsheetViewer={setSpreadsheetViewer}
+      onRefetchTrainerDocuments={() =>
+        getTrainerDocuments(trainerId).then(setTrainerDocuments).catch(() => {})
+      }
+      onOpenDocumentEditor={(fileItem) => {
+        if (!fileItem) return;
+        let documentId = null;
+        if (fileItem.documentId) documentId = fileItem.documentId;
+        else if (fileItem.id) documentId = fileItem.id;
+        setDocumentEditor({ visible: true, documentId });
+      }}
+      onOpenShareModal={({ documentId, initialSharedWith }) =>
+        setShareModal({
+          visible: true,
+          documentId,
+          sharedWith: initialSharedWith || [],
+        })
+      }
+    />
+  );
+
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: screenBg }}>
-      <StatusBar barStyle={statusBarStyle} />
-
-      {/* Design Law header: back square · name/subtitle · ⋯ (PNG 05/07/17) */}
-      <View
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          paddingHorizontal: spacing.md,
-          paddingTop: androidHeaderPad + spacing.sm,
-          paddingBottom: spacing.sm,
-          gap: 12,
-        }}
-      >
-        <HardShadow offset={nb.shadowOffsetSmall} radius={12}>
-          <TouchableOpacity
-            onPress={onBack}
-            hitSlop={HIT_SLOP_HEADER}
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: 12,
-              borderWidth: nb.borderWidth,
-              borderColor: divider,
-              backgroundColor: screenBg,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-            accessibilityRole="button"
-            accessibilityLabel="Go back"
-          >
-            <Ionicons name="chevron-back" size={22} color={textColor} />
-          </TouchableOpacity>
-        </HardShadow>
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <Text
-            style={{
-              color: textColor,
-              fontSize: 20,
-              fontFamily: 'SpaceGrotesk_700Bold',
-              letterSpacing: -0.3,
-            }}
-            numberOfLines={1}
-          >
-            {clientDisplayName}
-          </Text>
-          <Text
-            style={{ color: mutedColor, fontSize: 13, marginTop: 2, fontFamily: 'Inter_500Medium' }}
-            numberOfLines={1}
-          >
-            {clientSubtitle}
-          </Text>
-        </View>
-        <HardShadow offset={nb.shadowOffsetSmall} radius={12}>
-          <TouchableOpacity
-            onPress={openRemoveClientMenu}
-            accessibilityLabel="Client options: remove from roster"
-            accessibilityRole="button"
-            hitSlop={HIT_SLOP_MENU}
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: 12,
-              borderWidth: nb.borderWidth,
-              borderColor: divider,
-              backgroundColor: screenBg,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Ionicons name="ellipsis-horizontal" size={22} color={textColor} />
-          </TouchableOpacity>
-        </HardShadow>
-      </View>
-
-      <RemoveClientSheet
-        visible={showRemoveSheet}
-        onClose={() => !removeBusy && setShowRemoveSheet(false)}
-        onConfirm={confirmRemoveClient}
-        clientName={clientDisplayName}
-        busy={removeBusy}
-      />
-
-      <View style={{ flex: 1, minHeight: 0 }}>
-        <ScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={{
-            paddingBottom: scrollBottomPad,
-            gap: 16,
-            paddingHorizontal: 16,
-            paddingTop: 8,
-          }}
-          {...FORM_SCROLL_PROPS}
-        >
-          {showLikedExercises ? (
-            <NbCard style={{ padding: 14 }}>
-              <Text style={{ color: textColor, fontFamily: 'SpaceGrotesk_700Bold', fontSize: 13, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1.2 }}>
-                Liked exercises
-              </Text>
-              <Text style={{ color: mutedColor, fontSize: 13, lineHeight: 18, fontFamily: 'Inter_400Regular' }}>
-                {likedExercisesDisplayText(clientData.likedExercises)}
-              </Text>
-            </NbCard>
-          ) : null}
-
-          <TabPills activeTab={activeTab} onTabChange={setActiveTab} isDark={isDark} />
-
-          {loadingClientData ? (
-            <View style={{ padding: 40, alignItems: 'center' }}>
-              <ActivityIndicator color={ICON_ACCENT} />
-              <Text style={{ color: mutedColor, fontSize: 13, marginTop: 12 }}>
-                Loading client data...
-              </Text>
-            </View>
-          ) : (
-            <View>
-              {activeTab === TAB_PROGRESS ? (
-                <ProgressTab
-                  key={client?.id || 'progress'}
-                  isDark={isDark}
-                  clientData={clientData}
-                  todayDailyLog={todayDailyLog}
-                />
-              ) : null}
-              {activeTab === TAB_NUTRITION ? (
-                <NutritionTab
-                  key={client?.id || 'nutrition'}
-                  isDark={isDark}
-                  clientData={clientData}
-                  clientName={clientDisplayName}
-                  onRemindLog={() => {
-                    const first = String(clientDisplayName || 'Client').split(/\s+/)[0];
-                    showNotice(
-                      'Reminder sent',
-                      `${first} will get a nudge to log today’s meals.`,
-                    );
-                  }}
-                />
-              ) : null}
-              {activeTab === TAB_SESSIONS ? (
-                <CalendarTab
-                  clientId={client?.id}
-                  clientName={client?.name || DEFAULT_CLIENT_LABEL}
-                  onMessageClient={() => onMessagesPress?.(client?.id)}
-                />
-              ) : null}
-              {activeTab === TAB_NOTES_FILES ? (
-                <TrainerNotesFilesHeroAndWorkspace
-                  isDark={isDark}
-                  clientName={client?.name || DEFAULT_CLIENT_LABEL}
-                  clientData={clientData}
-                  trainerDocuments={trainerDocumentsForClient}
-                  clientId={client?.id}
-                  trainerId={trainerId}
-                  onRefetchNotesAndFiles={() =>
-                    setRefreshNotesAndFilesTrigger((previous) => previous + 1)
-                  }
-                  pdfViewer={pdfViewer}
-                  setPdfViewer={setPdfViewer}
-                  spreadsheetViewer={spreadsheetViewer}
-                  setSpreadsheetViewer={setSpreadsheetViewer}
-                  onRefetchTrainerDocuments={() =>
-                    getTrainerDocuments(trainerId).then(setTrainerDocuments).catch(() => {})
-                  }
-                  onOpenDocumentEditor={(fileItem) => {
-                    if (!fileItem) return;
-                    const documentId = fileItem?.documentId || fileItem?.id || null;
-                    setDocumentEditor({ visible: true, documentId });
-                  }}
-                  onOpenShareModal={({ documentId, initialSharedWith }) =>
-                    setShareModal({
-                      visible: true,
-                      documentId,
-                      sharedWith: initialSharedWith || [],
-                    })
-                  }
-                />
-              ) : null}
-            </View>
-          )}
-
-          <View style={{ height: 60 }} />
-        </ScrollView>
-      </View>
-
-      <PdfViewer
-        visible={pdfViewer.visible}
-        url={pdfViewer.url}
-        name={pdfViewer.name}
-        isDark={isDark}
-        onClose={() => setPdfViewer({ visible: false, url: null, name: null })}
-      />
-      <SpreadsheetViewer
-        visible={spreadsheetViewer.visible}
-        url={spreadsheetViewer.url}
-        name={spreadsheetViewer.name}
-        isDark={isDark}
-        onClose={() => setSpreadsheetViewer({ visible: false, url: null, name: null })}
-      />
-      <DocumentEditor
-        visible={documentEditor.visible}
-        trainerId={trainerId}
-        documentId={documentEditor.documentId}
-        isDark={isDark}
-        onClose={() => setDocumentEditor({ visible: false, documentId: null })}
-        onSaved={() => getTrainerDocuments(trainerId).then(setTrainerDocuments).catch(() => {})}
-        trainerNavChrome={trainerEditorNav}
-      />
-      <ShareDocumentPopup
-        visible={shareModal.visible}
-        trainerId={trainerId}
-        documentId={shareModal.documentId}
-        initialSharedWith={shareModal.sharedWith}
-        isDark={isDark}
-        onClose={() => setShareModal({ visible: false, documentId: null, sharedWith: [] })}
-        onSaved={() => {
-          getTrainerDocuments(trainerId).then(setTrainerDocuments);
-          setRefreshNotesAndFilesTrigger((previous) => previous + 1);
-        }}
-      />
-      <NbNoticeSheet
-        visible={!!notice}
-        onClose={() => setNotice(null)}
-        title={notice?.title || ''}
-        message={notice?.message}
-        confirmLabel="OK"
-      />
-    </SafeAreaView>
+    <ClientDetailLayout
+      isDark={isDark}
+      screenBg={screenBg}
+      textColor={textColor}
+      mutedColor={mutedColor}
+      divider={divider}
+      statusBarStyle={statusBarStyle}
+      androidHeaderPad={androidHeaderPad}
+      scrollBottomPad={scrollBottomPad}
+      clientDisplayName={clientDisplayName}
+      clientSubtitle={clientSubtitle}
+      showLikedExercises={showLikedExercises}
+      likedExercisesText={likedExercisesText}
+      activeTab={activeTab}
+      onTabChange={setActiveTab}
+      loadingClientData={loadingClientData}
+      showProgressTab={showProgressTab}
+      showNutritionTab={showNutritionTab}
+      showSessionsTab={showSessionsTab}
+      showNotesFilesTab={showNotesFilesTab}
+      progressTabNode={progressTabNode}
+      nutritionTabNode={nutritionTabNode}
+      sessionsTabNode={sessionsTabNode}
+      notesFilesTabNode={notesFilesTabNode}
+      onBack={onBack}
+      onOpenRemoveMenu={openRemoveClientMenu}
+      showRemoveSheet={showRemoveSheet}
+      onCloseRemoveSheet={() => !removeBusy && setShowRemoveSheet(false)}
+      onConfirmRemove={confirmRemoveClient}
+      removeBusy={removeBusy}
+      pdfViewer={pdfViewer}
+      onClosePdf={() => setPdfViewer({ visible: false, url: null, name: null })}
+      spreadsheetViewer={spreadsheetViewer}
+      onCloseSpreadsheet={() => setSpreadsheetViewer({ visible: false, url: null, name: null })}
+      documentEditor={documentEditor}
+      trainerId={trainerId}
+      onCloseDocumentEditor={() => setDocumentEditor({ visible: false, documentId: null })}
+      onDocumentSaved={() => getTrainerDocuments(trainerId).then(setTrainerDocuments).catch(() => {})}
+      trainerEditorNav={trainerEditorNav}
+      shareModal={shareModal}
+      onCloseShareModal={() => setShareModal({ visible: false, documentId: null, sharedWith: [] })}
+      onShareSaved={() => {
+        getTrainerDocuments(trainerId).then(setTrainerDocuments);
+        setRefreshNotesAndFilesTrigger((previous) => previous + 1);
+      }}
+      notice={notice}
+      onCloseNotice={() => setNotice(null)}
+    />
   );
 };
 
 export default ClientDetailScreen;
+
+// PLUMBING — skip unless debugging
+
+function emptyNutritionBlock() {
+  return {
+    calories: 0,
+    protein: 0,
+    carbs: 0,
+    fat: 0,
+    foods: [],
+    micros: [],
+  };
+}
+
+function emptyCalendarBlock() {
+  return { completed: [], upcoming: [], missed: [], upcomingSessions: [] };
+}
+
+async function loadNotesAndFilesSafe(clientId) {
+  try {
+    return await getNotesAndFiles(clientId);
+  } catch (_loadError) {
+    return [];
+  }
+}
+
+function clientDataFromTrainerCrmOnly(trainerClientDoc, client, notesAndFiles) {
+  // vocab/symbol: ?? = use right side only when left is null/undefined (keeps a real 0).
+  const clientStartingWeight = client ? client.startingWeight : null;
+  const clientWeight = client ? client.weight : null;
+  return {
+    beforeWeight:
+      trainerClientDoc.startingWeight
+      ?? trainerClientDoc.weight
+      ?? clientStartingWeight
+      ?? clientWeight
+      ?? null,
+    currentWeight: trainerClientDoc.weight ?? clientWeight ?? null,
+    trainingDays: [],
+    programName: trainerClientDoc.programName || DEFAULT_PROGRAM_NAME,
+    nutrition: emptyNutritionBlock(),
+    calendar: trainerClientDoc.calendar || emptyCalendarBlock(),
+    notesAndFiles,
+  };
+}
+
+function foodNamesFromLogs(nutritionLogs) {
+  const names = [];
+  for (let index = 0; index < nutritionLogs.length; index += 1) {
+    const logRow = nutritionLogs[index];
+    const foodName = logRow.food_name || logRow.foodName || 'Food';
+    if (foodName) names.push(foodName);
+  }
+  return names;
+}
+
+function appendTruthyMicros(accumulator, rowMicros) {
+  for (let microIndex = 0; microIndex < rowMicros.length; microIndex += 1) {
+    const microEntry = rowMicros[microIndex];
+    if (!microEntry) continue;
+    accumulator.push(microEntry);
+  }
+}
+
+function microsFromLogs(nutritionLogs) {
+  const micros = [];
+  for (let index = 0; index < nutritionLogs.length; index += 1) {
+    const logRow = nutritionLogs[index];
+    if (!logRow.micros) continue;
+    appendTruthyMicros(micros, logRow.micros || []);
+  }
+  return micros;
+}
+
+function mergeNutritionIntoClientData(previousData, nutritionLogs, macroTotals) {
+  if (!previousData) return previousData;
+  return {
+    ...previousData,
+    nutrition: {
+      ...previousData.nutrition,
+      calories: macroTotals.calories,
+      protein: macroTotals.protein,
+      carbs: macroTotals.carbs,
+      fat: macroTotals.fat,
+      foods: foodNamesFromLogs(nutritionLogs),
+      micros: microsFromLogs(nutritionLogs),
+    },
+  };
+}
+
+function mergeNotesIntoClientData(previousData, notesAndFiles, client) {
+  if (previousData) {
+    return { ...previousData, notesAndFiles };
+  }
+  const clientStartingWeight = client ? client.startingWeight : null;
+  const clientWeight = client ? client.weight : null;
+  return {
+    beforeWeight: clientStartingWeight ?? clientWeight ?? null,
+    currentWeight: clientWeight ?? null,
+    trainingDays: [],
+    programName: DEFAULT_PROGRAM_NAME,
+    nutrition: emptyNutritionBlock(),
+    calendar: emptyCalendarBlock(),
+    notesAndFiles,
+  };
+}
+
+function mergeCrmFieldsIntoClientData(previousData, clientDocData) {
+  if (!previousData) return previousData;
+  return {
+    ...previousData,
+    calendar: clientDocData.calendar || previousData.calendar,
+    programName: clientDocData.programName || previousData.programName,
+  };
+}
+
+function resolveNutritionGoals(userData, nutritionGoals) {
+  return {
+    proteinGoal: userData.proteinGoal ?? nutritionGoals.proteinTarget ?? DEFAULT_PROTEIN_GOAL,
+    carbsGoal: userData.carbsGoal ?? nutritionGoals.carbsTarget ?? DEFAULT_CARBS_GOAL,
+    fatGoal: userData.fatGoal ?? nutritionGoals.fatTarget ?? DEFAULT_FAT_GOAL,
+    caloriesGoal:
+      userData.calorieTarget
+      ?? userData.calorie_target
+      ?? nutritionGoals.calories
+      ?? DEFAULT_CALORIES_GOAL,
+  };
+}
+
+async function loadNutritionGoalsOrDefaults(clientId) {
+  const nutritionGoals = {
+    proteinTarget: DEFAULT_PROTEIN_GOAL,
+    carbsTarget: DEFAULT_CARBS_GOAL,
+    fatTarget: DEFAULT_FAT_GOAL,
+    calories: DEFAULT_CALORIES_GOAL,
+  };
+  try {
+    const goalsData = await getDailyGoals(clientId);
+    if (goalsData && goalsData.proteinTarget != null) nutritionGoals.proteinTarget = goalsData.proteinTarget;
+    if (goalsData && goalsData.carbsTarget != null) nutritionGoals.carbsTarget = goalsData.carbsTarget;
+    if (goalsData && goalsData.fatTarget != null) nutritionGoals.fatTarget = goalsData.fatTarget;
+    if (goalsData && goalsData.calories != null) nutritionGoals.calories = goalsData.calories;
+  } catch (_goalsError) {
+    // Keep defaults.
+  }
+  return nutritionGoals;
+}
+
+function trainingDaysFromSnapshot(trainingSnapshot) {
+  const trainingDays = [];
+  for (let index = 0; index < trainingSnapshot.docs.length; index += 1) {
+    trainingDays.push(trainingSnapshot.docs[index].data());
+  }
+  return trainingDays;
+}
+
+async function buildClientDataFromUserDoc({
+  userData,
+  trainerId,
+  clientId,
+  clientTodayKey,
+}) {
+  // Firestore paths (frozen): trainer_clients/{trainerId}/clients/{clientId}, users/{clientId}/trainingDays
+  const clientDocSnap = await getDoc(doc(db, 'trainer_clients', trainerId, 'clients', clientId));
+  const clientDocData = clientDocSnap.exists() ? clientDocSnap.data() : {};
+
+  const notesAndFiles = await loadNotesAndFilesSafe(clientId);
+
+  const trainingQuery = query(collection(db, 'users', clientId, 'trainingDays'));
+  const trainingSnapshot = await getDocs(trainingQuery);
+  const trainingDays = trainingDaysFromSnapshot(trainingSnapshot);
+
+  const nutritionLogs = await getFoodLogsForDate(clientId, clientTodayKey);
+  const macroTotals = calculateMacroTotals(nutritionLogs);
+  const nutritionGoals = await loadNutritionGoalsOrDefaults(clientId);
+  const goalFields = resolveNutritionGoals(userData, nutritionGoals);
+
+  return {
+    profileTimezone:
+      userData.timezone
+      || userData.timeZone
+      || (userData.workoutReminder ? userData.workoutReminder.timeZone : null)
+      || null,
+    beforeWeight:
+      userData.startingWeight
+      ?? userData.weight
+      ?? clientDocData.startingWeight
+      ?? clientDocData.weight
+      ?? null,
+    currentWeight: userData.weight ?? clientDocData.weight ?? null,
+    trainingDays,
+    programName: clientDocData.programName || DEFAULT_PROGRAM_NAME,
+    nutrition: {
+      calories: macroTotals.calories,
+      protein: macroTotals.protein,
+      carbs: macroTotals.carbs,
+      fat: macroTotals.fat,
+      foods: foodNamesFromLogs(nutritionLogs),
+      micros: microsFromLogs(nutritionLogs),
+      ...goalFields,
+    },
+    calendar: clientDocData.calendar || emptyCalendarBlock(),
+    notesAndFiles,
+    likedExercises: Array.isArray(userData.likedExercises) ? userData.likedExercises : [],
+    exercisesPrefer: userData.exercisesPrefer || userData.exercisesDislike || '',
+  };
+}
+
+async function buildClientDataFromCrmFallback(trainerId, client) {
+  const trainerClientSnap = await getDoc(
+    doc(db, 'trainer_clients', trainerId, 'clients', client.id),
+  );
+  const trainerClientDoc = trainerClientSnap.exists() ? trainerClientSnap.data() : {};
+  const notesAndFiles = await loadNotesAndFilesSafe(client.id);
+  return clientDataFromTrainerCrmOnly(trainerClientDoc, client, notesAndFiles);
+}
+
+function hasDashboardCheckInToday(todayDailyLog) {
+  if (!todayDailyLog) return false;
+  const fieldNames = Object.keys(todayDailyLog);
+  for (let index = 0; index < fieldNames.length; index += 1) {
+    const fieldName = fieldNames[index];
+    if (!fieldName.startsWith('dashboard_')) continue;
+    const fieldValue = todayDailyLog[fieldName];
+    if (fieldValue != null && fieldValue !== '') return true;
+  }
+  return false;
+}
+
+function likedExerciseName(entry) {
+  if (typeof entry === 'string') return entry;
+  if (!entry) return '';
+  return entry.name || entry.exerciseName || '';
+}
+
+function likedExercisesDisplayText(likedExercises) {
+  const names = [];
+  for (let index = 0; index < likedExercises.length; index += 1) {
+    const name = likedExerciseName(likedExercises[index]);
+    if (name) names.push(name);
+  }
+  return names.slice(0, MAX_LIKED_EXERCISES_SHOWN).join(' · ');
+}
+
+function screenColorsForTheme(isDark) {
+  const palette = isDark ? darkColors : lightColors;
+  return {
+    textColor: palette.nbInk,
+    mutedColor: palette.nbMuted,
+    screenBg: palette.nbBackground,
+    divider: palette.nbBorder,
+  };
+}

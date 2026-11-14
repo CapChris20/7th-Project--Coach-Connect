@@ -1,6 +1,6 @@
-// Privacy Policy screen: last-updated date, optional web link, then numbered sections.
-// Flow: fade in → optional Linking.openURL for the hosted policy → scroll the in-app copy.
-// Used from Settings. Section titles and body text are the legal copy that ships.
+// Privacy Policy screen — hero, optional hosted link, numbered legal sections in NbCards.
+// Flow: fade in → optional Linking.openURL → scroll in-app policy copy.
+// Used from Settings. Section titles and paragraphs are the legal copy that ships.
 
 import React, { useRef } from 'react';
 import { Animated, View, Text, StyleSheet, ScrollView, StatusBar, Linking, Pressable } from 'react-native';
@@ -15,12 +15,15 @@ import { spacing } from '../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
+// Manipulate here: “Last updated” shown in hero + header subtitle
 const LAST_UPDATED = 'September 23, 2026';
 const SHELL_NAV_INSET = 24;
 const EXTRA_SCROLL_PAD = 16;
+// Manipulate here: entrance fade/rise duration — match FAQ / other legal screens
 const FADE_MS = 350;
 const RISE_FROM = 10;
 
+// Manipulate here: shipping legal copy — titles + paragraphs (appendContactLine adds email)
 const POLICY_SECTIONS = [
   {
     title: '1. Who we are',
@@ -125,25 +128,185 @@ const POLICY_SECTIONS = [
 const LEGAL_NOTE =
   'This policy is meant to be readable and accurate about our product. It is not a substitute for advice from a licensed attorney in your country or state, and it is not a certification of compliance with GDPR, CCPA, or any other law. Update this text when your product or vendors change.';
 
+const PAGE_SUMMARY =
+  'Plain-language summary of how Coach Connect handles personal information. This is not personal legal advice.';
+
 // ===== HELPER FUNCTIONS =====
 
-// Helpers removed - using NbCard directly
-
-/**
- * @param {boolean} embedShellBottomNav
- * @param {number} shellNavInset
- * @param {number} bottomInset
- * @returns {number}
- */
-function policyScrollBottomPad(embedShellBottomNav, shellNavInset, bottomInset) {
-  if (embedShellBottomNav) return shellNavInset;
-  return Math.max(bottomInset, EXTRA_SCROLL_PAD) + SHELL_NAV_INSET;
+function PolicyHeroCard({ cardStyles, colors }) {
+  return (
+    <NbCard style={cardStyles.heroCard}>
+      <View style={[cardStyles.heroIcon, { backgroundColor: colors.nbSurfaceChip }]}>
+        <Ionicons name="shield-checkmark-outline" size={34} color={colors.nbInk} />
+      </View>
+      <Text style={cardStyles.heroTitle}>Privacy Policy</Text>
+      <Text style={cardStyles.heroSub}>Last updated: {LAST_UPDATED}</Text>
+    </NbCard>
+  );
 }
 
-function buildPolicyStyles(scrollBottomPad, colors) {
+/**
+ * One numbered legal section; optional contact line under the paragraphs.
+ */
+function PolicySectionCard({ section, contactLine, cardStyles }) {
+  const shouldAppendContact = !!section.appendContactLine;
+
+  return (
+    <NbCard style={cardStyles.sectionCard}>
+      <Text style={cardStyles.sectionTitle}>{section.title}</Text>
+      {section.paragraphs.map((paragraph) => (
+        <Text key={paragraph.slice(0, 24)} style={cardStyles.sectionText}>
+          {paragraph}
+        </Text>
+      ))}
+      {shouldAppendContact ? (
+        <Text style={[cardStyles.sectionText, cardStyles.contactLine]}>{contactLine}</Text>
+      ) : null}
+    </NbCard>
+  );
+}
+
+/**
+ * Underlined “Also online: …” row when a hosted policy URL is configured.
+ */
+function HostedPolicyLink({ privacyUrl, cardStyles, inkColor }) {
+  if (!privacyUrl) {
+    return null;
+  }
+
+  const openHostedPolicy = () => {
+    // vocab: Linking.openURL = hand the URL to the OS browser / in-app browser
+    Linking.openURL(privacyUrl);
+  };
+
+  return (
+    <Pressable onPress={openHostedPolicy} style={styles.hostedLinkWrap}>
+      <Text
+        style={[
+          cardStyles.pageSub,
+          { color: inkColor, textDecorationLine: 'underline', marginBottom: 0 },
+        ]}
+      >
+        Also online: {privacyUrl}
+      </Text>
+    </Pressable>
+  );
+}
+
+/**
+ * Italic disclaimer card at the bottom of the scroll.
+ */
+function LegalNoteCard({ cardStyles, colors }) {
+  return (
+    <NbCard style={cardStyles.legalNote}>
+      <Text style={[styles.legalNoteText, { color: colors.nbMuted }]}>{LEGAL_NOTE}</Text>
+    </NbCard>
+  );
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * In-app Privacy Policy with entrance animation and optional hosted link.
+ * @param {{ onClose?: Function, embedShellBottomNav?: boolean }} props
+ */
+export default function PrivacyPolicyScreen({ onClose, embedShellBottomNav = false }) {
+  // vocab: useTheme = Design Law tokens; isDark drives StatusBar content style
+  const { colors, isDark } = useTheme();
+  const safeAreaInsets = useSafeAreaInsets();
+  const shellNavInset = useShellBottomNavInset(SHELL_NAV_INSET);
+  const scrollBottomPad = scrollBottomPaddingForPolicy(
+    embedShellBottomNav,
+    shellNavInset,
+    safeAreaInsets.bottom,
+  );
+  const supportEmail = getSupportEmail();
+  const privacyUrl = getPrivacyPolicyUrl();
+  const contactLine = `Privacy questions: ${supportEmail}`;
+  const screenStyles = buildPrivacyPolicyStyles(scrollBottomPad, colors);
+
+  // vocab: Animated.Value = drive opacity / translateY for the entrance motion
+  const opacityAnimation = useRef(new Animated.Value(0)).current;
+  const riseAnimation = useRef(new Animated.Value(RISE_FROM)).current;
+
+  // 1. Entrance animation — same timing as FAQ / other legal screens.
+  React.useEffect(() => {
+    Animated.parallel([
+      Animated.timing(opacityAnimation, { toValue: 1, duration: FADE_MS, useNativeDriver: true }),
+      Animated.timing(riseAnimation, { toValue: 0, duration: FADE_MS, useNativeDriver: true }),
+    ]).start();
+  }, [opacityAnimation, riseAnimation]);
+
+  let statusBarStyle = 'dark-content';
+  if (isDark) {
+    statusBarStyle = 'light-content';
+  }
+
+  const headerSubtitle = `Updated ${LAST_UPDATED}`;
+  const animatedBodyStyle = {
+    opacity: opacityAnimation,
+    transform: [{ translateY: riseAnimation }],
+  };
+
+  return (
+    <SafeAreaView style={screenStyles.container} edges={SHELL_SAFE_AREA_EDGES}>
+      <StatusBar barStyle={statusBarStyle} backgroundColor={colors.nbBackground} />
+      <NbPageHeader
+        title="Privacy policy"
+        subtitle={headerSubtitle}
+        onBack={onClose}
+      />
+
+      <ScrollView
+        style={styles.flexOne}
+        contentContainerStyle={screenStyles.scrollContent}
+        {...FORM_SCROLL_PROPS}
+        showsVerticalScrollIndicator
+      >
+        <Animated.View style={animatedBodyStyle}>
+          <PolicyHeroCard cardStyles={screenStyles} colors={colors} />
+
+          <Text style={screenStyles.pageSub}>{PAGE_SUMMARY}</Text>
+          <HostedPolicyLink
+            privacyUrl={privacyUrl}
+            cardStyles={screenStyles}
+            inkColor={colors.nbInk}
+          />
+
+          {POLICY_SECTIONS.map((section) => (
+            <PolicySectionCard
+              key={section.title}
+              section={section}
+              contactLine={contactLine}
+              cardStyles={screenStyles}
+            />
+          ))}
+
+          <LegalNoteCard cardStyles={screenStyles} colors={colors} />
+        </Animated.View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+// ===== PLUMBING — skip unless debugging =====
+
+function scrollBottomPaddingForPolicy(embedShellBottomNav, shellNavInset, bottomSafeInset) {
+  if (embedShellBottomNav) {
+    return shellNavInset;
+  }
+  const safeBottom = Math.max(bottomSafeInset, EXTRA_SCROLL_PAD);
+  return safeBottom + SHELL_NAV_INSET;
+}
+
+function buildPrivacyPolicyStyles(scrollBottomPad, colors) {
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.nbBackground },
-    scrollContent: { paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: scrollBottomPad },
+    scrollContent: {
+      paddingHorizontal: spacing.md,
+      paddingTop: spacing.md,
+      paddingBottom: scrollBottomPad,
+    },
     heroCard: {
       alignItems: 'center',
       padding: spacing.lg,
@@ -205,103 +368,16 @@ function buildPolicyStyles(scrollBottomPad, colors) {
       color: colors.nbMuted,
       lineHeight: 22,
     },
+    contactLine: { marginTop: spacing.sm },
   });
 }
 
-function PolicyHero({ styles: cardStyles, colors }) {
-  return (
-    <NbCard style={cardStyles.heroCard}>
-      <View style={[cardStyles.heroIcon, { backgroundColor: colors.nbSurfaceChip }]}>
-        <Ionicons name="shield-checkmark-outline" size={34} color={colors.nbInk} />
-      </View>
-      <Text style={cardStyles.heroTitle}>Privacy Policy</Text>
-      <Text style={cardStyles.heroSub}>Last updated: {LAST_UPDATED}</Text>
-    </NbCard>
-  );
-}
-
-function PolicySection({ section, contactLine, styles: cardStyles }) {
-  return (
-    <NbCard style={cardStyles.sectionCard}>
-      <Text style={cardStyles.sectionTitle}>{section.title}</Text>
-      {section.paragraphs.map((paragraph) => (
-        <Text key={paragraph.slice(0, 24)} style={cardStyles.sectionText}>
-          {paragraph}
-        </Text>
-      ))}
-      {section.appendContactLine ? (
-        <Text style={[cardStyles.sectionText, { marginTop: spacing.sm }]}>{contactLine}</Text>
-      ) : null}
-    </NbCard>
-  );
-}
-
-// ===== MAIN FUNCTION =====
-
-export default function PrivacyPolicyScreen({ onClose, embedShellBottomNav = false }) {
-  const { colors, isDark } = useTheme();
-  const insets = useSafeAreaInsets();
-  const shellNavInset = useShellBottomNavInset(SHELL_NAV_INSET);
-  const scrollBottomPad = policyScrollBottomPad(embedShellBottomNav, shellNavInset, insets.bottom);
-  const supportEmail = getSupportEmail();
-  const privacyUrl = getPrivacyPolicyUrl();
-  const contactLine = `Privacy questions: ${supportEmail}`;
-  const styles = buildPolicyStyles(scrollBottomPad, colors);
-
-  const fade = useRef(new Animated.Value(0)).current;
-  const rise = useRef(new Animated.Value(RISE_FROM)).current;
-  React.useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fade, { toValue: 1, duration: FADE_MS, useNativeDriver: true }),
-      Animated.timing(rise, { toValue: 0, duration: FADE_MS, useNativeDriver: true }),
-    ]).start();
-  }, [fade, rise]);
-
-  return (
-    <SafeAreaView style={styles.container} edges={SHELL_SAFE_AREA_EDGES}>
-      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.nbBackground} />
-      <NbPageHeader
-        title="Privacy policy"
-        subtitle={`Updated ${LAST_UPDATED}`}
-        onBack={onClose}
-      />
-
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={styles.scrollContent}
-        {...FORM_SCROLL_PROPS}
-        showsVerticalScrollIndicator
-      >
-        <Animated.View style={{ opacity: fade, transform: [{ translateY: rise }] }}>
-          <PolicyHero styles={styles} colors={colors} />
-
-          <Text style={styles.pageSub}>
-            Plain-language summary of how Coach Connect handles personal information. This is not personal legal advice.
-          </Text>
-          {privacyUrl ? (
-            <Pressable onPress={() => Linking.openURL(privacyUrl)} style={{ marginBottom: spacing.md }}>
-              <Text
-                style={[
-                  styles.pageSub,
-                  { color: colors.nbInk, textDecorationLine: 'underline', marginBottom: 0 },
-                ]}
-              >
-                Also online: {privacyUrl}
-              </Text>
-            </Pressable>
-          ) : null}
-
-          {POLICY_SECTIONS.map((section) => (
-            <PolicySection key={section.title} section={section} contactLine={contactLine} styles={styles} />
-          ))}
-
-          <NbCard style={styles.legalNote}>
-            <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 12, color: colors.nbMuted, lineHeight: 18 }}>
-              {LEGAL_NOTE}
-            </Text>
-          </NbCard>
-        </Animated.View>
-      </ScrollView>
-    </SafeAreaView>
-  );
-}
+const styles = StyleSheet.create({
+  flexOne: { flex: 1 },
+  hostedLinkWrap: { marginBottom: spacing.md },
+  legalNoteText: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 12,
+    lineHeight: 18,
+  },
+});

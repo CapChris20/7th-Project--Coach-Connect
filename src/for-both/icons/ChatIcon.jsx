@@ -1,43 +1,55 @@
-// Gradient chat-bubbles icon. The color comes from ColorfulIcon, not a mask.
-// Flow: pass the size and gradient stops through to ColorfulIcon.
-// Used by: navigation and home cards that show the chat shortcut.
+// Gradient chat-bubbles shortcut — color from ColorfulIcon mask, not a tinted bitmap.
+// Flow: gather size + optional gradient stops → hand them to ColorfulIcon as chatbubbles.
+// Used by: navigation rows and home cards that open chat.
 
 import React from 'react';
 import ColorfulIcon from './ColorfulIcon';
 
 // ===== NAMED CONSTANTS =====
 
-const DEFAULT_ICON_SIZE = 32;
-const CHAT_ICON_NAME = 'chatbubbles';
+// Manipulate here: default edge length when the parent omits size.
+const DEFAULT_CHAT_ICON_SIZE = 32;
+// Letter-locked ionicon-style name ColorfulIcon maps to the chat SVG paths.
+const CHAT_BUBBLES_NAME = 'chatbubbles';
 
 // ===== HELPER FUNCTIONS =====
 
-function chatIconSettings(size, colors, start, end) {
+// Bundle the props ColorfulIcon expects so the main stays a short checklist.
+function buildChatColorfulIconProps(edgeLength, gradientColors, gradientStart, gradientEnd) {
   return {
-    name: CHAT_ICON_NAME,
-    size,
-    colors,
-    start,
-    end,
+    name: CHAT_BUBBLES_NAME,
+    size: edgeLength,
+    colors: gradientColors,
+    start: gradientStart,
+    end: gradientEnd,
   };
 }
 
 // ===== MAIN FUNCTION =====
 
 /**
+ * Chat shortcut painted through ColorfulIcon (gradient fill via mask, not a PNG tint).
  * @param {{ size?: number, colors?: string[], start?: object, end?: object }} props
+ * @returns {import('react').ReactElement}
  */
-export default function ChatIcon({ size = DEFAULT_ICON_SIZE, colors, start, end }) {
-  const iconSettings = chatIconSettings(size, colors, start, end);
+export default function ChatIcon({
+  size = DEFAULT_CHAT_ICON_SIZE,
+  colors,
+  start,
+  end,
+}) {
+  // 1. Build the ColorfulIcon bag: fixed chat name + caller size/gradient overrides.
+  const chatIconProps = buildChatColorfulIconProps(size, colors, start, end);
 
-  // 1. Hand the chat-bubbles name and size to ColorfulIcon. Color comes from there, not a mask.
+  // 2. Paint through ColorfulIcon — it owns the brand gradient + SVG mask path.
+  // vocab: ColorfulIcon = shared wrapper that maps an icon name to SVG paths + gradient fill.
   return (
     <ColorfulIcon
-      name={iconSettings.name}
-      size={iconSettings.size}
-      colors={iconSettings.colors}
-      start={iconSettings.start}
-      end={iconSettings.end}
+      name={chatIconProps.name}
+      size={chatIconProps.size}
+      colors={chatIconProps.colors}
+      start={chatIconProps.start}
+      end={chatIconProps.end}
     />
   );
 }

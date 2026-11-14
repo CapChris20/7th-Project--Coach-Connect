@@ -1,9 +1,7 @@
-// Decides whether a coach tool proposal is safe to show as a Confirm button.
-// Flow: rename aliases → clamp each tool's params → drop empty fields →
-//       only keep the button when the user's sentence actually asked for that action.
-// Used by the coach conversation and the server request handler.
-// CommonJS on purpose: the Expo app and the Node server both require() this file.
-
+// Clamps coach tool proposals and decides if Confirm is safe for what the user just said.
+// Flow: rename tool aliases → clamp params per tool → drop empties → match user words (including "90oz" follow-ups).
+// Used by the coach conversation and the server request handler. CommonJS for Expo app and Node server.
+// Read order: constants → exported guard/filter recipes → module.exports → PLUMBING sanitizers at the bottom.
 // ===== NAMED CONSTANTS =====
 
 const ALLOWED_LOG_TYPES = new Set([
@@ -190,6 +188,21 @@ const METRIC_FOLLOW_UP_TOOLS = {
   workout: 'rateWorkout',
 };
 
+// "good / great / fine / ok" describe workouts and meals too ("log a good workout"),
+// so in free text they only count as mood next to mood/feel words.
+const AMBIGUOUS_MOOD_WORDS = new Set(['good', 'great', 'fine', 'ok']);
+
+// Words that must appear when the delete tool names that logType.
+// Manipulate here: add a logType key when a new deletable dashboard row ships.
+const DELETE_LOG_TYPE_WORD_PATTERNS = {
+  sleep: /\b(sleep|slept|sleeping)\b/,
+  water: /\b(water|hydration)\b/,
+  steps: /\b(steps?|step count)\b/,
+  energy: /\b(energy|fatigue)\b/,
+  mood: /\bmood\b/,
+  restDay: /\b(rest day|rest)\b/,
+};
+
 // ===== MAIN FUNCTION =====
 
 /**
@@ -198,16 +211,32 @@ const METRIC_FOLLOW_UP_TOOLS = {
  * @returns {{name: string, params: object, reasoning: string}|null}
  */
 function guardCoachToolProposal(rawCall) {
-  if (!rawCall || typeof rawCall !== 'object') return null;
-  const rawName = sanitizeString(rawCall.name || rawCall.tool || rawCall.action, TOOL_NAME_MAX_LENGTH);
+  if (!rawCall || typeof rawCall !== 'object') {
+    return null;
+  }
+
+  // 1. Read the tool name through alias table and length cap.
+  const rawName = clipTrimmedString(rawCall.name || rawCall.tool || rawCall.action, TOOL_NAME_MAX_LENGTH);
   const name = TOOL_NAME_ALIASES[rawName] || rawName;
-  if (!name || !ALLOWED_TOOLS.has(name)) return null;
+  if (!name || !ALLOWED_TOOLS.has(name)) {
+    return null;
+  }
+
+  // 2. Clamp numbers and strings for that tool; null means unusable.
   const params = sanitizeParamsByTool(name, rawCall.params);
-  if (params == null) return null;
+  if (params == null) {
+    return null;
+  }
+
+  // 3. Drop blank fields so Firestore never gets empty strings.
+  let reasoning = clipTrimmedString(rawCall.reasoning, REASONING_MAX_LENGTH);
+  if (!reasoning) {
+    reasoning = '';
+  }
   return {
     name,
-    params: compactObject(params),
-    reasoning: sanitizeString(rawCall.reasoning, REASONING_MAX_LENGTH) || '',
+    params: dropEmptyParamFields(params),
+    reasoning,
   };
 }
 
@@ -216,18 +245,119 @@ function guardCoachToolProposal(rawCall) {
  * @param {object[]} rawCalls
  * @returns {object[]}
  */
+function listOfRawToolCalls(rawCalls) {
+  if (!Array.isArray(rawCalls)) {
+    return [];
+  }
+  return rawCalls;
+}
+
 function guardCoachToolProposals(rawCalls) {
+  const rawList = listOfRawToolCalls(rawCalls);
   const seenKeys = new Set();
   const safeCalls = [];
-  for (const call of Array.isArray(rawCalls) ? rawCalls : []) {
+  for (let index = 0; index < rawList.length; index += 1) {
+    const call = rawList[index];
     const safeCall = guardCoachToolProposal(call);
-    if (!safeCall) continue;
-    const identityKey = toolCallIdentityKey(safeCall);
-    if (seenKeys.has(identityKey)) continue;
+    if (!safeCall) {
+      continue;
+    }
+    const identityKey = duplicateToolCallFingerprint(safeCall);
+    if (seenKeys.has(identityKey)) {
+      continue;
+    }
     seenKeys.add(identityKey);
     safeCalls.push(safeCall);
   }
   return safeCalls;
+}
+
+/**
+ * "set/change/update my …" — they want a write, not a tip.
+ * @param {string} lowerText
+ * @returns {boolean}
+ */
+function userAskedToChangeMySettings(lowerText) {
+  return /\b(set|change|update|adjust)\s+my\b/.test(lowerText);
+}
+
+/**
+ * Delete / remove / clear a log row (food, sleep, water, …).
+ * @param {string} lowerText
+ * @returns {boolean}
+ */
+function userAskedToDeleteALog(lowerText) {
+  const hasDeleteVerb = /\b(delete|remove|clear|undo)\b/.test(lowerText);
+  if (!hasDeleteVerb) return false;
+  return /\b(log|food|meal|entry|entries|nutrition|sleep|water|steps|energy|mood|workout)\b/.test(
+    lowerText,
+  );
+}
+
+/**
+ * Book or schedule a session with a trainer.
+ * @param {string} lowerText
+ * @returns {boolean}
+ */
+function userAskedToBookASession(lowerText) {
+  const hasBookVerb = /\b(book|schedule)\b/.test(lowerText);
+  if (!hasBookVerb) return false;
+  return /\b(session|trainer|appointment)\b/.test(lowerText);
+}
+
+/**
+ * Swap one exercise for another in the plan.
+ * @param {string} lowerText
+ * @returns {boolean}
+ */
+function userAskedToSwapAnExercise(lowerText) {
+  const hasSwapVerb = /\b(swap|replace|substitute)\b/.test(lowerText);
+  if (!hasSwapVerb) return false;
+  return /\b(exercise|press|lift|workout|bench)\b/.test(lowerText);
+}
+
+/**
+ * Tell / notify / message the trainer.
+ * @param {string} lowerText
+ * @returns {boolean}
+ */
+function userAskedToNotifyTrainer(lowerText) {
+  const hasNotifyVerb = /\b(tell|notify|message|text)\b/.test(lowerText);
+  if (!hasNotifyVerb) return false;
+  return /\b(trainer|coach)\b/.test(lowerText);
+}
+
+/**
+ * Open / show the workout plan screen.
+ * @param {string} lowerText
+ * @returns {boolean}
+ */
+function userAskedToOpenWorkoutPlan(lowerText) {
+  const hasOpenVerb = /\b(open|show|see|view|pull up)\b/.test(lowerText);
+  if (!hasOpenVerb) return false;
+  return /\b(workout|plan|program)\b/.test(lowerText);
+}
+
+/**
+ * Change / set / switch a goal.
+ * @param {string} lowerText
+ * @returns {boolean}
+ */
+function userAskedToChangeGoal(lowerText) {
+  const namesAGoal = /\b(goal|goals)\b/.test(lowerText);
+  if (!namesAGoal) return false;
+  return /\b(change|update|set|switch)\b/.test(lowerText);
+}
+
+/**
+ * Change calories / macros / protein targets.
+ * @param {string} lowerText
+ * @returns {boolean}
+ */
+function userAskedToChangeMacros(lowerText) {
+  const namesMacros = /\b(calor(?:ie)?s?|kcal|cals?|macros?|protein|carb)\b/.test(lowerText);
+  if (!namesMacros) return false;
+  return /\b(change|set|update|adjust|lower|raise|bump)\b/.test(lowerText);
 }
 
 /**
@@ -237,22 +367,48 @@ function guardCoachToolProposals(rawCalls) {
  */
 function userExplicitlyRequestsAction(userText) {
   const lowerText = String(userText || '').toLowerCase().trim();
-  if (!lowerText) return false;
-  if (isInformationalUserMessage(userText)) return false;
-  return (
-    EXPLICIT_LOG_RE.test(lowerText) ||
-    /\b(set|change|update|adjust)\s+my\b/.test(lowerText) ||
-    /\blog\s+it\b/.test(lowerText) ||
-    (/\b(delete|remove|clear|undo)\b/.test(lowerText) &&
-      /\b(log|food|meal|entry|entries|nutrition|sleep|water|steps|energy|mood|workout)\b/.test(lowerText)) ||
-    (/\b(book|schedule)\b/.test(lowerText) && /\b(session|trainer|appointment)\b/.test(lowerText)) ||
-    (/\b(swap|replace|substitute)\b/.test(lowerText) && /\b(exercise|press|lift|workout|bench)\b/.test(lowerText)) ||
-    (/\b(tell|notify|message|text)\b/.test(lowerText) && /\b(trainer|coach)\b/.test(lowerText)) ||
-    (/\b(open|show|see|view|pull up)\b/.test(lowerText) && /\b(workout|plan|program)\b/.test(lowerText)) ||
-    (/\b(goal|goals)\b/.test(lowerText) && /\b(change|update|set|switch)\b/.test(lowerText)) ||
-    (/\b(calor(?:ie)?s?|kcal|cals?|macros?|protein|carb)\b/.test(lowerText) &&
-      /\b(change|set|update|adjust|lower|raise|bump)\b/.test(lowerText))
-  );
+  if (!lowerText) {
+    return false;
+  }
+  if (isInformationalUserMessage(userText)) {
+    return false;
+  }
+
+  // 1. Plain log / track / record verbs (and "log it").
+  if (EXPLICIT_LOG_RE.test(lowerText)) {
+    return true;
+  }
+  if (/\blog\s+it\b/.test(lowerText)) {
+    return true;
+  }
+
+  // 2. Settings / delete / book / swap / notify / plan / goal / macros.
+  if (userAskedToChangeMySettings(lowerText)) {
+    return true;
+  }
+  if (userAskedToDeleteALog(lowerText)) {
+    return true;
+  }
+  if (userAskedToBookASession(lowerText)) {
+    return true;
+  }
+  if (userAskedToSwapAnExercise(lowerText)) {
+    return true;
+  }
+  if (userAskedToNotifyTrainer(lowerText)) {
+    return true;
+  }
+  if (userAskedToOpenWorkoutPlan(lowerText)) {
+    return true;
+  }
+  if (userAskedToChangeGoal(lowerText)) {
+    return true;
+  }
+  if (userAskedToChangeMacros(lowerText)) {
+    return true;
+  }
+
+  return false;
 }
 
 /**
@@ -263,10 +419,21 @@ function userExplicitlyRequestsAction(userText) {
  */
 function userWantsExplicitDashboardLog(userText, metric) {
   const messageText = String(userText || '').trim();
-  if (!messageText) return false;
-  if (!EXPLICIT_LOG_RE.test(messageText) && !/\blog\s+it\b/i.test(messageText)) return false;
+  if (!messageText) {
+    return false;
+  }
+
+  const hasLogVerb = EXPLICIT_LOG_RE.test(messageText);
+  const hasLogIt = /\blog\s+it\b/i.test(messageText);
+  if (!hasLogVerb && !hasLogIt) {
+    return false;
+  }
+
   const pattern = DASHBOARD_METRIC_PATTERNS[metric];
-  return pattern ? pattern.test(messageText) : false;
+  if (!pattern) {
+    return false;
+  }
+  return pattern.test(messageText);
 }
 
 /**
@@ -277,11 +444,60 @@ function userWantsExplicitDashboardLog(userText, metric) {
 function metricFollowUpFromUserText(userText) {
   const messageText = String(userText || '').trim();
   if (!messageText) return null;
-  if (/^\d+(?:\.\d+)?\s*(?:oz|ounces?)$/i.test(messageText)) return 'water';
-  if (/^\d+(?:\.\d+)?\s*(?:hours?|hrs?)$/i.test(messageText)) return 'sleep';
-  if (/^\d[\d,]*\s*steps?$/i.test(messageText)) return 'steps';
-  if (/^\d{1,2}\s*(?:\/\s*10|out of 10)?$/i.test(messageText)) return 'energy';
+  if (looksLikeWaterAmountOnly(messageText)) return 'water';
+  if (looksLikeSleepHoursOnly(messageText)) return 'sleep';
+  if (looksLikeStepCountOnly(messageText)) return 'steps';
+  if (looksLikeEnergyRatingOnly(messageText)) return 'energy';
   return null;
+}
+
+function looksLikeWaterAmountOnly(messageText) {
+  return /^\d+(?:\.\d+)?\s*(?:oz|ounces?)$/i.test(messageText);
+}
+
+function looksLikeSleepHoursOnly(messageText) {
+  return /^\d+(?:\.\d+)?\s*(?:hours?|hrs?)$/i.test(messageText);
+}
+
+function looksLikeStepCountOnly(messageText) {
+  return /^\d[\d,]*\s*steps?$/i.test(messageText);
+}
+
+function looksLikeEnergyRatingOnly(messageText) {
+  return /^\d{1,2}\s*(?:\/\s*10|out of 10)?$/i.test(messageText);
+}
+
+/**
+ * True when the sentence is a research / opinion question, not a log request.
+ * @param {string} messageText
+ * @returns {boolean}
+ */
+function looksLikeResearchOrOpinionQuestion(messageText) {
+  if (/\?$/.test(messageText)) {
+    return true;
+  }
+  if (/\b(too much|too little|too many|good for me|should i)\b/i.test(messageText)) {
+    return true;
+  }
+  if (/\b(on the web|online|on the internet)\b/i.test(messageText)) {
+    return true;
+  }
+
+  const saysLookUp = /\blook up\b/i.test(messageText);
+  const namesWeb = /\b(web|online|internet|google)\b/i.test(messageText);
+  if (saysLookUp && namesWeb) {
+    return true;
+  }
+
+  if (
+    /\b(search the web|search online|google it|look it up online|what does the research|what do studies|cite sources|any sources|pull up sources)\b/i.test(
+      messageText,
+    )
+  ) {
+    return true;
+  }
+
+  return /^(what|how|is|are|should|can|could|would|why|when|where|search)\b/i.test(messageText);
 }
 
 /**
@@ -292,28 +508,22 @@ function metricFollowUpFromUserText(userText) {
  */
 function isInformationalUserMessage(userText) {
   const messageText = String(userText || '').trim();
-  if (!messageText) return false;
-  if (isPoliteActionRequest(messageText)) return false;
-  // "Can u log 15000 steps" is an action, not a generic "can you" question.
-  if (EXPLICIT_LOG_RE.test(messageText)) return false;
-  if (
-    /\b(delete|remove|clear|undo)\b/.test(messageText) &&
-    /\b(log|food|sleep|water|steps|energy|mood|workout)\b/.test(messageText)
-  ) {
+  if (!messageText) {
     return false;
   }
-  if (/\?$/.test(messageText)) return true;
-  if (/\b(too much|too little|too many|good for me|should i)\b/i.test(messageText)) return true;
-  if (/\b(on the web|online|on the internet)\b/i.test(messageText)) return true;
-  if (/\blook up\b/i.test(messageText) && /\b(web|online|internet|google)\b/i.test(messageText)) return true;
-  if (
-    /\b(search the web|search online|google it|look it up online|what does the research|what do studies|cite sources|any sources|pull up sources)\b/i.test(
-      messageText,
-    )
-  ) {
-    return true;
+
+  // 1. Polite "can you log…" and explicit log/delete verbs are actions, not questions.
+  // Case stays as typed on purpose — a few checks below are case-sensitive.
+  if (userAskedPolitelyForAnAction(messageText)) {
+    return false;
   }
-  return /^(what|how|is|are|should|can|could|would|why|when|where|search)\b/i.test(messageText);
+  if (EXPLICIT_LOG_RE.test(messageText)) return false;
+  const hasDeleteVerb = /\b(delete|remove|clear|undo)\b/.test(messageText);
+  const namesALogRow = /\b(log|food|sleep|water|steps|energy|mood|workout)\b/.test(messageText);
+  if (hasDeleteVerb && namesALogRow) return false;
+
+  // 2. Everything else that looks like research / opinion stays as chat only.
+  return looksLikeResearchOrOpinionQuestion(messageText);
 }
 
 /**
@@ -324,20 +534,25 @@ function isInformationalUserMessage(userText) {
  */
 function isValidCoachToolProposal(rawCall, userText) {
   const guarded = guardCoachToolProposal(rawCall);
-  if (!guarded) return false;
-
-  if (userExplicitlyRequestsAction(userText)) {
-    return toolAlignsWithUserMessage(guarded, userText);
+  if (!guarded) {
+    return false;
   }
 
-  // Multi-turn: user already asked to log water, then answered "90oz".
-  // Without this, Tap Confirm prose never gets a chip (Nov 2026 screenshot).
+  // 1. User used a log verb — tool words must line up with their sentence.
+  if (userExplicitlyRequestsAction(userText)) {
+    return proposedToolMatchesUserWords(guarded, userText);
+  }
+
+  // 2. Multi-turn amount-only follow-up ("90oz" after "log water").
   const followUpMetric = metricFollowUpFromUserText(userText);
   if (followUpMetric && METRIC_FOLLOW_UP_TOOLS[followUpMetric] === guarded.name) {
     return true;
   }
 
-  if (isInformationalUserMessage(userText)) return false;
+  // 3. Questions and research-only turns never get Confirm.
+  if (isInformationalUserMessage(userText)) {
+    return false;
+  }
 
   return false;
 }
@@ -349,15 +564,24 @@ function isValidCoachToolProposal(rawCall, userText) {
  * @returns {object[]}
  */
 function filterValidCoachToolProposals(rawCalls, userText) {
-  if (!Array.isArray(rawCalls)) return [];
+  if (!Array.isArray(rawCalls)) {
+    return [];
+  }
   const safeCalls = [];
   const seenKeys = new Set();
-  for (const call of rawCalls) {
-    if (!isValidCoachToolProposal(call, userText)) continue;
+  for (let index = 0; index < rawCalls.length; index += 1) {
+    const call = rawCalls[index];
+    if (!isValidCoachToolProposal(call, userText)) {
+      continue;
+    }
     const safeCall = guardCoachToolProposal(call);
-    if (!safeCall) continue;
-    const identityKey = toolCallIdentityKey(safeCall);
-    if (seenKeys.has(identityKey)) continue;
+    if (!safeCall) {
+      continue;
+    }
+    const identityKey = duplicateToolCallFingerprint(safeCall);
+    if (seenKeys.has(identityKey)) {
+      continue;
+    }
     seenKeys.add(identityKey);
     safeCalls.push(safeCall);
   }
@@ -383,15 +607,19 @@ module.exports = {
 // PLUMBING — skip unless debugging
 
 /**
- * Trim a string and cap its length. Null and blank become undefined so compactObject can drop them.
+ * Trim a string and cap its length. Null and blank become undefined so dropEmptyParamFields can drop them.
  * @param {*} value
  * @param {number} [maxLength]
  * @returns {string|undefined}
  */
-function sanitizeString(value, maxLength = STRING_DEFAULT_MAX_LENGTH) {
-  if (value == null) return undefined;
+function clipTrimmedString(value, maxLength = STRING_DEFAULT_MAX_LENGTH) {
+  if (value == null) {
+    return undefined;
+  }
   const trimmed = String(value).trim();
-  if (!trimmed) return undefined;
+  if (!trimmed) {
+    return undefined;
+  }
   return trimmed.slice(0, maxLength);
 }
 
@@ -399,30 +627,33 @@ function sanitizeString(value, maxLength = STRING_DEFAULT_MAX_LENGTH) {
  * @param {*} value
  * @returns {number|null}
  */
-function asFiniteNumber(value) {
+function finiteNumberOrNull(value) {
   const numericValue = Number(value);
-  return Number.isFinite(numericValue) ? numericValue : null;
+  if (!Number.isFinite(numericValue)) {
+    return null;
+  }
+  return numericValue;
 }
 
-/**
- * @param {*} value
- * @param {number} min
- * @param {number} max
- * @returns {number|null}
- */
 function clamp(value, min, max) {
-  const numericValue = asFiniteNumber(value);
-  if (numericValue == null) return null;
+  const numericValue = finiteNumberOrNull(value);
+  if (numericValue == null) {
+    return null;
+  }
   return Math.min(max, Math.max(min, numericValue));
 }
 
-/**
- * A shallow copy, or {} when the model sent an array or a non-object.
- * @param {*} input
- * @returns {object}
- */
-function copyPlainObject(input) {
-  return input && typeof input === 'object' && !Array.isArray(input) ? { ...input } : {};
+function shallowPlainObjectCopy(input) {
+  if (!input) {
+    return {};
+  }
+  if (typeof input !== 'object') {
+    return {};
+  }
+  if (Array.isArray(input)) {
+    return {};
+  }
+  return { ...input };
 }
 
 /**
@@ -432,7 +663,7 @@ function copyPlainObject(input) {
 function sanitizeLogSleepParams(params) {
   // Missing hours is OK — LogSleepPopup lets them fill before Confirm (Tap-Confirm gap recovery).
   const hours = clamp(params.hours ?? params.sleepHours, SLEEP_HOURS_MIN, SLEEP_HOURS_MAX);
-  return { hours, date: sanitizeString(params.date, DATE_MAX_LENGTH) };
+  return { hours, date: clipTrimmedString(params.date, DATE_MAX_LENGTH) };
 }
 
 /**
@@ -445,16 +676,24 @@ function sanitizeLogWaterParams(params) {
     WATER_OUNCES_MIN,
     WATER_OUNCES_MAX,
   );
-  return amountOunces == null ? null : { amount_oz: amountOunces, date: sanitizeString(params.date, DATE_MAX_LENGTH) };
+  if (amountOunces == null) {
+    return null;
+  }
+  return {
+    amount_oz: amountOunces,
+    date: clipTrimmedString(params.date, DATE_MAX_LENGTH),
+  };
 }
 
-/**
- * @param {object} params
- * @returns {object|null}
- */
 function sanitizeLogStepsParams(params) {
   const stepCount = clamp(params.step_count ?? params.steps, STEPS_MIN, STEPS_MAX);
-  return stepCount == null ? null : { step_count: stepCount, date: sanitizeString(params.date, DATE_MAX_LENGTH) };
+  if (stepCount == null) {
+    return null;
+  }
+  return {
+    step_count: stepCount,
+    date: clipTrimmedString(params.date, DATE_MAX_LENGTH),
+  };
 }
 
 /**
@@ -463,13 +702,14 @@ function sanitizeLogStepsParams(params) {
  */
 function sanitizeRateEnergyParams(params) {
   const rating = clamp(params.rating ?? params.energy, RATING_MIN, RATING_MAX);
-  return rating == null
-    ? null
-    : {
-        rating,
-        date: sanitizeString(params.date, DATE_MAX_LENGTH),
-        notes: sanitizeString(params.notes || params.note, NOTES_MAX_LENGTH),
-      };
+  if (rating == null) {
+    return null;
+  }
+  return {
+    rating,
+    date: clipTrimmedString(params.date, DATE_MAX_LENGTH),
+    notes: clipTrimmedString(params.notes || params.note, NOTES_MAX_LENGTH),
+  };
 }
 
 /**
@@ -478,13 +718,14 @@ function sanitizeRateEnergyParams(params) {
  */
 function sanitizeRateWorkoutParams(params) {
   const rating = clamp(params.rating, RATING_MIN, RATING_MAX);
-  return rating == null
-    ? null
-    : {
-        rating,
-        date: sanitizeString(params.date, DATE_MAX_LENGTH),
-        notes: sanitizeString(params.notes || params.note, NOTES_MAX_LENGTH),
-      };
+  if (rating == null) {
+    return null;
+  }
+  return {
+    rating,
+    date: clipTrimmedString(params.date, DATE_MAX_LENGTH),
+    notes: clipTrimmedString(params.notes || params.note, NOTES_MAX_LENGTH),
+  };
 }
 
 /**
@@ -511,14 +752,19 @@ function sanitizeMacroTargetParams(params) {
  * @returns {object}
  */
 function sanitizeDeleteLogParams(params) {
-  const logTypeRaw = sanitizeString(params.logType, LOG_TYPE_MAX_LENGTH);
-  const logType = ALLOWED_LOG_TYPES.has(logTypeRaw) ? logTypeRaw : DEFAULT_DELETE_LOG_TYPE;
+  const logTypeRaw = clipTrimmedString(params.logType, LOG_TYPE_MAX_LENGTH);
+  let logType = DEFAULT_DELETE_LOG_TYPE;
+  if (ALLOWED_LOG_TYPES.has(logTypeRaw)) {
+    logType = logTypeRaw;
+  }
+
+  const deleteAllFlag = !!(params.deleteAll || params.all);
   return {
     logType,
-    date: sanitizeString(params.date, DATE_MAX_LENGTH),
-    foodName: sanitizeString(params.foodName || params.food, FOOD_NAME_MAX_LENGTH),
-    logId: sanitizeString(params.logId, LOG_ID_MAX_LENGTH),
-    deleteAll: !!(params.deleteAll || params.all),
+    date: clipTrimmedString(params.date, DATE_MAX_LENGTH),
+    foodName: clipTrimmedString(params.foodName || params.food, FOOD_NAME_MAX_LENGTH),
+    logId: clipTrimmedString(params.logId, LOG_ID_MAX_LENGTH),
+    deleteAll: deleteAllFlag,
   };
 }
 
@@ -529,13 +775,13 @@ function sanitizeDeleteLogParams(params) {
 function sanitizeLogNutritionParams(params) {
   // No food named → nothing the popup could ever confirm. Drop it here
   // (same rule as mood above) instead of showing a "Log meal / —" chip.
-  const foodName = sanitizeString(params.foodName || params.food, FOOD_NAME_MAX_LENGTH);
+  const foodName = clipTrimmedString(params.foodName || params.food, FOOD_NAME_MAX_LENGTH);
   if (!foodName) return null;
   return {
     foodName,
-    food: sanitizeString(params.food || params.foodName, FOOD_NAME_MAX_LENGTH),
-    mealType: sanitizeString(params.mealType, MEAL_TYPE_MAX_LENGTH),
-    date: sanitizeString(params.date, DATE_MAX_LENGTH),
+    food: clipTrimmedString(params.food || params.foodName, FOOD_NAME_MAX_LENGTH),
+    mealType: clipTrimmedString(params.mealType, MEAL_TYPE_MAX_LENGTH),
+    date: clipTrimmedString(params.date, DATE_MAX_LENGTH),
     calories: clamp(params.calories ?? params.cals, MEAL_CALORIE_MIN, MEAL_CALORIE_MAX),
     protein: clamp(params.protein, MEAL_PROTEIN_MIN, MEAL_PROTEIN_MAX),
     carbs: clamp(params.carbs, MEAL_CARBS_MIN, MEAL_CARBS_MAX),
@@ -544,26 +790,66 @@ function sanitizeLogNutritionParams(params) {
 }
 
 /**
- * @param {object} params
- * @returns {object}
+ * One exercise entry → a display name, or null when the model sent junk.
+ * @param {*} exerciseItem
+ * @returns {string|null}
  */
+function displayNameFromExerciseItem(exerciseItem) {
+  if (typeof exerciseItem === 'string') {
+    return exerciseItem;
+  }
+  if (exerciseItem && exerciseItem.name) {
+    return exerciseItem.name;
+  }
+  return null;
+}
+
+/**
+ * Join display names from an exercises array (skip blank entries).
+ * @param {Array} exercisesArray
+ * @returns {string}
+ */
+function commaTextFromExerciseArray(exercisesArray) {
+  const names = [];
+  for (let index = 0; index < exercisesArray.length; index += 1) {
+    const name = displayNameFromExerciseItem(exercisesArray[index]);
+    if (!name) continue;
+    names.push(name);
+  }
+  return names.join(', ');
+}
+
+/**
+ * Turn an exercises array (or a fallback string) into comma-separated names for the confirm sheet.
+ * @param {*} exercisesField
+ * @param {*} exerciseListFallback
+ * @returns {string}
+ */
+function exerciseListAsCommaText(exercisesField, exerciseListFallback) {
+  if (Array.isArray(exercisesField)) {
+    return commaTextFromExerciseArray(exercisesField);
+  }
+  if (exercisesField) {
+    return String(exercisesField);
+  }
+  if (exerciseListFallback) {
+    return String(exerciseListFallback);
+  }
+  return '';
+}
+
 function sanitizeOpenWorkoutPlanParams(params) {
   // planId drives the opener; the extra strings are display-only for the confirm sheet (PNG 17).
   return {
-    planId: sanitizeString(params.planId, PLAN_ID_MAX_LENGTH) || DEFAULT_PLAN_ID,
-    planName: sanitizeString(params.planName || params.title, FOOD_NAME_MAX_LENGTH),
-    split: sanitizeString(params.split || params.planLabel || params.planSummary, REASON_MAX_LENGTH),
-    todayFocus: sanitizeString(
+    planId: clipTrimmedString(params.planId, PLAN_ID_MAX_LENGTH) || DEFAULT_PLAN_ID,
+    planName: clipTrimmedString(params.planName || params.title, FOOD_NAME_MAX_LENGTH),
+    split: clipTrimmedString(params.split || params.planLabel || params.planSummary, REASON_MAX_LENGTH),
+    todayFocus: clipTrimmedString(
       params.todayFocus || params.dayName || params.today || params.focus,
       FOOD_NAME_MAX_LENGTH,
     ),
-    exercises: sanitizeString(
-      Array.isArray(params.exercises)
-        ? params.exercises
-            .map((item) => (typeof item === 'string' ? item : item?.name))
-            .filter(Boolean)
-            .join(', ')
-        : params.exercises || params.exerciseList,
+    exercises: clipTrimmedString(
+      exerciseListAsCommaText(params.exercises, params.exerciseList),
       REASON_MAX_LENGTH,
     ),
   };
@@ -575,8 +861,8 @@ function sanitizeOpenWorkoutPlanParams(params) {
  */
 function sanitizeLogRestDayParams(params) {
   return {
-    date: sanitizeString(params.date, DATE_MAX_LENGTH),
-    planId: sanitizeString(params.planId, PLAN_ID_MAX_LENGTH),
+    date: clipTrimmedString(params.date, DATE_MAX_LENGTH),
+    planId: clipTrimmedString(params.planId, PLAN_ID_MAX_LENGTH),
   };
 }
 
@@ -593,47 +879,94 @@ function sanitizeLogRestDayParams(params) {
  * @param {*} value
  * @returns {string|undefined}
  */
-function normalizeMoodValue(value) {
-  if (value == null) return undefined;
-  const rawText = String(value).trim();
-  if (!rawText) return undefined;
-  // Emoji first — a lone "😊" has no letters for the word scan below to find.
-  for (const [emoji, mood] of Object.entries(MOOD_EMOJI)) {
-    if (rawText.includes(emoji)) return mood;
-  }
-  // vocab: replace(/[^a-z]/g, ' ') = keep letters only, so "happy!" → "happy "
-  const words = rawText.toLowerCase().replace(/[^a-z]/g, ' ').split(/\s+/).filter(Boolean);
-  for (const word of words) {
-    if (MOOD_ALIASES[word]) return MOOD_ALIASES[word];
+function moodFromEmojiInText(rawText) {
+  const emojiKeys = Object.keys(MOOD_EMOJI);
+  for (let emojiIndex = 0; emojiIndex < emojiKeys.length; emojiIndex += 1) {
+    const emoji = emojiKeys[emojiIndex];
+    if (rawText.includes(emoji)) {
+      return MOOD_EMOJI[emoji];
+    }
   }
   return undefined;
 }
 
-/**
- * First mood (canonical) mentioned anywhere in a sentence, or undefined.
- * Used by the inferrers: "Log that I'm happy" never says the word "mood",
- * but it does say "happy" next to a log verb — that is enough.
- * @param {*} text
- * @returns {string|undefined}
- */
-// "good / great / fine / ok" describe workouts and meals too ("log a good
-// workout"), so in free text they only count as mood next to mood/feel words.
-const AMBIGUOUS_MOOD_WORDS = new Set(['good', 'great', 'fine', 'ok']);
+function letterOnlyWordsFromText(rawText) {
+  const lowerText = rawText.toLowerCase().replace(/[^a-z]/g, ' ');
+  const splitPieces = lowerText.split(/\s+/);
+  const words = [];
+  for (let wordIndex = 0; wordIndex < splitPieces.length; wordIndex += 1) {
+    const oneWord = splitPieces[wordIndex];
+    if (!oneWord) {
+      continue;
+    }
+    words.push(oneWord);
+  }
+  return words;
+}
+
+function wordsKeepingApostrophes(lowerText) {
+  const cleaned = lowerText.replace(/[^a-z']/g, ' ');
+  const splitPieces = cleaned.split(/\s+/);
+  const words = [];
+  for (let wordIndex = 0; wordIndex < splitPieces.length; wordIndex += 1) {
+    const oneWord = splitPieces[wordIndex];
+    if (!oneWord) {
+      continue;
+    }
+    words.push(oneWord);
+  }
+  return words;
+}
+
+function normalizeMoodValue(value) {
+  if (value == null) {
+    return undefined;
+  }
+  const rawText = String(value).trim();
+  if (!rawText) {
+    return undefined;
+  }
+
+  // Emoji first — a lone "😊" has no letters for the word scan below to find.
+  const moodFromEmoji = moodFromEmojiInText(rawText);
+  if (moodFromEmoji) {
+    return moodFromEmoji;
+  }
+
+  const words = letterOnlyWordsFromText(rawText);
+  for (let wordIndex = 0; wordIndex < words.length; wordIndex += 1) {
+    const word = words[wordIndex];
+    if (MOOD_ALIASES[word]) {
+      return MOOD_ALIASES[word];
+    }
+  }
+  return undefined;
+}
 
 function findMoodInText(text) {
   const rawText = String(text || '');
-  if (!rawText.trim()) return undefined;
-  for (const [emoji, mood] of Object.entries(MOOD_EMOJI)) {
-    if (rawText.includes(emoji)) return mood;
+  if (!rawText.trim()) {
+    return undefined;
   }
+
+  const moodFromEmoji = moodFromEmojiInText(rawText);
+  if (moodFromEmoji) {
+    return moodFromEmoji;
+  }
+
   const lowerText = rawText.toLowerCase();
   const hasMoodContext = /\b(mood|feel|feeling|felt)\b/.test(lowerText);
-  // vocab: replace(/[^a-z']/g, ' ') = words only (keeps "i'm" as one token)
-  const words = lowerText.replace(/[^a-z']/g, ' ').split(/\s+/).filter(Boolean);
+  const words = wordsKeepingApostrophes(lowerText);
+
   // Earliest mood word wins ("tired but happy" logs tired — spoken first).
-  for (const word of words) {
-    if (!MOOD_ALIASES[word]) continue;
-    if (AMBIGUOUS_MOOD_WORDS.has(word) && !hasMoodContext) continue;
+  for (let wordIndex = 0; wordIndex < words.length; wordIndex += 1) {
+    const word = words[wordIndex];
+    if (!MOOD_ALIASES[word]) {
+      continue;
+    }
+    if (AMBIGUOUS_MOOD_WORDS.has(word) && !hasMoodContext) {
+      continue;
+    }
     return MOOD_ALIASES[word];
   }
   return undefined;
@@ -645,11 +978,13 @@ function sanitizeLogMoodParams(params) {
   // No usable mood → null, like sleep with no hours. Before this, an empty
   // mood passed the guard, showed a "Log mood / —" chip, and only failed
   // AFTER the user tapped Confirm ("Mood must be one of: …").
-  if (!mood) return null;
+  if (!mood) {
+    return null;
+  }
   return {
     mood,
-    date: sanitizeString(params.date, DATE_MAX_LENGTH),
-    notes: sanitizeString(params.notes || params.note, NOTES_MAX_LENGTH),
+    date: clipTrimmedString(params.date, DATE_MAX_LENGTH),
+    notes: clipTrimmedString(params.notes || params.note, NOTES_MAX_LENGTH),
   };
 }
 
@@ -658,9 +993,12 @@ function sanitizeLogMoodParams(params) {
  * @returns {object}
  */
 function sanitizeUpdateGoalParams(params) {
-  const newGoal = sanitizeString(params.newGoal || params.goal, GOAL_MAX_LENGTH);
+  const newGoal = clipTrimmedString(params.newGoal || params.goal, GOAL_MAX_LENGTH);
   // No goal text → the popup would show "—" and confirm would fail. Drop it.
-  return newGoal ? { newGoal } : null;
+  if (!newGoal) {
+    return null;
+  }
+  return { newGoal };
 }
 
 /**
@@ -668,14 +1006,14 @@ function sanitizeUpdateGoalParams(params) {
  * @returns {object}
  */
 function sanitizeNotifyTrainerParams(params) {
-  const message = sanitizeString(params.message, NOTIFY_MESSAGE_MAX_LENGTH);
+  const message = clipTrimmedString(params.message, NOTIFY_MESSAGE_MAX_LENGTH);
   // No message → nothing to send the trainer. Drop it instead of a blank popup.
   if (!message) return null;
   return {
-    trainerId: sanitizeString(params.trainerId, TRAINER_ID_MAX_LENGTH),
+    trainerId: clipTrimmedString(params.trainerId, TRAINER_ID_MAX_LENGTH),
     message,
-    issueType: sanitizeString(params.issueType, ISSUE_TYPE_MAX_LENGTH),
-    severity: sanitizeString(params.severity, SEVERITY_MAX_LENGTH),
+    issueType: clipTrimmedString(params.issueType, ISSUE_TYPE_MAX_LENGTH),
+    severity: clipTrimmedString(params.severity, SEVERITY_MAX_LENGTH),
   };
 }
 
@@ -684,23 +1022,23 @@ function sanitizeNotifyTrainerParams(params) {
  * @returns {object}
  */
 function sanitizeBookSessionParams(params) {
-  const sessionDate = sanitizeString(params.sessionDate || params.date, DATE_MAX_LENGTH);
+  const sessionDate = clipTrimmedString(params.sessionDate || params.date, DATE_MAX_LENGTH);
   // vocab: dateTime = one combined string ("next Tuesday at 10am" or ISO).
   // The server parser can split it, so keep it — dropping it used to turn a
   // valid booking into a popup showing Date "—" / Time "—".
-  const dateTime = sanitizeString(params.dateTime, SESSION_NOTES_MAX_LENGTH);
+  const dateTime = clipTrimmedString(params.dateTime, SESSION_NOTES_MAX_LENGTH);
   if (!sessionDate && !dateTime) return null;
   return {
-    trainerId: sanitizeString(params.trainerId, TRAINER_ID_MAX_LENGTH),
+    trainerId: clipTrimmedString(params.trainerId, TRAINER_ID_MAX_LENGTH),
     sessionDate,
     dateTime,
-    sessionTime: sanitizeString(params.sessionTime || params.time, SESSION_TIME_MAX_LENGTH),
+    sessionTime: clipTrimmedString(params.sessionTime || params.time, SESSION_TIME_MAX_LENGTH),
     durationMin: clamp(
       params.durationMin ?? params.durationMinutes ?? params.duration,
       SESSION_MINUTES_MIN,
       SESSION_MINUTES_MAX,
     ),
-    notes: sanitizeString(params.notes, SESSION_NOTES_MAX_LENGTH),
+    notes: clipTrimmedString(params.notes, SESSION_NOTES_MAX_LENGTH),
   };
 }
 
@@ -709,26 +1047,43 @@ function sanitizeBookSessionParams(params) {
  * @param {object} params
  * @returns {object}
  */
+function exerciseNameFromUpdateWorkoutParams(params) {
+  if (typeof params.newExercise === 'string') {
+    return params.newExercise;
+  }
+
+  if (params.newExercise && params.newExercise.name) {
+    return params.newExercise.name;
+  }
+  if (params.exerciseName) {
+    return params.exerciseName;
+  }
+  if (params.exerciseId) {
+    return params.exerciseId;
+  }
+  return undefined;
+}
+
 function sanitizeUpdateWorkoutParams(params) {
-  // newExercise arrives as a string, as { name }, or under exerciseName.
-  const exerciseName =
-    typeof params.newExercise === 'string'
-      ? params.newExercise
-      : params.newExercise?.name || params.exerciseName || params.exerciseId;
+  const exerciseName = exerciseNameFromUpdateWorkoutParams(params);
+  const clippedExerciseName = clipTrimmedString(exerciseName, FOOD_NAME_MAX_LENGTH);
   // No replacement exercise named → the swap popup has nothing to confirm.
-  if (!sanitizeString(exerciseName, FOOD_NAME_MAX_LENGTH)) return null;
+  if (!clippedExerciseName) {
+    return null;
+  }
+
   return {
-    planId: sanitizeString(params.planId, PLAN_ID_MAX_LENGTH),
+    planId: clipTrimmedString(params.planId, PLAN_ID_MAX_LENGTH),
     dayIndex: clamp(params.dayIndex, DAY_INDEX_MIN, DAY_INDEX_MAX),
     exerciseIndex: clamp(params.exerciseIndex, EXERCISE_INDEX_MIN, EXERCISE_INDEX_MAX),
     newExercise: params.newExercise,
-    exerciseName: sanitizeString(exerciseName, FOOD_NAME_MAX_LENGTH),
-    reason: sanitizeString(params.reason, REASON_MAX_LENGTH),
+    exerciseName: clippedExerciseName,
+    reason: clipTrimmedString(params.reason, REASON_MAX_LENGTH),
   };
 }
 
 // Map tool name → param sanitizer. Keeps sanitizeParamsByTool flat (no switch nesting).
-const PARAM_SANITIZERS_BY_TOOL = {
+const TOOL_PARAM_CLEANERS_BY_NAME = {
   logSleep: sanitizeLogSleepParams,
   logWater: sanitizeLogWaterParams,
   logSteps: sanitizeLogStepsParams,
@@ -752,10 +1107,12 @@ const PARAM_SANITIZERS_BY_TOOL = {
  * @returns {object|null}
  */
 function sanitizeParamsByTool(name, rawParams) {
-  const params = copyPlainObject(rawParams);
-  const sanitizer = PARAM_SANITIZERS_BY_TOOL[name];
-  if (sanitizer) return sanitizer(params);
-  return copyPlainObject(params);
+  const params = shallowPlainObjectCopy(rawParams);
+  const sanitizer = TOOL_PARAM_CLEANERS_BY_NAME[name];
+  if (sanitizer) {
+    return sanitizer(params);
+  }
+  return shallowPlainObjectCopy(params);
 }
 
 /**
@@ -763,7 +1120,7 @@ function sanitizeParamsByTool(name, rawParams) {
  * @param {object} input
  * @returns {object}
  */
-function compactObject(input) {
+function dropEmptyParamFields(input) {
   const compacted = {};
   for (const [fieldName, fieldValue] of Object.entries(input || {})) {
     if (fieldValue !== undefined && fieldValue !== null && fieldValue !== '') {
@@ -778,43 +1135,90 @@ function compactObject(input) {
  * @param {string} text
  * @returns {boolean}
  */
-function doesUserAffirmPendingCoachAction(text) {
+function userConfirmedWithShortYes(text) {
   return /^(do it|yes|yeah|yep|ok|okay|please|go ahead|confirm|yes please|do that|send it)\.?$/i.test(
     String(text || '').trim(),
   );
 }
 
+
+/**
+ * Without a delete verb — "not food, dashboard sleep" still names the row.
+ * @param {string} logType
+ * @param {string} lowerText
+ * @returns {boolean}
+ */
+function deleteWithoutVerbStillMatches(logType, lowerText) {
+  if (logType === 'sleep') {
+    return /\b(sleep|slept|sleeping|dashboard)\b/.test(lowerText);
+  }
+  if (logType !== 'nutrition') {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Nutrition delete must not fire when they clearly meant a dashboard metric.
+ * @param {string} lowerText
+ * @returns {boolean}
+ */
+function nutritionDeleteBlockedByDashboardWords(lowerText) {
+  const namesFood = /\b(food|meal|nutrition)\b/.test(lowerText);
+  if (namesFood) return false;
+  if (/\b(sleep|slept|sleeping)\b/.test(lowerText)) return true;
+  if (/\b(water|hydration)\b/.test(lowerText)) return true;
+  if (/\b(steps?)\b/.test(lowerText)) return true;
+  return false;
+}
+
 /**
  * Delete is the easy tool to fire on the wrong row (sleep vs food).
- * This is the extra check that toolAlignsWithUserMessage uses only for deleteLog.
+ * This is the extra check that proposedToolMatchesUserWords uses only for deleteLog.
  * @param {object} guarded
  * @param {string} userText
  * @returns {boolean}
  */
-function doesDeleteLogMatchUserMessage(guarded, userText) {
-  const lowerText = String(userText || '').toLowerCase();
-  if (doesUserAffirmPendingCoachAction(userText)) return true;
+function logTypeFromGuardedDelete(guarded) {
+  if (!guarded.params) {
+    return DEFAULT_DELETE_LOG_TYPE;
+  }
+  if (!guarded.params.logType) {
+    return DEFAULT_DELETE_LOG_TYPE;
+  }
+  return String(guarded.params.logType).toLowerCase();
+}
 
-  if (!/\b(delete|remove|clear|undo|unlog|erase)\b/.test(lowerText)) {
-    // "not food, dashboard sleep" names the row without using the word delete.
-    const logType = String(guarded.params?.logType || DEFAULT_DELETE_LOG_TYPE).toLowerCase();
-    if (logType === 'sleep') return /\b(sleep|slept|sleeping|dashboard)\b/.test(lowerText);
-    if (logType !== 'nutrition') return true;
-    return false;
+function deleteProposalMatchesUserSentence(guarded, userText) {
+  const lowerText = String(userText || '').toLowerCase();
+  const logType = logTypeFromGuardedDelete(guarded);
+
+  // 1. Short "yes / do it" after the coach already described the delete.
+  if (userConfirmedWithShortYes(userText)) {
+    return true;
   }
 
-  const logType = String(guarded.params?.logType || DEFAULT_DELETE_LOG_TYPE).toLowerCase();
-  if (logType === 'sleep') return /\b(sleep|slept|sleeping)\b/.test(lowerText);
-  if (logType === 'water') return /\b(water|hydration)\b/.test(lowerText);
-  if (logType === 'steps') return /\b(steps?|step count)\b/.test(lowerText);
-  if (logType === 'energy') return /\b(energy|fatigue)\b/.test(lowerText);
-  if (logType === 'mood') return /\bmood\b/.test(lowerText);
-  if (logType === 'restDay') return /\b(rest day|rest)\b/.test(lowerText);
-  if (logType === 'workout') return /\bworkout\b/.test(lowerText) && !/\b(workout plan|plan)\b/.test(lowerText);
-  // A nutrition delete must not run when they clearly meant a dashboard number.
-  if (/\b(sleep|slept|sleeping)\b/.test(lowerText) && !/\b(food|meal|nutrition)\b/.test(lowerText)) return false;
-  if (/\b(water|hydration)\b/.test(lowerText) && !/\b(food|meal|nutrition)\b/.test(lowerText)) return false;
-  if (/\b(steps?)\b/.test(lowerText) && !/\b(food|meal|nutrition)\b/.test(lowerText)) return false;
+  // 2. No delete verb — only accept when the sentence still names the right row.
+  const hasDeleteVerb = /\b(delete|remove|clear|undo|unlog|erase)\b/.test(lowerText);
+  if (!hasDeleteVerb) {
+    return deleteWithoutVerbStillMatches(logType, lowerText);
+  }
+
+  // 3. Typed delete + a known dashboard logType → sentence must name that metric.
+  const typePattern = DELETE_LOG_TYPE_WORD_PATTERNS[logType];
+  if (typePattern) {
+    return typePattern.test(lowerText);
+  }
+  if (logType === 'workout') {
+    const namesWorkout = /\bworkout\b/.test(lowerText);
+    const namesPlanOnly = /\b(workout plan|plan)\b/.test(lowerText);
+    return namesWorkout && !namesPlanOnly;
+  }
+
+  // 4. Default nutrition delete — refuse when they named a dashboard number instead.
+  if (nutritionDeleteBlockedByDashboardWords(lowerText)) {
+    return false;
+  }
   return true;
 }
 
@@ -823,13 +1227,15 @@ function doesDeleteLogMatchUserMessage(guarded, userText) {
  * @param {string} userText
  * @returns {boolean}
  */
-function toolAlignsWithUserMessage(guarded, userText) {
+function proposedToolMatchesUserWords(guarded, userText) {
   if (guarded.name === 'deleteLog') {
-    return doesDeleteLogMatchUserMessage(guarded, userText);
+    return deleteProposalMatchesUserSentence(guarded, userText);
   }
   const lowerText = String(userText || '').toLowerCase();
   const pattern = TOOL_ALIGNMENT_PATTERNS[guarded.name];
-  if (!pattern) return true;
+  if (!pattern) {
+    return true;
+  }
   return pattern.test(lowerText);
 }
 
@@ -839,7 +1245,7 @@ function toolAlignsWithUserMessage(guarded, userText) {
  * @param {string} messageText
  * @returns {boolean}
  */
-function isPoliteActionRequest(messageText) {
+function userAskedPolitelyForAnAction(messageText) {
   if (!/^(can|could|would)\s+you\b/i.test(messageText)) return false;
   return /\b(adjust|set|change|update|log|track|record|add|delete|remove|open|book|notify|fix|increase|decrease|raise|lower)\b/i.test(
     messageText,
@@ -851,7 +1257,7 @@ function isPoliteActionRequest(messageText) {
  * @param {object} safeCall
  * @returns {string}
  */
-function toolCallIdentityKey(safeCall) {
+function duplicateToolCallFingerprint(safeCall) {
   return `${safeCall.name}:${JSON.stringify(safeCall.params)}`;
 }
 

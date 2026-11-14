@@ -8,6 +8,9 @@ import { db } from '../../app-start/cloudConnection';
 
 // ===== NAMED CONSTANTS =====
 
+const PAYMENTS_COLLECTION = 'payments';
+const CLIENT_ID_FIELD = 'client_id';
+
 // The query is not ordered in Firestore. We pull a short page, sort on the phone, and show the newest ten.
 // Manipulate here: the fetch cap and the number of rows the settings list keeps.
 const PAYMENTS_FETCH_LIMIT = 20;
@@ -19,56 +22,130 @@ const COMPLETED_LABEL = 'Completed';
 const PENDING_LABEL = 'Pending';
 const FAILED_LABEL = 'Failed';
 
+// Known Stripe/Firestore status strings → what Settings shows in the status column.
+const STATUS_LABEL_BY_RAW = {
+  succeeded: COMPLETED_LABEL,
+  completed: COMPLETED_LABEL,
+  pending: PENDING_LABEL,
+  failed: FAILED_LABEL,
+};
+
 // ===== HELPER FUNCTIONS =====
+// PLUMBING — skip unless debugging date parse, status labels, or the Firestore query
 
 // vocab: toDate = Firestore Timestamp method. A plain string or number falls through to Date.
-function formatHistoryDate(value) {
-  if (!value) return MISSING_DATE_LABEL;
-  const parsedDate = typeof value?.toDate === 'function' ? value.toDate() : new Date(value);
-  if (Number.isNaN(parsedDate.getTime())) return MISSING_DATE_LABEL;
+function formatPaymentHistoryDate(createdAtValue) {
+  if (!createdAtValue) {
+    return MISSING_DATE_LABEL;
+  }
+
+  let parsedDate;
+  const hasToDateMethod = typeof createdAtValue.toDate === 'function';
+  if (hasToDateMethod) {
+    parsedDate = createdAtValue.toDate();
+  } else {
+    parsedDate = new Date(createdAtValue);
+  }
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    return MISSING_DATE_LABEL;
+  }
+
   return parsedDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
-function createdAtMilliseconds(createdAt) {
-  if (typeof createdAt?.toDate === 'function') {
+function createdAtToMilliseconds(createdAt) {
+  const hasToDateMethod = createdAt && typeof createdAt.toDate === 'function';
+  if (hasToDateMethod) {
     return createdAt.toDate().getTime();
   }
   return Date.parse(createdAt) || 0;
 }
 
-function statusLabel(rawStatus) {
+function humanReadablePaymentStatus(rawStatus) {
   const statusText = String(rawStatus || '').toLowerCase();
-  if (statusText === 'succeeded') return COMPLETED_LABEL;
-  if (statusText === 'completed') return COMPLETED_LABEL;
-  if (statusText === 'pending') return PENDING_LABEL;
-  if (statusText === 'failed') return FAILED_LABEL;
-  if (rawStatus) return String(rawStatus);
+  const knownLabel = STATUS_LABEL_BY_RAW[statusText];
+  if (knownLabel) {
+    return knownLabel;
+  }
+  if (rawStatus) {
+    return String(rawStatus);
+  }
   return COMPLETED_LABEL;
 }
 
-function paymentRowFromDocument(docSnap, trainerName) {
-  const data = docSnap.data() || {};
+function clientPaymentRowFromFirestoreDoc(docSnap, trainerNameForColumn) {
+  const paymentData = docSnap.data() || {};
+
   return {
     id: docSnap.id,
-    date: formatHistoryDate(data.created_at),
-    createdAtMs: createdAtMilliseconds(data.created_at),
-    coach: trainerName,
-    amount: Number(data.amount) || 0,
-    status: statusLabel(data.status),
+    date: formatPaymentHistoryDate(paymentData.created_at),
+    createdAtMs: createdAtToMilliseconds(paymentData.created_at),
+    coach: trainerNameForColumn,
+    amount: Number(paymentData.amount) || 0,
+    status: humanReadablePaymentStatus(paymentData.status),
   };
 }
 
-async function loadPaymentRows(clientId, trainerName) {
+function sortPaymentRowsNewestFirst(paymentRows) {
+  const rowsCopy = paymentRows.slice();
+  rowsCopy.sort(function compareNewestFirst(leftRow, rightRow) {
+    return rightRow.createdAtMs - leftRow.createdAtMs;
+  });
+  return rowsCopy;
+}
+
+function mapDocsToPaymentRows(docs, trainerName) {
+  const mappedRows = [];
+  for (let index = 0; index < docs.length; index += 1) {
+    mappedRows.push(clientPaymentRowFromFirestoreDoc(docs[index], trainerName));
+  }
+  return mappedRows;
+}
+
+async function fetchClientPaymentRowsFromFirestore(clientId, trainerName) {
   // vocab: query + where + limit = a capped Firestore read, not the whole payments collection.
   const paymentsQuery = query(
-    collection(db, 'payments'),
-    where('client_id', '==', clientId),
+    collection(db, PAYMENTS_COLLECTION),
+    where(CLIENT_ID_FIELD, '==', clientId),
     limit(PAYMENTS_FETCH_LIMIT),
   );
+
   const snapshot = await getDocs(paymentsQuery);
-  const mappedRows = snapshot.docs.map((docSnap) => paymentRowFromDocument(docSnap, trainerName));
-  mappedRows.sort((leftRow, rightRow) => rightRow.createdAtMs - leftRow.createdAtMs);
-  return mappedRows.slice(0, PAYMENTS_SHOWN_LIMIT);
+  const mappedRows = mapDocsToPaymentRows(snapshot.docs, trainerName);
+  const newestFirst = sortPaymentRowsNewestFirst(mappedRows);
+  return newestFirst.slice(0, PAYMENTS_SHOWN_LIMIT);
+}
+
+async function startLoadingClientPaymentRows(
+  clientId,
+  trainerName,
+  cancelFlag,
+  setRows,
+  setLoading,
+) {
+  setLoading(true);
+
+  try {
+    const paymentRows = await fetchClientPaymentRowsFromFirestore(clientId, trainerName);
+    if (cancelFlag.isCancelled) {
+      return;
+    }
+    setRows(paymentRows);
+  } catch (loadError) {
+    let errorMessage = loadError;
+    if (loadError && loadError.message) {
+      errorMessage = loadError.message;
+    }
+    console.warn('Client payment history load failed:', errorMessage);
+    if (!cancelFlag.isCancelled) {
+      setRows([]);
+    }
+  }
+
+  if (!cancelFlag.isCancelled) {
+    setLoading(false);
+  }
 }
 
 // ===== MAIN FUNCTION =====
@@ -80,12 +157,13 @@ async function loadPaymentRows(clientId, trainerName) {
  * @returns {{ rows: Array<object>, loading: boolean }}
  */
 export function traineePaymentHistory(clientId, trainerName = DEFAULT_TRAINER_NAME) {
+  // Hook order frozen: rows state → loading state → load effect.
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
 
   // vocab: useEffect cleanup sets isCancelled so a slow read cannot setState after the client changes.
   useEffect(() => {
-    let isCancelled = false;
+    const cancelFlag = { isCancelled: false };
 
     // 1. No client or no Firestore → empty list, not a hang.
     if (!clientId || !db) {
@@ -95,24 +173,12 @@ export function traineePaymentHistory(clientId, trainerName = DEFAULT_TRAINER_NA
     }
 
     // 2. Load newest-first rows. Ignore the result if the client changed while we were reading.
-    (async () => {
-      setLoading(true);
-      try {
-        const mappedRows = await loadPaymentRows(clientId, trainerName);
-        if (isCancelled) return;
-        setRows(mappedRows);
-      } catch (loadError) {
-        console.warn('Client payment history load failed:', loadError?.message || loadError);
-        if (!isCancelled) setRows([]);
-      } finally {
-        if (!isCancelled) setLoading(false);
-      }
-    })();
+    startLoadingClientPaymentRows(clientId, trainerName, cancelFlag, setRows, setLoading);
 
     return () => {
-      isCancelled = true;
+      cancelFlag.isCancelled = true;
     };
   }, [clientId, trainerName]);
 
-  return { rows, loading };
+  return { rows: rows, loading: loading };
 }

@@ -1,6 +1,7 @@
 // US height input engine — one text field where the user types 5'11" (or 5,11 / 5-11 / 5 11).
 // Flow: raw keystrokes → normalize odd punctuation → strip to digits + ' " → parse into { feet, inches }.
 // Used by: onboarding and profile height fields. `height: null` means "keep typing, not valid yet".
+// Read order: constants → helpers → numbered mains. Same return shapes as before.
 
 // ===== NAMED CONSTANTS =====
 
@@ -24,11 +25,11 @@ const INCH_DIGITS_NEEDED_TO_COMMIT = 2;
 /**
  * Make every separator the user might produce mean "feet mark".
  * Manipulate here: add another `.replace(/X/g, "'")` line to accept a new separator character.
- * @param {*} raw
+ * @param {*} rawText
  * @returns {string}
  */
-function normalizeHeightRawInput(raw) {
-  return String(raw || '')
+function turnOddSeparatorsIntoFootMarks(rawText) {
+  return String(rawText || '')
     .replace(SMART_FOOT_MARKS, "'")
     .replace(SMART_INCH_MARKS, '"')
     .replace(/,/g, "'")
@@ -40,12 +41,12 @@ function normalizeHeightRawInput(raw) {
  * Normalize first, then keep digits + foot/inch marks only.
  * Order matters: normalize BEFORE stripping, or curly quotes would be deleted as junk
  * and "5’11”" would collapse to the meaningless "511".
- * @param {*} raw
+ * @param {*} rawText
  * @returns {string}
  */
-function sanitizeHeightDraft(raw) {
-  const normalized = normalizeHeightRawInput(raw);
-  return normalized.replace(/[^0-9'"]/g, '').slice(0, MAX_HEIGHT_DRAFT_LENGTH);
+function cleanHeightDraftText(rawText) {
+  const withNormalMarks = turnOddSeparatorsIntoFootMarks(rawText);
+  return withNormalMarks.replace(/[^0-9'"]/g, '').slice(0, MAX_HEIGHT_DRAFT_LENGTH);
 }
 
 /**
@@ -54,8 +55,63 @@ function sanitizeHeightDraft(raw) {
  * @param {number} inches
  * @returns {string}
  */
-function heightDisplayString(feet, inches) {
+function buildHeightDisplayText(feet, inches) {
   return `${feet}'${inches}"`;
+}
+
+/**
+ * True when this value is a plain object (not null, not an array).
+ * @param {*} heightValue
+ * @returns {boolean}
+ */
+function heightValueIsPlainObject(heightValue) {
+  if (heightValue == null) return false;
+  if (typeof heightValue !== 'object') return false;
+  if (Array.isArray(heightValue)) return false;
+  return true;
+}
+
+/**
+ * Split a legacy total-inches number into feet + leftover inches.
+ * @param {number} totalInchesAsNumber
+ * @returns {{ feet: number, inches: number }}
+ */
+function splitTotalInchesIntoFeetAndInches(totalInchesAsNumber) {
+  const totalInches = Math.round(totalInchesAsNumber);
+  const feet = Math.floor(totalInches / INCHES_PER_FOOT);
+  const inches = totalInches % INCHES_PER_FOOT;
+  return { feet, inches };
+}
+
+/**
+ * Clamp a two-digit inch string into 0–11.
+ * @param {string} inchDigits
+ * @returns {number}
+ */
+function clampInchDigitsToValidRange(inchDigits) {
+  const twoDigitSlice = inchDigits.slice(0, INCH_DIGITS_NEEDED_TO_COMMIT);
+  const parsedInches = parseInt(twoDigitSlice, 10);
+  const notBelowMin = Math.max(MIN_INCHES, parsedInches);
+  return Math.min(MAX_INCHES, notBelowMin);
+}
+
+/**
+ * On blur / Next: accept one-digit inches when the live parser still said "keep typing".
+ * @param {string} draftText
+ * @returns {{ feet: number, inches: number }|null}
+ */
+function tryCommitHeightOnBlur(draftText) {
+  // vocab: ^...$ = whole-string match so trailing junk cannot sneak in
+  const blurPattern = /^(\d{1,2})'(\d{1,2})"?$/;
+  const match = draftText.match(blurPattern);
+  if (!match) return null;
+
+  const heightObject = {
+    feet: parseInt(match[1], 10),
+    inches: parseInt(match[2], 10),
+  };
+  if (!isHeightComplete(heightObject)) return null;
+  return heightObject;
 }
 
 // ===== MAIN FUNCTION =====
@@ -69,21 +125,24 @@ function heightDisplayString(feet, inches) {
 export function formatHeightInputDisplay(heightValue) {
   // vocab/symbol: == null = true for BOTH null and undefined (the one place loose equality is useful)
   if (heightValue == null) return '';
-  if (typeof heightValue === 'object' && !Array.isArray(heightValue)) {
+
+  // 1. Modern shape: { feet, inches } with partial drafts allowed while typing.
+  if (heightValueIsPlainObject(heightValue)) {
     const feet = heightValue.feet;
     const inches = heightValue.inches;
     if (feet == null || feet === '') return '';
-    if (inches == null || inches === '') {
-      return `${feet}'`;
-    }
-    return heightDisplayString(feet, inches);
+    if (inches == null || inches === '') return `${feet}'`;
+    return buildHeightDisplayText(feet, inches);
   }
-  if (typeof heightValue === 'number' && Number.isFinite(heightValue)) {
-    const totalInches = Math.round(heightValue);
-    const feet = Math.floor(totalInches / INCHES_PER_FOOT);
-    const inches = totalInches % INCHES_PER_FOOT;
-    return heightDisplayString(feet, inches);
+
+  // 2. Legacy shape: one number = total inches from older saves.
+  const storedAsFiniteNumber =
+    typeof heightValue === 'number' && Number.isFinite(heightValue);
+  if (storedAsFiniteNumber) {
+    const parts = splitTotalInchesIntoFeetAndInches(heightValue);
+    return buildHeightDisplayText(parts.feet, parts.inches);
   }
+
   return '';
 }
 
@@ -94,17 +153,19 @@ export function formatHeightInputDisplay(heightValue) {
  * @returns {boolean}
  */
 export function isHeightComplete(heightValue) {
-  if (!heightValue || typeof heightValue !== 'object' || Array.isArray(heightValue)) return false;
+  // 1. Must be a real object with feet + inches fields.
+  if (!heightValueIsPlainObject(heightValue)) return false;
+
+  // 2. Both numbers finite and inside the accepted adult range.
   const feet = Number(heightValue.feet);
   const inches = Number(heightValue.inches);
-  return (
-    Number.isFinite(feet) &&
-    Number.isFinite(inches) &&
-    feet >= MIN_FEET_COMPLETE &&
-    feet <= MAX_FEET &&
-    inches >= MIN_INCHES &&
-    inches <= MAX_INCHES
-  );
+  const feetIsValid =
+    Number.isFinite(feet) && feet >= MIN_FEET_COMPLETE && feet <= MAX_FEET;
+  const inchesIsValid =
+    Number.isFinite(inches) && inches >= MIN_INCHES && inches <= MAX_INCHES;
+  if (!feetIsValid) return false;
+  if (!inchesIsValid) return false;
+  return true;
 }
 
 /**
@@ -114,40 +175,48 @@ export function isHeightComplete(heightValue) {
  * @returns {{ text: string, height: { feet: number, inches: number } | null }}
  */
 export function parseHeightInputText(raw) {
-  const draft = sanitizeHeightDraft(raw);
+  // 1. Strip junk but keep foot and inch marks so the field still looks like what they typed.
+  const draft = cleanHeightDraftText(raw);
   if (!draft) return { text: '', height: null };
 
+  // 2. Try a strict pattern first — feet, optional inches, optional closing quote.
   // vocab: (?:...) = group that isn't captured; ^ and $ anchor it so junk can't tag along
-  const match = draft.match(/^(\d{1,2})(?:'(\d{0,2})?)?"?$/);
+  const completePattern = /^(\d{1,2})(?:'(\d{0,2})?)?"?$/;
+  const match = draft.match(completePattern);
   if (!match) {
     const leadingDigitsMatch = draft.match(/^(\d{1,2})/);
     if (leadingDigitsMatch) return { text: draft, height: null };
     return { text: '', height: null };
   }
 
+  // 3. Reject feet outside the typing window before we bother with inches.
   const feet = parseInt(match[1], 10);
-  if (!Number.isFinite(feet) || feet < MIN_FEET_WHILE_TYPING || feet > MAX_FEET) {
-    return { text: draft, height: null };
-  }
+  const feetOutOfRange =
+    !Number.isFinite(feet) ||
+    feet < MIN_FEET_WHILE_TYPING ||
+    feet > MAX_FEET;
+  if (feetOutOfRange) return { text: draft, height: null };
 
+  // 4. No inch digits yet → keep the draft visible, do not commit.
   const inchPart = match[2];
   if (inchPart == null || inchPart === '') {
     return { text: draft, height: null };
   }
 
-  // A single inch digit is ambiguous: "5'1" might still become 5'11".
+  // 5. A single inch digit is ambiguous: "5'1" might still become 5'11".
   if (inchPart.length === 1) {
     return { text: draft, height: null };
   }
 
-  const inches = Math.min(MAX_INCHES, Math.max(MIN_INCHES, parseInt(inchPart.slice(0, INCH_DIGITS_NEEDED_TO_COMMIT), 10)));
+  // 6. Clamp inches, then run the same complete check as blur / save.
+  const inches = clampInchDigitsToValidRange(inchPart);
   const height = { feet, inches };
   if (!isHeightComplete(height)) {
     return { text: draft, height: null };
   }
 
   return {
-    text: heightDisplayString(feet, inches),
+    text: buildHeightDisplayText(feet, inches),
     height,
   };
 }
@@ -159,18 +228,12 @@ export function parseHeightInputText(raw) {
  * @returns {{ feet: number, inches: number }|null}
  */
 export function finalizeHeightFromDraft(raw) {
-  const { height } = parseHeightInputText(raw);
-  if (height) return height;
+  // 1. Reuse live parser when it already locked a complete height.
+  const liveParse = parseHeightInputText(raw);
+  if (liveParse.height) return liveParse.height;
 
-  const draft = sanitizeHeightDraft(raw);
+  // 2. On blur, accept one-digit inches when the pattern is otherwise complete.
+  const draft = cleanHeightDraftText(raw);
   if (!draft) return null;
-
-  const match = draft.match(/^(\d{1,2})'(\d{1,2})"?$/);
-  if (!match) return null;
-
-  const heightObject = {
-    feet: parseInt(match[1], 10),
-    inches: parseInt(match[2], 10),
-  };
-  return isHeightComplete(heightObject) ? heightObject : null;
+  return tryCommitHeightOnBlur(draft);
 }

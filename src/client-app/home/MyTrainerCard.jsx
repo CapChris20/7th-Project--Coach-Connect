@@ -1,14 +1,12 @@
-// Client home card for the linked trainer: photo, specialty, Message / Profile / Pay / Remove.
-// Flow: read trainer fields → paint the nb surface card → Message is the brand CTA; Pay / Remove only when those callbacks are passed.
-// Used on the client home screen. Accent keys (pink, purple, cyan, orange, green) stay as callers pass `accent`.
+// Client home card for the linked trainer — photo, specialty, Message / Profile / Pay / Remove.
+// Flow: pick surface colors → read trainer fields → pressable body (Message) → optional Remove below.
+// Used on the client home screen. Accent keys (pink, purple, cyan, orange, green) stay as callers pass them.
 
 import React, { useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Animated, Image } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { trainerPhotoUri } from '../../helpers/trainerProfilePhoto';
-import NbCard from '../../look-and-feel/NbCard';
-import NbButton from '../../look-and-feel/NbButton';
 import { lightColors, darkColors } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
@@ -28,61 +26,57 @@ const LOCATION_DEFAULT = 'Remote';
 const ERROR_STATUS_COLOR = '#FF453A';
 const PRESS_IN_SCALE = 0.98;
 const SPRING_BOUNCINESS_OUT = 7;
+const SPRING_SPEED_IN = 22;
+const SPRING_BOUNCINESS_IN = 6;
+const SPRING_SPEED_OUT = 18;
+const AVATAR_BORDER_WIDTH = 2;
+const MAX_INITIAL_LETTERS = 2;
 
 // ===== HELPER FUNCTIONS =====
 
-/**
- * Glass fill/border/text for light versus dark. Keys stay local to this card.
- * @param {boolean} isDark
- * @returns {object}
- */
 function surfaceTokens(isDark) {
-  // Strip pass: solid nb surfaces — no glass fills.
+  if (isDark) {
+    return {
+      cardBackground: darkColors.nbSurface,
+      border: darkColors.nbBorder,
+      text: darkColors.nbInk,
+      muted: darkColors.nbMuted,
+      dim: darkColors.nbMuted,
+    };
+  }
   return {
-    cardBackground: isDark ? darkColors.nbSurface : lightColors.nbSurface,
-    border: isDark ? darkColors.nbBorder : lightColors.nbBorder,
-    text: isDark ? darkColors.nbInk : lightColors.nbInk,
-    muted: isDark ? darkColors.nbMuted : lightColors.nbMuted,
-    dim: isDark ? darkColors.nbMuted : lightColors.nbMuted,
+    cardBackground: lightColors.nbSurface,
+    border: lightColors.nbBorder,
+    text: lightColors.nbInk,
+    muted: lightColors.nbMuted,
+    dim: lightColors.nbMuted,
   };
 }
 
-/**
- * Initials from the first two words. "Jordan Miller" → "JM".
- * @param {string} name
- * @returns {string}
- */
 function initialsFromName(name) {
-  return name.split(/\s+/).map((word) => word[0]).slice(0, 2).join('').toUpperCase();
+  const words = String(name || '').split(/\s+/);
+  const letters = [];
+  for (let wordIndex = 0; wordIndex < words.length; wordIndex += 1) {
+    const word = words[wordIndex];
+    if (!word) continue;
+    letters.push(word[0]);
+    if (letters.length >= MAX_INITIAL_LETTERS) break;
+  }
+  return letters.join('').toUpperCase();
 }
 
-/**
- * @param {*} rating
- * @returns {number|null}
- */
 function numericRating(rating) {
   if (typeof rating === 'number') return rating;
   if (rating) return Number(rating);
   return null;
 }
 
-/**
- * @param {*} clients
- * @returns {number|null}
- */
 function numericClients(clients) {
   if (typeof clients === 'number') return clients;
   if (clients) return Number(clients);
   return null;
 }
 
-/**
- * Chip fill/border/text for the payment status under the CTA row.
- * @param {string} paymentStatusTone
- * @param {boolean} isDark
- * @param {object} tokens
- * @returns {{ backgroundColor: string, borderColor: string, color: string }}
- */
 function paymentStatusChipColors(paymentStatusTone, isDark, tokens) {
   if (paymentStatusTone === 'success') {
     return {
@@ -112,12 +106,38 @@ function paymentStatusChipColors(paymentStatusTone, isDark, tokens) {
   };
 }
 
+function chipSurfaceColors(isDark) {
+  if (isDark) {
+    return {
+      borderColor: darkColors.nbBorder,
+      backgroundColor: darkColors.nbSurfaceChip,
+    };
+  }
+  return {
+    borderColor: lightColors.nbBorder,
+    backgroundColor: lightColors.nbSurfaceChip,
+  };
+}
+
+function pickAccentColor(accentKey) {
+  const matched = ACCENTS[accentKey];
+  if (matched) return matched;
+  return ACCENTS.purple;
+}
+
 function TrainerBadge({ icon, label, accentColor, isDark, tokens }) {
+  const badgeBackground = isDark ? `${accentColor}14` : `${accentColor}0D`;
+  const badgeBorder = isDark ? `${accentColor}30` : `${accentColor}22`;
   return (
-    <View style={[styles.badge, {
-      backgroundColor: isDark ? `${accentColor}14` : `${accentColor}0D`,
-      borderColor: isDark ? `${accentColor}30` : `${accentColor}22`,
-    }]}>
+    <View
+      style={[
+        styles.badge,
+        {
+          backgroundColor: badgeBackground,
+          borderColor: badgeBorder,
+        },
+      ]}
+    >
       <Ionicons name={icon} size={13} color={accentColor} />
       <Text style={[styles.badgeText, { color: tokens.text }]} numberOfLines={1}>
         {label}
@@ -127,23 +147,40 @@ function TrainerBadge({ icon, label, accentColor, isDark, tokens }) {
 }
 
 function TrainerAvatar({ photoSrc, name, accentColor, isDark, tokens }) {
+  const ringBorderColor = isDark ? darkColors.nbBorder : lightColors.nbBorder;
+  const innerBackground = isDark ? lightColors.nbInk : lightColors.white;
+  const hasPhoto = Boolean(photoSrc);
+
+  let avatarFace = (
+    <Text style={[styles.avatarFallback, { color: accentColor }]}>
+      {initialsFromName(name)}
+    </Text>
+  );
+  if (hasPhoto) {
+    avatarFace = <Image source={{ uri: photoSrc }} style={styles.avatarImg} />;
+  }
+
   return (
     <View
       style={[
         styles.avatarRing,
         {
-          borderWidth: 2,
-          borderColor: isDark ? darkColors.nbBorder : lightColors.nbBorder,
+          borderWidth: AVATAR_BORDER_WIDTH,
+          borderColor: ringBorderColor,
           padding: 0,
         },
       ]}
     >
-      <View style={[styles.avatarInner, { backgroundColor: isDark ? lightColors.nbInk : lightColors.white, borderColor: tokens.border }]}>
-        {photoSrc ? (
-          <Image source={{ uri: photoSrc }} style={styles.avatarImg} />
-        ) : (
-          <Text style={[styles.avatarFallback, { color: accentColor }]}>{initialsFromName(name)}</Text>
-        )}
+      <View
+        style={[
+          styles.avatarInner,
+          {
+            backgroundColor: innerBackground,
+            borderColor: tokens.border,
+          },
+        ]}
+      >
+        {avatarFace}
       </View>
     </View>
   );
@@ -151,32 +188,131 @@ function TrainerAvatar({ photoSrc, name, accentColor, isDark, tokens }) {
 
 function PaymentStatusRow({ paymentRateLabel, paymentStatusLabel, paymentStatusTone, isDark, tokens }) {
   const chipColors = paymentStatusChipColors(paymentStatusTone, isDark, tokens);
+  const showRate = Boolean(paymentRateLabel);
+  const showStatus = Boolean(paymentStatusLabel);
+
+  let rateText = null;
+  if (showRate) {
+    rateText = (
+      <Text style={[styles.paymentRate, { color: tokens.muted }]}>{paymentRateLabel}</Text>
+    );
+  }
+
+  let statusChip = null;
+  if (showStatus) {
+    statusChip = (
+      <View
+        style={[
+          styles.paymentStatusChip,
+          {
+            backgroundColor: chipColors.backgroundColor,
+            borderColor: chipColors.borderColor,
+          },
+        ]}
+      >
+        <Text style={[styles.paymentStatusText, { color: chipColors.color }]}>
+          {paymentStatusLabel}
+        </Text>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.paymentMetaRow}>
-      {paymentRateLabel ? (
-        <Text style={[styles.paymentRate, { color: tokens.muted }]}>{paymentRateLabel}</Text>
-      ) : null}
-      {paymentStatusLabel ? (
-        <View
-          style={[
-            styles.paymentStatusChip,
-            {
-              backgroundColor: chipColors.backgroundColor,
-              borderColor: chipColors.borderColor,
-            },
-          ]}
-        >
-          <Text style={[styles.paymentStatusText, { color: chipColors.color }]}>
-            {paymentStatusLabel}
-          </Text>
-        </View>
-      ) : null}
+      {rateText}
+      {statusChip}
     </View>
   );
 }
 
+function readTrainerCardFields(trainer) {
+  const safeTrainer = trainer || {};
+  const rawName = safeTrainer.name || safeTrainer.displayName || TRAINER_NAME_DEFAULT;
+  const rawSpecialty = safeTrainer.specialty || safeTrainer.headline || SPECIALTY_DEFAULT;
+  const rawLocation = safeTrainer.location || LOCATION_DEFAULT;
+
+  let years = null;
+  if (typeof safeTrainer.experienceYears === 'number') {
+    years = safeTrainer.experienceYears;
+  }
+
+  return {
+    name: String(rawName).trim(),
+    specialty: String(rawSpecialty).trim(),
+    location: String(rawLocation).trim(),
+    rating: numericRating(safeTrainer.rating),
+    clients: numericClients(safeTrainer.clients),
+    years,
+    photoSrc: trainerPhotoUri(trainer),
+  };
+}
+
+function ActivePill({ accentColor }) {
+  const pillColors = [`${accentColor}30`, `${accentColor}18`];
+  const pillBorderColor = `${accentColor}50`;
+  return (
+    <LinearGradient
+      colors={pillColors}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={[styles.pill, { borderColor: pillBorderColor }]}
+    >
+      <Text style={[styles.pillText, { color: accentColor }]}>ACTIVE</Text>
+    </LinearGradient>
+  );
+}
+
+function StatBadgesRow({ fields, accentColor, isDark, tokens }) {
+  const badgeViews = [];
+
+  if (fields.rating) {
+    badgeViews.push(
+      <TrainerBadge
+        key="rating"
+        icon="star"
+        label={`${fields.rating.toFixed(1)} rating`}
+        accentColor={accentColor}
+        isDark={isDark}
+        tokens={tokens}
+      />,
+    );
+  }
+  if (fields.clients) {
+    badgeViews.push(
+      <TrainerBadge
+        key="clients"
+        icon="people-outline"
+        label={`${fields.clients} clients`}
+        accentColor={accentColor}
+        isDark={isDark}
+        tokens={tokens}
+      />,
+    );
+  }
+  if (fields.years) {
+    badgeViews.push(
+      <TrainerBadge
+        key="years"
+        icon="ribbon-outline"
+        label={`${fields.years}+ yrs`}
+        accentColor={accentColor}
+        isDark={isDark}
+        tokens={tokens}
+      />,
+    );
+  }
+
+  if (badgeViews.length === 0) return null;
+  return <View style={styles.badgesRow}>{badgeViews}</View>;
+}
+
 // ===== MAIN FUNCTION =====
 
+/**
+ * Linked-trainer card on client home.
+ * Flow: 1. theme + fields  2. which CTAs show  3. paint body + optional Remove
+ * @param {object} props
+ */
 export default function MyTrainerCard({
   isDark = true,
   accent = 'purple',
@@ -187,7 +323,6 @@ export default function MyTrainerCard({
   secondaryCtaLabel = 'View Profile',
   onPressSecondaryCTA,
   onPressPayment,
-  // vocab: onPressRemove = opens the hold-to-confirm RemoveTrainerPopup (ends the link; does not delete accounts)
   onPressRemove,
   paymentButtonLabel = 'Manage Coaching Payment',
   paymentButtonShortLabel = 'Pay',
@@ -195,25 +330,89 @@ export default function MyTrainerCard({
   paymentStatusLabel,
   paymentStatusTone = 'neutral',
 }) {
+  // 1. Theme tokens + accent + trainer display fields.
   const tokens = surfaceTokens(isDark);
-  const accentColor = ACCENTS[accent] || ACCENTS.purple;
+  const accentColor = pickAccentColor(accent);
+  const fields = readTrainerCardFields(trainer);
+  const chipColors = chipSurfaceColors(isDark);
+  const dividerColor = isDark ? darkColors.nbBorder : lightColors.nbBorder;
 
+  // Hook order frozen: one scale Animated.Value for press-in shrink
   const scale = useRef(new Animated.Value(1)).current;
-  const pressIn = () => Animated.spring(scale, { toValue: PRESS_IN_SCALE, useNativeDriver: true, speed: 22, bounciness: 6 }).start();
-  const pressOut = () => Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 18, bounciness: SPRING_BOUNCINESS_OUT }).start();
 
-  const name = String(trainer?.name || trainer?.displayName || TRAINER_NAME_DEFAULT).trim();
-  const specialty = String(trainer?.specialty || trainer?.headline || SPECIALTY_DEFAULT).trim();
-  const location = String(trainer?.location || LOCATION_DEFAULT).trim();
-  const rating = numericRating(trainer?.rating);
-  const clients = numericClients(trainer?.clients);
-  const years = typeof trainer?.experienceYears === 'number' ? trainer.experienceYears : null;
-  const photoSrc = trainerPhotoUri(trainer);
+  const shrinkOnPressIn = () =>
+    Animated.spring(scale, {
+      toValue: PRESS_IN_SCALE,
+      useNativeDriver: true,
+      speed: SPRING_SPEED_IN,
+      bounciness: SPRING_BOUNCINESS_IN,
+    }).start();
+
+  const restoreScaleOnPressOut = () =>
+    Animated.spring(scale, {
+      toValue: 1,
+      useNativeDriver: true,
+      speed: SPRING_SPEED_OUT,
+      bounciness: SPRING_BOUNCINESS_OUT,
+    }).start();
+
+  // 2. Name which CTAs / meta rows this card actually shows.
   const hasPayment = typeof onPressPayment === 'function';
-  // Only show Remove when the parent passed a handler (linked trainer + popup wired).
   const hasRemove = typeof onPressRemove === 'function';
-  const showPaymentMeta = (paymentRateLabel || paymentStatusLabel) && hasPayment;
+  const showPaymentMeta = Boolean((paymentRateLabel || paymentStatusLabel) && hasPayment);
+  const removeAccessibilityLabel = `Remove ${fields.name} as your trainer`;
+  const outerStyle = hasRemove ? [styles.outer, styles.outerWithRemove] : styles.outer;
 
+  // secondaryCtaLabel / paymentButtonLabel stay accepted for callers; UI uses short Profile / Pay labels
+  void secondaryCtaLabel;
+  void paymentButtonLabel;
+
+  let paymentButton = null;
+  if (hasPayment) {
+    paymentButton = (
+      <TouchableOpacity
+        activeOpacity={0.9}
+        onPress={onPressPayment}
+        style={[styles.tertiaryBtn, chipColors]}
+      >
+        <Ionicons name="card-outline" size={17} color={accentColor} />
+        <Text style={[styles.tertiaryText, { color: tokens.text }]} numberOfLines={1}>
+          {paymentButtonShortLabel}
+        </Text>
+      </TouchableOpacity>
+    );
+  }
+
+  let paymentMetaRow = null;
+  if (showPaymentMeta) {
+    paymentMetaRow = (
+      <PaymentStatusRow
+        paymentRateLabel={paymentRateLabel}
+        paymentStatusLabel={paymentStatusLabel}
+        paymentStatusTone={paymentStatusTone}
+        isDark={isDark}
+        tokens={tokens}
+      />
+    );
+  }
+
+  let removeRow = null;
+  if (hasRemove) {
+    removeRow = (
+      <TouchableOpacity
+        activeOpacity={0.7}
+        onPress={onPressRemove}
+        accessibilityRole="button"
+        accessibilityLabel={removeAccessibilityLabel}
+        style={styles.removeRow}
+      >
+        <Ionicons name="person-remove-outline" size={14} color={ERROR_STATUS_COLOR} />
+        <Text style={styles.removeText}>Remove trainer</Text>
+      </TouchableOpacity>
+    );
+  }
+
+  // 3. Paint pressable body + optional Remove row outside the press target.
   return (
     <Animated.View style={{ transform: [{ scale }] }}>
       <View
@@ -225,18 +424,17 @@ export default function MyTrainerCard({
           },
         ]}
       >
-        {/* Card body is pressable for Message; Remove sits below so it never steals that press. */}
         <TouchableOpacity
           activeOpacity={1}
           onPress={onPressCard}
-          onPressIn={pressIn}
-          onPressOut={pressOut}
+          onPressIn={shrinkOnPressIn}
+          onPressOut={restoreScaleOnPressOut}
         >
-          <View style={[styles.outer, hasRemove ? styles.outerWithRemove : null]}>
+          <View style={outerStyle}>
             <View style={styles.row}>
               <TrainerAvatar
-                photoSrc={photoSrc}
-                name={name}
+                photoSrc={fields.photoSrc}
+                name={fields.name}
                 accentColor={accentColor}
                 isDark={isDark}
                 tokens={tokens}
@@ -245,49 +443,38 @@ export default function MyTrainerCard({
               <View style={{ flex: 1, minWidth: 0 }}>
                 <View style={styles.titleRow}>
                   <Text style={[styles.name, { color: tokens.text }]} numberOfLines={1}>
-                    {name}
+                    {fields.name}
                   </Text>
-                  <LinearGradient
-                    colors={[`${accentColor}30`, `${accentColor}18`]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={[styles.pill, { borderColor: `${accentColor}50` }]}
-                  >
-                    <Text style={[styles.pillText, { color: accentColor }]}>ACTIVE</Text>
-                  </LinearGradient>
+                  <ActivePill accentColor={accentColor} />
                 </View>
 
                 <Text style={[styles.specialty, { color: tokens.muted }]} numberOfLines={1}>
-                  {specialty}
+                  {fields.specialty}
                 </Text>
 
                 <View style={styles.metaRow}>
                   <Ionicons name="location-outline" size={13} color={tokens.dim} />
                   <Text style={[styles.meta, { color: tokens.dim }]} numberOfLines={1}>
-                    {location}
+                    {fields.location}
                   </Text>
                 </View>
               </View>
             </View>
 
-            {(rating || clients || years) ? (
-              <View style={styles.badgesRow}>
-                {rating ? <TrainerBadge icon="star" label={`${rating.toFixed(1)} rating`} accentColor={accentColor} isDark={isDark} tokens={tokens} /> : null}
-                {clients ? <TrainerBadge icon="people-outline" label={`${clients} clients`} accentColor={accentColor} isDark={isDark} tokens={tokens} /> : null}
-                {years ? <TrainerBadge icon="ribbon-outline" label={`${years}+ yrs`} accentColor={accentColor} isDark={isDark} tokens={tokens} /> : null}
-              </View>
-            ) : null}
+            <StatBadgesRow
+              fields={fields}
+              accentColor={accentColor}
+              isDark={isDark}
+              tokens={tokens}
+            />
 
-            <View style={[styles.divider, { backgroundColor: isDark ? darkColors.nbBorder : lightColors.nbBorder }]} />
+            <View style={[styles.divider, { backgroundColor: dividerColor }]} />
 
             <View style={styles.ctaRow}>
               <TouchableOpacity
                 activeOpacity={0.9}
                 onPress={onPressSecondaryCTA}
-                style={[styles.tertiaryBtn, {
-                  borderColor: isDark ? darkColors.nbBorder : lightColors.nbBorder,
-                  backgroundColor: isDark ? darkColors.nbSurfaceChip : lightColors.nbSurfaceChip,
-                }]}
+                style={[styles.tertiaryBtn, chipColors]}
               >
                 <Ionicons name="person-circle-outline" size={17} color={tokens.text} />
                 <Text style={[styles.tertiaryText, { color: tokens.text }]} numberOfLines={1}>
@@ -303,56 +490,26 @@ export default function MyTrainerCard({
                   style={styles.primaryBtn}
                 >
                   <Ionicons name="chatbubble-ellipses-outline" size={17} color={lightColors.white} />
-                  <Text style={styles.primaryText} numberOfLines={1}>{ctaLabel}</Text>
+                  <Text style={styles.primaryText} numberOfLines={1}>
+                    {ctaLabel}
+                  </Text>
                 </LinearGradient>
               </TouchableOpacity>
 
-              {hasPayment ? (
-                <TouchableOpacity
-                  activeOpacity={0.9}
-                  onPress={onPressPayment}
-                  style={[styles.tertiaryBtn, {
-                    borderColor: isDark ? darkColors.nbBorder : lightColors.nbBorder,
-                    backgroundColor: isDark ? darkColors.nbSurfaceChip : lightColors.nbSurfaceChip,
-                  }]}
-                >
-                  <Ionicons name="card-outline" size={17} color={accentColor} />
-                  <Text style={[styles.tertiaryText, { color: tokens.text }]} numberOfLines={1}>
-                    {paymentButtonShortLabel}
-                  </Text>
-                </TouchableOpacity>
-              ) : null}
+              {paymentButton}
             </View>
 
-            {showPaymentMeta ? (
-              <PaymentStatusRow
-                paymentRateLabel={paymentRateLabel}
-                paymentStatusLabel={paymentStatusLabel}
-                paymentStatusTone={paymentStatusTone}
-                isDark={isDark}
-                tokens={tokens}
-              />
-            ) : null}
+            {paymentMetaRow}
           </View>
         </TouchableOpacity>
 
-        {/* Quiet exit below the pressable body so Remove never also fires Message. */}
-        {hasRemove ? (
-          <TouchableOpacity
-            activeOpacity={0.7}
-            onPress={onPressRemove}
-            accessibilityRole="button"
-            accessibilityLabel={`Remove ${name} as your trainer`}
-            style={styles.removeRow}
-          >
-            <Ionicons name="person-remove-outline" size={14} color={ERROR_STATUS_COLOR} />
-            <Text style={styles.removeText}>Remove trainer</Text>
-          </TouchableOpacity>
-        ) : null}
+        {removeRow}
       </View>
     </Animated.View>
   );
 }
+
+// ===== PLUMBING — skip unless debugging =====
 
 const styles = StyleSheet.create({
   cardShell: {
@@ -370,13 +527,19 @@ const styles = StyleSheet.create({
     padding: 18,
     overflow: 'hidden',
   },
-  // Tighten bottom padding when the remove link follows, so the card does not look padded twice.
   outerWithRemove: {
     paddingBottom: 8,
   },
   row: { flexDirection: 'row', gap: 14, alignItems: 'center' },
   avatarRing: { width: 76, height: 76, borderRadius: 38, overflow: 'hidden' },
-  avatarInner: { flex: 1, borderRadius: 36, borderWidth: 0, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
+  avatarInner: {
+    flex: 1,
+    borderRadius: 36,
+    borderWidth: 0,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   avatarImg: { width: '100%', height: '100%' },
   avatarFallback: { fontSize: 20, fontWeight: '900', letterSpacing: 0.5 },
   titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
@@ -449,7 +612,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   paymentStatusText: { fontSize: 11, fontWeight: '800' },
-  // Manipulate here: padding around the remove link; keep it secondary to the CTA row.
   removeRow: {
     flexDirection: 'row',
     alignItems: 'center',

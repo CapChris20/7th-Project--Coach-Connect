@@ -1,8 +1,8 @@
-// Design Law Terms — black PLAIN SUMMARY block + accordion list in one NbCard.
-// Flow: theme + safe-area → fade in → expand a section. Used from Settings.
+// Terms of Service — black PLAIN SUMMARY hero + accordion sections in one NbCard.
+// Flow: fade in → tap a section title → read body. Used from Settings.
 // Binding legal copy lives with counsel; this screen is the readable summary.
 
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import {
   Animated,
   View,
@@ -30,20 +30,43 @@ import { nb, spacing } from '../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
+// Manipulate here: date string shown under the header — update when counsel revises terms.
 const LAST_UPDATED = 'September 23, 2026';
 const SHELL_NAV_INSET_FALLBACK = 24;
 const SCROLL_BOTTOM_EXTRA = 24;
 const MIN_BOTTOM_INSET = 16;
+// Manipulate here: raise FADE_MS = slower entrance; lower = snappier.
 const FADE_MS = 350;
 const RISE_START = 10;
+const PLATFORM_ANDROID = 'android';
+const STATUS_BAR_LIGHT_ICONS = 'light-content';
+const STATUS_BAR_DARK_ICONS = 'dark-content';
+const CHEVRON_SIZE = 20;
 
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+// vocab: LayoutAnimation on Android needs this experimental flag once per process.
+if (Platform.OS === PLATFORM_ANDROID && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
 // ===== HELPER FUNCTIONS =====
 
-function termsSections(contactLine) {
+/**
+ * Coerce any value to a trimmed string (empty when missing).
+ * @param {*} value
+ * @returns {string}
+ */
+function asTrimmedString(value) {
+  return asTrimmedString(value);
+}
+
+
+/**
+ * Readable summary sections — not the binding legal text.
+ * Contact line is built by the caller so the support email stays in one place.
+ * @param {string} contactLine
+ * @returns {Array<{ title: string, body: string }>}
+ */
+function buildTermsSectionList(contactLine) {
   return [
     {
       title: 'Your account',
@@ -90,111 +113,205 @@ function termsSections(contactLine) {
   ];
 }
 
-function GroupDivider({ colors }) {
-  return <View style={[styles.divider, { backgroundColor: colors.nbBorder }]} />;
+/**
+ * Bottom padding so the last accordion row clears the shell nav or home indicator.
+ * @param {boolean} embedShellBottomNav
+ * @param {number} shellNavInset
+ * @param {number} bottomSafeInset
+ * @returns {number}
+ */
+function scrollBottomPaddingForTerms(embedShellBottomNav, shellNavInset, bottomSafeInset) {
+  if (embedShellBottomNav) {
+    return shellNavInset;
+  }
+  const safeBottom = Math.max(bottomSafeInset, MIN_BOTTOM_INSET);
+  return safeBottom + SCROLL_BOTTOM_EXTRA;
 }
 
-function TermsAccordionRow({ section, openKey, onToggle, colors, showDivider }) {
-  const open = openKey === section.title;
+/**
+ * Status bar icon color — light icons on dark chrome, dark icons on light chrome.
+ * @param {boolean} isDark
+ * @returns {string}
+ */
+function statusBarStyleForTheme(isDark) {
+  if (isDark) return STATUS_BAR_LIGHT_ICONS;
+  return STATUS_BAR_DARK_ICONS;
+}
+
+/**
+ * Chevron points down when the row is open, forward when closed.
+ * @param {boolean} isExpanded
+ * @returns {string}
+ */
+function chevronNameForExpandedState(isExpanded) {
+  if (isExpanded) return 'chevron-down';
+  return 'chevron-forward';
+}
+
+/**
+ * Thin divider between accordion rows (skipped above the first row).
+ * @param {object} props
+ */
+function TermsRowDivider({ colors }) {
+  return <View style={[termsStyles.divider, { backgroundColor: colors.nbBorder }]} />;
+}
+
+/**
+ * One accordion row: tap title to expand / collapse the body.
+ * @param {object} props
+ */
+function TermsAccordionRow({ section, openSectionTitle, onSectionPress, colors, showDivider }) {
+  const isExpanded = openSectionTitle === section.title;
+  const chevronName = chevronNameForExpandedState(isExpanded);
+
+  const handlePress = () => {
+    onSectionPress(section.title);
+  };
+
   return (
     <>
-      {showDivider ? <GroupDivider colors={colors} /> : null}
+      {showDivider ? <TermsRowDivider colors={colors} /> : null}
       <Pressable
-        onPress={() => onToggle(section.title)}
-        style={styles.row}
+        onPress={handlePress}
+        style={termsStyles.row}
         accessibilityRole="button"
-        accessibilityState={{ expanded: open }}
+        accessibilityState={{ expanded: isExpanded }}
       >
-        <Text style={[styles.rowTitle, { color: colors.nbInk }]}>{section.title}</Text>
-        <Ionicons
-          name={open ? 'chevron-down' : 'chevron-forward'}
-          size={20}
-          color={colors.nbMuted}
-        />
+        <Text style={[termsStyles.rowTitle, { color: colors.nbInk }]}>{section.title}</Text>
+        <Ionicons name={chevronName} size={CHEVRON_SIZE} color={colors.nbMuted} />
       </Pressable>
-      {open ? (
-        <Text style={[styles.rowBody, { color: colors.nbMuted }]}>{section.body}</Text>
+      {isExpanded ? (
+        <Text style={[termsStyles.rowBody, { color: colors.nbMuted }]}>{section.body}</Text>
       ) : null}
     </>
+  );
+}
+
+/**
+ * Black PLAIN SUMMARY hero — Design Law terms header block.
+ * @param {object} props
+ */
+function TermsPlainSummaryHero({ colors }) {
+  return (
+    <View style={[termsStyles.summaryBlock, { backgroundColor: colors.nbFill }]}>
+      <Text style={[termsStyles.summaryLabel, { color: colors.nbOnFill }]}>PLAIN SUMMARY</Text>
+      <Text style={[termsStyles.summaryBody, { color: colors.nbOnFill }]}>
+        These terms explain the rules for using Coach Connect. If you use the app, you agree to
+        them.
+      </Text>
+    </View>
+  );
+}
+
+/**
+ * Accordion list inside one NbCard — one open section at a time.
+ * @param {object} props
+ */
+function TermsSectionsCard({ sectionList, openSectionTitle, onSectionPress, colors }) {
+  return (
+    <NbCard style={termsStyles.groupCard}>
+      {sectionList.map((section, index) => (
+        <TermsAccordionRow
+          key={section.title}
+          section={section}
+          openSectionTitle={openSectionTitle}
+          onSectionPress={onSectionPress}
+          colors={colors}
+          showDivider={index > 0}
+        />
+      ))}
+    </NbCard>
   );
 }
 
 // ===== MAIN FUNCTION =====
 
 /**
- * @param {{ onClose?: Function, embedShellBottomNav?: boolean }} props
+ * Terms of Service screen — readable summary with accordion sections.
+ * Flow: 1. theme + padding  2. sections  3. fade in  4. toggle accordion  5. render
+ * @param {object} props
  */
 export default function TermsOfServiceScreen({ onClose, embedShellBottomNav = false }) {
+  // 1. Theme, safe area, and scroll padding so content clears the shell nav.
   const { colors, isDark } = useTheme();
-  const insets = useSafeAreaInsets();
+  const safeAreaInsets = useSafeAreaInsets();
   const shellNavInset = useShellBottomNavInset(SHELL_NAV_INSET_FALLBACK);
-  const scrollBottomPad = embedShellBottomNav
-    ? shellNavInset
-    : Math.max(insets.bottom, MIN_BOTTOM_INSET) + SCROLL_BOTTOM_EXTRA;
+  const scrollBottomPad = scrollBottomPaddingForTerms(
+    embedShellBottomNav,
+    shellNavInset,
+    safeAreaInsets.bottom,
+  );
+
+  // 2. Section list — first section starts open so the screen is not empty accordion chrome.
   const supportEmail = getSupportEmail();
   const contactLine = `Contact: ${supportEmail}`;
-  const sections = termsSections(contactLine);
-  const [openKey, setOpenKey] = useState(sections[0]?.title || null);
+  const sectionList = buildTermsSectionList(contactLine);
+  const firstSectionTitle = sectionList[0]?.title || null;
 
-  const fade = useRef(new Animated.Value(0)).current;
-  const rise = useRef(new Animated.Value(RISE_START)).current;
-  React.useEffect(() => {
+  // Hook order frozen: openSectionTitle → opacityAnimation → riseAnimation → useEffect.
+  const [openSectionTitle, setOpenSectionTitle] = useState(firstSectionTitle);
+  const opacityAnimation = useRef(new Animated.Value(0)).current;
+  const riseAnimation = useRef(new Animated.Value(RISE_START)).current;
+
+  // 3. Fade + rise once on mount so the summary hero settles in.
+  useEffect(() => {
     Animated.parallel([
-      Animated.timing(fade, { toValue: 1, duration: FADE_MS, useNativeDriver: true }),
-      Animated.timing(rise, { toValue: 0, duration: FADE_MS, useNativeDriver: true }),
+      Animated.timing(opacityAnimation, {
+        toValue: 1,
+        duration: FADE_MS,
+        useNativeDriver: true,
+      }),
+      Animated.timing(riseAnimation, {
+        toValue: 0,
+        duration: FADE_MS,
+        useNativeDriver: true,
+      }),
     ]).start();
-  }, [fade, rise]);
+  }, [opacityAnimation, riseAnimation]);
 
-  const toggle = (key) => {
+  // 4. Tap the open row again to close; tap another to open that one.
+  // vocab: LayoutAnimation.configureNext = animate the next layout change (expand/collapse).
+  const handleSectionPress = (sectionTitle) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setOpenKey((previousKey) => (previousKey === key ? null : key));
+    setOpenSectionTitle((previousTitle) => {
+      const tappingOpenRow = previousTitle === sectionTitle;
+      if (tappingOpenRow) return null;
+      return sectionTitle;
+    });
   };
+
+  // 5. Named locals for status bar + entrance transform before JSX.
+  const statusBarStyle = statusBarStyleForTheme(isDark);
+  const headerSubtitle = `Updated ${LAST_UPDATED}`;
+  const entranceMotionStyle = {
+    opacity: opacityAnimation,
+    transform: [{ translateY: riseAnimation }],
+  };
+  const scrollContentStyle = [termsStyles.scrollContent, { paddingBottom: scrollBottomPad }];
 
   return (
     <SafeAreaView
-      style={[styles.container, { backgroundColor: colors.nbBackground }]}
+      style={[termsStyles.container, { backgroundColor: colors.nbBackground }]}
       edges={SHELL_SAFE_AREA_EDGES}
     >
-      <StatusBar
-        barStyle={isDark ? 'light-content' : 'dark-content'}
-        backgroundColor={colors.nbBackground}
-      />
-      <NbPageHeader
-        title="Terms of service"
-        subtitle={`Updated ${LAST_UPDATED}`}
-        onBack={onClose}
-      />
+      <StatusBar barStyle={statusBarStyle} backgroundColor={colors.nbBackground} />
+      <NbPageHeader title="Terms of service" subtitle={headerSubtitle} onBack={onClose} />
 
       <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: scrollBottomPad }]}
+        style={termsStyles.scrollFlex}
+        contentContainerStyle={scrollContentStyle}
         {...FORM_SCROLL_PROPS}
         showsVerticalScrollIndicator
       >
-        <Animated.View style={{ opacity: fade, transform: [{ translateY: rise }] }}>
-          {/* Design Law black PLAIN SUMMARY hero */}
-          <View style={[styles.summaryBlock, { backgroundColor: colors.nbFill }]}>
-            <Text style={[styles.summaryLabel, { color: colors.nbOnFill }]}>PLAIN SUMMARY</Text>
-            <Text style={[styles.summaryBody, { color: colors.nbOnFill }]}>
-              These terms explain the rules for using Coach Connect. If you use the app, you agree
-              to them.
-            </Text>
-          </View>
-
-          <NbCard style={styles.groupCard}>
-            {sections.map((section, index) => (
-              <TermsAccordionRow
-                key={section.title}
-                section={section}
-                openKey={openKey}
-                onToggle={toggle}
-                colors={colors}
-                showDivider={index > 0}
-              />
-            ))}
-          </NbCard>
-
-          <Text style={[styles.legalNote, { color: colors.nbMuted }]}>
+        <Animated.View style={entranceMotionStyle}>
+          <TermsPlainSummaryHero colors={colors} />
+          <TermsSectionsCard
+            sectionList={sectionList}
+            openSectionTitle={openSectionTitle}
+            onSectionPress={handleSectionPress}
+            colors={colors}
+          />
+          <Text style={[termsStyles.legalNote, { color: colors.nbMuted }]}>
             This is a readable summary. Your lawyer should provide the binding legal version for
             your entity and jurisdiction.
           </Text>
@@ -204,8 +321,11 @@ export default function TermsOfServiceScreen({ onClose, embedShellBottomNav = fa
   );
 }
 
-const styles = StyleSheet.create({
+// ===== PLUMBING — skip unless debugging =====
+
+const termsStyles = StyleSheet.create({
   container: { flex: 1 },
+  scrollFlex: { flex: 1 },
   scrollContent: { paddingHorizontal: spacing.md, paddingTop: spacing.md },
   summaryBlock: {
     borderRadius: 12,

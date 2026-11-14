@@ -1,20 +1,24 @@
-// Shares the trainer's Pro subscription with any screen under the provider.
-// Flow: a parent sets the value. Children read it with useContext.
-// Used by: the Pro plan screens.
+// React context token so any screen under ProPlanSetup can read the same subscription object.
+// Flow: parent ProPlanSetup fills the provider value → children call useContext(SubscriptionContext).
+// Used by trainer Pro plan screens and gates that sit inside the provider tree.
 
 import { createContext } from 'react';
 
 // ===== NAMED CONSTANTS =====
 
-// Null until a provider higher in the tree supplies the real subscription.
-const DEFAULT_SUBSCRIPTION_CONTEXT_VALUE = null;
+// vocab: createContext — React’s way to pass a value down without threading props on every level.
+// Until ProPlanSetup mounts and wraps children, nothing has called the provider yet.
+const NO_PROVIDER_VALUE_YET = null;
 
 // ===== HELPER FUNCTIONS =====
+
+// No helpers — this file only exports the context token. Live data always comes from ProPlanSetup.
 
 // ===== MAIN FUNCTION =====
 
 /**
- * React context for the signed-in trainer's subscription.
- * The default is null until a provider supplies the real status.
+ * Context token for the signed-in trainer’s subscription row.
+ * Default is null until a Provider higher in the tree supplies the real status object.
+ * Screens import this and call useContext(SubscriptionContext) — they never invent a default shape here.
  */
-export const SubscriptionContext = createContext(DEFAULT_SUBSCRIPTION_CONTEXT_VALUE);
+export const SubscriptionContext = createContext(NO_PROVIDER_VALUE_YET);

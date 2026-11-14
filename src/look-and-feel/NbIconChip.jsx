@@ -1,51 +1,118 @@
-// Gradient icon chip — small accent only (handoff). Owner icon art sits inside.
-// Flow: LinearGradient square → Image/children centered. Used on dashboard number cards and nav-adjacent chrome.
+// Gradient icon chip — small accent square only (handoff). Owner icon art sits inside.
+// Flow: pick accent color ramp → LinearGradient square frame → Image or children centered.
+// Used by: dashboard number cards, nav-adjacent chrome, empty states, list rows.
+//
+// vocab: accentGradients = rotating palette list when the caller omits custom colors
+// vocab: LinearGradient = expo diagonal fill; chip outline still uses theme nbBorder
+// Manipulate here: DEFAULT_CHIP_SIZE 44 matches min touch; INNER_ICON_SIZE 28 fits owner art
 
 import React from 'react';
-import { Image, StyleSheet, View } from 'react-native';
+import { Image, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { accentGradients, borderRadius, nb } from './colorPalette';
 import { useTheme } from './lightDarkMode';
 
 // ===== NAMED CONSTANTS =====
 
-const DEFAULT_SIZE = 44;
-const ICON_SIZE = 28;
+const DEFAULT_CHIP_SIZE = 44;
+const INNER_ICON_SIZE = 28;
+// Diagonal top-left → bottom-right (Design Law small accent, not a solid purple rim)
+const GRADIENT_START = { x: 0, y: 0 };
+const GRADIENT_END = { x: 1, y: 1 };
+
+// ===== HELPER FUNCTIONS =====
+
+// Prefer caller colors; otherwise cycle the shared accent list by chip index.
+function accentColorRampForChip(customColors, chipIndex) {
+  if (customColors) {
+    return customColors;
+  }
+  const rampIndex = chipIndex % accentGradients.length;
+  return accentGradients[rampIndex];
+}
+
+function buildChipFrameStyle(themeColors, chipSize, callerStyle) {
+  return [
+    styles.chip,
+    {
+      width: chipSize,
+      height: chipSize,
+      borderRadius: borderRadius.nbIconChip,
+      borderWidth: nb.borderWidth,
+      borderColor: themeColors.nbBorder,
+    },
+    callerStyle,
+  ];
+}
+
+function buildInnerIconImageStyle() {
+  return {
+    width: INNER_ICON_SIZE,
+    height: INNER_ICON_SIZE,
+  };
+}
+
+// ===== SMALL UI PIECES =====
+
+// Image wins when `source` is set; otherwise render whatever children the caller passed.
+function ChipInnerGraphic({ imageSource, children }) {
+  if (imageSource) {
+    const imageStyle = buildInnerIconImageStyle();
+    return (
+      <Image
+        source={imageSource}
+        style={imageStyle}
+        resizeMode="contain"
+      />
+    );
+  }
+  return children;
+}
 
 // ===== MAIN FUNCTION =====
 
 /**
- * @param {{ source?: number|object, children?: import('react').ReactNode, colors?: string[], size?: number, style?: object, index?: number }} props
+ * Small gradient accent chip with optional owner PNG or custom children.
+ * @param {{
+ *   source?: number|object,
+ *   children?: import('react').ReactNode,
+ *   colors?: string[],
+ *   size?: number,
+ *   style?: object,
+ *   index?: number,
+ * }} props
  */
-export default function NbIconChip({ source, children, colors, size = DEFAULT_SIZE, style, index = 0 }) {
-  const { colors: theme } = useTheme();
-  const ramp = colors || accentGradients[index % accentGradients.length];
-  // Design Law: chip outline follows theme border (white in dark), never a fixed purple/black-only stroke
+export default function NbIconChip({
+  source,
+  children,
+  colors,
+  size = DEFAULT_CHIP_SIZE,
+  style,
+  index = 0,
+}) {
+  // vocab: useTheme = ThemeProvider hook — nbBorder follows light/dark outline tokens
+  const { colors: themeColors } = useTheme();
+
+  // 1. Gradient list comes from props or cycles accentGradients by index.
+  const gradientColors = accentColorRampForChip(colors, index);
+
+  // 2. Outline follows theme border (white stroke in dark) — never a fixed purple-only rim.
+  const chipFrameStyle = buildChipFrameStyle(themeColors, size, style);
+
+  // 3. Paint the diagonal gradient square, then center the icon / children.
   return (
     <LinearGradient
-      colors={ramp}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-      style={[
-        styles.chip,
-        {
-          width: size,
-          height: size,
-          borderRadius: borderRadius.nbIconChip,
-          borderWidth: nb.borderWidth,
-          borderColor: theme.nbBorder,
-        },
-        style,
-      ]}
+      colors={gradientColors}
+      start={GRADIENT_START}
+      end={GRADIENT_END}
+      style={chipFrameStyle}
     >
-      {source ? (
-        <Image source={source} style={{ width: ICON_SIZE, height: ICON_SIZE }} resizeMode="contain" />
-      ) : (
-        children
-      )}
+      <ChipInnerGraphic imageSource={source}>{children}</ChipInnerGraphic>
     </LinearGradient>
   );
 }
+
+// PLUMBING — skip unless debugging
 
 const styles = StyleSheet.create({
   chip: {

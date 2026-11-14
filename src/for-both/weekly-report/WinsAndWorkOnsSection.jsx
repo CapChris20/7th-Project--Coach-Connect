@@ -1,77 +1,141 @@
-// Design Law pros / cons / focus — solid vs hollow bullets (progress PNG, no color coding).
-// Flow: pickBestTips → HardShadow cards → TipRow for focus. Used under daily breakdown.
-// Used by: WeeklyReportBody after the sleep chart / day list.
+// Pros, cons, and focus coaching cards for the weekly report scroll.
+// Flow: pickBestTips caps each list → HardShadow cards with bullet or TipRow chrome.
+// Used under the daily breakdown in WeeklyReportBody (after sleep chart). Gold body file stays untouched.
 
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import HardShadow from '../../look-and-feel/HardShadow';
 import { borderRadius, nb, spacing } from '../../look-and-feel/colorPalette';
-import { useTheme } from '../weekly-report/reportColorSettings';
+import { useTheme } from './reportColorSettings';
 import { TipRow } from './TipRow';
-import { pickBestTips } from '../weekly-report/pickBestTips';
+import { pickBestTips } from './pickBestTips';
 
 // ===== NAMED CONSTANTS =====
 
-const MAX_TIPS_PER_BLOCK = 5;
-const BULLET = 14;
+// Manipulate here: how many lines fit on Design Law progress PNG cards without crowding
+const MAX_TIPS_PER_CARD = 5;
+const BULLET_DOT_SIZE = 14;
+const PROS_CARD_TITLE = 'Pros and wins';
+const CONS_CARD_TITLE = 'Cons and areas to improve';
+const FOCUS_CARD_TITLE = 'What to focus on';
 
 // ===== HELPER FUNCTIONS =====
 
-function Eyebrow({ children, colors }) {
-  return <Text style={[styles.eyebrow, { color: colors.textMuted }]}>{children}</Text>;
+/** Uppercase muted label above each card (matches other report section eyebrows). */
+function SectionEyebrow({ children, colors }) {
+  const eyebrowColor = colors.textMuted;
+  return <Text style={[styles.eyebrow, { color: eyebrowColor }]}>{children}</Text>;
 }
 
-function BulletCard({ title, items, filled, colors }) {
-  if (!items.length) return null;
+/**
+ * Hollow or filled square dot beside a pro/con sentence.
+ * PNG uses shape (filled vs hollow), not green/red color coding.
+ */
+function TipBulletDot({ colors, useFilledDot }) {
+  const dotBorderColor = colors.border;
+  let dotBackgroundColor = 'transparent';
+  if (useFilledDot) {
+    dotBackgroundColor = colors.fill;
+  }
+
+  return (
+    <View
+      style={[
+        styles.bullet,
+        {
+          borderColor: dotBorderColor,
+          backgroundColor: dotBackgroundColor,
+        },
+      ]}
+    />
+  );
+}
+
+function BulletTipLine({ lineText, useFilledDots, colors }) {
+  const lineTextColor = colors.textPrimary;
+
+  return (
+    <View style={styles.bulletRow}>
+      <TipBulletDot colors={colors} useFilledDot={useFilledDots} />
+      <Text style={[styles.bulletText, { color: lineTextColor }]}>{lineText}</Text>
+    </View>
+  );
+}
+
+/**
+ * Pros or cons list inside HardShadow.
+ * Wins (filled dots) also use the soft fill card background from Design Law.
+ */
+function ProsOrConsCard({ title, tipLines, useFilledDots, colors }) {
+  if (!tipLines.length) return null;
+
+  const cardBorderColor = colors.border;
+  let cardBackgroundColor = colors.surfacePrimary;
+  if (useFilledDots) {
+    cardBackgroundColor = colors.soft;
+  }
+
+  const bulletRows = [];
+  for (let lineIndex = 0; lineIndex < tipLines.length; lineIndex += 1) {
+    bulletRows.push(
+      <BulletTipLine
+        key={`${title}-${lineIndex}`}
+        lineText={tipLines[lineIndex]}
+        useFilledDots={useFilledDots}
+        colors={colors}
+      />,
+    );
+  }
+
   return (
     <View style={styles.block}>
-      <Eyebrow colors={colors}>{title}</Eyebrow>
+      <SectionEyebrow colors={colors}>{title}</SectionEyebrow>
       <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard}>
         <View
           style={[
             styles.card,
-            {
-              borderColor: colors.border,
-              backgroundColor: filled ? colors.soft : colors.surfacePrimary,
-            },
+            { borderColor: cardBorderColor, backgroundColor: cardBackgroundColor },
           ]}
         >
-          {items.map((text, tipIndex) => (
-            <View key={`${title}-${tipIndex}`} style={styles.bulletRow}>
-              <View
-                style={[
-                  styles.bullet,
-                  {
-                    borderColor: colors.border,
-                    backgroundColor: filled ? colors.fill : 'transparent',
-                  },
-                ]}
-              />
-              <Text style={[styles.bulletText, { color: colors.textPrimary }]}>{text}</Text>
-            </View>
-          ))}
+          {bulletRows}
         </View>
       </HardShadow>
     </View>
   );
 }
 
-function FocusCard({ items, colors }) {
-  if (!items.length) return null;
+/** Numbered focus tips — TipRow supplies gradient handoff chips per Design Law. */
+function FocusTipsCard({ tipLines, colors }) {
+  if (!tipLines.length) return null;
+
+  const cardBorderColor = colors.border;
+  const cardBackgroundColor = colors.surfacePrimary;
+
+  const tipRows = [];
+  for (let lineIndex = 0; lineIndex < tipLines.length; lineIndex += 1) {
+    // TipRow expects a 1-based index so slot 0 maps from parent index 1
+    const oneBasedTipIndex = lineIndex + 1;
+    tipRows.push(
+      <TipRow
+        key={`focus-${lineIndex}`}
+        index={oneBasedTipIndex}
+        text={tipLines[lineIndex]}
+      />,
+    );
+  }
+
   return (
     <View style={styles.block}>
-      <Eyebrow colors={colors}>What to focus on</Eyebrow>
+      <SectionEyebrow colors={colors}>{FOCUS_CARD_TITLE}</SectionEyebrow>
       <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard}>
         <View
           style={[
             styles.card,
             styles.focusCard,
-            { borderColor: colors.border, backgroundColor: colors.surfacePrimary },
+            { borderColor: cardBorderColor, backgroundColor: cardBackgroundColor },
           ]}
         >
-          {items.map((text, tipIndex) => (
-            <TipRow key={`focus-${tipIndex}`} index={tipIndex + 1} text={text} />
-          ))}
+          {tipRows}
         </View>
       </HardShadow>
     </View>
@@ -81,21 +145,42 @@ function FocusCard({ items, colors }) {
 // ===== MAIN FUNCTION =====
 
 /**
+ * Stacked pros / cons / focus cards for one week object.
+ * `animationKey` lets the parent remount this block when the week picker changes.
  * @param {{ week: { pros?: Array, cons?: Array, focus?: Array }, animationKey?: string|number }} props
  */
 export function WinsAndWorkOnsSection({ week, animationKey }) {
+  // vocab: useTheme = report tokens for card border / soft fill / text
   const { colors } = useTheme();
-  const pros = pickBestTips(week.pros || [], MAX_TIPS_PER_BLOCK);
-  const cons = pickBestTips(week.cons || [], MAX_TIPS_PER_BLOCK);
-  const focus = pickBestTips(week.focus || [], MAX_TIPS_PER_BLOCK);
 
-  if (!pros.length && !cons.length && !focus.length) return null;
+  // 1. Trim each coaching stream to the card limit and drop filler (pickBestTips scoring).
+  const prosTipLines = pickBestTips(week.pros || [], MAX_TIPS_PER_CARD);
+  const consTipLines = pickBestTips(week.cons || [], MAX_TIPS_PER_CARD);
+  const focusTipLines = pickBestTips(week.focus || [], MAX_TIPS_PER_CARD);
 
+  // 2. Nothing to show — skip the whole section so the scroll does not leave a gap.
+  const hasPros = prosTipLines.length > 0;
+  const hasCons = consTipLines.length > 0;
+  const hasFocus = focusTipLines.length > 0;
+  const hasAnyTips = hasPros || hasCons || hasFocus;
+  if (!hasAnyTips) return null;
+
+  // 3. Three stacked cards; key remounts children when the selected week changes.
   return (
     <View key={animationKey} style={styles.section}>
-      <BulletCard title="Pros and wins" items={pros} filled colors={colors} />
-      <BulletCard title="Cons and areas to improve" items={cons} filled={false} colors={colors} />
-      <FocusCard items={focus} colors={colors} />
+      <ProsOrConsCard
+        title={PROS_CARD_TITLE}
+        tipLines={prosTipLines}
+        useFilledDots
+        colors={colors}
+      />
+      <ProsOrConsCard
+        title={CONS_CARD_TITLE}
+        tipLines={consTipLines}
+        useFilledDots={false}
+        colors={colors}
+      />
+      <FocusTipsCard tipLines={focusTipLines} colors={colors} />
     </View>
   );
 }
@@ -129,10 +214,10 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: spacing.sm + 2,
   },
-  // Manipulate here: solid = wins, hollow = cons (PNG differs without color)
+  // Manipulate here: solid dot = wins, hollow = cons (matches progress PNG)
   bullet: {
-    width: BULLET,
-    height: BULLET,
+    width: BULLET_DOT_SIZE,
+    height: BULLET_DOT_SIZE,
     borderRadius: 3,
     borderWidth: nb.borderWidth,
     marginTop: 3,

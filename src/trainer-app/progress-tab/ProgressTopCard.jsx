@@ -1,10 +1,11 @@
-// One stat tile on the trainer's Progress tab (big number + label + optional footer row).
-// Flow: parent passes icon/metric/label → we resolve theme colors → render a bordered card.
-// Used in the grid of metric cards at the top of the trainer Progress tab.
+// One metric tile on the trainer Progress tab — hero number, caption, optional footer.
+// Flow: pick light/dark palette → build card chrome → icon + metric + label (+ footer).
+// Used by: Progress tab metric grid at the top of TrainerProgressTab / trainer home.
+// Read order: constants → color helpers → pure layout → exported card → PLUMBING styles.
 
 import React from 'react';
 import { View, Text, StyleSheet, Platform } from 'react-native';
-// vocab: Ionicons = icon font from Expo's vector-icons; `name` selects a glyph by string id
+// vocab: Ionicons name = string id for a glyph in Expo's vector icon font
 import { Ionicons } from '@expo/vector-icons';
 import { lightColors } from '../../look-and-feel/colorPalette';
 
@@ -19,112 +20,173 @@ const LIGHT_BACKGROUND = lightColors.white;
 const DARK_BORDER = 'rgba(255,255,255,0.10)';
 const LIGHT_BORDER = 'rgba(10,10,15,0.08)';
 const SHADOW_COLOR = '#000';
+// Manipulate here: darker theme = stronger shadow; light = softer lift
 const DARK_SHADOW_OPACITY = 0.25;
 const LIGHT_SHADOW_OPACITY = 0.08;
+const SHADOW_OFFSET_HEIGHT = 2;
+const SHADOW_RADIUS = 8;
+const ANDROID_ELEVATION = 2;
+// Manipulate here: shared amber accent on every progress metric icon
 const ICON_COLOR = '#FDBA74';
 const ICON_SIZE = 20;
+// Manipulate here: smallest scale when adjustsFontSizeToFit shrinks long values
 const METRIC_MIN_FONT_SCALE = 0.7;
 
 // ===== HELPER FUNCTIONS =====
 
+/**
+ * Light vs dark ink / fill / border for one progress metric tile.
+ * @param {boolean} isDark
+ * @returns {{ text: string, muted: string, background: string, border: string }}
+ */
 function progressCardColors(isDark) {
-  // Theme colors are computed per render rather than pulled from a stylesheet because they flip
-  // with light/dark mode. Manipulate here: muted uses low-alpha black/white instead of a solid
-  // grey so it blends with whatever card background sits behind it.
+  if (isDark) {
+    return {
+      text: DARK_TEXT,
+      muted: DARK_MUTED,
+      background: DARK_BACKGROUND,
+      border: DARK_BORDER,
+    };
+  }
   return {
-    text: isDark ? DARK_TEXT : LIGHT_TEXT,
-    muted: isDark ? DARK_MUTED : LIGHT_MUTED,
-    background: isDark ? DARK_BACKGROUND : LIGHT_BACKGROUND,
-    border: isDark ? DARK_BORDER : LIGHT_BORDER,
+    text: LIGHT_TEXT,
+    muted: LIGHT_MUTED,
+    background: LIGHT_BACKGROUND,
+    border: LIGHT_BORDER,
   };
 }
 
-function cardShadow(isDark) {
-  // iOS and Android have completely different shadow systems, so there's no single set of
-  // props that works on both — Platform.select picks the right one at runtime.
-  // vocab: Platform.select = return the value for the current OS
-  // Manipulate here: shadowOpacity is higher in dark mode because a soft shadow is nearly
-  // invisible against a dark background; `elevation` is Android's single shadow dial.
+/**
+ * Platform shadow props for the tile (iOS soft shadow vs Android elevation).
+ * @param {boolean} isDark
+ * @returns {object}
+ */
+function cardShadowForTheme(isDark) {
+  // vocab: Platform.select = pick one object per OS (iOS shadow* vs Android elevation)
+  let shadowOpacity = LIGHT_SHADOW_OPACITY;
+  if (isDark) {
+    shadowOpacity = DARK_SHADOW_OPACITY;
+  }
+
   return Platform.select({
     ios: {
       shadowColor: SHADOW_COLOR,
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: isDark ? DARK_SHADOW_OPACITY : LIGHT_SHADOW_OPACITY,
-      shadowRadius: 8,
+      shadowOffset: { width: 0, height: SHADOW_OFFSET_HEIGHT },
+      shadowOpacity,
+      shadowRadius: SHADOW_RADIUS,
     },
-    android: { elevation: 2 },
+    android: { elevation: ANDROID_ELEVATION },
   });
 }
 
-// ===== MAIN FUNCTION =====
+/**
+ * Merge base card styles with theme fill, border, shadow, and any caller override.
+ * @param {object} colors
+ * @param {boolean} isDark
+ * @param {object|object[]|undefined} style
+ * @returns {Array}
+ */
+function buildCardChromeStyle(colors, isDark, style) {
+  const cardShadow = cardShadowForTheme(isDark);
+  return [
+    styles.card,
+    {
+      backgroundColor: colors.background,
+      borderColor: colors.border,
+      ...cardShadow,
+    },
+    style,
+  ];
+}
 
 /**
- * @param {{ isDark: boolean, icon: string, metric: string|number, label: string, footer?: import('react').ReactNode, style?: object }} props
- * @returns {import('react').ReactElement}
+ * Pure layout for the metric tile (no hooks).
  */
-export default function ProgressTopCard({
+function ProgressTopCardLayout({
+  colors,
   isDark,
   icon,
   metric,
   label,
-  // `footer` is a rendered node (not a string) so callers can drop in a trend pill, sparkline,
-  // or nothing at all without this component knowing what those look like.
   footer,
-  // `style` lets the parent grid own the layout (widths, gaps) while we own the card's look.
   style,
 }) {
-  const colors = progressCardColors(isDark);
+  // Name decisions before JSX so the return stays a short recipe.
+  const cardChromeStyle = buildCardChromeStyle(colors, isDark, style);
+  const metricTextStyle = [styles.metric, { color: colors.text }];
+  const labelTextStyle = [styles.label, { color: colors.muted }];
+  const showFooter = Boolean(footer);
+
+  let footerBlock = null;
+  if (showFooter) {
+    footerBlock = <View style={styles.footer}>{footer}</View>;
+  }
 
   return (
-    <View
-      style={[
-        styles.card,
-        {
-          backgroundColor: colors.background,
-          borderColor: colors.border,
-          ...cardShadow(isDark),
-        },
-        // Caller style goes LAST so the parent can override anything above it.
-        style,
-      ]}
-    >
+    <View style={cardChromeStyle}>
       <View style={styles.body}>
-        {/* Icon is absolutely positioned (see styles.cornerIcon) so it floats in the top-right
-            and doesn't participate in the bottom-aligned text stack below it.
-            Manipulate here: ICON_COLOR is the shared amber accent for every progress metric. */}
-        <Ionicons name={icon} size={ICON_SIZE} color={ICON_COLOR} style={styles.cornerIcon} />
-        {/* The headline number. numberOfLines={1} + adjustsFontSizeToFit is the pairing that
-            makes a long value ("184.5 lbs") shrink to fit instead of wrapping or being cut off.
-            Manipulate here: METRIC_MIN_FONT_SCALE is the shrink floor — below that the number
-            gets too small to read at a glance. */}
+        <Ionicons
+          name={icon}
+          size={ICON_SIZE}
+          color={ICON_COLOR}
+          style={styles.cornerIcon}
+        />
+        {/* vocab: adjustsFontSizeToFit = shrink the number until it fits one line */}
         <Text
-          style={[styles.metric, { color: colors.text }]}
+          style={metricTextStyle}
           numberOfLines={1}
           adjustsFontSizeToFit
           minimumFontScale={METRIC_MIN_FONT_SCALE}
         >
           {metric}
         </Text>
-        <Text style={[styles.label, { color: colors.muted }]} numberOfLines={1}>
+        <Text style={labelTextStyle} numberOfLines={1}>
           {label}
         </Text>
-        {/* Render the footer row only when one was passed. Returning null (not undefined or false)
-            keeps the empty case from reserving the footer's marginTop. */}
-        {footer ? <View style={styles.footer}>{footer}</View> : null}
+        {footerBlock}
       </View>
     </View>
   );
 }
 
+// ===== MAIN FUNCTION =====
+
+/**
+ * One Progress tab metric tile — icon, hero number, caption, optional footer.
+ * @param {{ isDark: boolean, icon: string, metric: *, label: string, footer?: *, style?: * }} props
+ */
+export default function ProgressTopCard({
+  isDark,
+  icon,
+  metric,
+  label,
+  footer,
+  style,
+}) {
+  // 1. Resolve light/dark palette for text, border, and fill.
+  const colors = progressCardColors(isDark);
+
+  // 2. Hand off to the pure layout shell (safe above any future hooks).
+  return (
+    <ProgressTopCardLayout
+      colors={colors}
+      isDark={isDark}
+      icon={icon}
+      metric={metric}
+      label={label}
+      footer={footer}
+      style={style}
+    />
+  );
+}
+
+// ===== PLUMBING — skip unless debugging =====
+
 const styles = StyleSheet.create({
   card: {
-    // flex: 1 makes sibling cards in a row share width equally.
     flex: 1,
-    // Manipulate here: borderRadius sets the card's roundness; minHeight guarantees every card in
-    // the grid is the same height even when one has no footer.
     borderRadius: 16,
     borderWidth: 1,
-    // overflow hidden clips the rounded corners — without it, the corner icon could poke past them.
     overflow: 'hidden',
     minHeight: 118,
   },
@@ -133,29 +195,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingTop: 12,
     paddingBottom: 14,
-    // flex-end is the key layout choice: content is pushed to the BOTTOM of the card, so cards
-    // with different amounts of content still have their big numbers on the same baseline.
     justifyContent: 'flex-end',
   },
   cornerIcon: {
-    // Absolute removes the icon from the flex flow so it can't push the number down.
-    // Manipulate here: top/right are the inset from the card corner.
     position: 'absolute',
     top: 12,
     right: 12,
     opacity: 0.9,
   },
   metric: {
-    // Manipulate here: this is the "hero number" type. Negative letterSpacing tightens the big
-    // digits (they look gappy at this size), and lineHeight slightly above fontSize stops tall
-    // glyphs from clipping.
     fontSize: 34,
     fontWeight: '900',
     letterSpacing: -1,
     lineHeight: 38,
   },
   label: {
-    // Manipulate here: small, bold, slightly tracked-out caption under the number.
     marginTop: 4,
     fontSize: 12,
     fontWeight: '700',

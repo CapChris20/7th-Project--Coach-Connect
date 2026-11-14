@@ -1,0 +1,5 @@
+src/workouts/create-plan/CreateWorkoutPlanScreen.js
+src/client-app/profile/MyProfileScreen.jsx
+src/client-app/home/TrainingHomeScreen.jsx
+src/workouts/session/WorkoutSessionScreen.jsx
+src/trainer-app/workout-plans/ManualWorkoutPlanBuilderScreen.jsx

@@ -1,6 +1,7 @@
-// The trainer stack. The tab shell is the base. Every other screen is pushed on top of it.
-// Flow: register the main tabs → register each full-screen route with the same slide animation.
-// Used once by the trainer app root, after we know the signed-in user is a trainer.
+// The trainer native stack: tab shell at the bottom, every other screen slides on top.
+// Flow: build overlay Screen list → mount Stack.Navigator with Main as the home route.
+// Used once by the trainer app root after we know the signed-in user is a trainer.
+// Read order: constants → helpers that build Screen nodes → main navigator → PLUMBING.
 
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -27,24 +28,25 @@ import {
 
 // ===== NAMED CONSTANTS =====
 
-// vocab: a native stack uses the phone's own navigator, so the slide is not drawn in JavaScript.
+// vocab: createNativeStackNavigator = phone-native stack (slide is OS-drawn, not JS)
 const Stack = createNativeStackNavigator();
 
+// Manipulate here: card + slide_from_right matches Design Law trainer overlay transitions
 const OVERLAY_PRESENTATION = 'card';
 const OVERLAY_ANIMATION = 'slide_from_right';
 
-const overlayScreenOptions = {
+const OVERLAY_SCREEN_OPTIONS = {
   presentation: OVERLAY_PRESENTATION,
   animation: OVERLAY_ANIMATION,
   headerShown: false,
 };
 
-const navigatorScreenOptions = {
+const NAVIGATOR_SCREEN_OPTIONS = {
   headerShown: false,
   animation: OVERLAY_ANIMATION,
 };
 
-// Full-screen overlays that sit on top of Main. Voice AI and AI chat share one component.
+// Full-screen overlays on top of Main. Voice AI and AI chat share one component.
 const TRAINER_OVERLAY_SCREENS = [
   { routeName: TRAINER_ROUTES.Profile, ScreenComponent: TrainerViewMyMyProfileScreen },
   { routeName: TRAINER_ROUTES.Settings, ScreenComponent: TrainerSettingsScreen },
@@ -68,35 +70,72 @@ const TRAINER_OVERLAY_SCREENS = [
 // ===== HELPER FUNCTIONS =====
 
 /**
- * One overlay Stack.Screen entry with the shared slide options.
- * @param {{ routeName: string, ScreenComponent: Function }} entry
+ * One overlay Stack.Screen with the shared slide options.
+ * @param {{ routeName: string, ScreenComponent: Function }} overlayEntry
  * @returns {import('react').ReactElement}
  */
-function renderOverlayScreen({ routeName, ScreenComponent }) {
+function makeOverlayStackScreen(overlayEntry) {
+  const routeName = overlayEntry.routeName;
+  const ScreenComponent = overlayEntry.ScreenComponent;
   return (
     <Stack.Screen
       key={routeName}
       name={routeName}
       component={ScreenComponent}
-      options={overlayScreenOptions}
+      options={OVERLAY_SCREEN_OPTIONS}
     />
+  );
+}
+
+/**
+ * Turn the overlay table into Stack.Screen elements (no .map in the main recipe).
+ * @param {Array<{ routeName: string, ScreenComponent: Function }>} overlayTable
+ * @returns {import('react').ReactElement[]}
+ */
+function buildOverlayStackScreens(overlayTable) {
+  const screenElements = [];
+  for (let index = 0; index < overlayTable.length; index += 1) {
+    const overlayEntry = overlayTable[index];
+    screenElements.push(makeOverlayStackScreen(overlayEntry));
+  }
+  return screenElements;
+}
+
+/**
+ * Hub tabs Screen — always the bottom route of the trainer stack.
+ * @returns {import('react').ReactElement}
+ */
+function makeMainTabStackScreen() {
+  return (
+    <Stack.Screen name={TRAINER_ROUTES.Main} component={TrainerMainScreen} />
   );
 }
 
 // ===== MAIN FUNCTION =====
 
 /**
- * Voice AI and AI chat share one screen. That screen picks its mode from the route name.
+ * Trainer stack navigator. Main (tabs) is the base; overlays slide on top.
+ * Voice AI and AI chat share one screen; that screen picks mode from the route name.
  * @returns {import('react').ReactElement}
  */
 export default function TrainerScreenList() {
+  // 1. Build every overlay Screen node from the route table.
+  const overlayStackScreens = buildOverlayStackScreens(TRAINER_OVERLAY_SCREENS);
+
+  // 2. Hub tabs stay at the bottom (initialRouteName = Main).
+  const mainTabScreen = makeMainTabStackScreen();
+
+  // 3. Mount the native stack with shared slide animation.
   return (
     <Stack.Navigator
-      screenOptions={navigatorScreenOptions}
+      screenOptions={NAVIGATOR_SCREEN_OPTIONS}
       initialRouteName={TRAINER_ROUTES.Main}
     >
-      <Stack.Screen name={TRAINER_ROUTES.Main} component={TrainerMainScreen} />
-      {TRAINER_OVERLAY_SCREENS.map(renderOverlayScreen)}
+      {mainTabScreen}
+      {overlayStackScreens}
     </Stack.Navigator>
   );
 }
+
+// ===== PLUMBING — skip unless debugging stack registration =====
+// Overlay table + Screen factory live above; nothing heavier needed here.

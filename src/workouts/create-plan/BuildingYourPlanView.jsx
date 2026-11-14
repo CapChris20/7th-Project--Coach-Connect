@@ -15,96 +15,225 @@ import { accentGradients, borderRadius, nb, spacing } from '../../look-and-feel/
 
 // ===== NAMED CONSTANTS =====
 
-const BUILD_LOTTIE = require('../../assets/animations/handoff/diet.json');
+// Manipulate here: Lottie inside the hero card (Design Law handoff diet loop)
+const BUILDING_PLAN_LOTTIE = require('../../assets/animations/handoff/diet.json');
 
-// Manipulate here: checklist copy — 4 steps matching PNG 15
-const CHECKLIST_BASE = [
+// Manipulate here: checklist copy — 4 steps matching PNG 15 (equipment/injury rows get personalized labels)
+const DEFAULT_CHECKLIST_STEPS = [
   { id: 'profile', label: 'Reading your profile' },
   { id: 'exercises', label: 'Choosing exercises for your equipment' },
   { id: 'injuries', label: 'Working around your injuries' },
   { id: 'notes', label: 'Writing notes and nutrition guidance' },
 ];
 
-// vocab: status = done | current | pending — drives filled / dashed / empty circles
-const STATUS_DONE = 'done';
-const STATUS_CURRENT = 'current';
-const STATUS_PENDING = 'pending';
+// vocab: checklist row status — done | current | pending (drives filled / dashed / empty circles)
+const CHECKLIST_STATUS_DONE = 'done';
+const CHECKLIST_STATUS_CURRENT = 'current';
+const CHECKLIST_STATUS_PENDING = 'pending';
+
+// Half-fill on the active step so the bar moves before the step flips to done
+const PROGRESS_HALF_STEP = 0.55;
 
 // ===== HELPER FUNCTIONS =====
 
-function checklistWithEquipment(onboardingData) {
-  const equipment = Array.isArray(onboardingData?.equipmentAccess)
-    ? onboardingData.equipmentAccess.filter(Boolean)
+/**
+ * Short equipment phrase for the “Choosing exercises for …” checklist row.
+ * @param {unknown} equipmentAccess
+ * @returns {string}
+ */
+function equipmentPhraseForChecklist(equipmentAccess) {
+  const equipmentIsArray = Array.isArray(equipmentAccess);
+  const equipmentNames = equipmentIsArray
+    ? equipmentAccess.filter(Boolean)
     : [];
-  const equipmentLabel =
-    equipment.length > 0
-      ? equipment
-          .slice(0, 2)
-          .map((item) => String(item).replace(/_/g, ' '))
-          .join(' and ')
-      : 'your equipment';
 
-  const injuryRaw = String(onboardingData?.injuries || '').trim();
-  const injuryLabel =
-    injuryRaw && !/^none/i.test(injuryRaw)
-      ? `Working around ${injuryRaw}`
-      : 'Working around your injuries';
+  if (equipmentNames.length === 0) {
+    return 'your equipment';
+  }
+
+  // Show at most two names so the row stays one line on phone widths.
+  const firstTwoNames = equipmentNames.slice(0, 2);
+  const spokenNames = firstTwoNames.map((item) => String(item).replace(/_/g, ' '));
+  return spokenNames.join(' and ');
+}
+
+/**
+ * Injury checklist label — personalize when the user typed something other than “none”.
+ * @param {object | null | undefined} onboardingData
+ * @returns {string}
+ */
+function injuryChecklistLabelFromProfile(onboardingData) {
+  const injuriesRaw = String(onboardingData?.injuries || '').trim();
+  const userReportedInjury = Boolean(injuriesRaw) && !/^none/i.test(injuriesRaw);
+
+  if (userReportedInjury) {
+    return `Working around ${injuriesRaw}`;
+  }
+  return 'Working around your injuries';
+}
+
+/**
+ * Build the four checklist rows with equipment + injury personalization.
+ * @param {object | null | undefined} onboardingData
+ * @returns {Array<{ id: string, label: string }>}
+ */
+function buildPersonalizedChecklistSteps(onboardingData) {
+  const equipmentLabel = equipmentPhraseForChecklist(onboardingData?.equipmentAccess);
+  const injuryLabel = injuryChecklistLabelFromProfile(onboardingData);
 
   return [
-    CHECKLIST_BASE[0],
-    { ...CHECKLIST_BASE[1], label: `Choosing exercises for ${equipmentLabel}` },
-    { ...CHECKLIST_BASE[2], label: injuryLabel },
-    CHECKLIST_BASE[3],
+    DEFAULT_CHECKLIST_STEPS[0],
+    {
+      ...DEFAULT_CHECKLIST_STEPS[1],
+      label: `Choosing exercises for ${equipmentLabel}`,
+    },
+    { ...DEFAULT_CHECKLIST_STEPS[2], label: injuryLabel },
+    DEFAULT_CHECKLIST_STEPS[3],
   ];
 }
 
 /**
- * Map rotating message index → which checklist step is current (0–3).
- * Progress bar fills as steps complete.
+ * Map rotating status-message index → which checklist step is current (0 … stepCount-1).
+ * @param {number} messageIndex
+ * @param {number} stepCount
+ * @returns {number}
  */
-function stepStateFromMessageIndex(messageIndex, stepCount) {
-  // vocab: messageIndex advances while Claude generates — reuse as progress proxy
-  const capped = Math.max(0, Number(messageIndex) || 0);
-  const currentStep = Math.min(stepCount - 1, Math.floor(capped % (stepCount + 1)));
-  return currentStep;
+function activeChecklistIndexFromMessage(messageIndex, stepCount) {
+  // vocab: messageIndex — CreateWorkoutPlanScreen rotates status copy while Claude works; reuse as progress proxy
+  const safeIndex = Math.max(0, Number(messageIndex) || 0);
+  const rawStep = Math.floor(safeIndex % (stepCount + 1));
+  return Math.min(stepCount - 1, rawStep);
 }
 
-function ChecklistDot({ status, colors }) {
-  if (status === STATUS_DONE) {
+/**
+ * done / current / pending for one checklist row relative to the active index.
+ * @param {number} rowIndex
+ * @param {number} activeIndex
+ * @returns {string}
+ */
+function checklistStatusForRowIndex(rowIndex, activeIndex) {
+  if (rowIndex < activeIndex) {
+    return CHECKLIST_STATUS_DONE;
+  }
+  if (rowIndex === activeIndex) {
+    return CHECKLIST_STATUS_CURRENT;
+  }
+  return CHECKLIST_STATUS_PENDING;
+}
+
+/**
+ * Filled check, dashed ring, or empty ring for one checklist row.
+ */
+function ChecklistStatusDot({ status, colors }) {
+  if (status === CHECKLIST_STATUS_DONE) {
     return (
       <View style={[styles.dotFill, { backgroundColor: colors.nbFill }]}>
         <Ionicons name="checkmark" size={14} color={colors.nbOnFill} />
       </View>
     );
   }
-  if (status === STATUS_CURRENT) {
-    // Dashed ring = in progress (PNG 15)
-    return (
-      <View
-        style={[
-          styles.dotOutline,
-          {
-            borderColor: colors.nbBorder,
-            borderStyle: 'dashed',
-            backgroundColor: 'transparent',
-          },
-        ]}
-      />
-    );
+
+  const isInProgress = status === CHECKLIST_STATUS_CURRENT;
+  let borderStyle = 'solid';
+  if (isInProgress) {
+    borderStyle = 'dashed';
   }
+
   return (
     <View
       style={[
         styles.dotOutline,
-        { borderColor: colors.nbBorder, borderStyle: 'solid', backgroundColor: 'transparent' },
+        {
+          borderColor: colors.nbBorder,
+          borderStyle,
+          backgroundColor: 'transparent',
+        },
       ]}
     />
+  );
+}
+
+/**
+ * Pure layout — no hooks. Parent owns theme, padding, and progress numbers.
+ */
+function BuildingYourPlanScrollBody({
+  colors,
+  topPad,
+  contentContainerStyle,
+  checklistSteps,
+  activeStepIndex,
+  progressRatio,
+  showBackToToday,
+  onBackToToday,
+}) {
+  const titleColor = { color: colors.nbInk };
+  const mutedColor = { color: colors.nbMuted };
+  const lottieCardChrome = {
+    backgroundColor: colors.nbSurface,
+    borderColor: colors.nbBorder,
+  };
+  const checkCardChrome = {
+    backgroundColor: colors.nbSurface,
+    borderColor: colors.nbBorder,
+  };
+  const scrollPadStyle = { paddingTop: topPad };
+
+  return (
+    <ScrollView
+      style={{ flex: 1 }}
+      contentContainerStyle={[styles.scroll, scrollPadStyle, contentContainerStyle]}
+      showsVerticalScrollIndicator={false}
+    >
+      <Text style={[styles.title, titleColor]}>Building your plan</Text>
+
+      <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetCard} style={styles.lottieWrap}>
+        <View style={[styles.lottieCard, lottieCardChrome]}>
+          <LottieView source={BUILDING_PLAN_LOTTIE} autoPlay loop style={styles.lottie} />
+        </View>
+      </HardShadow>
+
+      <Text style={[styles.almost, titleColor]}>Almost there</Text>
+      <Text style={[styles.minute, mutedColor]}>This takes about a minute.</Text>
+
+      <NbProgressBar
+        progress={progressRatio}
+        colors={accentGradients[9]}
+        index={9}
+        style={styles.bar}
+      />
+
+      <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetCard}>
+        <View style={[styles.checkCard, checkCardChrome]}>
+          {checklistSteps.map((step, rowIndex) => {
+            const rowStatus = checklistStatusForRowIndex(rowIndex, activeStepIndex);
+            return (
+              <View key={step.id} style={styles.checkRow}>
+                <ChecklistStatusDot status={rowStatus} colors={colors} />
+                <Text style={[styles.checkLabel, titleColor]}>{step.label}</Text>
+              </View>
+            );
+          })}
+        </View>
+      </HardShadow>
+
+      <Text style={[styles.leaveHint, mutedColor]}>
+        You can leave this screen. Your plan keeps building and shows up in Saved plans.
+      </Text>
+
+      {showBackToToday ? (
+        <NbButton variant="plain" onPress={onBackToToday} style={{ marginTop: 16 }}>
+          Back to Today
+        </NbButton>
+      ) : null}
+    </ScrollView>
   );
 }
 
 // ===== MAIN FUNCTION =====
 
 /**
+ * Wait screen while Claude builds the plan. Props drive personalization + progress proxy.
+ * Flow: 1. theme + safe area  2. personalized checklist  3. progress from messageIndex  4. layout
  * @param {{ onboardingData?: object, messageIndex?: number, onBackToToday?: Function, contentContainerStyle?: object }} props
  */
 export default function BuildingYourPlanView({
@@ -113,76 +242,43 @@ export default function BuildingYourPlanView({
   onBackToToday,
   contentContainerStyle,
 }) {
+  // 1. Theme + shell safe area (status bar / Dynamic Island).
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const steps = useMemo(() => checklistWithEquipment(onboardingData), [onboardingData]);
-  const currentStep = stepStateFromMessageIndex(messageIndex, steps.length);
-  // Progress: fill past steps + half of current
-  const progress = Math.min(1, (currentStep + 0.55) / steps.length);
+
+  // 2. Checklist rows (equipment + injury labels) — memoized so onboardingData swaps don’t rebuild every paint.
+  // vocab: useMemo — only recompute when onboardingData identity changes
+  const checklistSteps = useMemo(
+    () => buildPersonalizedChecklistSteps(onboardingData),
+    [onboardingData],
+  );
+
+  // 3. Active step + progress bar ratio (half-step on the current row).
+  const activeStepIndex = activeChecklistIndexFromMessage(
+    messageIndex,
+    checklistSteps.length,
+  );
+  const progressRatio = Math.min(
+    1,
+    (activeStepIndex + PROGRESS_HALF_STEP) / checklistSteps.length,
+  );
+
   // Shell SafeArea is left/right only — pad under status bar / Dynamic Island
   const topPad = Math.max(insets.top, 0) + spacing.sm;
+  const showBackToToday = typeof onBackToToday === 'function';
 
+  // 4. Hand numbers to the pure layout body.
   return (
-    <ScrollView
-      style={{ flex: 1 }}
-      contentContainerStyle={[styles.scroll, { paddingTop: topPad }, contentContainerStyle]}
-      showsVerticalScrollIndicator={false}
-    >
-      <Text style={[styles.title, { color: colors.nbInk }]}>Building your plan</Text>
-
-      <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetCard} style={styles.lottieWrap}>
-        <View
-          style={[
-            styles.lottieCard,
-            { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder },
-          ]}
-        >
-          <LottieView source={BUILD_LOTTIE} autoPlay loop style={styles.lottie} />
-        </View>
-      </HardShadow>
-
-      <Text style={[styles.almost, { color: colors.nbInk }]}>Almost there</Text>
-      <Text style={[styles.minute, { color: colors.nbMuted }]}>This takes about a minute.</Text>
-
-      {/* Accent gradient fill only — track stays soft/surface */}
-      <NbProgressBar
-        progress={progress}
-        colors={accentGradients[9]}
-        index={9}
-        style={styles.bar}
-      />
-
-      <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetCard}>
-        <View
-          style={[
-            styles.checkCard,
-            { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder },
-          ]}
-        >
-          {steps.map((step, index) => {
-            let status = STATUS_PENDING;
-            if (index < currentStep) status = STATUS_DONE;
-            else if (index === currentStep) status = STATUS_CURRENT;
-            return (
-              <View key={step.id} style={styles.checkRow}>
-                <ChecklistDot status={status} colors={colors} />
-                <Text style={[styles.checkLabel, { color: colors.nbInk }]}>{step.label}</Text>
-              </View>
-            );
-          })}
-        </View>
-      </HardShadow>
-
-      <Text style={[styles.leaveHint, { color: colors.nbMuted }]}>
-        You can leave this screen. Your plan keeps building and shows up in Saved plans.
-      </Text>
-
-      {typeof onBackToToday === 'function' ? (
-        <NbButton variant="plain" onPress={onBackToToday} style={{ marginTop: 16 }}>
-          Back to Today
-        </NbButton>
-      ) : null}
-    </ScrollView>
+    <BuildingYourPlanScrollBody
+      colors={colors}
+      topPad={topPad}
+      contentContainerStyle={contentContainerStyle}
+      checklistSteps={checklistSteps}
+      activeStepIndex={activeStepIndex}
+      progressRatio={progressRatio}
+      showBackToToday={showBackToToday}
+      onBackToToday={onBackToToday}
+    />
   );
 }
 

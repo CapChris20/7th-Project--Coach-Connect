@@ -112,6 +112,8 @@ import {
   logCoachTurnBundle,
   logCoachError,
 } from '../reply-display/developerChatLog';
+import { stripUndefinedForFirestore as stripUndefinedDeep } from '../../helpers/cleanDataBeforeSaving';
+// vocab: stripUndefinedDeep = Firestore rejects `undefined` fields — strip before save
 
 // ===== NAMED CONSTANTS =====
 
@@ -135,57 +137,126 @@ const ACTION_GRAD = AI_COACH_UI.gradient.ctaWarm;
 const COMPOSER_SEND_GRAD = AI_COACH_UI.gradient.composerSend;
 const COMPOSER_SEND_GRAD_LIGHT = AI_COACH_UI.gradient.composerSendLight;
 
-import { stripUndefinedForFirestore as stripUndefinedDeep } from '../../helpers/cleanDataBeforeSaving';
-// vocab: stripUndefinedDeep = Firestore rejects `undefined` fields — strip before save
+// Design Law coach chrome — swap these palettes with useTheme().isDark.
+const DARK = {
+  bg: darkColors.nbBackground,
+  cardBg: darkColors.nbSurface,
+  cardBorder: darkColors.nbBorder,
+  textPrimary: darkColors.nbInk,
+  textSecondary: darkColors.nbMuted,
+  textMuted: darkColors.nbMuted,
+  inputBg: darkColors.nbSurface,
+  inputBorder: darkColors.nbBorder,
+  divider: darkColors.nbBorder,
+  chipBg: darkColors.nbSurfaceChip,
+  chipBorder: darkColors.nbBorder,
+  inputBarBg: darkColors.nbBackground,
+  inputBarBorder: darkColors.nbBorder,
+  aiBubbleBg: darkColors.nbSurface,
+  aiBubbleBorder: darkColors.nbBorder,
+  msgReceivedBg: darkColors.nbSurface,
+  msgReceivedBorder: darkColors.nbBorder,
+  msgTimestamp: darkColors.nbMuted,
+  fill: darkColors.nbFill,
+  onFill: darkColors.nbOnFill,
+  shadow: darkColors.nbShadow,
+};
+
+const LIGHT = {
+  bg: lightColors.nbBackground,
+  cardBg: lightColors.nbSurface,
+  cardBorder: lightColors.nbBorder,
+  textPrimary: lightColors.nbInk,
+  textSecondary: lightColors.nbMuted,
+  textMuted: lightColors.nbMuted,
+  inputBg: lightColors.nbSurface,
+  inputBorder: lightColors.nbBorder,
+  divider: lightColors.nbBorder,
+  chipBg: lightColors.nbSurfaceChip,
+  chipBorder: lightColors.nbBorder,
+  inputBarBg: lightColors.nbBackground,
+  inputBarBorder: lightColors.nbBorder,
+  aiBubbleBg: lightColors.nbSurface,
+  aiBubbleBorder: lightColors.nbBorder,
+  msgReceivedBg: lightColors.nbSurface,
+  msgReceivedBorder: lightColors.nbBorder,
+  msgTimestamp: lightColors.nbMuted,
+  fill: lightColors.nbFill,
+  onFill: lightColors.nbOnFill,
+  shadow: lightColors.nbShadow,
+};
+
+function formatCoachMessageTime() {
+  return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function titleCaseFromWords(text) {
+  return String(text || '')
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
+// Manipulate here: accent color per feature-card category (analysis / generation / etc.).
+const FEATURE_COLORS = {
+  analysis: AI_COACH_UI.purple,
+  generation: AI_COACH_UI.pink,
+  optimization: AI_COACH_UI.cyan,
+  goals: AI_COACH_UI.green,
+  tracking: AI_COACH_UI.orange,
+};
+
+// ===== HELPER FUNCTIONS (chat + tools) =====
 
 // Shape one in-memory chat bubble into the flat object we store in Firestore.
 // Why: UI uses `text` / `role: 'ai'`; storage prefers `content` + stripped attachments.
-function serializeChatMessage(m) {
-  if (!m) return null;
+function serializeChatMessage(message) {
+  if (!message) return null;
   const payload = {
     // vocab/symbol: ternary — only allow 'ai' or 'user' (never leave a weird role string)
-    role: m.role === 'ai' ? 'ai' : 'user',
-    content: m.text,
-    time: m.time,
-    source: m.source || null,
+    role: message.role === 'ai' ? 'ai' : 'user',
+    content: message.text,
+    time: message.time,
+    source: message.source || null,
   };
   // Attachments are optional — only persist the fields the picker actually set.
-  if (Array.isArray(m.attachments) && m.attachments.length > 0) {
-    payload.attachments = m.attachments.map((a) =>
+  if (Array.isArray(message.attachments) && message.attachments.length > 0) {
+    payload.attachments = message.attachments.map((attachment) =>
       stripUndefinedDeep({
-        id: a.id,
-        name: a.name,
-        type: a.type,
-        preview: a.preview,
-      })
+        id: attachment.id,
+        name: attachment.name,
+        type: attachment.type,
+        preview: attachment.preview,
+      }),
     );
   }
   // Tool flags: chip still pending (toolCall), already ran (toolConfirmed), or system result bubble.
-  if (m.toolCall) payload.toolCall = m.toolCall;
+  if (message.toolCall) payload.toolCall = message.toolCall;
   // Multi-action replies: the full queue + which of them already ran.
-  if (Array.isArray(m.toolCalls) && m.toolCalls.length) payload.toolCalls = m.toolCalls;
-  if (Array.isArray(m.completedToolCalls) && m.completedToolCalls.length) {
-    payload.completedToolCalls = m.completedToolCalls;
+  if (Array.isArray(message.toolCalls) && message.toolCalls.length) payload.toolCalls = message.toolCalls;
+  if (Array.isArray(message.completedToolCalls) && message.completedToolCalls.length) {
+    payload.completedToolCalls = message.completedToolCalls;
   }
-  if (m.toolConfirmed) payload.toolConfirmed = true;
-  if (m.isToolResult) payload.isToolResult = true;
+  if (message.toolConfirmed) payload.toolConfirmed = true;
+  if (message.isToolResult) payload.isToolResult = true;
   return stripUndefinedDeep(payload);
 }
 
 // Decide which tool (if any) this brand-new coach reply should offer.
 // Order matters: explicit toolCall → fix mis-routed deletes → skip web/info Qs → infer from prose.
 function resolveIncomingCoachTool(coachResponse, userText = '') {
-  const rawReply = coachResponse?.message || '';
-  // vocab/symbol: ?. = optional chaining — if coachResponse is null, don't crash
+  const rawReply = (coachResponse == null ? undefined : coachResponse.message) || '';
+  // vocab: if coachResponse is missing we treat message/tool fields as empty — do not crash
   const user = String(userText || '').trim();
   // Prefer the structured toolCall from the API; fall back to JSON hidden in the reply text.
-  const rawTool = coachResponse?.toolCall || readActionsFromReply(rawReply)[0] || null;
+  const rawTool = (coachResponse == null ? undefined : coachResponse.toolCall) || readActionsFromReply(rawReply)[0] || null;
   // Delete requests sometimes arrive as the wrong tool name — coerce then re-validate.
   const coerced = coerceMisroutedDeleteTool(rawTool, user, rawReply, normalizeToolCall);
   if (coerced && isValidCoachToolProposal(coerced, user)) return coerced;
 
   // Web answers and pure "what is X?" questions should NOT open a Confirm Action chip.
-  if (coachResponse?.searchedWeb || isInformationalUserMessage(user)) {
+  if ((coachResponse == null ? undefined : coachResponse.searchedWeb) || isInformationalUserMessage(user)) {
     return null;
   }
 
@@ -208,18 +279,18 @@ function coachToolCallKey(toolCall) {
 // this, only the first survived and the rest were silently dropped.
 function resolveIncomingCoachTools(coachResponse, userText = '') {
   const user = String(userText || '').trim();
-  const rawReply = coachResponse?.message || '';
+  const rawReply = (coachResponse == null ? undefined : coachResponse.message) || '';
   // Web answers are research — never attach Confirm chips (even if the model hallucinated a tool).
   if (
-    coachResponse?.searchedWeb === true ||
-    coachResponse?.route === 'web-search' ||
-    coachResponse?.route === 'web-search-failed'
+    (coachResponse == null ? undefined : coachResponse.searchedWeb) === true ||
+    (coachResponse == null ? undefined : coachResponse.route) === 'web-search' ||
+    (coachResponse == null ? undefined : coachResponse.route) === 'web-search-failed'
   ) {
     return [];
   }
-  const rawTools = Array.isArray(coachResponse?.toolCalls) && coachResponse.toolCalls.length
+  const rawTools = Array.isArray((coachResponse == null ? undefined : coachResponse.toolCalls)) && coachResponse.toolCalls.length
     ? coachResponse.toolCalls
-    : [coachResponse?.toolCall || readActionsFromReply(rawReply)[0] || null];
+    : [(coachResponse == null ? undefined : coachResponse.toolCall) || readActionsFromReply(rawReply)[0] || null];
   const resolved = [];
   const seen = new Set();
   for (const rawTool of rawTools) {
@@ -235,29 +306,64 @@ function resolveIncomingCoachTools(coachResponse, userText = '') {
   return single ? [single] : [];
 }
 
+/**
+ * Walk a multi-action toolCalls list and return the first one that is still open
+ * (not in completedToolCalls) and passes the safety gate.
+ * @param {Array} toolCalls
+ * @param {Set<string>} completedKeys
+ * @param {string} userMessage
+ * @returns {object|null}
+ */
+function firstOpenGuardedToolCall(toolCalls, completedKeys, userMessage) {
+  for (const candidate of toolCalls) {
+    const alreadyDone = completedKeys.has(coachToolCallKey(candidate));
+    if (alreadyDone) continue;
+    const guarded = guardCoachToolProposal(normalizeToolCall(candidate));
+    if (!guarded) continue;
+    if (!isValidCoachToolProposal(guarded, userMessage)) continue;
+    return guarded;
+  }
+  return null;
+}
+
+/** Single stored toolCall → guarded proposal, or null when invalid. */
+function guardedToolCallOrNull(rawToolCall, userMessage) {
+  const guarded = guardCoachToolProposal(normalizeToolCall(rawToolCall));
+  if (!guarded) return null;
+  if (!isValidCoachToolProposal(guarded, userMessage)) return null;
+  return guarded;
+}
+
+/** Older prose-only bubbles: infer a tool from the AI text, then gate it. */
+function inferredToolCallOrNull(messageText, userMessage) {
+  const inferred = inferToolCallFromCoachMessage(messageText, userMessage);
+  if (!inferred) return null;
+  if (!isValidCoachToolProposal(inferred, userMessage)) return null;
+  return inferred;
+}
+
 // For an already-rendered AI bubble: return a safe toolCall to show the chip, or null.
 // Skips confirmed / result bubbles so we never re-offer an action that already ran.
 function resolveMessageToolCall(message, userMessage = '') {
   if (!message || message.toolConfirmed || message.isToolResult) return null;
+
   // Multi-action reply: offer the first action that has not run yet, so the
   // chips appear one at a time until every action is confirmed.
-  if (Array.isArray(message.toolCalls) && message.toolCalls.length) {
-    const completed = new Set(Array.isArray(message.completedToolCalls) ? message.completedToolCalls : []);
-    for (const candidate of message.toolCalls) {
-      if (completed.has(coachToolCallKey(candidate))) continue;
-      const guarded = guardCoachToolProposal(normalizeToolCall(candidate));
-      if (guarded && isValidCoachToolProposal(guarded, userMessage)) return guarded;
-    }
-    return null;
+  const hasToolCallsList = Array.isArray(message.toolCalls) && message.toolCalls.length;
+  if (hasToolCallsList) {
+    const completedKeys = new Set(
+      Array.isArray(message.completedToolCalls) ? message.completedToolCalls : [],
+    );
+    return firstOpenGuardedToolCall(message.toolCalls, completedKeys, userMessage);
   }
+
+  // Re-guard on render in case stored JSON drifted or was hand-edited.
   if (message.toolCall) {
-    // Re-guard on render in case stored JSON drifted or was hand-edited.
-    const guarded = guardCoachToolProposal(normalizeToolCall(message.toolCall));
-    return guarded && isValidCoachToolProposal(guarded, userMessage) ? guarded : null;
+    return guardedToolCallOrNull(message.toolCall, userMessage);
   }
+
   // Older sessions may only have prose — try to infer so the chip still appears.
-  const inferred = inferToolCallFromCoachMessage(message.text, userMessage);
-  return inferred && isValidCoachToolProposal(inferred, userMessage) ? inferred : null;
+  return inferredToolCallOrNull(message.text, userMessage);
 }
 
 // Should this AI message show the Confirm Action chip right now?
@@ -266,7 +372,64 @@ function coachActionPromptVisible(message, userMessage = '') {
   return Boolean(resolveMessageToolCall(message, userMessage));
 }
 
+/**
+ * Running "last user text" so each AI bubble knows what question it answered.
+ * Amount-only follow-ups ("90oz") keep the prior intent so Confirm chips still gate.
+ * @returns {{ lastUserText: string, priorUserIntent: string }}
+ */
+function advanceUserIntentForMessage(message, lastUserText, priorUserIntent) {
+  if (message.role !== 'user') {
+    return { lastUserText, priorUserIntent };
+  }
+  const userText = message.text || '';
+  const followUp = metricFollowUpFromUserText(userText);
+  if (followUp && priorUserIntent) {
+    return {
+      lastUserText: `${priorUserIntent}\n${userText}`.trim(),
+      priorUserIntent,
+    };
+  }
+  let nextPriorIntent = priorUserIntent;
+  if (userExplicitlyRequestsAction(userText)) {
+    nextPriorIntent = userText;
+  }
+  return { lastUserText: userText, priorUserIntent: nextPriorIntent };
+}
+
+/** Prefix of the thread up to this row — shaped for shouldShowWebSearchUI. */
+function threadSliceForWebSearchUi(messages, endIndexInclusive) {
+  return messages.slice(0, endIndexInclusive + 1).map((row) => ({
+    role: row.role === 'ai' ? 'assistant' : 'user',
+    text: row.text || '',
+    content: row.text || '',
+  }));
+}
+
 // ===== HELPER FUNCTIONS =====
+
+// PLUMBING — nullish property readers (same short-circuit as former ?.)
+function readProp(objectValue, propName) {
+  if (objectValue == null) return undefined;
+  return objectValue[propName];
+}
+
+function readProp2(objectValue, propName1, propName2) {
+  if (objectValue == null) return undefined;
+  const midValue = objectValue[propName1];
+  if (midValue == null) return undefined;
+  return midValue[propName2];
+}
+
+function readProp3(objectValue, propName1, propName2, propName3) {
+  if (objectValue == null) return undefined;
+  const midValue = objectValue[propName1];
+  if (midValue == null) return undefined;
+  const deeperValue = midValue[propName2];
+  if (deeperValue == null) return undefined;
+  return deeperValue[propName3];
+}
+
+
 
 /** Join non-empty detail bits with a middle dot (chip subtitle: "320 cal · breakfast"). */
 function joinSummaryParts(...parts) {
@@ -377,7 +540,7 @@ function summarizeAdjustMacros(params) {
 function summarizeUpdateWorkout(params) {
   const replacementName =
     typeof params.newExercise === 'object'
-      ? params.newExercise?.name
+      ? (params.newExercise == null ? undefined : params.newExercise.name)
       : params.newExercise || params.exerciseName;
   return {
     icon: 'swap-horizontal-outline',
@@ -510,7 +673,7 @@ function ToolActionChip({ message, onPress, onSkip, palette, userMessage = '' })
   const toolCall = resolveMessageToolCall(message, userMessage);
   if (!toolCall) return null;
   const summary = formatToolActionSummary(toolCall);
-  const handlePress = () => onPress?.(toolCall, message.id);
+  const handlePress = () => (onPress == null ? undefined : onPress(toolCall, message.id));
 
   return (
     <View
@@ -551,7 +714,7 @@ function ToolActionChip({ message, onPress, onSkip, palette, userMessage = '' })
       </Text>
       <View style={{ flexDirection: 'row', gap: 10 }}>
         <View style={{ flex: 1 }}>
-          <NbButton variant="ghost" sm onPress={() => onSkip?.(message.id)}>
+          <NbButton variant="ghost" sm onPress={() => (onSkip == null ? undefined : onSkip(message.id))}>
             Skip
           </NbButton>
         </View>
@@ -564,81 +727,8 @@ function ToolActionChip({ message, onPress, onSkip, palette, userMessage = '' })
     </View>
   );
 }
-// ─── Theme tokens (aligned with design-system.md) ────────────────────────────
-// Two palettes swapped by useTheme().isDark. Bubble / composer / chip colors live here.
-// Manipulate here: any rgba / hex below to retune dark or light coach chrome.
-// Neobrutalist color palettes using design system tokens
-const DARK = {
-  bg: darkColors.nbBackground,
-  cardBg: darkColors.nbSurface,
-  cardBorder: darkColors.nbBorder,
-  textPrimary: darkColors.nbInk,
-  textSecondary: darkColors.nbMuted,
-  textMuted: darkColors.nbMuted,
-  inputBg: darkColors.nbSurface,
-  inputBorder: darkColors.nbBorder,
-  divider: darkColors.nbBorder,
-  chipBg: darkColors.nbSurfaceChip,
-  chipBorder: darkColors.nbBorder,
-  inputBarBg: darkColors.nbBackground,
-  inputBarBorder: darkColors.nbBorder,
-  aiBubbleBg: darkColors.nbSurface,
-  aiBubbleBorder: darkColors.nbBorder,
-  msgReceivedBg: darkColors.nbSurface,
-  msgReceivedBorder: darkColors.nbBorder,
-  msgTimestamp: darkColors.nbMuted,
-  fill: darkColors.nbFill,
-  onFill: darkColors.nbOnFill,
-  shadow: darkColors.nbShadow,
-};
-
-const LIGHT = {
-  bg: lightColors.nbBackground,
-  cardBg: lightColors.nbSurface,
-  cardBorder: lightColors.nbBorder,
-  textPrimary: lightColors.nbInk,
-  textSecondary: lightColors.nbMuted,
-  textMuted: lightColors.nbMuted,
-  inputBg: lightColors.nbSurface,
-  inputBorder: lightColors.nbBorder,
-  divider: lightColors.nbBorder,
-  chipBg: lightColors.nbSurfaceChip,
-  chipBorder: lightColors.nbBorder,
-  inputBarBg: lightColors.nbBackground,
-  inputBarBorder: lightColors.nbBorder,
-  aiBubbleBg: lightColors.nbSurface,
-  aiBubbleBorder: lightColors.nbBorder,
-  msgReceivedBg: lightColors.nbSurface,
-  msgReceivedBorder: lightColors.nbBorder,
-  msgTimestamp: lightColors.nbMuted,
-  fill: lightColors.nbFill,
-  onFill: lightColors.nbOnFill,
-  shadow: lightColors.nbShadow,
-};
-
-// Short clock string stamped on every bubble (e.g. "3:42 PM").
-const now = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-// "fat_loss" / "hypertrophy" → "Fat Loss" / "Hypertrophy" for feature-card labels.
-function toTitleCase(s) {
-  return String(s || '')
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(' ');
-}
-
 // ─── Feature explanation cards (inline in AI messages) ────────────────────────
 // Shown while waiting / as decorative "what I'm doing" panels tied to the user's topic.
-// Manipulate here: accent color per card category (analysis / generation / etc.).
-const FEATURE_COLORS = {
-  analysis: AI_COACH_UI.purple,
-  generation: AI_COACH_UI.pink,
-  optimization: AI_COACH_UI.cyan,
-  goals: AI_COACH_UI.green,
-  tracking: AI_COACH_UI.orange,
-};
-
 // Keyword sniff on the user message → which card pack to build.
 // Order matters: form checks before nutrition (a "form check" shouldn't become nutrition cards).
 // Manipulate here: add keywords to steer more messages into a given flow.
@@ -657,20 +747,20 @@ const inferFlowType = (userText) => {
 const buildFeatureCards = ({ userText, userProfile }) => {
   const flow = inferFlowType(userText);
   // Profile field names vary across older accounts — try several aliases.
-  const goalRaw = userProfile?.primaryGoal || userProfile?.goal || userProfile?.fitnessGoal || '';
+  const goalRaw = (userProfile == null ? undefined : userProfile.primaryGoal) || (userProfile == null ? undefined : userProfile.goal) || (userProfile == null ? undefined : userProfile.fitnessGoal) || '';
   const goal =
     String(goalRaw || '')
       .replace(/_/g, ' ')
       .trim() || 'Fitness';
 
   const days =
-    userProfile?.availableDays ||
-    userProfile?.daysPerWeek ||
-    userProfile?.trainingDays ||
-    userProfile?.workoutsPerWeek ||
+    (userProfile == null ? undefined : userProfile.availableDays) ||
+    (userProfile == null ? undefined : userProfile.daysPerWeek) ||
+    (userProfile == null ? undefined : userProfile.trainingDays) ||
+    (userProfile == null ? undefined : userProfile.workoutsPerWeek) ||
     null;
 
-  const level = userProfile?.experienceLevel || userProfile?.fitnessLevel || userProfile?.level || null;
+  const level = (userProfile == null ? undefined : userProfile.experienceLevel) || (userProfile == null ? undefined : userProfile.fitnessLevel) || (userProfile == null ? undefined : userProfile.level) || null;
 
   // Defensive: some callers may pass a non-array; keep FeatureCard happy.
   const ensureArray = (arr) => (Array.isArray(arr) ? arr : []);
@@ -723,7 +813,7 @@ const buildFeatureCards = ({ userText, userProfile }) => {
         title: 'ANALYZING YOUR DATA',
         color: FEATURE_COLORS.tracking,
         items: [
-          { label: 'Goal', value: toTitleCase(goal) },
+          { label: 'Goal', value: titleCaseFromWords(goal) },
           { label: 'Activity', value: days ? `${days} days/week` : 'Estimating from training' },
           { label: 'Baseline', value: 'Checking intake consistency' },
         ],
@@ -801,8 +891,8 @@ const buildFeatureCards = ({ userText, userProfile }) => {
       title: 'ANALYZING YOUR PROFILE',
       color: FEATURE_COLORS.analysis,
       items: [
-        { label: 'Fitness level', value: level ? toTitleCase(level) : 'Estimating from your inputs' },
-        { label: 'Goal', value: toTitleCase(goal) },
+        { label: 'Fitness level', value: level ? titleCaseFromWords(level) : 'Estimating from your inputs' },
+        { label: 'Goal', value: titleCaseFromWords(goal) },
         { label: 'Available days', value: days ? `${days}/week` : 'Optimizing around your schedule' },
       ],
     },
@@ -1045,8 +1135,8 @@ function CoachMessageCopyButton({
   // Copy → haptic → show success chrome → schedule revert.
   const handleCopy = async () => {
     // announce:false — inline checkmark for success; presentNotice for Design Law failure sheets.
-    const ok = await copyCoachText(text, { announce: false, presentNotice });
-    if (!ok) return;
+    const copySucceeded = await copyCoachText(text, { announce: false, presentNotice });
+    if (!copySucceeded) return;
     try {
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (_) {
@@ -1145,7 +1235,7 @@ function MessageBubble({
   const sent = message.role === 'user';
   const atts = Array.isArray(message.attachments) ? message.attachments : [];
   // Prefer an image preview; otherwise show a file chip (PDF / doc picker result).
-  const firstImage = atts.find((a) => a?.preview);
+  const firstImage = atts.find((a) => (a == null ? undefined : a.preview));
   const firstFile = !firstImage ? atts.find((a) => a && !a.preview) : null;
   const rawText = String(message.text || '');
   // AI replies may still contain hidden tool JSON — strip before painting the bubble.
@@ -1155,7 +1245,7 @@ function MessageBubble({
   // Pick body: image-only → file chip → selectable user text → rich CoachReplyText.
   const renderContent = () => {
     // Attachment-only message with a preview URI → show the photo.
-    if (!hasText && firstImage?.preview) {
+    if (!hasText && (firstImage == null ? undefined : firstImage.preview)) {
       // Manipulate here: inline image thumbnail size in the bubble.
       return <Image source={{ uri: firstImage.preview }} style={{ width: 220, height: 160 }} resizeMode="cover" />;
     }
@@ -1276,7 +1366,7 @@ function MessageBubble({
         </View>
       ) : null}
       {/* Design Law coach body — flat text on canvas (not a pink gradient bubble) */}
-      {attachmentOnly && firstImage?.preview ? (
+      {attachmentOnly && (firstImage == null ? undefined : firstImage.preview) ? (
         <View
           style={{
             marginBottom: spacing.sm,
@@ -1324,7 +1414,11 @@ function MessageBubble({
             // Reuse Needs-your-OK path when a tool call exists; otherwise no-op (draft is display-only)
             if (coachActionPromptVisible(message, lastUserText)) {
               const toolCall = resolveMessageToolCall(message, lastUserText);
-              if (toolCall) onToolPress?.(toolCall, message.id);
+              if (toolCall) {
+              if (onToolPress) {
+                onToolPress(toolCall, message.id);
+              }
+            }
             }
           }}
           onEdit={() => {}}
@@ -1361,7 +1455,7 @@ function MessageBubble({
             {message.followUpPrompts.slice(0, 2).map((prompt, index, arr) => (
               <Pressable
                 key={`fu-${index}`}
-                onPress={() => onFollowUpPress?.(prompt)}
+                onPress={() => (onFollowUpPress == null ? undefined : onFollowUpPress(prompt))}
                 style={{
                   paddingHorizontal: 14,
                   paddingVertical: 14,
@@ -1404,7 +1498,7 @@ async function runAfterSuccessfulCoachTool({ toolName, refreshCoachContext, onNu
     toolName === 'adjustMacroTargets' ||
     toolName === 'deleteLog';
   if (touchesNutrition) {
-    await onNutritionDataChanged?.();
+    await (onNutritionDataChanged == null ? undefined : onNutritionDataChanged());
   }
 }
 
@@ -1433,7 +1527,7 @@ function messagesAfterToolRun(prevMessages, {
         !message.toolConfirmed &&
         (message.toolCall || resolveMessageToolCall(message)),
     );
-    targetId = match?.id || null;
+    targetId = (match == null ? undefined : match.id) || null;
   }
 
   // Mark the source bubble confirmed (and stash the merged toolCall if it was inferred-only).
@@ -1466,7 +1560,7 @@ function messagesAfterToolRun(prevMessages, {
     next = [
       ...marked,
       {
-        id: `msg_tool_ok_${Date.now()}`,
+        id: `msg_tool_ok_${Date.formatCoachMessageTime()}`,
         role: 'ai',
         text: result.message,
         time: nowFn(),
@@ -1496,7 +1590,7 @@ function persistToolRunMessages({
   // Keep: the confirmed source bubble, optional inline ok bubble, or the failure resultMsg.
   const toPersist = next.filter((message) => {
     if (targetId && message.id === targetId) return true;
-    if (result.success && inline && result.message && message.id?.startsWith('msg_tool_ok_')) return true;
+    if (result.success && inline && result.message && (message.id == null ? undefined : message.id.startsWith('msg_tool_ok_'))) return true;
     if (!result.success && message.id === resultMsg.id) return true;
     return false;
   });
@@ -1506,8 +1600,8 @@ function persistToolRunMessages({
   // Fire-and-forget — a persist failure shouldn't undo the local UI update.
   upsertAiChatMessages(userId, sessionId, toPersist, {
     sessionId,
-    lastUserMessage: lastUser?.text || '',
-    lastAssistantMessage: lastAi?.text || '',
+    lastUserMessage: (lastUser == null ? undefined : lastUser.text) || '',
+    lastAssistantMessage: (lastAi == null ? undefined : lastAi.text) || '',
   }).catch(() => {});
 }
 
@@ -1547,10 +1641,10 @@ async function executeConfirmedCoachTool({
 
   // Pre-build an error bubble; only appended when result.success is false.
   const resultMsg = {
-    id: `msg_tool_${Date.now()}`,
+    id: `msg_tool_${Date.formatCoachMessageTime()}`,
     role: 'ai',
     text: result.message || 'Could not complete that action.',
-    time: now(),
+    time: formatCoachMessageTime(),
     isError: true,
     toolConfirmed: true,
     isToolResult: true,
@@ -1565,7 +1659,7 @@ async function executeConfirmedCoachTool({
       result,
       inline,
       resultMsg,
-      nowFn: now,
+      nowFn: formatCoachMessageTime,
     });
     persistToolRunMessages({
       next,
@@ -1588,7 +1682,9 @@ async function executeConfirmedCoachTool({
     });
   } else {
     // Design Law notice sheet — avoid native Alert for in-app tool failures
-    showNotice?.('Action failed', result.message || 'Could not complete that action.');
+    if (showNotice) {
+      showNotice('Action failed', result.message || 'Could not complete that action.');
+    }
   }
 
   // Step 4: always close the modal + clear pending tool so the chip can reappear if needed.
@@ -1604,9 +1700,9 @@ async function executeConfirmedCoachTool({
  */
 function coachAttachmentGateMessage(atts) {
   // Treat type==='image' OR anything with a preview URI as a photo we can send.
-  const imageAtts = atts.filter((attachment) => attachment?.type === 'image' || attachment?.preview);
+  const imageAtts = atts.filter((attachment) => (attachment == null ? undefined : attachment.type) === 'image' || (attachment == null ? undefined : attachment.preview));
   // PDF/doc picked with zero images → block send with a clear "photos only" alert.
-  const hasFilesOnly = atts.some((attachment) => attachment?.type === 'file') && imageAtts.length === 0;
+  const hasFilesOnly = atts.some((attachment) => (attachment == null ? undefined : attachment.type) === 'file') && imageAtts.length === 0;
   if (hasFilesOnly) {
     return {
       ok: false,
@@ -1634,7 +1730,7 @@ function coachAttachmentGateMessage(atts) {
  * Manipulate here: matchers / user-facing copy for common failure modes.
  */
 function friendlyCoachSendErrorMessage(err) {
-  const raw = String(err?.message || '');
+  const raw = String((err == null ? undefined : err.message) || '');
   // Firestore rejected undefined / bad field types during persist.
   if (raw.includes('invalid data') || raw.includes('Unsupported field value')) {
     return 'Could not save this message. Please try again.';
@@ -1680,11 +1776,11 @@ async function finishCoachSendSuccess({
 
   // +1 on Date.now so the AI id never collides with the optimistic user msg_ id.
   const aiMsg = {
-    id: `msg_${Date.now() + 1}`,
+    id: `msg_${Date.formatCoachMessageTime() + 1}`,
     role: 'ai',
     text: prepared.displayText,
     followUpPrompts: prepared.followUpPrompts,
-    time: now(),
+    time: formatCoachMessageTime(),
     source: coachResponse.source,
     toolCall: resolvedTool,
     toolCalls: resolvedTools,
@@ -1739,7 +1835,7 @@ async function finishCoachSendSuccess({
   if (__DEV__ && tapConfirmProse && !resolvedTool) {
     logger.debug('AI Coach: Tap Confirm prose with no resolved toolCall', {
       user: text.trim().slice(0, 120),
-      serverTools: Array.isArray(coachResponse?.toolCalls) ? coachResponse.toolCalls.length : 0,
+      serverTools: Array.isArray((coachResponse == null ? undefined : coachResponse.toolCalls)) ? coachResponse.toolCalls.length : 0,
     });
   }
 
@@ -1770,8 +1866,8 @@ function maybeAutoRunOrOpenCoachTool({
   // Branch B: open ConfirmActionPopup immediately (user still has to tap Confirm inside).
   // fromServer: true when the API (or recovery) attached any tool — not only singular toolCall.
   const fromServer = !!(
-    coachResponse?.toolCall ||
-    (Array.isArray(coachResponse?.toolCalls) && coachResponse.toolCalls.length)
+    (coachResponse == null ? undefined : coachResponse.toolCall) ||
+    (Array.isArray((coachResponse == null ? undefined : coachResponse.toolCalls)) && coachResponse.toolCalls.length)
   );
   if (
     resolvedTool &&
@@ -1798,6 +1894,8 @@ function maybeAutoRunOrOpenCoachTool({
  * Persist first message if needed, call the coach API, then finish the success path.
  * Errors bubble up to sendMessage's catch (which paints a friendly error bubble).
  */
+// PLUMBING — skip unless debugging (send pipeline orchestration)
+
 async function runCoachSendPipeline({
   text,
   updatedMessages,
@@ -1937,7 +2035,7 @@ export default function CoachConversationScreen({
     Array.isArray(initialAttachments) ? initialAttachments : []
   );
   // Stable id for this conversation — generated once if parent didn't pass one.
-  const [sessionId] = useState(initialSessionId || `aiChat_${Date.now()}`);
+  const [sessionId] = useState(initialSessionId || `aiChat_${Date.formatCoachMessageTime()}`);
   // false until Firestore restore finishes (or immediately true for brand-new chats).
   const [loadedSession, setLoadedSession] = useState(!initialSessionId);
   // Progressive "feature explanation" cards while waiting (cleared when reply arrives).
@@ -1968,7 +2066,7 @@ export default function CoachConversationScreen({
   const featureTimers = useRef([]);
 
   // Trainer id for notifyTrainer / bookSession tools (prop wins, else profile fields).
-  const trainerId = trainerIdProp || userProfile?.trainerId || userProfile?.trainer?.id || null;
+  const trainerId = trainerIdProp || (userProfile == null ? undefined : userProfile.trainerId) || readProp2(userProfile, 'trainer', 'id') || null;
   // openWorkoutPlan always targets the user's active program.
   const planId = 'current';
 
@@ -1996,11 +2094,11 @@ export default function CoachConversationScreen({
       return undefined;
     }
     setCoachWaitPhase('thinking');
-    const tContext = setTimeout(() => setCoachWaitPhase('context'), WAIT_PHASE_CONTEXT_MS);
-    const tDraft = setTimeout(() => setCoachWaitPhase('drafting'), WAIT_PHASE_DRAFTING_MS);
+    const contextWaitTimerId = setTimeout(() => setCoachWaitPhase('context'), WAIT_PHASE_CONTEXT_MS);
+    const draftingWaitTimerId = setTimeout(() => setCoachWaitPhase('drafting'), WAIT_PHASE_DRAFTING_MS);
     return () => {
-      clearTimeout(tContext);
-      clearTimeout(tDraft);
+      clearTimeout(contextWaitTimerId);
+      clearTimeout(draftingWaitTimerId);
     };
   }, [typing, searchingWeb]);
 
@@ -2013,23 +2111,23 @@ export default function CoachConversationScreen({
   // Title rules: no AI yet → "New Chat"; after first AI reply → creative title once.
   const persistSession = async (msgs, extraMeta = {}) => {
     if (!db || !userId) return;
-    const lastUser = [...msgs].reverse().find((m) => m.role === 'user');
-    const lastAi = [...msgs].reverse().find((m) => m.role === 'ai');
+    const lastUser = [...msgs].reverse().find((message) => message.role === 'user');
+    const lastAi = [...msgs].reverse().find((message) => message.role === 'ai');
     const hasAiReply = Boolean(lastAi);
 
     let title = extraMeta.title || sessionTitleRef.current;
 
     // Before any AI reply, keep a placeholder (or keep a good title if we already have one).
     if (!hasAiReply) {
-      title = title && !needsCreativeTitle(title, lastUser?.text) ? title : 'New Chat';
-    } else if (!title || title === 'New Chat' || needsCreativeTitle(title, lastUser?.text)) {
+      title = title && !needsCreativeTitle(title, (lastUser == null ? undefined : lastUser.text)) ? title : 'New Chat';
+    } else if (!title || title === 'New Chat' || needsCreativeTitle(title, (lastUser == null ? undefined : lastUser.text))) {
       // Build a short title from the conversation (local heuristic, then optional model title).
       const convo = msgs
-        .filter((m) => m.role === 'user' || m.role === 'ai')
-        .map((m) => ({ role: m.role, content: m.text }));
+        .filter((message) => message.role === 'user' || message.role === 'ai')
+        .map((message) => ({ role: message.role, content: message.text }));
       const fallback =
-        buildCreativeTitleLocal(lastUser?.text, lastAi?.text) ||
-        deriveChatTitle(lastUser?.text || '');
+        buildCreativeTitleLocal((lastUser == null ? undefined : lastUser.text), (lastAi == null ? undefined : lastAi.text)) ||
+        deriveChatTitle((lastUser == null ? undefined : lastUser.text) || '');
       title = await makeChatTitle(convo, fallback, userId);
       sessionTitleRef.current = title;
     }
@@ -2039,8 +2137,8 @@ export default function CoachConversationScreen({
       meta: {
         sessionId,
         title,
-        lastUserMessage: lastUser?.text || '',
-        lastAssistantMessage: lastAi?.text || '',
+        lastUserMessage: (lastUser == null ? undefined : lastUser.text) || '',
+        lastAssistantMessage: (lastAi == null ? undefined : lastAi.text) || '',
         ...extraMeta,
       },
     });
@@ -2049,7 +2147,7 @@ export default function CoachConversationScreen({
   // Slight delay so FlatList finishes laying out new rows before scrollToEnd.
   // Manipulate here: 80ms scroll delay — raise if the list jumps mid-layout.
   const scrollToBottom = () => {
-    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 80);
+    setTimeout(() => (flatListRef.current == null ? undefined : flatListRef.current.scrollToEnd({ animated: true })), 80);
   };
 
   // Reload week/logs context (after tool writes, or manually). skipRecalibration=true is lighter.
@@ -2063,8 +2161,8 @@ export default function CoachConversationScreen({
     const ctx = await loadCoachContextEnhanced(userId, userProfile || {}, { skipRecalibration });
     setCoachContext(ctx);
     // vocab/symbol: ?? = use 0 only when _dataQuality is null/undefined
-    setContextQuality(ctx?._dataQuality ?? 0);
-    setRecalibrationNote(ctx?._recalibrationNote || null);
+    setContextQuality((ctx == null ? undefined : ctx._dataQuality) ?? 0);
+    setRecalibrationNote((ctx == null ? undefined : ctx._recalibrationNote) || null);
     setContextLoading(false);
   };
 
@@ -2155,10 +2253,10 @@ export default function CoachConversationScreen({
       setMessages((prev) => [
         ...prev,
         {
-          id: `msg_tool_err_${Date.now()}`,
+          id: `msg_tool_err_${Date.formatCoachMessageTime()}`,
           role: 'ai',
-          text: error?.message || 'Something went wrong running that action.',
-          time: now(),
+          text: (error == null ? undefined : error.message) || 'Something went wrong running that action.',
+          time: formatCoachMessageTime(),
           isError: true,
         },
       ]);
@@ -2182,8 +2280,8 @@ export default function CoachConversationScreen({
       const ctx = await loadCoachContextEnhanced(userId, userProfile || {});
       if (!cancelled) {
         setCoachContext(ctx);
-        setContextQuality(ctx?._dataQuality ?? 0);
-        setRecalibrationNote(ctx?._recalibrationNote || null);
+        setContextQuality((ctx == null ? undefined : ctx._dataQuality) ?? 0);
+        setRecalibrationNote((ctx == null ? undefined : ctx._recalibrationNote) || null);
         setContextLoading(false);
       }
     })();
@@ -2208,22 +2306,26 @@ export default function CoachConversationScreen({
           loadAiChatSessionMeta(userId, initialSessionId),
         ]);
         // Keep a good stored title so persistSession won't regenerate it.
-        if (meta?.title && !needsCreativeTitle(meta.title, meta.lastUserMessage)) {
+        if ((meta == null ? undefined : meta.title) && !needsCreativeTitle(meta.title, meta.lastUserMessage)) {
           sessionTitleRef.current = meta.title;
         }
         // Rehydrate AI bubbles: strip hidden tool JSON, re-guard any stored toolCall.
         const restored = restoreChatMessagesFromSaved(saved)
-          .map((m) => {
-            if (m.role !== 'ai') return m;
-            const parsedTool = m.toolCall || readActionsFromReply(m.text)[0] || null;
+          .map((message) => {
+            if (message.role !== 'ai') return message;
+            const parsedTool = message.toolCall || readActionsFromReply(message.text)[0] || null;
             return {
-              ...m,
-              text: stripCoachToolJsonFromReply(m.text) || m.text,
+              ...message,
+              text: stripCoachToolJsonFromReply(message.text) || message.text,
               toolCall: parsedTool ? guardCoachToolProposal(normalizeToolCall(parsedTool)) : null,
             };
           })
           // Drop empty rows (no text and no attachments) — leftover junk from old saves.
-          .filter((m) => m.text.trim().length > 0 || (Array.isArray(m.attachments) && m.attachments.length > 0));
+          .filter(
+            (message) =>
+              message.text.trim().length > 0 ||
+              (Array.isArray(message.attachments) && message.attachments.length > 0),
+          );
 
         if (!cancelled) {
           setMessages(restored);
@@ -2263,10 +2365,10 @@ export default function CoachConversationScreen({
 
     // Optimistic user bubble — appears immediately while the API is in flight.
     const userMsg = {
-      id: `msg_${Date.now()}`,
+      id: `msg_${Date.formatCoachMessageTime()}`,
       role: 'user',
       text: text.trim(),
-      time: now(),
+      time: formatCoachMessageTime(),
       attachments: atts.length > 0 ? [...atts] : undefined,
     };
 
@@ -2285,9 +2387,9 @@ export default function CoachConversationScreen({
     // Stagger card reveals: 1st quick, 2nd mid-wait, 3rd at FEATURE_CARDS_REVEAL_MS.
     // Manipulate here: 120 / 950 / FEATURE_CARDS_REVEAL_MS timing of the progressive cards.
     featureTimers.current = [
-      setTimeout(() => setActiveFeatureCards(plannedCards?.slice?.(0, 1) || []), 120),
-      setTimeout(() => setActiveFeatureCards(plannedCards?.slice?.(0, 2) || []), 950),
-      setTimeout(() => setActiveFeatureCards(plannedCards?.slice?.(0, 3) || []), FEATURE_CARDS_REVEAL_MS),
+      setTimeout(() => setActiveFeatureCards(((plannedCards == null ? undefined : plannedCards.slice) == null ? undefined : (plannedCards == null ? undefined : plannedCards.slice)(0, 1)) || []), 120),
+      setTimeout(() => setActiveFeatureCards(((plannedCards == null ? undefined : plannedCards.slice) == null ? undefined : (plannedCards == null ? undefined : plannedCards.slice)(0, 2)) || []), 950),
+      setTimeout(() => setActiveFeatureCards(((plannedCards == null ? undefined : plannedCards.slice) == null ? undefined : (plannedCards == null ? undefined : plannedCards.slice)(0, 3)) || []), FEATURE_CARDS_REVEAL_MS),
     ];
     scrollToBottom();
 
@@ -2327,10 +2429,10 @@ export default function CoachConversationScreen({
       setMessages((prev) => [
         ...prev,
         {
-          id: `msg_err_${Date.now()}`,
+          id: `msg_err_${Date.formatCoachMessageTime()}`,
           role: 'ai',
           text: friendly,
-          time: now(),
+          time: formatCoachMessageTime(),
           featureCards: plannedCards,
           isError: true,
         },
@@ -2401,29 +2503,31 @@ export default function CoachConversationScreen({
 
   // Past-chats delete: open Design Law sheet → wipe Firestore → blank session if it was open.
   const handleDeleteSession = (session) => {
-    const sid = session?.sessionId || session?.id;
+    const sid = (session == null ? undefined : session.sessionId) || (session == null ? undefined : session.id);
     if (!db || !userId || !sid) return;
     setDeleteSheetSession(session);
   };
 
   const confirmDeleteSession = async (session) => {
-    const sid = session?.sessionId || session?.id;
+    const sid = (session == null ? undefined : session.sessionId) || (session == null ? undefined : session.id);
     if (!db || !userId || !sid) return;
     try {
       await deleteAiChatSession(userId, sid);
       if (sid === sessionId && onNewChat) onNewChat();
     } catch (err) {
-      logger?.error?.('deleteAiChatSession failed', err);
+      ((logger == null ? undefined : logger.error) == null ? undefined : (logger == null ? undefined : logger.error)('deleteAiChatSession failed', err));
     }
   };
 
   // Switch to another past session (parent owns navigation / remount with new sessionId).
   const handleSessionPress = (session) => {
-    const sid = session?.sessionId || session?.id;
+    const sid = (session == null ? undefined : session.sessionId) || (session == null ? undefined : session.id);
     // Ignore taps on the already-active session.
     if (!sid || sid === sessionId) return;
     setHistoryOverlayOpen(false);
-    onSessionSwitch?.(session);
+    if (onSessionSwitch) {
+      onSessionSwitch(session);
+    }
   };
 
   // "New chat" from sidebar/overlay — prefer onNewChat; fall back to onBack.
@@ -2433,14 +2537,19 @@ export default function CoachConversationScreen({
       onNewChat();
       return;
     }
-    onBack?.();
+    if (onBack) {
+      onBack();
+    }
   };
 
   // Suggestion chips keyed off empty thread / hypertrophy / fat-loss / default.
   // Manipulate here: pill copy lists — these are the quick-start prompts users tap.
   const buildPills = () => {
-    const historyText = messages.map((m) => (m.role === 'user' ? m.text : '')).join(' | ').toLowerCase();
-    const goal = String(userProfile?.primaryGoal || userProfile?.goal || '').toLowerCase();
+    const historyText = messages
+      .map((message) => (message.role === 'user' ? message.text : ''))
+      .join(' | ')
+      .toLowerCase();
+    const goal = String((userProfile == null ? undefined : userProfile.primaryGoal) || (userProfile == null ? undefined : userProfile.goal) || '').toLowerCase();
     const hasMessages = messages.length > 0;
 
     // Empty thread → generic starter topics.
@@ -2487,32 +2596,21 @@ export default function CoachConversationScreen({
   const messagesWithContext = useMemo(() => {
     let lastUserText = '';
     let priorUserIntent = '';
-    return messages.map((m, index) => {
-      // Running "last user text" so each AI bubble knows what question it answered.
-      // Amount-only follow-ups ("90oz") keep the prior intent so Confirm chips still gate.
-      if (m.role === 'user') {
-        const text = m.text || '';
-        const followUp = metricFollowUpFromUserText(text);
-        if (followUp && priorUserIntent) {
-          lastUserText = `${priorUserIntent}\n${text}`.trim();
-        } else {
-          lastUserText = text;
-          if (userExplicitlyRequestsAction(text)) priorUserIntent = text;
-        }
-      }
-      // Prefix of the thread up to this row — shaped for shouldShowWebSearchUI.
-      const threadMessages = messages.slice(0, index + 1).map((row) => ({
-        role: row.role === 'ai' ? 'assistant' : 'user',
-        text: row.text || '',
-        content: row.text || '',
-      }));
+    return messages.map((message, index) => {
+      const nextIntent = advanceUserIntentForMessage(message, lastUserText, priorUserIntent);
+      lastUserText = nextIntent.lastUserText;
+      priorUserIntent = nextIntent.priorUserIntent;
+      const threadMessages = threadSliceForWebSearchUi(messages, index);
+      const isLastAssistant =
+        message.role === 'ai' &&
+        index === messages.length - 1 &&
+        !typing &&
+        !toolExecuting;
       return {
-        ...m,
+        ...message,
         lastUserText,
         threadMessages,
-        // Only the newest AI message (while idle) may show follow-up chips.
-        isLastAssistant:
-          m.role === 'ai' && index === messages.length - 1 && !typing && !toolExecuting,
+        isLastAssistant,
       };
     });
   }, [messages, typing, toolExecuting]);
@@ -2638,7 +2736,7 @@ export default function CoachConversationScreen({
             ref={flatListRef}
             data={messagesWithContext}
             accessibilityLabel="Coach conversation messages"
-            keyExtractor={(m) => m.id}
+            keyExtractor={(message) => message.id}
             // Manipulate here: initialNumToRender / windowSize if long chats feel janky.
             initialNumToRender={20}
             maxToRenderPerBatch={10}
@@ -3077,8 +3175,8 @@ export default function CoachConversationScreen({
       <NbNoticeSheet
         visible={!!notice}
         onClose={() => setNotice(null)}
-        title={notice?.title || ''}
-        message={notice?.message}
+        title={(notice == null ? undefined : notice.title) || ''}
+        message={(notice == null ? undefined : notice.message)}
         confirmLabel="OK"
       />
       </View>

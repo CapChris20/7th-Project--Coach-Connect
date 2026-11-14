@@ -1,7 +1,8 @@
-// Narrows the trainer's raw CRM rows down to clients who are actually linked to them right now.
-// Flow: drop archived/inactive rows → batch-read those users/{id} docs → keep only ones whose
-// trainerId points back at this trainer → resolve a real display name → merge + sort alphabetically.
-// Used by: the paged trainee list. users/{id}.trainerId is the source of truth for the link.
+// Narrows the trainer's raw CRM rows down to clients who are actually linked right now.
+// Flow: drop archived/inactive → batch-read users/{id} → keep rows whose trainerId matches
+// → heal placeholder CRM names → merge profile fields → sort A–Z by display name.
+// Used by the paged trainee list. users/{id}.trainerId is the source of truth for the link.
+// Read order: constants → small helpers → main recipe → PLUMBING (Firestore batches / heal write).
 
 import {
   collection,
@@ -26,132 +27,78 @@ const STATUS_ACTIVE_DEFAULT = 'active';
 const STATUS_INACTIVE = 'inactive';
 const STATUS_REMOVED = 'removed';
 const STATUS_DELETED = 'deleted';
-// Firestore's `in` operator accepts at most 10 values per query — an API limit, not a tuning knob.
+// Manipulate here: Firestore `in` queries accept at most ten ids — API cap, not app tuning.
 const FIRESTORE_IN_QUERY_MAX = 10;
 
 // ===== HELPER FUNCTIONS =====
 
-/**
- * A row counts as inactive if it's archived or its status says so.
- * Missing status defaults to active: early CRM rows were written without the field.
- * @param {object} crmRow
- * @returns {boolean}
- */
-function isCrmRowInactive(crmRow) {
-  if (!crmRow || crmRow.archived === true) return true;
+function crmRowIsInactive(crmRow) {
+  if (!crmRow) {
+    return true;
+  }
+  if (crmRow.archived === true) {
+    return true;
+  }
+
   const statusText = String(crmRow.status || STATUS_ACTIVE_DEFAULT).toLowerCase();
-  return statusText === STATUS_INACTIVE || statusText === STATUS_REMOVED || statusText === STATUS_DELETED;
+  if (statusText === STATUS_INACTIVE) {
+    return true;
+  }
+  if (statusText === STATUS_REMOVED) {
+    return true;
+  }
+  if (statusText === STATUS_DELETED) {
+    return true;
+  }
+  return false;
 }
 
-/**
- * The authoritative link test. Compared as Strings because trainerId has been written as both
- * a string and (rarely) a number across app versions.
- * @param {object} userData
- * @param {string} trainerUid
- * @returns {boolean}
- */
-function isUserLinkedToTrainer(userData, trainerUid) {
-  if (!userData || !trainerUid) return false;
-  const linkedTrainerId = userData.trainerId;
-  if (linkedTrainerId == null || linkedTrainerId === '') return false;
-  return String(linkedTrainerId) === String(trainerUid);
-}
-
-/**
- * Bulk-fetch user docs by id, ten at a time, so this stays a handful of queries.
- * @param {string[]} userIds
- * @returns {Promise<Map<string, object>>}
- */
-async function fetchUsersByIds(userIds) {
-  const userMap = new Map();
-  if (!db || !userIds.length) return userMap;
-
-  for (let startIndex = 0; startIndex < userIds.length; startIndex += FIRESTORE_IN_QUERY_MAX) {
-    const idChunk = userIds.slice(startIndex, startIndex + FIRESTORE_IN_QUERY_MAX);
-    try {
-      const usersRef = collection(db, USERS_COLLECTION);
-      // vocab: documentId() = filter on the doc's own ID rather than a field inside it.
-      const userIdQuery = query(usersRef, where(documentId(), 'in', idChunk));
-      const userSnapshot = await getDocs(userIdQuery);
-      userSnapshot.forEach((userDoc) => {
-        userMap.set(userDoc.id, userDoc.data() || {});
-      });
-    } catch (error) {
-      /* skip chunk — one failing batch still lets the other batches populate the map */
+function pickActiveCrmRowsWithIds(rawRows) {
+  const activeRows = [];
+  for (const crmRow of rawRows) {
+    if (!crmRow?.id) {
+      continue;
     }
+    if (crmRowIsInactive(crmRow)) {
+      continue;
+    }
+    activeRows.push(crmRow);
   }
-  return userMap;
+  return activeRows;
 }
 
-/**
- * If the CRM row still says a placeholder like "Client" but the user doc has a real name, backfill it.
- * @param {object} crmRow
- * @param {string} trainerUid
- * @param {string} resolvedName
- */
-async function healGenericCrmName(crmRow, trainerUid, resolvedName) {
-  const crmName = String(crmRow.name || '').trim();
-  const hasRealName = Boolean(resolvedName) && !isGenericClientDisplayName(resolvedName);
-  const crmNameIsPlaceholder = isGenericClientDisplayName(crmName);
-  if (!hasRealName || !crmNameIsPlaceholder) return;
-
-  try {
-    // vocab: { merge: true } = update only these fields, leave the rest of the doc alone.
-    // vocab: serverTimestamp() = Firestore stamps the time on write, so a wrong phone clock cannot skew it.
-    await setDoc(
-      doc(db, TRAINER_CLIENTS_COLLECTION, trainerUid, CLIENTS_SUBCOLLECTION, crmRow.id),
-      { name: resolvedName, updatedAt: serverTimestamp() },
-      { merge: true },
-    );
-  } catch (error) {
-    /* ignore heal failures — the roster still shows the resolved name this load */
+function userProfileLinksToTrainer(userData, trainerUid) {
+  if (!userData || !trainerUid) {
+    return false;
   }
-}
 
-/**
- * Skip one malformed client so it cannot empty the whole roster.
- * @param {object} crmRow
- * @param {object} userData
- * @param {string} trainerUid
- * @returns {Promise<object|null>}
- */
-async function tryLinkedProfileFromRow(crmRow, userData, trainerUid) {
-  try {
-    return await linkedProfileFromRow(crmRow, userData, trainerUid);
-  } catch (error) {
-    return null;
+  const linkedTrainerId = userData.trainerId;
+  if (linkedTrainerId == null || linkedTrainerId === '') {
+    return false;
   }
+
+  // Compared as strings — trainerId has been written as string or number across app versions.
+  const linkedTrainerIdText = String(linkedTrainerId);
+  const trainerUidText = String(trainerUid);
+  return linkedTrainerIdText === trainerUidText;
 }
 
-/**
- * One candidate row: skip if unlinked, heal a placeholder name, then merge CRM + live profile.
- * @param {object} crmRow
- * @param {object} userData
- * @param {string} trainerUid
- * @returns {Promise<object|null>}
- */
-async function linkedProfileFromRow(crmRow, userData, trainerUid) {
-  if (!userData || !isUserLinkedToTrainer(userData, trainerUid)) return null;
-
-  const resolvedName = resolveTrainerClientDisplayName(crmRow, userData);
-  const photoURL = userData.photoURL || crmRow.photoURL || null;
-  await healGenericCrmName(crmRow, trainerUid, resolvedName);
-  return combineTraineeProfile(
-    { ...crmRow, name: resolvedName, photoURL },
-    userData,
-  );
-}
-
-/**
- * Alphabetical by name, case-insensitively. localeCompare so accented names sort where a human expects.
- * @param {object} leftClient
- * @param {object} rightClient
- * @returns {number}
- */
-function compareClientNames(leftClient, rightClient) {
+function compareTraineeNamesForSort(leftClient, rightClient) {
   const leftName = String(leftClient.name || '').toLowerCase();
   const rightName = String(rightClient.name || '').toLowerCase();
   return leftName.localeCompare(rightName);
+}
+
+async function collectLinkedProfilesFromCrmRows(activeCrmRows, userDataById, trainerUid) {
+  const linkedProfiles = [];
+  for (const crmRow of activeCrmRows) {
+    const userData = userDataById.get(crmRow.id);
+    const profile = await buildLinkedProfileFromCrmRow(crmRow, userData, trainerUid);
+    if (profile) {
+      linkedProfiles.push(profile);
+    }
+  }
+  return linkedProfiles;
 }
 
 // ===== MAIN FUNCTION =====
@@ -163,17 +110,110 @@ function compareClientNames(leftClient, rightClient) {
  * @returns {Promise<object[]>}
  */
 export async function loadMyLinkedTrainees(trainerUid, rawRows) {
-  if (!trainerUid || !db || !Array.isArray(rawRows)) return [];
-
-  const candidates = rawRows.filter((crmRow) => crmRow?.id && !isCrmRowInactive(crmRow));
-  const userMap = await fetchUsersByIds(candidates.map((crmRow) => crmRow.id));
-
-  const linked = [];
-  for (const crmRow of candidates) {
-    const linkedProfile = await tryLinkedProfileFromRow(crmRow, userMap.get(crmRow.id), trainerUid);
-    if (linkedProfile) linked.push(linkedProfile);
+  // 1. Bail when we cannot talk to Firestore or the trainer id is missing.
+  if (!trainerUid || !db || !Array.isArray(rawRows)) {
+    return [];
   }
 
-  linked.sort(compareClientNames);
-  return linked;
+  // 2. Drop archived / inactive CRM rows but keep rows that still have a client id.
+  const activeCrmRows = pickActiveCrmRowsWithIds(rawRows);
+
+  // 3. Bulk-read users/{id} for every candidate (ten ids per query).
+  const userIdList = activeCrmRows.map((crmRow) => crmRow.id);
+  const userDataById = await fetchUserDocumentsByIdList(userIdList);
+
+  // 4. Merge each linked row into a roster profile; skip rows that fail or are unlinked.
+  const linkedProfiles = await collectLinkedProfilesFromCrmRows(
+    activeCrmRows,
+    userDataById,
+    trainerUid,
+  );
+
+  // 5. Sort alphabetically so the trainer list matches human expectations.
+  linkedProfiles.sort(compareTraineeNamesForSort);
+  return linkedProfiles;
+}
+
+// ===== PLUMBING — skip unless debugging =====
+// Firestore batch reads and the CRM name-heal write. Main recipe stays above.
+
+async function fetchUserDocumentsByIdList(userIds) {
+  const userDataById = new Map();
+  if (!db || userIds.length === 0) {
+    return userDataById;
+  }
+
+  for (let batchStart = 0; batchStart < userIds.length; batchStart += FIRESTORE_IN_QUERY_MAX) {
+    const idBatch = userIds.slice(batchStart, batchStart + FIRESTORE_IN_QUERY_MAX);
+    await mergeUserBatchIntoMap(idBatch, userDataById);
+  }
+  return userDataById;
+}
+
+async function mergeUserBatchIntoMap(idBatch, userDataById) {
+  try {
+    const usersRef = collection(db, USERS_COLLECTION);
+    // vocab: documentId() = filter on doc id, not a field inside the document.
+    // vocab: `in` = Firestore "id is one of these" — max 10 values per query.
+    const userIdQuery = query(usersRef, where(documentId(), 'in', idBatch));
+    const userSnapshot = await getDocs(userIdQuery);
+    userSnapshot.forEach((userDoc) => {
+      userDataById.set(userDoc.id, userDoc.data() || {});
+    });
+  } catch (batchError) {
+    // Skip this batch — other batches can still populate the map.
+  }
+}
+
+async function buildLinkedProfileFromCrmRow(crmRow, userData, trainerUid) {
+  try {
+    return await mergeLinkedTraineeProfile(crmRow, userData, trainerUid);
+  } catch (rowError) {
+    return null;
+  }
+}
+
+async function mergeLinkedTraineeProfile(crmRow, userData, trainerUid) {
+  if (!userData) {
+    return null;
+  }
+  if (!userProfileLinksToTrainer(userData, trainerUid)) {
+    return null;
+  }
+
+  const displayName = resolveTrainerClientDisplayName(crmRow, userData);
+  // vocab/symbol: ?? not used here — || is intentional for empty-string photo URLs.
+  const photoURL = userData.photoURL || crmRow.photoURL || null;
+
+  await backfillGenericCrmNameWhenNeeded(crmRow, trainerUid, displayName);
+
+  const crmRowWithResolvedName = { ...crmRow, name: displayName, photoURL };
+  return combineTraineeProfile(crmRowWithResolvedName, userData);
+}
+
+async function backfillGenericCrmNameWhenNeeded(crmRow, trainerUid, resolvedName) {
+  const crmName = String(crmRow.name || '').trim();
+  const resolvedNameIsReal = Boolean(resolvedName) && !isGenericClientDisplayName(resolvedName);
+  const crmNameIsPlaceholder = isGenericClientDisplayName(crmName);
+  if (!resolvedNameIsReal || !crmNameIsPlaceholder) {
+    return;
+  }
+
+  try {
+    const crmDocPath = doc(
+      db,
+      TRAINER_CLIENTS_COLLECTION,
+      trainerUid,
+      CLIENTS_SUBCOLLECTION,
+      crmRow.id,
+    );
+    // vocab: merge true = patch only these fields; serverTimestamp = server-owned clock.
+    await setDoc(
+      crmDocPath,
+      { name: resolvedName, updatedAt: serverTimestamp() },
+      { merge: true },
+    );
+  } catch (healError) {
+    // Roster still shows resolvedName for this load even when the write fails.
+  }
 }

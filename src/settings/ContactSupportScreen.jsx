@@ -1,6 +1,9 @@
-// Design Law Contact support: topic chips, SUBJECT / MESSAGE fields, Send + Email us.
+// Design Law Contact support: topic chips, subject + message, Send + Email us.
 // Flow: pick topic → POST /api/support/contact with Firebase ID token → mailto fallback.
 // Used from Settings. API path and firestore delivery flag stay as the server returns them.
+//
+// vocab: getIdToken(true) = force-refresh Firebase Auth JWT for the Bearer header
+// vocab: NbNoticeSheet = Design Law sheet instead of Alert.alert
 
 import React, { useRef, useState } from 'react';
 import {
@@ -33,12 +36,14 @@ import { nb, spacing } from '../look-and-feel/colorPalette';
 
 const SHELL_NAV_INSET = 24;
 const EXTRA_SCROLL_PAD = 16;
+// Manipulate here: entrance fade/rise — match other settings forms
 const FADE_MS = 350;
 const RISE_FROM = 10;
 const SUPPORT_CONTACT_PATH = '/api/support/contact';
 const MAIL_SUBJECT_DEFAULT = 'Coach Connect support';
 const DELIVERY_FIRESTORE = 'firestore';
 
+// Manipulate here: topic chips + per-topic hint copy
 const TOPIC_CHIPS = [
   'Signing in',
   'Using the app',
@@ -57,21 +62,40 @@ const TOPIC_HINTS = {
 
 // ===== HELPER FUNCTIONS =====
 
-function openSupportMail() {
-  openSupportMailto({ subject: MAIL_SUBJECT_DEFAULT });
+/**
+ * Coerce any value to a trimmed string (empty when missing).
+ * @param {*} value
+ * @returns {string}
+ */
+function asTrimmedString(value) {
+  return asTrimmedString(value);
 }
 
-function supportScrollBottomPad(embedShellBottomNav, shellNavInset, bottomInset) {
+
+/**
+ * Bottom padding for the form scroll — shell nav or safe-area + gutter.
+ * @param {boolean} embedShellBottomNav
+ * @param {number} shellNavInset
+ * @param {number} bottomInset
+ * @returns {number}
+ */
+function scrollPaddingForSupportForm(embedShellBottomNav, shellNavInset, bottomInset) {
   if (embedShellBottomNav) return shellNavInset;
   return Math.max(bottomInset, EXTRA_SCROLL_PAD) + SHELL_NAV_INSET;
 }
 
-async function postSupportContact({ subjectText, messageText }) {
+/**
+ * POST subject/message with the signed-in user's ID token.
+ * @param {{ subjectText: string, messageText: string }} fields
+ * @returns {Promise<object>}
+ */
+async function postSupportContactToApi({ subjectText, messageText }) {
   const auth = getAuth();
   const user = auth.currentUser;
   if (!user) {
     throw new Error('not_signed_in');
   }
+
   const token = await user.getIdToken(true);
   const base = getApiBase();
   const response = await fetch(`${base}${SUPPORT_CONTACT_PATH}`, {
@@ -82,19 +106,22 @@ async function postSupportContact({ subjectText, messageText }) {
     },
     body: JSON.stringify({ subject: subjectText, message: messageText }),
   });
+
   const json = await response.json().catch(() => ({}));
-  if (!response.ok || json?.ok !== true) {
+  const sendFailed = !response.ok || json?.ok !== true;
+  if (sendFailed) {
     throw new Error(json?.error || 'Failed to send message.');
   }
   return json;
 }
 
 /**
- * @param {string} supportEmail
+ * Notice copy after a successful API send (Firestore staging vs fully delivered).
+ * @param {string|null} supportEmail
  * @param {object} json
  * @returns {{ title: string, message: string }}
  */
-function noticeAfterSupportSend(supportEmail, json) {
+function buildNoticeAfterSupportSend(supportEmail, json) {
   if (json?.delivery === DELIVERY_FIRESTORE) {
     return {
       title: 'Almost done',
@@ -107,33 +134,104 @@ function noticeAfterSupportSend(supportEmail, json) {
   };
 }
 
+/**
+ * One topic chip — ink fill when selected, surface when not.
+ */
+function TopicChip({ topicLabel, isSelected, onPickTopic, colors }) {
+  let chipBackgroundColor = colors.nbSurface;
+  if (isSelected) {
+    chipBackgroundColor = colors.nbFill;
+  }
+  let chipTextColor = colors.nbInk;
+  if (isSelected) {
+    chipTextColor = colors.nbOnFill;
+  }
+
+  return (
+    <Pressable
+      onPress={() => onPickTopic(topicLabel)}
+      style={[
+        styles.chip,
+        {
+          borderColor: colors.nbBorder,
+          backgroundColor: chipBackgroundColor,
+          shadowColor: colors.nbShadow,
+        },
+      ]}
+      accessibilityRole="button"
+      accessibilityState={{ selected: isSelected }}
+    >
+      <Text style={[styles.chipText, { color: chipTextColor }]}>{topicLabel}</Text>
+    </Pressable>
+  );
+}
+
+/**
+ * Row of topic chips for the support form.
+ */
+function TopicChipRow({ topic, onPickTopic, colors }) {
+  return (
+    <View style={styles.chipWrap}>
+      {TOPIC_CHIPS.map((topicLabel) => (
+        <TopicChip
+          key={topicLabel}
+          topicLabel={topicLabel}
+          isSelected={topic === topicLabel}
+          onPickTopic={onPickTopic}
+          colors={colors}
+        />
+      ))}
+    </View>
+  );
+}
+
 // ===== MAIN FUNCTION =====
 
+/**
+ * Settings → Contact support form (topic, subject, message).
+ */
 export default function ContactSupportScreen({ onClose, embedShellBottomNav = false }) {
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const shellNavInset = useShellBottomNavInset(SHELL_NAV_INSET);
-  const scrollBottomPad = supportScrollBottomPad(embedShellBottomNav, shellNavInset, insets.bottom);
+  const scrollBottomPad = scrollPaddingForSupportForm(
+    embedShellBottomNav,
+    shellNavInset,
+    insets.bottom,
+  );
   const supportEmail = getSupportEmail();
+
   const [topic, setTopic] = useState(TOPIC_CHIPS[0]);
   const [subject, setSubject] = useState('');
   const [message, setMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  // vocab: notice = NbNoticeSheet payload — Design Law sheet instead of Alert.alert
+  // vocab: notice = NbNoticeSheet payload — title + message for the sheet
   const [notice, setNotice] = useState(null);
 
-  const fade = useRef(new Animated.Value(0)).current;
-  const rise = useRef(new Animated.Value(RISE_FROM)).current;
+  const opacityAnimated = useRef(new Animated.Value(0)).current;
+  const riseAnimated = useRef(new Animated.Value(RISE_FROM)).current;
+
+  // Entrance: fade + slight rise once on mount (same motion as other settings forms).
   React.useEffect(() => {
     Animated.parallel([
-      Animated.timing(fade, { toValue: 1, duration: FADE_MS, useNativeDriver: true }),
-      Animated.timing(rise, { toValue: 0, duration: FADE_MS, useNativeDriver: true }),
+      Animated.timing(opacityAnimated, {
+        toValue: 1,
+        duration: FADE_MS,
+        useNativeDriver: true,
+      }),
+      Animated.timing(riseAnimated, {
+        toValue: 0,
+        duration: FADE_MS,
+        useNativeDriver: true,
+      }),
     ]).start();
-  }, [fade, rise]);
+  }, [opacityAnimated, riseAnimated]);
 
-  async function submit() {
-    const subjectText = String(subject || '').trim();
-    const messageText = String(message || '').trim();
+  async function sendSupportMessage() {
+    const subjectText = asTrimmedString(subject);
+    const messageText = asTrimmedString(message);
+
+    // 1. Validate required fields before we hit the network.
     if (!subjectText) {
       setNotice({
         title: 'Missing subject',
@@ -155,20 +253,21 @@ export default function ContactSupportScreen({ onClose, embedShellBottomNav = fa
       return;
     }
 
-    // Prefix topic so support can route; body stays free-form.
+    // 2. Prefix topic so support can sort tickets; body stays free-form for the user.
     const routedSubject = `[${topic}] ${subjectText}`;
     const routedMessage = `Topic: ${topic}\n\n${messageText}`;
 
+    // 3. POST with Firebase ID token; open Mail as backup; sheet explains the outcome.
     setSubmitting(true);
     try {
-      const json = await postSupportContact({
+      const json = await postSupportContactToApi({
         subjectText: routedSubject,
         messageText: routedMessage,
       });
       setSubject('');
       setMessage('');
       openSupportMailto({ subject: routedSubject, body: routedMessage });
-      setNotice(noticeAfterSupportSend(supportEmail, json));
+      setNotice(buildNoticeAfterSupportSend(supportEmail, json));
     } catch (error) {
       offerSupportMailtoFallback({
         subject: routedSubject,
@@ -180,15 +279,53 @@ export default function ContactSupportScreen({ onClose, embedShellBottomNav = fa
     }
   }
 
+  function openSupportMailShortcut() {
+    openSupportMailto({ subject: MAIL_SUBJECT_DEFAULT });
+  }
+
+  function closeNoticeSheet() {
+    setNotice(null);
+  }
+
+  const topicHint = TOPIC_HINTS[topic] || '';
+  let statusBarStyle = 'dark-content';
+  if (isDark) {
+    statusBarStyle = 'light-content';
+  }
+  let sendButtonLabel = 'Send message';
+  if (submitting) {
+    sendButtonLabel = 'Sending…';
+  }
+  const subjectFieldStyle = [
+    styles.input,
+    {
+      borderColor: colors.nbBorder,
+      backgroundColor: colors.nbSurface,
+      color: colors.nbInk,
+      shadowColor: colors.nbShadow,
+    },
+  ];
+  const messageFieldStyle = [
+    styles.input,
+    styles.inputMultiline,
+    {
+      borderColor: colors.nbBorder,
+      backgroundColor: colors.nbSurface,
+      color: colors.nbInk,
+      shadowColor: colors.nbShadow,
+    },
+  ];
+  const animatedFormStyle = {
+    opacity: opacityAnimated,
+    transform: [{ translateY: riseAnimated }],
+  };
+
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: colors.nbBackground }]}
       edges={SHELL_SAFE_AREA_EDGES}
     >
-      <StatusBar
-        barStyle={isDark ? 'light-content' : 'dark-content'}
-        backgroundColor={colors.nbBackground}
-      />
+      <StatusBar barStyle={statusBarStyle} backgroundColor={colors.nbBackground} />
       <NbPageHeader
         title="Contact support"
         subtitle="Coach Connect support"
@@ -201,41 +338,10 @@ export default function ContactSupportScreen({ onClose, embedShellBottomNav = fa
         {...FORM_SCROLL_PROPS}
         showsVerticalScrollIndicator
       >
-        <Animated.View style={{ opacity: fade, transform: [{ translateY: rise }] }}>
+        <Animated.View style={animatedFormStyle}>
           <Text style={[styles.label, { color: colors.nbMuted }]}>WHAT IS IT ABOUT?</Text>
-          <View style={styles.chipWrap}>
-            {TOPIC_CHIPS.map((chip) => {
-              const selected = topic === chip;
-              return (
-                <Pressable
-                  key={chip}
-                  onPress={() => setTopic(chip)}
-                  style={[
-                    styles.chip,
-                    {
-                      borderColor: colors.nbBorder,
-                      backgroundColor: selected ? colors.nbFill : colors.nbSurface,
-                      shadowColor: colors.nbShadow,
-                    },
-                  ]}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected }}
-                >
-                  <Text
-                    style={[
-                      styles.chipText,
-                      { color: selected ? colors.nbOnFill : colors.nbInk },
-                    ]}
-                  >
-                    {chip}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-          <Text style={[styles.hint, { color: colors.nbMuted }]}>
-            {TOPIC_HINTS[topic] || ''}
-          </Text>
+          <TopicChipRow topic={topic} onPickTopic={setTopic} colors={colors} />
+          <Text style={[styles.hint, { color: colors.nbMuted }]}>{topicHint}</Text>
 
           <Text style={[styles.label, { color: colors.nbMuted }]}>SUBJECT</Text>
           <TextInput
@@ -243,15 +349,7 @@ export default function ContactSupportScreen({ onClose, embedShellBottomNav = fa
             onChangeText={setSubject}
             placeholder="Cannot sign in on a new phone"
             placeholderTextColor={colors.nbMuted}
-            style={[
-              styles.input,
-              {
-                borderColor: colors.nbBorder,
-                backgroundColor: colors.nbSurface,
-                color: colors.nbInk,
-                shadowColor: colors.nbShadow,
-              },
-            ]}
+            style={subjectFieldStyle}
             autoCapitalize="sentences"
             editable={!submitting}
             returnKeyType="next"
@@ -263,35 +361,27 @@ export default function ContactSupportScreen({ onClose, embedShellBottomNav = fa
             onChangeText={setMessage}
             placeholder="Describe what happened…"
             placeholderTextColor={colors.nbMuted}
-            style={[
-              styles.input,
-              styles.inputMultiline,
-              {
-                borderColor: colors.nbBorder,
-                backgroundColor: colors.nbSurface,
-                color: colors.nbInk,
-                shadowColor: colors.nbShadow,
-              },
-            ]}
+            style={messageFieldStyle}
             multiline
             editable={!submitting}
           />
 
           <View style={styles.buttonWrap}>
-            <NbButton variant="fill" onPress={submit} disabled={submitting}>
-              {submitting ? 'Sending…' : 'Send message'}
+            <NbButton variant="fill" onPress={sendSupportMessage} disabled={submitting}>
+              {sendButtonLabel}
             </NbButton>
           </View>
           <View style={styles.buttonWrap}>
-            <NbButton variant="ghost" onPress={openSupportMail} disabled={submitting}>
+            <NbButton variant="ghost" onPress={openSupportMailShortcut} disabled={submitting}>
               Email us instead
             </NbButton>
           </View>
         </Animated.View>
       </ScrollView>
+
       <NbNoticeSheet
         visible={!!notice}
-        onClose={() => setNotice(null)}
+        onClose={closeNoticeSheet}
         title={notice?.title || ''}
         message={notice?.message}
         confirmLabel="OK"
@@ -299,6 +389,8 @@ export default function ContactSupportScreen({ onClose, embedShellBottomNav = fa
     </SafeAreaView>
   );
 }
+
+// PLUMBING — skip unless debugging
 
 const styles = StyleSheet.create({
   container: { flex: 1 },

@@ -49,50 +49,86 @@ const ROLE_TILES = [
   },
 ];
 
-// ===== HELPERS =====
+// Manipulate here: pressed feedback on role tiles (opacity + hard-shadow nudge)
+const PRESSED_OPACITY = 0.94;
+const PRESSED_TILE_NUDGE = 2;
+const SCROLL_BOTTOM_PAD_MIN = 16;
+const SCROLL_BOTTOM_PAD_EXTRA = 24;
+
+// ===== HELPER FUNCTIONS =====
+
+/** Map a prop default into a frozen role id string. */
+function normalizeInitialRole(initialRole) {
+  if (initialRole === ROLE_TRAINER) return ROLE_TRAINER;
+  return ROLE_CLIENT;
+}
+
+/** Keep scroll content clear of the home indicator. */
+function scrollBottomPadding(safeBottom) {
+  return Math.max(safeBottom, SCROLL_BOTTOM_PAD_MIN) + SCROLL_BOTTOM_PAD_EXTRA;
+}
 
 /**
- * Selected tile = filled (nbFill) with onFill text; unselected = surface + ink.
- * Dark mode flips the same way other Design Law fill cards do.
- * @param {boolean} selected
- * @param {object} colors
+ * Selected tiles use fill/onFill so the whole card reads as “chosen.”
+ * Unselected tiles stay surface/ink (Design Law black/white, never purple borders).
  */
-function tileChrome(selected, colors) {
-  if (selected) {
+function colorsForRoleTile(isSelected, colors) {
+  if (isSelected) {
     return {
-      bg: colors.nbFill,
-      ink: colors.nbOnFill,
-      muted: colors.nbOnFill,
-      bullet: colors.nbOnFill,
+      backgroundColor: colors.nbFill,
+      titleColor: colors.nbOnFill,
+      mutedColor: colors.nbOnFill,
+      bulletColor: colors.nbOnFill,
     };
   }
+
   return {
-    bg: colors.nbSurface,
-    ink: colors.nbInk,
-    muted: colors.nbMuted,
-    bullet: colors.nbInk,
+    backgroundColor: colors.nbSurface,
+    titleColor: colors.nbInk,
+    mutedColor: colors.nbMuted,
+    bulletColor: colors.nbInk,
   };
 }
 
-// ===== UI PIECES =====
+/** Pressed style for a role tile — opacity + 2px nudge mimics hard-shadow press. */
+function pressedTileStyle(isPressed) {
+  if (!isPressed) {
+    return { opacity: 1, transform: [{ translateX: 0 }, { translateY: 0 }] };
+  }
+  return {
+    opacity: PRESSED_OPACITY,
+    transform: [
+      { translateX: PRESSED_TILE_NUDGE },
+      { translateY: PRESSED_TILE_NUDGE },
+    ],
+  };
+}
 
+/**
+ * One Design Law role tile — icon chip, title, bullet list.
+ * vocab: Pressable = touchable that reports pressed for style feedback
+ */
 function RoleTile({ tile, selected, colors, onPress }) {
-  const chrome = tileChrome(selected, colors);
+  const tileColors = colorsForRoleTile(selected, colors);
+
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
       accessibilityState={{ selected }}
-      style={({ pressed }) => [
-        styles.tile,
-        {
-          backgroundColor: chrome.bg,
-          borderColor: colors.nbBorder,
-          shadowColor: colors.nbShadow,
-          opacity: pressed ? 0.94 : 1,
-          transform: [{ translateX: pressed ? 2 : 0 }, { translateY: pressed ? 2 : 0 }],
-        },
-      ]}
+      style={({ pressed }) => {
+        const pressLook = pressedTileStyle(pressed);
+        return [
+          styles.tile,
+          {
+            backgroundColor: tileColors.backgroundColor,
+            borderColor: colors.nbBorder,
+            shadowColor: colors.nbShadow,
+            opacity: pressLook.opacity,
+            transform: pressLook.transform,
+          },
+        ];
+      }}
     >
       <View style={styles.tileHead}>
         <View style={[styles.iconWrap, { borderColor: colors.nbBorder }]}>
@@ -104,43 +140,35 @@ function RoleTile({ tile, selected, colors, onPress }) {
           />
           <Image source={tile.icon} style={styles.iconImg} resizeMode="contain" />
         </View>
-        <Text style={[styles.tileTitle, { color: chrome.ink }]}>{tile.title}</Text>
+        <Text style={[styles.tileTitle, { color: tileColors.titleColor }]}>{tile.title}</Text>
       </View>
-      {tile.bullets.map((line) => (
-        <View key={line} style={styles.bulletRow}>
-          <View style={[styles.bulletSq, { backgroundColor: chrome.bullet }]} />
-          <Text style={[styles.bulletText, { color: chrome.muted }]}>{line}</Text>
+      {tile.bullets.map((bulletLine) => (
+        <View key={bulletLine} style={styles.bulletRow}>
+          <View style={[styles.bulletSq, { backgroundColor: tileColors.bulletColor }]} />
+          <Text style={[styles.bulletText, { color: tileColors.mutedColor }]}>{bulletLine}</Text>
         </View>
       ))}
     </Pressable>
   );
 }
 
-// ===== MAIN =====
-
 /**
- * @param {{ initialRole?: string, onBack?: Function, onContinue?: (role: string) => void }} props
+ * Pure layout — header, headline, tiles, Continue.
+ * No hooks here so the default export can keep hook order frozen.
  */
-export default function ChooseRoleScreen({
-  initialRole = ROLE_CLIENT,
+function ChooseRoleScreenLayout({
+  colors,
+  bottomPad,
+  selectedRole,
+  onPickRole,
+  onContinuePress,
   onBack,
-  onContinue,
 }) {
-  const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
-  // vocab: role ids stay 'client' | 'trainer' — same strings LoginScreen / cachePendingSignupProfile use
-  const [role, setRole] = useState(
-    initialRole === ROLE_TRAINER ? ROLE_TRAINER : ROLE_CLIENT,
-  );
-
   return (
     <View style={[styles.root, { backgroundColor: colors.nbBackground }]}>
       <NbPageHeader title="Choose role" onBack={onBack} />
       <ScrollView
-        contentContainerStyle={[
-          styles.scroll,
-          { paddingBottom: Math.max(insets.bottom, 16) + 24 },
-        ]}
+        contentContainerStyle={[styles.scroll, { paddingBottom: bottomPad }]}
         showsVerticalScrollIndicator={false}
       >
         <Text style={[styles.headline, { color: colors.nbInk }]}>
@@ -151,20 +179,23 @@ export default function ChooseRoleScreen({
         </Text>
 
         <View style={styles.tileStack}>
-          {ROLE_TILES.map((tile) => (
-            <RoleTile
-              key={tile.id}
-              tile={tile}
-              selected={role === tile.id}
-              colors={colors}
-              onPress={() => setRole(tile.id)}
-            />
-          ))}
+          {ROLE_TILES.map((tile) => {
+            const tileIsSelected = selectedRole === tile.id;
+            return (
+              <RoleTile
+                key={tile.id}
+                tile={tile}
+                selected={tileIsSelected}
+                colors={colors}
+                onPress={() => onPickRole(tile.id)}
+              />
+            );
+          })}
         </View>
 
         <NbButton
           variant="fill"
-          onPress={() => onContinue?.(role)}
+          onPress={onContinuePress}
           style={{ marginTop: spacing.lg }}
         >
           Continue ›
@@ -173,6 +204,54 @@ export default function ChooseRoleScreen({
     </View>
   );
 }
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Design Law role picker before signup — client vs trainer tiles and Continue.
+ * Flow: 1. theme/insets  2. selected role state  3. paint layout
+ * @param {{ initialRole?: string, onBack?: Function, onContinue?: Function }} props
+ */
+export default function ChooseRoleScreen({
+  initialRole = ROLE_CLIENT,
+  onBack,
+  onContinue,
+}) {
+  // 1. Theme tokens + safe-area bottom for scroll padding
+  // vocab: useTheme = Design Law light/dark color bag (nbBackground, nbInk, …)
+  const { colors } = useTheme();
+  // vocab: useSafeAreaInsets = device notches / home-indicator padding
+  const insets = useSafeAreaInsets();
+
+  // 2. Role ids stay 'client' | 'trainer' — same strings LoginScreen / cachePendingSignupProfile use
+  const [selectedRole, setSelectedRole] = useState(normalizeInitialRole(initialRole));
+
+  const bottomPad = scrollBottomPadding(insets.bottom);
+
+  // 3. Handlers — pick tile, then Continue hands role to parent
+  const handlePickRole = (roleId) => {
+    setSelectedRole(roleId);
+  };
+
+  const handleContinuePress = () => {
+    // vocab/symbol: ?. = call only if onContinue was passed
+    onContinue?.(selectedRole);
+  };
+
+  // 4. Paint
+  return (
+    <ChooseRoleScreenLayout
+      colors={colors}
+      bottomPad={bottomPad}
+      selectedRole={selectedRole}
+      onPickRole={handlePickRole}
+      onContinuePress={handleContinuePress}
+      onBack={onBack}
+    />
+  );
+}
+
+// ===== PLUMBING — skip unless debugging =====
 
 const styles = StyleSheet.create({
   root: { flex: 1 },

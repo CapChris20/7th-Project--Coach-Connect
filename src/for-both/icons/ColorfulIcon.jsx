@@ -1,6 +1,6 @@
-// Brand-colored tab/header icons: Ionicon shape as a mask, filled with the brand gradient.
-// Flow: pick the ionicon for this name → MaskedView keeps the gradient only inside that shape.
-// Used by the bottom nav and ChatIcon. SVG stroke+url(#gradient) painted black on device — this path matches AI Coach.
+// Brand gradient tab icons — ionicon shape masks a linear gradient (SVG stroke failed on device).
+// Flow: map friendly name → outline glyph → MaskedView clips gradient to opaque mask pixels.
+// Used by bottom nav and ChatIcon. strokeWidth prop kept so old call sites do not throw.
 
 import React from 'react';
 import { View } from 'react-native';
@@ -17,12 +17,15 @@ import { lightColors } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
-// Mask must be opaque. MaskedView uses the drawn pixels as the shape, not this as a tint.
-const MASK_COLOR = lightColors.white;
-const DEFAULT_ICON_SIZE = 36;
+// Manipulate here: mask must be fully opaque — MaskedView uses alpha as shape, not tint.
+const OPAQUE_MASK_COLOR = lightColors.white;
 
-// Our friendly names → Ionicons glyph names (outline reads better on the frosted bar).
-const IONICON_BY_NAME = {
+// Manipulate here: default edge when a nav row omits size.
+const DEFAULT_NAV_ICON_SIZE = 36;
+
+// Friendly nav names → Ionicons glyph (outline reads on frosted bar).
+// Add a key when a new tab icon lands.
+const OUTLINE_GLYPH_BY_FRIENDLY_NAME = {
   home: 'home-outline',
   barbell: 'barbell-outline',
   restaurant: 'restaurant-outline',
@@ -36,79 +39,109 @@ const IONICON_BY_NAME = {
 
 // ===== HELPER FUNCTIONS =====
 
-/**
- * @param {string} name
- * @returns {string|null}
- */
-function ioniconNameFor(name) {
-  return IONICON_BY_NAME[name] || null;
+function makeSquareStyle(edgeLength) {
+  return { width: edgeLength, height: edgeLength };
 }
 
-function iconBoxStyle(iconSize) {
-  return { width: iconSize, height: iconSize };
-}
-
-function maskWrapStyle(iconSize) {
+function makeCenteredTransparentBox(edgeLength) {
   return {
-    width: iconSize,
-    height: iconSize,
+    width: edgeLength,
+    height: edgeLength,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'transparent',
   };
 }
 
-/**
- * Opaque ionicon used as the mask shape.
- * @param {string} ioniconName
- * @param {number} iconSize
- * @returns {JSX.Element}
- */
-function iconMaskElement(ioniconName, iconSize) {
+// Look up the outline glyph, or null when the friendly name is unknown.
+function findOutlineGlyph(friendlyName) {
+  const glyphName = OUTLINE_GLYPH_BY_FRIENDLY_NAME[friendlyName];
+  if (!glyphName) {
+    return null;
+  }
+  return glyphName;
+}
+
+// White ionicon layer — its opaque pixels become the MaskedView shape.
+function makeIoniconMask(ioniconName, iconEdge) {
+  const centerStyle = makeCenteredTransparentBox(iconEdge);
   return (
-    <View style={maskWrapStyle(iconSize)}>
-      <Ionicons name={ioniconName} size={iconSize} color={MASK_COLOR} />
+    <View style={centerStyle}>
+      <Ionicons name={ioniconName} size={iconEdge} color={OPAQUE_MASK_COLOR} />
     </View>
+  );
+}
+
+// Brand gradient fill that only shows through the mask silhouette.
+function makeBrandGradientLayer(
+  iconEdge,
+  gradientColors,
+  gradientStops,
+  gradientStart,
+  gradientEnd,
+) {
+  const boxStyle = makeSquareStyle(iconEdge);
+  return (
+    <LinearGradient
+      colors={gradientColors}
+      locations={gradientStops}
+      start={gradientStart}
+      end={gradientEnd}
+      style={boxStyle}
+    />
   );
 }
 
 // ===== MAIN FUNCTION =====
 
 /**
- * Draw one brand icon by name. Returns null when that name has no ionicon mapping.
- * @param {{ name: string, size?: number, colors?: string[], locations?: number[], start?: object, end?: object, strokeWidth?: number }} props
- * @returns {import('react').ReactElement|null}
+ * Gradient-filled ionicon for nav / chat shortcuts.
+ * @param {object} props
+ * @param {string} props.name Friendly name (home, barbell, chatbubbles, …)
+ * @param {number} [props.size]
+ * @param {string[]} [props.colors]
+ * @param {number[]} [props.locations]
+ * @param {object} [props.start]
+ * @param {object} [props.end]
+ * @param {number} [props.strokeWidth] Legacy — ignored; kept so old call sites do not crash
+ * @returns {JSX.Element|null}
  */
 export default function ColorfulIcon({
   name,
-  size = DEFAULT_ICON_SIZE,
+  size = DEFAULT_NAV_ICON_SIZE,
   colors = BRAND_NAV_ICON_GRADIENT,
   locations = BRAND_NAV_ICON_GRADIENT_LOCATIONS,
   start = BRAND_ICON_GRADIENT_START,
   end = BRAND_ICON_GRADIENT_END,
-  // Kept so old call sites (strokeWidth={2.35}) do not crash — unused with MaskedView.
+  // Kept so legacy strokeWidth={2.35} call sites do not crash — unused with MaskedView.
   strokeWidth: _strokeWidth,
 }) {
-  const ioniconName = ioniconNameFor(name);
-  if (!ioniconName) return null;
+  // 1. Unknown name → render nothing (nav should not show a broken slot).
+  const ioniconName = findOutlineGlyph(name);
+  if (!ioniconName) {
+    return null;
+  }
 
-  const boxStyle = iconBoxStyle(size);
+  // 2. Build mask + gradient, then clip fill to the white ionicon pixels.
+  const iconBoxStyle = makeSquareStyle(size);
+  const ioniconMask = makeIoniconMask(ioniconName, size);
+  const gradientLayer = makeBrandGradientLayer(
+    size,
+    colors,
+    locations,
+    start,
+    end,
+  );
 
-  // vocab: MaskedView = show the gradient only where the ionicon is opaque.
-  // collapsable={false} stops Android from flattening the mask away (icons went blank).
+  // vocab: MaskedView = children paint only where maskElement is opaque.
+  // collapsable={false} stops Android from flattening the mask (icons went blank).
   return (
     <MaskedView
-      style={boxStyle}
+      style={iconBoxStyle}
       collapsable={false}
-      maskElement={iconMaskElement(ioniconName, size)}
+      maskElement={ioniconMask}
     >
-      <LinearGradient
-        colors={colors}
-        locations={locations}
-        start={start}
-        end={end}
-        style={boxStyle}
-      />
+      {gradientLayer}
     </MaskedView>
   );
 }

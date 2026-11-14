@@ -37,6 +37,13 @@ const LIBRARY_DENIED_MESSAGE = 'Allow access to your photo library to attach ima
 const CAMERA_DENIED_MESSAGE = 'Allow camera access to take a progress photo.';
 const UNREADABLE_PHOTO_MESSAGE = 'Try a different image or take a new photo with Camera.';
 const UNREADABLE_CAMERA_PHOTO_MESSAGE = 'Try taking the photo again.';
+const DEFAULT_PICKER_RETRY_MESSAGE = 'Try again.';
+
+const ALERT_PERMISSION_TITLE = 'Permission needed';
+const ALERT_COULD_NOT_READ_PHOTO = 'Could not read photo';
+const ALERT_COULD_NOT_OPEN_PHOTOS = 'Could not open photos';
+const ALERT_COULD_NOT_OPEN_CAMERA = 'Could not open camera';
+const ALERT_COULD_NOT_OPEN_FILES = 'Could not open files';
 
 // ===== HELPER FUNCTIONS =====
 
@@ -47,7 +54,7 @@ function makeAttachmentId() {
   return `att_${Date.now()}_${randomTail}`;
 }
 
-function buildImageAttachment({ previewUri, base64, mimeType, fileName }) {
+function buildImageAttachment(previewUri, base64, mimeType, fileName) {
   return {
     id: makeAttachmentId(),
     preview: previewUri,
@@ -67,9 +74,25 @@ function buildFileAttachment(documentAsset) {
   };
 }
 
-function assetsFromPickerResult(result) {
-  if (Array.isArray(result.assets)) return result.assets;
-  return [];
+function fileAttachmentsFromDocumentAssets(documentAssets) {
+  const attachments = [];
+  for (let index = 0; index < documentAssets.length; index += 1) {
+    const documentAsset = documentAssets[index];
+    attachments.push(buildFileAttachment(documentAsset));
+  }
+  return attachments;
+}
+
+function assetsFromPickerResult(pickerResult) {
+  if (!pickerResult) return [];
+  if (!Array.isArray(pickerResult.assets)) return [];
+  return pickerResult.assets;
+}
+
+function userCanceledPicker(pickerResult) {
+  if (!pickerResult) return false;
+  if (pickerResult.canceled) return true;
+  return false;
 }
 
 /**
@@ -82,23 +105,21 @@ async function requestAccessOrAlert(requestPermission, deniedMessage) {
   const permissionResult = await requestPermission();
   const isGranted = permissionResult.status === PERMISSION_GRANTED;
   if (!isGranted) {
-    Alert.alert('Permission needed', deniedMessage);
+    Alert.alert(ALERT_PERMISSION_TITLE, deniedMessage);
   }
   return isGranted;
 }
 
-function resizedJpegFromUri(imageUri) {
-  // vocab: manipulateAsync re-encodes the file. base64: true puts the JPEG text on the result
-  // so the coach vision API doesn't have to read the phone file itself.
-  return ImageManipulator.manipulateAsync(
-    imageUri,
-    [{ resize: { width: PHOTO_RESIZE_WIDTH } }],
-    {
-      compress: JPEG_COMPRESS_QUALITY,
-      format: ImageManipulator.SaveFormat.JPEG,
-      base64: true,
-    },
-  );
+function messageFromCaughtError(error) {
+  if (!error) return error;
+  if (error.message) return error.message;
+  return error;
+}
+
+function firstPickerAsset(pickerResult) {
+  if (!pickerResult) return undefined;
+  if (!pickerResult.assets) return undefined;
+  return pickerResult.assets[0];
 }
 
 function mimeTypeOrJpeg(asset) {
@@ -116,25 +137,173 @@ function previewUriAfterResize(manipulated, imageUri) {
   return imageUri;
 }
 
-function messageFromCaughtError(error) {
-  if (!error) return error;
-  if (error.message) return error.message;
-  return error;
+/**
+ * Design Law notice when the host passed presentNotice; OS Alert otherwise.
+ * Permission denials stay on Alert (system Settings path) — see requestAccessOrAlert.
+ * @param {((title: string, message: string) => void)|undefined} presentNotice
+ * @param {string} title
+ * @param {string} message
+ */
+function presentPhotoNotice(presentNotice, title, message) {
+  if (typeof presentNotice === 'function') {
+    presentNotice(title, message);
+    return;
+  }
+  Alert.alert(title, message);
 }
 
-function firstPickerAsset(result) {
-  if (!result.assets) return undefined;
-  return result.assets[0];
+/**
+ * @param {Error|*} error
+ * @returns {string}
+ */
+function alertTextFromPickerError(error) {
+  if (error && error.message) return error.message;
+  return DEFAULT_PICKER_RETRY_MESSAGE;
+}
+
+function handlePickerFailure(error, logTag, alertTitle, presentNotice) {
+  console.warn(logTag, messageFromCaughtError(error));
+  presentPhotoNotice(presentNotice, alertTitle, alertTextFromPickerError(error));
+  return [];
+}
+
+function alertIfNoneEncoded(chosenAssets, attachments, presentNotice) {
+  if (chosenAssets.length === 0) return;
+  if (attachments.length > 0) return;
+  presentPhotoNotice(presentNotice, ALERT_COULD_NOT_READ_PHOTO, UNREADABLE_PHOTO_MESSAGE);
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Open the photo library and return up to four JPEG attachments.
+ * Returns [] when permission is denied, the user cancels, or every file fails to encode.
+ * @param {{ presentNotice?: (title: string, message: string) => void }} [options]
+ * @returns {Promise<Array<{id: string, preview: string, base64: string, type: string, mimeType: string, name: string}>>}
+ */
+export async function pickCoachPhotosFromLibrary(options = {}) {
+  const presentNotice = options.presentNotice;
+
+  try {
+    // 1. Ask for library access.
+    const isGranted = await requestAccessOrAlert(
+      () => ImagePicker.requestMediaLibraryPermissionsAsync(),
+      LIBRARY_DENIED_MESSAGE,
+    );
+    if (!isGranted) return [];
+
+    // 2. Open the multi-select picker (capped at MAX_LIBRARY_PHOTOS).
+    const pickerResult = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: MEDIA_IMAGES,
+      allowsMultipleSelection: true,
+      selectionLimit: MAX_LIBRARY_PHOTOS,
+      quality: PICKER_IMAGE_QUALITY,
+    });
+    if (userCanceledPicker(pickerResult)) return [];
+
+    // 3. Resize each chosen photo and return JPEG attachments.
+    const allAssets = assetsFromPickerResult(pickerResult);
+    const chosenAssets = allAssets.slice(0, MAX_LIBRARY_PHOTOS);
+    const attachments = await attachmentsFromChosenAssets(chosenAssets);
+    alertIfNoneEncoded(chosenAssets, attachments, presentNotice);
+    return attachments;
+  } catch (error) {
+    return handlePickerFailure(
+      error,
+      '[pickCoachPhotosFromLibrary]',
+      ALERT_COULD_NOT_OPEN_PHOTOS,
+      presentNotice,
+    );
+  }
+}
+
+/**
+ * Open the camera and return a one-item list, or [] if the shot can't be read.
+ * @param {{ presentNotice?: (title: string, message: string) => void }} [options]
+ * @returns {Promise<Array<{id: string, preview: string, base64: string, type: string, mimeType: string, name: string}>>}
+ */
+export async function pickCoachPhotoFromCamera(options = {}) {
+  const presentNotice = options.presentNotice;
+
+  try {
+    // 1. Ask for camera access.
+    const isGranted = await requestAccessOrAlert(
+      () => ImagePicker.requestCameraPermissionsAsync(),
+      CAMERA_DENIED_MESSAGE,
+    );
+    if (!isGranted) return [];
+
+    // 2. Take one photo.
+    const pickerResult = await ImagePicker.launchCameraAsync({
+      mediaTypes: MEDIA_IMAGES,
+      quality: PICKER_IMAGE_QUALITY,
+    });
+    if (userCanceledPicker(pickerResult)) return [];
+
+    // 3. Encode it as a JPEG attachment.
+    const asset = firstPickerAsset(pickerResult);
+    if (!asset) return [];
+    if (!asset.uri) return [];
+
+    const normalized = await normalizePickedImage(asset, DEFAULT_PHOTO_NAME);
+    if (!normalized) {
+      presentPhotoNotice(presentNotice, ALERT_COULD_NOT_READ_PHOTO, UNREADABLE_CAMERA_PHOTO_MESSAGE);
+      return [];
+    }
+    return [normalized];
+  } catch (error) {
+    return handlePickerFailure(
+      error,
+      '[pickCoachPhotoFromCamera]',
+      ALERT_COULD_NOT_OPEN_CAMERA,
+      presentNotice,
+    );
+  }
+}
+
+/**
+ * Open the document picker. Files are not re-encoded — the chat keeps the local uri.
+ * vocab: getDocumentAsync is Expo's file picker. multiple lets the user select more than one.
+ * @returns {Promise<Array<{id: string, name: string, uri: string, type: string}>>}
+ */
+export async function pickCoachDocuments() {
+  try {
+    // 1. Open the system file picker (multi-select).
+    const pickerResult = await DocumentPicker.getDocumentAsync({ multiple: true });
+    if (userCanceledPicker(pickerResult)) return [];
+
+    // 2. Wrap each asset as a file attachment (uri only — no base64).
+    const documentAssets = assetsFromPickerResult(pickerResult);
+    return fileAttachmentsFromDocumentAssets(documentAssets);
+  } catch (error) {
+    return handlePickerFailure(error, '[pickCoachDocuments]', ALERT_COULD_NOT_OPEN_FILES);
+  }
+}
+
+// ===== PLUMBING — skip unless debugging =====
+
+function resizedJpegFromUri(imageUri) {
+  // vocab: manipulateAsync re-encodes the file. base64: true puts the JPEG text on the result
+  // so the coach vision API doesn't have to read the phone file itself.
+  return ImageManipulator.manipulateAsync(
+    imageUri,
+    [{ resize: { width: PHOTO_RESIZE_WIDTH } }],
+    {
+      compress: JPEG_COMPRESS_QUALITY,
+      format: ImageManipulator.SaveFormat.JPEG,
+      base64: true,
+    },
+  );
 }
 
 function fallbackImageAttachment(asset, imageUri, fallbackName) {
   if (!asset.base64) return null;
-  return buildImageAttachment({
-    previewUri: imageUri,
-    base64: asset.base64,
-    mimeType: mimeTypeOrJpeg(asset),
-    fileName: fileNameOrFallback(asset, fallbackName),
-  });
+  return buildImageAttachment(
+    imageUri,
+    asset.base64,
+    mimeTypeOrJpeg(asset),
+    fileNameOrFallback(asset, fallbackName),
+  );
 }
 
 /**
@@ -145,20 +314,24 @@ function fallbackImageAttachment(asset, imageUri, fallbackName) {
  * @returns {Promise<object|null>}
  */
 async function normalizePickedImage(asset, fallbackName = DEFAULT_PHOTO_NAME) {
-  if (!asset || !asset.uri) return null;
+  if (!asset) return null;
+  if (!asset.uri) return null;
   const imageUri = asset.uri;
 
   try {
     const manipulated = await resizedJpegFromUri(imageUri);
-    if (!manipulated || !manipulated.base64) {
+    if (!manipulated) {
       throw new Error('Could not encode image');
     }
-    return buildImageAttachment({
-      previewUri: previewUriAfterResize(manipulated, imageUri),
-      base64: manipulated.base64,
-      mimeType: JPEG_MIME_TYPE,
-      fileName: fileNameOrFallback(asset, fallbackName),
-    });
+    if (!manipulated.base64) {
+      throw new Error('Could not encode image');
+    }
+    return buildImageAttachment(
+      previewUriAfterResize(manipulated, imageUri),
+      manipulated.base64,
+      JPEG_MIME_TYPE,
+      fileNameOrFallback(asset, fallbackName),
+    );
   } catch (error) {
     console.warn('[normalizePickedImage]', messageFromCaughtError(error));
     return fallbackImageAttachment(asset, imageUri, fallbackName);
@@ -177,139 +350,4 @@ async function attachmentsFromChosenAssets(chosenAssets) {
     if (normalized) attachments.push(normalized);
   }
   return attachments;
-}
-
-/**
- * Design Law notice when the host passed presentNotice; OS Alert otherwise.
- * Permission denials stay on Alert (system Settings path) — see requestAccessOrAlert.
- * @param {((title: string, message: string) => void)|undefined} presentNotice
- * @param {string} title
- * @param {string} message
- */
-function presentPhotoNotice(presentNotice, title, message) {
-  if (typeof presentNotice === 'function') {
-    presentNotice(title, message);
-    return;
-  }
-  Alert.alert(title, message);
-}
-
-function alertIfNoneEncoded(chosenAssets, attachments, presentNotice) {
-  if (chosenAssets.length === 0) return;
-  if (attachments.length > 0) return;
-  presentPhotoNotice(presentNotice, 'Could not read photo', UNREADABLE_PHOTO_MESSAGE);
-}
-
-/**
- * @param {Error|*} error
- * @returns {string}
- */
-function alertTextFromPickerError(error) {
-  if (error && error.message) return error.message;
-  return 'Try again.';
-}
-
-function handlePickerFailure(error, logTag, alertTitle, presentNotice) {
-  console.warn(logTag, messageFromCaughtError(error));
-  presentPhotoNotice(presentNotice, alertTitle, alertTextFromPickerError(error));
-  return [];
-}
-
-// ===== MAIN FUNCTION =====
-
-/**
- * Open the photo library and return up to four JPEG attachments.
- * Returns [] when permission is denied, the user cancels, or every file fails to encode.
- * @param {{ presentNotice?: (title: string, message: string) => void }} [options]
- * @returns {Promise<Array<{id: string, preview: string, base64: string, type: string, mimeType: string, name: string}>>}
- */
-export async function pickCoachPhotosFromLibrary(options = {}) {
-  const presentNotice = options?.presentNotice;
-  try {
-    const isGranted = await requestAccessOrAlert(
-      () => ImagePicker.requestMediaLibraryPermissionsAsync(),
-      LIBRARY_DENIED_MESSAGE,
-    );
-    if (!isGranted) return [];
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: MEDIA_IMAGES,
-      allowsMultipleSelection: true,
-      selectionLimit: MAX_LIBRARY_PHOTOS,
-      quality: PICKER_IMAGE_QUALITY,
-    });
-    if (result.canceled) return [];
-
-    const chosenAssets = assetsFromPickerResult(result).slice(0, MAX_LIBRARY_PHOTOS);
-    const attachments = await attachmentsFromChosenAssets(chosenAssets);
-    alertIfNoneEncoded(chosenAssets, attachments, presentNotice);
-    return attachments;
-  } catch (error) {
-    return handlePickerFailure(
-      error,
-      '[pickCoachPhotosFromLibrary]',
-      'Could not open photos',
-      presentNotice,
-    );
-  }
-}
-
-/**
- * Open the camera and return a one-item list, or [] if the shot can't be read.
- * @param {{ presentNotice?: (title: string, message: string) => void }} [options]
- * @returns {Promise<Array<{id: string, preview: string, base64: string, type: string, mimeType: string, name: string}>>}
- */
-export async function pickCoachPhotoFromCamera(options = {}) {
-  const presentNotice = options?.presentNotice;
-  try {
-    const isGranted = await requestAccessOrAlert(
-      () => ImagePicker.requestCameraPermissionsAsync(),
-      CAMERA_DENIED_MESSAGE,
-    );
-    if (!isGranted) return [];
-
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: MEDIA_IMAGES,
-      quality: PICKER_IMAGE_QUALITY,
-    });
-    if (result.canceled) return [];
-
-    const asset = firstPickerAsset(result);
-    if (!asset) return [];
-    if (!asset.uri) return [];
-
-    const normalized = await normalizePickedImage(asset, DEFAULT_PHOTO_NAME);
-    if (!normalized) {
-      presentPhotoNotice(presentNotice, 'Could not read photo', UNREADABLE_CAMERA_PHOTO_MESSAGE);
-      return [];
-    }
-    return [normalized];
-  } catch (error) {
-    return handlePickerFailure(
-      error,
-      '[pickCoachPhotoFromCamera]',
-      'Could not open camera',
-      presentNotice,
-    );
-  }
-}
-
-/**
- * Open the document picker. Files are not re-encoded — the chat keeps the local uri.
- * vocab: getDocumentAsync is Expo's file picker. multiple lets the user select more than one.
- * @returns {Promise<Array<{id: string, name: string, uri: string, type: string}>>}
- */
-export async function pickCoachDocuments() {
-  try {
-    const result = await DocumentPicker.getDocumentAsync({ multiple: true });
-    if (result.canceled) return [];
-    const documentAssets = assetsFromPickerResult(result);
-    const attachments = [];
-    for (let index = 0; index < documentAssets.length; index += 1) {
-      attachments.push(buildFileAttachment(documentAssets[index]));
-    }
-    return attachments;
-  } catch (error) {
-    return handlePickerFailure(error, '[pickCoachDocuments]', 'Could not open files');
-  }
 }

@@ -1,94 +1,282 @@
-// Gradient text via react-native-svg (no MaskedView).
-// Flow: show a solid fallback immediately → measure with a hidden Text → swap to SVG gradient.
-// Used by: home banners, food cards, coach home. Avoids the blank flicker MaskedView had in dev builds.
+// Gradient text via react-native-svg (no MaskedView — avoids blank flicker in dev builds).
+// Flow: solid fallback immediately → hidden Text measures size → swap to SVG gradient fill.
+// Used by: home banners, food cards, coach home.
+//
+// vocab: SvgGradient/Stop = SVG linearGradient stops; textAnchor = SVG align (start/middle/end)
+// Manipulate here: DEFAULT_GRADIENT_COLORS, line-height ratios, BASELINE_OFFSET_IN_LINE
 
 import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import Svg, { Text as SvgText, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
+import Svg, {
+  Text as SvgText,
+  Defs,
+  LinearGradient as SvgGradient,
+  Stop,
+} from 'react-native-svg';
+
 import { lightColors } from './colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
-const DEFAULT_COLORS = ['#E94EAD', lightColors.info];
-const SINGLE_COLOR_FALLBACK = '#A348D0';
+// Manipulate here: default pink → info ramp when caller omits colors
+const DEFAULT_GRADIENT_COLORS = ['#E94EAD', lightColors.info];
+const FALLBACK_WHEN_NO_COLORS = '#A348D0';
 const DEFAULT_FONT_SIZE = 14;
 const DEFAULT_FONT_WEIGHT = '400';
 const DEFAULT_LETTER_SPACING = 0;
 const DEFAULT_TEXT_ALIGN = 'left';
-const ALIGN_CENTER = 'center';
-const ALIGN_RIGHT = 'right';
-const ANCHOR_MIDDLE = 'middle';
-const ANCHOR_END = 'end';
-const ANCHOR_START = 'start';
-const AXIS_X = 'x';
-const AXIS_Y = 'y';
-const PERCENT = 100;
-const DEFAULT_LINE_HEIGHT_RATIO = 1.12;
-const UNMEASURED_LINE_HEIGHT_RATIO = 1.25;
-const BASELINE_OFFSET_RATIO = 0.35;
+const TEXT_ALIGN_CENTER = 'center';
+const TEXT_ALIGN_RIGHT = 'right';
+const SVG_ANCHOR_MIDDLE = 'middle';
+const SVG_ANCHOR_END = 'end';
+const SVG_ANCHOR_START = 'start';
+const GRADIENT_AXIS_X = 'x';
+const GRADIENT_AXIS_Y = 'y';
+const PERCENT_SCALE = 100;
+// Manipulate here: 1.12 = measured multiline spacing; 1.25 = pre-measure single-line guess
+const LINE_HEIGHT_RATIO_DEFAULT = 1.12;
+const LINE_HEIGHT_RATIO_BEFORE_MEASURE = 1.25;
+// Manipulate here: 0.35 nudges SVG baseline inside the line box
+const BASELINE_OFFSET_IN_LINE = 0.35;
 const GRADIENT_ID_PREFIX = 'sgt';
-const DEFAULT_START = { x: 0, y: 0 };
-const DEFAULT_END = { x: 1, y: 0 };
+const GRADIENT_START_DEFAULT = { x: 0, y: 0 };
+const GRADIENT_END_DEFAULT = { x: 1, y: 0 };
 
-let gradientIdCounter = 0;
+let nextGradientDomId = 0;
 
 // ===== HELPER FUNCTIONS =====
 
-/**
- * Solid color shown before the SVG is measured. Middle stop if there are several.
- * @param {string[]} colors
- * @returns {string}
- */
-function pickFallbackColor(colors) {
-  if (!colors?.length) return SINGLE_COLOR_FALLBACK;
-  if (colors.length === 1) return colors[0];
-  return colors[Math.floor(colors.length / 2)];
+function childValueIsPlainText(children) {
+  return typeof children === 'string' || typeof children === 'number';
 }
 
-/**
- * Turn a 0–1 gradient coordinate into an SVG percent string.
- * Missing x/y default to 0; any other axis defaults to 1 (the original end-stop).
- * @param {number} fraction
- * @param {string} axis
- * @returns {string}
- */
-function fractionToPercent(fraction, axis) {
-  const axisFraction = fraction ?? (axis === AXIS_X ? 0 : axis === AXIS_Y ? 0 : 1);
-  return `${Math.round(axisFraction * PERCENT)}%`;
+// Solid color shown before the SVG is measured. Middle stop if there are several.
+function solidColorWhileMeasuring(gradientColors) {
+  if (!gradientColors?.length) {
+    return FALLBACK_WHEN_NO_COLORS;
+  }
+  if (gradientColors.length === 1) {
+    return gradientColors[0];
+  }
+  const middleIndex = Math.floor(gradientColors.length / 2);
+  return gradientColors[middleIndex];
 }
 
-/**
- * SVG textAnchor from CSS textAlign.
- * @param {string} align
- * @returns {string}
- */
-function textAnchorFromAlign(align) {
-  if (align === ALIGN_CENTER) return ANCHOR_MIDDLE;
-  if (align === ALIGN_RIGHT) return ANCHOR_END;
-  return ANCHOR_START;
+function defaultFractionWhenGradientPointMissing(axisName) {
+  if (axisName === GRADIENT_AXIS_X) {
+    return 0;
+  }
+  if (axisName === GRADIENT_AXIS_Y) {
+    return 0;
+  }
+  return 1;
 }
 
-/**
- * Stop offset along the gradient. One color sits at 0%; several are spaced evenly.
- * @param {number} stopIndex
- * @param {number} colorCount
- * @returns {string}
- */
-function gradientStopOffset(stopIndex, colorCount) {
-  if (colorCount === 1) return '0%';
-  return `${(stopIndex / (colorCount - 1)) * PERCENT}%`;
+// Turn a 0–1 gradient coordinate into an SVG percent string.
+function gradientPointAsPercent(fraction, axisName) {
+  let resolvedFraction = fraction;
+  if (resolvedFraction == null) {
+    resolvedFraction = defaultFractionWhenGradientPointMissing(axisName);
+  }
+  return `${Math.round(resolvedFraction * PERCENT_SCALE)}%`;
 }
 
-/**
- * X of the SVG text: 0, centered, or right edge.
- * @param {string} anchor
- * @param {number} svgWidth
- * @returns {number}
- */
-function svgTextX(anchor, svgWidth) {
-  if (anchor === ANCHOR_MIDDLE && svgWidth) return svgWidth / 2;
-  if (anchor === ANCHOR_END && svgWidth) return svgWidth;
+function svgTextAnchorFromAlign(textAlign) {
+  if (textAlign === TEXT_ALIGN_CENTER) {
+    return SVG_ANCHOR_MIDDLE;
+  }
+  if (textAlign === TEXT_ALIGN_RIGHT) {
+    return SVG_ANCHOR_END;
+  }
+  return SVG_ANCHOR_START;
+}
+
+// Stop offset along the gradient. One color sits at 0%; several are spaced evenly.
+function offsetForGradientStop(stopIndex, colorCount) {
+  if (colorCount === 1) {
+    return '0%';
+  }
+  return `${(stopIndex / (colorCount - 1)) * PERCENT_SCALE}%`;
+}
+
+function horizontalPositionForAnchor(textAnchor, measuredWidth) {
+  if (textAnchor === SVG_ANCHOR_MIDDLE && measuredWidth) {
+    return measuredWidth / 2;
+  }
+  if (textAnchor === SVG_ANCHOR_END && measuredWidth) {
+    return measuredWidth;
+  }
   return 0;
+}
+
+function textLinesFromPlainText(plainText) {
+  return plainText.split('\n');
+}
+
+function estimatedSvgHeightBeforeMeasure(lineCount, lineHeightPixels, fontSize) {
+  const isMultiLine = lineCount > 1;
+  if (isMultiLine) {
+    return Math.ceil(lineCount * lineHeightPixels);
+  }
+  const fallbackLineHeight = lineHeightPixels || fontSize * LINE_HEIGHT_RATIO_BEFORE_MEASURE;
+  return Math.ceil(fallbackLineHeight);
+}
+
+function resolveSvgHeight(measuredHeight, textLines, lineHeightPixels, fontSize) {
+  if (measuredHeight) {
+    return Math.ceil(measuredHeight);
+  }
+  return estimatedSvgHeightBeforeMeasure(textLines.length, lineHeightPixels, fontSize);
+}
+
+function resolveSvgWidth(measuredWidth) {
+  if (measuredWidth) {
+    return Math.ceil(measuredWidth);
+  }
+  return 0;
+}
+
+function baselineYForFirstLine(fontSize, lineHeightPixels) {
+  return fontSize + (lineHeightPixels - fontSize) * BASELINE_OFFSET_IN_LINE;
+}
+
+function readFontBitsFromFlatStyle(flatStyle) {
+  return {
+    fontSize: flatStyle.fontSize ?? DEFAULT_FONT_SIZE,
+    fontWeight: flatStyle.fontWeight ?? DEFAULT_FONT_WEIGHT,
+    letterSpacing: flatStyle.letterSpacing ?? DEFAULT_LETTER_SPACING,
+    lineHeightFromStyle: flatStyle.lineHeight,
+    fontFamily: flatStyle.fontFamily,
+    textAlign: flatStyle.textAlign ?? DEFAULT_TEXT_ALIGN,
+  };
+}
+
+function buildWrapperStyleList(isCenteredLayout, flatStyle) {
+  const alignSelfOverride = flatStyle.alignSelf
+    ? { alignSelf: flatStyle.alignSelf }
+    : null;
+  const widthOverride = flatStyle.width ? { width: flatStyle.width } : null;
+  return [
+    styles.wrap,
+    isCenteredLayout ? styles.wrapCenter : null,
+    alignSelfOverride,
+    widthOverride,
+  ];
+}
+
+function mintUniqueGradientDomId() {
+  nextGradientDomId += 1;
+  return `${GRADIENT_ID_PREFIX}${nextGradientDomId}`;
+}
+
+function GradientStopList({ gradientDomId, gradientColors, gradientStart, gradientEnd }) {
+  return (
+    <Defs>
+      <SvgGradient
+        id={gradientDomId}
+        x1={gradientPointAsPercent(gradientStart.x, GRADIENT_AXIS_X)}
+        y1={gradientPointAsPercent(gradientStart.y, GRADIENT_AXIS_Y)}
+        x2={gradientPointAsPercent(gradientEnd.x, GRADIENT_AXIS_X)}
+        y2={gradientPointAsPercent(gradientEnd.y, GRADIENT_AXIS_Y)}
+      >
+        {gradientColors.map((stopColor, stopIndex) => (
+          <Stop
+            key={`${stopColor}-${stopIndex}`}
+            offset={offsetForGradientStop(stopIndex, gradientColors.length)}
+            stopColor={stopColor}
+          />
+        ))}
+      </SvgGradient>
+    </Defs>
+  );
+}
+
+function GradientSvgLines({
+  plainText,
+  gradientDomId,
+  gradientColors,
+  gradientStart,
+  gradientEnd,
+  textAnchor,
+  fontSize,
+  fontWeight,
+  letterSpacing,
+  fontFamily,
+  lineHeightPixels,
+  measuredWidth,
+  measuredHeight,
+}) {
+  const textLines = textLinesFromPlainText(plainText);
+  const svgHeight = resolveSvgHeight(measuredHeight, textLines, lineHeightPixels, fontSize);
+  const svgWidth = resolveSvgWidth(measuredWidth);
+  const baselineY = baselineYForFirstLine(fontSize, lineHeightPixels);
+  const textX = horizontalPositionForAnchor(textAnchor, svgWidth);
+  const fillUrl = `url(#${gradientDomId})`;
+
+  return (
+    <Svg width={svgWidth} height={svgHeight} style={styles.svgOverlay}>
+      <GradientStopList
+        gradientDomId={gradientDomId}
+        gradientColors={gradientColors}
+        gradientStart={gradientStart}
+        gradientEnd={gradientEnd}
+      />
+      {textLines.map((lineText, lineIndex) => (
+        <SvgText
+          key={`${lineText}-${lineIndex}`}
+          x={textX}
+          y={baselineY + lineIndex * lineHeightPixels}
+          textAnchor={textAnchor}
+          fontSize={fontSize}
+          fontWeight={fontWeight}
+          letterSpacing={letterSpacing}
+          fontFamily={fontFamily}
+          fill={fillUrl}
+        >
+          {lineText}
+        </SvgText>
+      ))}
+    </Svg>
+  );
+}
+
+function SolidFallbackText({ textProps, sharedTextStyle, flatStyle, solidFallback, maxLines, plainText }) {
+  const solidStyle = [sharedTextStyle, flatStyle, { color: solidFallback }];
+  return (
+    <Text {...textProps} style={solidStyle} numberOfLines={maxLines}>
+      {plainText}
+    </Text>
+  );
+}
+
+function HiddenMeasureText({
+  textProps,
+  sharedTextStyle,
+  flatStyle,
+  maxLines,
+  plainText,
+  onMeasuredSize,
+}) {
+  // vocab: onLayout = RN fires after layout with nativeEvent.layout width/height
+  const measureStyle = [sharedTextStyle, styles.hiddenMeasureText, flatStyle];
+
+  function rememberLayoutSize(layoutEvent) {
+    const { width, height } = layoutEvent.nativeEvent.layout;
+    if (width > 0 && height > 0) {
+      onMeasuredSize({ width, height });
+    }
+  }
+
+  return (
+    <Text
+      {...textProps}
+      style={measureStyle}
+      numberOfLines={maxLines}
+      onLayout={rememberLayoutSize}
+    >
+      {plainText}
+    </Text>
+  );
 }
 
 // ===== MAIN FUNCTION =====
@@ -100,125 +288,111 @@ function svgTextX(anchor, svgWidth) {
 export default function ColorText({
   children,
   style,
-  colors = DEFAULT_COLORS,
-  start = DEFAULT_START,
-  end = DEFAULT_END,
+  colors = DEFAULT_GRADIENT_COLORS,
+  start = GRADIENT_START_DEFAULT,
+  end = GRADIENT_END_DEFAULT,
   textProps,
   numberOfLines,
   fallbackColor,
 }) {
-  const text =
-    typeof children === 'string' || typeof children === 'number' ? String(children) : null;
+  const childIsPlainText = childValueIsPlainText(children);
+  const plainText = childIsPlainText ? String(children) : null;
+
   const flatStyle = StyleSheet.flatten(style) || {};
-  const fontSize = flatStyle.fontSize ?? DEFAULT_FONT_SIZE;
-  const fontWeight = flatStyle.fontWeight ?? DEFAULT_FONT_WEIGHT;
-  const letterSpacing = flatStyle.letterSpacing ?? DEFAULT_LETTER_SPACING;
-  const lineHeight = flatStyle.lineHeight;
-  const fontFamily = flatStyle.fontFamily;
-  const align = flatStyle.textAlign ?? DEFAULT_TEXT_ALIGN;
-  const fallback = fallbackColor ?? pickFallbackColor(colors);
-  const lines = numberOfLines ?? flatStyle.numberOfLines;
+  const {
+    fontSize,
+    fontWeight,
+    letterSpacing,
+    lineHeightFromStyle,
+    fontFamily,
+    textAlign,
+  } = readFontBitsFromFlatStyle(flatStyle);
+  const solidFallback = fallbackColor ?? solidColorWhileMeasuring(colors);
+  const maxLines = numberOfLines ?? flatStyle.numberOfLines;
 
-  const [size, setSize] = useState(null);
-  const gradientId = useMemo(() => `${GRADIENT_ID_PREFIX}${++gradientIdCounter}`, []);
-
-  const baseTextStyle = useMemo(
+  // Hook order frozen: measuredSize → gradientDomId → sharedTextStyle
+  // vocab: useState = measured box from the hidden Text; null until first onLayout
+  const [measuredSize, setMeasuredSize] = useState(null);
+  // vocab: useMemo = mint one SVG gradient id for this mount (Defs id must stay unique)
+  const gradientDomId = useMemo(() => mintUniqueGradientDomId(), []);
+  const sharedTextStyle = useMemo(
     () => ({
       fontSize,
       fontWeight,
       letterSpacing,
-      lineHeight,
+      lineHeight: lineHeightFromStyle,
       fontFamily,
-      textAlign: align,
+      textAlign,
     }),
-    [fontSize, fontWeight, letterSpacing, lineHeight, fontFamily, align],
+    [fontSize, fontWeight, letterSpacing, lineHeightFromStyle, fontFamily, textAlign],
   );
 
-  if (!text) {
+  // Non-string children: skip SVG entirely (same door as before).
+  if (!plainText) {
+    const plainChildStyle = [style, { color: solidFallback }];
     return (
-      <Text {...textProps} style={[style, { color: fallback }]} numberOfLines={lines}>
+      <Text {...textProps} style={plainChildStyle} numberOfLines={maxLines}>
         {children}
       </Text>
     );
   }
 
-  const textLines = text.split('\n');
-  const isMultiline = textLines.length > 1;
-  const isCentered = align === ALIGN_CENTER;
-  const anchor = textAnchorFromAlign(align);
-  const lineHeightPx = lineHeight || fontSize * DEFAULT_LINE_HEIGHT_RATIO;
-  const svgHeight = size
-    ? Math.ceil(size.height)
-    : Math.ceil(isMultiline ? textLines.length * lineHeightPx : lineHeight || fontSize * UNMEASURED_LINE_HEIGHT_RATIO);
-  const svgWidth = size ? Math.ceil(size.width) : 0;
-  const baselineY = fontSize + (lineHeightPx - fontSize) * BASELINE_OFFSET_RATIO;
-  const textX = svgTextX(anchor, svgWidth);
-  const isReady = size && svgWidth > 0;
+  // 1. Resolve SVG align + line height from flattened style.
+  const textAnchor = svgTextAnchorFromAlign(textAlign);
+  const lineHeightPixels = lineHeightFromStyle || fontSize * LINE_HEIGHT_RATIO_DEFAULT;
+  const isCenteredLayout = textAlign === TEXT_ALIGN_CENTER;
+  const measuredWidth = measuredSize ? measuredSize.width : 0;
+  const measuredHeight = measuredSize ? measuredSize.height : 0;
+  const gradientReady = Boolean(measuredSize && measuredWidth > 0);
+  const wrapperStyle = buildWrapperStyleList(isCenteredLayout, flatStyle);
+
+  // 2. Until measure lands, show solid fallback; then paint SVG gradient lines.
+  let visibleTextNode = (
+    <SolidFallbackText
+      textProps={textProps}
+      sharedTextStyle={sharedTextStyle}
+      flatStyle={flatStyle}
+      solidFallback={solidFallback}
+      maxLines={maxLines}
+      plainText={plainText}
+    />
+  );
+  if (gradientReady) {
+    visibleTextNode = (
+      <GradientSvgLines
+        plainText={plainText}
+        gradientDomId={gradientDomId}
+        gradientColors={colors}
+        gradientStart={start}
+        gradientEnd={end}
+        textAnchor={textAnchor}
+        fontSize={fontSize}
+        fontWeight={fontWeight}
+        letterSpacing={letterSpacing}
+        fontFamily={fontFamily}
+        lineHeightPixels={lineHeightPixels}
+        measuredWidth={measuredWidth}
+        measuredHeight={measuredHeight}
+      />
+    );
+  }
 
   return (
-    <View
-      style={[
-        styles.wrap,
-        isCentered ? styles.wrapCenter : null,
-        flatStyle.alignSelf ? { alignSelf: flatStyle.alignSelf } : null,
-        flatStyle.width ? { width: flatStyle.width } : null,
-      ]}
-      collapsable={false}
-    >
-      <Text
-        {...textProps}
-        style={[baseTextStyle, styles.measure, flatStyle]}
-        numberOfLines={lines}
-        onLayout={(layoutEvent) => {
-          const { width, height } = layoutEvent.nativeEvent.layout;
-          if (width > 0 && height > 0) setSize({ width, height });
-        }}
-      >
-        {text}
-      </Text>
-      {!isReady ? (
-        <Text {...textProps} style={[baseTextStyle, flatStyle, { color: fallback }]} numberOfLines={lines}>
-          {text}
-        </Text>
-      ) : (
-        <Svg width={svgWidth} height={svgHeight} style={styles.svg}>
-          <Defs>
-            <SvgGradient
-              id={gradientId}
-              x1={fractionToPercent(start.x, AXIS_X)}
-              y1={fractionToPercent(start.y, AXIS_Y)}
-              x2={fractionToPercent(end.x, AXIS_X)}
-              y2={fractionToPercent(end.y, AXIS_Y)}
-            >
-              {colors.map((color, stopIndex) => (
-                <Stop
-                  key={`${color}-${stopIndex}`}
-                  offset={gradientStopOffset(stopIndex, colors.length)}
-                  stopColor={color}
-                />
-              ))}
-            </SvgGradient>
-          </Defs>
-          {textLines.map((line, lineIndex) => (
-            <SvgText
-              key={`${line}-${lineIndex}`}
-              x={textX}
-              y={baselineY + lineIndex * lineHeightPx}
-              textAnchor={anchor}
-              fontSize={fontSize}
-              fontWeight={fontWeight}
-              letterSpacing={letterSpacing}
-              fontFamily={fontFamily}
-              fill={`url(#${gradientId})`}
-            >
-              {line}
-            </SvgText>
-          ))}
-        </Svg>
-      )}
+    <View style={wrapperStyle} collapsable={false}>
+      <HiddenMeasureText
+        textProps={textProps}
+        sharedTextStyle={sharedTextStyle}
+        flatStyle={flatStyle}
+        maxLines={maxLines}
+        plainText={plainText}
+        onMeasuredSize={setMeasuredSize}
+      />
+      {visibleTextNode}
     </View>
   );
 }
+
+// ===== PLUMBING — skip unless debugging =====
 
 const styles = StyleSheet.create({
   wrap: {
@@ -228,13 +402,13 @@ const styles = StyleSheet.create({
   wrapCenter: {
     alignSelf: 'center',
   },
-  measure: {
+  hiddenMeasureText: {
     opacity: 0,
     position: 'absolute',
     left: 0,
     top: 0,
   },
-  svg: {
+  svgOverlay: {
     overflow: 'visible',
   },
 });

@@ -1,5 +1,5 @@
 // Colors for the trainer document and spreadsheet editors.
-// Flow: getEditorTheme(isDark) → nb chrome tokens for shell; print/canvas tokens stay for WebView paper.
+// Flow: getEditorTheme(isDark) → nb chrome tokens; print/canvas tokens for WebView paper; save-age label.
 // Used by DocFlow. Also exports font swatches and the "saved Xs ago" label.
 
 import { lightColors, darkColors } from '../../look-and-feel/colorPalette';
@@ -56,6 +56,14 @@ const SECONDS_PER_MINUTE = 60;
 const MILLISECONDS_PER_SECOND = 1000;
 const NEVER_SAVED_LABEL = '—';
 
+// Spreadsheet grid / selection lines — finer than nbBorder so cells stay readable.
+const DARK_GRID_LINE = 'rgba(242,242,242,0.14)';
+const LIGHT_GRID_LINE = 'rgba(10,10,10,0.12)';
+const DARK_SELECTION_FILL = 'rgba(242,242,242,0.12)';
+const LIGHT_SELECTION_FILL = 'rgba(10,10,10,0.08)';
+const DARK_DIVIDER = 'rgba(242,242,242,0.16)';
+const LIGHT_DIVIDER = 'rgba(10,10,10,0.12)';
+
 // ===== HELPER FUNCTIONS =====
 
 /**
@@ -63,9 +71,10 @@ const NEVER_SAVED_LABEL = '—';
  * @param {boolean} isDark
  * @returns {object}
  */
-function printPageTokens(isDark) {
+function printPageTokensForTheme(isDark) {
+  const deskBackground = isDark ? DARK_PRINT_CANVAS : lightColors.nbSoft;
   return {
-    printCanvasBg: isDark ? DARK_PRINT_CANVAS : lightColors.nbSoft,
+    printCanvasBg: deskBackground,
     printPageBg: PRINT_PAGE_BG,
     printPageText: PRINT_PAGE_TEXT,
     printPageMuted: PRINT_PAGE_MUTED,
@@ -73,12 +82,12 @@ function printPageTokens(isDark) {
 }
 
 /**
- * A black drop shadow is invisible on a dark canvas, so dark mode skips it.
+ * Hard offset shadow (Design Law). Soft blur looks like the old Google Docs desk.
+ * Dark mode still returns a shadow object — callers always spread the same keys.
  * @param {boolean} isDark
- * @returns {object|null}
+ * @returns {object}
  */
-function pageShadow(isDark) {
-  // Hard offset shadow (Design Law) — soft blur looks like the old Google Docs desk.
+function pageShadowStyleForTheme(isDark) {
   if (isDark) {
     return {
       shadowColor: darkColors.nbShadow,
@@ -97,17 +106,58 @@ function pageShadow(isDark) {
   };
 }
 
+/**
+ * Finer grid / selection / divider colors for the spreadsheet surface.
+ * @param {boolean} isDark
+ * @returns {{ gridLineColor: string, selectionFill: string, dividerColor: string }}
+ */
+function spreadsheetLineColors(isDark) {
+  if (isDark) {
+    return {
+      gridLineColor: DARK_GRID_LINE,
+      selectionFill: DARK_SELECTION_FILL,
+      dividerColor: DARK_DIVIDER,
+    };
+  }
+  return {
+    gridLineColor: LIGHT_GRID_LINE,
+    selectionFill: LIGHT_SELECTION_FILL,
+    dividerColor: LIGHT_DIVIDER,
+  };
+}
+
 // ===== MAIN FUNCTION =====
 
 /**
+ * Build the full chrome + print + spreadsheet color bag for one theme mode.
  * @param {boolean} isDark
  * @returns {object}
  */
 export function getEditorTheme(isDark) {
+  // 1. Pick the nb palette for the light or dark shell.
   const palette = isDark ? darkColors : lightColors;
   const chromeBorder = palette.nbBorder;
   const tabFill = palette.nbFill;
   const tabOnFill = palette.nbOnFill;
+
+  // 2. Print preview tokens — paper stays white; desk dims in dark mode.
+  const printTokens = printPageTokensForTheme(isDark);
+
+  // 3. Page card shadow object (Design Law hard offset).
+  const pageShadowStyle = pageShadowStyleForTheme(isDark);
+
+  // 4. Spreadsheet line contrast (not nbBorder — finer lines for cells).
+  const lineColors = spreadsheetLineColors(isDark);
+
+  // 5. Name every theme-dependent paint before the return bag (no nested ternaries in the object).
+  let formulaColor = LIGHT_FORMULA_COLOR;
+  let formulaResultColor = LIGHT_FORMULA_RESULT;
+  let inputBackgroundColor = LIGHT_INPUT_BG;
+  if (isDark) {
+    formulaColor = DARK_FORMULA_COLOR;
+    formulaResultColor = DARK_FORMULA_RESULT;
+    inputBackgroundColor = DARK_INPUT_BG;
+  }
 
   return {
     accentGradient: EDITOR_ACCENT_GRADIENT,
@@ -117,44 +167,56 @@ export function getEditorTheme(isDark) {
     accentSoft: palette.nbSoft,
     accentBorder: chromeBorder,
     chromeBorder,
-    formula: isDark ? DARK_FORMULA_COLOR : LIGHT_FORMULA_COLOR,
+    formula: formulaColor,
     bg: palette.nbBackground,
     canvasBg: palette.nbSoft,
     pageBg: palette.nbSurface,
-    ...printPageTokens(isDark),
+    ...printTokens,
     headerBg: palette.nbSurface,
     toolbarBg: palette.nbSurface,
     gridHeaderBg: palette.nbSurfaceChip,
     cornerBg: palette.nbSoft,
     border: chromeBorder,
-    gridLine: isDark ? 'rgba(242,242,242,0.14)' : 'rgba(10,10,10,0.12)',
+    gridLine: lineColors.gridLineColor,
     text: palette.nbInk,
     textMuted: palette.nbMuted,
     textOnAccent: tabOnFill,
     success: palette.success,
     warning: palette.warning,
-    selectionFill: isDark ? 'rgba(242,242,242,0.12)' : 'rgba(10,10,10,0.08)',
+    selectionFill: lineColors.selectionFill,
     selectionBorder: chromeBorder,
     sheetTabActiveBg: tabFill,
     sheetTabActiveText: tabOnFill,
-    formulaGreen: isDark ? DARK_FORMULA_RESULT : LIGHT_FORMULA_RESULT,
-    inputBg: isDark ? DARK_INPUT_BG : LIGHT_INPUT_BG,
-    divider: isDark ? 'rgba(242,242,242,0.16)' : 'rgba(10,10,10,0.12)',
-    pageShadow: pageShadow(isDark),
+    formulaGreen: formulaResultColor,
+    inputBg: inputBackgroundColor,
+    divider: lineColors.dividerColor,
+    pageShadow: pageShadowStyle,
   };
 }
 
 /**
- * Coarse on purpose. After a minute, the exact second does not matter.
+ * Coarse "saved Xs ago" label for the editor toolbar.
+ * After a minute, the exact second does not matter.
  * @param {Date|null|undefined} lastSaved
  * @returns {string}
  */
 export function formatEditorSavedAgo(lastSaved) {
-  if (!lastSaved) return NEVER_SAVED_LABEL;
-  const secondsAgo = Math.round((Date.now() - lastSaved.getTime()) / MILLISECONDS_PER_SECOND);
-  if (secondsAgo < JUST_NOW_SECONDS) return 'just now';
-  if (secondsAgo < SECONDS_PER_MINUTE) return `${secondsAgo}s ago`;
-  return `${Math.floor(secondsAgo / SECONDS_PER_MINUTE)}m ago`;
+  if (!lastSaved) {
+    return NEVER_SAVED_LABEL;
+  }
+
+  const millisecondsSinceSave = Date.now() - lastSaved.getTime();
+  const secondsAgo = Math.round(millisecondsSinceSave / MILLISECONDS_PER_SECOND);
+
+  if (secondsAgo < JUST_NOW_SECONDS) {
+    return 'just now';
+  }
+  if (secondsAgo < SECONDS_PER_MINUTE) {
+    return `${secondsAgo}s ago`;
+  }
+
+  const minutesAgo = Math.floor(secondsAgo / SECONDS_PER_MINUTE);
+  return `${minutesAgo}m ago`;
 }
 
 export {

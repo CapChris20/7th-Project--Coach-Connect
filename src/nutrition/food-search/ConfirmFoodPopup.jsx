@@ -7,25 +7,10 @@
 // KEEP Firestore-facing fields: servingSize, servingGrams, loggedUnit, dataBasis, etc.
 
 import React, { useState, useEffect, useMemo } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TextInput,
-  KeyboardAvoidingView,
-  Platform,
-  TouchableOpacity,
-} from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TextInput, KeyboardAvoidingView, Platform, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-
-import {
-  finalizeBarcodeFood,
-  resolveServingGrams,
-  parseServingQtyInput,
-  totalGramsFromServing,
-} from '../food-details/servingSizeMath';
+import { finalizeBarcodeFood, resolveServingGrams, parseServingQtyInput, totalGramsFromServing } from '../food-details/servingSizeMath';
 import { macrosAtGrams } from '../barcode/scannedProductSummary';
 import { normalizeFoodForLog } from '../food-search/cleanSearchText';
 import { normalizeFoodRecordForStorage } from '../food-search/readableFoodTitle';
@@ -41,12 +26,14 @@ import { borderRadius, nb, spacing } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
-const MEALS = ['Breakfast', 'Lunch', 'Dinner', 'Snacks'];
+const MEAL_CHIP_LABELS = ['Breakfast', 'Lunch', 'Dinner', 'Snacks'];
 const DEFAULT_SERVING_GRAMS = 100;
 const MIN_SERVINGS_LOGGED = 0.01;
 const HALF_SERVING = 0.5;
 const AMOUNT_ROUND_FACTOR = 100;
-
+const SCROLL_FOOTER_EXTRA_WITH_NAV = 80;
+const SCROLL_FOOTER_EXTRA_DEFAULT = 120;
+const SHELL_BOTTOM_INSET_FALLBACK = 16;
 const PROTEIN_ICON = require('../../assets/icons/handoff/protein.png');
 const CARBS_ICON = require('../../assets/icons/handoff/carbs.png');
 const FATS_ICON = require('../../assets/icons/handoff/fats.png');
@@ -60,8 +47,9 @@ const FATS_ICON = require('../../assets/icons/handoff/fats.png');
  * @returns {number}
  */
 function numberOr(value, fallback = 0) {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : fallback;
+  const asNumber = Number(value);
+  if (Number.isFinite(asNumber)) return asNumber;
+  return fallback;
 }
 
 /**
@@ -70,31 +58,36 @@ function numberOr(value, fallback = 0) {
  * @returns {number|null}
  */
 function parseAmountNumber(rawValue) {
-  const parsed = parseServingQtyInput(rawValue);
-  if (parsed != null) return parsed;
+  const parsedFraction = parseServingQtyInput(rawValue);
+  if (parsedFraction != null) return parsedFraction;
   if (rawValue === '' || rawValue == null) return null;
-  return Number(String(rawValue).replace(',', '.'));
+  const withDot = String(rawValue).replace(',', '.');
+  return Number(withDot);
 }
 
 /**
  * Display name for header subtitle + payload.
+ * Food-card keys name / food_name stay frozen.
  * @param {object} food
  * @returns {string}
  */
 function foodDisplayName(food) {
-  return food?.name || food?.food_name || 'Food';
+  if (food?.name) return food.name;
+  if (food?.food_name) return food.food_name;
+  return 'Food';
 }
 
 /**
- * Title-case a mealType prop into a MEALS chip label.
+ * Title-case a mealType prop into a meal-chip label.
  * @param {string} mealType
  * @returns {string}
  */
 function mealTitle(mealType) {
-  const m = String(mealType || 'lunch');
-  const titled = m.charAt(0).toUpperCase() + m.slice(1).toLowerCase();
+  const mealRaw = String(mealType || 'lunch');
+  const titled = mealRaw.charAt(0).toUpperCase() + mealRaw.slice(1).toLowerCase();
   if (titled === 'Snack') return 'Snacks';
-  return MEALS.includes(titled) ? titled : 'Snacks';
+  if (MEAL_CHIP_LABELS.includes(titled)) return titled;
+  return 'Snacks';
 }
 
 /**
@@ -103,36 +96,50 @@ function mealTitle(mealType) {
  * @returns {string}
  */
 function unitFromFood(food) {
-  return (
-    food?.servingUnit ||
-    food?.serving_unit ||
-    food?.portion_text ||
-    food?.serving_label ||
-    'serving'
-  );
+  if (food?.servingUnit) return food.servingUnit;
+  if (food?.serving_unit) return food.serving_unit;
+  if (food?.portion_text) return food.portion_text;
+  if (food?.serving_label) return food.serving_label;
+  return 'serving';
+}
+
+/**
+ * Read one micro from the food card top-level or metadata.
+ * Main P/C/F/kcal come from macrosAtGrams — micros are label extras only.
+ * @param {object} food
+ * @param {string} key
+ * @param {string} [metaKey]
+ * @returns {number}
+ */
+function readMicroFromFood(food, key, metaKey) {
+  const metadataKey = metaKey != null ? metaKey : key;
+  const fromTop = food?.[key];
+  if (fromTop != null) return numberOr(fromTop);
+  return numberOr(food?.metadata?.[metadataKey]);
+}
+function scaleMicroValue(rawValue, ratio) {
+  return Math.round(rawValue * ratio * 10) / 10;
 }
 
 /**
  * Scale label micros (fat sub-rows, sodium, etc.) by grams ratio vs label serving.
- * Main P/C/F/kcal come from macrosAtGrams — this is only for the NUTRIENTS list extras.
  * @param {object} food
  * @param {number} totalGrams
  * @param {number} labelGrams
  * @returns {object}
  */
 function scaledMicros(food, totalGrams, labelGrams) {
-  const base = Math.max(1, labelGrams);
-  const ratio = Math.max(0.01, totalGrams) / base;
-  const read = (key, metaKey) =>
-    numberOr(food?.[key] ?? food?.metadata?.[metaKey ?? key]);
+  const baseGrams = Math.max(1, labelGrams);
+  const safeTotalGrams = Math.max(0.01, totalGrams);
+  const ratio = safeTotalGrams / baseGrams;
   return {
-    fiber: Math.round(read('fiber') * ratio * 10) / 10,
-    sugar: Math.round(read('sugar') * ratio * 10) / 10,
-    sodium: Math.round(read('sodium') * ratio * 10) / 10,
-    cholesterol: Math.round(read('cholesterol') * ratio * 10) / 10,
-    saturatedFat: Math.round(read('saturatedFat', 'saturatedFat') * ratio * 10) / 10,
-    potassium: Math.round(read('potassium') * ratio * 10) / 10,
-    vitaminD: Math.round(read('vitaminD') * ratio * 10) / 10,
+    fiber: scaleMicroValue(readMicroFromFood(food, 'fiber'), ratio),
+    sugar: scaleMicroValue(readMicroFromFood(food, 'sugar'), ratio),
+    sodium: scaleMicroValue(readMicroFromFood(food, 'sodium'), ratio),
+    cholesterol: scaleMicroValue(readMicroFromFood(food, 'cholesterol'), ratio),
+    saturatedFat: scaleMicroValue(readMicroFromFood(food, 'saturatedFat', 'saturatedFat'), ratio),
+    potassium: scaleMicroValue(readMicroFromFood(food, 'potassium'), ratio),
+    vitaminD: scaleMicroValue(readMicroFromFood(food, 'vitaminD'), ratio)
   };
 }
 
@@ -148,17 +155,18 @@ function buildConfirmedFoodPayload({
   servingsLogged,
   servingUnit,
   labelServingGrams,
-  scannedBarcode,
+  scannedBarcode
 }) {
+  const displayName = foodDisplayName(nutritionBase);
+  // vocab: servingGrams here = TOTAL grams logged (saveLoggedFood expects logged total)
   return {
     ...nutritionBase,
-    name: foodDisplayName(nutritionBase),
-    food_name: foodDisplayName(nutritionBase),
+    name: displayName,
+    food_name: displayName,
     calories: Math.round(numberOr(macros.calories)),
     protein: numberOr(macros.protein),
     carbs: numberOr(macros.carbs),
     fat: numberOr(macros.fat),
-    // vocab: servingGrams here = TOTAL grams logged (saveLoggedFood expects logged total)
     servingGrams: grams,
     serving_grams: grams,
     servingAmount: grams,
@@ -174,56 +182,273 @@ function buildConfirmedFoodPayload({
     originalAmount: servingsLogged,
     labelServingGrams,
     userVerified: true,
-    scannedBarcode: scannedBarcode || nutritionBase?.scannedBarcode || null,
+    scannedBarcode: scannedBarcode || nutritionBase?.scannedBarcode || null
   };
 }
-
-function NutrientRow({ label, value, nested, colors }) {
-  return (
-    <View style={[styles.nutrientRow, nested && styles.nutrientNested]}>
-      <Text style={[styles.nutrientLabel, { color: nested ? colors.nbMuted : colors.nbInk }]}>
-        {label}
-      </Text>
-      <Text style={[styles.nutrientValue, { color: nested ? colors.nbMuted : colors.nbInk }]}>
-        {value}
-      </Text>
-    </View>
-  );
+function pickHeaderTitle(titleProp) {
+  // PNG title is always "Nutrition facts" — ignore legacy "Confirm & log" callers
+  if (!titleProp) return 'Nutrition facts';
+  if (/confirm/i.test(String(titleProp))) return 'Nutrition facts';
+  return String(titleProp);
 }
-
-function MacroTile({ icon, value, label, index, colors }) {
-  return (
-    <View style={[styles.tile, { borderColor: colors.nbBorder }]}>
+function pickScreenBackground(colors, theme) {
+  if (theme?.screenBg) return theme.screenBg;
+  return colors.nbBackground;
+}
+function emptyMacros() {
+  return {
+    calories: 0,
+    protein: 0,
+    carbs: 0,
+    fat: 0
+  };
+}
+function macrosForLoggedGrams(normalizedFood, totalGrams) {
+  if (!normalizedFood) return emptyMacros();
+  try {
+    return macrosAtGrams(normalizedFood, totalGrams) || emptyMacros();
+  } catch (_macroError) {
+    return emptyMacros();
+  }
+}
+function NutrientRow({
+  label,
+  value,
+  nested,
+  colors
+}) {
+  let labelColor;
+  if (nested) {
+    labelColor = colors.nbMuted;
+  } else {
+    labelColor = colors.nbInk;
+  }
+  let valueColor;
+  if (nested) {
+    valueColor = colors.nbMuted;
+  } else {
+    valueColor = colors.nbInk;
+  }
+  return <View style={[styles.nutrientRow, nested && styles.nutrientNested]}>
+      <Text style={[styles.nutrientLabel, {
+      color: labelColor
+    }]}>{label}</Text>
+      <Text style={[styles.nutrientValue, {
+      color: valueColor
+    }]}>{value}</Text>
+    </View>;
+}
+function MacroTile({
+  icon,
+  value,
+  label,
+  index,
+  colors
+}) {
+  return <View style={[styles.tile, {
+    borderColor: colors.nbBorder
+  }]}>
       <NbIconChip source={icon} size={28} index={index} />
-      <Text style={[styles.tileValue, { color: colors.nbInk }]}>{value}</Text>
-      <Text style={[styles.tileLabel, { color: colors.nbMuted }]}>{label}</Text>
-    </View>
-  );
+      <Text style={[styles.tileValue, {
+      color: colors.nbInk
+    }]}>{value}</Text>
+      <Text style={[styles.tileLabel, {
+      color: colors.nbMuted
+    }]}>{label}</Text>
+    </View>;
 }
 
 /**
  * HardShadow field for Edit serving sheet (PNG 15) — label caps + outlined input.
  */
-function HardField({ label, value, onChangeText, colors, keyboardType = 'decimal-pad' }) {
-  return (
-    <View style={styles.fieldBlock}>
-      <Text style={[styles.fieldLabel, { color: colors.nbMuted }]}>{label}</Text>
+function HardField({
+  label,
+  value,
+  onChangeText,
+  colors,
+  keyboardType = 'decimal-pad'
+}) {
+  return <View style={styles.fieldBlock}>
+      <Text style={[styles.fieldLabel, {
+      color: colors.nbMuted
+    }]}>{label}</Text>
       <ColorFieldFrame radius={borderRadius.nbInput}>
-        <TextInput
-          value={value}
-          onChangeText={onChangeText}
-          keyboardType={keyboardType}
-          style={[styles.fieldInput, { color: colors.nbInk }]}
-          placeholderTextColor={colors.nbMuted}
-        />
+        <TextInput value={value} onChangeText={onChangeText} keyboardType={keyboardType} style={[styles.fieldInput, {
+        color: colors.nbInk
+      }]} placeholderTextColor={colors.nbMuted} />
       </ColorFieldFrame>
-    </View>
-  );
+    </View>;
+}
+function MealChip({
+  mealName,
+  selected,
+  onPress,
+  colors
+}) {
+  // Active chip uses nbFill (not brand gradient) — Design Law meal chips
+  let chipBackground = colors.nbSurface;
+  let chipTextColor = colors.nbInk;
+  if (selected) {
+    chipBackground = colors.nbFill;
+    chipTextColor = colors.nbOnFill;
+  }
+  return <HardShadow key={mealName} offset={nb.shadowOffsetSmall} radius={999}>
+      <TouchableOpacity onPress={onPress} style={[styles.mealChip, {
+      borderColor: colors.nbBorder,
+      backgroundColor: chipBackground
+    }]} accessibilityRole="button" accessibilityState={{
+      selected
+    }} activeOpacity={0.85}>
+        <Text style={{
+        color: chipTextColor,
+        fontFamily: 'SpaceGrotesk_700Bold',
+        fontSize: 13
+      }}>
+          {mealName}
+        </Text>
+      </TouchableOpacity>
+    </HardShadow>;
+}
+function MacroSummaryCard({
+  macros,
+  colors
+}) {
+  const caloriesText = Math.round(macros.calories || 0);
+  const proteinText = `${Math.round(macros.protein || 0)} g`;
+  const carbsText = `${Math.round(macros.carbs || 0)} g`;
+  const fatText = `${Math.round(macros.fat || 0)} g`;
+  return <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetCard} style={{
+    marginBottom: 16
+  }}>
+      <View style={[styles.macroCard, {
+      backgroundColor: colors.nbSurface,
+      borderColor: colors.nbBorder
+    }]}>
+        <Text style={[styles.calNum, {
+        color: colors.nbInk
+      }]}>
+          {caloriesText}
+          <Text style={[styles.calUnit, {
+          color: colors.nbMuted
+        }]}> calories</Text>
+        </Text>
+        <View style={styles.macroTiles}>
+          <MacroTile icon={PROTEIN_ICON} value={proteinText} label="Protein" index={3} colors={colors} />
+          <MacroTile icon={CARBS_ICON} value={carbsText} label="Carbs" index={0} colors={colors} />
+          <MacroTile icon={FATS_ICON} value={fatText} label="Fats" index={1} colors={colors} />
+        </View>
+      </View>
+    </HardShadow>;
+}
+function ServingControlsCard({
+  servings,
+  servingUnit,
+  servingGrams,
+  onFewer,
+  onMore,
+  onOpenEdit,
+  colors
+}) {
+  const servingSizeLine = `1 ${servingUnit} • ${Math.round(servingGrams)} g`;
+  return <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetCard} style={{
+    marginBottom: 16
+  }}>
+      <View style={[styles.servingCard, {
+      backgroundColor: colors.nbSurface,
+      borderColor: colors.nbBorder
+    }]}>
+        <View style={styles.servingRow}>
+          <Text style={[styles.servingLabel, {
+          color: colors.nbMuted
+        }]}>SERVINGS</Text>
+          <View style={styles.stepper}>
+            <HardShadow offset={nb.shadowOffsetSmall} radius={12}>
+              <TouchableOpacity onPress={onFewer} style={[styles.stepBtn, {
+              borderColor: colors.nbBorder,
+              backgroundColor: colors.nbSurface
+            }]} accessibilityLabel="Fewer servings" activeOpacity={0.85}>
+                <Ionicons name="remove" size={20} color={colors.nbInk} />
+              </TouchableOpacity>
+            </HardShadow>
+            <Text style={[styles.stepValue, {
+            color: colors.nbInk
+          }]}>{servings}</Text>
+            <HardShadow offset={nb.shadowOffsetSmall} radius={12}>
+              <TouchableOpacity onPress={onMore} style={[styles.stepBtn, {
+              borderColor: colors.nbBorder,
+              backgroundColor: colors.nbSurface
+            }]} accessibilityLabel="More servings" activeOpacity={0.85}>
+                <Ionicons name="add" size={20} color={colors.nbInk} />
+              </TouchableOpacity>
+            </HardShadow>
+          </View>
+        </View>
+
+        <View style={[styles.servingDivider, {
+        backgroundColor: colors.nbBorder
+      }]} />
+
+        <View style={styles.servingRow}>
+          <View style={{
+          flex: 1,
+          minWidth: 0
+        }}>
+            <Text style={[styles.servingLabel, {
+            color: colors.nbMuted
+          }]}>SERVING SIZE</Text>
+            <Text style={[styles.servingSizeText, {
+            color: colors.nbInk
+          }]} numberOfLines={1}>
+              {servingSizeLine}
+            </Text>
+          </View>
+          <HardShadow offset={nb.shadowOffsetSmall} radius={999}>
+            <TouchableOpacity onPress={onOpenEdit} style={[styles.editServingPill, {
+            borderColor: colors.nbBorder,
+            backgroundColor: colors.nbSurface
+          }]} accessibilityRole="button" accessibilityLabel="Edit serving" activeOpacity={0.85}>
+              <Text style={[styles.editServingText, {
+              color: colors.nbInk
+            }]}>
+                Edit serving
+              </Text>
+            </TouchableOpacity>
+          </HardShadow>
+        </View>
+      </View>
+    </HardShadow>;
+}
+function NutrientsCard({
+  macros,
+  micros,
+  colors
+}) {
+  const showSaturatedFat = Boolean(micros.saturatedFat);
+  const showSugar = Boolean(micros.sugar);
+  const showPotassium = Boolean(micros.potassium);
+  const showVitaminD = Boolean(micros.vitaminD);
+  return <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetCard}>
+      <View style={[styles.nutrientCard, {
+      backgroundColor: colors.nbSurface,
+      borderColor: colors.nbBorder
+    }]}>
+        <NutrientRow label="Total fat" value={`${macros.fat || 0} g`} colors={colors} />
+        {showSaturatedFat ? <NutrientRow label="Sat. fat" value={`${micros.saturatedFat} g`} nested colors={colors} /> : null}
+        <NutrientRow label="Cholesterol" value={`${micros.cholesterol || 0} mg`} colors={colors} />
+        <NutrientRow label="Sodium" value={`${micros.sodium || 0} mg`} colors={colors} />
+        <NutrientRow label="Carbohydrates" value={`${macros.carbs || 0} g`} colors={colors} />
+        {showSugar ? <NutrientRow label="Sugars" value={`${micros.sugar} g`} nested colors={colors} /> : null}
+        <NutrientRow label="Protein" value={`${macros.protein || 0} g`} colors={colors} />
+        {showPotassium ? <NutrientRow label="Potassium" value={`${micros.potassium} mg`} colors={colors} /> : null}
+        {showVitaminD ? <NutrientRow label="Vitamin D" value={`${micros.vitaminD} mcg`} colors={colors} /> : null}
+      </View>
+    </HardShadow>;
 }
 
 // ===== MAIN FUNCTION =====
 
 /**
+ * Nutrition facts confirm sheet — scale serving, pick meal, Confirm and log.
  * @param {{ food: object, onConfirm: Function, onCancel: Function, mealType?: string, title?: string, theme?: object, showVerification?: boolean, reserveShellBottomNav?: boolean, scannedBarcode?: string, onWrongItem?: Function }} props
  */
 export default function FoodConfirmSheet({
@@ -236,27 +461,19 @@ export default function FoodConfirmSheet({
   showVerification = false,
   reserveShellBottomNav = false,
   scannedBarcode,
-  onWrongItem,
+  onWrongItem
 }) {
-  const { colors } = useTheme();
-  const shellBottomPad = useShellBottomNavInset(16);
-  const screenBg = theme?.screenBg || colors.nbBackground;
-
-  // PNG title is always "Nutrition facts" — ignore legacy "Confirm & log" callers
-  const headerTitle =
-    !title || /confirm/i.test(String(title)) ? 'Nutrition facts' : String(title);
+  // 1. Theme + chrome.
+  const {
+    colors
+  } = useTheme();
+  const shellBottomPad = useShellBottomNavInset(SHELL_BOTTOM_INSET_FALLBACK);
+  const screenBg = pickScreenBackground(colors, theme);
+  const headerTitle = pickHeaderTitle(title);
 
   // vocab: normalized = finalizeBarcodeFood then normalizeFoodForLog (per-100g sanitised)
-  const normalized = useMemo(
-    () => (food ? normalizeFoodForLog(finalizeBarcodeFood(food)) : null),
-    [food],
-  );
-
-  const labelGrams = useMemo(
-    () => (normalized ? resolveServingGrams(normalized) : DEFAULT_SERVING_GRAMS),
-    [normalized],
-  );
-
+  const normalized = useMemo(() => food ? normalizeFoodForLog(finalizeBarcodeFood(food)) : null, [food]);
+  const labelGrams = useMemo(() => normalized ? resolveServingGrams(normalized) : DEFAULT_SERVING_GRAMS, [normalized]);
   const [servings, setServings] = useState(1);
   const [meal, setMeal] = useState(mealTitle(mealTypeProp));
   const [editOpen, setEditOpen] = useState(false);
@@ -278,55 +495,64 @@ export default function FoodConfirmSheet({
   }, [normalized, mealTypeProp]);
 
   // Total grams for this log line = quantity × grams per serving
-  const totalGrams = Math.max(
-    1,
-    totalGramsFromServing(servings, servingGrams) || Math.round(servings * servingGrams),
-  );
+  const gramsFromServingMath = totalGramsFromServing(servings, servingGrams) || Math.round(servings * servingGrams);
+  const totalGrams = Math.max(1, gramsFromServingMath);
 
   // Main macros at the logged gram amount (barcode-aware)
-  const macros = useMemo(() => {
-    if (!normalized) return { calories: 0, protein: 0, carbs: 0, fat: 0 };
-    try {
-      return macrosAtGrams(normalized, totalGrams) || {};
-    } catch (_) {
-      return { calories: 0, protein: 0, carbs: 0, fat: 0 };
-    }
-  }, [normalized, totalGrams]);
-
-  const micros = useMemo(
-    () => scaledMicros(normalized || {}, totalGrams, servingGrams || labelGrams),
-    [normalized, totalGrams, servingGrams, labelGrams],
-  );
-
+  const macros = useMemo(() => macrosForLoggedGrams(normalized, totalGrams), [normalized, totalGrams]);
+  const micros = useMemo(() => scaledMicros(normalized || {}, totalGrams, servingGrams || labelGrams), [normalized, totalGrams, servingGrams, labelGrams]);
   const foodName = foodDisplayName(normalized || food);
-
-  const bumpServings = (delta) => {
-    setServings((s) =>
-      Math.max(HALF_SERVING, Math.round((s + delta) * AMOUNT_ROUND_FACTOR) / AMOUNT_ROUND_FACTOR),
-    );
-  };
-
-  const openEdit = () => {
+  function bumpServings(delta) {
+    // 1. Add or subtract a half-serving step.
+    // 2. Round to two decimals so stepper values stay tidy.
+    // 3. Never go below half a serving.
+    setServings(currentServings => {
+      const nextAmount = currentServings + delta;
+      const rounded = Math.round(nextAmount * AMOUNT_ROUND_FACTOR) / AMOUNT_ROUND_FACTOR;
+      return Math.max(HALF_SERVING, rounded);
+    });
+  }
+  function openEdit() {
+    // 1. Seed the edit sheet from the live serving state.
+    // 2. Open the NbSheet.
     setEditGrams(String(servingGrams));
     setEditQty(String(servings));
     setEditUnit(String(servingUnit || 'serving'));
     setEditOpen(true);
-  };
+  }
+  function applyEdit() {
+    // 1. Parse grams + quantity from the sheet fields.
+    const gramsFromField = parseAmountNumber(editGrams);
+    const qtyFromField = parseAmountNumber(editQty);
 
-  const applyEdit = () => {
-    const g = parseAmountNumber(editGrams);
-    const q = parseAmountNumber(editQty);
-    setServingGrams(Math.max(1, g != null ? g : servingGrams));
-    setServings(Math.max(MIN_SERVINGS_LOGGED, q != null ? q : servings));
-    setServingUnit((editUnit || '').trim() || 'serving');
+    // 2. Keep previous grams when the field is empty / junk.
+    let nextGrams = servingGrams;
+    if (gramsFromField != null) nextGrams = gramsFromField;
+    setServingGrams(Math.max(1, nextGrams));
+
+    // 3. Keep previous qty when the field is empty / junk.
+    let nextQty = servings;
+    if (qtyFromField != null) nextQty = qtyFromField;
+    setServings(Math.max(MIN_SERVINGS_LOGGED, nextQty));
+
+    // 4. Unit text falls back to "serving" when blank.
+    const unitText = (editUnit || '').trim();
+    if (unitText) {
+      setServingUnit(unitText);
+    } else {
+      setServingUnit('serving');
+    }
     setEditOpen(false);
-  };
+  }
 
   /**
    * Confirm → normalize → onConfirm(food, mealKey). mealKey is lowercase chip name.
    */
-  const handleConfirm = () => {
+  function handleConfirm() {
+    // 1. Need a normalized food card.
     if (!normalized) return;
+
+    // 2. Build the Firestore-facing payload.
     const mealKey = String(meal || 'snacks').toLowerCase();
     const servingsLogged = Math.max(MIN_SERVINGS_LOGGED, servings);
     let payload = buildConfirmedFoodPayload({
@@ -336,9 +562,10 @@ export default function FoodConfirmSheet({
       servingsLogged,
       servingUnit,
       labelServingGrams: servingGrams,
-      scannedBarcode,
+      scannedBarcode
     });
-    // Attach micros so the daily log can store them when present
+
+    // 3. Attach micros so the daily log can store them when present.
     payload = {
       ...payload,
       fiber: micros.fiber,
@@ -347,372 +574,194 @@ export default function FoodConfirmSheet({
       cholesterol: micros.cholesterol,
       saturatedFat: micros.saturatedFat,
       potassium: micros.potassium,
-      vitaminD: micros.vitaminD,
+      vitaminD: micros.vitaminD
     };
+
+    // 4. Optional storage-title tidy — keep payload if the helper throws.
     try {
       if (typeof normalizeFoodRecordForStorage === 'function') {
         payload = normalizeFoodRecordForStorage(payload) || payload;
       }
-    } catch (_) {
+    } catch (_storageError) {
       /* keep payload */
     }
-    onConfirm?.(payload, mealKey);
-  };
 
+    // 5. Hand the payload to the parent logger.
+    if (typeof onConfirm === 'function') {
+      onConfirm(payload, mealKey);
+    }
+  }
   if (!normalized) return null;
 
-  return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: screenBg }} edges={SHELL_SAFE_AREA_EDGES}>
+  // Named layout decisions — no nested ternaries in JSX
+  let scrollBottomPad = SCROLL_FOOTER_EXTRA_DEFAULT;
+  if (reserveShellBottomNav) {
+    scrollBottomPad = shellBottomPad + SCROLL_FOOTER_EXTRA_WITH_NAV;
+  }
+  let footerPaddingBottom = spacing.md;
+  if (reserveShellBottomNav) {
+    footerPaddingBottom = Math.max(shellBottomPad, spacing.md);
+  }
+  const showWrongItem = showVerification && typeof onWrongItem === 'function';
+  const keyboardBehavior = Platform.OS === 'ios' ? 'padding' : undefined;
+  return <SafeAreaView style={{
+    flex: 1,
+    backgroundColor: screenBg
+  }} edges={SHELL_SAFE_AREA_EDGES}>
       <NbPageHeader title={headerTitle} subtitle={foodName} onBack={onCancel} />
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <ScrollView
-          contentContainerStyle={{
-            paddingHorizontal: spacing.md,
-            paddingBottom: reserveShellBottomNav ? shellBottomPad + 80 : 120,
-          }}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Calories + 3 macro boxes (PNG 13) */}
-          <HardShadow
-            radius={borderRadius.nbCard}
-            offset={nb.shadowOffsetCard}
-            style={{ marginBottom: 16 }}
-          >
-            <View
-              style={[
-                styles.macroCard,
-                { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder },
-              ]}
-            >
-              <Text style={[styles.calNum, { color: colors.nbInk }]}>
-                {Math.round(macros.calories || 0)}
-                <Text style={[styles.calUnit, { color: colors.nbMuted }]}> calories</Text>
-              </Text>
-              <View style={styles.macroTiles}>
-                <MacroTile
-                  icon={PROTEIN_ICON}
-                  value={`${Math.round(macros.protein || 0)} g`}
-                  label="Protein"
-                  index={3}
-                  colors={colors}
-                />
-                <MacroTile
-                  icon={CARBS_ICON}
-                  value={`${Math.round(macros.carbs || 0)} g`}
-                  label="Carbs"
-                  index={0}
-                  colors={colors}
-                />
-                <MacroTile
-                  icon={FATS_ICON}
-                  value={`${Math.round(macros.fat || 0)} g`}
-                  label="Fats"
-                  index={1}
-                  colors={colors}
-                />
-              </View>
-            </View>
-          </HardShadow>
+      <KeyboardAvoidingView style={{
+      flex: 1
+    }} behavior={keyboardBehavior}>
+        <ScrollView contentContainerStyle={{
+        paddingHorizontal: spacing.md,
+        paddingBottom: scrollBottomPad
+      }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          <MacroSummaryCard macros={macros} colors={colors} />
 
-          {/* Servings stepper + SERVING SIZE + Edit serving pill */}
-          <HardShadow
-            radius={borderRadius.nbCard}
-            offset={nb.shadowOffsetCard}
-            style={{ marginBottom: 16 }}
-          >
-            <View
-              style={[
-                styles.servingCard,
-                { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder },
-              ]}
-            >
-              <View style={styles.servingRow}>
-                <Text style={[styles.servingLabel, { color: colors.nbMuted }]}>SERVINGS</Text>
-                <View style={styles.stepper}>
-                  <HardShadow offset={nb.shadowOffsetSmall} radius={12}>
-                    <TouchableOpacity
-                      onPress={() => bumpServings(-HALF_SERVING)}
-                      style={[
-                        styles.stepBtn,
-                        { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface },
-                      ]}
-                      accessibilityLabel="Fewer servings"
-                      activeOpacity={0.85}
-                    >
-                      <Ionicons name="remove" size={20} color={colors.nbInk} />
-                    </TouchableOpacity>
-                  </HardShadow>
-                  <Text style={[styles.stepValue, { color: colors.nbInk }]}>{servings}</Text>
-                  <HardShadow offset={nb.shadowOffsetSmall} radius={12}>
-                    <TouchableOpacity
-                      onPress={() => bumpServings(HALF_SERVING)}
-                      style={[
-                        styles.stepBtn,
-                        { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface },
-                      ]}
-                      accessibilityLabel="More servings"
-                      activeOpacity={0.85}
-                    >
-                      <Ionicons name="add" size={20} color={colors.nbInk} />
-                    </TouchableOpacity>
-                  </HardShadow>
-                </View>
-              </View>
+          <ServingControlsCard servings={servings} servingUnit={servingUnit} servingGrams={servingGrams} onFewer={() => bumpServings(-HALF_SERVING)} onMore={() => bumpServings(HALF_SERVING)} onOpenEdit={openEdit} colors={colors} />
 
-              <View style={[styles.servingDivider, { backgroundColor: colors.nbBorder }]} />
-
-              <View style={styles.servingRow}>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={[styles.servingLabel, { color: colors.nbMuted }]}>SERVING SIZE</Text>
-                  <Text style={[styles.servingSizeText, { color: colors.nbInk }]} numberOfLines={1}>
-                    1 {servingUnit} • {Math.round(servingGrams)} g
-                  </Text>
-                </View>
-                {/* NbPill-style ghost pill (pressable) — PNG "Edit serving" */}
-                <HardShadow offset={nb.shadowOffsetSmall} radius={999}>
-                  <TouchableOpacity
-                    onPress={openEdit}
-                    style={[
-                      styles.editServingPill,
-                      { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface },
-                    ]}
-                    accessibilityRole="button"
-                    accessibilityLabel="Edit serving"
-                    activeOpacity={0.85}
-                  >
-                    <Text style={[styles.editServingText, { color: colors.nbInk }]}>
-                      Edit serving
-                    </Text>
-                  </TouchableOpacity>
-                </HardShadow>
-              </View>
-            </View>
-          </HardShadow>
-
-          {/* MEAL chips — active = nbFill (not brand gradient) */}
-          <Text style={[styles.sectionLabel, { color: colors.nbMuted }]}>MEAL</Text>
+          <Text style={[styles.sectionLabel, {
+          color: colors.nbMuted
+        }]}>MEAL</Text>
           <View style={styles.mealRow}>
-            {MEALS.map((m) => {
-              const selected = meal === m;
-              return (
-                <HardShadow key={m} offset={nb.shadowOffsetSmall} radius={999}>
-                  <TouchableOpacity
-                    onPress={() => setMeal(m)}
-                    style={[
-                      styles.mealChip,
-                      {
-                        borderColor: colors.nbBorder,
-                        backgroundColor: selected ? colors.nbFill : colors.nbSurface,
-                      },
-                    ]}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected }}
-                    activeOpacity={0.85}
-                  >
-                    <Text
-                      style={{
-                        color: selected ? colors.nbOnFill : colors.nbInk,
-                        fontFamily: 'SpaceGrotesk_700Bold',
-                        fontSize: 13,
-                      }}
-                    >
-                      {m}
-                    </Text>
-                  </TouchableOpacity>
-                </HardShadow>
-              );
-            })}
+            {MEAL_CHIP_LABELS.map(mealName => <MealChip key={mealName} mealName={mealName} selected={meal === mealName} onPress={() => setMeal(mealName)} colors={colors} />)}
           </View>
 
-          {/* NUTRIENTS list */}
           <View style={styles.nutrientHeader}>
-            <Text style={[styles.sectionLabel, { color: colors.nbMuted, marginBottom: 0 }]}>
+            <Text style={[styles.sectionLabel, {
+            color: colors.nbMuted,
+            marginBottom: 0
+          }]}>
               NUTRIENTS
             </Text>
-            <Text style={[styles.sectionLabel, { color: colors.nbMuted, marginBottom: 0 }]}>
+            <Text style={[styles.sectionLabel, {
+            color: colors.nbMuted,
+            marginBottom: 0
+          }]}>
               PER SERVING ON LABEL
             </Text>
           </View>
-          <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetCard}>
-            <View
-              style={[
-                styles.nutrientCard,
-                { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder },
-              ]}
-            >
-              <NutrientRow label="Total fat" value={`${macros.fat || 0} g`} colors={colors} />
-              {micros.saturatedFat ? (
-                <NutrientRow
-                  label="Sat. fat"
-                  value={`${micros.saturatedFat} g`}
-                  nested
-                  colors={colors}
-                />
-              ) : null}
-              <NutrientRow
-                label="Cholesterol"
-                value={`${micros.cholesterol || 0} mg`}
-                colors={colors}
-              />
-              <NutrientRow label="Sodium" value={`${micros.sodium || 0} mg`} colors={colors} />
-              <NutrientRow
-                label="Carbohydrates"
-                value={`${macros.carbs || 0} g`}
-                colors={colors}
-              />
-              {micros.sugar ? (
-                <NutrientRow label="Sugars" value={`${micros.sugar} g`} nested colors={colors} />
-              ) : null}
-              <NutrientRow label="Protein" value={`${macros.protein || 0} g`} colors={colors} />
-              {micros.potassium ? (
-                <NutrientRow
-                  label="Potassium"
-                  value={`${micros.potassium} mg`}
-                  colors={colors}
-                />
-              ) : null}
-              {micros.vitaminD ? (
-                <NutrientRow
-                  label="Vitamin D"
-                  value={`${micros.vitaminD} mcg`}
-                  colors={colors}
-                />
-              ) : null}
-            </View>
-          </HardShadow>
+          <NutrientsCard macros={macros} micros={micros} colors={colors} />
 
-          {showVerification && typeof onWrongItem === 'function' ? (
-            <NbButton variant="plain" onPress={onWrongItem} style={{ marginTop: 16 }}>
+          {showWrongItem ? <NbButton variant="plain" onPress={onWrongItem} style={{
+          marginTop: 16
+        }}>
               Wrong item — search instead
-            </NbButton>
-          ) : null}
+            </NbButton> : null}
         </ScrollView>
 
         {/* When the shell bottom nav is visible, lift Confirm above it — otherwise only
             “Wrong item” (in the scroll) is reachable and Confirm looks missing. */}
-        <View
-          style={[
-            styles.footer,
-            {
-              backgroundColor: screenBg,
-              paddingBottom: reserveShellBottomNav
-                ? Math.max(shellBottomPad, spacing.md)
-                : spacing.md,
-            },
-          ]}
-        >
+        <View style={[styles.footer, {
+        backgroundColor: screenBg,
+        paddingBottom: footerPaddingBottom
+      }]}>
           <NbButton variant="fill" onPress={handleConfirm}>
             Confirm and log
           </NbButton>
         </View>
       </KeyboardAvoidingView>
 
-      {/* PNG 15/16 Edit serving — NbSheet + HardShadow fields */}
       <NbSheet visible={editOpen} onClose={() => setEditOpen(false)} title="Edit serving">
-        <Text style={[styles.editHint, { color: colors.nbMuted }]}>
+        <Text style={[styles.editHint, {
+        color: colors.nbMuted
+      }]}>
           Use this when the package says something different.
         </Text>
-        <HardField
-          label="SERVING SIZE (G PER SERVING)"
-          value={editGrams}
-          onChangeText={setEditGrams}
-          colors={colors}
-        />
-        <HardField
-          label="QUANTITY (SERVINGS)"
-          value={editQty}
-          onChangeText={setEditQty}
-          colors={colors}
-        />
-        <HardField
-          label="SERVING UNIT"
-          value={editUnit}
-          onChangeText={setEditUnit}
-          colors={colors}
-          keyboardType="default"
-        />
-        <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
-          <View style={{ flex: 1 }}>
+        <HardField label="SERVING SIZE (G PER SERVING)" value={editGrams} onChangeText={setEditGrams} colors={colors} />
+        <HardField label="QUANTITY (SERVINGS)" value={editQty} onChangeText={setEditQty} colors={colors} />
+        <HardField label="SERVING UNIT" value={editUnit} onChangeText={setEditUnit} colors={colors} keyboardType="default" />
+        <View style={{
+        flexDirection: 'row',
+        gap: 10,
+        marginTop: 16
+      }}>
+          <View style={{
+          flex: 1
+        }}>
             <NbButton variant="plain" onPress={() => setEditOpen(false)}>
               Cancel
             </NbButton>
           </View>
-          <View style={{ flex: 2 }}>
+          <View style={{
+          flex: 2
+        }}>
             <NbButton variant="fill" onPress={applyEdit}>
               Done editing nutrition
             </NbButton>
           </View>
         </View>
       </NbSheet>
-    </SafeAreaView>
-  );
+    </SafeAreaView>;
 }
-
 const styles = StyleSheet.create({
   macroCard: {
     borderRadius: borderRadius.nbCard,
     borderWidth: nb.borderWidth,
-    padding: 16,
+    padding: 16
   },
   calNum: {
     fontFamily: 'SpaceGrotesk_700Bold',
     fontSize: 40,
     letterSpacing: -1,
-    marginBottom: 14,
+    marginBottom: 14
   },
   calUnit: {
     fontFamily: 'Inter_600SemiBold',
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '600'
   },
-  macroTiles: { flexDirection: 'row', gap: 8 },
+  macroTiles: {
+    flexDirection: 'row',
+    gap: 8
+  },
   tile: {
     flex: 1,
     borderWidth: nb.borderWidthDivider,
     borderRadius: borderRadius.nbCard,
     padding: 10,
     alignItems: 'flex-start',
-    gap: 6,
+    gap: 6
   },
   tileValue: {
     fontFamily: 'SpaceGrotesk_700Bold',
     fontSize: 16,
-    fontVariant: ['tabular-nums'],
+    fontVariant: ['tabular-nums']
   },
   tileLabel: {
     fontFamily: 'Inter_600SemiBold',
-    fontSize: 12,
+    fontSize: 12
   },
   servingCard: {
     borderRadius: borderRadius.nbCard,
     borderWidth: nb.borderWidth,
-    padding: 14,
+    padding: 14
   },
-  servingRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  servingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10
+  },
   servingLabel: {
     fontFamily: 'SpaceGrotesk_700Bold',
     fontSize: 12,
-    letterSpacing: 1.1,
+    letterSpacing: 1.1
   },
   servingSizeText: {
     fontFamily: 'SpaceGrotesk_700Bold',
     fontSize: 14,
-    marginTop: 4,
+    marginTop: 4
   },
   servingDivider: {
     height: nb.borderWidthDivider,
     opacity: 0.35,
-    marginVertical: 12,
+    marginVertical: 12
   },
   stepper: {
     flexDirection: 'row',
     alignItems: 'center',
     marginLeft: 'auto',
-    gap: 10,
+    gap: 10
   },
   stepBtn: {
     width: 44,
@@ -720,14 +769,14 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: nb.borderWidth,
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'center'
   },
   stepValue: {
     fontFamily: 'SpaceGrotesk_700Bold',
     fontSize: 28,
     minWidth: 36,
     textAlign: 'center',
-    fontVariant: ['tabular-nums'],
+    fontVariant: ['tabular-nums']
   },
   editServingPill: {
     borderWidth: nb.borderWidthPill,
@@ -735,23 +784,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
     minHeight: 44,
-    justifyContent: 'center',
+    justifyContent: 'center'
   },
   editServingText: {
     fontFamily: 'SpaceGrotesk_700Bold',
-    fontSize: 13,
+    fontSize: 13
   },
   sectionLabel: {
     fontFamily: 'SpaceGrotesk_700Bold',
     fontSize: 12,
     letterSpacing: 1.2,
-    marginBottom: 10,
+    marginBottom: 10
   },
   mealRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
-    marginBottom: 18,
+    marginBottom: 18
   },
   mealChip: {
     minHeight: 44,
@@ -759,53 +808,60 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     borderWidth: nb.borderWidth,
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'center'
   },
   nutrientHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 10,
+    marginBottom: 10
   },
   nutrientCard: {
     borderRadius: borderRadius.nbCard,
     borderWidth: nb.borderWidth,
-    paddingHorizontal: 14,
+    paddingHorizontal: 14
   },
   nutrientRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingVertical: 12,
     borderBottomWidth: nb.borderWidthDivider,
-    borderBottomColor: 'rgba(128,128,128,0.25)',
+    borderBottomColor: 'rgba(128,128,128,0.25)'
   },
-  nutrientNested: { paddingLeft: 14 },
+  nutrientNested: {
+    paddingLeft: 14
+  },
   nutrientLabel: {
     fontFamily: 'SpaceGrotesk_700Bold',
-    fontSize: 14,
+    fontSize: 14
   },
   nutrientValue: {
     fontFamily: 'SpaceGrotesk_700Bold',
     fontSize: 14,
-    fontVariant: ['tabular-nums'],
+    fontVariant: ['tabular-nums']
   },
-  footer: { paddingHorizontal: spacing.md, paddingTop: 8 },
+  footer: {
+    paddingHorizontal: spacing.md,
+    paddingTop: 8
+  },
   editHint: {
     fontFamily: 'Inter_400Regular',
     fontSize: 13,
     marginBottom: 14,
-    lineHeight: 18,
+    lineHeight: 18
   },
-  fieldBlock: { marginBottom: 12 },
+  fieldBlock: {
+    marginBottom: 12
+  },
   fieldLabel: {
     fontFamily: 'SpaceGrotesk_700Bold',
     fontSize: 12,
     letterSpacing: 1.1,
-    marginBottom: 6,
+    marginBottom: 6
   },
   fieldInput: {
     minHeight: 48,
     paddingHorizontal: 12,
     fontSize: 16,
-    fontFamily: 'SpaceGrotesk_700Bold',
-  },
+    fontFamily: 'SpaceGrotesk_700Bold'
+  }
 });

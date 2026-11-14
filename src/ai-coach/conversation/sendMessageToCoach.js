@@ -1,6 +1,7 @@
 // Posts a coach chat turn to the Express /api/ai-coach server (DeepSeek stays on the server).
 // Flow: greet from the phone clock → attach photos → pick web or vision → POST each API base → parse tools.
-// Used by CoachConversationScreen and CoachSelfTest. Do not put DEEPSEEK_API_KEY in the app bundle.
+// Used by: CoachConversationScreen and CoachSelfTest. Do not put DEEPSEEK_API_KEY in the app bundle.
+// Read order: constants → mains (reset / send / retry / sendToAI) → PLUMBING HTTP + history helpers.
 
 import { auth } from '../../app-start/cloudConnection';
 import { getAICoachApiBases, isCloudHostedApiBase, PRODUCTION_API_BASE_URL } from '../../for-both/online-connection/whereToConnect';
@@ -71,14 +72,22 @@ const REQUEST_FAILED_MESSAGE = 'Request failed';
  */
 export async function resetAiCoachDailyUsage() {
   const bases = getAICoachApiBases();
-  const idToken = await auth?.currentUser?.getIdToken?.();
-  if (!idToken) return { ok: false, error: SIGN_IN_ERROR };
 
-  // 1. Try each configured coach API until one reset succeeds.
-  for (const base of bases) {
-    const result = await tryOneUsageReset(base, idToken);
-    if (result.ok) return { ok: true, url: result.url };
+  // 1. Need a signed-in Firebase JWT before the server will reset usage.
+  const idToken = await readSignedInUserIdToken();
+  if (!idToken) {
+    return { ok: false, error: SIGN_IN_ERROR };
   }
+
+  // 2. Try each configured coach API until one reset succeeds.
+  for (let baseIndex = 0; baseIndex < bases.length; baseIndex += 1) {
+    const base = bases[baseIndex];
+    const result = await tryOneUsageReset(base, idToken);
+    if (result.ok) {
+      return { ok: true, url: result.url };
+    }
+  }
+
   return { ok: false, error: RESET_UNREACHABLE_ERROR };
 }
 
@@ -122,12 +131,15 @@ export async function sendCoachMessage({
     const trimmedMessage = String(userMessage || '').trim();
     const imageAttachments = await preparePhotosToSendForApi(attachments);
     const hasImages = imageAttachments.length > 0;
-    if ((attachments || []).length > 0 && !hasImages) {
+    const callerPassedAttachments = (attachments || []).length > 0;
+    if (callerPassedAttachments && !hasImages) {
       return unreadPhotoFailureResult();
     }
-    const effectiveMessage =
-      trimmedMessage ||
-      (hasImages ? PHOTO_ONLY_USER_MESSAGE : '');
+
+    let effectiveMessage = trimmedMessage;
+    if (!effectiveMessage && hasImages) {
+      effectiveMessage = PHOTO_ONLY_USER_MESSAGE;
+    }
 
     // 3. Append this user turn if the last bubble is not already the same text, then decide web vs vision.
     const historyForApi = historyWithCurrentUserTurn(history, effectiveMessage);
@@ -140,33 +152,28 @@ export async function sendCoachMessage({
     );
 
     // 4. POST the coach API. Vision and web get longer timeouts than a plain chat turn.
-    const data = await postAICoach(
-      {
-        userId,
-        userProfile: enrichedProfile,
-        options: {
-          web: webModeForCoachRequest(hasImages, wantsWeb, web),
-          clientContext: coachContext,
-          testSuite: __DEV__,
-          includePersonalData: shouldIncludeWeeklyContextInCoachPrompt(
-            trimmedMessage || effectiveMessage,
-            historyForApi,
-          ),
-          conversationMessages: historyForApi,
-        },
-        attachments: hasImages ? imageAttachments : undefined,
-        messages: historyForApi,
-      },
-      {
-        testSuite: __DEV__,
-        timeoutMs: timeoutForCoachRequest(hasImages, wantsWeb),
-      },
-    );
+    const lookupTextForWeeklyContext = trimmedMessage || effectiveMessage;
+    const coachPostBody = buildCoachPostBody({
+      userId,
+      enrichedProfile,
+      coachContext,
+      web,
+      hasImages,
+      wantsWeb,
+      imageAttachments,
+      historyForApi,
+      lookupTextForWeeklyContext,
+    });
+    const coachPostOptions = {
+      testSuite: __DEV__,
+      timeoutMs: timeoutForCoachRequest(hasImages, wantsWeb),
+    };
+    const data = await postAICoach(coachPostBody, coachPostOptions);
 
     // 5. Pull tool JSON out of the reply. An empty toolCalls array still means "we looked."
     return coachReplyFromServerData(data);
-  } catch (error) {
-    const errorMessage = errorMessageFromCaught(error);
+  } catch (caughtError) {
+    const errorMessage = errorMessageFromCaught(caughtError);
     logCoachErrorSafely(errorMessage);
     return failedCoachResult(errorMessage);
   }
@@ -181,28 +188,34 @@ export async function sendCoachMessage({
  */
 export async function sendCoachMessageWithRetry(params, retries = 2) {
   let lastResult = null;
+
   for (let attempt = 1; attempt <= retries; attempt += 1) {
     // 1. One send. A thrown error on the last attempt leaves this function.
     const attemptResult = await tryOneCoachSend(params);
     if (shouldRethrowCoachSend(attemptResult, attempt, retries)) {
       throw attemptResult.error;
     }
+
     if (!attemptResult.didThrow) {
       lastResult = attemptResult.response;
     }
+
     if (isSuccessfulCoachSend(attemptResult)) {
       return attemptResult.response;
     }
+
     // 2. Pause longer after each miss (1s, then 2s) before the next try.
     await waitMs(MS_PER_SECOND * attempt);
   }
-  return (
-    lastResult || {
-      message: RETRY_FALLBACK_MESSAGE,
-      success: false,
-      toolCall: null,
-    }
-  );
+
+  if (lastResult) {
+    return lastResult;
+  }
+  return {
+    message: RETRY_FALLBACK_MESSAGE,
+    success: false,
+    toolCall: null,
+  };
 }
 
 /**
@@ -216,8 +229,9 @@ export async function sendCoachMessageWithRetry(params, retries = 2) {
  */
 export async function sendToAI(userMessage, coachContext, userId, userProfile = {}, options = {}) {
   const testSuite = options.testSuite === true;
+
   try {
-    // 1. One user line plus a snapshot of this week's context for older callers.
+    // 1. One user line plus coachContext snapshot for legacy callers (self-test, older screens).
     const trimmedMessage = String(userMessage || '').trim();
     const enrichedProfile = {
       ...userProfile,
@@ -241,37 +255,10 @@ export async function sendToAI(userMessage, coachContext, userId, userProfile = 
       },
       { testSuite },
     );
-    const replyRaw = (data && data.reply) || '';
-    const { message, toolCall: parsedTool } = parseToolCallFromReply(replyRaw);
-    // Keep EVERY tool call, normalized — a reply can ask for two logs at once
-    // ("log 8h sleep and 20oz water"). Picking only [0] silently dropped the rest.
-    const toolCalls = Array.isArray(data.toolCalls)
-      ? data.toolCalls.map((call) => normalizeToolCall(call)).filter(Boolean)
-      : null;
-    const toolCall = toolCalls?.[0] || normalizeToolCall(parsedTool);
-    return {
-      message:
-        stripCoachToolJsonFromReply(message) ||
-        message ||
-        replyRaw ||
-        '',
-      toolCall,
-      toolCalls,
-      success: true,
-      source: data.source,
-      usedWeeklyContext: data.usedWeeklyContext,
-      searchedWeb: data.searchedWeb,
-      raw: data,
-      apiUrl: data._apiUrl,
-    };
+
+    return successResultFromLegacySendToAi(data);
   } catch (error) {
-    return {
-      message: error?.message || REQUEST_FAILED_MESSAGE,
-      toolCall: null,
-      success: false,
-      error: error?.message || String(error),
-      apiUrl: error?._apiUrl,
-    };
+    return failureResultFromLegacySendToAi(error);
   }
 }
 
@@ -297,242 +284,196 @@ export const sendToDeeepSeek = sendCoachMessage;
 export { loadCoachContextEnhanced, calculateDataQuality } from '../coach-knowledge/loadYourWeekForCoach';
 
 // ===== HELPER FUNCTIONS =====
-// PLUMBING — skip unless debugging
+// PLUMBING — skip unless debugging. HTTP failover, history shaping, greeting helpers, reply parsing.
 
-function stripTrailingSlash(base) {
-  return String(base).replace(/\/$/, '');
-}
-
-function lastUserTextFromPayload(payload) {
-  const messageList = Array.isArray(payload?.messages) ? payload.messages : [];
-  for (let i = messageList.length - 1; i >= 0; i -= 1) {
-    const message = messageList[i];
-    if (message?.role === 'user') return String(message.content || message.text || '').trim();
-  }
-  return '';
-}
-
-function payloadWantsWebSearch(payload) {
-  const webMode = payload?.options?.web;
-  if (webMode === WEB_MODE_OFF || payload?.attachments?.length) return false;
-  if (webMode === WEB_MODE_ON) return true;
-  const lastUserText = lastUserTextFromPayload(payload);
-  return (
-    shouldInvokeWebSearch(lastUserText, webMode, payload?.messages) ||
-    messagesRequestWebSearch(payload?.messages, lastUserText)
-  );
-}
-
-function shouldRetryWebSearchOnNextBase(payload, json, base) {
-  if (!payloadWantsWebSearch(payload)) return false;
-  if (json?.searchedWeb === true || json?.route === 'web-search') return false;
-  if (json?.route === 'web-search-ask-topic' || json?.route === 'web-search-off-topic') return false;
-  if (isCloudHostedApiBase(base)) return false;
-  return json?.route === 'web-search-failed' || json?.searchedWeb !== true;
-}
-
-function aiCoachPathForPayload(payload) {
-  const lastUserText = lastUserTextFromPayload(payload);
-  // Dedicated web-search route when the user clearly asked to search the web
-  // (web mode on from the caller, or auto mode that already decided this turn wants web).
-  const webMode = payload?.options?.web;
-  const forceWeb =
-    shouldForceDedicatedWebSearchRoute(lastUserText) &&
-    webMode !== WEB_MODE_OFF &&
-    (webMode === WEB_MODE_ON || payloadWantsWebSearch(payload));
-  if (forceWeb) {
-    return COACH_WEB_SEARCH_PATH;
-  }
-  return COACH_PATH;
-}
-
-function isTimeoutOrNetworkError(error) {
-  const isTimeout = error?.name === 'AbortError';
-  const isNetwork =
-    error?.name === 'TypeError' ||
-    String(error?.message || '')
-      .toLowerCase()
-      .includes('network request failed');
-  return isTimeout || isNetwork;
-}
-
-async function readFailedResponseDetail(response) {
-  try {
-    const errorJson = await response.json();
-    return {
-      detail: errorJson?.error || errorJson?.message || '',
-      hint: errorJson?.hint || '',
-    };
-  } catch (_) {
-    try {
-      const errorText = (await response.text()) || '';
-      return { detail: errorText, hint: '' };
-    } catch (__) {
-      return { detail: '', hint: '' };
-    }
-  }
-}
-
-async function httpErrorFromFailedResponse(response, url, options) {
-  const { detail, hint } = await readFailedResponseDetail(response);
-  if (response.status === HTTP_UNAUTHORIZED || response.status === HTTP_FORBIDDEN) {
-    throw new Error(detail || NOT_AUTHORIZED_MESSAGE);
-  }
-  const messageText = detail || `AI Coach request failed (${response.status}).`;
-  const error = new Error(hint ? `${messageText} — ${hint}` : messageText);
-  error._apiUrl = url;
-  error._status = response.status;
-  error._route = options?.attachments ? 'vision' : null;
-  if (__DEV__) {
-    console.debug(`AI Coach ${response.status} at ${url}:`, messageText);
-  }
-  return error;
-}
-
-function coachRequestHeaders(idToken, options) {
-  const headers = { 'Content-Type': 'application/json' };
-  if (idToken) headers.Authorization = `Bearer ${idToken}`;
-  if (options.testSuite || __DEV__) {
-    headers[TEST_SUITE_HEADER] = '1';
-  }
-  return headers;
-}
-
-// vocab: AbortController = cancel a fetch that sat too long. React Native fetch has no timeout option.
-async function postJsonToCoachUrl(url, headers, payload, timeoutMs) {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
-
-function noteWebSearchRetry(url) {
-  if (__DEV__) {
-    console.debug(`AI Coach web search failed at ${url} — trying next API base`);
-  }
-}
-
-async function parsedCoachJson(response, url, options) {
-  const json = await response.json();
-  if (options.testSuite || __DEV__) {
-    json._apiUrl = url;
-  }
-  return json;
-}
-
-async function tryOneCoachBase(base, coachPath, headers, payload, options, timeoutMs) {
-  const url = `${stripTrailingSlash(base)}${coachPath}`;
-  try {
-    const response = await postJsonToCoachUrl(url, headers, payload, timeoutMs);
-    if (!response.ok) {
-      const httpError = await httpErrorFromFailedResponse(response, url, options);
-      return { kind: 'http', error: httpError };
-    }
-    const json = await parsedCoachJson(response, url, options);
-    if (shouldRetryWebSearchOnNextBase(payload, json, base)) {
-      noteWebSearchRetry(url);
-      return { kind: 'web-fallback', json, url };
-    }
-    if (__DEV__) console.debug('✅ AI Coach response', url);
-    return { kind: 'ok', json };
-  } catch (error) {
-    if (isTimeoutOrNetworkError(error)) {
-      return { kind: 'network', error };
-    }
-    throw error;
-  }
-}
-
-function doesBaseListIncludeProduction(bases) {
-  const productionBase = stripTrailingSlash(PRODUCTION_API_BASE_URL);
-  for (const base of bases) {
-    if (stripTrailingSlash(base) === productionBase) return true;
-  }
-  return false;
-}
-
-async function tryProductionWebFallback(coachPath, headers, payload, options, wantsWeb) {
-  const productionBase = stripTrailingSlash(PRODUCTION_API_BASE_URL);
-  const productionUrl = `${productionBase}${coachPath}`;
-  const timeoutMs = options.timeoutMs || (wantsWeb ? TIMEOUT_MS_WEB : TIMEOUT_MS);
-  try {
-    const response = await postJsonToCoachUrl(productionUrl, headers, payload, timeoutMs);
-    if (!response.ok) return null;
-    const json = await response.json();
-    if (options.testSuite || __DEV__) json._apiUrl = productionUrl;
-    if (shouldRetryWebSearchOnNextBase(payload, json, productionBase)) return null;
-    return json;
-  } catch (_) {
+// vocab: getIdToken = Firebase Auth JWT the server checks before spending a DeepSeek call.
+async function readSignedInUserIdToken() {
+  const currentUser = auth && auth.currentUser;
+  if (!currentUser) {
     return null;
   }
+  if (typeof currentUser.getIdToken !== 'function') {
+    return null;
+  }
+  const idToken = await currentUser.getIdToken();
+  return idToken || null;
 }
 
-async function jsonFromWebFallbackOrProduction(
-  bases,
-  lastWebFallback,
+function buildCoachPostBody({
+  userId,
+  enrichedProfile,
+  coachContext,
+  web,
+  hasImages,
   wantsWeb,
-  coachPath,
-  headers,
-  payload,
-  options,
-) {
-  if (!(lastWebFallback?.json && wantsWeb)) return null;
-  if (doesBaseListIncludeProduction(bases)) return lastWebFallback.json;
-  const productionJson = await tryProductionWebFallback(
-    coachPath,
-    headers,
-    payload,
-    options,
-    wantsWeb,
-  );
-  if (productionJson) return productionJson;
-  return lastWebFallback.json;
-}
-
-async function postAICoach(payload, options = {}) {
-  const bases = getAICoachApiBases();
-  const wantsWeb = payloadWantsWebSearch(payload);
-  const coachPath = aiCoachPathForPayload(payload);
-  let lastNetworkError = null;
-  let lastHttpError = null;
-  let lastWebFallback = null;
-
-  // vocab: getIdToken = Firebase Auth JWT the server checks before spending a DeepSeek call.
-  const idToken = await auth?.currentUser?.getIdToken?.();
-  const headers = coachRequestHeaders(idToken, options);
-  const timeoutMs = options.timeoutMs || TIMEOUT_MS;
-
-  for (const base of bases) {
-    const attempt = await tryOneCoachBase(base, coachPath, headers, payload, options, timeoutMs);
-    if (attempt.kind === 'ok') return attempt.json;
-    if (attempt.kind === 'http') lastHttpError = attempt.error;
-    if (attempt.kind === 'network') lastNetworkError = attempt.error;
-    if (attempt.kind === 'web-fallback') lastWebFallback = { json: attempt.json, url: attempt.url };
+  imageAttachments,
+  historyForApi,
+  lookupTextForWeeklyContext,
+}) {
+  let attachmentsForPost;
+  if (hasImages) {
+    attachmentsForPost = imageAttachments;
   }
 
-  if (lastHttpError) throw lastHttpError;
-
-  const fallbackJson = await jsonFromWebFallbackOrProduction(
-    bases,
-    lastWebFallback,
-    wantsWeb,
-    coachPath,
-    headers,
-    payload,
-    options,
-  );
-  if (fallbackJson) return fallbackJson;
-
-  throw new Error(REACH_API_ERROR);
+  return {
+    userId,
+    userProfile: enrichedProfile,
+    options: {
+      web: webModeForCoachRequest(hasImages, wantsWeb, web),
+      clientContext: coachContext,
+      testSuite: __DEV__,
+      includePersonalData: shouldIncludeWeeklyContextInCoachPrompt(
+        lookupTextForWeeklyContext,
+        historyForApi,
+      ),
+      conversationMessages: historyForApi,
+    },
+    attachments: attachmentsForPost,
+    messages: historyForApi,
+  };
 }
+
+// --- Greeting and profile ---
+
+function greetingPeriodFromHour(hour) {
+  if (hour >= MORNING_START_HOUR && hour < AFTERNOON_START_HOUR) {
+    return 'morning';
+  }
+  if (hour >= AFTERNOON_START_HOUR && hour < EVENING_START_HOUR) {
+    return 'afternoon';
+  }
+  if (hour >= EVENING_START_HOUR && hour < NIGHT_START_HOUR) {
+    return 'evening';
+  }
+  return 'night';
+}
+
+function enrichedProfileForCoach(userProfile, coachContext, greetingPeriod, greetingPhrase, hour) {
+  const profile = {
+    ...userProfile,
+    greetingPeriod,
+    greetingPhrase,
+    localHour: hour,
+    localTimeISO: new Date().toISOString(),
+  };
+
+  // Goal / training level only exist when weekly coachContext was loaded.
+  if (coachContext) {
+    profile.primaryGoal = coachContext.goal;
+    profile.fitnessLevel = coachContext.trainingLevel;
+  }
+
+  return profile;
+}
+
+// --- Chat history → API message list ---
+
+function webSourcesForHistoryMessage(message) {
+  let sourceList = [];
+  if (Array.isArray(message.webSources)) {
+    sourceList = message.webSources;
+  }
+  const readySources = [];
+
+  for (let sourceIndex = 0; sourceIndex < sourceList.length; sourceIndex += 1) {
+    const source = sourceList[sourceIndex];
+    if (!source) {
+      continue;
+    }
+    if (!(source.url || source.title)) {
+      continue;
+    }
+    readySources.push({
+      title: String(source.title || '').trim(),
+      url: String(source.url || source.link || '').trim(),
+      snippet: String(source.snippet || '').trim(),
+    });
+    if (readySources.length >= MAX_HISTORY_WEB_SOURCES) {
+      break;
+    }
+  }
+
+  return readySources;
+}
+
+function historyMessageFromChatTurn(message) {
+  let role = 'user';
+  if (message.role === 'ai' || message.role === 'assistant') {
+    role = 'assistant';
+  }
+
+  let content = '';
+  if (typeof message.text === 'string') {
+    content = message.text;
+  } else {
+    content = message.content || '';
+  }
+
+  const historyTurn = { role, content };
+
+  const hasWebSources =
+    role === 'assistant' &&
+    Array.isArray(message.webSources) &&
+    message.webSources.length > 0;
+  if (hasWebSources) {
+    historyTurn.webSources = webSourcesForHistoryMessage(message);
+  }
+
+  if (role === 'assistant' && message.searchedWeb === true) {
+    historyTurn.searchedWeb = true;
+  }
+
+  return historyTurn;
+}
+
+function trimmedContentOrEmpty(content) {
+  if (!content) {
+    return '';
+  }
+  return content.trim();
+}
+
+function conversationHistoryForApi(messages) {
+  const history = [];
+  const messageList = messages || [];
+  for (let messageIndex = 0; messageIndex < messageList.length; messageIndex += 1) {
+    const mapped = historyMessageFromChatTurn(messageList[messageIndex]);
+    const trimmedContent = trimmedContentOrEmpty(mapped.content);
+    if (trimmedContent) {
+      history.push(mapped);
+    }
+  }
+  return history;
+}
+
+function historyWithCurrentUserTurn(history, effectiveMessage) {
+  const historyForApi = [];
+  for (let turnIndex = 0; turnIndex < history.length; turnIndex += 1) {
+    const turn = history[turnIndex];
+    const trimmedContent = trimmedContentOrEmpty(turn.content);
+    if (trimmedContent) {
+      historyForApi.push(turn);
+    }
+  }
+
+  const lastTurn = historyForApi[historyForApi.length - 1];
+  let lastText = '';
+  if (lastTurn && lastTurn.content) {
+    lastText = String(lastTurn.content).trim();
+  }
+  const currentText = String(effectiveMessage || '').trim();
+  const alreadyHasThisUserTurn = Boolean(
+    lastTurn && lastTurn.role === 'user' && lastText === currentText,
+  );
+
+  if (!alreadyHasThisUserTurn) {
+    historyForApi.push({ role: 'user', content: effectiveMessage });
+  }
+
+  return historyForApi;
+}
+
+// --- Parse server reply and web/vision flags ---
 
 function parseToolCallFromReply(text) {
   const raw = String(text || '');
@@ -542,77 +483,29 @@ function parseToolCallFromReply(text) {
   return { message: message || raw.trim(), toolCall };
 }
 
-function greetingPeriodFromHour(hour) {
-  if (hour >= MORNING_START_HOUR && hour < AFTERNOON_START_HOUR) return 'morning';
-  if (hour >= AFTERNOON_START_HOUR && hour < EVENING_START_HOUR) return 'afternoon';
-  if (hour >= EVENING_START_HOUR && hour < NIGHT_START_HOUR) return 'evening';
-  return 'night';
+/**
+ * Keep EVERY tool call, normalized — a reply can ask for two logs at once
+ * ("log 8h sleep and 20oz water"). Picking only [0] silently dropped the rest.
+ */
+function normalizeToolCallsList(rawToolCalls) {
+  if (!Array.isArray(rawToolCalls)) {
+    return null;
+  }
+  const normalizedList = [];
+  for (const call of rawToolCalls) {
+    const normalized = normalizeToolCall(call);
+    if (normalized) {
+      normalizedList.push(normalized);
+    }
+  }
+  return normalizedList;
 }
 
-function enrichedProfileForCoach(userProfile, coachContext, greetingPeriod, greetingPhrase, hour) {
-  return {
-    ...userProfile,
-    greetingPeriod,
-    greetingPhrase,
-    localHour: hour,
-    localTimeISO: new Date().toISOString(),
-    ...(coachContext
-      ? {
-          primaryGoal: coachContext.goal,
-          fitnessLevel: coachContext.trainingLevel,
-        }
-      : {}),
-  };
-}
-
-function webSourcesForHistoryMessage(message) {
-  const sourceList = Array.isArray(message.webSources) ? message.webSources : [];
-  const readySources = [];
-  for (const source of sourceList) {
-    if (!source || !(source.url || source.title)) continue;
-    readySources.push({
-      title: String(source.title || '').trim(),
-      url: String(source.url || source.link || '').trim(),
-      snippet: String(source.snippet || '').trim(),
-    });
-    if (readySources.length >= MAX_HISTORY_WEB_SOURCES) break;
+function firstToolCallFromLists(toolCalls, parsedTool) {
+  if (toolCalls && toolCalls.length > 0) {
+    return toolCalls[0];
   }
-  return readySources;
-}
-
-function historyMessageFromChatTurn(message) {
-  const role = message.role === 'ai' || message.role === 'assistant' ? 'assistant' : 'user';
-  const content = typeof message.text === 'string' ? message.text : message.content || '';
-  const historyTurn = { role, content };
-  if (role === 'assistant' && Array.isArray(message.webSources) && message.webSources.length > 0) {
-    historyTurn.webSources = webSourcesForHistoryMessage(message);
-  }
-  if (role === 'assistant' && message.searchedWeb === true) historyTurn.searchedWeb = true;
-  return historyTurn;
-}
-
-function conversationHistoryForApi(messages) {
-  const history = [];
-  for (const message of messages || []) {
-    const mapped = historyMessageFromChatTurn(message);
-    if (mapped.content?.trim()) history.push(mapped);
-  }
-  return history;
-}
-
-function historyWithCurrentUserTurn(history, effectiveMessage) {
-  const historyForApi = [];
-  for (const turn of history) {
-    if (turn.content?.trim()) historyForApi.push(turn);
-  }
-  const lastTurn = historyForApi[historyForApi.length - 1];
-  const lastText = String(lastTurn?.content || '').trim();
-  const currentText = String(effectiveMessage || '').trim();
-  const alreadyHasThisUserTurn = !!(lastTurn && lastTurn.role === 'user' && lastText === currentText);
-  if (!alreadyHasThisUserTurn) {
-    historyForApi.push({ role: 'user', content: effectiveMessage });
-  }
-  return historyForApi;
+  return normalizeToolCall(parsedTool);
 }
 
 function unreadPhotoFailureResult() {
@@ -629,67 +522,163 @@ function unreadPhotoFailureResult() {
 }
 
 function webModeForCoachRequest(hasImages, wantsWeb, web) {
-  if (hasImages) return WEB_MODE_OFF;
-  if (wantsWeb) return WEB_MODE_ON;
+  if (hasImages) {
+    return WEB_MODE_OFF;
+  }
+  if (wantsWeb) {
+    return WEB_MODE_ON;
+  }
   return web;
 }
 
 function timeoutForCoachRequest(hasImages, wantsWeb) {
-  if (hasImages) return TIMEOUT_MS_VISION;
-  if (wantsWeb) return TIMEOUT_MS_WEB;
+  if (hasImages) {
+    return TIMEOUT_MS_VISION;
+  }
+  if (wantsWeb) {
+    return TIMEOUT_MS_WEB;
+  }
   return TIMEOUT_MS;
 }
 
 function messageWantsWebSearch(hasImages, web, trimmedMessage, effectiveMessage, historyForApi) {
-  if (hasImages) return false;
+  if (hasImages) {
+    return false;
+  }
   const lookupText = trimmedMessage || effectiveMessage;
-  return (
-    web === WEB_MODE_ON ||
-    shouldInvokeWebSearch(lookupText, web, historyForApi) ||
-    messagesRequestWebSearch(historyForApi, lookupText)
-  );
+  if (web === WEB_MODE_ON) {
+    return true;
+  }
+  if (shouldInvokeWebSearch(lookupText, web, historyForApi)) {
+    return true;
+  }
+  if (messagesRequestWebSearch(historyForApi, lookupText)) {
+    return true;
+  }
+  return false;
+}
+
+function webSourcesListFromServerData(data) {
+  if (Array.isArray(data.webSources)) {
+    return data.webSources;
+  }
+  return [];
 }
 
 function coachReplyFromServerData(data) {
   const replyRaw = (data && data.reply) || '';
-  const { message, toolCall: parsedTool } = parseToolCallFromReply(replyRaw);
-  const toolCalls = Array.isArray(data.toolCalls)
-    ? data.toolCalls.map((call) => normalizeToolCall(call)).filter(Boolean)
-    : null;
-  const toolCall = toolCalls?.[0] || normalizeToolCall(parsedTool);
+  const parsed = parseToolCallFromReply(replyRaw);
+  const message = parsed.message;
+  const parsedTool = parsed.toolCall;
+  const toolCalls = normalizeToolCallsList(data.toolCalls);
+  const toolCall = firstToolCallFromLists(toolCalls, parsedTool);
+
+  let visibleMessage = stripCoachToolJsonFromReply(message);
+  if (!visibleMessage) {
+    visibleMessage = message;
+  }
+  if (!visibleMessage) {
+    visibleMessage = EMPTY_REPLY_FALLBACK;
+  }
+
+  let analyzedImages = 0;
+  if (data.analyzedImages) {
+    analyzedImages = data.analyzedImages;
+  }
+
   return {
-    message:
-      stripCoachToolJsonFromReply(message) ||
-      message ||
-      EMPTY_REPLY_FALLBACK,
+    message: visibleMessage,
     toolCall,
     toolCalls,
     success: true,
     source: data.source,
     usedWeeklyContext: data.usedWeeklyContext,
-    analyzedImages: data.analyzedImages || 0,
+    analyzedImages,
     searchedWeb: data.searchedWeb === true,
     webProvider: data.webProvider || null,
     route: data.route || null,
-    webSources: Array.isArray(data.webSources) ? data.webSources : [],
+    webSources: webSourcesListFromServerData(data),
   };
 }
 
+function successResultFromLegacySendToAi(data) {
+  const replyRaw = (data && data.reply) || '';
+  const parsed = parseToolCallFromReply(replyRaw);
+  const message = parsed.message;
+  const parsedTool = parsed.toolCall;
+  const toolCalls = normalizeToolCallsList(data.toolCalls);
+  const toolCall = firstToolCallFromLists(toolCalls, parsedTool);
+
+  let visibleMessage = stripCoachToolJsonFromReply(message);
+  if (!visibleMessage) {
+    visibleMessage = message;
+  }
+  if (!visibleMessage) {
+    visibleMessage = replyRaw;
+  }
+  if (!visibleMessage) {
+    visibleMessage = '';
+  }
+
+  return {
+    message: visibleMessage,
+    toolCall,
+    toolCalls,
+    success: true,
+    source: data.source,
+    usedWeeklyContext: data.usedWeeklyContext,
+    searchedWeb: data.searchedWeb,
+    raw: data,
+    apiUrl: data._apiUrl,
+  };
+}
+
+function failureResultFromLegacySendToAi(error) {
+  let errorMessage = REQUEST_FAILED_MESSAGE;
+  if (error && error.message) {
+    errorMessage = error.message;
+  }
+
+  let errorDetail = String(error);
+  if (error && error.message) {
+    errorDetail = error.message;
+  }
+
+  let apiUrl;
+  if (error && error._apiUrl) {
+    apiUrl = error._apiUrl;
+  }
+
+  return {
+    message: errorMessage,
+    toolCall: null,
+    success: false,
+    error: errorDetail,
+    apiUrl,
+  };
+}
+
+// --- User-facing errors ---
+
 function errorMessageFromCaught(error) {
   try {
-    const message = error?.message;
-    if (message && typeof message === 'string') return message;
+    const message = error && error.message;
+    if (message && typeof message === 'string') {
+      return message;
+    }
     return UNKNOWN_ERROR_MESSAGE;
-  } catch (_) {
+  } catch (_ignored) {
     return UNKNOWN_ERROR_MESSAGE;
   }
 }
 
 function logCoachErrorSafely(errorMessage) {
-  if (errorMessage === UNKNOWN_ERROR_MESSAGE) return;
+  if (errorMessage === UNKNOWN_ERROR_MESSAGE) {
+    return;
+  }
   try {
     console.error('AI Coach: ' + errorMessage);
-  } catch (_) {
+  } catch (_ignored) {
     console.error('AI Coach error (could not serialize)');
   }
 }
@@ -698,10 +687,331 @@ function userFacingCoachErrorMessage(errorMessage) {
   if (/firebase admin not initialized/i.test(errorMessage)) {
     return FIREBASE_ADMIN_USER_MESSAGE;
   }
-  if (errorMessage.includes('Daily AI Coach limit')) return errorMessage;
-  if (errorMessage.includes('Could not reach')) return errorMessage;
-  return errorMessage.trim() || GENERIC_REACH_USER_MESSAGE;
+  if (errorMessage.includes('Daily AI Coach limit')) {
+    return errorMessage;
+  }
+  if (errorMessage.includes('Could not reach')) {
+    return errorMessage;
+  }
+  const trimmed = errorMessage.trim();
+  if (trimmed) {
+    return errorMessage;
+  }
+  return GENERIC_REACH_USER_MESSAGE;
 }
+
+// --- POST /api/ai-coach across configured bases ---
+
+function webModeFromPayload(payload) {
+  if (!payload) {
+    return undefined;
+  }
+  if (!payload.options) {
+    return undefined;
+  }
+  return payload.options.web;
+}
+
+function httpPathForCoachPayload(payload) {
+  const lastUserText = newestUserLineInMessages(payload);
+  // Dedicated web-search route when the user clearly asked to search the web
+  // (web mode on from the caller, or auto mode that already decided this turn wants web).
+  const webMode = webModeFromPayload(payload);
+  const userAskedForWeb = shouldForceDedicatedWebSearchRoute(lastUserText);
+  const webIsNotOff = webMode !== WEB_MODE_OFF;
+  const webIsOnOrAutoWantsIt =
+    webMode === WEB_MODE_ON || requestPayloadWantsWebSearch(payload);
+  const forceDedicatedWebRoute =
+    userAskedForWeb && webIsNotOff && webIsOnOrAutoWantsIt;
+
+  if (forceDedicatedWebRoute) {
+    return COACH_WEB_SEARCH_PATH;
+  }
+  return COACH_PATH;
+}
+
+function fetchHitTimeoutOrNetwork(error) {
+  const isTimeout = error && error.name === 'AbortError';
+  const rawMessage = String((error && error.message) || '').toLowerCase();
+  const isNetwork =
+    (error && error.name === 'TypeError') ||
+    rawMessage.includes('network request failed');
+  return isTimeout || isNetwork;
+}
+
+async function errorDetailFromFailedResponse(response) {
+  try {
+    const errorJson = await response.json();
+    let detail = '';
+    if (errorJson) {
+      detail = errorJson.error || errorJson.message || '';
+    }
+    let hint = '';
+    if (errorJson && errorJson.hint) {
+      hint = errorJson.hint;
+    }
+    return { detail, hint };
+  } catch (_jsonFailed) {
+    return errorDetailFromResponseText(response);
+  }
+}
+
+async function errorDetailFromResponseText(response) {
+  try {
+    const errorText = (await response.text()) || '';
+    return { detail: errorText, hint: '' };
+  } catch (_textFailed) {
+    return { detail: '', hint: '' };
+  }
+}
+
+function routeHintFromCoachOptions(options) {
+  if (options && options.attachments) {
+    return 'vision';
+  }
+  return null;
+}
+
+async function buildHttpErrorFromCoachResponse(response, url, options) {
+  const detailParts = await errorDetailFromFailedResponse(response);
+  const detail = detailParts.detail;
+  const hint = detailParts.hint;
+
+  if (response.status === HTTP_UNAUTHORIZED || response.status === HTTP_FORBIDDEN) {
+    throw new Error(detail || NOT_AUTHORIZED_MESSAGE);
+  }
+
+  const messageText = detail || `AI Coach request failed (${response.status}).`;
+  let fullMessage = messageText;
+  if (hint) {
+    fullMessage = `${messageText} — ${hint}`;
+  }
+
+  const error = new Error(fullMessage);
+  error._apiUrl = url;
+  error._status = response.status;
+  error._route = routeHintFromCoachOptions(options);
+
+  if (__DEV__) {
+    console.debug(`AI Coach ${response.status} at ${url}:`, messageText);
+  }
+
+  return error;
+}
+
+function authHeadersForCoachPost(idToken, options) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (idToken) {
+    headers.Authorization = `Bearer ${idToken}`;
+  }
+  if (options.testSuite || __DEV__) {
+    headers[TEST_SUITE_HEADER] = '1';
+  }
+  return headers;
+}
+
+// vocab: AbortController = cancel a fetch that sat too long. React Native fetch has no timeout option.
+async function postJsonWithAbortTimeout(url, headers, payload, timeoutMs) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => {
+    controller.abort();
+  }, timeoutMs);
+
+  try {
+    return await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+function logWebBaseRetryInDev(url) {
+  if (__DEV__) {
+    console.debug(`AI Coach web search failed at ${url} — trying next API base`);
+  }
+}
+
+async function attachDevUrlToCoachJson(response, url, options) {
+  const json = await response.json();
+  if (options.testSuite || __DEV__) {
+    json._apiUrl = url;
+  }
+  return json;
+}
+
+async function tryCoachPostOnApiBase(base, coachPath, headers, payload, options, timeoutMs) {
+  const url = `${apiBaseWithoutTrailingSlash(base)}${coachPath}`;
+
+  try {
+    const response = await postJsonWithAbortTimeout(url, headers, payload, timeoutMs);
+
+    if (!response.ok) {
+      const httpError = await buildHttpErrorFromCoachResponse(response, url, options);
+      return { kind: 'http', error: httpError };
+    }
+
+    const json = await attachDevUrlToCoachJson(response, url, options);
+
+    if (shouldAdvanceBaseAfterWebMiss(payload, json, base)) {
+      logWebBaseRetryInDev(url);
+      return { kind: 'web-fallback', json, url };
+    }
+
+    if (__DEV__) {
+      console.debug('✅ AI Coach response', url);
+    }
+    return { kind: 'ok', json };
+  } catch (error) {
+    if (fetchHitTimeoutOrNetwork(error)) {
+      return { kind: 'network', error };
+    }
+    throw error;
+  }
+}
+
+function apiBasesIncludeProductionUrl(bases) {
+  const productionBase = apiBaseWithoutTrailingSlash(PRODUCTION_API_BASE_URL);
+  for (const base of bases) {
+    if (apiBaseWithoutTrailingSlash(base) === productionBase) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function timeoutMsForWebAwareRequest(options, wantsWeb) {
+  if (options.timeoutMs) {
+    return options.timeoutMs;
+  }
+  if (wantsWeb) {
+    return TIMEOUT_MS_WEB;
+  }
+  return TIMEOUT_MS;
+}
+
+async function fetchProductionWebFallback(coachPath, headers, payload, options, wantsWeb) {
+  const productionBase = apiBaseWithoutTrailingSlash(PRODUCTION_API_BASE_URL);
+  const productionUrl = `${productionBase}${coachPath}`;
+  const timeoutMs = timeoutMsForWebAwareRequest(options, wantsWeb);
+
+  try {
+    const response = await postJsonWithAbortTimeout(productionUrl, headers, payload, timeoutMs);
+    if (!response.ok) {
+      return null;
+    }
+    const json = await response.json();
+    if (options.testSuite || __DEV__) {
+      json._apiUrl = productionUrl;
+    }
+    if (shouldAdvanceBaseAfterWebMiss(payload, json, productionBase)) {
+      return null;
+    }
+    return json;
+  } catch (_ignored) {
+    return null;
+  }
+}
+
+async function lastResortWebJson(
+  bases,
+  lastWebFallback,
+  wantsWeb,
+  coachPath,
+  headers,
+  payload,
+  options,
+) {
+  const hasWebFallbackJson = Boolean(lastWebFallback && lastWebFallback.json && wantsWeb);
+  if (!hasWebFallbackJson) {
+    return null;
+  }
+
+  if (apiBasesIncludeProductionUrl(bases)) {
+    return lastWebFallback.json;
+  }
+
+  const productionJson = await fetchProductionWebFallback(
+    coachPath,
+    headers,
+    payload,
+    options,
+    wantsWeb,
+  );
+  if (productionJson) {
+    return productionJson;
+  }
+
+  return lastWebFallback.json;
+}
+
+async function postAICoach(payload, options = {}) {
+  const bases = getAICoachApiBases();
+  const wantsWeb = requestPayloadWantsWebSearch(payload);
+  const coachPath = httpPathForCoachPayload(payload);
+  let lastNetworkError = null;
+  let lastHttpError = null;
+  let lastWebFallback = null;
+
+  const idToken = await readSignedInUserIdToken();
+  const headers = authHeadersForCoachPost(idToken, options);
+  let timeoutMs = TIMEOUT_MS;
+  if (options.timeoutMs) {
+    timeoutMs = options.timeoutMs;
+  }
+
+  for (let baseIndex = 0; baseIndex < bases.length; baseIndex += 1) {
+    const base = bases[baseIndex];
+    const attempt = await tryCoachPostOnApiBase(
+      base,
+      coachPath,
+      headers,
+      payload,
+      options,
+      timeoutMs,
+    );
+
+    if (attempt.kind === 'ok') {
+      return attempt.json;
+    }
+    if (attempt.kind === 'http') {
+      lastHttpError = attempt.error;
+    }
+    if (attempt.kind === 'network') {
+      lastNetworkError = attempt.error;
+    }
+    if (attempt.kind === 'web-fallback') {
+      lastWebFallback = { json: attempt.json, url: attempt.url };
+    }
+  }
+
+  // Prefer a real HTTP error over a network miss when both happened across bases.
+  // lastNetworkError is collected in the loop; unused on purpose — same failover as before.
+  void lastNetworkError;
+  if (lastHttpError) {
+    throw lastHttpError;
+  }
+
+  const fallbackJson = await lastResortWebJson(
+    bases,
+    lastWebFallback,
+    wantsWeb,
+    coachPath,
+    headers,
+    payload,
+    options,
+  );
+  if (fallbackJson) {
+    return fallbackJson;
+  }
+
+  throw new Error(REACH_API_ERROR);
+}
+
+// --- Retry and dev usage reset ---
 
 function failedCoachResult(errorMessage) {
   return {
@@ -713,7 +1023,7 @@ function failedCoachResult(errorMessage) {
 }
 
 async function tryOneUsageReset(base, idToken) {
-  const url = `${stripTrailingSlash(base)}${RESET_USAGE_PATH}`;
+  const url = `${apiBaseWithoutTrailingSlash(base)}${RESET_USAGE_PATH}`;
   try {
     const response = await fetch(url, {
       method: 'POST',
@@ -723,23 +1033,28 @@ async function tryOneUsageReset(base, idToken) {
         [TEST_SUITE_HEADER]: '1',
       },
     });
-    if (response.ok) return { ok: true, url };
+    if (response.ok) {
+      return { ok: true, url };
+    }
     return { ok: false };
-  } catch (_) {
+  } catch (_ignored) {
     return { ok: false };
   }
 }
 
 async function tryOneCoachSend(params) {
   try {
-    return { didThrow: false, response: await sendCoachMessage(params), error: null };
+    const response = await sendCoachMessage(params);
+    return { didThrow: false, response, error: null };
   } catch (error) {
     return { didThrow: true, response: null, error };
   }
 }
 
 function waitMs(delayMs) {
-  return new Promise((resolve) => setTimeout(resolve, delayMs));
+  return new Promise((resolve) => {
+    setTimeout(resolve, delayMs);
+  });
 }
 
 function shouldRethrowCoachSend(attemptResult, attempt, retries) {
@@ -747,5 +1062,85 @@ function shouldRethrowCoachSend(attemptResult, attempt, retries) {
 }
 
 function isSuccessfulCoachSend(attemptResult) {
-  return !attemptResult.didThrow && attemptResult.response?.success;
+  if (attemptResult.didThrow) {
+    return false;
+  }
+  const response = attemptResult.response;
+  return Boolean(response && response.success);
+}
+
+// --- Misc ---
+
+function apiBaseWithoutTrailingSlash(base) {
+  return String(base).replace(/\/$/, '');
+}
+
+function newestUserLineInMessages(payload) {
+  const messageList = Array.isArray(payload && payload.messages)
+    ? payload.messages
+    : [];
+
+  for (let i = messageList.length - 1; i >= 0; i -= 1) {
+    const message = messageList[i];
+    if (message && message.role === 'user') {
+      return String(message.content || message.text || '').trim();
+    }
+  }
+  return '';
+}
+
+function requestPayloadWantsWebSearch(payload) {
+  const webMode = webModeFromPayload(payload);
+  const hasAttachments =
+    payload && payload.attachments && payload.attachments.length;
+
+  if (webMode === WEB_MODE_OFF || hasAttachments) {
+    return false;
+  }
+  if (webMode === WEB_MODE_ON) {
+    return true;
+  }
+
+  const lastUserText = newestUserLineInMessages(payload);
+  let messageList;
+  if (payload) {
+    messageList = payload.messages;
+  }
+  if (shouldInvokeWebSearch(lastUserText, webMode, messageList)) {
+    return true;
+  }
+  if (messagesRequestWebSearch(messageList, lastUserText)) {
+    return true;
+  }
+  return false;
+}
+
+function shouldAdvanceBaseAfterWebMiss(payload, json, base) {
+  if (!requestPayloadWantsWebSearch(payload)) {
+    return false;
+  }
+  if (json && json.searchedWeb === true) {
+    return false;
+  }
+  if (json && json.route === 'web-search') {
+    return false;
+  }
+  if (json && json.route === 'web-search-ask-topic') {
+    return false;
+  }
+  if (json && json.route === 'web-search-off-topic') {
+    return false;
+  }
+  if (isCloudHostedApiBase(base)) {
+    return false;
+  }
+
+  // Match prior nullish semantics: missing json still means "did not search web."
+  const routeIsWebSearchFailed = Boolean(json && json.route === 'web-search-failed');
+  let searchedWebFlag;
+  if (json != null) {
+    searchedWebFlag = json.searchedWeb;
+  }
+  const didNotConfirmWebSearch = searchedWebFlag !== true;
+  return routeIsWebSearchFailed || didNotConfirmWebSearch;
 }

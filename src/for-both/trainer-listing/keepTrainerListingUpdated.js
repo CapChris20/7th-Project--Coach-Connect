@@ -1,6 +1,6 @@
 // Keeps trainers/{uid} (marketplace / Find Trainers) in sync with users/{uid} (profile + onboarding).
-// Flow: read users/{uid} → merge a patch → skip non-trainers → shape the public doc → write trainers/{uid}.
-// Used by: profile save and onboarding complete. Clients read trainers/*, not users/*.
+// Flow: read users doc → merge patch → skip non-trainers → shape public listing → write trainers doc.
+// Used after profile save and onboarding complete. Clients read trainers/*, not users/*.
 
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 
@@ -16,7 +16,8 @@ const AVAILABILITY_WAITLIST = 'waitlist';
 const AVAILABILITY_WAITLIST_LABEL = 'Waitlist';
 const AVAILABILITY_AVAILABLE_LABEL = 'Available';
 
-const EXPERIENCE_MAP = {
+// Onboarding stores experience as a range key — map to a number for sorting and cards.
+const EXPERIENCE_RANGE_TO_YEARS = {
   less_than_1: 0,
   '1_2': 2,
   '3_5': 4,
@@ -26,158 +27,76 @@ const EXPERIENCE_MAP = {
   '8_plus': 9,
 };
 
-// ===== HELPER FUNCTIONS =====
-
-/**
- * First photo field that has a value. Older accounts used several names for the same picture.
- * @param {object} [userData]
- * @returns {string|null}
- */
-function pickPhoto(userData = {}) {
-  return (
-    userData.photoURL ||
-    userData.photoUrl ||
-    userData.profilePhoto ||
-    userData.avatarUrl ||
-    userData.photo ||
-    null
-  );
-}
-
-/**
- * Display name: stored name, then first+last, then auth displayName, then "Trainer".
- * @param {object} [userData]
- * @returns {string}
- */
-function pickName(userData = {}) {
-  const firstName = String(userData.firstName || '').trim();
-  const lastName = String(userData.lastName || '').trim();
-  const fromParts = `${firstName} ${lastName}`.trim();
-  return (
-    String(userData.name || '').trim() ||
-    fromParts ||
-    String(userData.displayName || '').trim() ||
-    DEFAULT_TRAINER_NAME
-  );
-}
-
-/**
- * Deduped specialty list from specialties[], specializations[], and a single specialty string.
- * @param {object} [userData]
- * @returns {string[]}
- */
-function collectSpecialties(userData = {}) {
-  const list = [
-    ...(Array.isArray(userData.specialties) ? userData.specialties : []),
-    ...(Array.isArray(userData.specializations) ? userData.specializations : []),
-    userData.specialty || '',
-  ]
-    .map((specialtyText) => String(specialtyText).trim())
-    .filter(Boolean);
-  const seen = new Set();
-  return list.filter((specialtyText) => {
-    const specialtyKey = specialtyText.toLowerCase();
-    if (seen.has(specialtyKey)) return false;
-    seen.add(specialtyKey);
-    return true;
-  });
-}
-
-/**
- * Certifications as an array. A comma-separated string from older onboarding is split.
- * @param {object} [userData]
- * @returns {Array}
- */
-function collectCertifications(userData = {}) {
-  if (Array.isArray(userData.certifications)) return userData.certifications;
-  if (typeof userData.certifications === 'string' && userData.certifications.trim()) {
-    return userData.certifications.split(',').map((certText) => certText.trim()).filter(Boolean);
-  }
-  return [];
-}
-
-/**
- * Years of experience: mapped onboarding range, or a raw number, or 0.
- * @param {object} userData
- * @param {*} yearsExperience
- * @returns {number}
- */
-function resolveExperienceYears(userData, yearsExperience) {
-  return EXPERIENCE_MAP[yearsExperience] ?? (typeof userData.experience === 'number' ? userData.experience : 0);
-}
-
-/**
- * Bio prefers the dedicated trainer profile field, then a generic bio, then philosophy.
- * @param {object} userData
- * @param {string} trainerProfileBio
- * @param {string} trainingPhilosophy
- * @returns {string|null}
- */
-function resolveBio(userData, trainerProfileBio, trainingPhilosophy) {
-  return (
-    trainerProfileBio ||
-    String(userData.bio || '').trim() ||
-    trainingPhilosophy ||
-    null
-  );
-}
-
 // ===== MAIN FUNCTION =====
 
 /**
- * Build the public marketplace document shape (matches server /api/onboarding/complete).
+ * Build the public trainers/{uid} document (matches server onboarding complete shape).
  * @param {string} uid
- * @param {Record<string, unknown>} userData — merged users/{uid} fields
+ * @param {object} [userData]
  * @returns {object}
  */
 export function buildTrainerMarketplaceDoc(uid, userData = {}) {
-  const id = String(uid || userData.uid || userData.id || '').trim();
-  const yearsExperience = userData.yearsExperience || userData.experienceRange || null;
-  const experience = resolveExperienceYears(userData, yearsExperience);
-  const specialties = collectSpecialties(userData);
-  const certifications = collectCertifications(userData);
+  // 1. Stable trainer id from auth uid or stored fields.
+  const trainerId = String(uid || userData.uid || userData.id || '').trim();
+
+  // 2. Experience, specialties, and credentials from onboarding + profile.
+  const experienceRangeKey = userData.yearsExperience || userData.experienceRange || null;
+  const experienceYears = yearsFromExperienceFields(userData, experienceRangeKey);
+  const specialtyList = mergeUniqueSpecialtyList(userData);
+  const certificationList = normalizeCertificationList(userData);
+  const firstSpecialty = specialtyList[0] || '';
+  const credentialsLine = certificationList.length
+    ? certificationList.join(', ')
+    : userData.credentials || null;
+
+  // 3. Session mode, bio, photo, pricing — everything Find Trainers renders.
   const sessionType = userData.sessionType || userData.coachingMode || SESSION_TYPE_BOTH;
   const trainerProfileBio = String(userData.trainerProfileBio || '').trim();
   const trainingPhilosophy = String(userData.trainingPhilosophy || '').trim();
-  const bio = resolveBio(userData, trainerProfileBio, trainingPhilosophy);
-  const photo = pickPhoto(userData);
-  const pricing = userData.pricing && typeof userData.pricing === 'object' ? userData.pricing : {};
+  const marketplaceBio = pickMarketplaceBio(userData, trainerProfileBio, trainingPhilosophy);
+  const photoUrl = pickFirstPhotoUrl(userData);
+  const pricing =
+    userData.pricing && typeof userData.pricing === 'object' ? userData.pricing : {};
   const availabilityStatus = userData.trainerAvailabilityStatus || userData.availability;
+  const availabilityLabel = pickAvailabilityLabel(userData, availabilityStatus);
+  const isOnWaitlist = availabilityStatus === AVAILABILITY_WAITLIST;
+  const isAvailable = !isOnWaitlist && userData.available !== false;
+  const publicName = pickPublicDisplayName(userData);
+  const locationLabel = String(userData.location || userData.city || '').trim();
+  const isRemoteSession = sessionType === SESSION_TYPE_REMOTE;
 
+  // 4. Same key letters clients already read on trainers/{uid}.
   return {
-    uid: id,
-    id,
+    uid: trainerId,
+    id: trainerId,
     role: ROLE_TRAINER,
-    name: pickName(userData),
-    displayName: userData.displayName || pickName(userData),
+    name: publicName,
+    displayName: userData.displayName || publicName,
     firstName: userData.firstName || null,
     lastName: userData.lastName || null,
-    photoURL: photo,
-    photoUrl: photo,
-    avatarUrl: photo,
-    location: String(userData.location || userData.city || '').trim(),
-    specialties,
-    specialty: specialties[0] || '',
-    bio,
+    photoURL: photoUrl,
+    photoUrl: photoUrl,
+    avatarUrl: photoUrl,
+    location: locationLabel,
+    specialties: specialtyList,
+    specialty: firstSpecialty,
+    bio: marketplaceBio,
     trainerProfileBio: trainerProfileBio || null,
     trainingPhilosophy: trainingPhilosophy || null,
-    certifications,
-    credentials: certifications.length ? certifications.join(', ') : userData.credentials || null,
+    certifications: certificationList,
+    credentials: credentialsLine,
     pricing,
     rate: pricing.perSession ?? userData.rate ?? null,
     price: pricing.perMonth ?? pricing.perSession ?? userData.price ?? null,
-    yearsExperience,
-    experience,
-    experienceRange: yearsExperience,
+    yearsExperience: experienceRangeKey,
+    experience: experienceYears,
+    experienceRange: experienceRangeKey,
     sessionType,
     coachingMode: sessionType,
     mode: sessionType,
-    isRemote: sessionType === SESSION_TYPE_REMOTE,
-    available: availabilityStatus !== AVAILABILITY_WAITLIST && userData.available !== false,
-    availability:
-      availabilityStatus === AVAILABILITY_WAITLIST || userData.availability === AVAILABILITY_WAITLIST_LABEL
-        ? AVAILABILITY_WAITLIST_LABEL
-        : AVAILABILITY_AVAILABLE_LABEL,
+    isRemote: isRemoteSession,
+    available: isAvailable,
+    availability: availabilityLabel,
     offerFreeConsultation: userData.offerFreeConsultation === true,
     flexiblePricingAvailable: userData.flexiblePricingAvailable === true,
     inviteCode: userData.inviteCode || null,
@@ -187,24 +106,130 @@ export function buildTrainerMarketplaceDoc(uid, userData = {}) {
 }
 
 /**
- * After profile (or onboarding) writes users/{uid}, mirror marketplace fields to trainers/{uid}.
+ * After users/{uid} changes, merge marketplace fields into trainers/{uid}.
  * @param {import('firebase/firestore').Firestore} firestore
  * @param {string} uid
- * @param {{ patch?: Record<string, unknown>, forceTrainer?: boolean }} [options]
+ * @param {{ patch?: object, forceTrainer?: boolean }} [options]
  * @returns {Promise<object|null>}
  */
-export async function syncTrainerMarketplaceDoc(firestore, uid, { patch = {}, forceTrainer = false } = {}) {
+export async function syncTrainerMarketplaceDoc(
+  firestore,
+  uid,
+  { patch = {}, forceTrainer = false } = {},
+) {
+  // Failures first — no db or no uid means nothing to sync.
   if (!firestore || !uid) return null;
 
+  // 1. Load the private user profile, then overlay any fields from this save.
+  // vocab: getDoc = one-shot Firestore read; setDoc with merge keeps server-only fields
   const userRef = doc(firestore, USERS_COLLECTION, uid);
   const userSnap = await getDoc(userRef);
-  const userDocData = userSnap.exists() ? userSnap.data() || {} : {};
-  const mergedUserData = { ...userDocData, ...patch, uid };
+  const storedUserFields = userSnap.exists() ? userSnap.data() || {} : {};
+  const mergedUserFields = { ...storedUserFields, ...patch, uid };
 
-  const role = String(mergedUserData.role || '').toLowerCase();
-  if (!forceTrainer && role && role !== ROLE_TRAINER) return null;
+  // 2. Only trainers get a public trainers/{uid} row (unless forceTrainer for edge fixes).
+  const role = String(mergedUserFields.role || '').toLowerCase();
+  const roleIsTrainer = role === ROLE_TRAINER;
+  const shouldSkipNonTrainer = !forceTrainer && role && !roleIsTrainer;
+  if (shouldSkipNonTrainer) return null;
 
-  const marketplaceDoc = buildTrainerMarketplaceDoc(uid, mergedUserData);
-  await setDoc(doc(firestore, TRAINERS_COLLECTION, uid), marketplaceDoc, { merge: true });
+  // 3. Write the listing doc — merge:true keeps fields clients added server-side.
+  const marketplaceDoc = buildTrainerMarketplaceDoc(uid, mergedUserFields);
+  const trainerRef = doc(firestore, TRAINERS_COLLECTION, uid);
+  await setDoc(trainerRef, marketplaceDoc, { merge: true });
   return marketplaceDoc;
+}
+
+// ===== HELPER FUNCTIONS =====
+// PLUMBING — skip unless debugging =====
+
+function pickFirstPhotoUrl(userData = {}) {
+  if (userData.photoURL) return userData.photoURL;
+  if (userData.photoUrl) return userData.photoUrl;
+  if (userData.profilePhoto) return userData.profilePhoto;
+  if (userData.avatarUrl) return userData.avatarUrl;
+  if (userData.photo) return userData.photo;
+  return null;
+}
+
+function pickPublicDisplayName(userData = {}) {
+  const firstName = String(userData.firstName || '').trim();
+  const lastName = String(userData.lastName || '').trim();
+  const nameFromFirstLast = `${firstName} ${lastName}`.trim();
+  const nameField = String(userData.name || '').trim();
+  if (nameField) return nameField;
+  if (nameFromFirstLast) return nameFromFirstLast;
+  const displayNameField = String(userData.displayName || '').trim();
+  if (displayNameField) return displayNameField;
+  return DEFAULT_TRAINER_NAME;
+}
+
+function mergeUniqueSpecialtyList(userData = {}) {
+  const specialtyFromArray = Array.isArray(userData.specialties) ? userData.specialties : [];
+  const specializationFromArray = Array.isArray(userData.specializations)
+    ? userData.specializations
+    : [];
+  const singleSpecialty = userData.specialty || '';
+
+  const rawSpecialtyTexts = [
+    ...specialtyFromArray,
+    ...specializationFromArray,
+    singleSpecialty,
+  ]
+    .map((specialtyText) => String(specialtyText).trim())
+    .filter(Boolean);
+
+  return keepFirstOfEachLowercase(rawSpecialtyTexts);
+}
+
+function keepFirstOfEachLowercase(specialtyTexts) {
+  const seenLowercase = new Set();
+  const uniqueList = [];
+  for (let i = 0; i < specialtyTexts.length; i += 1) {
+    const specialtyText = specialtyTexts[i];
+    const lookupKey = specialtyText.toLowerCase();
+    if (seenLowercase.has(lookupKey)) continue;
+    seenLowercase.add(lookupKey);
+    uniqueList.push(specialtyText);
+  }
+  return uniqueList;
+}
+
+function normalizeCertificationList(userData = {}) {
+  if (Array.isArray(userData.certifications)) {
+    return userData.certifications;
+  }
+  const certificationsAreString =
+    typeof userData.certifications === 'string' && userData.certifications.trim();
+  if (certificationsAreString) {
+    return userData.certifications
+      .split(',')
+      .map((certText) => certText.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
+function yearsFromExperienceFields(userData, experienceRangeKey) {
+  const mappedYears = EXPERIENCE_RANGE_TO_YEARS[experienceRangeKey];
+  if (mappedYears !== undefined) return mappedYears;
+  if (typeof userData.experience === 'number') return userData.experience;
+  return 0;
+}
+
+function pickMarketplaceBio(userData, trainerProfileBio, trainingPhilosophy) {
+  if (trainerProfileBio) return trainerProfileBio;
+  const profileBio = String(userData.bio || '').trim();
+  if (profileBio) return profileBio;
+  if (trainingPhilosophy) return trainingPhilosophy;
+  return null;
+}
+
+function pickAvailabilityLabel(userData, availabilityStatus) {
+  const statusIsWaitlist = availabilityStatus === AVAILABILITY_WAITLIST;
+  const labelIsWaitlist = userData.availability === AVAILABILITY_WAITLIST_LABEL;
+  if (statusIsWaitlist || labelIsWaitlist) {
+    return AVAILABILITY_WAITLIST_LABEL;
+  }
+  return AVAILABILITY_AVAILABLE_LABEL;
 }

@@ -1,6 +1,6 @@
-// Design Law Blocked users — NbPageHeader, per-person cards with avatar + Unblock.
-// Flow: Settings opens overlay → listMyBlocks → unblockUser → refresh.
-// Used by: SettingsScreen modal. Block list keys stay as blockUser.js writes them.
+// Design Law blocked-users list — header, cards (avatar · copy · Unblock), notice sheet.
+// Flow: Settings modal → listMyBlocks → confirm unblock → unblockUser → refresh list.
+// Used by: SettingsScreen overlay. Row shape matches blockUser.js Firestore writes.
 
 import React, { useCallback, useEffect, useState } from 'react';
 import {
@@ -25,62 +25,156 @@ import { nb, spacing } from '../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
-const EMPTY_ICON_SIZE = 36;
+// Manipulate here: empty-state shield icon size (Design Law uses ~36).
+const EMPTY_STATE_ICON_SIZE = 36;
+const AVATAR_SIZE = 44;
+const EMPTY_STATE_COPY =
+  'No blocked users. When you block someone from chat or a trainer profile, they show up here.';
+const HELPER_FOOTER_COPY =
+  'Blocked people cannot message you or see your profile. You can unblock anyone here.';
+const GENERIC_BLOCKED_SUBTITLE = 'Blocked from messaging and profile';
+const UNBLOCK_BUSY_LABEL = '…';
+const UNBLOCK_LABEL = 'Unblock';
+const PAGE_TITLE = 'Blocked users';
+const UNBLOCK_CONFIRM_TITLE = 'Unblock?';
+const UNBLOCK_FAILED_TITLE = 'Unblock failed';
+const DEFAULT_UNBLOCK_CONFIRM = 'Unblock this user?';
+const NOTICE_OK_LABEL = 'OK';
+const LOAD_FAILED_FALLBACK = 'Could not load blocked users.';
+const UNBLOCK_FAILED_FALLBACK = 'Try again.';
 
 // ===== HELPER FUNCTIONS =====
 
-/**
- * Prefer the saved display name; fall back to the blocked uid or the row id.
- * @param {object} item
- * @returns {string}
- */
-function blockedUserLabel(item) {
-  return item.displayName || item.blockedUid || item.id;
+function signedInUserIdFromAuth() {
+  const authHandle = getAuth();
+  if (!authHandle) {
+    return null;
+  }
+  const currentUser = authHandle.currentUser;
+  if (!currentUser) {
+    return null;
+  }
+  if (!currentUser.uid) {
+    return null;
+  }
+  return currentUser.uid;
 }
 
-/** Initials for NbAvatar when there is no photo. */
-function initialsFromLabel(label) {
-  const nameText = String(label || '').trim();
-  if (!nameText) return '?';
-  return nameText
-    .split(/\s+/)
-    .map((part) => part[0])
-    .slice(0, 2)
-    .join('')
-    .toUpperCase();
+function messageFromError(error, fallbackText) {
+  if (error && error.message) {
+    return error.message;
+  }
+  return fallbackText;
 }
 
-/**
- * One blocked person as their own Design Law card (avatar · copy · Unblock).
- */
+// Title line: saved display name, else uid, else row id.
+function titleForBlockedRow(blockedRow) {
+  if (blockedRow.displayName) {
+    return blockedRow.displayName;
+  }
+  if (blockedRow.blockedUid) {
+    return blockedRow.blockedUid;
+  }
+  return blockedRow.id;
+}
+
+function firstLettersFromNameParts(nameParts) {
+  const firstLetters = [];
+  for (let index = 0; index < nameParts.length; index += 1) {
+    const part = nameParts[index];
+    if (part && part[0]) {
+      firstLetters.push(part[0]);
+    }
+  }
+  return firstLetters;
+}
+
+// Two-letter initials for NbAvatar when there is no profile photo.
+function avatarInitialsFromTitle(titleText) {
+  const trimmedTitle = String(titleText || '').trim();
+  if (!trimmedTitle) {
+    return '?';
+  }
+  const nameParts = trimmedTitle.split(/\s+/);
+  const firstLetters = firstLettersFromNameParts(nameParts);
+  const upToTwo = firstLetters.slice(0, 2);
+  return upToTwo.join('').toUpperCase();
+}
+
+function joinDateAndReason(blockedRow) {
+  const parts = [];
+  if (blockedRow.blockedAtLabel) {
+    parts.push(blockedRow.blockedAtLabel);
+  }
+  if (blockedRow.reason) {
+    parts.push(blockedRow.reason);
+  }
+  if (parts.length === 0) {
+    return '';
+  }
+  return parts.join(' · ');
+}
+
+// Subtitle: "blockedAt · reason" when present, else uid or generic blocked copy.
+function subtitleForBlockedRow(blockedRow) {
+  const dateAndReason = joinDateAndReason(blockedRow);
+  if (dateAndReason) {
+    return dateAndReason;
+  }
+  if (blockedRow.displayName) {
+    if (blockedRow.blockedUid) {
+      return String(blockedRow.blockedUid);
+    }
+    return String(blockedRow.id);
+  }
+  return GENERIC_BLOCKED_SUBTITLE;
+}
+
+function unblockButtonLabel(unblockInProgress) {
+  if (unblockInProgress) {
+    return UNBLOCK_BUSY_LABEL;
+  }
+  return UNBLOCK_LABEL;
+}
+
+function unblockConfirmMessage(displayName) {
+  if (displayName) {
+    return `Unblock ${displayName}?`;
+  }
+  return DEFAULT_UNBLOCK_CONFIRM;
+}
+
 function BlockedUserCard({ item, colors, busyId, onUnblock }) {
-  const label = blockedUserLabel(item);
-  const isUnblocking = busyId === item.id;
-  const reasonLine = [item.blockedAtLabel, item.reason].filter(Boolean).join(' · ');
-  const subtitle =
-    reasonLine ||
-    (item.displayName ? String(item.blockedUid || item.id) : 'Blocked from messaging and profile');
+  const cardTitle = titleForBlockedRow(item);
+  const cardSubtitle = subtitleForBlockedRow(item);
+  const avatarInitials = avatarInitialsFromTitle(cardTitle);
+  const unblockInProgress = busyId === item.id;
+  const buttonLabel = unblockButtonLabel(unblockInProgress);
+
+  function handleUnblockPress() {
+    onUnblock(item.id, item.displayName);
+  }
 
   return (
     <NbCard style={styles.userCard}>
       <View style={styles.row}>
-        <NbAvatar initials={initialsFromLabel(label)} size={44} />
+        <NbAvatar initials={avatarInitials} size={AVATAR_SIZE} />
         <View style={styles.copy}>
           <Text style={[styles.name, { color: colors.nbInk }]} numberOfLines={1}>
-            {label}
+            {cardTitle}
           </Text>
           <Text style={[styles.sub, { color: colors.nbMuted }]} numberOfLines={2}>
-            {subtitle}
+            {cardSubtitle}
           </Text>
         </View>
         <View style={styles.unblockWrap}>
           <NbButton
             variant="ghost"
             sm
-            onPress={() => onUnblock(item.id, item.displayName)}
-            disabled={isUnblocking}
+            onPress={handleUnblockPress}
+            disabled={unblockInProgress}
           >
-            {isUnblocking ? '…' : 'Unblock'}
+            {buttonLabel}
           </NbButton>
         </View>
       </View>
@@ -88,51 +182,144 @@ function BlockedUserCard({ item, colors, busyId, onUnblock }) {
   );
 }
 
-function BlockedUsersBody({ colors, isLoading, rows, busyId, onUnblock }) {
-  if (isLoading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator color={colors.nbInk} />
-      </View>
-    );
-  }
+function LoadingBlockedList({ colors }) {
+  return (
+    <View style={styles.center}>
+      <ActivityIndicator color={colors.nbInk} />
+    </View>
+  );
+}
 
-  if (rows.length === 0) {
-    return (
-      <View style={styles.center}>
-        <Ionicons name="shield-checkmark-outline" size={EMPTY_ICON_SIZE} color={colors.nbMuted} />
-        <Text style={[styles.empty, { color: colors.nbMuted }]}>
-          No blocked users. When you block someone from chat or a trainer profile, they show up here.
-        </Text>
-      </View>
+function EmptyBlockedList({ colors }) {
+  return (
+    <View style={styles.center}>
+      <Ionicons
+        name="shield-checkmark-outline"
+        size={EMPTY_STATE_ICON_SIZE}
+        color={colors.nbMuted}
+      />
+      <Text style={[styles.empty, { color: colors.nbMuted }]}>{EMPTY_STATE_COPY}</Text>
+    </View>
+  );
+}
+
+function buildBlockedUserCardList(rows, colors, busyId, onUnblock) {
+  const cards = [];
+  for (let index = 0; index < rows.length; index += 1) {
+    const blockedRow = rows[index];
+    cards.push(
+      <BlockedUserCard
+        key={blockedRow.id}
+        item={blockedRow}
+        colors={colors}
+        busyId={busyId}
+        onUnblock={onUnblock}
+      />,
     );
   }
+  return cards;
+}
+
+function BlockedUsersList({ colors, rows, busyId, onUnblock }) {
+  const cardList = buildBlockedUserCardList(rows, colors, busyId, onUnblock);
 
   return (
     <ScrollView contentContainerStyle={styles.listPad} showsVerticalScrollIndicator={false}>
-      {rows.map((item) => (
-        <BlockedUserCard
-          key={item.id}
-          item={item}
-          colors={colors}
-          busyId={busyId}
-          onUnblock={onUnblock}
-        />
-      ))}
-      <Text style={[styles.helper, { color: colors.nbMuted }]}>
-        Blocked people cannot message you or see your profile. You can unblock anyone here.
-      </Text>
+      {cardList}
+      <Text style={[styles.helper, { color: colors.nbMuted }]}>{HELPER_FOOTER_COPY}</Text>
     </ScrollView>
   );
 }
 
-function BlockedUsersLayout({ colors, isLoading, rows, busyId, onClose, onUnblock, notice, onDismissNotice }) {
+function BlockedUsersBody({ colors, isLoading, rows, busyId, onUnblock }) {
+  if (isLoading) {
+    return <LoadingBlockedList colors={colors} />;
+  }
+  if (rows.length === 0) {
+    return <EmptyBlockedList colors={colors} />;
+  }
+  return (
+    <BlockedUsersList
+      colors={colors}
+      rows={rows}
+      busyId={busyId}
+      onUnblock={onUnblock}
+    />
+  );
+}
+
+function noticeTitleText(notice) {
+  if (!notice) {
+    return '';
+  }
+  if (notice.title) {
+    return notice.title;
+  }
+  return '';
+}
+
+function noticeMessageText(notice) {
+  if (!notice) {
+    return undefined;
+  }
+  return notice.message;
+}
+
+function noticeConfirmLabelText(notice) {
+  if (!notice) {
+    return NOTICE_OK_LABEL;
+  }
+  if (notice.confirmLabel) {
+    return notice.confirmLabel;
+  }
+  return NOTICE_OK_LABEL;
+}
+
+function noticeCancelLabelText(notice) {
+  if (!notice) {
+    return undefined;
+  }
+  return notice.cancelLabel;
+}
+
+function noticeConfirmHandler(notice) {
+  if (!notice) {
+    return undefined;
+  }
+  return notice.onConfirm;
+}
+
+function noticeIsDestructiveFlag(notice) {
+  if (!notice) {
+    return false;
+  }
+  return !!notice.destructive;
+}
+
+function BlockedUsersLayout({
+  colors,
+  isLoading,
+  rows,
+  busyId,
+  onClose,
+  onUnblock,
+  notice,
+  onDismissNotice,
+}) {
+  const noticeIsVisible = !!notice;
+  const noticeTitle = noticeTitleText(notice);
+  const noticeMessage = noticeMessageText(notice);
+  const noticeConfirmLabel = noticeConfirmLabelText(notice);
+  const noticeCancelLabel = noticeCancelLabelText(notice);
+  const noticeOnConfirm = noticeConfirmHandler(notice);
+  const noticeIsDestructive = noticeIsDestructiveFlag(notice);
+
   return (
     <SafeAreaView
       style={[styles.root, { backgroundColor: colors.nbBackground }]}
       edges={SHELL_SAFE_AREA_EDGES}
     >
-      <NbPageHeader title="Blocked users" onBack={onClose} />
+      <NbPageHeader title={PAGE_TITLE} onBack={onClose} />
       <BlockedUsersBody
         colors={colors}
         isLoading={isLoading}
@@ -141,14 +328,14 @@ function BlockedUsersLayout({ colors, isLoading, rows, busyId, onClose, onUnbloc
         onUnblock={onUnblock}
       />
       <NbNoticeSheet
-        visible={!!notice}
+        visible={noticeIsVisible}
         onClose={onDismissNotice}
-        title={notice?.title || ''}
-        message={notice?.message}
-        confirmLabel={notice?.confirmLabel || 'OK'}
-        cancelLabel={notice?.cancelLabel}
-        onConfirm={notice?.onConfirm}
-        destructive={!!notice?.destructive}
+        title={noticeTitle}
+        message={noticeMessage}
+        confirmLabel={noticeConfirmLabel}
+        cancelLabel={noticeCancelLabel}
+        onConfirm={noticeOnConfirm}
+        destructive={noticeIsDestructive}
       />
     </SafeAreaView>
   );
@@ -157,54 +344,69 @@ function BlockedUsersLayout({ colors, isLoading, rows, busyId, onClose, onUnbloc
 // ===== MAIN FUNCTION =====
 
 /**
- * Overlay list of blocked users with an Unblock button on each card.
- * @param {{ onClose: Function }} props
+ * Settings → Blocked users list with confirm-to-unblock.
+ * Hooks stay in this order: theme, uid, rows, loading, busy id, notice.
  */
 export default function BlockedUsersScreen({ onClose }) {
   const { colors } = useTheme();
-  const uid = getAuth()?.currentUser?.uid || null;
-  const [rows, setRows] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [busyId, setBusyId] = useState(null);
-  const [notice, setNotice] = useState(null);
-  const showNotice = (title, message, extras = {}) => setNotice({ title, message, ...extras });
+  const signedInUserId = signedInUserIdFromAuth();
 
-  const refresh = useCallback(async () => {
-    if (!uid) {
-      setRows([]);
-      setIsLoading(false);
+  const [blockedRows, setBlockedRows] = useState([]);
+  const [listIsLoading, setListIsLoading] = useState(true);
+  const [unblockingRowId, setUnblockingRowId] = useState(null);
+  const [noticeSheet, setNoticeSheet] = useState(null);
+
+  const openNoticeSheet = (title, message, extraFields = {}) => {
+    setNoticeSheet({ title, message, ...extraFields });
+  };
+
+  const closeNoticeSheet = () => {
+    setNoticeSheet(null);
+  };
+
+  // 1. Pull blocked rows from Firestore for the signed-in user.
+  const refreshBlockedList = useCallback(async () => {
+    if (!signedInUserId) {
+      setBlockedRows([]);
+      setListIsLoading(false);
       return;
     }
-    setIsLoading(true);
+
+    setListIsLoading(true);
     try {
-      const list = await listMyBlocks(uid);
-      setRows(list);
-    } catch (error) {
-      showNotice('Blocked users', error?.message || 'Could not load blocked users.');
-      setRows([]);
+      const rowsFromFirestore = await listMyBlocks(signedInUserId);
+      setBlockedRows(rowsFromFirestore);
+    } catch (loadError) {
+      openNoticeSheet(PAGE_TITLE, messageFromError(loadError, LOAD_FAILED_FALLBACK));
+      setBlockedRows([]);
     } finally {
-      setIsLoading(false);
+      setListIsLoading(false);
     }
-  }, [uid]);
+  }, [signedInUserId]);
 
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    refreshBlockedList();
+  }, [refreshBlockedList]);
 
-  const onUnblock = (blockedUid, displayName) => {
-    const prompt = displayName ? `Unblock ${displayName}?` : 'Unblock this user?';
-    showNotice('Unblock?', prompt, {
+  // 2. Confirm → unblock in Firestore → refresh so the card disappears.
+  const handleUnblockPress = (blockedUid, displayName) => {
+    const confirmMessage = unblockConfirmMessage(displayName);
+
+    openNoticeSheet(UNBLOCK_CONFIRM_TITLE, confirmMessage, {
       cancelLabel: 'Cancel',
-      confirmLabel: 'Unblock',
+      confirmLabel: UNBLOCK_LABEL,
       onConfirm: async () => {
-        setBusyId(blockedUid);
+        setUnblockingRowId(blockedUid);
         try {
-          await unblockUser(uid, blockedUid);
-          await refresh();
-        } catch (error) {
-          showNotice('Unblock failed', error?.message || 'Try again.');
+          await unblockUser(signedInUserId, blockedUid);
+          await refreshBlockedList();
+        } catch (unblockError) {
+          openNoticeSheet(
+            UNBLOCK_FAILED_TITLE,
+            messageFromError(unblockError, UNBLOCK_FAILED_FALLBACK),
+          );
         } finally {
-          setBusyId(null);
+          setUnblockingRowId(null);
         }
       },
     });
@@ -213,13 +415,13 @@ export default function BlockedUsersScreen({ onClose }) {
   return (
     <BlockedUsersLayout
       colors={colors}
-      isLoading={isLoading}
-      rows={rows}
-      busyId={busyId}
+      isLoading={listIsLoading}
+      rows={blockedRows}
+      busyId={unblockingRowId}
       onClose={onClose}
-      onUnblock={onUnblock}
-      notice={notice}
-      onDismissNotice={() => setNotice(null)}
+      onUnblock={handleUnblockPress}
+      notice={noticeSheet}
+      onDismissNotice={closeNoticeSheet}
     />
   );
 }

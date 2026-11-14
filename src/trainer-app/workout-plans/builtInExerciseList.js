@@ -1,6 +1,7 @@
 // Bundled exercise catalog that powers search/autocomplete in the manual plan builder.
-// Flow: MANUAL_EXERCISE_LIBRARY is a static list → searchManualExerciseLibrary() scores it against the trainer's query.
-// Used by the manual workout plan builder. Offline so autocomplete stays instant mid-gym.
+// Flow: static MANUAL_EXERCISE_LIBRARY → score each row on keystroke → sort → slice to limit.
+// Used by manualPlanToWorkoutPlan and ManualWorkoutPlanBuilderScreen. Offline for mid-gym speed.
+// Read order: constants + catalog → search / filter / inferEquipment → PLUMBING scorers.
 
 // ===== NAMED CONSTANTS =====
 
@@ -10,6 +11,12 @@ const NAME_PREFIX_SCORE = 40;
 const NAME_CONTAINS_SCORE = 20;
 const MUSCLE_GROUP_SCORE = 8;
 const DESCRIPTION_SCORE = 4;
+
+const EQUIPMENT_BARBELL = 'Barbell';
+const EQUIPMENT_DUMBBELL = 'Dumbbell';
+const EQUIPMENT_CABLE = 'Cable';
+const EQUIPMENT_MACHINE = 'Machine';
+const EQUIPMENT_BODYWEIGHT = 'Bodyweight';
 
 // Manipulate here: this is the exercise catalog — add a row to make a new exercise searchable.
 // Each row is { id, name, muscleGroups, description }:
@@ -92,49 +99,28 @@ export const MANUAL_EXERCISE_LIBRARY = [
   { id: 'turkish_getup', name: 'Turkish Get-Up', muscleGroups: ['Full Body', 'Core'], description: 'Slow controlled transitions.' },
 ];
 
-// ===== HELPER FUNCTIONS =====
-
-function searchScoreForExercise(exercise, searchText) {
-  const name = exercise.name.toLowerCase();
-  let score = 0;
-  // The four tiers are cumulative, not exclusive — an exact match also starts with and includes
-  // the query, so it collects 100 + 40 + 20 = 160 and lands far above a mid-word hit at 20.
-  // That gap is what makes typing "bench" surface "Bench Press" above "Incline Bench Press".
-  // Manipulate here: these weights are the whole ranking policy.
-  if (name === searchText) score += SCORE_EXACT_NAME_MATCH;
-  if (name.startsWith(searchText)) score += NAME_PREFIX_SCORE;
-  if (name.includes(searchText)) score += NAME_CONTAINS_SCORE;
-  // Joined into one string so a single includes() covers every group on the exercise.
-  const muscleGroupsText = (exercise.muscleGroups || []).join(' ').toLowerCase();
-  if (muscleGroupsText.includes(searchText)) score += MUSCLE_GROUP_SCORE;
-  const descriptionText = (exercise.description || '').toLowerCase();
-  if (descriptionText.includes(searchText)) score += DESCRIPTION_SCORE;
-  return { exercise, score };
-}
-
-function highestScoreThenName(leftMatch, rightMatch) {
-  // Highest score first; equal scores fall back to alphabetical, so results are stable
-  // instead of depending on array order.
-  return rightMatch.score - leftMatch.score || leftMatch.exercise.name.localeCompare(rightMatch.exercise.name);
-}
-
-// ===== MAIN FUNCTION =====
+// ===== MAIN FUNCTIONS =====
 
 /**
- * Weighted substring search over the library above. Not fuzzy matching — it's a simple additive
- * score, which is predictable and fast enough to run on every keystroke over ~85 rows.
- * Empty query = the browse case: show the first `limit` exercises rather than nothing.
+ * Weighted substring search over the library above. Not fuzzy matching — additive score per row.
+ * Empty query = browse: return the first `limit` exercises.
  * @param {string} query
  * @param {number} [limit=24]
  * @returns {Array}
  */
 export function searchManualExerciseLibrary(query, limit = MANUAL_LIBRARY_SEARCH_LIMIT_DEFAULT) {
   const searchText = String(query || '').trim().toLowerCase();
-  if (!searchText) return MANUAL_EXERCISE_LIBRARY.slice(0, limit);
-  const scored = MANUAL_EXERCISE_LIBRARY.map((exercise) => searchScoreForExercise(exercise, searchText))
-    .filter((scoredEntry) => scoredEntry.score > 0)
-    .sort(highestScoreThenName);
-  return scored.slice(0, limit).map((scoredEntry) => scoredEntry.exercise);
+
+  // 1. Empty search — first page of the catalog (browse mode).
+  if (!searchText) {
+    return firstLibraryPage(limit);
+  }
+
+  // 2. Score every row, keep hits, sort by score then name.
+  const rankedMatches = rankLibraryAgainstSearchText(searchText);
+
+  // 3. Return top `limit` exercise objects (no score wrapper).
+  return takeTopExercises(rankedMatches, limit);
 }
 
 /**
@@ -144,31 +130,27 @@ export function searchManualExerciseLibrary(query, limit = MANUAL_LIBRARY_SEARCH
  * @returns {string|null}
  */
 export function inferExerciseEquipment(exercise) {
-  const name = String(exercise?.name || '').toLowerCase();
-  if (!name) return null;
-  if (/\b(barbell|bb |ez[- ]?bar|landmine|t-bar)\b/.test(name) || name.startsWith('bb ')) {
-    return 'Barbell';
+  const nameLower = String(exercise?.name || '').toLowerCase();
+  if (!nameLower) {
+    return null;
   }
-  if (/\b(dumbbell|db |kettlebell|kb |hammer curl|goblet)\b/.test(name) || name.startsWith('db ')) {
-    return 'Dumbbell';
+
+  if (nameLooksLikeBarbell(nameLower)) {
+    return EQUIPMENT_BARBELL;
   }
-  if (/\b(cable|pulldown|pushdown|face pull|woodchopper|pallof)\b/.test(name)) {
-    return 'Cable';
+  if (nameLooksLikeDumbbell(nameLower)) {
+    return EQUIPMENT_DUMBBELL;
   }
-  if (
-    /\b(machine|smith|leg press|leg extension|leg curl|pec deck|hack squat|ergometer|assault bike|rower)\b/.test(
-      name,
-    )
-  ) {
-    return 'Machine';
+  if (nameLooksLikeCable(nameLower)) {
+    return EQUIPMENT_CABLE;
   }
-  if (
-    /\b(push-?up|pull-?up|chin-?up|plank|burpee|mountain climber|jump rope|dip|glute bridge|hanging|ab wheel|box jump)\b/.test(
-      name,
-    )
-  ) {
-    return 'Bodyweight';
+  if (nameLooksLikeMachine(nameLower)) {
+    return EQUIPMENT_MACHINE;
   }
+  if (nameLooksLikeBodyweight(nameLower)) {
+    return EQUIPMENT_BODYWEIGHT;
+  }
+
   return null;
 }
 
@@ -189,22 +171,169 @@ export function filterManualExerciseLibrary({
   limit = MANUAL_LIBRARY_SEARCH_LIMIT_DEFAULT,
 } = {}) {
   const muscleKey = String(muscle || '').trim().toLowerCase();
-  const equipmentKeys = (Array.isArray(equipments) ? equipments : [])
-    .map((item) => String(item || '').trim().toLowerCase())
-    .filter(Boolean);
+  const equipmentKeys = normalizeEquipmentKeys(equipments);
 
-  let rows = searchManualExerciseLibrary(query, MANUAL_EXERCISE_LIBRARY.length);
+  // 1. Run text search without an artificial cap so chip filters see the full ranked list.
+  let matchingRows = searchManualExerciseLibrary(query, MANUAL_EXERCISE_LIBRARY.length);
+
+  // 2. Muscle chip — exact group name match (case-insensitive).
   if (muscleKey) {
-    rows = rows.filter((exercise) =>
-      (exercise.muscleGroups || []).some((group) => String(group).toLowerCase() === muscleKey),
-    );
+    matchingRows = keepRowsMatchingMuscle(matchingRows, muscleKey);
   }
-  if (equipmentKeys.length) {
-    rows = rows.filter((exercise) => {
-      const inferred = String(inferExerciseEquipment(exercise) || '').toLowerCase();
-      if (!inferred) return false;
-      return equipmentKeys.includes(inferred);
-    });
+
+  // 3. Equipment pills — keep rows whose inferred gear is in the selection.
+  if (equipmentKeys.length > 0) {
+    matchingRows = keepRowsMatchingEquipment(matchingRows, equipmentKeys);
   }
-  return rows.slice(0, limit);
+
+  return matchingRows.slice(0, limit);
+}
+
+// PLUMBING — skip unless debugging
+
+function firstLibraryPage(limit) {
+  return MANUAL_EXERCISE_LIBRARY.slice(0, limit);
+}
+
+function rankLibraryAgainstSearchText(searchText) {
+  const rankedMatches = [];
+  for (let index = 0; index < MANUAL_EXERCISE_LIBRARY.length; index += 1) {
+    const exercise = MANUAL_EXERCISE_LIBRARY[index];
+    const scoredRow = scoreExerciseAgainstQuery(exercise, searchText);
+    if (scoredRow.score > 0) {
+      rankedMatches.push(scoredRow);
+    }
+  }
+  rankedMatches.sort(compareMatchesByScoreThenName);
+  return rankedMatches;
+}
+
+function takeTopExercises(rankedMatches, limit) {
+  const topExercises = [];
+  const howMany = Math.min(limit, rankedMatches.length);
+  for (let index = 0; index < howMany; index += 1) {
+    topExercises.push(rankedMatches[index].exercise);
+  }
+  return topExercises;
+}
+
+function normalizeEquipmentKeys(equipments) {
+  const rawList = Array.isArray(equipments) ? equipments : [];
+  const keys = [];
+  for (let index = 0; index < rawList.length; index += 1) {
+    const key = String(rawList[index] || '').trim().toLowerCase();
+    if (key) {
+      keys.push(key);
+    }
+  }
+  return keys;
+}
+
+function keepRowsMatchingMuscle(rows, muscleKey) {
+  const kept = [];
+  for (let index = 0; index < rows.length; index += 1) {
+    const exercise = rows[index];
+    if (exerciseHasMuscleGroup(exercise, muscleKey)) {
+      kept.push(exercise);
+    }
+  }
+  return kept;
+}
+
+function exerciseHasMuscleGroup(exercise, muscleKey) {
+  const groups = exercise.muscleGroups || [];
+  for (let index = 0; index < groups.length; index += 1) {
+    const groupName = String(groups[index]).toLowerCase();
+    if (groupName === muscleKey) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function keepRowsMatchingEquipment(rows, equipmentKeys) {
+  const kept = [];
+  for (let index = 0; index < rows.length; index += 1) {
+    const exercise = rows[index];
+    const inferred = String(inferExerciseEquipment(exercise) || '').toLowerCase();
+    if (!inferred) {
+      continue;
+    }
+    if (equipmentKeys.includes(inferred)) {
+      kept.push(exercise);
+    }
+  }
+  return kept;
+}
+
+/**
+ * Additive score: exact name > prefix > contains > muscle text > description.
+ * Tiers stack — "bench press" exact also earns prefix and contains points.
+ */
+function scoreExerciseAgainstQuery(exercise, searchText) {
+  const nameLower = exercise.name.toLowerCase();
+  let score = 0;
+
+  if (nameLower === searchText) {
+    score += SCORE_EXACT_NAME_MATCH;
+  }
+  if (nameLower.startsWith(searchText)) {
+    score += NAME_PREFIX_SCORE;
+  }
+  if (nameLower.includes(searchText)) {
+    score += NAME_CONTAINS_SCORE;
+  }
+
+  const muscleGroupsText = (exercise.muscleGroups || []).join(' ').toLowerCase();
+  if (muscleGroupsText.includes(searchText)) {
+    score += MUSCLE_GROUP_SCORE;
+  }
+
+  const descriptionText = (exercise.description || '').toLowerCase();
+  if (descriptionText.includes(searchText)) {
+    score += DESCRIPTION_SCORE;
+  }
+
+  return { exercise, score };
+}
+
+function compareMatchesByScoreThenName(leftMatch, rightMatch) {
+  const scoreDelta = rightMatch.score - leftMatch.score;
+  if (scoreDelta !== 0) {
+    return scoreDelta;
+  }
+  return leftMatch.exercise.name.localeCompare(rightMatch.exercise.name);
+}
+
+function nameLooksLikeBarbell(nameLower) {
+  const regexHit = /\b(barbell|bb |ez[- ]?bar|landmine|t-bar)\b/.test(nameLower);
+  if (regexHit) {
+    return true;
+  }
+  return nameLower.startsWith('bb ');
+}
+
+function nameLooksLikeDumbbell(nameLower) {
+  const regexHit =
+    /\b(dumbbell|db |kettlebell|kb |hammer curl|goblet)\b/.test(nameLower);
+  if (regexHit) {
+    return true;
+  }
+  return nameLower.startsWith('db ');
+}
+
+function nameLooksLikeCable(nameLower) {
+  return /\b(cable|pulldown|pushdown|face pull|woodchopper|pallof)\b/.test(nameLower);
+}
+
+function nameLooksLikeMachine(nameLower) {
+  return /\b(machine|smith|leg press|leg extension|leg curl|pec deck|hack squat|ergometer|assault bike|rower)\b/.test(
+    nameLower,
+  );
+}
+
+function nameLooksLikeBodyweight(nameLower) {
+  return /\b(push-?up|pull-?up|chin-?up|plank|burpee|mountain climber|jump rope|dip|glute bridge|hanging|ab wheel|box jump)\b/.test(
+    nameLower,
+  );
 }

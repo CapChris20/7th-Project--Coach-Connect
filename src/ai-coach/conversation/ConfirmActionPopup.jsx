@@ -1,8 +1,6 @@
-// Design Law confirm overlay — NbSheet + tool-specific popup body (no duplicate sheet title).
-// Flow: normalize tool call → dedicated popup (or generic) → Not now / confirm runs the tool.
-// Used by: CoachConversationScreen. Visual law: screens/ai-coach-popups/*.png
-//
-// vocab: NbSheet = neobrutalist bottom sheet; title omitted so each popup owns badge + headline
+// Confirm overlay — NbSheet shell + tool-specific popup body (no duplicate sheet title).
+// Flow: normalize coach toolCall → dedicated popup or generic fallback → confirm runs carryOutAction.
+// Used by CoachConversationScreen. Visual law: screens/ai-coach-popups/*.png
 
 import React from 'react';
 import NbSheet from '../../look-and-feel/NbSheet';
@@ -26,10 +24,10 @@ import { ToolModalBody, ConfirmCancelRow } from '../confirm-popups/sharedPopupPa
 
 // ===== NAMED CONSTANTS =====
 
-const DEFAULT_CONFIRM_TITLE = 'Confirm action?';
+const GENERIC_CONFIRM_HEADLINE = 'Confirm action?';
 
-// Tool name strings must match carryOutAction — do not rename these keys.
-const TOOL_POPUP_BY_NAME = {
+// Keys must match carryOutAction normalizeToolCall names — do not rename these letters.
+const POPUP_COMPONENT_BY_TOOL_NAME = {
   updateWorkout: EditWorkoutPopup,
   adjustMacroTargets: ChangeFoodTargetsPopup,
   logNutrition: LogMealPopup,
@@ -47,35 +45,51 @@ const TOOL_POPUP_BY_NAME = {
   deleteLog: ConfirmDeletePopup,
 };
 
-// ===== HELPERS =====
+// ===== HELPER FUNCTIONS =====
 
-function titleForGenericTool(toolName) {
-  const displayName = TOOL_DISPLAY_NAMES[toolName];
-  if (!displayName) return DEFAULT_CONFIRM_TITLE;
-  return `${displayName}?`;
+function friendlyDisplayNameForTool(toolName) {
+  return TOOL_DISPLAY_NAMES[toolName];
 }
 
-function accessibilityToolTitle(toolName) {
-  const displayName = TOOL_DISPLAY_NAMES[toolName];
-  if (displayName) return displayName;
+function headlineForUnknownTool(toolName) {
+  const friendlyName = friendlyDisplayNameForTool(toolName);
+  if (!friendlyName) {
+    return GENERIC_CONFIRM_HEADLINE;
+  }
+  return `${friendlyName}?`;
+}
+
+function badgeVerbForTool(toolName) {
+  const friendlyName = friendlyDisplayNameForTool(toolName);
+  if (friendlyName) {
+    return friendlyName;
+  }
   return toolName;
 }
 
-function genericConfirmBody(toolName, sharedProps) {
-  const titleText = titleForGenericTool(toolName);
+function sharedPropsForPopupBody(normalizedTool, onConfirm, onCancel, loading) {
+  return {
+    params: normalizedTool.params,
+    reasoning: normalizedTool.reasoning,
+    onConfirm,
+    onCancel,
+    loading,
+  };
+}
 
-  function handleConfirmGenericTool() {
+function GenericToolConfirmPopup({ toolName, sharedProps }) {
+  const headline = headlineForUnknownTool(toolName);
+  const badgeVerb = badgeVerbForTool(toolName);
+  const badgeText = `Coach wants to ${String(badgeVerb).toLowerCase()}`;
+
+  function handleConfirmUnknownTool() {
     sharedProps.onConfirm(sharedProps.params);
   }
 
   return (
-    <ToolModalBody
-      badge={`Coach wants to ${String(accessibilityToolTitle(toolName)).toLowerCase()}`}
-      title={titleText}
-      reasoning={sharedProps.reasoning}
-    >
+    <ToolModalBody badge={badgeText} title={headline} reasoning={sharedProps.reasoning}>
       <ConfirmCancelRow
-        onConfirm={handleConfirmGenericTool}
+        onConfirm={handleConfirmUnknownTool}
         onCancel={sharedProps.onCancel}
         loading={sharedProps.loading}
       />
@@ -83,17 +97,41 @@ function genericConfirmBody(toolName, sharedProps) {
   );
 }
 
-function popupBodyForTool(toolName, sharedProps) {
-  const DedicatedPopup = TOOL_POPUP_BY_NAME[toolName];
-  if (DedicatedPopup) return <DedicatedPopup {...sharedProps} />;
-  return genericConfirmBody(toolName, sharedProps);
+function popupBodyForToolName(toolName, sharedProps) {
+  const DedicatedPopupComponent = POPUP_COMPONENT_BY_TOOL_NAME[toolName];
+
+  if (DedicatedPopupComponent) {
+    return (
+      <DedicatedPopupComponent
+        params={sharedProps.params}
+        reasoning={sharedProps.reasoning}
+        onConfirm={sharedProps.onConfirm}
+        onCancel={sharedProps.onCancel}
+        loading={sharedProps.loading}
+      />
+    );
+  }
+
+  return <GenericToolConfirmPopup toolName={toolName} sharedProps={sharedProps} />;
+}
+
+function sheetCloseHandlerWhileToolRunning(isLoading, onCancel) {
+  if (isLoading) {
+    return () => {};
+  }
+  return onCancel;
+}
+
+function ConfirmActionPopupBody({ normalizedTool, onConfirm, onCancel, loading }) {
+  const sharedProps = sharedPropsForPopupBody(normalizedTool, onConfirm, onCancel, loading);
+  return popupBodyForToolName(normalizedTool.name, sharedProps);
 }
 
 // ===== MAIN FUNCTION =====
 
 /**
- * NbSheet wrapping the matching confirm popup. No sheet title — badge + headline live in the body.
- * While loading, backdrop taps / Android back do nothing (no cancel mid-run).
+ * NbSheet wrapper around the right confirm body for this toolCall.
+ * Flow: 1. normalize  2. bail if closed/bad  3. build body  4. lock dismiss while loading  5. sheet
  */
 export default function ConfirmActionPopup({
   visible,
@@ -102,20 +140,40 @@ export default function ConfirmActionPopup({
   onCancel,
   loading = false,
 }) {
-  const normalized = normalizeToolCall(toolCall);
-  if (!visible || !normalized) return null;
+  // vocab: normalizeToolCall = turn the coach's raw toolCall into { name, params, reasoning }
+  const normalizedTool = normalizeToolCall(toolCall);
 
-  const { name, params, reasoning } = normalized;
-  const sharedProps = { params, reasoning, onConfirm, onCancel, loading };
-  const body = popupBodyForTool(name, sharedProps);
-  if (!body) return null;
+  // 1. Nothing to show when the sheet is closed.
+  if (!visible) {
+    return null;
+  }
 
-  const canDismissWithBackdrop = !loading;
-  const handleClose = canDismissWithBackdrop ? onCancel : () => {};
+  // 2. Nothing to show when the tool call did not normalize.
+  if (!normalizedTool) {
+    return null;
+  }
 
+  // 3. Build the tool-specific (or generic) body.
+  const popupBody = (
+    <ConfirmActionPopupBody
+      normalizedTool={normalizedTool}
+      onConfirm={onConfirm}
+      onCancel={onCancel}
+      loading={loading}
+    />
+  );
+
+  if (!popupBody) {
+    return null;
+  }
+
+  // 4. Block backdrop dismiss and Android back while the tool promise is in flight.
+  const handleSheetClose = sheetCloseHandlerWhileToolRunning(loading, onCancel);
+
+  // 5. NbSheet has no title — each popup owns badge + headline inside.
   return (
-    <NbSheet visible={visible} onClose={handleClose}>
-      {body}
+    <NbSheet visible={visible} onClose={handleSheetClose}>
+      {popupBody}
     </NbSheet>
   );
 }

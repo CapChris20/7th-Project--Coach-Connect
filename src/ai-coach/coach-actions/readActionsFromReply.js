@@ -1,15 +1,12 @@
-// readActionsFromReply.js
-//
-// WHAT YOU NEED TO READ: the two functions right below (find tools / clean text).
-// Everything after "PLUMBING" is messy on purpose — the AI hides JSON in many weird shapes.
-//
-// Exports (other files import these names — do not rename):
-//   readActionsFromReply(reply)        -> [ { name, params, reasoning }, ... ]
-//   stripCoachToolJsonFromReply(reply) -> normal message text for the chat bubble
-//   COACH_TOOL_NAMES
+// Pulls hidden tool JSON out of a coach reply and strips it from what the user sees.
+// Flow: find JSON chunks → parse into { name, params, reasoning } → dedupe → export list or clean bubble text.
+// Used by: CoachConversationScreen Confirm chips, and reply display that hides tool blocks from the bubble.
+// Key exports (names frozen): readActionsFromReply, stripCoachToolJsonFromReply, COACH_TOOL_NAMES.
+// CommonJS on purpose — other files already require/import this door.
 
 // ===== NAMED CONSTANTS =====
 
+// Allowed tool names. Letters stay frozen — other files and the model prompt match these exactly.
 const COACH_TOOL_NAMES = [
   'adjustMacroTargets',
   'logNutrition',
@@ -30,54 +27,47 @@ const COACH_TOOL_NAMES = [
 
 // ===== MAIN FUNCTION =====
 
-/**
- * Find every tool instruction hidden in one coach reply.
- * @param {string} aiResponse
- * @returns {Array<{name: string, params: object, reasoning: string}>}
- */
 function readActionsFromReply(aiResponse) {
   const reply = String(aiResponse || '');
-  if (!reply.trim()) return [];
+  if (!reply.trim()) {
+    return [];
+  }
 
-  // Step 1: Grab every chunk of text that might be tool JSON.
+  // 1. Grab every chunk of text that might be tool JSON.
   const possiblePieces = findPossibleInstructions(reply);
 
-  // Step 2: Parse each chunk; keep valid instructions.
+  // 2. Parse each chunk; keep valid instructions.
   const toolInstructions = collectInstructionsFromAllPieces(possiblePieces);
 
-  // Step 3: Same tool + same params twice → keep one.
-  return removeDuplicateInstructions(toolInstructions);
+  // 3. Same tool + same params twice → keep one.
+  const uniqueInstructions = removeDuplicateInstructions(toolInstructions);
+  return uniqueInstructions;
 }
 
-/**
- * User-facing text only — no tool JSON, no web [2][3] cite junk.
- * @param {string} text
- * @returns {string}
- */
 function stripCoachToolJsonFromReply(text) {
   const reply = String(text || '');
-  if (!reply.trim()) return reply.trim();
+  if (!reply.trim()) {
+    return reply.trim();
+  }
 
-  // Step 1: Delete ```json ... ``` blocks that were only tool instructions.
+  // 1. Delete ```json ... ``` blocks that were only tool instructions.
   let cleanedReply = removeFencedToolJsonFromReply(reply);
 
-  // Step 2: Peel `{...tool...}` off the end of the message (repeat if needed).
+  // 2. Peel `{...tool...}` off the end of the message (repeat if needed).
   cleanedReply = removeTrailingToolJsonFromText(cleanedReply);
 
-  // Step 3: Chop known "JSON glued to the end" patterns.
+  // 3. Chop known “JSON glued to the end” patterns.
   cleanedReply = cutTextAtMatchingTail(cleanedReply, TOOL_TAIL_PATTERN);
   cleanedReply = cutTextAtMatchingTail(cleanedReply, FLAT_TOOL_TAIL_PATTERN);
   cleanedReply = cutTextAtMatchingTail(cleanedReply, TOOL_NAME_TAIL_PATTERN);
-  cleanedReply = cutTextAtMatchingTail(
-    cleanedReply,
-    namedToolTailPatternForStrip(),
-  );
+  cleanedReply = cutTextAtMatchingTail(cleanedReply, buildNamedToolTailPatternForStrip());
 
-  // Step 4: Remove web-search markers like [2][3].
-  cleanedReply = cleanedReply.replace(/\s*\[\d+\](?:\[\d+\])*/g, '').trim();
+  // 4. Remove web-search markers like [2][3].
+  cleanedReply = removeWebSearchCiteMarkers(cleanedReply);
 
-  // Step 5: Don't leave huge empty gaps in the bubble.
-  return cleanedReply.replace(/\n{3,}/g, '\n\n').trim();
+  // 5. Don’t leave huge empty gaps in the bubble.
+  cleanedReply = collapseExtraBlankLines(cleanedReply);
+  return cleanedReply;
 }
 
 module.exports = {
@@ -97,9 +87,15 @@ const MAX_TRAILING_JSON_STRIPS = 8;
 const TOOL_TAIL_PATTERN = /\{[\s\S]*"(?:toolCalls|toolCall|tool|toolName)"[\s\S]*\}\s*$/;
 const FLAT_TOOL_TAIL_PATTERN = /\{\s*"tool"\s*:\s*"[^"]+"[\s\S]*\}\s*$/;
 const TOOL_NAME_TAIL_PATTERN = /\{\s*"toolName"\s*:\s*"[^"]+"[\s\S]*\}\s*$/;
+const WEB_SEARCH_CITE_MARKERS = /\s*\[\d+\](?:\[\d+\])*/g;
+const THREE_OR_MORE_NEWLINES = /\n{3,}/g;
+const FENCED_CODE_BLOCK = /```(?:json)?\s*([\s\S]*?)```/gi;
+const FENCED_TOOL_WRAPPER =
+  /```(?:json)?\s*\{[\s\S]*"(?:toolCalls|toolCall|tool|toolName)"[\s\S]*?\}\s*```/gi;
 
-function namedToolTailPatternForStrip() {
-  return new RegExp(`\\{\\s*"(${COACH_TOOL_NAMES.join('|')})"[\\s\\S]*\\}\\s*$`);
+function buildNamedToolTailPatternForStrip() {
+  const toolNameChoices = COACH_TOOL_NAMES.join('|');
+  return new RegExp(`\\{\\s*"(${toolNameChoices})"[\\s\\S]*\\}\\s*$`);
 }
 
 function tryParseJson(jsonText) {
@@ -110,92 +106,171 @@ function tryParseJson(jsonText) {
   }
 }
 
+function trimmedStringOrNull(value) {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  return value.trim();
+}
+
 function toolNameFromRawInstruction(rawInstruction) {
-  if (typeof rawInstruction.name === 'string') return rawInstruction.name.trim();
-  if (typeof rawInstruction.tool === 'string') return rawInstruction.tool.trim();
-  if (typeof rawInstruction.toolName === 'string') return rawInstruction.toolName.trim();
+  const fromName = trimmedStringOrNull(rawInstruction.name);
+  if (fromName) {
+    return fromName;
+  }
+
+  const fromTool = trimmedStringOrNull(rawInstruction.tool);
+  if (fromTool) {
+    return fromTool;
+  }
+
+  const fromToolName = trimmedStringOrNull(rawInstruction.toolName);
+  if (fromToolName) {
+    return fromToolName;
+  }
+
   return null;
 }
 
 function paramsFromRawInstruction(rawInstruction) {
   const params = rawInstruction.params;
-  if (params && typeof params === 'object' && !Array.isArray(params)) return params;
+  const paramsLookLikeObject = params && typeof params === 'object' && !Array.isArray(params);
+  if (paramsLookLikeObject) {
+    return params;
+  }
+
   const parameters = rawInstruction.parameters;
-  if (parameters && typeof parameters === 'object' && !Array.isArray(parameters)) {
+  const parametersLookLikeObject =
+    parameters && typeof parameters === 'object' && !Array.isArray(parameters);
+  if (parametersLookLikeObject) {
     return parameters;
   }
+
   return {};
 }
 
+function reasoningFromRawInstruction(rawInstruction) {
+  if (typeof rawInstruction.reasoning !== 'string') {
+    return '';
+  }
+  return rawInstruction.reasoning;
+}
+
 function normalizeOneInstruction(rawInstruction) {
-  if (!rawInstruction || typeof rawInstruction !== 'object') return null;
+  if (!rawInstruction || typeof rawInstruction !== 'object') {
+    return null;
+  }
+
   const name = toolNameFromRawInstruction(rawInstruction);
-  if (!name) return null;
+  if (!name) {
+    return null;
+  }
+
   const params = paramsFromRawInstruction(rawInstruction);
-  const reasoning =
-    typeof rawInstruction.reasoning === 'string' ? rawInstruction.reasoning : '';
+  const reasoning = reasoningFromRawInstruction(rawInstruction);
   return { name, params, reasoning };
 }
 
 function instructionFromSingleToolKey(toolName, paramsObject) {
-  if (!COACH_TOOL_NAME_SET.has(toolName)) return null;
-  if (!paramsObject || typeof paramsObject !== 'object' || Array.isArray(paramsObject)) {
+  if (!COACH_TOOL_NAME_SET.has(toolName)) {
     return null;
   }
+
+  const paramsLookLikeObject =
+    paramsObject && typeof paramsObject === 'object' && !Array.isArray(paramsObject);
+  if (!paramsLookLikeObject) {
+    return null;
+  }
+
   return normalizeOneInstruction({ name: toolName, params: paramsObject });
 }
 
 function instructionsFromToolCallsArray(parsedObject) {
-  if (!Array.isArray(parsedObject.toolCalls)) return [];
+  if (!Array.isArray(parsedObject.toolCalls)) {
+    return [];
+  }
+
   const list = [];
   for (let index = 0; index < parsedObject.toolCalls.length; index += 1) {
     const one = normalizeOneInstruction(parsedObject.toolCalls[index]);
-    if (one) list.push(one);
+    if (one) {
+      list.push(one);
+    }
   }
   return list;
 }
 
 function instructionsFromSingleToolCallField(parsedObject) {
-  if (!parsedObject.toolCall) return [];
+  if (!parsedObject.toolCall) {
+    return [];
+  }
+
   const one = normalizeOneInstruction(parsedObject.toolCall);
-  return one ? [one] : [];
+  if (!one) {
+    return [];
+  }
+  return [one];
 }
 
 function instructionsFromFlatToolOrToolName(parsedObject) {
-  if (typeof parsedObject.toolName === 'string') {
-    const one = normalizeOneInstruction(parsedObject);
-    return one ? [one] : [];
+  const hasToolNameField = typeof parsedObject.toolName === 'string';
+  const hasToolField = typeof parsedObject.tool === 'string';
+  if (!hasToolNameField && !hasToolField) {
+    return [];
   }
-  if (typeof parsedObject.tool === 'string') {
-    const one = normalizeOneInstruction(parsedObject);
-    return one ? [one] : [];
+
+  const one = normalizeOneInstruction(parsedObject);
+  if (!one) {
+    return [];
   }
-  return [];
+  return [one];
 }
 
 function instructionsFromOneTopLevelToolKey(parsedObject) {
   const keys = Object.keys(parsedObject);
-  if (keys.length !== 1) return [];
+  if (keys.length !== 1) {
+    return [];
+  }
+
   const onlyKey = keys[0];
   const one = instructionFromSingleToolKey(onlyKey, parsedObject[onlyKey]);
-  return one ? [one] : [];
+  if (!one) {
+    return [];
+  }
+  return [one];
 }
 
 function allInstructionsFromParsedObject(parsedObject) {
-  if (!parsedObject || typeof parsedObject !== 'object') return [];
+  if (!parsedObject || typeof parsedObject !== 'object') {
+    return [];
+  }
+
   const fromArray = instructionsFromToolCallsArray(parsedObject);
-  if (fromArray.length) return fromArray;
+  if (fromArray.length) {
+    return fromArray;
+  }
+
   const fromSingleField = instructionsFromSingleToolCallField(parsedObject);
-  if (fromSingleField.length) return fromSingleField;
+  if (fromSingleField.length) {
+    return fromSingleField;
+  }
+
   const fromFlat = instructionsFromFlatToolOrToolName(parsedObject);
-  if (fromFlat.length) return fromFlat;
+  if (fromFlat.length) {
+    return fromFlat;
+  }
+
   return instructionsFromOneTopLevelToolKey(parsedObject);
 }
 
 function addUniqueStringToList(list, text) {
   const trimmed = String(text || '').trim();
-  if (!trimmed) return;
-  if (list.includes(trimmed)) return;
+  if (!trimmed) {
+    return;
+  }
+  if (list.includes(trimmed)) {
+    return;
+  }
   list.push(trimmed);
 }
 
@@ -207,9 +282,13 @@ function addAllRegexMatchesToList(sourceText, globalPattern, list) {
   }
 }
 
+function replyTextWithFencesUnwrapped(replyText) {
+  return replyText.replace(FENCED_CODE_BLOCK, '$1');
+}
+
 function findPossibleInstructions(reply) {
   const replyText = String(reply || '');
-  const withoutFences = replyText.replace(/```(?:json)?\s*([\s\S]*?)```/gi, '$1');
+  const withoutFences = replyTextWithFencesUnwrapped(replyText);
   const possiblePieces = [];
 
   addUniqueStringToList(possiblePieces, withoutFences.trim());
@@ -220,24 +299,31 @@ function findPossibleInstructions(reply) {
   const flatToolPattern = /\{\s*"tool"\s*:\s*"[^"]+"[\s\S]*?\}/g;
   addAllRegexMatchesToList(withoutFences, flatToolPattern, possiblePieces);
 
+  const toolNameChoices = COACH_TOOL_NAMES.join('|');
   const namedToolPattern = new RegExp(
-    `\\{\\s*"(${COACH_TOOL_NAMES.join('|')})"\\s*:\\s*\\{[\\s\\S]*?\\}\\s*\\}`,
+    `\\{\\s*"(${toolNameChoices})"\\s*:\\s*\\{[\\s\\S]*?\\}\\s*\\}`,
     'g',
   );
   addAllRegexMatchesToList(withoutFences, namedToolPattern, possiblePieces);
 
   const genericTail = withoutFences.match(TOOL_TAIL_PATTERN);
-  if (genericTail) addUniqueStringToList(possiblePieces, genericTail[0]);
+  if (genericTail) {
+    addUniqueStringToList(possiblePieces, genericTail[0]);
+  }
 
-  const namedTail = withoutFences.match(namedToolTailPatternForStrip());
-  if (namedTail) addUniqueStringToList(possiblePieces, namedTail[0]);
+  const namedTail = withoutFences.match(buildNamedToolTailPatternForStrip());
+  if (namedTail) {
+    addUniqueStringToList(possiblePieces, namedTail[0]);
+  }
 
   return possiblePieces;
 }
 
 function toolInstructionsFromJsonChunk(jsonChunk) {
   const parsedObject = tryParseJson(jsonChunk);
-  if (!parsedObject) return [];
+  if (!parsedObject) {
+    return [];
+  }
   return allInstructionsFromParsedObject(parsedObject);
 }
 
@@ -252,13 +338,19 @@ function collectInstructionsFromAllPieces(possiblePieces) {
   return toolInstructions;
 }
 
+function fingerprintForInstruction(instruction) {
+  return `${instruction.name}:${JSON.stringify(instruction.params)}`;
+}
+
 function removeDuplicateInstructions(instructions) {
   const unique = [];
   const seenKeys = new Set();
   for (let index = 0; index < instructions.length; index += 1) {
     const instruction = instructions[index];
-    const key = `${instruction.name}:${JSON.stringify(instruction.params)}`;
-    if (seenKeys.has(key)) continue;
+    const key = fingerprintForInstruction(instruction);
+    if (seenKeys.has(key)) {
+      continue;
+    }
     seenKeys.add(key);
     unique.push(instruction);
   }
@@ -269,37 +361,58 @@ function removeTrailingToolJsonFromText(visibleText) {
   let cleaned = String(visibleText || '');
   for (let stripCount = 0; stripCount < MAX_TRAILING_JSON_STRIPS; stripCount += 1) {
     const lastBrace = cleaned.lastIndexOf('{');
-    if (lastBrace === -1) break;
+    if (lastBrace === -1) {
+      break;
+    }
+
     const tailJson = cleaned.slice(lastBrace).trim();
     const parsedTail = tryParseJson(tailJson);
-    if (!parsedTail) break;
-    if (!allInstructionsFromParsedObject(parsedTail).length) break;
+    if (!parsedTail) {
+      break;
+    }
+
+    const instructionsInTail = allInstructionsFromParsedObject(parsedTail);
+    if (!instructionsInTail.length) {
+      break;
+    }
+
     cleaned = cleaned.slice(0, lastBrace).trimEnd();
   }
   return cleaned;
 }
 
+function fencedBlockKeepsVisibleText(fullFence, innerText) {
+  const parsedInner = tryParseJson(String(innerText || '').trim());
+  if (!parsedInner) {
+    return fullFence;
+  }
+
+  const hasToolInstructions = allInstructionsFromParsedObject(parsedInner).length > 0;
+  if (hasToolInstructions) {
+    return '';
+  }
+  return fullFence;
+}
+
 function removeFencedToolJsonFromReply(replyText) {
-  const afterScan = String(replyText || '').replace(
-    /```(?:json)?\s*([\s\S]*?)```/gi,
-    (fullFence, innerText) => {
-      const parsedInner = tryParseJson(String(innerText || '').trim());
-      if (parsedInner && allInstructionsFromParsedObject(parsedInner).length) {
-        return '';
-      }
-      return fullFence;
-    },
-  );
-  return afterScan
-    .replace(
-      /```(?:json)?\s*\{[\s\S]*"(?:toolCalls|toolCall|tool|toolName)"[\s\S]*?\}\s*```/gi,
-      '',
-    )
-    .trim();
+  const sourceText = String(replyText || '');
+  const afterScan = sourceText.replace(FENCED_CODE_BLOCK, fencedBlockKeepsVisibleText);
+  const withoutToolWrappers = afterScan.replace(FENCED_TOOL_WRAPPER, '');
+  return withoutToolWrappers.trim();
 }
 
 function cutTextAtMatchingTail(text, tailPattern) {
   const tailMatch = text.match(tailPattern);
-  if (!tailMatch) return text;
+  if (!tailMatch) {
+    return text;
+  }
   return text.slice(0, tailMatch.index).trimEnd();
+}
+
+function removeWebSearchCiteMarkers(text) {
+  return text.replace(WEB_SEARCH_CITE_MARKERS, '').trim();
+}
+
+function collapseExtraBlankLines(text) {
+  return text.replace(THREE_OR_MORE_NEWLINES, '\n\n').trim();
 }

@@ -1,6 +1,6 @@
 // In-app card form so a client can pay their coach (POST /api/charges).
-// Flow: pick amount → enter card → Stripe token → charge → success, then close.
-// Used by the client Pay Coach sheet. Cards never hit our server — Stripe tokenizes them.
+// Flow: pick amount → enter card → Stripe token → charge → brief success → close.
+// Used by the client Pay Coach sheet. Card numbers never hit our server — Stripe tokenizes them.
 
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
@@ -13,11 +13,9 @@ import {
   Platform,
   ScrollView,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
 import NbButton from '../../look-and-feel/NbButton';
-import NbCard from '../../look-and-feel/NbCard';
 import NbSheet from '../../look-and-feel/NbSheet';
 import { postCoachingCharge } from './chargeCard';
 import {
@@ -39,6 +37,13 @@ const MIN_AMOUNT = 1;
 const MAX_AMOUNT = 10000;
 // Manipulate here: how long the success screen stays up before we close.
 const SUCCESS_CLOSE_MS = 2000;
+const DEFAULT_AMOUNT_TEXT = '100';
+const SUCCESS_ICON_NAME = 'checkmark-circle';
+const SUCCESS_ICON_SIZE = 52;
+const SUCCESS_ICON_COLOR = '#F97316';
+const READY_SHIELD_ICON = 'shield-checkmark';
+const READY_SHIELD_SIZE = 14;
+const PLATFORM_FEE_PERCENT_DISPLAY = Math.round(PLATFORM_FEE_RATE * 100);
 
 // Prefer CardField — CardForm on iOS ignores text colors and looks broken in dark mode.
 const stripeModule = getStripeNativeModule();
@@ -49,10 +54,38 @@ const cardPaymentBlock = getStripeCardPaymentBlockReason();
 
 // ===== HELPER FUNCTIONS =====
 
-function formatMoney(value) {
-  return formatPaymentDollars(value);
+/**
+ * Pay button caption: loading / retry / dollar amount / default.
+ * @param {{ loading: boolean, error: string|null, amountOk: boolean, numericAmount: number }} args
+ * @returns {string}
+ */
+function captionForPayButton({ loading, error, amountOk, numericAmount }) {
+  if (loading) {
+    return 'Pay now';
+  }
+  if (error) {
+    return 'Try again';
+  }
+  if (amountOk) {
+    return `Pay ${formatPaymentDollars(numericAmount)}`;
+  }
+  return 'Pay now';
 }
 
+/**
+ * Strip everything except digits and a decimal point from the amount field.
+ * @param {string} typedAmount
+ * @returns {string}
+ */
+function keepDigitsAndDecimalOnly(typedAmount) {
+  return String(typedAmount || '').replace(/[^0-9.]/g, '');
+}
+
+/**
+ * Unique key so a double-tap does not create two charges.
+ * vocab: idempotencyKey = server uses this to ignore duplicate POSTs
+ * @returns {string}
+ */
 function newChargeIdempotencyKey() {
   if (typeof globalThis.crypto?.randomUUID === 'function') {
     return globalThis.crypto.randomUUID();
@@ -60,26 +93,39 @@ function newChargeIdempotencyKey() {
   return `cc_${Date.now()}_${Math.random().toString(36).slice(2, 12)}`;
 }
 
-function digitsOnlyAmountText(typedAmount) {
-  return String(typedAmount || '').replace(/[^0-9.]/g, '');
-}
-
-function cardUnavailableDetail() {
+/**
+ * Human detail when this install cannot create a Stripe card token.
+ * @returns {string}
+ */
+function readCardUnavailableDetail() {
   const block = cardPaymentBlock || getStripeCardPaymentBlockReason();
-  return block?.detail || 'Payments are unavailable on this build. Please update the app.';
+  return (
+    block?.detail ||
+    'Payments are unavailable on this build. Please update the app.'
+  );
 }
 
-function trainerGetsFromCharge(result, amountDollars) {
-  if (Number.isFinite(result.trainer_gets)) return result.trainer_gets;
+/**
+ * Prefer the server's trainer_gets; otherwise compute the local split.
+ * @param {object} result
+ * @param {number} amountDollars
+ * @returns {number}
+ */
+function trainerShareFromChargeResult(result, amountDollars) {
+  if (Number.isFinite(result.trainer_gets)) {
+    return result.trainer_gets;
+  }
   return trainerGetsFromAmount(amountDollars);
 }
 
 /**
- * Tokenize the card, then POST /api/charges. Failures come back as { ok: false, reason }.
+ * Tokenize the card with Stripe, then POST /api/charges.
+ * Failures come back as { ok: false, reason } — no throw for expected declines.
  * @param {{ stripe: object, trainerId: string, amountDollars: number }} args
  * @returns {Promise<{ ok: boolean, reason?: string, trainerGets?: number, chargeId?: string, result?: object }>}
  */
-async function tokenizeAndCharge({ stripe, trainerId, amountDollars }) {
+async function tokenizeCardAndPostCharge({ stripe, trainerId, amountDollars }) {
+  // vocab: createToken = Stripe SDK turns CardField into a one-time token id
   const { token, error: tokenError } = await stripe.createToken({ type: 'Card' });
   if (tokenError) {
     return { ok: false, reason: tokenError.message || 'Please check your card details.' };
@@ -99,53 +145,185 @@ async function tokenizeAndCharge({ stripe, trainerId, amountDollars }) {
   }
   return {
     ok: true,
-    trainerGets: trainerGetsFromCharge(result, amountDollars),
+    trainerGets: trainerShareFromChargeResult(result, amountDollars),
     chargeId: result.charge_id,
     result,
   };
 }
 
+/**
+ * Always-light Stripe CardField style — iOS text colors are unreliable on dark fills.
+ * @returns {object}
+ */
+function buildStripeCardFieldStyle() {
+  return {
+    backgroundColor: lightColors.white,
+    textColor: '#111111',
+    placeholderColor: '#8E8E93',
+    borderWidth: 0,
+    borderRadius: 12,
+    fontSize: 16,
+    cursorColor: lightColors.primaryDark,
+    textErrorColor: lightColors.error,
+  };
+}
+
+/**
+ * Turn a thrown charge/network error into short button-friendly copy.
+ * @param {Error|object|null} chargeError
+ * @returns {string}
+ */
+function humanMessageForChargeError(chargeError) {
+  const errorMessage = chargeError?.message || '';
+  const looksLikeNetwork =
+    chargeError?.code === 'network_error' ||
+    /network|timeout|aborted/i.test(errorMessage);
+  if (looksLikeNetwork) return 'Network error, try again';
+
+  const looksLikeDecline = /declin/i.test(errorMessage);
+  if (looksLikeDecline) return 'Card declined, try different card';
+
+  const trainerNotReady = /set up payments|not set up|not verified/i.test(errorMessage);
+  if (trainerNotReady) return "Trainer hasn't set up payments yet";
+
+  const trainerMissing = /trainer not found/i.test(errorMessage);
+  if (trainerMissing) return 'Trainer not found';
+
+  if (errorMessage) return errorMessage;
+  return 'Payment failed, try again';
+}
+
+// ===== LAYOUT PIECES (no hooks) =====
+
+function PaySuccessSheet({ styles, successPayload }) {
+  return (
+    <NbSheet>
+      <View style={styles.successIconWrap}>
+        <Ionicons
+          name={SUCCESS_ICON_NAME}
+          size={SUCCESS_ICON_SIZE}
+          color={SUCCESS_ICON_COLOR}
+        />
+      </View>
+      <Text style={styles.successTitle}>Payment successful</Text>
+      <Text style={styles.successLine}>
+        You paid {formatPaymentDollars(successPayload.amount)}
+      </Text>
+      <Text style={styles.successLine}>
+        Coach receives {formatPaymentDollars(successPayload.trainerGets)}
+      </Text>
+      <Text style={styles.successSub}>Saved to your payment history.</Text>
+    </NbSheet>
+  );
+}
+
+function QuickAmountChip({ value, isSelected, onPick, loading, styles }) {
+  return (
+    <TouchableOpacity
+      style={[styles.quickBtn, isSelected && styles.quickBtnActive]}
+      onPress={() => onPick(value)}
+      disabled={loading}
+      activeOpacity={0.85}
+    >
+      <Text style={[styles.quickBtnText, isSelected && styles.quickBtnTextActive]}>
+        {formatPaymentDollars(value)}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
+function StripeCardEntryPanel({
+  loading,
+  cardStyle,
+  styles,
+  onCardChange,
+  CardFieldComponent,
+  blockReason,
+}) {
+  if (CardFieldComponent) {
+    return (
+      <View style={styles.stripeLightPanel}>
+        <CardFieldComponent
+          postalCodeEnabled
+          placeholders={{
+            number: 'Card number',
+            expiration: 'MM/YY',
+            cvc: 'CVC',
+            postalCode: 'ZIP',
+          }}
+          cardStyle={cardStyle}
+          style={styles.cardField}
+          onCardChange={onCardChange}
+          disabled={loading}
+        />
+      </View>
+    );
+  }
+
+  const fallbackTitle = blockReason?.title || 'Card payments unavailable';
+  const fallbackDetail =
+    blockReason?.detail || 'Rebuild the app with npm run ios:run, then try again.';
+
+  return (
+    <View style={styles.cardFallback}>
+      <Text style={[styles.cardFallbackText, { fontWeight: '700', marginBottom: 6 }]}>
+        {fallbackTitle}
+      </Text>
+      <Text style={styles.cardFallbackText}>{fallbackDetail}</Text>
+    </View>
+  );
+}
+
+function CardReadyHint({ cardReady, cardMeta, styles }) {
+  if (cardReady && cardMeta?.last4) {
+    const brandPrefix = cardMeta.brand ? `${String(cardMeta.brand)} ` : '';
+    return (
+      <View style={styles.readyRow}>
+        <Ionicons
+          name={READY_SHIELD_ICON}
+          size={READY_SHIELD_SIZE}
+          color={SUCCESS_ICON_COLOR}
+        />
+        <Text style={styles.readyText}>
+          {brandPrefix}···· {cardMeta.last4}
+        </Text>
+      </View>
+    );
+  }
+  return <Text style={styles.cardHelp}>Enter card number, expiry, CVC, and ZIP</Text>;
+}
+
 // ===== MAIN FUNCTION =====
 
 /**
- * Charge this coach now. Failures first: bad amount, no Stripe, incomplete card.
+ * Client Pay Coach sheet: amount chips, Stripe CardField, charge, success beat.
  * @param {{ trainerId: string, trainerName?: string, onClose?: Function, onSuccess?: Function }} props
  */
 function PayTrainerPopup({ trainerId, trainerName, onClose, onSuccess }) {
+  // Hook order is frozen — do not reorder.
+  // vocab: useTheme = Design Law light/dark tokens for NbSheet / NbButton
   const { colors, isDark } = useTheme();
+  // vocab: useStripe = Stripe React Native hook (null when native module is missing)
   const stripe = useStripeHook();
   const amountInputRef = useRef(null);
   const payInFlightRef = useRef(false);
 
-  const [amount, setAmount] = useState('100');
+  const [amount, setAmount] = useState(DEFAULT_AMOUNT_TEXT);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [cardReady, setCardReady] = useState(false);
-  const [cardMeta, setCardMeta] = useState(null); // { brand, last4 }
+  const [cardMeta, setCardMeta] = useState(null);
   const [success, setSuccess] = useState(null);
 
   const displayName = trainerName || 'your coach';
   const numericAmount = parseFloat(amount);
-  const trainerGets = trainerGetsFromAmount(numericAmount);
-  const platformFee = platformFeeFromAmount(numericAmount);
+  const trainerShare = trainerGetsFromAmount(numericAmount);
+  const platformShare = platformFeeFromAmount(numericAmount);
   const amountOk = Number.isFinite(numericAmount) && numericAmount >= MIN_AMOUNT;
 
-  const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
-
-  // Always use a light Stripe field — iOS CardField text colors are unreliable on dark fills.
-  const stripeCardStyle = useMemo(
-    () => ({
-      backgroundColor: lightColors.white,
-      textColor: '#111111',
-      placeholderColor: '#8E8E93',
-      borderWidth: 0,
-      borderRadius: 12,
-      fontSize: 16,
-      cursorColor: lightColors.primaryDark,
-      textErrorColor: lightColors.error,
-    }),
-    [],
-  );
+  // vocab: useMemo = rebuild StyleSheet only when theme tokens change
+  const styles = useMemo(() => buildPayTrainerStyles(colors, isDark), [colors, isDark]);
+  const stripeCardStyle = useMemo(() => buildStripeCardFieldStyle(), []);
 
   const selectQuickAmount = useCallback((value) => {
     setAmount(String(value));
@@ -153,7 +331,7 @@ function PayTrainerPopup({ trainerId, trainerName, onClose, onSuccess }) {
   }, []);
 
   const resetForm = useCallback(() => {
-    setAmount('100');
+    setAmount(DEFAULT_AMOUNT_TEXT);
     setError(null);
     setLoading(false);
     setSuccess(null);
@@ -167,17 +345,8 @@ function PayTrainerPopup({ trainerId, trainerName, onClose, onSuccess }) {
     onClose?.();
   }, [resetForm, onClose]);
 
-  const mapError = useCallback((chargeError) => {
-    const errorMessage = chargeError?.message || '';
-    if (chargeError?.code === 'network_error' || /network|timeout|aborted/i.test(errorMessage)) {
-      return 'Network error, try again';
-    }
-    if (/declin/i.test(errorMessage)) return 'Card declined, try different card';
-    if (/set up payments|not set up|not verified/i.test(errorMessage)) {
-      return "Trainer hasn't set up payments yet";
-    }
-    if (/trainer not found/i.test(errorMessage)) return 'Trainer not found';
-    return errorMessage || 'Payment failed, try again';
+  const mapChargeErrorToMessage = useCallback((chargeError) => {
+    return humanMessageForChargeError(chargeError);
   }, []);
 
   const onCardChange = useCallback((details) => {
@@ -194,12 +363,18 @@ function PayTrainerPopup({ trainerId, trainerName, onClose, onSuccess }) {
 
   const handlePayNow = useCallback(async () => {
     // 1. Ignore a second tap while a charge is already in flight.
-    if (payInFlightRef.current) return;
+    if (payInFlightRef.current) {
+      return;
+    }
     setError(null);
 
     // 2. Amount must be $1–$10,000.
     const amountDollars = parseFloat(amount);
-    if (!Number.isFinite(amountDollars) || amountDollars < MIN_AMOUNT || amountDollars > MAX_AMOUNT) {
+    const amountInRange =
+      Number.isFinite(amountDollars) &&
+      amountDollars >= MIN_AMOUNT &&
+      amountDollars <= MAX_AMOUNT;
+    if (!amountInRange) {
       setError('Enter an amount between $1 and $10,000');
       return;
     }
@@ -207,7 +382,7 @@ function PayTrainerPopup({ trainerId, trainerName, onClose, onSuccess }) {
     // 3. This install must be able to create a Stripe card token.
     const canCreateCardToken = stripe && stripe.createToken;
     if (!canCreateCardToken) {
-      setError(cardUnavailableDetail());
+      setError(readCardUnavailableDetail());
       return;
     }
 
@@ -217,11 +392,15 @@ function PayTrainerPopup({ trainerId, trainerName, onClose, onSuccess }) {
       return;
     }
 
-    // 5. Tokenize the card and POST the charge. Failures first inside tokenizeAndCharge.
+    // 5. Tokenize the card and POST the charge.
     payInFlightRef.current = true;
     setLoading(true);
     try {
-      const outcome = await tokenizeAndCharge({ stripe, trainerId, amountDollars });
+      const outcome = await tokenizeCardAndPostCharge({
+        stripe,
+        trainerId,
+        amountDollars,
+      });
       if (!outcome.ok) {
         setError(outcome.reason);
         return;
@@ -239,28 +418,36 @@ function PayTrainerPopup({ trainerId, trainerName, onClose, onSuccess }) {
         onClose?.();
       }, SUCCESS_CLOSE_MS);
     } catch (chargeError) {
-      setError(mapError(chargeError));
+      setError(mapChargeErrorToMessage(chargeError));
     } finally {
       payInFlightRef.current = false;
       setLoading(false);
     }
-  }, [amount, stripe, trainerId, onSuccess, onClose, resetForm, mapError, cardReady]);
+  }, [
+    amount,
+    stripe,
+    trainerId,
+    onSuccess,
+    onClose,
+    resetForm,
+    mapChargeErrorToMessage,
+    cardReady,
+  ]);
 
   if (success) {
-    return (
-      <NbSheet>
-        <View style={styles.successIconWrap}>
-          <Ionicons name="checkmark-circle" size={52} color="#F97316" />
-        </View>
-        <Text style={styles.successTitle}>Payment successful</Text>
-        <Text style={styles.successLine}>You paid {formatMoney(success.amount)}</Text>
-        <Text style={styles.successLine}>Coach receives {formatMoney(success.trainerGets)}</Text>
-        <Text style={styles.successSub}>Saved to your payment history.</Text>
-      </NbSheet>
-    );
+    return <PaySuccessSheet styles={styles} successPayload={success} />;
   }
 
   const payDisabled = loading || (CardField && !cardReady);
+  const payCaption = captionForPayButton({
+    loading,
+    error,
+    amountOk,
+    numericAmount,
+  });
+  const amountPlaceholderColor = isDark ? '#636366' : '#8E8E93';
+  const showFeeOneLiner = amountOk;
+  const feeOneLinerText = `Coach gets ${formatPaymentDollars(trainerShare)} · ${PLATFORM_FEE_PERCENT_DISPLAY}% platform fee (${formatPaymentDollars(platformShare)})`;
 
   return (
     <NbSheet>
@@ -281,100 +468,51 @@ function PayTrainerPopup({ trainerId, trainerName, onClose, onSuccess }) {
             style={styles.amountInput}
             value={amount}
             onChangeText={(typedAmount) => {
-              setAmount(digitsOnlyAmountText(typedAmount));
+              setAmount(keepDigitsAndDecimalOnly(typedAmount));
               setError(null);
             }}
             keyboardType="decimal-pad"
             placeholder="0.00"
-            placeholderTextColor={isDark ? '#636366' : '#8E8E93'}
+            placeholderTextColor={amountPlaceholderColor}
             editable={!loading}
             selectionColor="#0A0A0A"
           />
         </View>
 
         <View style={styles.quickRow}>
-          {QUICK_AMOUNTS.map((value) => {
-            const active = amount === String(value);
-            return (
-              <TouchableOpacity
-                key={value}
-                style={[styles.quickBtn, active && styles.quickBtnActive]}
-                onPress={() => selectQuickAmount(value)}
-                disabled={loading}
-                activeOpacity={0.85}
-              >
-                <Text style={[styles.quickBtnText, active && styles.quickBtnTextActive]}>
-                  {formatMoney(value)}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
+          {QUICK_AMOUNTS.map((value) => (
+            <QuickAmountChip
+              key={value}
+              value={value}
+              isSelected={amount === String(value)}
+              onPick={selectQuickAmount}
+              loading={loading}
+              styles={styles}
+            />
+          ))}
         </View>
 
-        {amountOk ? (
-          <Text style={styles.feeOneLiner}>
-            Coach gets {formatMoney(trainerGets)} · {Math.round(PLATFORM_FEE_RATE * 100)}% platform fee (
-            {formatMoney(platformFee)})
-          </Text>
+        {showFeeOneLiner ? (
+          <Text style={styles.feeOneLiner}>{feeOneLinerText}</Text>
         ) : null}
 
         <Text style={styles.label}>Card</Text>
-        {CardField ? (
-          <View style={styles.stripeLightPanel}>
-            <CardField
-              postalCodeEnabled
-              placeholders={{
-                number: 'Card number',
-                expiration: 'MM/YY',
-                cvc: 'CVC',
-                postalCode: 'ZIP',
-              }}
-              cardStyle={stripeCardStyle}
-              style={styles.cardField}
-              onCardChange={onCardChange}
-              disabled={loading}
-            />
-          </View>
-        ) : (
-          <View style={styles.cardFallback}>
-            <Text style={[styles.cardFallbackText, { fontWeight: '700', marginBottom: 6 }]}>
-              {cardPaymentBlock?.title || 'Card payments unavailable'}
-            </Text>
-            <Text style={styles.cardFallbackText}>
-              {cardPaymentBlock?.detail ||
-                'Rebuild the app with npm run ios:run, then try again.'}
-            </Text>
-          </View>
-        )}
+        <StripeCardEntryPanel
+          loading={loading}
+          cardStyle={stripeCardStyle}
+          styles={styles}
+          onCardChange={onCardChange}
+          CardFieldComponent={CardField}
+          blockReason={cardPaymentBlock}
+        />
 
-        {cardReady && cardMeta?.last4 ? (
-          <View style={styles.readyRow}>
-            <Ionicons name="shield-checkmark" size={14} color="#F97316" />
-            <Text style={styles.readyText}>
-              {cardMeta.brand ? `${String(cardMeta.brand)} ` : ''}···· {cardMeta.last4}
-            </Text>
-          </View>
-        ) : (
-          <Text style={styles.cardHelp}>Enter card number, expiry, CVC, and ZIP</Text>
-        )}
+        <CardReadyHint cardReady={cardReady} cardMeta={cardMeta} styles={styles} />
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
         <View style={styles.payWrap}>
-          <NbButton
-            variant="brand"
-            onPress={handlePayNow}
-            disabled={payDisabled}
-          >
-            {loading ? (
-              <ActivityIndicator color={colors.nbInk} />
-            ) : (
-              error
-                ? 'Try again'
-                : amountOk
-                  ? `Pay ${formatMoney(numericAmount)}`
-                  : 'Pay now'
-            )}
+          <NbButton variant="brand" onPress={handlePayNow} disabled={payDisabled}>
+            {loading ? <ActivityIndicator color={colors.nbInk} /> : payCaption}
           </NbButton>
         </View>
 
@@ -386,7 +524,9 @@ function PayTrainerPopup({ trainerId, trainerName, onClose, onSuccess }) {
   );
 }
 
-function makeStyles(colors, isDark) {
+// ===== PLUMBING — skip unless debugging =====
+
+function buildPayTrainerStyles(colors, isDark) {
   const textPrimary = colors.nbInk;
   return StyleSheet.create({
     scrollContent: {

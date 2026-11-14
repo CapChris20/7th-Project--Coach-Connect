@@ -1,7 +1,7 @@
-// Journey / horizontal video thumb — play circle, duration badge, title under the card.
-// Flow: press scales slightly → tap opens the video (parent onPress).
-// Used by: ExerciseVideosTab "Pulled from your journey" carousel.
-// Design Law: HardShadow + 3px border; black/white only (no purple rims).
+// Journey carousel thumb — tall play card with duration badge and title under it.
+// Flow: press-in scales → tap opens detail (parent onPress) → YouTube still or hatch behind play.
+// Used by: ExerciseVideosTab "Pulled from your journey" horizontal list.
+// Design Law: HardShadow + 3px border; black/white/gray only (no purple rims).
 
 import React, { useMemo, useRef } from 'react';
 import {
@@ -20,121 +20,202 @@ import HatchedThumbFill from './HatchedThumbFill';
 
 // ===== NAMED CONSTANTS =====
 
+// Manipulate here: press feel — shorter = snappier; scale closer to 1 = subtler
 const PRESS_ANIMATION_MS = 160;
-const PRESS_SCALE = 0.97;
+const PRESS_SCALE_WHEN_DOWN = 0.97;
+const PRESS_SCALE_AT_REST = 1;
+
 const YOUTUBE_THUMB_HOST = 'https://i.ytimg.com/vi';
-const FALLBACK_LABEL = '—';
+const YOUTUBE_THUMB_QUALITY = 'hqdefault.jpg';
+const FALLBACK_TITLE_LABEL = '—';
+const SECONDS_PER_MINUTE = 60;
+const SECOND_PAD_WIDTH = 2;
+const PLAY_ICON_SIZE = 16;
+const TITLE_MAX_LINES = 2;
+
 // Manipulate here: journey card width / thumb aspect (taller than wide, like PNG)
-const DEFAULT_WIDTH = 132;
-const THUMB_ASPECT = 1.15;
+const DEFAULT_CARD_WIDTH = 132;
+const THUMB_HEIGHT_RATIO = 1.15;
+
 // Manipulate here: play circle size — mockup journey uses ~40–52
-const PLAY_SIZE = 40;
+const PLAY_CIRCLE_SIZE = 40;
 
 // ===== HELPER FUNCTIONS =====
 
-/** YouTube hqdefault still from the 11-char watch id. */
-function youtubeThumbUrl(videoId) {
-  return `${YOUTUBE_THUMB_HOST}/${videoId}/hqdefault.jpg`;
+/**
+ * Public YouTube hqdefault still from the 11-char watch id.
+ * @param {string} videoId
+ * @returns {string}
+ */
+function buildYouTubeThumbnailUrl(videoId) {
+  return `${YOUTUBE_THUMB_HOST}/${videoId}/${YOUTUBE_THUMB_QUALITY}`;
 }
 
 /**
- * Badge text like "0:42". Missing duration → null (hide badge).
+ * Badge text like "0:42". Missing / zero duration → null (hide badge).
  * @param {number|undefined} seconds
  * @returns {string|null}
  */
-function formatDurationBadge(seconds) {
+function formatSecondsAsDurationBadge(seconds) {
   if (typeof seconds !== 'number' || seconds <= 0) return null;
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.round(seconds % 60);
-  return `${mins}:${String(secs).padStart(2, '0')}`;
+
+  const wholeMinutes = Math.floor(seconds / SECONDS_PER_MINUTE);
+  const leftoverSeconds = Math.round(seconds % SECONDS_PER_MINUTE);
+  const paddedSeconds = String(leftoverSeconds).padStart(SECOND_PAD_WIDTH, '0');
+  return `${wholeMinutes}:${paddedSeconds}`;
+}
+
+/**
+ * Run the press scale animation to a target (down or rest).
+ * vocab: useNativeDriver = animation runs on the UI thread
+ * @param {Animated.Value} pressScale
+ * @param {number} targetScale
+ */
+function animatePressScaleTo(pressScale, targetScale) {
+  Animated.timing(pressScale, {
+    toValue: targetScale,
+    duration: PRESS_ANIMATION_MS,
+    useNativeDriver: true,
+  }).start();
+}
+
+/**
+ * Centered play circle. Does not steal taps from the outer Pressable.
+ */
+function JourneyPlayCircle({ themeColors }) {
+  const circleStyle = [
+    styles.playCircle,
+    {
+      backgroundColor: themeColors.nbFill,
+      borderColor: themeColors.nbBorder,
+    },
+  ];
+
+  return (
+    <View style={styles.playCenter} pointerEvents="none">
+      <View style={circleStyle}>
+        <Ionicons
+          name="play"
+          size={PLAY_ICON_SIZE}
+          color={themeColors.nbOnFill}
+          style={styles.playIcon}
+        />
+      </View>
+    </View>
+  );
+}
+
+/**
+ * Thumb stack: hatch → optional image → play → optional duration chip.
+ */
+function JourneyThumbBlock({
+  thumbHeightPixels,
+  themeColors,
+  thumbImageUri,
+  durationBadgeText,
+}) {
+  const thumbBoxStyle = [
+    styles.thumb,
+    {
+      height: thumbHeightPixels,
+      borderColor: themeColors.nbBorder,
+      backgroundColor: themeColors.nbSoft,
+    },
+  ];
+  const showThumbImage = Boolean(thumbImageUri);
+  const showDurationBadge = Boolean(durationBadgeText);
+  const badgeBoxStyle = [styles.durationBadge, { backgroundColor: themeColors.nbFill }];
+  const badgeTextStyle = [styles.durationText, { color: themeColors.nbOnFill }];
+
+  return (
+    <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetSmall}>
+      <View style={thumbBoxStyle}>
+        <HatchedThumbFill />
+        {showThumbImage ? (
+          <Image
+            source={{ uri: thumbImageUri }}
+            style={styles.image}
+            contentFit="cover"
+            transition={PRESS_ANIMATION_MS}
+          />
+        ) : null}
+        <JourneyPlayCircle themeColors={themeColors} />
+        {showDurationBadge ? (
+          <View style={badgeBoxStyle}>
+            <Text style={badgeTextStyle}>{durationBadgeText}</Text>
+          </View>
+        ) : null}
+      </View>
+    </HardShadow>
+  );
 }
 
 // ===== MAIN FUNCTION =====
 
 /**
  * Compact vertical video card for the journey carousel.
- * @param {object} props
+ * Flow: 1. theme + press scale  2. thumb size + duration  3. pressable chrome
+ * @param {{ item: object, width?: number, onPress?: function, style?: object }} props
  */
 export default function ShortVideoCard({
   item,
-  width = DEFAULT_WIDTH,
+  width = DEFAULT_CARD_WIDTH,
   onPress,
   style,
 }) {
-  const { colors } = useTheme();
-  const scale = useRef(new Animated.Value(1)).current;
-  const thumbHeight = useMemo(() => Math.round(width * THUMB_ASPECT), [width]);
-  const durationText = useMemo(
-    () => formatDurationBadge(item?.durationSeconds),
+  // 1. Theme + press scale (hook order frozen: theme → ref → memos).
+  // vocab: useTheme = Design Law palette for light/dark
+  const { colors: themeColors } = useTheme();
+  const pressScale = useRef(new Animated.Value(PRESS_SCALE_AT_REST)).current;
+
+  // 2. Thumb height from width × aspect; duration badge from seconds.
+  // vocab: useMemo = keep the same number/string until deps change
+  const thumbHeightPixels = useMemo(
+    () => Math.round(width * THUMB_HEIGHT_RATIO),
+    [width],
+  );
+
+  const durationBadgeText = useMemo(
+    () => formatSecondsAsDurationBadge(item?.durationSeconds),
     [item?.durationSeconds],
   );
 
-  const animatePress = (down) => {
-    Animated.timing(scale, {
-      toValue: down ? PRESS_SCALE : 1,
-      duration: PRESS_ANIMATION_MS,
-      useNativeDriver: true,
-    }).start();
-  };
+  // 3. Name display decisions before JSX.
+  const exerciseTitle = item?.name || FALLBACK_TITLE_LABEL;
+  const hasYouTubeId = Boolean(item?.videoId);
+  let thumbImageUri = null;
+  if (hasYouTubeId) {
+    thumbImageUri = buildYouTubeThumbnailUrl(item.videoId);
+  }
+  const pressableStyle = [{ width }, style];
+  const scaledCardStyle = { transform: [{ scale: pressScale }] };
+  const titleStyle = [styles.title, { color: themeColors.nbInk }];
 
   return (
     <Pressable
       onPress={onPress}
-      onPressIn={() => animatePress(true)}
-      onPressOut={() => animatePress(false)}
-      style={[{ width }, style]}
+      onPressIn={() => animatePressScaleTo(pressScale, PRESS_SCALE_WHEN_DOWN)}
+      onPressOut={() => animatePressScaleTo(pressScale, PRESS_SCALE_AT_REST)}
+      style={pressableStyle}
       accessibilityRole="button"
-      accessibilityLabel={item?.name || FALLBACK_LABEL}
+      accessibilityLabel={exerciseTitle}
     >
-      <Animated.View style={{ transform: [{ scale }] }}>
-        <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetSmall}>
-          <View
-            style={[
-              styles.thumb,
-              {
-                height: thumbHeight,
-                borderColor: colors.nbBorder,
-                backgroundColor: colors.nbSoft,
-              },
-            ]}
-          >
-            {/* Hatch shows through when the still is missing or still loading */}
-            <HatchedThumbFill />
-            {item?.videoId ? (
-              <Image
-                source={{ uri: youtubeThumbUrl(item.videoId) }}
-                style={styles.image}
-                contentFit="cover"
-                transition={PRESS_ANIMATION_MS}
-              />
-            ) : null}
-            <View style={styles.playCenter} pointerEvents="none">
-              <View
-                style={[
-                  styles.playCircle,
-                  {
-                    backgroundColor: colors.nbFill,
-                    borderColor: colors.nbBorder,
-                  },
-                ]}
-              >
-                <Ionicons name="play" size={16} color={colors.nbOnFill} style={styles.playIcon} />
-              </View>
-            </View>
-            {durationText ? (
-              <View style={[styles.durationBadge, { backgroundColor: colors.nbFill }]}>
-                <Text style={[styles.durationText, { color: colors.nbOnFill }]}>{durationText}</Text>
-              </View>
-            ) : null}
-          </View>
-        </HardShadow>
-        <Text style={[styles.title, { color: colors.nbInk }]} numberOfLines={2}>
-          {item?.name || FALLBACK_LABEL}
+      <Animated.View style={scaledCardStyle}>
+        <JourneyThumbBlock
+          thumbHeightPixels={thumbHeightPixels}
+          themeColors={themeColors}
+          thumbImageUri={thumbImageUri}
+          durationBadgeText={durationBadgeText}
+        />
+        <Text style={titleStyle} numberOfLines={TITLE_MAX_LINES}>
+          {exerciseTitle}
         </Text>
       </Animated.View>
     </Pressable>
   );
 }
+
+// ===== PLUMBING — skip unless debugging =====
 
 const styles = StyleSheet.create({
   thumb: {
@@ -150,16 +231,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   playCircle: {
-    width: PLAY_SIZE,
-    height: PLAY_SIZE,
-    borderRadius: PLAY_SIZE / 2,
+    width: PLAY_CIRCLE_SIZE,
+    height: PLAY_CIRCLE_SIZE,
+    borderRadius: PLAY_CIRCLE_SIZE / 2,
     borderWidth: nb.borderWidth,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // Manipulate here: play triangle optical centering
   playIcon: { marginLeft: 2 },
-  // Mockup `.du` uses radius 4 (not a pill)
   durationBadge: {
     position: 'absolute',
     right: 8,

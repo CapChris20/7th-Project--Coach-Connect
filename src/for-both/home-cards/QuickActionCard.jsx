@@ -1,82 +1,105 @@
-// Neobrutalist quick-action tile — centered icon, hard shadow, gradient CTA.
-// Flow: pick dark/light paint → optional badge → icon → label/subtitle → CTA button.
-// Used by: home screens for shortcuts (messages, marketplace, workouts).
+// Neobrutalist quick-action tile — centered icon, hard shadow, brand CTA.
+// Flow: decide badge + VoiceOver label → TouchableOpacity NbCard → badge → icon ring → copy → CTA.
+// Used by home screens for shortcuts (messages, marketplace, workouts).
 
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
 import NbCard from '../../look-and-feel/NbCard';
 import NbButton from '../../look-and-feel/NbButton';
-import { lightColors } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
-/** Dark purple → dark orange (matches Today card & Training Agenda). */
-const BORDER_GRADIENT = ['#FF6B9D', '#FB923C'];
-const CTA_GRADIENT = BORDER_GRADIENT;
-const BG_GRADIENT_DARK = ['#12081f', '#08050f'];
-const BG_GRADIENT_LIGHT = ['#F3F0FA', lightColors.white];
-const ACCENT_ORANGE = '#C2410C';
-const ACCENT_PURPLE = '#0A0A0A';
 const DEFAULT_ICON = 'flash-outline';
 const DEFAULT_CTA_LABEL = 'View all';
 const DEFAULT_WIDTH = 216;
-// Manipulate here: badge digits stop at 99+.
+
 const BADGE_CAP = 99;
 const BADGE_OVERFLOW_LABEL = '99+';
-const GRADIENT_TOP = { x: 0, y: 0 };
-const GRADIENT_BOTTOM = { x: 0, y: 1 };
-const GRADIENT_LEFT = { x: 0, y: 0 };
-const GRADIENT_RIGHT = { x: 1, y: 0 };
+
+const ICON_RING_SIZE = 26;
+const TILE_ACTIVE_OPACITY = 0.92;
+const TILE_RIGHT_GAP = 12;
 
 // ===== HELPER FUNCTIONS =====
 
-/**
- * @param {boolean} isDark
- */
-function quickActionColors(isDark) {
-  return {
-    innerBackground: isDark ? '#0A0812' : lightColors.white,
-    headlineColor: isDark ? lightColors.white : lightColors.nbInk,
-    subColor: isDark ? 'rgba(255,255,255,0.62)' : 'rgba(10,10,15,0.52)',
-    iconInnerBackground: isDark ? 'rgba(14,12,22,0.98)' : 'rgba(255,255,255,0.98)',
-    iconColor: isDark ? '#F2F2F2' : '#0A0A0A',
-    backgroundGradient: isDark ? BG_GRADIENT_DARK : BG_GRADIENT_LIGHT,
-    hairline: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(10,10,15,0.10)',
-  };
+function countIsBigEnoughForBadge(badgeCount) {
+  return typeof badgeCount === 'number' && badgeCount > 0;
 }
 
-/**
- * Badge shows the raw count until 99, then "99+".
- * @param {number} badgeCount
- * @returns {string|number}
- */
-function badgeLabel(badgeCount) {
+function digitsOrNinetyNinePlus(badgeCount) {
   if (badgeCount > BADGE_CAP) return BADGE_OVERFLOW_LABEL;
   return badgeCount;
 }
 
-/**
- * Spoken label for VoiceOver / TalkBack when the parent did not pass one.
- * @param {string} label
- * @param {string} subtitle
- * @param {string} ctaLabel
- * @returns {string}
- */
-function defaultAccessibilityLabel(label, subtitle, ctaLabel) {
+function voiceOverLabelForTile(label, subtitle, ctaLabel, labelFromParent) {
+  if (labelFromParent) return labelFromParent;
   return `${label}. ${subtitle}. ${ctaLabel}`;
+}
+
+function CornerBadge({ badgeCount, chipBackground, chipBorder, inkColor }) {
+  const badgeDigits = digitsOrNinetyNinePlus(badgeCount);
+  const badgeSurfaceStyle = [
+    styles.badge,
+    { backgroundColor: chipBackground, borderColor: chipBorder },
+  ];
+
+  return (
+    <View style={badgeSurfaceStyle}>
+      <Text style={[styles.badgeText, { color: inkColor }]}>{badgeDigits}</Text>
+    </View>
+  );
+}
+
+function IconInsideRing({ iconName, ringBorder, ringBackground, iconColor }) {
+  const ringSurfaceStyle = [
+    styles.iconRing,
+    { borderColor: ringBorder, backgroundColor: ringBackground },
+  ];
+
+  return (
+    <View style={styles.iconWrap}>
+      <View style={ringSurfaceStyle}>
+        <Ionicons name={iconName} size={ICON_RING_SIZE} color={iconColor} />
+      </View>
+    </View>
+  );
+}
+
+function TitleAndSubtitle({ label, subtitle, inkColor, mutedColor }) {
+  return (
+    <>
+      <Text style={[styles.title, { color: inkColor }]} numberOfLines={2}>
+        {label}
+      </Text>
+      <Text style={[styles.sub, { color: mutedColor }]} numberOfLines={2}>
+        {subtitle}
+      </Text>
+    </>
+  );
 }
 
 // ===== MAIN FUNCTION =====
 
 /**
  * Premium horizontal quick-action tile.
- * @param {{ isDark?: boolean, label: string, subtitle: string, icon?: string, ctaLabel?: string, onPress?: Function, width?: number, badgeCount?: number, style?: object, accessibilityLabel?: string }} props
+ * Parent may pass `isDark`; paint comes from useTheme (same as before).
+ * @param {{
+ *   isDark?: boolean,
+ *   label: string,
+ *   subtitle: string,
+ *   icon?: string,
+ *   ctaLabel?: string,
+ *   onPress?: Function,
+ *   width?: number,
+ *   badgeCount?: number,
+ *   style?: object,
+ *   accessibilityLabel?: string,
+ * }} props
  */
 export default function QuickActionCard({
-  isDark = true,
+  isDark: _isDarkKeptForCallSites,
   label,
   subtitle,
   icon = DEFAULT_ICON,
@@ -88,39 +111,58 @@ export default function QuickActionCard({
   accessibilityLabel,
 }) {
   const { colors } = useTheme();
-  const showBadge = typeof badgeCount === 'number' && badgeCount > 0;
-  const spokenLabel = accessibilityLabel || defaultAccessibilityLabel(label, subtitle, ctaLabel);
 
-  // 1. Neobrutalist card with hard shadow
-  // 2. Paint the tile. The badge only appears when badgeCount is a number above 0.
+  // 1. Decide whether the numeric badge sits in the top-right corner.
+  const showBadge = countIsBigEnoughForBadge(badgeCount);
+
+  // 2. Build the VoiceOver string when the parent did not pass one.
+  const voiceLabel = voiceOverLabelForTile(
+    label,
+    subtitle,
+    ctaLabel,
+    accessibilityLabel,
+  );
+
+  // 3. Whole tile is one touch target; CTA button repeats onPress for thumb reach.
+  const outerTouchStyle = [{ width, marginRight: TILE_RIGHT_GAP }, style];
+
+  let badgeNode = null;
+  if (showBadge) {
+    badgeNode = (
+      <CornerBadge
+        badgeCount={badgeCount}
+        chipBackground={colors.nbSurfaceChip}
+        chipBorder={colors.nbBorder}
+        inkColor={colors.nbInk}
+      />
+    );
+  }
+
   return (
     <TouchableOpacity
-      activeOpacity={0.92}
+      activeOpacity={TILE_ACTIVE_OPACITY}
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={spokenLabel}
-      style={[{ width, marginRight: 12 }, style]}
+      accessibilityLabel={voiceLabel}
+      style={outerTouchStyle}
     >
       <NbCard style={styles.card}>
         <View style={styles.body}>
-          {showBadge ? (
-            <View style={[styles.badge, { backgroundColor: colors.nbSurfaceChip, borderColor: colors.nbBorder }]}>
-              <Text style={[styles.badgeText, { color: colors.nbInk }]}>{badgeLabel(badgeCount)}</Text>
-            </View>
-          ) : null}
+          {badgeNode}
 
-          <View style={styles.iconWrap}>
-            <View style={[styles.iconRing, { borderColor: colors.nbBorder, backgroundColor: colors.nbSurfaceChip }]}>
-              <Ionicons name={icon} size={26} color={colors.nbInk} />
-            </View>
-          </View>
+          <IconInsideRing
+            iconName={icon}
+            ringBorder={colors.nbBorder}
+            ringBackground={colors.nbSurfaceChip}
+            iconColor={colors.nbInk}
+          />
 
-          <Text style={[styles.title, { color: colors.nbInk }]} numberOfLines={2}>
-            {label}
-          </Text>
-          <Text style={[styles.sub, { color: colors.nbMuted }]} numberOfLines={2}>
-            {subtitle}
-          </Text>
+          <TitleAndSubtitle
+            label={label}
+            subtitle={subtitle}
+            inkColor={colors.nbInk}
+            mutedColor={colors.nbMuted}
+          />
 
           <View style={styles.ctaWrap}>
             <NbButton variant="brand" sm onPress={onPress}>
@@ -132,6 +174,8 @@ export default function QuickActionCard({
     </TouchableOpacity>
   );
 }
+
+// ===== PLUMBING — skip unless debugging =====
 
 const styles = StyleSheet.create({
   card: {

@@ -22,108 +22,126 @@ const API_UNREACHABLE_MESSAGE = 'Could not reach Coach Connect API';
 // ===== HELPER FUNCTIONS =====
 
 /**
- * Candidate bases sometimes include a trailing slash. The path already starts with /,
- * so a double slash would miss the route.
+ * Join an API base (maybe with trailing slash) to a path that already starts with /.
  * @param {string} apiBase
  * @param {string} path
  * @returns {string}
  */
-function joinApiUrl(apiBase, path) {
+function joinApiBaseWithPath(apiBase, path) {
+  // Candidate bases sometimes include a trailing slash. The path already starts with /,
+  // so a double slash would miss the route.
   const baseWithoutTrailingSlash = String(apiBase).replace(/\/$/, '');
   return `${baseWithoutTrailingSlash}${path}`;
 }
 
 /**
+ * One POST attempt. Never throws — returns { didSucceed, responseData } or { didSucceed, error }.
  * @param {string} url
  * @param {object} headers
  * @param {string} requestBody
- * @returns {Promise<{ didSucceed: boolean, responseData?: object, error?: Error }>}
  */
-async function postToOneApiBase(url, headers, requestBody) {
+async function postJsonToUrlOnce(url, headers, requestBody) {
   try {
     const response = await fetch(url, {
       method: 'POST',
       headers,
       body: requestBody,
     });
+    // vocab: response.json().catch = empty body or non-JSON → treat as {}.
     const responseData = await response.json().catch(() => ({}));
-    if (response.ok) return { didSucceed: true, responseData };
-    return { didSucceed: false, error: new Error(responseData?.error || `HTTP ${response.status}`) };
+    if (response.ok) {
+      return { didSucceed: true, responseData };
+    }
+    const serverErrorText = responseData?.error || `HTTP ${response.status}`;
+    return {
+      didSucceed: false,
+      error: new Error(serverErrorText),
+    };
   } catch (requestError) {
     return { didSucceed: false, error: requestError };
   }
 }
 
 /**
- * One bad base (old LAN IP, sleeping dev server) should not fail the action.
- * A real HTTP error is remembered and the next base is tried. The last error wins.
+ * Attach auth headers, then try each API base until one POST succeeds.
  * @param {string} path
- * @param {object} body
+ * @param {object} bodyObject
  * @returns {Promise<object>}
  */
-async function postTrainerJson(path, body) {
+async function postTrainerActionOnFirstWorkingBase(path, bodyObject) {
+  // vocab: getApiAuthHeaders = builds Authorization from the signed-in Firebase user.
   const headers = await getApiAuthHeaders({ 'Content-Type': JSON_CONTENT_TYPE });
-  const isSignedIn = Boolean(headers.Authorization);
-  if (!isSignedIn) {
+  const userIsSignedIn = Boolean(headers.Authorization);
+  if (!userIsSignedIn) {
     throw new Error(NOT_SIGNED_IN_MESSAGE);
   }
 
-  const requestBody = JSON.stringify(body);
+  const requestBody = JSON.stringify(bodyObject);
+  // vocab: getApiBaseCandidates = ordered list of API roots (prod / staging / local).
   const apiBases = getApiBaseCandidates();
   let lastRequestError = null;
 
   for (const apiBase of apiBases) {
-    const attempt = await postToOneApiBase(joinApiUrl(apiBase, path), headers, requestBody);
-    if (attempt.didSucceed) return attempt.responseData;
+    const fullUrl = joinApiBaseWithPath(apiBase, path);
+    const attempt = await postJsonToUrlOnce(fullUrl, headers, requestBody);
+    if (attempt.didSucceed) {
+      return attempt.responseData;
+    }
     lastRequestError = attempt.error;
   }
 
   throw lastRequestError || new Error(API_UNREACHABLE_MESSAGE);
 }
 
-/**
- * @param {number} rateCents
- * @returns {boolean}
- */
-function isValidMonthlyRateCents(rateCents) {
-  return Number.isFinite(rateCents) && rateCents >= MINIMUM_RATE_CENTS;
-}
-
 // ===== MAIN FUNCTION =====
 
 /**
- * Accept a pending connection and link the trainer to the client.
- * @param {object} linkRequest
- * @param {string} linkRequest.trainerId
- * @param {string} linkRequest.clientId
- * @param {string} linkRequest.messageId
- * @param {object} [linkRequest.clientData]
+ * Accept a pending client request (trainer ↔ client link).
+ * Flow: 1. require three ids  2. POST accept-client on the first working API base
+ * @param {{ trainerId: string, clientId: string, messageId: string, clientData?: object }} args
  * @returns {Promise<object>}
  */
 export async function postAcceptTrainerClient({ trainerId, clientId, messageId, clientData = {} }) {
-  const hasRequiredFields = Boolean(trainerId && clientId && messageId);
-  if (!hasRequiredFields) {
+  // 1. Need trainer, client, and the pending-request message id.
+  const hasAllLinkFields = Boolean(trainerId && clientId && messageId);
+  if (!hasAllLinkFields) {
     throw new Error(MISSING_LINK_FIELDS_MESSAGE);
   }
 
-  return postTrainerJson(ACCEPT_CLIENT_PATH, { trainerId, clientId, messageId, clientData });
+  // 2. POST until one API base accepts the link.
+  const acceptBody = {
+    trainerId,
+    clientId,
+    messageId,
+    clientData,
+  };
+  return postTrainerActionOnFirstWorkingBase(ACCEPT_CLIENT_PATH, acceptBody);
 }
 
 /**
- * Set the monthly coaching rate for a linked client.
- * The server writes both the user profile and the trainer's client row.
- * @param {object} rateRequest
- * @param {string} rateRequest.clientId
- * @param {number} rateRequest.monthlyRateCents
+ * Set a client's monthly rate in cents (server updates profile + trainer client row).
+ * Flow: 1. require clientId  2. round + enforce $1 min  3. POST set-client-rate
+ * @param {{ clientId: string, monthlyRateCents: number }} args
  * @returns {Promise<object>}
  */
 export async function postSetClientRate({ clientId, monthlyRateCents }) {
-  if (!clientId) throw new Error(MISSING_CLIENT_ID_MESSAGE);
+  // 1. Fail fast without a client.
+  if (!clientId) {
+    throw new Error(MISSING_CLIENT_ID_MESSAGE);
+  }
 
-  const rateCents = Math.round(Number(monthlyRateCents));
-  if (!isValidMonthlyRateCents(rateCents)) {
+  // 2. Round to whole cents and refuse anything under $1.
+  const rateCentsRounded = Math.round(Number(monthlyRateCents));
+  const rateIsHighEnough =
+    Number.isFinite(rateCentsRounded) && rateCentsRounded >= MINIMUM_RATE_CENTS;
+  if (!rateIsHighEnough) {
     throw new Error(RATE_TOO_LOW_MESSAGE);
   }
 
-  return postTrainerJson(SET_CLIENT_RATE_PATH, { clientId, monthlyRateCents: rateCents });
+  // 3. The server writes both the user profile and the trainer's client row.
+  const rateBody = {
+    clientId,
+    monthlyRateCents: rateCentsRounded,
+  };
+  return postTrainerActionOnFirstWorkingBase(SET_CLIENT_RATE_PATH, rateBody);
 }

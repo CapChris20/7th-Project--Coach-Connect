@@ -1,5 +1,5 @@
 // Design Law payout reminder — bottom sheet over trainer home (PNG 07/08).
-// Flow: checklist + Refresh status / Finish setup → Stripe WebView via trainerPayoutSetupFlow.
+// Flow: checklist → Refresh status / Finish setup → Stripe WebView via trainerPayoutSetupFlow.
 // Used by TrainerHomeContent (props: visible, onClose, userEmail, stripeAccountId).
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -28,72 +28,177 @@ const SHEET_COPY = {
   pillPending: 'Payout verification in progress',
 };
 
+const USERS_COLLECTION = 'users';
+const STRIPE_WEBVIEW_TITLE = 'Connect with Stripe';
+const CONNECT_FAILED_FALLBACK = 'Connection failed, try again';
+const REFRESH_FAILED_FALLBACK = 'Could not refresh. Try Finish setup.';
+const DISMISS_WARN_PREFIX = 'Failed to save payment popup dismissal:';
+const RELOAD_WARN_PREFIX = 'Payout sheet: could not reload trainer Stripe fields:';
+
+const STATUS_SUCCESS = 'success';
+const STATUS_VERIFYING = 'verifying';
+const STATUS_CONNECTING = 'connecting';
+const STATUS_ERROR = 'error';
+const RESOLVED_ACTIVE = 'active';
+const RESOLVED_PENDING = 'pending';
+const PHASE_CONNECTING = 'connecting';
+const PHASE_PENDING = 'pending';
+const PHASE_ACTIVE = 'active';
+const PHASE_ERROR = 'error';
+
 // ===== HELPER FUNCTIONS =====
 
-function applyStripePhaseToPopup(phase, stripeError, setters) {
-  if (phase === 'connecting') {
-    setters.setStatus('connecting');
-    setters.setLoading(true);
-    setters.setErrorMessage(null);
-    return;
-  }
-  if (phase === 'pending') {
-    setters.setStatus('verifying');
-    setters.setLoading(true);
-    setters.setErrorMessage(null);
-    return;
-  }
-  if (phase === 'active') {
-    setters.setStatus('success');
-    setters.setLoading(false);
-    return;
-  }
-  if (phase === 'error') {
-    setters.setStatus('error');
-    setters.setLoading(false);
-    setters.setErrorMessage(stripeError || 'Connection failed, try again');
+/**
+ * Clear the verifying timeout if one is armed.
+ * @param {{ current: ReturnType<typeof setTimeout>|null }} pendingTimerRef
+ */
+function clearPendingTimer(pendingTimerRef) {
+  if (pendingTimerRef.current) {
+    clearTimeout(pendingTimerRef.current);
+    pendingTimerRef.current = null;
   }
 }
 
 /**
- * Checklist rows for PNG 07/08 — subtitles change with resolved Stripe status.
- * @param {'not_connected'|'pending'|'active'} resolved
+ * Mirror shared-flow phase into this sheet's status / loading / error locals.
+ * @param {string} phase
+ * @param {string|null} stripeError
+ * @param {{ setStatus: Function, setLoading: Function, setErrorMessage: Function }} setters
  */
-function payoutStepSpecs(resolved) {
-  const pendingOrActive = resolved === 'pending' || resolved === 'active';
-  const active = resolved === 'active';
+function syncReminderUiToConnectPhase(phase, stripeError, setters) {
+  if (phase === PHASE_CONNECTING) {
+    setters.setStatus(STATUS_CONNECTING);
+    setters.setLoading(true);
+    setters.setErrorMessage(null);
+    return;
+  }
+  if (phase === PHASE_PENDING) {
+    setters.setStatus(STATUS_VERIFYING);
+    setters.setLoading(true);
+    setters.setErrorMessage(null);
+    return;
+  }
+  if (phase === PHASE_ACTIVE) {
+    setters.setStatus(STATUS_SUCCESS);
+    setters.setLoading(false);
+    return;
+  }
+  if (phase === PHASE_ERROR) {
+    setters.setStatus(STATUS_ERROR);
+    setters.setLoading(false);
+    let message = CONNECT_FAILED_FALLBACK;
+    if (stripeError) {
+      message = stripeError;
+    }
+    setters.setErrorMessage(message);
+  }
+}
+
+/**
+ * Subtitle under the Verification checklist step.
+ * @param {string} resolved
+ * @returns {string}
+ */
+function verificationStepSubtitle(resolved) {
+  if (resolved === RESOLVED_ACTIVE) {
+    return 'Complete';
+  }
+  if (resolved === RESOLVED_PENDING) {
+    return 'Under review. Try Refresh status in a minute.';
+  }
+  return 'Starts after bank details';
+}
+
+/**
+ * Three checklist steps driven by resolved Stripe status (not started / pending / active).
+ * @param {string} resolved
+ * @returns {Array<{ key: string, title: string, subtitle: string, done: boolean, current: boolean }>}
+ */
+function buildPayoutChecklistSteps(resolved) {
+  const pendingOrActive = resolved === RESOLVED_PENDING || resolved === RESOLVED_ACTIVE;
+  const isFullyActive = resolved === RESOLVED_ACTIVE;
+
+  let identitySubtitle = 'Complete in Stripe';
+  if (pendingOrActive) {
+    identitySubtitle = 'Verified';
+  }
+
+  let bankSubtitle = 'Add payout details';
+  if (pendingOrActive) {
+    bankSubtitle = 'Added';
+  }
+
   return [
     {
       key: 'identity',
       title: 'Identity',
-      subtitle: pendingOrActive ? 'Verified' : 'Complete in Stripe',
+      subtitle: identitySubtitle,
       done: pendingOrActive,
       current: !pendingOrActive,
     },
     {
       key: 'bank',
       title: 'Bank account',
-      subtitle: pendingOrActive ? 'Added' : 'Add payout details',
+      subtitle: bankSubtitle,
       done: pendingOrActive,
       current: false,
     },
     {
       key: 'verification',
       title: 'Verification',
-      subtitle: active
-        ? 'Complete'
-        : pendingOrActive
-          ? 'Under review. Try Refresh status in a minute.'
-          : 'Starts after bank details',
-      done: active,
-      current: pendingOrActive && !active,
+      subtitle: verificationStepSubtitle(resolved),
+      done: isFullyActive,
+      current: pendingOrActive && !isFullyActive,
     },
   ];
 }
 
-// ===== SUBCOMPONENTS =====
+function readSignedInTrainerEmail(userEmail) {
+  let emailFromAuth = '';
+  if (auth && auth.currentUser && auth.currentUser.email) {
+    emailFromAuth = auth.currentUser.email;
+  }
+  return String(userEmail || emailFromAuth || '').trim();
+}
 
-function StatusPill({ label }) {
+function readSignedInTrainerUid() {
+  if (auth && auth.currentUser && auth.currentUser.uid) {
+    return auth.currentUser.uid;
+  }
+  return '';
+}
+
+function errorMessageOrFallback(caughtError, fallbackMessage) {
+  if (caughtError && caughtError.message) {
+    return caughtError.message;
+  }
+  return fallbackMessage;
+}
+
+function stripeStatusFromUserDoc(userDoc) {
+  if (userDoc.stripeStatus) {
+    return userDoc.stripeStatus;
+  }
+  if (userDoc.stripeConnectStatus) {
+    return userDoc.stripeConnectStatus;
+  }
+  return '';
+}
+
+async function readTrainerStripeStatusFromFirestore(trainerUid) {
+  // vocab: getDoc(doc(db, 'users', uid)) = one-shot read of the trainer's Firestore user doc.
+  const snapshot = await getDoc(doc(db, USERS_COLLECTION, trainerUid));
+  if (!snapshot.exists()) {
+    return '';
+  }
+  const userDoc = snapshot.data() || {};
+  return stripeStatusFromUserDoc(userDoc);
+}
+
+/**
+ * Brand gradient pill shown while Stripe verification is still pending.
+ */
+function PendingStatusPill({ label }) {
   const { colors } = useTheme();
   return (
     <LinearGradient
@@ -107,59 +212,196 @@ function StatusPill({ label }) {
   );
 }
 
-function PayoutStepTimeline({ steps, colors }) {
+/**
+ * One checklist row: numbered/check dot + optional connector rail + title/subtitle.
+ */
+function ChecklistStepRow({ step, stepNumber, showConnectorBelow, colors }) {
+  const stepIsFilled = step.done || step.current;
+  let dotFill = colors.nbSurface;
+  if (stepIsFilled) {
+    dotFill = colors.nbFill;
+  }
+
+  let numberColor = colors.nbInk;
+  if (step.current) {
+    numberColor = colors.nbOnFill;
+  }
+
+  let connectorColor = colors.nbBorder;
+  if (step.done) {
+    connectorColor = colors.nbInk;
+  }
+
+  let connectorOpacity = 0.35;
+  if (step.done) {
+    connectorOpacity = 1;
+  }
+
+  let dotInner = (
+    <Text style={[styles.stepNumber, { color: numberColor }]}>{stepNumber}</Text>
+  );
+  if (step.done) {
+    dotInner = <Ionicons name="checkmark" size={16} color={colors.nbOnFill} />;
+  }
+
+  let connectorBelow = null;
+  if (showConnectorBelow) {
+    connectorBelow = (
+      <View
+        style={[
+          styles.stepConnector,
+          { backgroundColor: connectorColor, opacity: connectorOpacity },
+        ]}
+      />
+    );
+  }
+
   return (
-    <View style={styles.timeline}>
-      {steps.map((step, index) => {
-        const isLast = index === steps.length - 1;
-        const showConnector = !isLast;
-        const dotStyle = [
-          styles.stepDot,
-          {
-            borderColor: colors.nbBorder,
-            backgroundColor: step.done || step.current ? colors.nbFill : colors.nbSurface,
-          },
-        ];
-        return (
-          <View key={step.key} style={styles.stepRow}>
-            <View style={styles.stepRail}>
-              <View style={dotStyle}>
-                {step.done ? (
-                  <Ionicons name="checkmark" size={16} color={colors.nbOnFill} />
-                ) : (
-                  <Text style={[styles.stepNumber, { color: step.current ? colors.nbOnFill : colors.nbInk }]}>
-                    {index + 1}
-                  </Text>
-                )}
-              </View>
-              {showConnector ? (
-                <View
-                  style={[
-                    styles.stepConnector,
-                    {
-                      backgroundColor: step.done ? colors.nbInk : colors.nbBorder,
-                      opacity: step.done ? 1 : 0.35,
-                    },
-                  ]}
-                />
-              ) : null}
-            </View>
-            <View style={styles.stepText}>
-              <Text style={[styles.stepTitle, { color: colors.nbInk }]}>{step.title}</Text>
-              <Text style={[styles.stepSub, { color: colors.nbMuted }]}>{step.subtitle}</Text>
-            </View>
-          </View>
-        );
-      })}
+    <View style={styles.stepRow}>
+      <View style={styles.stepRail}>
+        <View style={[styles.stepDot, { borderColor: colors.nbBorder, backgroundColor: dotFill }]}>
+          {dotInner}
+        </View>
+        {connectorBelow}
+      </View>
+      <View style={styles.stepText}>
+        <Text style={[styles.stepTitle, { color: colors.nbInk }]}>{step.title}</Text>
+        <Text style={[styles.stepSub, { color: colors.nbMuted }]}>{step.subtitle}</Text>
+      </View>
     </View>
+  );
+}
+
+/**
+ * Vertical Identity → Bank → Verification timeline.
+ */
+function PayoutChecklistTimeline({ steps, colors }) {
+  const lastStepIndex = steps.length - 1;
+  const rows = [];
+  for (let index = 0; index < steps.length; index += 1) {
+    const step = steps[index];
+    const showConnectorBelow = index !== lastStepIndex;
+    rows.push(
+      <ChecklistStepRow
+        key={step.key}
+        step={step}
+        stepNumber={index + 1}
+        showConnectorBelow={showConnectorBelow}
+        colors={colors}
+      />,
+    );
+  }
+  return <View style={styles.timeline}>{rows}</View>;
+}
+
+/**
+ * Spinner + copy while the hosted Stripe form is opening.
+ */
+function PayoutReminderConnectingRow({ showConnecting, colors }) {
+  if (!showConnecting) {
+    return null;
+  }
+  return (
+    <View style={styles.statusBlock}>
+      <ActivityIndicator size="small" color={colors.nbInk} />
+      <Text style={[styles.statusHint, { color: colors.nbMuted }]}>
+        Opening secure Stripe form…
+      </Text>
+    </View>
+  );
+}
+
+/**
+ * Spinner + copy while we wait on Stripe verification (before PENDING_DONE_MS timeout).
+ */
+function PayoutReminderVerifyingRow({ showVerifying, colors }) {
+  if (!showVerifying) {
+    return null;
+  }
+  return (
+    <View style={styles.statusBlock}>
+      <ActivityIndicator size="small" color={colors.nbInk} />
+      <Text style={[styles.statusHint, { color: colors.nbMuted }]}>
+        Checking verification status…
+      </Text>
+    </View>
+  );
+}
+
+/**
+ * Footer: success Done, or Refresh status + Finish setup (with optional error line).
+ */
+function PayoutReminderFooter({
+  showSuccess,
+  footerBusy,
+  refreshingStripe,
+  loading,
+  errorMessage,
+  onDone,
+  onRefresh,
+  onFinishSetup,
+  colors,
+}) {
+  if (showSuccess) {
+    return (
+      <View style={styles.successBlock}>
+        <Text style={[styles.successText, { color: colors.nbInk }]}>Payout setup complete.</Text>
+        <NbButton variant="fill" onPress={onDone} style={styles.successBtn}>
+          Done
+        </NbButton>
+      </View>
+    );
+  }
+
+  let refreshLabel = 'Refresh status';
+  if (refreshingStripe) {
+    refreshLabel = 'Loading…';
+  }
+
+  let finishLabel = 'Finish setup';
+  if (loading) {
+    finishLabel = 'Loading…';
+  }
+
+  let errorLine = null;
+  if (errorMessage) {
+    errorLine = (
+      <Text style={[styles.errorText, { color: colors.error }]}>{errorMessage}</Text>
+    );
+  }
+
+  return (
+    <>
+      {errorLine}
+      <View style={styles.actionRow}>
+        <NbButton
+          variant="ghost"
+          onPress={onRefresh}
+          disabled={footerBusy}
+          style={styles.actionGhost}
+        >
+          {refreshLabel}
+        </NbButton>
+        <NbButton
+          variant="fill"
+          onPress={onFinishSetup}
+          disabled={footerBusy}
+          style={styles.actionFill}
+        >
+          {finishLabel}
+        </NbButton>
+      </View>
+    </>
   );
 }
 
 // ===== MAIN FUNCTION =====
 
 /**
- * Dashboard reminder to finish Stripe payout setup (Design Law sheet).
- * @param {{ visible: boolean, onClose: Function, userEmail?: string, stripeAccountId?: string }} props
+ * Bottom-sheet reminder that Stripe Connect payout setup is incomplete.
+ * Hook order is frozen — do not reorder useState / useEffect / useMemo / useCallback.
+ *
+ * @param {{ visible: boolean, onClose?: Function, userEmail?: string, stripeAccountId?: string }} props
  */
 export function PayoutSetupReminderPopup({ visible, onClose, userEmail, stripeAccountId = '' }) {
   const { colors, isDark } = useTheme();
@@ -171,53 +413,53 @@ export function PayoutSetupReminderPopup({ visible, onClose, userEmail, stripeAc
   const [firestoreStripeStatus, setFirestoreStripeStatus] = useState('');
   const pendingTimerRef = useRef(null);
 
-  const email = String(userEmail || auth?.currentUser?.email || '').trim();
-  const trainerUid = auth?.currentUser?.uid || '';
+  const email = readSignedInTrainerEmail(userEmail);
+  const trainerUid = readSignedInTrainerUid();
 
+  // vocab: trainerPayoutSetupFlow = shared hook (create account → WebView → poll → active).
   const stripeConnect = trainerPayoutSetupFlow({
-    email,
+    email: email,
     onActive: () => {
-      setStatus('success');
+      setStatus(STATUS_SUCCESS);
       setLoading(false);
       setErrorMessage(null);
-      setFirestoreStripeStatus('active');
+      setFirestoreStripeStatus(RESOLVED_ACTIVE);
     },
   });
 
   const reloadTrainerStripeFields = useCallback(async () => {
-    if (!trainerUid || !db) return;
+    if (!trainerUid || !db) {
+      return;
+    }
     try {
-      const snap = await getDoc(doc(db, 'users', trainerUid));
-      if (!snap.exists()) return;
-      const user = snap.data() || {};
-      const raw = user.stripeStatus || user.stripeConnectStatus || '';
-      setFirestoreStripeStatus(raw);
+      const savedStatus = await readTrainerStripeStatusFromFirestore(trainerUid);
+      setFirestoreStripeStatus(savedStatus);
     } catch (caughtError) {
-      console.warn('Payout sheet: could not reload trainer Stripe fields:', caughtError?.message || caughtError);
+      console.warn(RELOAD_WARN_PREFIX, errorMessageOrFallback(caughtError, caughtError));
     }
   }, [trainerUid]);
 
   useEffect(() => {
-    if (!visible) return undefined;
+    if (!visible) {
+      return undefined;
+    }
     reloadTrainerStripeFields();
     return undefined;
   }, [visible, reloadTrainerStripeFields]);
 
   useEffect(() => {
-    applyStripePhaseToPopup(stripeConnect.phase, stripeConnect.error, {
-      setStatus,
-      setLoading,
-      setErrorMessage,
+    syncReminderUiToConnectPhase(stripeConnect.phase, stripeConnect.error, {
+      setStatus: setStatus,
+      setLoading: setLoading,
+      setErrorMessage: setErrorMessage,
     });
   }, [stripeConnect.phase, stripeConnect.error]);
 
   useEffect(() => {
-    if (status !== 'verifying') {
+    const isVerifying = status === STATUS_VERIFYING;
+    if (!isVerifying) {
       setPendingTimedOut(false);
-      if (pendingTimerRef.current) {
-        clearTimeout(pendingTimerRef.current);
-        pendingTimerRef.current = null;
-      }
+      clearPendingTimer(pendingTimerRef);
       return;
     }
     pendingTimerRef.current = setTimeout(() => {
@@ -225,57 +467,76 @@ export function PayoutSetupReminderPopup({ visible, onClose, userEmail, stripeAc
       setLoading(false);
     }, PENDING_DONE_MS);
     return () => {
-      if (pendingTimerRef.current) {
-        clearTimeout(pendingTimerRef.current);
-        pendingTimerRef.current = null;
-      }
+      clearPendingTimer(pendingTimerRef);
     };
   }, [status]);
 
   const resolvedStripeStatus = useMemo(() => {
-    if (status === 'success' || stripeConnect.phase === 'active') return 'active';
-    if (status === 'verifying' || stripeConnect.phase === 'pending') return 'pending';
-  // vocab: stripeAccountId alone does not mean payouts work — resolveStripeStatus reads status fields.
+    if (status === STATUS_SUCCESS || stripeConnect.phase === PHASE_ACTIVE) {
+      return RESOLVED_ACTIVE;
+    }
+    if (status === STATUS_VERIFYING || stripeConnect.phase === PHASE_PENDING) {
+      return RESOLVED_PENDING;
+    }
+    // vocab: stripeAccountId alone does not mean payouts work — resolveStripeStatus reads status fields.
+    let accountIdForResolve = undefined;
+    if (stripeAccountId) {
+      accountIdForResolve = stripeAccountId;
+    }
     return resolveStripeStatus({
       stripeStatus: firestoreStripeStatus,
       stripeConnectStatus: firestoreStripeStatus,
-      stripeAccountId: stripeAccountId || undefined,
+      stripeAccountId: accountIdForResolve,
     });
   }, [status, stripeConnect.phase, firestoreStripeStatus, stripeAccountId]);
 
-  const steps = useMemo(() => payoutStepSpecs(resolvedStripeStatus), [resolvedStripeStatus]);
-  const showStatusPill = resolvedStripeStatus === 'pending';
-  const showConnecting = status === 'connecting';
-  const showVerifyingSpinner = status === 'verifying' && !pendingTimedOut && loading;
+  const steps = useMemo(
+    () => buildPayoutChecklistSteps(resolvedStripeStatus),
+    [resolvedStripeStatus],
+  );
+  const showStatusPill = resolvedStripeStatus === RESOLVED_PENDING;
+  const showConnecting = status === STATUS_CONNECTING;
+  const showVerifyingSpinner = status === STATUS_VERIFYING && !pendingTimedOut && loading;
 
   const handleSetupNow = useCallback(async () => {
+    // 1. Clear errors and show the connecting spinner.
     setErrorMessage(null);
     setPendingTimedOut(false);
-    setStatus('connecting');
+    setStatus(STATUS_CONNECTING);
     setLoading(true);
     try {
+      // 2. Open Stripe Connect (creates account + WebView URL inside the shared flow).
       await stripeConnect.startConnect();
     } catch (caughtError) {
-      setStatus('error');
+      setStatus(STATUS_ERROR);
       setLoading(false);
-      setErrorMessage(caughtError?.message || 'Connection failed, try again');
+      setErrorMessage(errorMessageOrFallback(caughtError, CONNECT_FAILED_FALLBACK));
     }
   }, [stripeConnect]);
 
   const handleDismiss = useCallback(async () => {
+    // 1. Remember dismissal on the trainer doc so we do not nag again this session/cycle.
     try {
-      if (trainerUid) await dismissPayoutSetupReminderPopup(trainerUid);
+      if (trainerUid) {
+        await dismissPayoutSetupReminderPopup(trainerUid);
+      }
     } catch (caughtError) {
-      console.warn('Failed to save payment popup dismissal:', caughtError?.message || caughtError);
+      console.warn(DISMISS_WARN_PREFIX, errorMessageOrFallback(caughtError, caughtError));
     }
-    onClose?.();
+    // 2. Close the sheet.
+    if (onClose) {
+      onClose();
+    }
   }, [onClose, trainerUid]);
 
   const handleDone = useCallback(() => {
-    onClose?.();
+    if (onClose) {
+      onClose();
+    }
   }, [onClose]);
 
   const handleRefreshStatus = useCallback(async () => {
+    // 1. Ask Stripe + shared flow + Firestore for the latest status.
     setRefreshingStripe(true);
     setErrorMessage(null);
     try {
@@ -283,14 +544,15 @@ export function PayoutSetupReminderPopup({ visible, onClose, userEmail, stripeAc
       await stripeConnect.pollStatus();
       await reloadTrainerStripeFields();
     } catch (caughtError) {
-      setErrorMessage(caughtError?.message || 'Could not refresh. Try Finish setup.');
+      setErrorMessage(errorMessageOrFallback(caughtError, REFRESH_FAILED_FALLBACK));
     } finally {
       setRefreshingStripe(false);
     }
   }, [stripeConnect, reloadTrainerStripeFields]);
 
   const handleFinishSetup = useCallback(() => {
-    if (status === 'error') {
+    // 1. After an error, clear it and retry the shared flow; otherwise start Connect fresh.
+    if (status === STATUS_ERROR) {
       setErrorMessage(null);
       setStatus(null);
       stripeConnect.retry();
@@ -299,71 +561,52 @@ export function PayoutSetupReminderPopup({ visible, onClose, userEmail, stripeAc
     handleSetupNow();
   }, [handleSetupNow, status, stripeConnect]);
 
-  if (!visible) return null;
+  if (!visible) {
+    return null;
+  }
 
   const footerBusy = loading || refreshingStripe || showConnecting;
-  const showSuccess = status === 'success' || resolvedStripeStatus === 'active';
+  const showSuccess = status === STATUS_SUCCESS || resolvedStripeStatus === RESOLVED_ACTIVE;
+  const stripeWebViewIsOpen = Boolean(stripeConnect.webViewUrl);
+
+  function handleStripeWebViewClose() {
+    stripeConnect.closeWebView({ userClosed: true });
+  }
 
   return (
     <>
       <NbSheet visible={visible} onClose={handleDismiss}>
         <View style={styles.sheetBody}>
-          {showStatusPill ? <StatusPill label={SHEET_COPY.pillPending} /> : null}
+          {showStatusPill ? <PendingStatusPill label={SHEET_COPY.pillPending} /> : null}
 
           <Text style={[styles.sheetTitle, { color: colors.nbInk }]}>{SHEET_COPY.title}</Text>
           <Text style={[styles.sheetBodyText, { color: colors.nbMuted }]}>{SHEET_COPY.body}</Text>
 
-          <PayoutStepTimeline steps={steps} colors={colors} />
+          <PayoutChecklistTimeline steps={steps} colors={colors} />
 
-          {showConnecting || showVerifyingSpinner ? (
-            <View style={styles.statusBlock}>
-              <ActivityIndicator size="small" color={colors.nbInk} />
-              <Text style={[styles.statusHint, { color: colors.nbMuted }]}>
-                {showConnecting ? 'Opening secure Stripe form…' : 'Checking verification status…'}
-              </Text>
-            </View>
-          ) : null}
+          <PayoutReminderConnectingRow showConnecting={showConnecting} colors={colors} />
+          <PayoutReminderVerifyingRow showVerifying={showVerifyingSpinner} colors={colors} />
 
-          {errorMessage ? (
-            <Text style={[styles.errorText, { color: colors.error }]}>{errorMessage}</Text>
-          ) : null}
-
-          {showSuccess ? (
-            <View style={styles.successBlock}>
-              <Text style={[styles.successText, { color: colors.nbInk }]}>Payout setup complete.</Text>
-              <NbButton variant="fill" onPress={handleDone} style={styles.successBtn}>
-                Done
-              </NbButton>
-            </View>
-          ) : (
-            <View style={styles.actionRow}>
-              <NbButton
-                variant="ghost"
-                onPress={handleRefreshStatus}
-                disabled={footerBusy}
-                style={styles.actionGhost}
-              >
-                {refreshingStripe ? 'Loading…' : 'Refresh status'}
-              </NbButton>
-              <NbButton
-                variant="fill"
-                onPress={handleFinishSetup}
-                disabled={footerBusy}
-                style={styles.actionFill}
-              >
-                {loading ? 'Loading…' : 'Finish setup'}
-              </NbButton>
-            </View>
-          )}
+          <PayoutReminderFooter
+            showSuccess={showSuccess}
+            footerBusy={footerBusy}
+            refreshingStripe={refreshingStripe}
+            loading={loading}
+            errorMessage={errorMessage}
+            onDone={handleDone}
+            onRefresh={handleRefreshStatus}
+            onFinishSetup={handleFinishSetup}
+            colors={colors}
+          />
         </View>
       </NbSheet>
 
       <TrainerPayoutSetupPopup
-        visible={!!stripeConnect.webViewUrl}
+        visible={stripeWebViewIsOpen}
         url={stripeConnect.webViewUrl}
-        title="Connect with Stripe"
+        title={STRIPE_WEBVIEW_TITLE}
         isDark={isDark}
-        onClose={() => stripeConnect.closeWebView({ userClosed: true })}
+        onClose={handleStripeWebViewClose}
         onComplete={stripeConnect.handleWebViewComplete}
       />
     </>

@@ -1,9 +1,12 @@
 // Noise filter for trainer-side Firestore listeners.
-// Flow: a listener's onError hands us the error → we decide flicker versus a real bug.
-// Used by: the trainer roster listeners, so a dropped connection does not show an error screen.
+// Flow: listener onError hands us an error → we decide “flicker” vs real bug.
+// Used by: trainer roster + client-detail listeners, so a dropped connection
+// does not flash an error screen while auth or rules are still settling.
+// Read order: constants → isBenignTrainerClientFirestoreError → PLUMBING.
 
 // ===== NAMED CONSTANTS =====
 
+// Firestore error.code values we treat as “try again quietly.”
 const PERMISSION_DENIED_CODE = 'permission-denied';
 const UNAVAILABLE_CODE = 'unavailable';
 
@@ -19,33 +22,48 @@ const BENIGN_MESSAGE_SNIPPETS = [
   FAILED_TO_GET_DOCUMENT_TEXT,
 ];
 
-// ===== HELPER FUNCTIONS =====
-
 /**
- * @param {string} errorMessage
+ * True when this Firestore error is a flicker, not a bug.
+ * Auth settling, offline, and a rules re-check all throw these.
+ * @param {Error|string|null|undefined} firestoreError
  * @returns {boolean}
  */
-function messageLooksBenign(errorMessage) {
-  for (let i = 0; i < BENIGN_MESSAGE_SNIPPETS.length; i += 1) {
-    if (errorMessage.includes(BENIGN_MESSAGE_SNIPPETS[i])) return true;
+export function isBenignTrainerClientFirestoreError(firestoreError) {
+  // vocab: ?. = read .code only when the error object exists (no throw on null).
+  const errorCode = firestoreError?.code || '';
+  const errorMessage = String(firestoreError?.message || firestoreError || '');
+
+  // 1. Known benign codes (permission settling, offline / unavailable).
+  if (codeIsOnBenignList(errorCode)) {
+    return true;
+  }
+
+  // 2. Message text that matches a known flicker string.
+  if (messageLooksBenign(errorMessage)) {
+    return true;
+  }
+
+  return false;
+}
+
+// PLUMBING — skip unless debugging
+
+function codeIsOnBenignList(errorCode) {
+  for (let index = 0; index < BENIGN_FIRESTORE_CODES.length; index += 1) {
+    const benignCode = BENIGN_FIRESTORE_CODES[index];
+    if (benignCode === errorCode) {
+      return true;
+    }
   }
   return false;
 }
 
-// ===== MAIN FUNCTION =====
-
-/**
- * True when this Firestore error is a flicker, not a bug.
- * Auth settling, offline, and a rules re-check all throw these.
- * @param {Error|string} firestoreError
- * @returns {boolean}
- */
-export function isBenignTrainerClientFirestoreError(firestoreError) {
-  // vocab: ?. reads .code only when the error object exists.
-  const errorCode = firestoreError?.code || '';
-  const errorMessage = String(firestoreError?.message || firestoreError || '');
-
-  const codeIsBenign = BENIGN_FIRESTORE_CODES.includes(errorCode);
-  if (codeIsBenign) return true;
-  return messageLooksBenign(errorMessage);
+function messageLooksBenign(errorMessage) {
+  for (let index = 0; index < BENIGN_MESSAGE_SNIPPETS.length; index += 1) {
+    const snippet = BENIGN_MESSAGE_SNIPPETS[index];
+    if (errorMessage.includes(snippet)) {
+      return true;
+    }
+  }
+  return false;
 }

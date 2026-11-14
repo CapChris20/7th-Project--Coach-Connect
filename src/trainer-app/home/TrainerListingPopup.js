@@ -3,6 +3,7 @@
 // Used by: NewTraineeRequestsScreen and the trainer home pending-request card.
 //
 // vocab: NbCard / NbButton = neobrutalist shells for the modal surface and actions
+// vocab: NbNoticeSheet = Design Law sheet instead of Alert.alert
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -44,9 +45,12 @@ const ROLE_CLIENT = 'client';
 const MESSAGE_STATUS_ACCEPTED = 'accepted';
 const MESSAGE_STATUS_REJECTED = 'rejected';
 const PUSH_TYPE_REQUEST_ACCEPTED = 'client_request_accepted';
+
+// Manipulate here: modal entrance fade/scale timing
 const ENTER_ANIMATION_MS = 200;
 const ENTER_SCALE_START = 0.95;
 
+// Manipulate here: chat copy the trainer auto-sends on accept / reject
 const WORKOUT_PLAN_ACK_TEXT =
   "Got your workout plan request — I'll build your workout plan and follow up soon.";
 const GENERIC_ACK_TEXT = "Got your request — I'll follow up soon.";
@@ -64,25 +68,344 @@ const ACCEPT_ERROR_TITLE = 'Error';
 const ACCEPT_ERROR_BODY = 'Failed to add client. Please try again.';
 const REJECT_ERROR_TITLE = 'Error';
 const REJECT_ERROR_BODY = 'Failed to process rejection. Please try again.';
+const CLOSE_BUTTON_LABEL = 'Close';
+const REJECT_BUTTON_LABEL = 'Reject';
+const FALLBACK_MESSAGE_BODY = 'No message provided.';
 
 // ===== HELPER FUNCTIONS =====
 
 /**
- * Turn a stored snake_case key into Title Case for the info chips.
- * @param {*} value
- * @returns {*}
+ * One labeled value cell in the request info grid.
+ */
+function InfoCell({ label, value, labelColor, textColor }) {
+  const displayValue = value || '—';
+  return (
+    <View style={styles.infoCell}>
+      <Text style={[styles.detailLabel, { color: labelColor }]}>{label}</Text>
+      <Text style={[styles.detailValue, { color: textColor }]} numberOfLines={3}>
+        {displayValue}
+      </Text>
+    </View>
+  );
+}
+
+/**
+ * Goals / experience / equipment / limitations chips for the request card.
+ * Connection requests show Limitations; other types show TYPE instead.
+ */
+function RequestInfoGrid({ isConnectionRequest, request, modalTitle, themeColors }) {
+  const goalsValue = formatDisplayValue(request.clientGoals) || 'Not specified';
+  const experienceValue = formatDisplayValue(request.clientExperienceLevel) || 'Beginner';
+  const equipmentValue = formatDisplayValue(request.clientEquipment) || 'None';
+  const limitationsValue = formatDisplayValue(request.clientLimitations) || 'None';
+
+  if (isConnectionRequest) {
+    return (
+      <View style={styles.infoGrid}>
+        <InfoCell label="GOALS" value={goalsValue} labelColor={themeColors.label} textColor={themeColors.text} />
+        <InfoCell label="EXPERIENCE" value={experienceValue} labelColor={themeColors.label} textColor={themeColors.text} />
+        <InfoCell label="EQUIPMENT" value={equipmentValue} labelColor={themeColors.label} textColor={themeColors.text} />
+        <InfoCell label="LIMITATIONS" value={limitationsValue} labelColor={themeColors.label} textColor={themeColors.text} />
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.infoGrid}>
+      <InfoCell label="TYPE" value={modalTitle} labelColor={themeColors.label} textColor={themeColors.text} />
+      <InfoCell label="GOALS" value={goalsValue} labelColor={themeColors.label} textColor={themeColors.text} />
+      <InfoCell label="EXPERIENCE" value={experienceValue} labelColor={themeColors.label} textColor={themeColors.text} />
+      <InfoCell label="EQUIPMENT" value={equipmentValue} labelColor={themeColors.label} textColor={themeColors.text} />
+    </View>
+  );
+}
+
+/**
+ * Accept / Reject row — shows a spinner slot while that action is in flight.
+ */
+function AcceptRejectButtonRow({
+  acceptBusy,
+  rejectBusy,
+  anyBusy,
+  acceptLabel,
+  themeColors,
+  onAcceptPress,
+  onRejectPress,
+}) {
+  let acceptSlot;
+  if (acceptBusy) {
+    acceptSlot = (
+      <View style={styles.busySlot}>
+        <ActivityIndicator color={themeColors.text} size="small" />
+      </View>
+    );
+  } else {
+    acceptSlot = (
+      <NbButton variant="brand" onPress={onAcceptPress} disabled={anyBusy} style={styles.flexBtn}>
+        {acceptLabel}
+      </NbButton>
+    );
+  }
+
+  let rejectSlot;
+  if (rejectBusy) {
+    rejectSlot = (
+      <View style={styles.busySlot}>
+        <ActivityIndicator color={themeColors.text} size="small" />
+      </View>
+    );
+  } else {
+    rejectSlot = (
+      <NbButton variant="plain" onPress={onRejectPress} disabled={anyBusy} style={styles.flexBtn}>
+        {REJECT_BUTTON_LABEL}
+      </NbButton>
+    );
+  }
+
+  return (
+    <View style={styles.buttonGroup}>
+      {acceptSlot}
+      {rejectSlot}
+    </View>
+  );
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Modal to accept, acknowledge, or reject one pending client request.
+ * Hook order frozen: theme → busy flags → notice → enter animation → reset busy.
+ *
+ * @param {{
+ *   visible: boolean,
+ *   clientRequest: object,
+ *   trainerUid: string,
+ *   onClose: Function,
+ *   onClientAdded: Function,
+ *   onRequestRejected?: Function,
+ * }} props
+ */
+const TrainerListingPopup = ({
+  visible,
+  clientRequest,
+  trainerUid,
+  onClose,
+  onClientAdded,
+  /** Called after a successful reject (e.g. refresh pending list). Accept still uses onClientAdded. */
+  onRequestRejected,
+}) => {
+  // vocab: useTheme = light/dark flag for Design Law surfaces
+  const { isDark } = useTheme();
+  const [acceptBusy, setAcceptBusy] = useState(false);
+  const [rejectBusy, setRejectBusy] = useState(false);
+  // vocab: notice = NbNoticeSheet payload — title / message / optional Retry
+  const [notice, setNotice] = useState(null);
+
+  const hasRequest = !!clientRequest;
+  const request = clientRequest || {};
+  const requestType = request.requestType || CLIENT_REQUEST_TYPES.CONNECTION;
+  const isConnectionRequest = requestType === CLIENT_REQUEST_TYPES.CONNECTION;
+  const modalTitle = request.requestTitle || clientRequestTypeLabel(requestType);
+
+  // Name button / section labels before JSX.
+  let acceptLabel = 'Acknowledge';
+  if (isConnectionRequest) {
+    acceptLabel = 'Accept client';
+  }
+  let messageSectionLabel = 'REQUEST DETAILS';
+  if (isConnectionRequest) {
+    messageSectionLabel = 'MESSAGE';
+  }
+  const anyBusy = acceptBusy || rejectBusy;
+
+  // vocab: useMemo = rebuild theme colors only when isDark flips
+  const themeColors = useMemo(() => buildListingThemeColors(isDark), [isDark]);
+
+  // Modal entrance animation: fade + scale (0.95 → 1)
+  // vocab: Animated.Value = RN driver for opacity/scale; interpolate maps 0..1 → scale
+  const enterProgress = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (!visible) return;
+    enterProgress.setValue(0);
+    Animated.timing(enterProgress, {
+      toValue: 1,
+      duration: ENTER_ANIMATION_MS,
+      useNativeDriver: true,
+    }).start();
+  }, [visible, enterProgress]);
+
+  // Fresh open of a request → clear busy flags so Retry isn’t stuck disabled.
+  useEffect(() => {
+    if (!visible || !clientRequest?.messageId) return;
+    setAcceptBusy(false);
+    setRejectBusy(false);
+  }, [visible, clientRequest?.messageId]);
+
+  // After hooks are declared, it's safe to bail out.
+  if (!visible || !hasRequest) return null;
+
+  /**
+   * Accept / acknowledge the open request.
+   * Flow: 1. busy on  2. run accept pipeline  3. notice on fail  4. busy off
+   */
+  const handleAddClient = async () => {
+    // 1. Lock the Accept button while Firestore / link / chat run.
+    setAcceptBusy(true);
+    try {
+      // 2. Roles → already-linked ack OR new connection link.
+      await runTrainerAcceptClientRequest({
+        request,
+        trainerUid,
+        isConnectionRequest,
+        requestType,
+        onClientAdded,
+        onClose,
+      });
+    } catch (acceptError) {
+      // 3. Show Design Law notice with Retry that re-calls this handler.
+      console.error('Error adding client:', acceptError);
+      setNotice({
+        title: ACCEPT_ERROR_TITLE,
+        message: ACCEPT_ERROR_BODY,
+        cancelLabel: 'Cancel',
+        confirmLabel: 'Retry',
+        onConfirm: () => {
+          setNotice(null);
+          handleAddClient();
+        },
+      });
+    } finally {
+      // 4. Always clear busy so the trainer can try again.
+      setAcceptBusy(false);
+    }
+  };
+
+  /**
+   * Reject the open request.
+   * Flow: 1. need messageId  2. busy on  3. mark rejected + decline chat  4. notice on fail
+   */
+  const handleRejectClient = async () => {
+    // 1. Without a message id we cannot update Firestore status — stop early.
+    if (!request.messageId) {
+      setNotice({ title: MISSING_MESSAGE_ID_TITLE, message: MISSING_MESSAGE_ID_BODY });
+      return;
+    }
+
+    // 2. Lock Reject while status + decline message write.
+    setRejectBusy(true);
+    try {
+      // 3. Mark rejected, send decline chat, refresh parent list.
+      await runTrainerRejectClientRequest({
+        request,
+        trainerUid,
+        isConnectionRequest,
+        onRequestRejected,
+        onClose,
+      });
+    } catch (rejectError) {
+      console.error('Error rejecting client:', rejectError);
+      setNotice({ title: REJECT_ERROR_TITLE, message: REJECT_ERROR_BODY });
+    } finally {
+      setRejectBusy(false);
+    }
+  };
+
+  // Named locals for the modal tree.
+  const overlayBackground = isDark ? 'rgba(0,0,0,0.72)' : 'rgba(0,0,0,0.32)';
+  const enterScale = enterProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [ENTER_SCALE_START, 1],
+  });
+  const messageBody = request.message || FALLBACK_MESSAGE_BODY;
+  const noticeIsVisible = !!notice;
+  const noticeTitle = notice?.title || '';
+  const noticeConfirmLabel = notice?.confirmLabel || 'OK';
+
+  return (
+    <Modal visible={visible} transparent statusBarTranslucent animationType="none" onRequestClose={onClose}>
+      <View style={[styles.modalOverlay, { backgroundColor: overlayBackground }]}>
+        <Animated.View
+          style={{
+            width: '100%',
+            paddingHorizontal: 18,
+            opacity: enterProgress,
+            transform: [{ scale: enterScale }],
+          }}
+        >
+          <NbCard style={styles.modalContainer}>
+            <Text style={[styles.modalTitle, { color: themeColors.text }]}>{modalTitle}</Text>
+            <Text style={[styles.clientName, { color: themeColors.clientName }]}>{request.clientName}</Text>
+
+            <RequestInfoGrid
+              isConnectionRequest={isConnectionRequest}
+              request={request}
+              modalTitle={modalTitle}
+              themeColors={themeColors}
+            />
+
+            <View
+              style={[
+                styles.messagePreview,
+                { backgroundColor: themeColors.glassBg, borderColor: themeColors.glassBorder },
+              ]}
+            >
+              <Text style={[styles.messageLabel, { color: themeColors.label }]}>{messageSectionLabel}</Text>
+              <Text style={[styles.messageText, { color: themeColors.text }]} numberOfLines={6}>
+                {messageBody}
+              </Text>
+            </View>
+
+            <AcceptRejectButtonRow
+              acceptBusy={acceptBusy}
+              rejectBusy={rejectBusy}
+              anyBusy={anyBusy}
+              acceptLabel={acceptLabel}
+              themeColors={themeColors}
+              onAcceptPress={handleAddClient}
+              onRejectPress={handleRejectClient}
+            />
+
+            <TouchableOpacity style={styles.closeButton} onPress={onClose} disabled={anyBusy} activeOpacity={0.8}>
+              <Text style={[styles.closeButtonText, { color: themeColors.muted }]}>{CLOSE_BUTTON_LABEL}</Text>
+            </TouchableOpacity>
+          </NbCard>
+        </Animated.View>
+      </View>
+      <NbNoticeSheet
+        visible={noticeIsVisible}
+        onClose={() => setNotice(null)}
+        title={noticeTitle}
+        message={notice?.message}
+        confirmLabel={noticeConfirmLabel}
+        cancelLabel={notice?.cancelLabel}
+        onConfirm={notice?.onConfirm}
+      />
+    </Modal>
+  );
+};
+
+export default TrainerListingPopup;
+
+// ===== PLUMBING — skip unless debugging =====
+
+/**
+ * Turn snake_case profile strings into Title Case for the info cells.
+ * Letters of the stored value stay the same; only display changes.
  */
 function formatDisplayValue(value) {
   if (!value || typeof value !== 'string') return value;
   const words = value.split('_');
-  const titledWords = words.map((word) => word.charAt(0).toUpperCase() + word.slice(1));
+  const titledWords = [];
+  for (let index = 0; index < words.length; index += 1) {
+    const word = words[index];
+    titledWords.push(word.charAt(0).toUpperCase() + word.slice(1));
+  }
   return titledWords.join(' ');
 }
 
 /**
- * Best-effort name for the push title. Falls back to "Your coach" if Firestore is slow.
- * @param {string} trainerUid
- * @returns {Promise<string>}
+ * Read the trainer’s public name for the accept push notification.
+ * Firestore path letters frozen: users/{trainerUid}
  */
 async function loadTrainerDisplayName(trainerUid) {
   try {
@@ -95,15 +418,14 @@ async function loadTrainerDisplayName(trainerUid) {
       trainerData.firstName ||
       DEFAULT_TRAINER_DISPLAY_NAME
     );
-  } catch (_loadError) {
+  } catch (_trainerNameError) {
     return DEFAULT_TRAINER_DISPLAY_NAME;
   }
 }
 
 /**
- * Notify the client that their request was accepted. Best-effort — never blocks the accept flow.
- * @param {{ clientUid: string, trainerUid: string, conversationId?: string, messageId?: string }} args
- * @returns {Promise<void>}
+ * Best-effort push to the client that their request was accepted.
+ * Failures are logged and swallowed so accept still completes.
  */
 async function notifyClientRequestAccepted({ clientUid, trainerUid, conversationId, messageId }) {
   try {
@@ -124,10 +446,7 @@ async function notifyClientRequestAccepted({ clientUid, trainerUid, conversation
 }
 
 /**
- * Both users must exist and hold the expected roles before we write the link.
- * @param {string} trainerUid
- * @param {string} clientUid
- * @returns {Promise<void>}
+ * Both users must exist with the expected roles before we link or ack.
  */
 async function assertTrainerAndClientRoles(trainerUid, clientUid) {
   const trainerDoc = await getDoc(doc(db, 'users', trainerUid));
@@ -140,9 +459,7 @@ async function assertTrainerAndClientRoles(trainerUid, clientUid) {
 }
 
 /**
- * Acknowledgment reply for non-connection requests (workout plan, etc.).
- * @param {string} requestType
- * @returns {string}
+ * Chat text for non-connection accepts (workout plan, etc.).
  */
 function acknowledgmentMessageForType(requestType) {
   if (requestType === CLIENT_REQUEST_TYPES.WORKOUT_PLAN) return WORKOUT_PLAN_ACK_TEXT;
@@ -150,9 +467,8 @@ function acknowledgmentMessageForType(requestType) {
 }
 
 /**
- * Already linked, or a non-connection request: mark accepted, maybe send an ack, push, then close.
- * @param {object} args
- * @returns {Promise<void>}
+ * Already-linked client OR non-connection request:
+ * mark message accepted, optional ack chat, push, then close.
  */
 async function finishAlreadyLinkedOrNonConnectionAccept({
   request,
@@ -192,9 +508,8 @@ async function finishAlreadyLinkedOrNonConnectionAccept({
 }
 
 /**
- * Brand-new connection: server link → welcome chat → sync profile → push.
- * @param {object} args
- * @returns {Promise<void>}
+ * Brand-new connection request: POST link → welcome chat → sync roster → push → close.
+ * Firestore relationship path letters frozen under trainer_clients.
  */
 async function finishNewConnectionAccept({ request, trainerUid, onClientAdded, onClose }) {
   await postAcceptTrainerClient({
@@ -231,9 +546,7 @@ async function finishNewConnectionAccept({ request, trainerUid, onClientAdded, o
 }
 
 /**
- * Build the dark/light color bag used by the modal surface from nb tokens.
- * @param {boolean} isDark
- * @returns {object}
+ * Theme map for this modal. Keys stay frozen for InfoCell / message preview.
  */
 function buildListingThemeColors(isDark) {
   const palette = isDark ? darkColors : lightColors;
@@ -251,269 +564,68 @@ function buildListingThemeColors(isDark) {
 }
 
 /**
- * One labeled chip in the request info grid.
- * @param {{ label: string, value: *, labelColor: string, textColor: string }} props
+ * Accept pipeline entry: roles → already linked? → ack path OR new connection path.
  */
-function InfoCell({ label, value, labelColor, textColor }) {
-  return (
-    <View style={styles.infoCell}>
-      <Text style={[styles.detailLabel, { color: labelColor }]}>{label}</Text>
-      <Text style={[styles.detailValue, { color: textColor }]} numberOfLines={3}>
-        {value || '—'}
-      </Text>
-    </View>
+async function runTrainerAcceptClientRequest({
+  request,
+  trainerUid,
+  isConnectionRequest,
+  requestType,
+  onClientAdded,
+  onClose,
+}) {
+  await assertTrainerAndClientRoles(trainerUid, request.clientUid);
+
+  // vocab: trainer_clients/{trainer}/clients/{client} = link doc; exists ⇒ already rostered
+  const relationshipDoc = await getDoc(
+    doc(db, `trainer_clients/${trainerUid}/clients/${request.clientUid}`),
   );
-}
+  const clientAlreadyLinked = relationshipDoc.exists();
 
-/**
- * Connection requests show four chips; other request types drop Limitations and add Type.
- * @param {object} props
- */
-function RequestInfoGrid({ isConnectionRequest, request, modalTitle, themeColors }) {
-  const goalsValue = formatDisplayValue(request.clientGoals) || 'Not specified';
-  const experienceValue = formatDisplayValue(request.clientExperienceLevel) || 'Beginner';
-  const equipmentValue = formatDisplayValue(request.clientEquipment) || 'None';
-  const limitationsValue = formatDisplayValue(request.clientLimitations) || 'None';
-
-  if (isConnectionRequest) {
-    return (
-      <View style={styles.infoGrid}>
-        <InfoCell label="GOALS" value={goalsValue} labelColor={themeColors.label} textColor={themeColors.text} />
-        <InfoCell label="EXPERIENCE" value={experienceValue} labelColor={themeColors.label} textColor={themeColors.text} />
-        <InfoCell label="EQUIPMENT" value={equipmentValue} labelColor={themeColors.label} textColor={themeColors.text} />
-        <InfoCell label="LIMITATIONS" value={limitationsValue} labelColor={themeColors.label} textColor={themeColors.text} />
-      </View>
-    );
+  if (clientAlreadyLinked || !isConnectionRequest) {
+    await finishAlreadyLinkedOrNonConnectionAccept({
+      request,
+      trainerUid,
+      isConnectionRequest,
+      requestType,
+      onClientAdded,
+      onClose,
+    });
+    return;
   }
 
-  return (
-    <View style={styles.infoGrid}>
-      <InfoCell label="TYPE" value={modalTitle} labelColor={themeColors.label} textColor={themeColors.text} />
-      <InfoCell label="GOALS" value={goalsValue} labelColor={themeColors.label} textColor={themeColors.text} />
-      <InfoCell label="EXPERIENCE" value={experienceValue} labelColor={themeColors.label} textColor={themeColors.text} />
-      <InfoCell label="EQUIPMENT" value={equipmentValue} labelColor={themeColors.label} textColor={themeColors.text} />
-    </View>
-  );
+  await finishNewConnectionAccept({ request, trainerUid, onClientAdded, onClose });
 }
 
-// ===== MAIN FUNCTION =====
-
 /**
- * Modal that lets a trainer accept or reject one pending client request.
- * @param {{ visible: boolean, clientRequest: object|null, trainerUid: string, onClose: Function, onClientAdded: Function, onRequestRejected?: Function }} props
+ * Reject pipeline: mark message rejected → decline chat → parent refresh → close.
  */
-const TrainerListingPopup = ({
-  visible,
-  clientRequest,
+async function runTrainerRejectClientRequest({
+  request,
   trainerUid,
-  onClose,
-  onClientAdded,
-  /** Called after a successful reject (e.g. refresh pending list). Accept still uses onClientAdded. */
+  isConnectionRequest,
   onRequestRejected,
-}) => {
-  const { isDark } = useTheme();
-  const [acceptBusy, setAcceptBusy] = useState(false);
-  const [rejectBusy, setRejectBusy] = useState(false);
-  // vocab: notice = NbNoticeSheet payload — Design Law instead of Alert.alert
-  const [notice, setNotice] = useState(null);
-
-  const hasRequest = !!clientRequest;
-  const request = clientRequest || {};
-  const requestType = request.requestType || CLIENT_REQUEST_TYPES.CONNECTION;
-  const isConnectionRequest = requestType === CLIENT_REQUEST_TYPES.CONNECTION;
-  const modalTitle = request.requestTitle || clientRequestTypeLabel(requestType);
-  const acceptLabel = isConnectionRequest ? 'Accept client' : 'Acknowledge';
-  const messageSectionLabel = isConnectionRequest ? 'MESSAGE' : 'REQUEST DETAILS';
-  const anyBusy = acceptBusy || rejectBusy;
-
-  const themeColors = useMemo(() => buildListingThemeColors(isDark), [isDark]);
-
-  // Modal entrance animation: fade + scale (0.95 -> 1)
-  const enterProgress = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    if (!visible) return;
-    enterProgress.setValue(0);
-    Animated.timing(enterProgress, {
-      toValue: 1,
-      duration: ENTER_ANIMATION_MS,
-      useNativeDriver: true,
-    }).start();
-  }, [visible, enterProgress]);
-
-  useEffect(() => {
-    if (!visible || !clientRequest?.messageId) return;
-    setAcceptBusy(false);
-    setRejectBusy(false);
-  }, [visible, clientRequest?.messageId]);
-
-  // After hooks are declared, it's safe to bail out.
-  if (!visible || !hasRequest) return null;
-
-  const handleAddClient = async () => {
-    setAcceptBusy(true);
-    try {
-      // 1. Confirm both accounts exist with the right roles.
-      await assertTrainerAndClientRoles(trainerUid, request.clientUid);
-
-      // 2. Check whether this trainer↔client link already exists.
-      const relationshipDoc = await getDoc(
-        doc(db, `trainer_clients/${trainerUid}/clients/${request.clientUid}`),
-      );
-      const alreadyLinked = relationshipDoc.exists();
-
-      // 3a. Already linked (or not a connection request) → mark accepted / ack only.
-      if (alreadyLinked || !isConnectionRequest) {
-        await finishAlreadyLinkedOrNonConnectionAccept({
-          request,
-          trainerUid,
-          isConnectionRequest,
-          requestType,
-          onClientAdded,
-          onClose,
-        });
-        setAcceptBusy(false);
-        return;
-      }
-
-      // 3b. Brand-new connection → server write + welcome chat + sync.
-      await finishNewConnectionAccept({
-        request,
-        trainerUid,
-        onClientAdded,
-        onClose,
-      });
-    } catch (acceptError) {
-      console.error('Error adding client:', acceptError);
-      setNotice({
-        title: ACCEPT_ERROR_TITLE,
-        message: ACCEPT_ERROR_BODY,
-        cancelLabel: 'Cancel',
-        confirmLabel: 'Retry',
-        onConfirm: () => {
-          setNotice(null);
-          handleAddClient();
-        },
-      });
-    } finally {
-      setAcceptBusy(false);
-    }
-  };
-
-  const handleRejectClient = async () => {
-    if (!request.messageId) {
-      setNotice({ title: MISSING_MESSAGE_ID_TITLE, message: MISSING_MESSAGE_ID_BODY });
-      return;
-    }
-
-    setRejectBusy(true);
-    try {
-      // 1. Mark the request message rejected in Firestore.
-      await updateMessageStatus(request.messageId, {
-        status: MESSAGE_STATUS_REJECTED,
-        responseTimestamp: serverTimestamp(),
-      });
-
-      // 2. Best-effort decline chat so the client hears something human.
-      try {
-        const conversationId = await getOrCreateConversation(request.clientUid, trainerUid);
-        const declineText = isConnectionRequest ? DECLINE_CONNECTION_TEXT : DECLINE_OTHER_TEXT;
-        await sendMessage(conversationId, trainerUid, declineText);
-      } catch (messageError) {
-        console.warn('Reject notification message skipped:', messageError?.message || messageError);
-      }
-
-      // 3. Let the parent refresh its pending list, then close.
-      await onRequestRejected?.();
-      onClose();
-    } catch (rejectError) {
-      console.error('Error rejecting client:', rejectError);
-      setNotice({ title: REJECT_ERROR_TITLE, message: REJECT_ERROR_BODY });
-    } finally {
-      setRejectBusy(false);
-    }
-  };
-
-  const overlayBackground = isDark ? 'rgba(0,0,0,0.72)' : 'rgba(0,0,0,0.32)';
-  const enterScale = enterProgress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [ENTER_SCALE_START, 1],
+  onClose,
+}) {
+  await updateMessageStatus(request.messageId, {
+    status: MESSAGE_STATUS_REJECTED,
+    responseTimestamp: serverTimestamp(),
   });
-  const messageBody = request.message || 'No message provided.';
 
-  return (
-    <Modal visible={visible} transparent statusBarTranslucent animationType="none" onRequestClose={onClose}>
-      <View style={[styles.modalOverlay, { backgroundColor: overlayBackground }]}>
-        <Animated.View
-          style={{
-            width: '100%',
-            paddingHorizontal: 18,
-            opacity: enterProgress,
-            transform: [{ scale: enterScale }],
-          }}
-        >
-          <NbCard style={styles.modalContainer}>
-            <Text style={[styles.modalTitle, { color: themeColors.text }]}>{modalTitle}</Text>
-            <Text style={[styles.clientName, { color: themeColors.clientName }]}>{request.clientName}</Text>
+  try {
+    const conversationId = await getOrCreateConversation(request.clientUid, trainerUid);
+    let declineText = DECLINE_OTHER_TEXT;
+    if (isConnectionRequest) {
+      declineText = DECLINE_CONNECTION_TEXT;
+    }
+    await sendMessage(conversationId, trainerUid, declineText);
+  } catch (declineMessageError) {
+    console.warn('Reject notification message skipped:', declineMessageError?.message || declineMessageError);
+  }
 
-            <RequestInfoGrid
-              isConnectionRequest={isConnectionRequest}
-              request={request}
-              modalTitle={modalTitle}
-              themeColors={themeColors}
-            />
-
-            <View
-              style={[
-                styles.messagePreview,
-                { backgroundColor: themeColors.glassBg, borderColor: themeColors.glassBorder },
-              ]}
-            >
-              <Text style={[styles.messageLabel, { color: themeColors.label }]}>{messageSectionLabel}</Text>
-              <Text style={[styles.messageText, { color: themeColors.text }]} numberOfLines={6}>
-                {messageBody}
-              </Text>
-            </View>
-
-            <View style={styles.buttonGroup}>
-              {acceptBusy ? (
-                <View style={styles.busySlot}>
-                  <ActivityIndicator color={themeColors.text} size="small" />
-                </View>
-              ) : (
-                <NbButton variant="brand" onPress={handleAddClient} disabled={anyBusy} style={styles.flexBtn}>
-                  {acceptLabel}
-                </NbButton>
-              )}
-
-              {rejectBusy ? (
-                <View style={styles.busySlot}>
-                  <ActivityIndicator color={themeColors.text} size="small" />
-                </View>
-              ) : (
-                <NbButton variant="plain" onPress={handleRejectClient} disabled={anyBusy} style={styles.flexBtn}>
-                  Reject
-                </NbButton>
-              )}
-            </View>
-
-            <TouchableOpacity style={styles.closeButton} onPress={onClose} disabled={anyBusy} activeOpacity={0.8}>
-              <Text style={[styles.closeButtonText, { color: themeColors.muted }]}>Close</Text>
-            </TouchableOpacity>
-          </NbCard>
-        </Animated.View>
-      </View>
-      <NbNoticeSheet
-        visible={!!notice}
-        onClose={() => setNotice(null)}
-        title={notice?.title || ''}
-        message={notice?.message}
-        confirmLabel={notice?.confirmLabel || 'OK'}
-        cancelLabel={notice?.cancelLabel}
-        onConfirm={notice?.onConfirm}
-      />
-    </Modal>
-  );
-};
+  await onRequestRejected?.();
+  onClose();
+}
 
 const styles = StyleSheet.create({
   modalOverlay: {
@@ -607,5 +719,3 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
 });
-
-export default TrainerListingPopup;

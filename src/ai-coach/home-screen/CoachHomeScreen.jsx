@@ -1,7 +1,7 @@
 // Design Law coach home — fill hero → one-tap / try asking → composer.
 // Flow: load today's logs → hourly suggestions → tap row/hero/composer → open a chat (text or photo).
 // Used as: AI Coach tab. Past chats open from the header.
-// PNG law: screens/ai-coach/01–02.
+// PNG law: screens/ai-coach/01–02. Variation 3: layout (no hooks) above; exported screen loads data below.
 
 import React, { useState, useEffect, useRef } from 'react';
 import {
@@ -65,7 +65,7 @@ import { getAuroraHeroGreetingPhrase } from '../../for-both/home-cards/HomeTopBa
 
 // ===== NAMED CONSTANTS =====
 
-const { width: SW, height: SH } = Dimensions.get('window');
+const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
 const SECONDS_PER_MINUTE = 60;
 const MS_PER_SECOND = 1000;
@@ -131,40 +131,99 @@ const COACH_ACTIONS = [
 
 function iconForPrompt(text) {
   const promptText = String(text || '').toLowerCase();
-  if (promptText.includes('nutrition') || promptText.includes('habit')) return 'restaurant-outline';
-  if (promptText.includes('full-body') || promptText.includes('upper/lower') || promptText.includes('schedule')) return 'body-outline';
-  if (promptText.includes('workout') || promptText.includes('hypertrophy') || promptText.includes('split') || promptText.includes('squat')) return 'barbell-outline';
-  if (promptText.includes('protein') || promptText.includes('eat') || promptText.includes('macro') || promptText.includes('meal') || promptText.includes('vegan') || promptText.includes('keto')) return 'nutrition-outline';
-  if (promptText.includes('supplement') || promptText.includes('creatine')) return 'flask-outline';
+  const isNutritionHabit = promptText.includes('nutrition') || promptText.includes('habit');
+  if (isNutritionHabit) return 'restaurant-outline';
+
+  const isScheduleSplit =
+    promptText.includes('full-body') ||
+    promptText.includes('upper/lower') ||
+    promptText.includes('schedule');
+  if (isScheduleSplit) return 'body-outline';
+
+  const isLiftWork =
+    promptText.includes('workout') ||
+    promptText.includes('hypertrophy') ||
+    promptText.includes('split') ||
+    promptText.includes('squat');
+  if (isLiftWork) return 'barbell-outline';
+
+  const isFoodMacros =
+    promptText.includes('protein') ||
+    promptText.includes('eat') ||
+    promptText.includes('macro') ||
+    promptText.includes('meal') ||
+    promptText.includes('vegan') ||
+    promptText.includes('keto');
+  if (isFoodMacros) return 'nutrition-outline';
+
+  const isSupplement = promptText.includes('supplement') || promptText.includes('creatine');
+  if (isSupplement) return 'flask-outline';
   if (promptText.includes('recover')) return 'bed-outline';
-  if (promptText.includes('research') || promptText.includes('skinny fat') || promptText.includes('recomp') || promptText.includes('body')) return 'body-outline';
-  if (promptText.includes('progressive') || promptText.includes('overload')) return 'trending-up-outline';
-  if (promptText.includes('skipped') || promptText.includes('back')) return 'refresh-outline';
-  if (promptText.includes('calorie') || promptText.includes('fat-loss') || promptText.includes('deficit')) return 'flame-outline';
-  if (promptText.includes('conditioning') || promptText.includes('athletic')) return 'flash-outline';
-  if (promptText.includes('drink') || promptText.includes('zero-sugar')) return 'water-outline';
+
+  const isBodyResearch =
+    promptText.includes('research') ||
+    promptText.includes('skinny fat') ||
+    promptText.includes('recomp') ||
+    promptText.includes('body');
+  if (isBodyResearch) return 'body-outline';
+
+  const isProgression = promptText.includes('progressive') || promptText.includes('overload');
+  if (isProgression) return 'trending-up-outline';
+
+  const isComeback = promptText.includes('skipped') || promptText.includes('back');
+  if (isComeback) return 'refresh-outline';
+
+  const isCalorieCut =
+    promptText.includes('calorie') ||
+    promptText.includes('fat-loss') ||
+    promptText.includes('deficit');
+  if (isCalorieCut) return 'flame-outline';
+
+  const isConditioning = promptText.includes('conditioning') || promptText.includes('athletic');
+  if (isConditioning) return 'flash-outline';
+
+  const isDrink = promptText.includes('drink') || promptText.includes('zero-sugar');
+  if (isDrink) return 'water-outline';
   return 'sparkles-outline';
 }
 
 function rimForPrompt(text) {
   const promptText = String(text || '').toLowerCase();
-  if (promptText.includes('nutrition') || promptText.includes('habit') || promptText.includes('protein') || promptText.includes('meal') || promptText.includes('macro') || promptText.includes('eat') || promptText.includes('cal')) {
-    return HOME_STAT_SORENESS_GRADIENT;
-  }
-  if (promptText.includes('workout') || promptText.includes('split') || promptText.includes('training') || promptText.includes('full-body') || promptText.includes('schedule')) {
-    return HOME_STAT_WORKOUT_GRADIENT;
-  }
-  if (promptText.includes('recover') || promptText.includes('sleep') || promptText.includes('rest')) {
-    return HOME_STAT_SLEEP_GRADIENT;
-  }
-  if (promptText.includes('search') || promptText.includes('web') || promptText.includes('research')) {
-    return HOME_STAT_WATER_GRADIENT;
-  }
+  const isFuelTopic =
+    promptText.includes('nutrition') ||
+    promptText.includes('habit') ||
+    promptText.includes('protein') ||
+    promptText.includes('meal') ||
+    promptText.includes('macro') ||
+    promptText.includes('eat') ||
+    promptText.includes('cal');
+  if (isFuelTopic) return HOME_STAT_SORENESS_GRADIENT;
+
+  const isTrainTopic =
+    promptText.includes('workout') ||
+    promptText.includes('split') ||
+    promptText.includes('training') ||
+    promptText.includes('full-body') ||
+    promptText.includes('schedule');
+  if (isTrainTopic) return HOME_STAT_WORKOUT_GRADIENT;
+
+  const isRecoverTopic =
+    promptText.includes('recover') ||
+    promptText.includes('sleep') ||
+    promptText.includes('rest');
+  if (isRecoverTopic) return HOME_STAT_SLEEP_GRADIENT;
+
+  const isWebTopic =
+    promptText.includes('search') ||
+    promptText.includes('web') ||
+    promptText.includes('research');
+  if (isWebTopic) return HOME_STAT_WATER_GRADIENT;
+
   return HOME_STAT_SORENESS_GRADIENT;
 }
 
-// ─── Theme tokens (nb surfaces + cool gradients — see docs/design/DESIGN.md) ──
-const DARK = {
+// ===== THEME TOKENS — nb surfaces for dark / light coach home =====
+const darkCoachHomeTheme = {
   bg: darkColors.nbBackground,
   secondaryBg: darkColors.nbSurface,
   surfaceChip: darkColors.nbSurfaceChip,
@@ -182,7 +241,7 @@ const DARK = {
   chipBorder: darkColors.nbBorder,
 };
 
-const LIGHT = {
+const lightCoachHomeTheme = {
   bg: lightColors.nbBackground,
   secondaryBg: lightColors.nbSurface,
   surfaceChip: lightColors.nbSurfaceChip,
@@ -210,7 +269,7 @@ const FALLBACK_SUGGESTIONS = [
   'Help me choose what to do right now: train, eat, recover, or plan.',
 ];
 
-function uniquePrompts(prompts, limit) {
+function uniquePromptList(prompts, limit) {
   const unique = [];
   for (const item of prompts) {
     if (!item) continue;
@@ -222,19 +281,22 @@ function uniquePrompts(prompts, limit) {
 }
 
 function promptsForGoal(goal) {
-  if (goal.includes('lose') || goal.includes('fat')) {
+  const wantsFatLoss = goal.includes('lose') || goal.includes('fat');
+  if (wantsFatLoss) {
     return [
       'Based on my current stats, design a fat‑loss week that keeps my lifts moving up.',
       'How aggressive should my calorie deficit be so I lose fat without killing performance?',
     ];
   }
-  if (goal.includes('muscle') || goal.includes('build')) {
+  const wantsMuscle = goal.includes('muscle') || goal.includes('build');
+  if (wantsMuscle) {
     return [
       'Lay out a progression plan so I’m adding muscle over the next 4–6 weeks.',
       'Given my goal, what should my training split and progression look like this week?',
     ];
   }
-  if (goal.includes('athletic') || goal.includes('performance')) {
+  const wantsPerformance = goal.includes('athletic') || goal.includes('performance');
+  if (wantsPerformance) {
     return [
       'Design a strength + conditioning week that actually improves performance, not just crushes me.',
       'How do I add conditioning without wrecking my main lifts?',
@@ -294,74 +356,150 @@ function promptsForTopics(topTopics) {
   return prompts;
 }
 
+function promptAlreadyInPool(pool, fallback) {
+  const fallbackLower = String(fallback).toLowerCase();
+  for (let index = 0; index < pool.length; index += 1) {
+    const promptLower = String(pool[index]).toLowerCase();
+    if (promptLower === fallbackLower) return true;
+  }
+  return false;
+}
+
 function promptsWithFallbacks(contextual) {
-  const pool = [...contextual];
-  for (const fallback of FALLBACK_SUGGESTIONS) {
-    const alreadyListed = pool.some(
-      (prompt) => String(prompt).toLowerCase() === String(fallback).toLowerCase(),
-    );
-    if (alreadyListed) continue;
+  const pool = [];
+  for (let index = 0; index < contextual.length; index += 1) {
+    pool.push(contextual[index]);
+  }
+  for (let index = 0; index < FALLBACK_SUGGESTIONS.length; index += 1) {
+    const fallback = FALLBACK_SUGGESTIONS[index];
+    if (promptAlreadyInPool(pool, fallback)) continue;
     pool.push(fallback);
   }
-  return uniquePrompts(pool, SUGGESTION_LIMIT);
+  return uniquePromptList(pool, SUGGESTION_LIMIT);
 }
 
-function normalizeTextSignal(s) {
-  return String(s || '')
-    .toLowerCase()
-    .replace(/[\u2019']/g, "'")
-    .replace(/[^a-z0-9\s-]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+function normalizeTextSignal(rawText) {
+  const asString = String(rawText || '');
+  const lower = asString.toLowerCase();
+  const straightQuotes = lower.replace(/[\u2019']/g, "'");
+  const lettersOnly = straightQuotes.replace(/[^a-z0-9\s-]/g, ' ');
+  const singleSpaces = lettersOnly.replace(/\s+/g, ' ');
+  return singleSpaces.trim();
 }
 
-function addTopicScore(score, topic, weight) {
-  score.set(topic, (score.get(topic) || 0) + weight);
+function addTopicScore(topicScoreMap, topic, weight) {
+  const previousScore = topicScoreMap.get(topic) || 0;
+  topicScoreMap.set(topic, previousScore + weight);
 }
 
-function inferTopTopicsFromSessions(sessions = []) {
-  const score = new Map();
+function sessionChatHaystack(session) {
+  if (!session) return '';
+  const parts = [];
+  if (session.title) parts.push(session.title);
+  if (session.lastUserMessage) parts.push(session.lastUserMessage);
+  if (session.lastAssistantMessage) parts.push(session.lastAssistantMessage);
+  if (parts.length === 0) return '';
+  return normalizeTextSignal(parts.join(' | '));
+}
 
-  for (const session of (sessions || []).slice(0, TOPIC_SESSION_LOOKBACK)) {
-    const hay = normalizeTextSignal(
-      [session?.title, session?.lastUserMessage, session?.lastAssistantMessage].filter(Boolean).join(' | ')
-    );
-    if (!hay) continue;
+function scoreTopicsFromHaystack(topicScoreMap, chatHaystack) {
+  if (/\bmacro|macros|calorie|deficit|bulk|cut|protein|carb|fat|meal|diet|nutrition\b/.test(chatHaystack)) {
+    addTopicScore(topicScoreMap, 'nutrition', 3);
+  }
+  if (/\bworkout|split|hypertrophy|lift|squat|bench|deadlift|volume|program|deload|set|rep\b/.test(chatHaystack)) {
+    addTopicScore(topicScoreMap, 'training', 3);
+  }
+  if (/\bsleep|recover|recovery|rest|soreness|stress|fatigue\b/.test(chatHaystack)) {
+    addTopicScore(topicScoreMap, 'recovery', 2);
+  }
+  if (/\bplan|schedule|week|routine|habit|time\b/.test(chatHaystack)) {
+    addTopicScore(topicScoreMap, 'planning', 2);
+  }
+  if (/\binjury|pain|knee|back|shoulder\b/.test(chatHaystack)) {
+    addTopicScore(topicScoreMap, 'injury', 2);
+  }
+  if (/\bsupplement|creatine|caffeine\b/.test(chatHaystack)) {
+    addTopicScore(topicScoreMap, 'supplements', 1);
+  }
+}
 
-    if (/\bmacro|macros|calorie|deficit|bulk|cut|protein|carb|fat|meal|diet|nutrition\b/.test(hay)) addTopicScore(score, 'nutrition', 3);
-    if (/\bworkout|split|hypertrophy|lift|squat|bench|deadlift|volume|program|deload|set|rep\b/.test(hay)) addTopicScore(score, 'training', 3);
-    if (/\bsleep|recover|recovery|rest|soreness|stress|fatigue\b/.test(hay)) addTopicScore(score, 'recovery', 2);
-    if (/\bplan|schedule|week|routine|habit|time\b/.test(hay)) addTopicScore(score, 'planning', 2);
-    if (/\binjury|pain|knee|back|shoulder\b/.test(hay)) addTopicScore(score, 'injury', 2);
-    if (/\bsupplement|creatine|caffeine\b/.test(hay)) addTopicScore(score, 'supplements', 1);
+function topTopicsFromScoreMap(topicScoreMap) {
+  const scoredEntries = [];
+  for (const entry of topicScoreMap.entries()) {
+    scoredEntries.push(entry);
+  }
+  scoredEntries.sort(function sortByScoreDescending(left, right) {
+    return right[1] - left[1];
+  });
+
+  const topics = [];
+  for (let index = 0; index < scoredEntries.length; index += 1) {
+    if (topics.length >= TOP_TOPIC_LIMIT) break;
+    topics.push(scoredEntries[index][0]);
+  }
+  return topics;
+}
+
+function inferTopTopicsFromSessions(sessions) {
+  const topicScoreMap = new Map();
+  const sessionList = sessions || [];
+  const lookbackCount = Math.min(sessionList.length, TOPIC_SESSION_LOOKBACK);
+
+  for (let index = 0; index < lookbackCount; index += 1) {
+    const chatHaystack = sessionChatHaystack(sessionList[index]);
+    if (!chatHaystack) continue;
+    scoreTopicsFromHaystack(topicScoreMap, chatHaystack);
   }
 
-  return [...score.entries()]
-    .sort((left, right) => right[1] - left[1])
-    .map(([topic]) => topic)
-    .slice(0, TOP_TOPIC_LIMIT);
+  return topTopicsFromScoreMap(topicScoreMap);
+}
+
+function goalTextFromUserData(userData) {
+  if (!userData) return '';
+  const rawGoal = userData.primaryGoal || userData.goal || userData.fitnessGoal || '';
+  return String(rawGoal).toLowerCase();
+}
+
+function dietTextFromUserData(userData) {
+  if (!userData) return '';
+  const rawDiet = userData.dietPreference || userData.diet || '';
+  return String(rawDiet).toLowerCase();
+}
+
+function recentTitleTextFromSessions(sessions) {
+  const sessionList = sessions || [];
+  const lookbackCount = Math.min(sessionList.length, TITLE_SESSION_LOOKBACK);
+  const titles = [];
+  for (let index = 0; index < lookbackCount; index += 1) {
+    const session = sessionList[index];
+    if (!session || !session.title) continue;
+    const trimmedTitle = String(session.title).trim();
+    if (trimmedTitle) titles.push(trimmedTitle);
+  }
+  return normalizeTextSignal(titles.join(' | '));
 }
 
 function buildDynamicSuggestions({ userData, sessions }) {
-  const goal = String(userData?.primaryGoal || userData?.goal || userData?.fitnessGoal || '').toLowerCase();
-  const dietPref = String(userData?.dietPreference || userData?.diet || '').toLowerCase();
+  const goalText = goalTextFromUserData(userData);
+  const dietPreferenceText = dietTextFromUserData(userData);
   const topTopics = inferTopTopicsFromSessions(sessions);
-  const recentTitles = (sessions || [])
-    .slice(0, TITLE_SESSION_LOOKBACK)
-    .map((session) => String(session?.title || '').trim())
-    .filter(Boolean);
-  const titleText = normalizeTextSignal(recentTitles.join(' | '));
-  const contextual = [
-    ...promptsForGoal(goal),
-    ...promptsForDiet(dietPref),
-    ...promptsForRecentTitles(titleText),
-    ...promptsForTopics(topTopics),
-  ];
+  const titleText = recentTitleTextFromSessions(sessions);
 
-  if (contextual.length === 0) {
+  const contextualPrompts = [];
+  const goalPrompts = promptsForGoal(goalText);
+  const dietPrompts = promptsForDiet(dietPreferenceText);
+  const titlePrompts = promptsForRecentTitles(titleText);
+  const topicPrompts = promptsForTopics(topTopics);
+
+  for (let index = 0; index < goalPrompts.length; index += 1) contextualPrompts.push(goalPrompts[index]);
+  for (let index = 0; index < dietPrompts.length; index += 1) contextualPrompts.push(dietPrompts[index]);
+  for (let index = 0; index < titlePrompts.length; index += 1) contextualPrompts.push(titlePrompts[index]);
+  for (let index = 0; index < topicPrompts.length; index += 1) contextualPrompts.push(topicPrompts[index]);
+
+  if (contextualPrompts.length === 0) {
     return FALLBACK_SUGGESTIONS.slice(0, SUGGESTION_LIMIT);
   }
-  return promptsWithFallbacks(contextual);
+  return promptsWithFallbacks(contextualPrompts);
 }
 
 function pagerDotColor(isActive, isDark, activeColor) {
@@ -426,13 +564,32 @@ function micIconColor(isDark) {
   return AI_COACH_UI.composer.iconMicLight;
 }
 
-function emptyMetricsSnap() {
+function emptyDailyMetricsSnapshot() {
   return { exists: () => false, data: () => ({}) };
 }
 
+function iosDarkHeaderShadowStyle() {
+  return {
+    shadowColor: '#000000',
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+  };
+}
+
 function ChatHistoryHeaderButton({ isDark, onPress, compact = false }) {
-  const hairline = isDark ? darkColors.nbBorder : lightColors.nbBorder;
+  const hairlineColor = isDark ? darkColors.nbBorder : lightColors.nbBorder;
   const iconColor = isDark ? lightColors.primary : lightColors.primaryDark;
+  const chipBackground = isDark ? darkColors.nbSurfaceChip : lightColors.nbSurfaceChip;
+  const labelColor = isDark ? lightColors.white : lightColors.nbInk;
+  // Manipulate here: dark full button fill — keep near Design Law purple-black chip, not solid purple border.
+  const fullButtonBackground = isDark ? '#1a0a2e' : lightColors.white;
+  const useIosDarkShadow = Platform.OS === 'ios' && isDark;
+  let iosDarkShadow = null;
+  if (useIosDarkShadow) {
+    iosDarkShadow = iosDarkHeaderShadowStyle();
+  }
+  const elevationValue = isDark ? 3 : 2;
 
   if (compact) {
     return (
@@ -450,12 +607,12 @@ function ChatHistoryHeaderButton({ isDark, onPress, compact = false }) {
           paddingVertical: 8,
           borderRadius: 12,
           borderWidth: 1,
-          borderColor: hairline,
-          backgroundColor: isDark ? darkColors.nbSurfaceChip : lightColors.nbSurfaceChip,
+          borderColor: hairlineColor,
+          backgroundColor: chipBackground,
         }}
       >
         <Ionicons name="time-outline" size={18} color={iconColor} />
-        <Text style={{ fontSize: 13, fontWeight: '700', color: isDark ? lightColors.white : lightColors.nbInk }}>History</Text>
+        <Text style={{ fontSize: 13, fontWeight: '700', color: labelColor }}>History</Text>
       </TouchableOpacity>
     );
   }
@@ -479,12 +636,10 @@ function ChatHistoryHeaderButton({ isDark, onPress, compact = false }) {
           minHeight: 46,
           borderRadius: 16,
           borderWidth: 1,
-          borderColor: hairline,
-          backgroundColor: isDark ? '#1a0a2e' : lightColors.white,
-          ...(Platform.OS === 'ios' && isDark
-            ? { shadowColor: '#000000', shadowOpacity: 0.18, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } }
-            : null),
-          elevation: isDark ? 3 : 2,
+          borderColor: hairlineColor,
+          backgroundColor: fullButtonBackground,
+          ...iosDarkShadow,
+          elevation: elevationValue,
         }}
       >
           <View
@@ -494,17 +649,17 @@ function ChatHistoryHeaderButton({ isDark, onPress, compact = false }) {
               borderRadius: 11,
               alignItems: 'center',
               justifyContent: 'center',
-              backgroundColor: isDark ? darkColors.nbSurfaceChip : lightColors.nbSurfaceChip,
+              backgroundColor: chipBackground,
             }}
           >
-            <Ionicons name="list-outline" size={20} color={isDark ? lightColors.primary : lightColors.primaryDark} />
+            <Ionicons name="list-outline" size={20} color={iconColor} />
           </View>
           <Text
             style={{
               fontSize: 14,
               fontWeight: '800',
               letterSpacing: 0.15,
-              color: isDark ? lightColors.white : lightColors.nbInk,
+              color: labelColor,
             }}
           >
             Chat History
@@ -514,455 +669,75 @@ function ChatHistoryHeaderButton({ isDark, onPress, compact = false }) {
   );
 }
 
-const CoachActionOrb = ({ action, isDark, onPress }) => {
-  const { isDark: themeIsDark } = useTheme();
-  const colors = themeIsDark ? darkColors : lightColors;
-  const scaleAnim = useRef(new Animated.Value(1)).current;
-
-  const pressIn = () => {
-    Animated.spring(scaleAnim, { toValue: 0.92, useNativeDriver: true, speed: 48, bounciness: 0 }).start();
-  };
-  const pressOut = () => {
-    Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, speed: 48, bounciness: 6 }).start();
-  };
-
-  return (
-    <Pressable
-      onPress={() => {
-        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-        onPress(action);
-      }}
-      onPressIn={pressIn}
-      onPressOut={pressOut}
-      accessibilityRole="button"
-      accessibilityLabel={action.sublabel ? `${action.label}, ${action.sublabel}` : action.label}
-      style={{ alignItems: 'center', flex: 1 }}
-    >
-      <Animated.View style={{ transform: [{ scale: scaleAnim }], alignItems: 'center' }}>
-        {/* Neobrutalist orb: thick border, hard shadow, no gradient rim */}
-        <View
-          style={{
-            width: 70,
-            height: 70,
-            borderRadius: 35,
-            backgroundColor: colors.nbSurface,
-            borderWidth: 2.5,
-            borderColor: colors.nbBorder,
-            alignItems: 'center',
-            justifyContent: 'center',
-            // Hard shadow iOS
-            ...(Platform.OS === 'ios'
-              ? { shadowColor: colors.nbShadow, shadowOpacity: 1, shadowRadius: 0, shadowOffset: { width: 4, height: 4 } }
-              : {}),
-          }}
-        >
-          <Ionicons name={action.icon} size={24} color={colors.nbInk} />
-        </View>
-        <Text
-          style={{
-            marginTop: 8,
-            fontSize: 12,
-            fontFamily: 'SpaceGrotesk_700Bold',
-            letterSpacing: 0.2,
-            color: colors.nbInk,
-          }}
-        >
-          {action.label}
-        </Text>
-        {action.sublabel ? (
-          <Text
-            style={{
-              marginTop: 2,
-              fontSize: 9,
-              fontFamily: 'Inter_600Semi',
-              fontWeight: '600',
-              letterSpacing: 0.3,
-              textTransform: 'uppercase',
-              color: colors.nbMuted,
-            }}
-            numberOfLines={1}
-          >
-            {action.sublabel}
-          </Text>
-        ) : null}
-      </Animated.View>
-    </Pressable>
-  );
-};
-
-const CAN_HELP_CARD_WIDTH = SW - 32;
-
-const CanHelpWithCarousel = ({ items, isDark, t, onPress }) => {
-  const list = (items || []).filter(Boolean);
-  const [index, setIndex] = useState(0);
-
-  if (!list.length) return null;
-
-  const onViewableItemsChanged = useRef(({ viewableItems }) => {
-    if (viewableItems?.[0]?.index != null) setIndex(viewableItems[0].index);
-  }).current;
-
-  return (
-    <View style={{ width: '100%', marginTop: 4 }}>
-      <Text
-        style={{
-          fontSize: 11,
-          fontWeight: '800',
-          letterSpacing: 1.1,
-          textTransform: 'uppercase',
-          color: isDark ? darkColors.nbMuted : lightColors.nbMuted,
-          marginBottom: 10,
-        }}
-      >
-        Can help with
-      </Text>
-      <FlatList
-        data={list}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        keyExtractor={(item) => item.id}
-        snapToInterval={CAN_HELP_CARD_WIDTH}
-        decelerationRate="fast"
-        onViewableItemsChanged={onViewableItemsChanged}
-        viewabilityConfig={{ itemVisiblePercentThreshold: 60 }}
-        renderItem={({ item }) => (
-          <Pressable
-            onPress={() => {
-              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-              onPress(item.prompt || item.title);
-            }}
-            style={{ width: CAN_HELP_CARD_WIDTH }}
-          >
-            <NbCard>
-              <View
-                style={{
-                  paddingVertical: 16,
-                  paddingHorizontal: 16,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 14,
-                  minHeight: 88,
-                }}
-              >
-                {/* Icon circle with simple border, no gradient rim */}
-                <View
-                  style={{
-                    width: 44,
-                    height: 44,
-                    borderRadius: 22,
-                    borderWidth: 2,
-                    borderColor: isDark ? darkColors.nbBorder : lightColors.nbBorder,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    backgroundColor: isDark ? darkColors.nbSurfaceChip : lightColors.nbSurfaceChip,
-                  }}
-                >
-                  <Ionicons name={item.icon} size={22} color={isDark ? darkColors.nbInk : lightColors.nbInk} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text
-                    style={{
-                      fontSize: 15,
-                      fontFamily: 'SpaceGrotesk_700Bold',
-                      color: t.textPrimary,
-                      marginBottom: 4,
-                    }}
-                    numberOfLines={2}
-                  >
-                    {item.title}
-                  </Text>
-                  <Text
-                    style={{
-                      fontSize: 13,
-                      fontFamily: 'Inter_400Regular',
-                      color: t.textMuted,
-                    }}
-                    numberOfLines={2}
-                  >
-                    {item.subtitle}
-                  </Text>
-                </View>
-              </View>
-            </NbCard>
-          </Pressable>
-        )}
-      />
-      {list.length > 1 ? (
-        <View style={{ flexDirection: 'row', gap: 5, marginTop: 12, paddingLeft: 2 }}>
-          {list.map((_, dotIndex) => (
-            <View
-              key={`can-dot-${dotIndex}`}
-              style={{
-                width: pagerDotWidth(dotIndex === index),
-                height: 5,
-                borderRadius: 999,
-                backgroundColor: pagerDotColor(dotIndex === index, isDark, AI_COACH_UI.pink),
-              }}
-            />
-          ))}
-        </View>
-      ) : null}
-    </View>
-  );
-};
-
-// Design Law try-asking icon accents only (small chips). Cards stay surface + fill.
-// Manipulate here: rotate accentGradients indices for variety without green.
-const TRY_ASKING_CHROME = [
-  {
-    icon: ['#FF6B9D', '#FB923C'],
-    subtitle: 'Built from your goals',
-  },
-  {
-    icon: ['#60A5FA', '#818CF8'],
-    subtitle: 'Calories and macros',
-  },
-  {
-    icon: ['#A78BFA', '#E879F9'],
-    subtitle: "This week's trends",
-  },
-];
-
-// Short display title for a long prompt (mock opts use title + subtitle, not the full sentence).
-function tryAskingTitle(text) {
-  const raw = String(text || '').trim();
-  if (!raw) return 'Ask your coach';
-  const firstChunk = raw.split(/[?.!]/)[0].trim() || raw;
-  if (firstChunk.length <= 36) return firstChunk;
-  return `${firstChunk.slice(0, 34)}…`;
-}
-
-/**
- * Design Law “Or try asking” — surface cards, 3px border, hard shadow, accent icon chip.
- */
-const TryAskingList = ({ suggestions, isDark, t, onPress }) => {
-  const items = (suggestions || []).filter(Boolean).slice(0, 3);
-  if (!items.length) return null;
-  const ink = isDark ? darkColors.nbInk : lightColors.nbInk;
-  const surface = isDark ? darkColors.nbSurface : lightColors.nbSurface;
-  const border = isDark ? darkColors.nbBorder : lightColors.nbBorder;
-  const shadow = isDark ? darkColors.nbShadow : lightColors.nbShadow;
-
-  return (
-    <View style={{ width: '100%', marginTop: spacing.lg }}>
-      <Text
-        style={{
-          fontSize: 12,
-          fontFamily: 'SpaceGrotesk_700Bold',
-          letterSpacing: 1.1,
-          textTransform: 'uppercase',
-          color: t.textMuted,
-          marginBottom: spacing.sm + 2,
-        }}
-      >
-        Or try asking
-      </Text>
-      <View style={{ gap: spacing.sm + 2 }}>
-        {items.map((text, rowIndex) => {
-          const chrome = TRY_ASKING_CHROME[rowIndex % TRY_ASKING_CHROME.length];
-          const iconName = iconForPrompt(text);
-          return (
-            <Pressable
-              key={`ask-${rowIndex}`}
-              onPress={() => {
-                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-                onPress(text);
-              }}
-              accessibilityRole="button"
-              accessibilityLabel={`Start chat: ${text}`}
-              style={({ pressed }) => [
-                {
-                  opacity: pressed ? 0.92 : 1,
-                  transform: [{ translateX: pressed ? 2 : 0 }, { translateY: pressed ? 2 : 0 }],
-                  backgroundColor: surface,
-                  borderWidth: nb.borderWidth,
-                  borderColor: border,
-                  borderRadius: borderRadius.nbCard,
-                  paddingVertical: spacing.md,
-                  paddingHorizontal: spacing.md,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: spacing.sm + 4,
-                  minHeight: 72,
-                  shadowColor: shadow,
-                  shadowOffset: { width: nb.shadowOffsetCard, height: nb.shadowOffsetCard },
-                  shadowOpacity: 1,
-                  shadowRadius: 0,
-                  elevation: 4,
-                },
-              ]}
-            >
-              <LinearGradient
-                colors={chrome.icon}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 10,
-                  borderWidth: nb.borderWidth,
-                  borderColor: border,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Ionicons name={iconName} size={20} color={lightColors.nbInk} />
-              </LinearGradient>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text
-                  style={{
-                    fontSize: 15,
-                    fontFamily: 'SpaceGrotesk_700Bold',
-                    color: ink,
-                    letterSpacing: -0.2,
-                  }}
-                  numberOfLines={2}
-                >
-                  {tryAskingTitle(text)}
-                </Text>
-                <Text
-                  style={{
-                    fontSize: 12,
-                    fontFamily: 'Inter_400Regular',
-                    color: t.textMuted,
-                    marginTop: 3,
-                  }}
-                  numberOfLines={1}
-                >
-                  {chrome.subtitle}
-                </Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={t.textMuted} />
-            </Pressable>
-          );
-        })}
-      </View>
-    </View>
-  );
-};
-
-/**
- * Design Law hero — black/white fill block (not pink gradient). PNG: “What should we work on?”
- */
-const HeroWelcomeCard = ({ userName, onStartChat, colors }) => {
-  const fill = colors?.nbFill || lightColors.nbFill;
-  const onFill = colors?.nbOnFill || lightColors.nbOnFill;
-  const border = colors?.nbBorder || lightColors.nbBorder;
-  const shadow = colors?.nbShadow || lightColors.nbShadow;
-  const mutedOnFill = onFill;
-
-  return (
-    <Pressable
-      onPress={() => {
-        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-        onStartChat?.({});
-      }}
-      accessibilityRole="button"
-      accessibilityLabel="Start chatting with your coach"
-      style={({ pressed }) => [
-        {
-          width: '100%',
-          opacity: pressed ? 0.94 : 1,
-          transform: [{ translateX: pressed ? 2 : 0 }, { translateY: pressed ? 2 : 0 }],
-        },
-      ]}
-    >
-      <View
-        style={{
-          backgroundColor: fill,
-          borderWidth: nb.borderWidth,
-          borderColor: border,
-          borderRadius: borderRadius.nbHero,
-          paddingHorizontal: spacing.md + 2,
-          paddingTop: spacing.md + 4,
-          paddingBottom: spacing.md + 4,
-          minHeight: 148,
-          flexDirection: 'row',
-          alignItems: 'center',
-          shadowColor: shadow,
-          shadowOffset: { width: nb.shadowOffsetHero, height: nb.shadowOffsetHero },
-          shadowOpacity: 1,
-          shadowRadius: 0,
-          elevation: 5,
-        }}
-      >
-        <View style={{ flex: 1, paddingRight: spacing.sm }}>
-          <Text
-            style={{
-              fontSize: 11,
-              fontFamily: 'SpaceGrotesk_700Bold',
-              letterSpacing: 1.2,
-              textTransform: 'uppercase',
-              color: mutedOnFill,
-              opacity: 0.7,
-            }}
-          >
-            Fitness only
-          </Text>
-          <Text
-            style={{
-              marginTop: 6,
-              fontSize: 26,
-              fontFamily: 'SpaceGrotesk_700Bold',
-              color: onFill,
-              letterSpacing: -0.5,
-            }}
-          >
-            What should we work on?
-          </Text>
-          <Text
-            style={{
-              marginTop: 6,
-              fontSize: 13,
-              fontFamily: 'Inter_500Medium',
-              color: onFill,
-              opacity: 0.82,
-              lineHeight: 18,
-            }}
-          >
-            I can see your logs, your plan and your goals.
-          </Text>
-        </View>
-        <LinearGradient
-          colors={['#FF6B9D', '#FB923C']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={{
-            width: 72,
-            height: 72,
-            borderRadius: 36,
-            borderWidth: nb.borderWidth,
-            borderColor: border,
-            alignItems: 'center',
-            justifyContent: 'center',
-            overflow: 'hidden',
-          }}
-        >
-          <LottieView
-            source={require('../../assets/animations/handoff/zcoach.json')}
-            autoPlay
-            loop
-            style={{ width: 64, height: 64 }}
-          />
-        </LinearGradient>
-      </View>
-    </Pressable>
-  );
-};
-
-function chatStartPayload(prefillOrPayload) {
+function chatStartPayloadFromPrefill(prefillOrPayload) {
   if (typeof prefillOrPayload === 'string') return { prefill: prefillOrPayload };
   if (prefillOrPayload && typeof prefillOrPayload === 'object') return prefillOrPayload;
   return {};
 }
 
-function photoOnlyPrefill(imageCount) {
+function photoOnlyPrefillText(imageCount) {
   if (imageCount > 0) return 'What do you see in this image? Give me coaching feedback.';
   return '';
 }
 
-function playCoachHomeEntrance(anims) {
+function sessionIdFromSession(session) {
+  if (!session) return null;
+  if (session.sessionId) return session.sessionId;
+  if (session.id) return session.id;
+  return null;
+}
+
+function displayNameFromUserData(userData) {
+  if (!userData) return 'there';
+  const rawName = userData.name || userData.displayName || userData.firstName || 'there';
+  const trimmedName = String(rawName).trim();
+  if (trimmedName) return trimmedName;
+  return 'there';
+}
+
+function latestSessionFromList(sessions) {
+  if (!Array.isArray(sessions)) return null;
+  if (sessions.length === 0) return null;
+  return sessions[0];
+}
+
+function imageAttachmentsFromList(attachments) {
+  const images = [];
+  for (let index = 0; index < attachments.length; index += 1) {
+    const attachment = attachments[index];
+    if (!attachment) continue;
+    const isImageType = attachment.type === 'image';
+    const hasPreview = Boolean(attachment.preview);
+    if (isImageType || hasPreview) images.push(attachment);
+  }
+  return images;
+}
+
+function attachmentListHasFilesOnly(attachments, imageAttachments) {
+  if (imageAttachments.length > 0) return false;
+  for (let index = 0; index < attachments.length; index += 1) {
+    const attachment = attachments[index];
+    if (attachment && attachment.type === 'file') return true;
+  }
+  return false;
+}
+
+function attachmentsWithoutId(attachments, attachmentId) {
+  const kept = [];
+  for (let index = 0; index < attachments.length; index += 1) {
+    const attachment = attachments[index];
+    if (attachment.id === attachmentId) continue;
+    kept.push(attachment);
+  }
+  return kept;
+}
+
+function callIfFunction(maybeFn, ...args) {
+  if (typeof maybeFn !== 'function') return;
+  maybeFn(...args);
+}
+
+function playCoachHomeEntranceAnimations(anims) {
   Animated.timing(anims.screenOpacity, { toValue: 1, duration: SCREEN_FADE_MS, useNativeDriver: true }).start();
   Animated.timing(anims.headerOpacity, { toValue: 1, duration: SCREEN_FADE_MS, useNativeDriver: true }).start();
 
@@ -990,7 +765,7 @@ function playCoachHomeEntrance(anims) {
 // What you see: header, greeting and cards, composer, past-chat drawer, and the bottom tabs.
 // CoachHomeScreen below loads logs and passes them in. This function does not load data.
 function CoachHomeScreenLayout({
-  t,
+  themeTokens,
   screenOpacity,
   headerOpacity,
   isDark,
@@ -1049,9 +824,12 @@ function CoachHomeScreenLayout({
   viewerRole = 'client',
   clientCount = 0,
 }) {
+  // Keep mic-background helper referenced so theme tokens stay wired for composer parity.
   void listeningMicBackground(listening, isDark);
 
   const headerColors = isDark ? darkColors : lightColors;
+  const pageBackgroundColor = themeTokens.bg;
+  const askCoachTitle = 'Ask your coach';
   const squareHeaderBtn = {
     width: 44,
     height: 44,
@@ -1069,7 +847,7 @@ function CoachHomeScreenLayout({
   };
 
   return (
-    <Animated.View style={{ flex: 1, backgroundColor: t.bg, opacity: screenOpacity }}>
+    <Animated.View style={{ flex: 1, backgroundColor: pageBackgroundColor, opacity: screenOpacity }}>
       {/* Same shell chrome as Home tab — profile + settings chips above the page title. */}
       <TopHeader
         appearanceIsDark={isDark}
@@ -1099,7 +877,7 @@ function CoachHomeScreenLayout({
             }}
             numberOfLines={1}
           >
-            Ask your coach
+            {askCoachTitle}
           </Text>
           <TouchableOpacity
             onPress={() => setSidebarOpen(true)}
@@ -1124,6 +902,7 @@ function CoachHomeScreenLayout({
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode={keyboardDismissMode()}
         >
+          {/* Idle body (greeting / cards) — hidden while keyboard is up */}
           <IdleCoachHome
             keyboardVisible={keyboardVisible}
             idleGroupOpacity={idleGroupOpacity}
@@ -1145,7 +924,7 @@ function CoachHomeScreenLayout({
         <ComposerBar
           inputOpacity={inputOpacity}
           inputTranslateY={inputTranslateY}
-          t={t}
+          themeTokens={themeTokens}
           attachments={attachments}
           composerKeyboardPad={composerKeyboardPad}
           removeAttachment={removeAttachment}
@@ -1169,7 +948,7 @@ function CoachHomeScreenLayout({
         onDeleteSession={handleDeleteSession}
         onNewChat={() => {
           setSidebarOpen(false);
-          onStartChat?.({});
+          callIfFunction(onStartChat, {});
         }}
         isDark={isDark}
         insets={insets}
@@ -1178,7 +957,11 @@ function CoachHomeScreenLayout({
       <DeleteChatSheet
         visible={!!deleteSheetSession}
         session={deleteSheetSession}
-        onClose={() => setDeleteSheetSession?.(null)}
+        onClose={() => {
+          if (typeof setDeleteSheetSession === 'function') {
+            setDeleteSheetSession(null);
+          }
+        }}
         onConfirm={confirmDeleteSession}
       />
 
@@ -1196,7 +979,7 @@ function CoachHomeScreenLayout({
         onClose={() => setPasteOpen(false)}
         onConfirm={(draft) => {
           setPasteOpen(false);
-          onPasteConfirm?.(draft);
+          callIfFunction(onPasteConfirm, draft);
         }}
       />
 
@@ -1274,6 +1057,7 @@ function IdleCoachHome({
   viewerRole = 'client',
   clientCount = 0,
 }) {
+  // Keyboard up → hide the idle body so the composer owns the screen.
   if (keyboardVisible) return null;
 
   // Design Law PNG 01 — full home body (sees today / one-tap / photo-web / pickup / try asking).
@@ -1306,10 +1090,13 @@ function IdleCoachHome({
   );
 }
 
-function AttachmentPreview({ attachment, t }) {
+function AttachmentPreview({ attachment, themeTokens }) {
+  // themeTokens kept for call-site parity; preview chrome reads light/dark from useTheme.
+  void themeTokens;
   const { isDark } = useTheme();
   const colors = isDark ? darkColors : lightColors;
   
+  // Image attachment → show the preview thumbnail; otherwise a document chip.
   if (attachment.preview) {
     return (
       <Image
@@ -1343,7 +1130,7 @@ function AttachmentPreview({ attachment, t }) {
   );
 }
 
-function ComposerAttachments({ attachments, t, removeAttachment }) {
+function ComposerAttachments({ attachments, themeTokens, removeAttachment }) {
   const { isDark } = useTheme();
   const colors = isDark ? darkColors : lightColors;
   
@@ -1358,7 +1145,7 @@ function ComposerAttachments({ attachments, t, removeAttachment }) {
     >
       {attachments.map((attachment) => (
         <View key={attachment.id} style={{ position: 'relative' }}>
-          <AttachmentPreview attachment={attachment} t={t} />
+          <AttachmentPreview attachment={attachment} themeTokens={themeTokens} />
           <TouchableOpacity
             onPress={() => removeAttachment(attachment.id)}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -1384,14 +1171,14 @@ function ComposerAttachments({ attachments, t, removeAttachment }) {
   );
 }
 
-function inputBackground(colors) {
+function composerInputBackground(colors) {
   return colors.nbSurface;
 }
 
 function ComposerBar({
   inputOpacity,
   inputTranslateY,
-  t,
+  themeTokens,
   attachments,
   composerKeyboardPad,
   removeAttachment,
@@ -1405,6 +1192,12 @@ function ComposerBar({
   canSend,
 }) {
   const colors = isDark ? darkColors : lightColors;
+  const composerPlaceholder = 'Ask your coach anything';
+  const showVoiceMic = COACH_VOICE_INPUT_AVAILABLE;
+  const micLabel = micAccessibilityLabel(listening);
+  const micName = micIconName(listening);
+  const sendOpacity = sendButtonOpacity(canSend);
+  const topPad = composerPaddingTop(attachments.length);
   // Design Law PNG 01 composer: square + · bordered field · black → send (no gradient “Send”).
   const squareBtn = {
     width: 48,
@@ -1430,11 +1223,11 @@ function ComposerBar({
         borderTopColor: colors.nbBorder,
         backgroundColor: colors.nbBackground,
         paddingHorizontal: spacing.md,
-        paddingTop: composerPaddingTop(attachments.length),
+        paddingTop: topPad,
         paddingBottom: composerKeyboardPad,
       }}
     >
-      <ComposerAttachments attachments={attachments} t={t} removeAttachment={removeAttachment} />
+      <ComposerAttachments attachments={attachments} themeTokens={themeTokens} removeAttachment={removeAttachment} />
 
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm + 2 }}>
         <TouchableOpacity
@@ -1475,20 +1268,20 @@ function ComposerBar({
             value={inputText}
             onChangeText={setInputText}
             onSubmitEditing={handleSend}
-            placeholder="Ask your coach anything"
+            placeholder={composerPlaceholder}
             placeholderTextColor={colors.nbMuted}
             returnKeyType="send"
             blurOnSubmit={false}
             accessibilityLabel="Message input"
           />
         </View>
-        {COACH_VOICE_INPUT_AVAILABLE ? (
+        {showVoiceMic ? (
           <TouchableOpacity
             onPress={toggleListen}
-            accessibilityLabel={micAccessibilityLabel(listening)}
+            accessibilityLabel={micLabel}
             style={[squareBtn, { backgroundColor: colors.nbSurface }]}
           >
-            <Ionicons name={micIconName(listening)} size={22} color={colors.nbInk} />
+            <Ionicons name={micName} size={22} color={colors.nbInk} />
           </TouchableOpacity>
         ) : null}
         <TouchableOpacity
@@ -1499,7 +1292,7 @@ function ComposerBar({
             squareBtn,
             {
               backgroundColor: colors.nbFill,
-              opacity: sendButtonOpacity(canSend),
+              opacity: sendOpacity,
             },
           ]}
           accessibilityRole="button"
@@ -1540,6 +1333,514 @@ function CoachHomeBottomNav({
   );
 }
 
+
+// ===== PLUMBING — legacy home rows (unused; kept for reference) =====
+// CanHelpWithCarousel, HeroWelcomeCard, CoachActionOrb, TryAskingList.
+// Idle layout uses CoachHomeBody instead — keep these for Design Law experiments.
+
+function orbAccessibilityLabel(action) {
+  if (action.sublabel) return `${action.label}, ${action.sublabel}`;
+  return action.label;
+}
+
+function orbHardShadowStyle(colors) {
+  if (Platform.OS !== 'ios') return {};
+  return {
+    shadowColor: colors.nbShadow,
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    shadowOffset: { width: 4, height: 4 },
+  };
+}
+
+const CoachActionOrb = ({ action, isDark, onPress }) => {
+  const { isDark: themeIsDark } = useTheme();
+  const colors = themeIsDark ? darkColors : lightColors;
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const accessibilityLabel = orbAccessibilityLabel(action);
+  const hardShadowStyle = orbHardShadowStyle(colors);
+
+  const pressIn = () => {
+    Animated.spring(scaleAnim, { toValue: 0.92, useNativeDriver: true, speed: 48, bounciness: 0 }).start();
+  };
+  const pressOut = () => {
+    Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, speed: 48, bounciness: 6 }).start();
+  };
+
+  return (
+    <Pressable
+      onPress={() => {
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+        onPress(action);
+      }}
+      onPressIn={pressIn}
+      onPressOut={pressOut}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      style={{ alignItems: 'center', flex: 1 }}
+    >
+      <Animated.View style={{ transform: [{ scale: scaleAnim }], alignItems: 'center' }}>
+        {/* Neobrutalist orb: thick border, hard shadow, no gradient rim */}
+        <View
+          style={{
+            width: 70,
+            height: 70,
+            borderRadius: 35,
+            backgroundColor: colors.nbSurface,
+            borderWidth: 2.5,
+            borderColor: colors.nbBorder,
+            alignItems: 'center',
+            justifyContent: 'center',
+            ...hardShadowStyle,
+          }}
+        >
+          <Ionicons name={action.icon} size={24} color={colors.nbInk} />
+        </View>
+        <Text
+          style={{
+            marginTop: 8,
+            fontSize: 12,
+            fontFamily: 'SpaceGrotesk_700Bold',
+            letterSpacing: 0.2,
+            color: colors.nbInk,
+          }}
+        >
+          {action.label}
+        </Text>
+        {action.sublabel ? (
+          <Text
+            style={{
+              marginTop: 2,
+              fontSize: 9,
+              fontFamily: 'Inter_600Semi',
+              fontWeight: '600',
+              letterSpacing: 0.3,
+              textTransform: 'uppercase',
+              color: colors.nbMuted,
+            }}
+            numberOfLines={1}
+          >
+            {action.sublabel}
+          </Text>
+        ) : null}
+      </Animated.View>
+    </Pressable>
+  );
+};
+
+const CAN_HELP_CARD_WIDTH = screenWidth - 32;
+
+function nonEmptyCarouselItems(items) {
+  const source = items || [];
+  const list = [];
+  for (let index = 0; index < source.length; index += 1) {
+    if (source[index]) list.push(source[index]);
+  }
+  return list;
+}
+
+function firstViewableItemIndex(viewableItems) {
+  if (!viewableItems || viewableItems.length === 0) return null;
+  const firstItem = viewableItems[0];
+  if (!firstItem) return null;
+  if (firstItem.index == null) return null;
+  return firstItem.index;
+}
+
+const CanHelpWithCarousel = ({ items, isDark, themeTokens, onPress }) => {
+  const list = nonEmptyCarouselItems(items);
+  const [index, setIndex] = useState(0);
+
+  if (!list.length) return null;
+
+  const onViewableItemsChanged = useRef(({ viewableItems }) => {
+    const nextIndex = firstViewableItemIndex(viewableItems);
+    if (nextIndex != null) setIndex(nextIndex);
+  }).current;
+
+  return (
+    <View style={{ width: '100%', marginTop: 4 }}>
+      <Text
+        style={{
+          fontSize: 11,
+          fontWeight: '800',
+          letterSpacing: 1.1,
+          textTransform: 'uppercase',
+          color: isDark ? darkColors.nbMuted : lightColors.nbMuted,
+          marginBottom: 10,
+        }}
+      >
+        Can help with
+      </Text>
+      <FlatList
+        data={list}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        keyExtractor={(item) => item.id}
+        snapToInterval={CAN_HELP_CARD_WIDTH}
+        decelerationRate="fast"
+        onViewableItemsChanged={onViewableItemsChanged}
+        viewabilityConfig={{ itemVisiblePercentThreshold: 60 }}
+        renderItem={({ item }) => (
+          <Pressable
+            onPress={() => {
+              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+              onPress(item.prompt || item.title);
+            }}
+            style={{ width: CAN_HELP_CARD_WIDTH }}
+          >
+            <NbCard>
+              <View
+                style={{
+                  paddingVertical: 16,
+                  paddingHorizontal: 16,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 14,
+                  minHeight: 88,
+                }}
+              >
+                {/* Icon circle with simple border, no gradient rim */}
+                <View
+                  style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: 22,
+                    borderWidth: 2,
+                    borderColor: isDark ? darkColors.nbBorder : lightColors.nbBorder,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: isDark ? darkColors.nbSurfaceChip : lightColors.nbSurfaceChip,
+                  }}
+                >
+                  <Ionicons name={item.icon} size={22} color={isDark ? darkColors.nbInk : lightColors.nbInk} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={{
+                      fontSize: 15,
+                      fontFamily: 'SpaceGrotesk_700Bold',
+                      color: themeTokens.textPrimary,
+                      marginBottom: 4,
+                    }}
+                    numberOfLines={2}
+                  >
+                    {item.title}
+                  </Text>
+                  <Text
+                    style={{
+                      fontSize: 13,
+                      fontFamily: 'Inter_400Regular',
+                      color: themeTokens.textMuted,
+                    }}
+                    numberOfLines={2}
+                  >
+                    {item.subtitle}
+                  </Text>
+                </View>
+              </View>
+            </NbCard>
+          </Pressable>
+        )}
+      />
+      {list.length > 1 ? (
+        <View style={{ flexDirection: 'row', gap: 5, marginTop: 12, paddingLeft: 2 }}>
+          {list.map((_, dotIndex) => (
+            <View
+              key={`can-dot-${dotIndex}`}
+              style={{
+                width: pagerDotWidth(dotIndex === index),
+                height: 5,
+                borderRadius: 999,
+                backgroundColor: pagerDotColor(dotIndex === index, isDark, AI_COACH_UI.pink),
+              }}
+            />
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
+};
+
+// Design Law try-asking icon accents only (small chips). Cards stay surface + fill.
+// Manipulate here: rotate accentGradients indices for variety without green.
+const TRY_ASKING_CHROME = [
+  {
+    icon: ['#FF6B9D', '#FB923C'],
+    subtitle: 'Built from your goals',
+  },
+  {
+    icon: ['#60A5FA', '#818CF8'],
+    subtitle: 'Calories and macros',
+  },
+  {
+    icon: ['#A78BFA', '#E879F9'],
+    subtitle: "This week's trends",
+  },
+];
+
+// Short display title for a long prompt (mock opts use title + subtitle, not the full sentence).
+function shortTitleFromPrompt(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return 'Ask your coach';
+  const firstChunk = raw.split(/[?.!]/)[0].trim() || raw;
+  if (firstChunk.length <= 36) return firstChunk;
+  return `${firstChunk.slice(0, 34)}…`;
+}
+
+/**
+ * Design Law “Or try asking” — surface cards, 3px border, hard shadow, accent icon chip.
+ */
+function firstThreeSuggestionTexts(suggestions) {
+  const source = suggestions || [];
+  const items = [];
+  for (let index = 0; index < source.length; index += 1) {
+    if (!source[index]) continue;
+    items.push(source[index]);
+    if (items.length >= 3) break;
+  }
+  return items;
+}
+
+const TryAskingList = ({ suggestions, isDark, themeTokens, onPress }) => {
+  const items = firstThreeSuggestionTexts(suggestions);
+  if (!items.length) return null;
+  const ink = isDark ? darkColors.nbInk : lightColors.nbInk;
+  const surface = isDark ? darkColors.nbSurface : lightColors.nbSurface;
+  const border = isDark ? darkColors.nbBorder : lightColors.nbBorder;
+  const shadow = isDark ? darkColors.nbShadow : lightColors.nbShadow;
+
+  return (
+    <View style={{ width: '100%', marginTop: spacing.lg }}>
+      <Text
+        style={{
+          fontSize: 12,
+          fontFamily: 'SpaceGrotesk_700Bold',
+          letterSpacing: 1.1,
+          textTransform: 'uppercase',
+          color: themeTokens.textMuted,
+          marginBottom: spacing.sm + 2,
+        }}
+      >
+        Or try asking
+      </Text>
+      <View style={{ gap: spacing.sm + 2 }}>
+        {items.map((promptText, rowIndex) => {
+          const chrome = TRY_ASKING_CHROME[rowIndex % TRY_ASKING_CHROME.length];
+          const iconName = iconForPrompt(promptText);
+          const rowTitle = shortTitleFromPrompt(promptText);
+          const accessibilityLabel = `Start chat: ${promptText}`;
+          return (
+            <Pressable
+              key={`ask-${rowIndex}`}
+              onPress={() => {
+                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+                onPress(promptText);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={accessibilityLabel}
+              style={({ pressed }) => [
+                {
+                  opacity: pressed ? 0.92 : 1,
+                  transform: [{ translateX: pressed ? 2 : 0 }, { translateY: pressed ? 2 : 0 }],
+                  backgroundColor: surface,
+                  borderWidth: nb.borderWidth,
+                  borderColor: border,
+                  borderRadius: borderRadius.nbCard,
+                  paddingVertical: spacing.md,
+                  paddingHorizontal: spacing.md,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: spacing.sm + 4,
+                  minHeight: 72,
+                  shadowColor: shadow,
+                  shadowOffset: { width: nb.shadowOffsetCard, height: nb.shadowOffsetCard },
+                  shadowOpacity: 1,
+                  shadowRadius: 0,
+                  elevation: 4,
+                },
+              ]}
+            >
+              <LinearGradient
+                colors={chrome.icon}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 10,
+                  borderWidth: nb.borderWidth,
+                  borderColor: border,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Ionicons name={iconName} size={20} color={lightColors.nbInk} />
+              </LinearGradient>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text
+                  style={{
+                    fontSize: 15,
+                    fontFamily: 'SpaceGrotesk_700Bold',
+                    color: ink,
+                    letterSpacing: -0.2,
+                  }}
+                  numberOfLines={2}
+                >
+                  {rowTitle}
+                </Text>
+                <Text
+                  style={{
+                    fontSize: 12,
+                    fontFamily: 'Inter_400Regular',
+                    color: themeTokens.textMuted,
+                    marginTop: 3,
+                  }}
+                  numberOfLines={1}
+                >
+                  {chrome.subtitle}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={themeTokens.textMuted} />
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+};
+
+/**
+ * Design Law hero — black/white fill block (not pink gradient). PNG: “What should we work on?”
+ */
+function heroFillColor(colors) {
+  if (colors && colors.nbFill) return colors.nbFill;
+  return lightColors.nbFill;
+}
+
+function heroOnFillColor(colors) {
+  if (colors && colors.nbOnFill) return colors.nbOnFill;
+  return lightColors.nbOnFill;
+}
+
+function heroBorderColor(colors) {
+  if (colors && colors.nbBorder) return colors.nbBorder;
+  return lightColors.nbBorder;
+}
+
+function heroShadowColor(colors) {
+  if (colors && colors.nbShadow) return colors.nbShadow;
+  return lightColors.nbShadow;
+}
+
+const HeroWelcomeCard = ({ userName, onStartChat, colors }) => {
+  void userName;
+  const fillColor = heroFillColor(colors);
+  const onFillColor = heroOnFillColor(colors);
+  const borderColor = heroBorderColor(colors);
+  const shadowColor = heroShadowColor(colors);
+  const mutedOnFill = onFillColor;
+
+  return (
+    <Pressable
+      onPress={() => {
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+        callIfFunction(onStartChat, {});
+      }}
+      accessibilityRole="button"
+      accessibilityLabel="Start chatting with your coach"
+      style={({ pressed }) => [
+        {
+          width: '100%',
+          opacity: pressed ? 0.94 : 1,
+          transform: [{ translateX: pressed ? 2 : 0 }, { translateY: pressed ? 2 : 0 }],
+        },
+      ]}
+    >
+      <View
+        style={{
+          backgroundColor: fillColor,
+          borderWidth: nb.borderWidth,
+          borderColor: borderColor,
+          borderRadius: borderRadius.nbHero,
+          paddingHorizontal: spacing.md + 2,
+          paddingTop: spacing.md + 4,
+          paddingBottom: spacing.md + 4,
+          minHeight: 148,
+          flexDirection: 'row',
+          alignItems: 'center',
+          shadowColor: shadowColor,
+          shadowOffset: { width: nb.shadowOffsetHero, height: nb.shadowOffsetHero },
+          shadowOpacity: 1,
+          shadowRadius: 0,
+          elevation: 5,
+        }}
+      >
+        <View style={{ flex: 1, paddingRight: spacing.sm }}>
+          <Text
+            style={{
+              fontSize: 11,
+              fontFamily: 'SpaceGrotesk_700Bold',
+              letterSpacing: 1.2,
+              textTransform: 'uppercase',
+              color: mutedOnFill,
+              opacity: 0.7,
+            }}
+          >
+            Fitness only
+          </Text>
+          <Text
+            style={{
+              marginTop: 6,
+              fontSize: 26,
+              fontFamily: 'SpaceGrotesk_700Bold',
+              color: onFillColor,
+              letterSpacing: -0.5,
+            }}
+          >
+            What should we work on?
+          </Text>
+          <Text
+            style={{
+              marginTop: 6,
+              fontSize: 13,
+              fontFamily: 'Inter_500Medium',
+              color: onFillColor,
+              opacity: 0.82,
+              lineHeight: 18,
+            }}
+          >
+            I can see your logs, your plan and your goals.
+          </Text>
+        </View>
+        <LinearGradient
+          colors={['#FF6B9D', '#FB923C']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={{
+            width: 72,
+            height: 72,
+            borderRadius: 36,
+            borderWidth: nb.borderWidth,
+            borderColor: borderColor,
+            alignItems: 'center',
+            justifyContent: 'center',
+            overflow: 'hidden',
+          }}
+        >
+          <LottieView
+            source={require('../../assets/animations/handoff/zcoach.json')}
+            autoPlay
+            loop
+            style={{ width: 64, height: 64 }}
+          />
+        </LinearGradient>
+      </View>
+    </Pressable>
+  );
+};
+
 // ===== MAIN FUNCTION =====
 
 export default function CoachHomeScreen({
@@ -1560,6 +1861,8 @@ export default function CoachHomeScreen({
   viewerRole = 'client',
   clientCount = 0,
 }) {
+  // 1. Shell state — sidebar, composer draft, attachments, hourly suggestion slot.
+  // vocab: useSafeAreaInsets = notches / home-indicator padding from react-native-safe-area-context
   const insets = useSafeAreaInsets();
   const { isDark } = useTheme();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -1582,8 +1885,8 @@ export default function CoachHomeScreen({
     now: promptNow,
   });
 
-  const theme = isDark ? DARK : LIGHT;
-  const userName = String(userData?.name || userData?.displayName || userData?.firstName || 'there').trim() || 'there';
+  const themeTokens = isDark ? darkCoachHomeTheme : lightCoachHomeTheme;
+  const userName = displayNameFromUserData(userData);
   const { keyboardVisible, composerKeyboardPad, listBottomPad } =
     keyboardBehavior({ hideBottomNav });
   const screenOpacity = useRef(new Animated.Value(0)).current;
@@ -1603,7 +1906,7 @@ export default function CoachHomeScreen({
   });
 
   useEffect(() => {
-    playCoachHomeEntrance({
+    playCoachHomeEntranceAnimations({
       screenOpacity,
       headerOpacity,
       lottieOpacity,
@@ -1623,16 +1926,18 @@ export default function CoachHomeScreen({
   // Design Law: route attach/copy errors through NbNoticeSheet instead of Alert.alert
   const showNotice = (title, message) => setNotice({ title, message });
 
-  const latestSession = Array.isArray(sessions) && sessions.length ? sessions[0] : null;
+  const latestSession = latestSessionFromList(sessions);
 
+  // Open the delete sheet when we have a real session id (does not delete yet).
   const handleDeleteSession = (session) => {
-    const sessionId = session?.sessionId || session?.id;
+    const sessionId = sessionIdFromSession(session);
     if (!db || !userId || !sessionId) return;
     setDeleteSheetSession(session);
   };
 
+  // Confirm path — Firestore delete via saveAndLoadChats helper.
   const confirmDeleteSession = async (session) => {
-    const sessionId = session?.sessionId || session?.id;
+    const sessionId = sessionIdFromSession(session);
     if (!db || !userId || !sessionId) return;
     try {
       await deleteAiChatSession(userId, sessionId);
@@ -1646,6 +1951,7 @@ export default function CoachHomeScreen({
       setUserData(null);
       return undefined;
     }
+    // vocab: onSnapshot = live Firestore listener; cleanup unsub() when userId changes / unmount
     const unsub = onSnapshot(
       doc(db, USERS_COLLECTION, userId),
       (snap) => setUserData(snap.exists() ? snap.data() : null),
@@ -1660,8 +1966,8 @@ export default function CoachHomeScreen({
       return undefined;
     }
     const todayKey = getClientDateKey();
-    let trackingSnap = emptyMetricsSnap();
-    let logsSnap = emptyMetricsSnap();
+    let trackingSnap = emptyDailyMetricsSnapshot();
+    let logsSnap = emptyDailyMetricsSnapshot();
 
     const apply = () => {
       setDailyMetrics(parseDailyMetricsFromSnapshots(logsSnap, trackingSnap));
@@ -1674,7 +1980,7 @@ export default function CoachHomeScreen({
         apply();
       },
       () => {
-        trackingSnap = emptyMetricsSnap();
+        trackingSnap = emptyDailyMetricsSnapshot();
         apply();
       },
     );
@@ -1686,7 +1992,7 @@ export default function CoachHomeScreen({
         apply();
       },
       () => {
-        logsSnap = emptyMetricsSnap();
+        logsSnap = emptyDailyMetricsSnapshot();
         apply();
       },
     );
@@ -1733,20 +2039,23 @@ export default function CoachHomeScreen({
     return () => clearInterval(tick);
   }, []);
 
+  // 2. Open conversation — fade idle home first so transition matches Design Law.
   const handleStartChat = (prefillOrPayload) => {
-    const payload = chatStartPayload(prefillOrPayload);
+    const payload = chatStartPayloadFromPrefill(prefillOrPayload);
     Animated.parallel([
       Animated.timing(idleGroupOpacity, { toValue: 0, duration: CHAT_EXIT_MS, useNativeDriver: true }),
       Animated.timing(idleGroupTranslateY, { toValue: -6, duration: CHAT_EXIT_MS, useNativeDriver: true }),
     ]).start(({ finished }) => {
-      if (finished) onStartChat?.(payload);
+      if (!finished) return;
+      callIfFunction(onStartChat, payload);
     });
   };
 
-  const openChatWithAttachments = async (pickFn) => {
-    const picked = await pickFn();
-    if (picked.length > 0) {
-      setAttachments((previous) => [...previous, ...picked]);
+  // Append picked camera/library/file rows onto the composer attachment strip.
+  const openChatWithAttachments = async (pickAttachmentsFn) => {
+    const pickedAttachments = await pickAttachmentsFn();
+    if (pickedAttachments.length > 0) {
+      setAttachments((previousAttachments) => [...previousAttachments, ...pickedAttachments]);
     }
   };
 
@@ -1774,20 +2083,26 @@ export default function CoachHomeScreen({
   };
 
   const handlePasteConfirm = (draft) => {
-    const text = String(draft || '').trim();
-    if (!text) return;
-    setInputText((prev) => (prev ? `${prev}\n${text}` : text));
+    const pastedText = String(draft || '').trim();
+    if (!pastedText) return;
+    setInputText((draftBeforePaste) => {
+      if (draftBeforePaste) return `${draftBeforePaste}\n${pastedText}`;
+      return pastedText;
+    });
   };
 
-  const removeAttachment = (id) => setAttachments((previous) => previous.filter((attachment) => attachment.id !== id));
+  const removeAttachment = (attachmentId) => {
+    setAttachments((previousAttachments) => attachmentsWithoutId(previousAttachments, attachmentId));
+  };
 
   const canSend = inputText.trim().length > 0 || attachments.length > 0;
 
+  // 3. Send — block file-only attachments; photos ride with optional text.
   const handleSend = () => {
-    const text = inputText.trim();
-    const imageAtts = attachments.filter((attachment) => attachment?.type === 'image' || attachment?.preview);
-    const hasFilesOnly = attachments.some((attachment) => attachment?.type === 'file') && imageAtts.length === 0;
-    if (!text && attachments.length === 0) return;
+    const trimmedText = inputText.trim();
+    const imageAttachments = imageAttachmentsFromList(attachments);
+    const hasFilesOnly = attachmentListHasFilesOnly(attachments, imageAttachments);
+    if (!trimmedText && attachments.length === 0) return;
     if (hasFilesOnly) {
       setNotice({
         title: 'Photos work best',
@@ -1796,9 +2111,9 @@ export default function CoachHomeScreen({
       });
       return;
     }
-    const prefill = text || photoOnlyPrefill(imageAtts.length);
+    const prefillText = trimmedText || photoOnlyPrefillText(imageAttachments.length);
     handleStartChat({
-      prefill,
+      prefill: prefillText,
       initialAttachments: attachments,
     });
     setInputText('');
@@ -1810,7 +2125,7 @@ export default function CoachHomeScreen({
   return (
     <>
       <CoachHomeScreenLayout
-        t={theme}
+        themeTokens={themeTokens}
         screenOpacity={screenOpacity}
         headerOpacity={headerOpacity}
         isDark={isDark}
@@ -1827,7 +2142,9 @@ export default function CoachHomeScreen({
         nutritionToday={nutritionToday}
         userData={userData}
         latestSession={latestSession}
-        onContinueSession={(session) => onSessionPress?.(session)}
+        onContinueSession={(session) => {
+          callIfFunction(onSessionPress, session);
+        }}
         onPhotoPress={() => {
           setAttachSheetOpen(true);
         }}
@@ -1874,8 +2191,8 @@ export default function CoachHomeScreen({
       <NbNoticeSheet
         visible={!!notice}
         onClose={() => setNotice(null)}
-        title={notice?.title || ''}
-        message={notice?.message}
+        title={notice && notice.title ? notice.title : ''}
+        message={notice ? notice.message : undefined}
         confirmLabel="OK"
       />
     </>

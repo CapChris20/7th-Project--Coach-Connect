@@ -1,6 +1,6 @@
-// Holds workout-plan generation state: monthly usage, in-flight flag, and the API call that builds a plan.
-// Flow: load this month's usage → subscribe to a background build session → expose fetch + refresh to the screen.
-// Used by: the create-workout-plan flow. Hooks stay in this function so the screen can call it like a hook.
+// Monthly workout-plan generation budget, in-flight flag, and the server call that builds a plan.
+// Flow: load usage for the signed-in user → watch a background build session → expose fetch + refresh.
+// Used by: create-workout-plan screens. Hooks stay in `workoutPlanCreation` so callers use it like a custom hook.
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { auth } from '../../app-start/cloudConnection';
@@ -18,61 +18,91 @@ import {
 
 // ===== NAMED CONSTANTS =====
 
+// Manipulate here: fallback when Firestore has no generations_limit yet
 const DEFAULT_PLAN_GENERATION_LIMIT = 3;
+// Manipulate here: noon local keeps the calendar day stable across time zones when parsing ISO date strings
 const NOON_LOCAL_TIME = 'T12:00:00';
-const ISO_DATE_LENGTH = 10;
+const ISO_DATE_ONLY_LENGTH = 10;
 
 // ===== HELPER FUNCTIONS =====
 
 /**
- * Parse resets_at as a local noon date so the calendar day does not shift across time zones.
- * A bad string falls back to the first of next month.
- * @param {string} rawResetAt
+ * Turn resets_at into a Date at local noon.
+ * Bad / partial ISO strings fall back to the first of next month.
+ * @param {string} resetAtString
  * @returns {Date}
  */
-function parseResetDate(rawResetAt) {
-  const parsedResetDate = new Date(`${String(rawResetAt).slice(0, ISO_DATE_LENGTH)}${NOON_LOCAL_TIME}`);
-  if (Number.isNaN(parsedResetDate.getTime())) return nextMonthResetDate();
-  return parsedResetDate;
+function workoutLimitResetDateFromIso(resetAtString) {
+  const dateOnly = String(resetAtString).slice(0, ISO_DATE_ONLY_LENGTH);
+  const resetAtLocalNoon = new Date(`${dateOnly}${NOON_LOCAL_TIME}`);
+  const parsedMillis = resetAtLocalNoon.getTime();
+
+  if (Number.isNaN(parsedMillis)) {
+    return nextMonthResetDate();
+  }
+  return resetAtLocalNoon;
 }
 
 /**
+ * How many plans this user already generated this billing month.
  * @param {object|null} workoutGenUsage
  * @returns {number}
  */
-function plansUsedFromUsage(workoutGenUsage) {
-  return Number(workoutGenUsage?.generations_used) || 0;
+function countPlansUsedThisMonth(workoutGenUsage) {
+  // vocab/symbol: ?. = stop if usage is null
+  const usedCount = Number(workoutGenUsage?.generations_used);
+  if (!usedCount) {
+    return 0;
+  }
+  return usedCount;
 }
 
 /**
+ * Monthly cap from usage, or the hard-coded default when Firestore has none.
  * @param {object|null} workoutGenUsage
  * @returns {number}
  */
-function planLimitFromUsage(workoutGenUsage) {
-  return Number(workoutGenUsage?.generations_limit) || DEFAULT_PLAN_GENERATION_LIMIT;
+function planGenerationLimitFromUsage(workoutGenUsage) {
+  const limitFromServer = Number(workoutGenUsage?.generations_limit);
+  if (!limitFromServer) {
+    return DEFAULT_PLAN_GENERATION_LIMIT;
+  }
+  return limitFromServer;
 }
 
 /**
- * Apply a live session snapshot: generating while in flight, hydrate when a plan just finished.
+ * Live session snapshot → spinner + “plan ready” flags.
+ * Hydrates the plan UI when a background build just finished.
  * @param {object} session
- * @param {string} uid
+ * @param {string} expectedUserId
  * @param {Function} setIsGenerating
  * @param {Function} setPlanReadyPending
  * @param {Function} [onHydratePlan]
  */
-function applyWorkoutGenerationSession(
+function syncUiFromWorkoutGenerationSession(
   session,
-  uid,
+  expectedUserId,
   setIsGenerating,
   setPlanReadyPending,
   onHydratePlan,
 ) {
-  if (session.uid !== uid) return;
-  setIsGenerating(!!session.inFlight);
-  if (session.pendingReady && !session.inFlight) {
+  // Ignore events for a different user (trainer viewing a client, race on sign-out, etc.).
+  if (session.uid !== expectedUserId) {
+    return;
+  }
+
+  const generationStillRunning = Boolean(session.inFlight);
+  setIsGenerating(generationStillRunning);
+
+  const planFinishedInBackground = session.pendingReady && !session.inFlight;
+  if (planFinishedInBackground) {
     setPlanReadyPending(true);
-    onHydratePlan?.(uid);
-  } else if (!session.inFlight) {
+    // vocab/symbol: ?. = call hydrate only when the screen passed a callback
+    onHydratePlan?.(expectedUserId);
+    return;
+  }
+
+  if (!generationStillRunning) {
     setPlanReadyPending(false);
   }
 }
@@ -80,57 +110,82 @@ function applyWorkoutGenerationSession(
 // ===== MAIN FUNCTION =====
 
 /**
- * Workout plan generation state + API orchestration.
- * @param {{ profileSubjectUid?: string, readOnly?: boolean, onHydratePlan?: Function }} args
+ * Hook: monthly plan budget + background generation state for create-plan screens.
+ * Flow: 1. load usage  2. subscribe to session  3. fetch plan  4. refresh usage
+ * @param {object} options
+ * @param {string} [options.profileSubjectUid]
+ * @param {boolean} [options.readOnly]
+ * @param {Function} [options.onHydratePlan]
  * @returns {object}
  */
+// vocab: this is a React hook shape (useState/useEffect inside) — screens call it like useWorkoutPlanCreation.
 export function workoutPlanCreation({ profileSubjectUid, readOnly, onHydratePlan }) {
+  // Hook order frozen — do not reorder these useState / useEffect / useMemo / useCallback calls.
   const [workoutGenUsage, setWorkoutGenUsage] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [planReadyPending, setPlanReadyPending] = useState(false);
   const [generatingMessageIndex, setGeneratingMessageIndex] = useState(0);
 
-  const plansUsedThisMonth = plansUsedFromUsage(workoutGenUsage);
-  const planGenerationLimit = planLimitFromUsage(workoutGenUsage);
+  const plansUsedThisMonth = countPlansUsedThisMonth(workoutGenUsage);
+  const planGenerationLimit = planGenerationLimitFromUsage(workoutGenUsage);
   const plansRemaining = Math.max(0, planGenerationLimit - plansUsedThisMonth);
 
+  // vocab: useMemo = recompute only when resets_at changes (avoids new Date every render)
   const nextResetDate = useMemo(() => {
-    const rawResetAt = workoutGenUsage?.resets_at || nextMonthResetsAtIso();
-    return parseResetDate(rawResetAt);
+    const resetAtFromServer = workoutGenUsage?.resets_at || nextMonthResetsAtIso();
+    return workoutLimitResetDateFromIso(resetAtFromServer);
   }, [workoutGenUsage?.resets_at]);
 
+  // 1. On mount: load this month's generation usage for whoever is signed in.
   useEffect(() => {
-    let isMounted = true;
-    (async () => {
-      const uid = auth.currentUser?.uid;
-      if (!uid) return;
-      const usage = await resolveWorkoutGenerationUsage(uid);
-      if (isMounted) setWorkoutGenUsage(usage);
-    })();
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+    let componentStillMounted = true;
 
-  useEffect(() => {
-    const uid = profileSubjectUid || auth.currentUser?.uid;
-    if (!uid || readOnly) return undefined;
-
-    let isCancelled = false;
     (async () => {
-      const session = await readWorkoutGenerationSession(uid);
-      if (isCancelled) return;
-      if (session.inFlight) setIsGenerating(true);
-      if (session.pendingReady) {
-        setPlanReadyPending(true);
-        await onHydratePlan?.(uid);
+      const signedInUserId = auth.currentUser?.uid;
+      if (!signedInUserId) {
+        return;
+      }
+
+      const usageSnapshot = await resolveWorkoutGenerationUsage(signedInUserId);
+      if (componentStillMounted) {
+        setWorkoutGenUsage(usageSnapshot);
       }
     })();
 
-    const unsubscribeFromSession = subscribeWorkoutGenerationSession((session) => {
-      applyWorkoutGenerationSession(
-        session,
-        uid,
+    return () => {
+      componentStillMounted = false;
+    };
+  }, []);
+
+  // 2. When not read-only: restore in-flight state, then subscribe to background session updates.
+  useEffect(() => {
+    const subjectUserId = profileSubjectUid || auth.currentUser?.uid;
+    if (!subjectUserId || readOnly) {
+      return undefined;
+    }
+
+    let effectCancelled = false;
+
+    (async () => {
+      const savedSession = await readWorkoutGenerationSession(subjectUserId);
+      if (effectCancelled) {
+        return;
+      }
+
+      if (savedSession.inFlight) {
+        setIsGenerating(true);
+      }
+
+      if (savedSession.pendingReady) {
+        setPlanReadyPending(true);
+        await onHydratePlan?.(subjectUserId);
+      }
+    })();
+
+    const stopListeningToSession = subscribeWorkoutGenerationSession((liveSession) => {
+      syncUiFromWorkoutGenerationSession(
+        liveSession,
+        subjectUserId,
         setIsGenerating,
         setPlanReadyPending,
         onHydratePlan,
@@ -138,26 +193,32 @@ export function workoutPlanCreation({ profileSubjectUid, readOnly, onHydratePlan
     });
 
     return () => {
-      isCancelled = true;
-      unsubscribeFromSession();
+      effectCancelled = true;
+      stopListeningToSession();
     };
   }, [profileSubjectUid, readOnly, onHydratePlan]);
 
-  const fetchWorkoutPlanFromServer = useCallback(async (data, subjectUserId) => {
-    const uid = subjectUserId || auth.currentUser?.uid;
-    const { text, usage } = await askForWorkoutPlanFromApi(data, uid);
-    const mergedUsage = await resolveWorkoutGenerationUsage(uid, {
-      apiUsage: usage,
+  // 3. Server round-trip: build plan text, then merge fresh usage counters.
+  // vocab: useCallback = stable function identity so child effects do not re-fire every render
+  const fetchWorkoutPlanFromServer = useCallback(async (requestPayload, subjectUserId) => {
+    const userIdForRequest = subjectUserId || auth.currentUser?.uid;
+    const apiResult = await askForWorkoutPlanFromApi(requestPayload, userIdForRequest);
+    const planText = apiResult.text;
+    const usageFromApi = apiResult.usage;
+
+    const mergedUsage = await resolveWorkoutGenerationUsage(userIdForRequest, {
+      apiUsage: usageFromApi,
       justGenerated: true,
     });
     setWorkoutGenUsage(mergedUsage);
-    return text;
+    return planText;
   }, []);
 
-  const refreshUsage = useCallback(async (uid, options = {}) => {
-    const usage = await resolveWorkoutGenerationUsage(uid, options);
-    setWorkoutGenUsage(usage);
-    return usage;
+  // 4. Pull latest usage without generating (after errors, profile edits, etc.).
+  const refreshUsage = useCallback(async (userId, refreshOptions = {}) => {
+    const latestUsage = await resolveWorkoutGenerationUsage(userId, refreshOptions);
+    setWorkoutGenUsage(latestUsage);
+    return latestUsage;
   }, []);
 
   return {

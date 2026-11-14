@@ -2,6 +2,7 @@
 // Flow: header + segmented → Plan (week strip, today hero, exercises, rest of week)
 //       → Notes (timeline / important / nutrition + PDF + Share) → Videos slot.
 // Used by CreateWorkoutPlanScreen / WorkoutPlanView when a client opens a saved plan.
+// Read order: constants → helpers → UI pieces → MyWorkoutPlanScreen main → styles → PLUMBING.
 //
 // vocab: HardShadow = solid offset shadow sibling (no blur); nbFill = primary block (black light / white dark)
 // Manipulate here: MIN_MINUTES_PER_EXERCISE (11), WEEK_LETTERS, TAB_SEGMENTS labels
@@ -119,20 +120,41 @@ function dayTitleSeparator(rawDay) {
   return null;
 }
 
+function trimmedNonEmptyParts(rawParts) {
+  const kept = [];
+  for (let index = 0; index < rawParts.length; index += 1) {
+    const trimmed = String(rawParts[index] || '').trim();
+    if (!trimmed) continue;
+    kept.push(trimmed);
+  }
+  return kept;
+}
+
 function sessionTitleLines(day) {
-  const rawDay = String(day?.day || '').trim();
-  const focus = String(day?.focus || '').trim();
-  const sep = dayTitleSeparator(rawDay);
-  if (sep) {
-    const parts = rawDay.split(sep).map((part) => part.trim()).filter(Boolean);
-    return { title: parts[0] || rawDay, subtitle: parts.slice(1).join(' · ') || focus };
+  const dayRecord = day || {};
+  const rawDay = String(dayRecord.day || '').trim();
+  const focus = String(dayRecord.focus || '').trim();
+  const separator = dayTitleSeparator(rawDay);
+
+  if (separator) {
+    const parts = trimmedNonEmptyParts(rawDay.split(separator));
+    const title = parts[0] || rawDay;
+    const subtitleFromParts = parts.slice(1).join(' · ');
+    const subtitle = subtitleFromParts || focus;
+    return { title, subtitle };
   }
-  const bits = focus.split(/\s*·\s*/).map((part) => part.trim()).filter(Boolean);
-  if (bits.length >= 2) {
-    return { title: bits[0], subtitle: bits.slice(1).join(' · ') };
+
+  const focusBits = trimmedNonEmptyParts(focus.split(/\s*·\s*/));
+  if (focusBits.length >= 2) {
+    return {
+      title: focusBits[0],
+      subtitle: focusBits.slice(1).join(' · '),
+    };
   }
+
   // Prefer focus as the hero title when it reads like "Lower body"
-  if (focus && !/^rest/i.test(focus)) {
+  const focusLooksLikeRest = /^rest/i.test(focus);
+  if (focus && !focusLooksLikeRest) {
     return { title: focus, subtitle: rawDay };
   }
   return { title: rawDay || DEFAULT_SESSION_TITLE, subtitle: focus };
@@ -181,34 +203,84 @@ function inferEquipment(ex) {
   return '';
 }
 
+function keepNonEmptyTrimmed(parts) {
+  const kept = [];
+  for (let index = 0; index < parts.length; index += 1) {
+    const trimmed = String(parts[index] || '').trim();
+    if (!trimmed) continue;
+    kept.push(trimmed);
+  }
+  return kept;
+}
+
 function splitTips(text) {
   const tipText = String(text || '').trim();
   if (!tipText) return [];
-  const parts = tipText.split(/(?<=[.!?])\s+/).map((part) => part.trim()).filter(Boolean);
-  return parts.length ? parts : [tipText];
+  const parts = keepNonEmptyTrimmed(tipText.split(/(?<=[.!?])\s+/));
+  if (parts.length > 0) return parts;
+  return [tipText];
 }
 
 function splitLegacyNote(raw) {
-  const lines = raw.split(/\n+/).map((line) => line.trim()).filter(Boolean);
+  const lines = keepNonEmptyTrimmed(raw.split(/\n+/));
   if (lines.length > 1) return lines;
-  const byArrow = raw.split(/\s*(?:→|➝|->)\s*/).map((line) => line.trim()).filter(Boolean);
+  const byArrow = keepNonEmptyTrimmed(raw.split(/\s*(?:→|➝|->)\s*/));
   if (byArrow.length > 1) return byArrow;
   const sentences = splitTips(raw);
-  return sentences.length ? sentences : [raw];
+  if (sentences.length > 0) return sentences;
+  return [raw];
+}
+
+function recoveryItemIsUsable(activity) {
+  if (!activity || typeof activity !== 'object') return false;
+  if (typeof activity.label !== 'string') return false;
+  if (!activity.label.trim()) return false;
+  return true;
+}
+
+function recoveryItemsFromActivities(recoveryActivities) {
+  const items = [];
+  for (let index = 0; index < recoveryActivities.length; index += 1) {
+    const activity = recoveryActivities[index];
+    if (!recoveryItemIsUsable(activity)) continue;
+    items.push({
+      label: extractShortLabel(activity.label),
+      detail: String(activity.detail || '').trim(),
+    });
+  }
+  return items;
+}
+
+function recoveryItemsFromLegacyNote(day) {
+  const dayRecord = day || {};
+  const noteText = dayRecord.recoveryNote || dayRecord.focus || '';
+  const raw = String(noteText).trim();
+  if (!raw) {
+    return [{ label: DEFAULT_RECOVERY_FALLBACK, detail: '' }];
+  }
+
+  const segments = splitLegacyNote(raw);
+  const items = [];
+  for (let index = 0; index < segments.length; index += 1) {
+    const segment = segments[index];
+    items.push({
+      label: extractShortLabel(segment),
+      detail: segment.trim(),
+    });
+  }
+  return items;
 }
 
 function toRecoveryItems(day) {
-  if (Array.isArray(day?.recoveryActivities) && day.recoveryActivities.length > 0) {
-    return day.recoveryActivities
-      .filter((activity) => activity && typeof activity === 'object' && typeof activity.label === 'string' && activity.label.trim())
-      .map((activity) => ({ label: extractShortLabel(activity.label), detail: String(activity.detail || '').trim() }));
+  // Prefer structured recoveryActivities when the plan saved them; else parse the old note string.
+  const dayRecord = day || {};
+  const recoveryActivities = dayRecord.recoveryActivities;
+  const hasStructuredActivities =
+    Array.isArray(recoveryActivities) && recoveryActivities.length > 0;
+  if (hasStructuredActivities) {
+    return recoveryItemsFromActivities(recoveryActivities);
   }
-  const raw = String(day?.recoveryNote || day?.focus || '').trim();
-  if (!raw) return [{ label: DEFAULT_RECOVERY_FALLBACK, detail: '' }];
-  return splitLegacyNote(raw).map((segment) => ({
-    label: extractShortLabel(segment),
-    detail: segment.trim(),
-  }));
+  return recoveryItemsFromLegacyNote(day);
 }
 
 function extractShortLabel(seg) {
@@ -237,15 +309,15 @@ function extractShortLabel(seg) {
 }
 
 function recoveryDayDisplayName(day) {
-  return String(day?.day || '').replace(/^\?\s*/, '').trim() || String(day?.short || DEFAULT_REST_SHORT);
+  const dayRecord = day || {};
+  const cleanedDayName = String(dayRecord.day || '').replace(/^\?\s*/, '').trim();
+  if (cleanedDayName) return cleanedDayName;
+  return String(dayRecord.short || DEFAULT_REST_SHORT);
 }
 
 function muscleToTargets(muscle) {
   if (!muscle) return [];
-  return String(muscle)
-    .split(/[,/|]/)
-    .map((part) => part.trim())
-    .filter(Boolean);
+  return keepNonEmptyTrimmed(String(muscle).split(/[,/|]/));
 }
 
 function firstMatchingType(labelText) {
@@ -275,83 +347,153 @@ function parseRecoveryMeta(label) {
 
 function splitDetailIntoSteps(detail) {
   if (!detail) return [];
-  return detail.split(/(?<=[.!?])\s+/).filter((step) => step.trim().length > STEP_MIN_CHARS);
+  const parts = detail.split(/(?<=[.!?])\s+/);
+  const steps = [];
+  for (let index = 0; index < parts.length; index += 1) {
+    const trimmed = parts[index].trim();
+    if (trimmed.length <= STEP_MIN_CHARS) continue;
+    steps.push(trimmed);
+  }
+  return steps;
 }
 
 /** Build Mon–Sun slots so the week strip always has 7 cells. */
 function buildWeekSlots(workoutPlan) {
   const byShort = new Map();
-  (workoutPlan || []).forEach((day) => {
-    const short = normalizeDayShort(day.short);
-    if (short) byShort.set(short, day);
-  });
-  return WEEK_SHORTS.map((short, index) => ({
-    letter: WEEK_LETTERS[index],
-    short,
-    fullName: WEEK_FULL[index],
-    index,
-    day: byShort.get(short) || null,
-  }));
+  const planDays = workoutPlan || [];
+  for (let index = 0; index < planDays.length; index += 1) {
+    const short = normalizeDayShort(planDays[index].short);
+    if (!short) continue;
+    byShort.set(short, planDays[index]);
+  }
+
+  const slots = [];
+  for (let index = 0; index < WEEK_SHORTS.length; index += 1) {
+    const short = WEEK_SHORTS[index];
+    slots.push({
+      letter: WEEK_LETTERS[index],
+      short,
+      fullName: WEEK_FULL[index],
+      index,
+      day: byShort.get(short) || null,
+    });
+  }
+  return slots;
 }
 
 function estimateSessionMinutes(day) {
-  const raw = day?.estimatedTime ?? day?.sessionDuration ?? day?.duration;
+  const dayRecord = day || {};
+  let raw = dayRecord.estimatedTime;
+  if (raw == null) raw = dayRecord.sessionDuration;
+  if (raw == null) raw = dayRecord.duration;
   if (raw != null && String(raw).trim()) {
     const asNum = parseInt(String(raw).replace(/[^\d]/g, ''), 10);
     if (Number.isFinite(asNum) && asNum > 0) return asNum;
     return String(raw).trim();
   }
-  const count = (day?.exercises || []).length;
+  const exercises = dayRecord.exercises || [];
+  const count = exercises.length;
   if (!count) return null;
   return count * MIN_MINUTES_PER_EXERCISE;
 }
 
 function sessionOrdinal(day, workoutPlan) {
-  const training = (workoutPlan || []).filter((d) => !d.rest);
-  const idx = training.findIndex((d) => d === day || (normalizeDayShort(d.short) === normalizeDayShort(day?.short) && d.focus === day?.focus));
-  if (idx < 0) return { n: 1, of: Math.max(1, training.length) };
-  return { n: idx + 1, of: Math.max(1, training.length) };
+  const dayRecord = day || {};
+  const training = [];
+  const planDays = workoutPlan || [];
+  for (let index = 0; index < planDays.length; index += 1) {
+    if (planDays[index].rest) continue;
+    training.push(planDays[index]);
+  }
+
+  let matchIndex = -1;
+  for (let index = 0; index < training.length; index += 1) {
+    const candidate = training[index];
+    if (candidate === day) {
+      matchIndex = index;
+      break;
+    }
+    const sameShort =
+      normalizeDayShort(candidate.short) === normalizeDayShort(dayRecord.short);
+    const sameFocus = candidate.focus === dayRecord.focus;
+    if (sameShort && sameFocus) {
+      matchIndex = index;
+      break;
+    }
+  }
+
+  const sessionTotal = Math.max(1, training.length);
+  if (matchIndex < 0) {
+    return { sessionNumber: 1, sessionTotal };
+  }
+  return { sessionNumber: matchIndex + 1, sessionTotal };
 }
 
 /**
  * Turn timeline prose into { title, body } steps for the Notes card.
  * Accepts numbered lines, bullets, or blank-line paragraphs.
  */
+function numberedTimelineStepFromLine(line) {
+  const match = line.match(/^(?:step\s*)?(\d+)[.)\-:]?\s*(.+)$/i);
+  if (!match) return null;
+
+  const body = match[2].trim();
+  const titleMatch = body.match(/^([^.:—–-]+)[.:—–-]\s*(.+)$/);
+  if (titleMatch) {
+    return { title: titleMatch[1].trim(), body: titleMatch[2].trim() };
+  }
+
+  // "Weeks 1 to 2 Learn the lifts..." — first clause as title when possible
+  const weekMatch = body.match(
+    /^(weeks?\s+[\d\s]+(?:to|-)\s*[\d]+|week\s+\d+)\s*[.:—–-]?\s*(.*)$/i,
+  );
+  if (weekMatch) {
+    let weekBody = weekMatch[2].trim();
+    if (!weekBody) weekBody = weekMatch[1].trim();
+    return { title: weekMatch[1].trim(), body: weekBody };
+  }
+
+  return { title: `Step ${match[1]}`, body };
+}
+
+function timelineStepFromPlainLine(line, stepNumber) {
+  const titleMatch = line.match(/^([^.:—–-]+)[.:—–-]\s*(.+)$/);
+  if (titleMatch) {
+    return { title: titleMatch[1].trim(), body: titleMatch[2].trim() };
+  }
+  return { title: `Step ${stepNumber}`, body: line };
+}
+
 function parseTimelineSteps(raw) {
   const text = String(raw || '').trim();
   if (!text) return [];
-  const lines = text.split(/\n+/).map((line) => line.trim()).filter(Boolean);
-  const numbered = lines
-    .map((line) => {
-      const match = line.match(/^(?:step\s*)?(\d+)[.)\-:]?\s*(.+)$/i);
-      if (!match) return null;
-      const body = match[2].trim();
-      const titleMatch = body.match(/^([^.:—–-]+)[.:—–-]\s*(.+)$/);
-      if (titleMatch) {
-        return { title: titleMatch[1].trim(), body: titleMatch[2].trim() };
-      }
-      // "Weeks 1 to 2 Learn the lifts..." — first clause as title when possible
-      const weekMatch = body.match(/^(weeks?\s+[\d\s]+(?:to|-)\s*[\d]+|week\s+\d+)\s*[.:—–-]?\s*(.*)$/i);
-      if (weekMatch) {
-        return { title: weekMatch[1].trim(), body: weekMatch[2].trim() || weekMatch[1].trim() };
-      }
-      return { title: `Step ${match[1]}`, body };
-    })
-    .filter(Boolean);
+
+  const lines = keepNonEmptyTrimmed(text.split(/\n+/));
+
+  const numbered = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const step = numberedTimelineStepFromLine(lines[index]);
+    if (step) numbered.push(step);
+  }
   if (numbered.length >= 2) return numbered;
 
   if (lines.length >= 2) {
-    return lines.map((line, i) => {
-      const titleMatch = line.match(/^([^.:—–-]+)[.:—–-]\s*(.+)$/);
-      if (titleMatch) return { title: titleMatch[1].trim(), body: titleMatch[2].trim() };
-      return { title: `Step ${i + 1}`, body: line };
-    });
+    const fromLines = [];
+    for (let index = 0; index < lines.length; index += 1) {
+      fromLines.push(timelineStepFromPlainLine(lines[index], index + 1));
+    }
+    return fromLines;
   }
 
   const sentences = splitTips(text);
   if (sentences.length >= 2) {
-    return sentences.map((sentence, i) => ({ title: `Step ${i + 1}`, body: sentence }));
+    const fromSentences = [];
+    for (let index = 0; index < sentences.length; index += 1) {
+      fromSentences.push({ title: `Step ${index + 1}`, body: sentences[index] });
+    }
+    return fromSentences;
   }
+
   return [{ title: 'Timeline', body: text }];
 }
 
@@ -412,66 +554,87 @@ function PlanHeader({ title, subtitle, onBack, colors }) {
   );
 }
 
-function WeekStrip({ slots, selectedIndex, todayIndex, onSelect, colors }) {
-  return (
-    <View style={styles.weekStrip}>
-      {slots.map((slot) => {
-        const selected = slot.index === selectedIndex;
-        const isToday = slot.index === todayIndex;
-        const isRest = !!(slot.day?.rest || (!slot.day && slot.index >= 0));
-        const isPast = slot.index < todayIndex;
-        const hasTraining = slot.day && !slot.day.rest;
-        // Status glyph under the letter — filled = done/today, dashed = rest, open = upcoming
-        let status = 'open';
-        if (selected || isToday) status = 'today';
-        else if (hasTraining && isPast) status = 'done';
-        else if (!hasTraining || isRest) status = 'rest';
+// Pick the under-letter glyph for one week cell (today / done / rest / open).
+// Why a helper: keeps WeekStrip’s map callback nesting under the Variation 3 depth cap.
+function pickWeekCellStatus(slot, selectedIndex, todayIndex) {
+  const selected = slot.index === selectedIndex;
+  const isToday = slot.index === todayIndex;
+  const dayOnSlot = slot.day;
+  let dayMarkedRest = false;
+  if (dayOnSlot && dayOnSlot.rest) dayMarkedRest = true;
+  const emptySlotCountsAsRest = !dayOnSlot && slot.index >= 0;
+  const isRest = !!(dayMarkedRest || emptySlotCountsAsRest);
+  const isPast = slot.index < todayIndex;
+  const hasTraining = dayOnSlot && !dayOnSlot.rest;
 
-        return (
-          <TouchableOpacity
-            key={slot.short}
-            onPress={() => onSelect(slot.index)}
-            style={[
-              styles.weekCell,
-              {
-                borderColor: colors.nbBorder,
-                backgroundColor: selected ? colors.nbFill : colors.nbSurfaceChip,
-              },
-              selected ? hardShadowStyle(colors, nb.shadowOffsetSmall) : null,
-            ]}
-            accessibilityRole="button"
-            accessibilityState={{ selected }}
-            accessibilityLabel={slot.fullName}
-            activeOpacity={0.85}
-          >
-            <Text
-              style={[
-                styles.weekLetter,
-                { color: selected ? colors.nbOnFill : colors.nbInk },
-              ]}
-            >
-              {slot.letter}
-            </Text>
-            <View
-              style={[
-                styles.weekDot,
-                {
-                  borderColor: selected ? colors.nbOnFill : colors.nbBorder,
-                  backgroundColor:
-                    status === 'today' || status === 'done'
-                      ? selected
-                        ? colors.nbOnFill
-                        : colors.nbFill
-                      : 'transparent',
-                  borderStyle: status === 'rest' ? 'dashed' : 'solid',
-                },
-              ]}
-            />
-          </TouchableOpacity>
-        );
-      })}
-    </View>
-  );
+  if (selected || isToday) {
+    return { selected, status: 'today' };
+  }
+  if (hasTraining && isPast) {
+    return { selected, status: 'done' };
+  }
+  if (!hasTraining || isRest) {
+    return { selected, status: 'rest' };
+  }
+  return { selected, status: 'open' };
+}
+
+function weekDotFillColor(status, selected, colors) {
+  const isFilledStatus = status === 'today' || status === 'done';
+  if (!isFilledStatus) {
+    return 'transparent';
+  }
+  if (selected) {
+    return colors.nbOnFill;
+  }
+  return colors.nbFill;
+}
+
+function WeekStrip({ slots, selectedIndex, todayIndex, onSelect, colors }) {
+  const cells = [];
+  for (let index = 0; index < slots.length; index += 1) {
+    const slot = slots[index];
+    const { selected, status } = pickWeekCellStatus(slot, selectedIndex, todayIndex);
+    const cellBackgroundColor = selected ? colors.nbFill : colors.nbSurfaceChip;
+    const letterColor = selected ? colors.nbOnFill : colors.nbInk;
+    const dotBorderColor = selected ? colors.nbOnFill : colors.nbBorder;
+    const dotBackgroundColor = weekDotFillColor(status, selected, colors);
+    const dotBorderStyle = status === 'rest' ? 'dashed' : 'solid';
+    const selectedShadow = selected ? hardShadowStyle(colors, nb.shadowOffsetSmall) : null;
+
+    cells.push(
+      <TouchableOpacity
+        key={slot.short}
+        onPress={() => onSelect(slot.index)}
+        style={[
+          styles.weekCell,
+          {
+            borderColor: colors.nbBorder,
+            backgroundColor: cellBackgroundColor,
+          },
+          selectedShadow,
+        ]}
+        accessibilityRole="button"
+        accessibilityState={{ selected }}
+        accessibilityLabel={slot.fullName}
+        activeOpacity={0.85}
+      >
+        <Text style={[styles.weekLetter, { color: letterColor }]}>{slot.letter}</Text>
+        <View
+          style={[
+            styles.weekDot,
+            {
+              borderColor: dotBorderColor,
+              backgroundColor: dotBackgroundColor,
+              borderStyle: dotBorderStyle,
+            },
+          ]}
+        />
+      </TouchableOpacity>,
+    );
+  }
+
+  return <View style={styles.weekStrip}>{cells}</View>;
 }
 
 /** Session badge — gradient accent only (PNG title case, not NbPill’s uppercase). */
@@ -488,19 +651,37 @@ function SessionAccentPill({ label }) {
   );
 }
 
+function heroMetaLine(day, isRest, metaParts) {
+  if (isRest) {
+    return String(day.recoveryNote || recoveryDayDisplayName(day) || 'Active recovery day');
+  }
+  return metaParts.join(' · ');
+}
+
+function buildTrainingMetaParts(exercises, minutes) {
+  const metaParts = [];
+  const exerciseCount = exercises.length;
+  const exerciseWord = exerciseCount === 1 ? 'exercise' : 'exercises';
+  metaParts.push(`${exerciseCount} ${exerciseWord}`);
+  if (minutes == null) return metaParts;
+  if (typeof minutes === 'number') {
+    metaParts.push(`about ${minutes} min`);
+    return metaParts;
+  }
+  metaParts.push(String(minutes));
+  return metaParts;
+}
+
 function TodayHeroCard({ day, workoutPlan, onStartSession, colors }) {
   const { title } = sessionTitleLines(day);
   const isRest = !!day.rest;
   const exercises = day.exercises || [];
   const minutes = estimateSessionMinutes(day);
-  const { n, of } = sessionOrdinal(day, workoutPlan);
-  const metaParts = [];
-  if (!isRest) {
-    metaParts.push(`${exercises.length} exercise${exercises.length === 1 ? '' : 's'}`);
-    if (minutes != null) {
-      metaParts.push(typeof minutes === 'number' ? `about ${minutes} min` : String(minutes));
-    }
-  }
+  const { sessionNumber, sessionTotal } = sessionOrdinal(day, workoutPlan);
+  const metaParts = isRest ? [] : buildTrainingMetaParts(exercises, minutes);
+  const heroTitleText = isRest ? 'Rest' : title;
+  const heroMetaText = heroMetaLine(day, isRest, metaParts);
+  const sessionPillLabel = `Session ${sessionNumber} of ${sessionTotal}`;
 
   return (
     <HardShadow offset={nb.shadowOffsetHero} radius={10}>
@@ -516,23 +697,24 @@ function TodayHeroCard({ day, workoutPlan, onStartSession, colors }) {
         <View style={styles.heroTopRow}>
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={[styles.heroTitle, { color: colors.nbOnFill }]} numberOfLines={2}>
-              {isRest ? 'Rest' : title}
+              {heroTitleText}
             </Text>
             <Text style={[styles.heroMeta, { color: colors.nbOnFill, opacity: 0.8 }]} numberOfLines={2}>
-              {isRest
-                ? String(day.recoveryNote || recoveryDayDisplayName(day) || 'Active recovery day')
-                : metaParts.join(' · ')}
+              {heroMetaText}
             </Text>
           </View>
           {!isRest && (
-            <SessionAccentPill label={`Session ${n} of ${of}`} />
+            <SessionAccentPill label={sessionPillLabel} />
           )}
         </View>
         {!isRest && (
           // PNG: white/onFill CTA with 3px ink border + HardShadow (keeps onStartSession wiring)
           <HardShadow radius={borderRadius.nbButton} offset={nb.shadowOffset}>
             <TouchableOpacity
-              onPress={() => onStartSession?.(day)}
+              onPress={() => {
+                if (typeof onStartSession !== 'function') return;
+                onStartSession(day);
+              }}
               style={[
                 styles.startBtn,
                 {
@@ -554,36 +736,109 @@ function TodayHeroCard({ day, workoutPlan, onStartSession, colors }) {
   );
 }
 
+function RecoveryListRows({ items, colors }) {
+  const rows = [];
+  for (let index = 0; index < items.length; index += 1) {
+    const item = items[index];
+    const topBorder =
+      index > 0
+        ? { borderTopWidth: nb.borderWidthDivider, borderTopColor: colors.nbBorder }
+        : null;
+    rows.push(
+      <View
+        key={`${index}-${item.label.slice(0, 12)}`}
+        style={[styles.exRow, topBorder]}
+      >
+        <View
+          style={[
+            styles.exNum,
+            { borderColor: colors.nbBorder, backgroundColor: colors.nbSurfaceChip },
+          ]}
+        >
+          <Text style={[styles.exNumText, { color: colors.nbInk }]}>{index + 1}</Text>
+        </View>
+        <View style={styles.exGrow}>
+          <Text style={[styles.exName, { color: colors.nbInk }]} numberOfLines={2}>
+            {item.label}
+          </Text>
+          {item.detail ? (
+            <Text style={[styles.exMeta, { color: colors.nbMuted }]} numberOfLines={2}>
+              {item.detail}
+            </Text>
+          ) : null}
+        </View>
+      </View>,
+    );
+  }
+  return rows;
+}
+
+function TrainingExerciseRows({ exercises, onOpenExercise, colors }) {
+  const rows = [];
+  for (let index = 0; index < exercises.length; index += 1) {
+    const exercise = exercises[index];
+    const equipment = inferEquipment(exercise);
+    const topBorder =
+      index > 0
+        ? { borderTopWidth: nb.borderWidthDivider, borderTopColor: colors.nbBorder }
+        : null;
+    let equipmentTag = null;
+    if (equipment) {
+      equipmentTag = (
+        <View style={styles.tagRow}>
+          <View
+            style={[
+              styles.miniTag,
+              { borderColor: colors.nbBorder, backgroundColor: colors.nbSoft },
+            ]}
+          >
+            <Text style={[styles.miniTagText, { color: colors.nbInk }]}>{equipment}</Text>
+          </View>
+        </View>
+      );
+    }
+    rows.push(
+      <TouchableOpacity
+        key={`${exercise.name}-${index}`}
+        onPress={() => onOpenExercise(index)}
+        style={[styles.exRow, topBorder]}
+        activeOpacity={0.82}
+        accessibilityRole="button"
+      >
+        <View
+          style={[
+            styles.exNum,
+            { borderColor: colors.nbBorder, backgroundColor: colors.nbSurfaceChip },
+          ]}
+        >
+          <Text style={[styles.exNumText, { color: colors.nbInk }]}>{index + 1}</Text>
+        </View>
+        <View style={styles.exGrow}>
+          <Text style={[styles.exName, { color: colors.nbInk }]} numberOfLines={2}>
+            {exercise.name}
+          </Text>
+          <Text style={[styles.exMeta, { color: colors.nbMuted }]} numberOfLines={1}>
+            {formatExerciseListMeta(exercise)}
+          </Text>
+          {equipmentTag}
+        </View>
+        <Ionicons name="chevron-forward" size={18} color={colors.nbMuted} />
+      </TouchableOpacity>,
+    );
+  }
+  return rows;
+}
+
 function ExerciseListCard({ day, onOpenExercise, colors }) {
-  const exercises = day?.exercises || [];
-  if (day?.rest) {
-    const items = toRecoveryItems(day);
+  const dayRecord = day || {};
+  const exercises = dayRecord.exercises || [];
+
+  if (dayRecord.rest) {
+    const recoveryItems = toRecoveryItems(day);
     return (
       <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard}>
         <NbCard noShadow style={styles.listCard}>
-          {items.map((item, i) => (
-            <View
-              key={`${i}-${item.label.slice(0, 12)}`}
-              style={[
-                styles.exRow,
-                i > 0 && { borderTopWidth: nb.borderWidthDivider, borderTopColor: colors.nbBorder },
-              ]}
-            >
-              <View style={[styles.exNum, { borderColor: colors.nbBorder, backgroundColor: colors.nbSurfaceChip }]}>
-                <Text style={[styles.exNumText, { color: colors.nbInk }]}>{i + 1}</Text>
-              </View>
-              <View style={styles.exGrow}>
-                <Text style={[styles.exName, { color: colors.nbInk }]} numberOfLines={2}>
-                  {item.label}
-                </Text>
-                {!!item.detail && (
-                  <Text style={[styles.exMeta, { color: colors.nbMuted }]} numberOfLines={2}>
-                    {item.detail}
-                  </Text>
-                )}
-              </View>
-            </View>
-          ))}
+          <RecoveryListRows items={recoveryItems} colors={colors} />
         </NbCard>
       </HardShadow>
     );
@@ -592,97 +847,148 @@ function ExerciseListCard({ day, onOpenExercise, colors }) {
   return (
     <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard}>
       <NbCard noShadow style={styles.listCard}>
-        {exercises.map((ex, i) => {
-          const equipment = inferEquipment(ex);
-          return (
-            <TouchableOpacity
-              key={`${ex.name}-${i}`}
-              onPress={() => onOpenExercise(i)}
-              style={[
-                styles.exRow,
-                i > 0 && { borderTopWidth: nb.borderWidthDivider, borderTopColor: colors.nbBorder },
-              ]}
-              activeOpacity={0.82}
-              accessibilityRole="button"
-            >
-              <View style={[styles.exNum, { borderColor: colors.nbBorder, backgroundColor: colors.nbSurfaceChip }]}>
-                <Text style={[styles.exNumText, { color: colors.nbInk }]}>{i + 1}</Text>
-              </View>
-              <View style={styles.exGrow}>
-                <Text style={[styles.exName, { color: colors.nbInk }]} numberOfLines={2}>
-                  {ex.name}
-                </Text>
-                <Text style={[styles.exMeta, { color: colors.nbMuted }]} numberOfLines={1}>
-                  {formatExerciseListMeta(ex)}
-                </Text>
-                {!!equipment && (
-                  <View style={styles.tagRow}>
-                    <View style={[styles.miniTag, { borderColor: colors.nbBorder, backgroundColor: colors.nbSoft }]}>
-                      <Text style={[styles.miniTagText, { color: colors.nbInk }]}>{equipment}</Text>
-                    </View>
-                  </View>
-                )}
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={colors.nbMuted} />
-            </TouchableOpacity>
-          );
-        })}
+        <TrainingExerciseRows
+          exercises={exercises}
+          onOpenExercise={onOpenExercise}
+          colors={colors}
+        />
       </NbCard>
     </HardShadow>
   );
 }
 
+function restOfWeekChipSource(isRest, rowIndex) {
+  if (isRest) return iconSleeping;
+  if (rowIndex % 2 === 0) return iconMuscle;
+  return iconDumbbells;
+}
+
+function restOfWeekSubtitle(day, isRest) {
+  const dayRecord = day || {};
+  if (isRest) {
+    const recoveryNote = String(dayRecord.recoveryNote || '').trim();
+    if (recoveryNote) return recoveryNote;
+    return 'Active recovery day. Focus on mobility and sleep.';
+  }
+  const exercises = dayRecord.exercises || [];
+  const count = exercises.length;
+  const exerciseWord = count === 1 ? 'exercise' : 'exercises';
+  return `${count} ${exerciseWord}`;
+}
+
+function slotsAfterSelectedDay(slots, selectedIndex) {
+  const upcoming = [];
+  for (let index = 0; index < slots.length; index += 1) {
+    const slot = slots[index];
+    if (slot.index <= selectedIndex) continue;
+    upcoming.push(slot);
+  }
+  return upcoming;
+}
+
 function RestOfWeekCard({ slots, selectedIndex, onSelectDay, colors }) {
-  const upcoming = slots.filter((slot) => slot.index > selectedIndex);
+  const upcoming = slotsAfterSelectedDay(slots, selectedIndex);
   if (upcoming.length === 0) return null;
+
+  const rows = [];
+  for (let rowIndex = 0; rowIndex < upcoming.length; rowIndex += 1) {
+    const slot = upcoming[rowIndex];
+    const day = slot.day;
+    const isRest = !day || day.rest;
+    let title = 'Rest';
+    if (day && !isRest) {
+      title = sessionTitleLines(day).title;
+    }
+    const chipIndex = isRest ? 2 : rowIndex % accentGradients.length;
+    const chipSource = restOfWeekChipSource(isRest, rowIndex);
+    const subtitle = restOfWeekSubtitle(day, isRest);
+    const showChevron = !isRest;
+    const topBorder =
+      rowIndex > 0
+        ? { borderTopWidth: nb.borderWidthDivider, borderTopColor: colors.nbBorder }
+        : null;
+
+    rows.push(
+      <TouchableOpacity
+        key={slot.short}
+        onPress={() => onSelectDay(slot.index)}
+        style={[styles.weekAheadRow, topBorder]}
+        activeOpacity={0.82}
+      >
+        <NbIconChip source={chipSource} index={chipIndex} size={44} />
+        <View style={styles.exGrow}>
+          <Text style={[styles.exName, { color: colors.nbInk }]} numberOfLines={1}>
+            {WEEK_ABBR[slot.index]} · {title}
+          </Text>
+          <Text style={[styles.exMeta, { color: colors.nbMuted }]} numberOfLines={2}>
+            {subtitle}
+          </Text>
+        </View>
+        {showChevron ? (
+          <Ionicons name="chevron-forward" size={18} color={colors.nbMuted} />
+        ) : null}
+      </TouchableOpacity>,
+    );
+  }
 
   return (
     <View style={{ gap: 10 }}>
       <SectionEyebrow label="Rest of the week" colors={colors} />
       <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard}>
         <NbCard noShadow style={styles.listCard}>
-          {upcoming.map((slot, i) => {
-            const day = slot.day;
-            const isRest = !day || day.rest;
-            const { title } = day && !isRest ? sessionTitleLines(day) : { title: 'Rest' };
-            const chipIndex = isRest ? 2 : i % accentGradients.length;
-            const chipSource = isRest ? iconSleeping : i % 2 === 0 ? iconMuscle : iconDumbbells;
-            let sub = '';
-            if (isRest) {
-              sub =
-                String(day?.recoveryNote || '').trim() ||
-                'Active recovery day. Focus on mobility and sleep.';
-            } else {
-              const count = (day?.exercises || []).length;
-              sub = `${count} exercise${count === 1 ? '' : 's'}`;
-            }
-            return (
-              <TouchableOpacity
-                key={slot.short}
-                onPress={() => onSelectDay(slot.index)}
-                style={[
-                  styles.weekAheadRow,
-                  i > 0 && { borderTopWidth: nb.borderWidthDivider, borderTopColor: colors.nbBorder },
-                ]}
-                activeOpacity={0.82}
-              >
-                <NbIconChip source={chipSource} index={chipIndex} size={44} />
-                <View style={styles.exGrow}>
-                  <Text style={[styles.exName, { color: colors.nbInk }]} numberOfLines={1}>
-                    {WEEK_ABBR[slot.index]} · {title}
-                  </Text>
-                  <Text style={[styles.exMeta, { color: colors.nbMuted }]} numberOfLines={2}>
-                    {sub}
-                  </Text>
-                </View>
-                {!isRest && <Ionicons name="chevron-forward" size={18} color={colors.nbMuted} />}
-              </TouchableOpacity>
-            );
-          })}
+          {rows}
         </NbCard>
       </HardShadow>
     </View>
   );
+}
+
+function TimelineStepRows({ steps, colors }) {
+  const rows = [];
+  for (let index = 0; index < steps.length; index += 1) {
+    const step = steps[index];
+    const isFirst = index === 0;
+    const isLast = index === steps.length - 1;
+    const dotFill = isFirst ? colors.nbFill : colors.nbSurface;
+    const stepNumberColor = isFirst ? colors.nbOnFill : colors.nbInk;
+    let connectorLine = null;
+    if (!isLast) {
+      connectorLine = (
+        <View style={[styles.timelineLine, { backgroundColor: colors.nbBorder }]} />
+      );
+    }
+    rows.push(
+      <View key={`${step.title}-${index}`} style={styles.timelineRow}>
+        <View style={styles.timelineRail}>
+          <View
+            style={[
+              styles.timelineDot,
+              {
+                borderColor: colors.nbBorder,
+                backgroundColor: dotFill,
+              },
+            ]}
+          >
+            <Text
+              style={{
+                fontWeight: '900',
+                fontSize: 12,
+                color: stepNumberColor,
+              }}
+            >
+              {index + 1}
+            </Text>
+          </View>
+          {connectorLine}
+        </View>
+        <View style={styles.timelineCopy}>
+          <Text style={[styles.timelineTitle, { color: colors.nbInk }]}>{step.title}</Text>
+          <Text style={[styles.notesBody, { color: colors.nbMuted }]}>{step.body}</Text>
+        </View>
+      </View>,
+    );
+  }
+  return <View style={styles.timeline}>{rows}</View>;
 }
 
 function NotesTab({
@@ -695,6 +1001,26 @@ function NotesTab({
 }) {
   const steps = useMemo(() => parseTimelineSteps(timelineText), [timelineText]);
 
+  let timelineBody = (
+    <Text style={[styles.notesBody, { color: colors.nbMuted }]}>
+      No timeline was saved with this plan yet.
+    </Text>
+  );
+  if (steps.length > 0) {
+    timelineBody = <TimelineStepRows steps={steps} colors={colors} />;
+  }
+
+  let importantNotesText = 'No important notes were saved with this plan yet.';
+  if (importantNotes) {
+    const trimmedImportant = String(importantNotes).trim();
+    if (trimmedImportant) importantNotesText = trimmedImportant;
+  }
+  let nutritionGuidanceText = 'No nutrition guidance was saved with this plan yet.';
+  if (nutritionGuidance) {
+    const trimmedNutrition = String(nutritionGuidance).trim();
+    if (trimmedNutrition) nutritionGuidanceText = trimmedNutrition;
+  }
+
   return (
     <View style={{ gap: 16 }}>
       <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard}>
@@ -703,49 +1029,7 @@ function NotesTab({
             <NbIconChip source={iconJourney} index={3} size={44} />
             <Text style={[styles.notesTitle, { color: colors.nbInk }]}>Expected timeline</Text>
           </View>
-          {steps.length === 0 ? (
-            <Text style={[styles.notesBody, { color: colors.nbMuted }]}>
-              No timeline was saved with this plan yet.
-            </Text>
-          ) : (
-            <View style={styles.timeline}>
-              {steps.map((step, i) => {
-                const isFirst = i === 0;
-                return (
-                  <View key={`${step.title}-${i}`} style={styles.timelineRow}>
-                    <View style={styles.timelineRail}>
-                      <View
-                        style={[
-                          styles.timelineDot,
-                          {
-                            borderColor: colors.nbBorder,
-                            backgroundColor: isFirst ? colors.nbFill : colors.nbSurface,
-                          },
-                        ]}
-                      >
-                        <Text
-                          style={{
-                            fontWeight: '900',
-                            fontSize: 12,
-                            color: isFirst ? colors.nbOnFill : colors.nbInk,
-                          }}
-                        >
-                          {i + 1}
-                        </Text>
-                      </View>
-                      {i < steps.length - 1 && (
-                        <View style={[styles.timelineLine, { backgroundColor: colors.nbBorder }]} />
-                      )}
-                    </View>
-                    <View style={styles.timelineCopy}>
-                      <Text style={[styles.timelineTitle, { color: colors.nbInk }]}>{step.title}</Text>
-                      <Text style={[styles.notesBody, { color: colors.nbMuted }]}>{step.body}</Text>
-                    </View>
-                  </View>
-                );
-              })}
-            </View>
-          )}
+          {timelineBody}
         </NbCard>
       </HardShadow>
 
@@ -756,7 +1040,7 @@ function NotesTab({
             <Text style={[styles.notesTitle, { color: colors.nbInk }]}>Important notes</Text>
           </View>
           <Text style={[styles.notesBody, { color: colors.nbInk }]}>
-            {importantNotes?.trim() || 'No important notes were saved with this plan yet.'}
+            {importantNotesText}
           </Text>
         </NbCard>
       </HardShadow>
@@ -768,7 +1052,7 @@ function NotesTab({
             <Text style={[styles.notesTitle, { color: colors.nbInk }]}>Nutrition guidance</Text>
           </View>
           <Text style={[styles.notesBody, { color: colors.nbMuted }]}>
-            {nutritionGuidance?.trim() || 'No nutrition guidance was saved with this plan yet.'}
+            {nutritionGuidanceText}
           </Text>
         </NbCard>
       </HardShadow>
@@ -785,9 +1069,70 @@ function NotesTab({
   );
 }
 
+function exerciseStatBoxes(sets, reps, rest, colors) {
+  const stats = [
+    { label: 'SETS', value: sets },
+    { label: 'REPS', value: reps },
+    { label: 'REST', value: rest },
+  ];
+  const boxes = [];
+  for (let index = 0; index < stats.length; index += 1) {
+    const stat = stats[index];
+    boxes.push(
+      <View
+        key={stat.label}
+        style={[
+          styles.statBox,
+          { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder },
+        ]}
+      >
+        <Text style={[styles.statLabel, { color: colors.nbMuted }]}>{stat.label}</Text>
+        <Text style={[styles.statValue, { color: colors.nbInk }]}>{stat.value}</Text>
+      </View>,
+    );
+  }
+  return boxes;
+}
+
+function exerciseTargetPills(targets, colors) {
+  const pills = [];
+  for (let index = 0; index < targets.length; index += 1) {
+    const targetName = targets[index];
+    pills.push(
+      <View
+        key={targetName}
+        style={[styles.targetPill, { borderColor: colors.nbBorder, backgroundColor: colors.nbSoft }]}
+      >
+        <Text style={[styles.targetPillText, { color: colors.nbInk }]}>{targetName}</Text>
+      </View>,
+    );
+  }
+  return pills;
+}
+
+function exerciseTipRows(tips, colors) {
+  const rows = [];
+  for (let index = 0; index < tips.length; index += 1) {
+    const tip = tips[index];
+    rows.push(
+      <View
+        key={index}
+        style={[styles.tipRow, { backgroundColor: colors.nbSoft, borderColor: colors.nbBorder }]}
+      >
+        <View style={[styles.exNum, { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface }]}>
+          <Text style={[styles.exNumText, { color: colors.nbInk }]}>{index + 1}</Text>
+        </View>
+        <Text style={[styles.tipBody, { color: colors.nbInk }]}>{tip}</Text>
+      </View>,
+    );
+  }
+  return rows;
+}
+
 function ExerciseDetailModal({ visible, day, exerciseIndex, onClose, onChangeIndex, colors }) {
   const scrollBottomPad = useModalScrollBottomPad(40);
-  const exercises = day?.exercises || [];
+  const dayRecord = day || {};
+  const exercises = dayRecord.exercises || [];
   const ex = exerciseIndex != null ? exercises[exerciseIndex] : null;
   const { title: sessionName } = day ? sessionTitleLines(day) : { title: '' };
   const { sets, reps, rest } = ex ? parseSetsRepsRest(ex) : { sets: '—', reps: '—', rest: '—' };
@@ -795,8 +1140,32 @@ function ExerciseDetailModal({ visible, day, exerciseIndex, onClose, onChangeInd
   const targets = ex ? muscleToTargets(ex.muscle) : [];
   const hasPrev = exerciseIndex > 0;
   const hasNext = exerciseIndex < exercises.length - 1;
+  const prevOpacity = hasPrev ? 1 : 0.35;
+  const nextOpacity = hasNext ? 1 : 0.35;
+  const sheetMaxHeight = Dimensions.get('window').height * SHEET_HEIGHT_RATIO;
+  const stepCounterLabel = `${String(exerciseIndex + 1).padStart(2, '0')} / ${String(exercises.length).padStart(2, '0')}`;
 
   if (!visible || !ex) return null;
+
+  let targetsBlock = null;
+  if (targets.length > 0) {
+    targetsBlock = (
+      <View style={styles.sectionBlock}>
+        <Text style={[styles.sectionLabel, { color: colors.nbMuted }]}>TARGETS</Text>
+        <View style={styles.pillWrap}>{exerciseTargetPills(targets, colors)}</View>
+      </View>
+    );
+  }
+
+  let tipsBlock = null;
+  if (tips.length > 0) {
+    tipsBlock = (
+      <View style={styles.sectionBlock}>
+        <Text style={[styles.sectionLabel, { color: colors.nbMuted }]}>TIPS</Text>
+        {exerciseTipRows(tips, colors)}
+      </View>
+    );
+  }
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
@@ -808,7 +1177,7 @@ function ExerciseDetailModal({ visible, day, exerciseIndex, onClose, onChangeInd
             {
               backgroundColor: colors.nbBackground,
               borderColor: colors.nbBorder,
-              maxHeight: Dimensions.get('window').height * SHEET_HEIGHT_RATIO,
+              maxHeight: sheetMaxHeight,
             },
           ]}
         >
@@ -820,9 +1189,7 @@ function ExerciseDetailModal({ visible, day, exerciseIndex, onClose, onChangeInd
               >
                 <Ionicons name="close" size={20} color={colors.nbInk} />
               </TouchableOpacity>
-              <NbPill variant="brand">
-                {`${String(exerciseIndex + 1).padStart(2, '0')} / ${String(exercises.length).padStart(2, '0')}`}
-              </NbPill>
+              <NbPill variant="brand">{stepCounterLabel}</NbPill>
               <View style={{ width: 36 }} />
             </View>
             <Text style={[styles.sheetKicker, { color: colors.nbMuted }]}>
@@ -836,71 +1203,32 @@ function ExerciseDetailModal({ visible, day, exerciseIndex, onClose, onChangeInd
             {...FORM_SCROLL_PROPS}
           >
             <View style={styles.statRow}>
-              {[
-                ['SETS', sets],
-                ['REPS', reps],
-                ['REST', rest],
-              ].map(([label, value]) => (
-                <View
-                  key={label}
-                  style={[
-                    styles.statBox,
-                    { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder },
-                  ]}
-                >
-                  <Text style={[styles.statLabel, { color: colors.nbMuted }]}>{label}</Text>
-                  <Text style={[styles.statValue, { color: colors.nbInk }]}>{value}</Text>
-                </View>
-              ))}
+              {exerciseStatBoxes(sets, reps, rest, colors)}
             </View>
 
-            {targets.length > 0 && (
-              <View style={styles.sectionBlock}>
-                <Text style={[styles.sectionLabel, { color: colors.nbMuted }]}>TARGETS</Text>
-                <View style={styles.pillWrap}>
-                  {targets.map((targetName) => (
-                    <View
-                      key={targetName}
-                      style={[styles.targetPill, { borderColor: colors.nbBorder, backgroundColor: colors.nbSoft }]}
-                    >
-                      <Text style={[styles.targetPillText, { color: colors.nbInk }]}>{targetName}</Text>
-                    </View>
-                  ))}
-                </View>
-              </View>
-            )}
-
-            {tips.length > 0 && (
-              <View style={styles.sectionBlock}>
-                <Text style={[styles.sectionLabel, { color: colors.nbMuted }]}>TIPS</Text>
-                {tips.map((tip, i) => (
-                  <View
-                    key={i}
-                    style={[styles.tipRow, { backgroundColor: colors.nbSoft, borderColor: colors.nbBorder }]}
-                  >
-                    <View style={[styles.exNum, { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface }]}>
-                      <Text style={[styles.exNumText, { color: colors.nbInk }]}>{i + 1}</Text>
-                    </View>
-                    <Text style={[styles.tipBody, { color: colors.nbInk }]}>{tip}</Text>
-                  </View>
-                ))}
-              </View>
-            )}
+            {targetsBlock}
+            {tipsBlock}
 
             <View style={styles.navRow}>
               <NbButton
                 variant="ghost"
-                onPress={() => hasPrev && onChangeIndex(exerciseIndex - 1)}
+                onPress={() => {
+                  if (!hasPrev) return;
+                  onChangeIndex(exerciseIndex - 1);
+                }}
                 disabled={!hasPrev}
-                style={{ flex: 1, opacity: hasPrev ? 1 : 0.35 }}
+                style={{ flex: 1, opacity: prevOpacity }}
               >
                 Previous
               </NbButton>
               <NbButton
                 variant="fill"
-                onPress={() => hasNext && onChangeIndex(exerciseIndex + 1)}
+                onPress={() => {
+                  if (!hasNext) return;
+                  onChangeIndex(exerciseIndex + 1);
+                }}
                 disabled={!hasNext}
-                style={{ flex: 1, opacity: hasNext ? 1 : 0.35 }}
+                style={{ flex: 1, opacity: nextOpacity }}
               >
                 Next
               </NbButton>
@@ -909,6 +1237,52 @@ function ExerciseDetailModal({ visible, day, exerciseIndex, onClose, onChangeInd
         </View>
       </View>
     </Modal>
+  );
+}
+
+function RecoveryGuidanceBody({ steps, itemDetail, recoveryType, colors }) {
+  if (steps.length > 1) {
+    const guidanceRows = [];
+    for (let index = 0; index < steps.length; index += 1) {
+      guidanceRows.push(
+        <View
+          key={index}
+          style={[
+            styles.tipRow,
+            { backgroundColor: colors.nbSoft, borderColor: colors.nbBorder },
+          ]}
+        >
+          <View
+            style={[
+              styles.exNum,
+              {
+                borderColor: colors.nbBorder,
+                backgroundColor: colors.nbSurface,
+              },
+            ]}
+          >
+            <Text style={[styles.exNumText, { color: colors.nbInk }]}>{index + 1}</Text>
+          </View>
+          <Text style={[styles.tipBody, { color: colors.nbInk }]}>{steps[index]}</Text>
+        </View>,
+      );
+    }
+    return (
+      <View style={styles.sectionBlock}>
+        <Text style={[styles.sectionLabel, { color: colors.nbMuted }]}>GUIDANCE</Text>
+        {guidanceRows}
+      </View>
+    );
+  }
+
+  if (itemDetail) {
+    return <Text style={[styles.notesBody, { color: colors.nbInk }]}>{itemDetail}</Text>;
+  }
+
+  return (
+    <Text style={[styles.notesBody, { color: colors.nbMuted }]}>
+      Focus on {String(recoveryType || '').toLowerCase()} and listen to your body.
+    </Text>
   );
 }
 
@@ -923,6 +1297,11 @@ function RecoveryFocusModal({ visible, day, items, segmentIndex, onClose, onChan
 
   if (!visible || item == null || !day) return null;
 
+  const sheetMaxHeight = Dimensions.get('window').height * SHEET_HEIGHT_RATIO;
+  const stepCounterLabel = `${String(segmentIndex + 1).padStart(2, '0')} / ${String(items.length).padStart(2, '0')}`;
+  const prevOpacity = hasPrev ? 1 : 0.35;
+  const nextOpacity = hasNext ? 1 : 0.35;
+
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.modalRoot}>
@@ -933,7 +1312,7 @@ function RecoveryFocusModal({ visible, day, items, segmentIndex, onClose, onChan
             {
               backgroundColor: colors.nbBackground,
               borderColor: colors.nbBorder,
-              maxHeight: Dimensions.get('window').height * SHEET_HEIGHT_RATIO,
+              maxHeight: sheetMaxHeight,
             },
           ]}
         >
@@ -941,13 +1320,14 @@ function RecoveryFocusModal({ visible, day, items, segmentIndex, onClose, onChan
             <View style={styles.sheetTopRow}>
               <TouchableOpacity
                 onPress={onClose}
-                style={[styles.sheetIconBtn, { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface }]}
+                style={[
+                  styles.sheetIconBtn,
+                  { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface },
+                ]}
               >
                 <Ionicons name="close" size={20} color={colors.nbInk} />
               </TouchableOpacity>
-              <NbPill variant="brand">
-                {`${String(segmentIndex + 1).padStart(2, '0')} / ${String(items.length).padStart(2, '0')}`}
-              </NbPill>
+              <NbPill variant="brand">{stepCounterLabel}</NbPill>
               <View style={{ width: 36 }} />
             </View>
             <Text style={[styles.sheetKicker, { color: colors.nbMuted }]}>
@@ -961,59 +1341,70 @@ function RecoveryFocusModal({ visible, day, items, segmentIndex, onClose, onChan
             {...FORM_SCROLL_PROPS}
           >
             <View style={styles.statRow}>
-              <View style={[styles.statBox, { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder }]}>
+              <View
+                style={[
+                  styles.statBox,
+                  { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder },
+                ]}
+              >
                 <Text style={[styles.statLabel, { color: colors.nbMuted }]}>TYPE</Text>
-                <Text style={[styles.statValue, { color: colors.nbInk, fontSize: 15 }]}>{meta.type}</Text>
+                <Text style={[styles.statValue, { color: colors.nbInk, fontSize: 15 }]}>
+                  {meta.type}
+                </Text>
               </View>
-              {meta.duration && (
-                <View style={[styles.statBox, { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder }]}>
+              {meta.duration ? (
+                <View
+                  style={[
+                    styles.statBox,
+                    { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder },
+                  ]}
+                >
                   <Text style={[styles.statLabel, { color: colors.nbMuted }]}>DURATION</Text>
-                  <Text style={[styles.statValue, { color: colors.nbInk, fontSize: 15 }]}>{meta.duration}</Text>
+                  <Text style={[styles.statValue, { color: colors.nbInk, fontSize: 15 }]}>
+                    {meta.duration}
+                  </Text>
                 </View>
-              )}
-              <View style={[styles.statBox, { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder }]}>
+              ) : null}
+              <View
+                style={[
+                  styles.statBox,
+                  { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder },
+                ]}
+              >
                 <Text style={[styles.statLabel, { color: colors.nbMuted }]}>FOCUS</Text>
-                <Text style={[styles.statValue, { color: colors.nbInk, fontSize: 15 }]}>{meta.focus}</Text>
+                <Text style={[styles.statValue, { color: colors.nbInk, fontSize: 15 }]}>
+                  {meta.focus}
+                </Text>
               </View>
             </View>
 
-            {steps.length > 1 ? (
-              <View style={styles.sectionBlock}>
-                <Text style={[styles.sectionLabel, { color: colors.nbMuted }]}>GUIDANCE</Text>
-                {steps.map((step, i) => (
-                  <View
-                    key={i}
-                    style={[styles.tipRow, { backgroundColor: colors.nbSoft, borderColor: colors.nbBorder }]}
-                  >
-                    <View style={[styles.exNum, { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface }]}>
-                      <Text style={[styles.exNumText, { color: colors.nbInk }]}>{i + 1}</Text>
-                    </View>
-                    <Text style={[styles.tipBody, { color: colors.nbInk }]}>{step}</Text>
-                  </View>
-                ))}
-              </View>
-            ) : item.detail ? (
-              <Text style={[styles.notesBody, { color: colors.nbInk }]}>{item.detail}</Text>
-            ) : (
-              <Text style={[styles.notesBody, { color: colors.nbMuted }]}>
-                Focus on {meta.type.toLowerCase()} and listen to your body.
-              </Text>
-            )}
+            <RecoveryGuidanceBody
+              steps={steps}
+              itemDetail={item.detail}
+              recoveryType={meta.type}
+              colors={colors}
+            />
 
             <View style={styles.navRow}>
               <NbButton
                 variant="ghost"
-                onPress={() => hasPrev && onChangeIndex(segmentIndex - 1)}
+                onPress={() => {
+                  if (!hasPrev) return;
+                  onChangeIndex(segmentIndex - 1);
+                }}
                 disabled={!hasPrev}
-                style={{ flex: 1, opacity: hasPrev ? 1 : 0.35 }}
+                style={{ flex: 1, opacity: prevOpacity }}
               >
                 Previous
               </NbButton>
               <NbButton
                 variant="fill"
-                onPress={() => hasNext && onChangeIndex(segmentIndex + 1)}
+                onPress={() => {
+                  if (!hasNext) return;
+                  onChangeIndex(segmentIndex + 1);
+                }}
                 disabled={!hasNext}
-                style={{ flex: 1, opacity: hasNext ? 1 : 0.35 }}
+                style={{ flex: 1, opacity: nextOpacity }}
               >
                 Next
               </NbButton>
@@ -1026,6 +1417,237 @@ function RecoveryFocusModal({ visible, day, items, segmentIndex, onClose, onChan
 }
 
 // ===== MAIN FUNCTION =====
+
+function firstStringParam(routeParams, keys, fallbackText) {
+  // Walk alias keys in order; first non-null wins. Keeps the screen under nesting depth 2.
+  const params = routeParams || {};
+  for (let index = 0; index < keys.length; index += 1) {
+    const keyName = keys[index];
+    if (params[keyName] == null) continue;
+    return String(params[keyName]);
+  }
+  return fallbackText;
+}
+
+function resolveTimelineText(routeParams) {
+  return firstStringParam(routeParams, ['timeline', 'expectedTimeline'], '');
+}
+
+function resolveImportantNotes(routeParams, overview) {
+  return firstStringParam(routeParams, ['importantNotes', 'notes', 'generalNotes'], overview);
+}
+
+function resolveNutritionGuidance(routeParams) {
+  return firstStringParam(routeParams, ['nutritionGuidance', 'nutrition', 'nutritionNotes'], '');
+}
+
+/**
+ * Pull every route option into plain locals (no nested route?.params?. in the screen body).
+ * Prop callbacks merge later in MyWorkoutPlanScreen — this only reads the route bag.
+ */
+function readPlanRouteBag(route) {
+  const routeParams = route && route.params ? route.params : {};
+
+  const reserveShellBottomNav = routeParams.reserveShellBottomNav === true;
+  const isDarkOverride = routeParams.isDarkOverride;
+  const routeOnBack = routeParams.onBack;
+  const subViewBackRef = routeParams.subViewBackRef;
+  const onSubViewActiveChange = routeParams.onSubViewActiveChange;
+
+  let workoutPlan = [];
+  if (routeParams.workoutPlan) {
+    workoutPlan = routeParams.workoutPlan;
+  }
+
+  let overview = '';
+  if (routeParams.overview) {
+    overview = String(routeParams.overview);
+  }
+
+  let weeksRemaining = DEFAULT_WEEKS_REMAINING;
+  if (routeParams.weeksRemaining != null) {
+    weeksRemaining = routeParams.weeksRemaining;
+  }
+
+  let focusSummary = DEFAULT_FOCUS_SUMMARY;
+  if (routeParams.focusSummary != null) {
+    focusSummary = String(routeParams.focusSummary);
+  }
+
+  let heroTitle = DEFAULT_HERO_TITLE;
+  if (routeParams.planHeroTitle != null) {
+    heroTitle = String(routeParams.planHeroTitle);
+  }
+
+  let planWeek = routeParams.planWeek;
+  if (planWeek == null) {
+    planWeek = routeParams.currentWeek;
+  }
+
+  const timelineText = resolveTimelineText(routeParams);
+  const importantNotes = resolveImportantNotes(routeParams, overview);
+  const nutritionGuidance = resolveNutritionGuidance(routeParams);
+
+  const routeStartSession = routeParams.onStartSession;
+  const routeViewPdf = routeParams.onViewPdf;
+  const routeSharePlan = routeParams.onSharePlan;
+  const routeOnboardingData = routeParams.onboardingData;
+  const routeVideosSlot = routeParams.videosSlot;
+
+  return {
+    routeParams,
+    reserveShellBottomNav,
+    isDarkOverride,
+    routeOnBack,
+    subViewBackRef,
+    onSubViewActiveChange,
+    workoutPlan,
+    overview,
+    weeksRemaining,
+    focusSummary,
+    heroTitle,
+    planWeek,
+    timelineText,
+    importantNotes,
+    nutritionGuidance,
+    routeStartSession,
+    routeViewPdf,
+    routeSharePlan,
+    routeOnboardingData,
+    routeVideosSlot,
+  };
+}
+
+function mondayBasedTodayIndex() {
+  // vocab: getDay = 0 Sunday … 6 Saturday; our week strip is Mon=0 … Sun=6
+  const jsDay = new Date().getDay();
+  if (jsDay === 0) return 6;
+  return jsDay - 1;
+}
+
+function firstTrainingDayIndex(weekSlots) {
+  for (let index = 0; index < weekSlots.length; index += 1) {
+    const slot = weekSlots[index];
+    if (slot.day && !slot.day.rest) return index;
+  }
+  return -1;
+}
+
+function firstAnyDayIndex(weekSlots) {
+  for (let index = 0; index < weekSlots.length; index += 1) {
+    if (weekSlots[index].day) return index;
+  }
+  return -1;
+}
+
+function initialSelectedDayIndex(weekSlots, todayIndex) {
+  const todaySlot = weekSlots[todayIndex];
+  if (todaySlot && todaySlot.day) return todayIndex;
+  const firstTraining = firstTrainingDayIndex(weekSlots);
+  if (firstTraining >= 0) return firstTraining;
+  const firstAny = firstAnyDayIndex(weekSlots);
+  if (firstAny >= 0) return firstAny;
+  return todayIndex;
+}
+
+function buildHeaderSubtitle(heroTitle, focusSummary, planWeek, weeksRemaining) {
+  const name = heroTitle && heroTitle !== DEFAULT_HERO_TITLE ? heroTitle : focusSummary;
+  if (planWeek != null && String(planWeek).trim()) {
+    return `${name} · week ${planWeek}`;
+  }
+  return `${name} · ${weeksRemaining} weeks left`;
+}
+
+function workoutNameForSession(day) {
+  const focusBits = trimmedNonEmptyParts(String(day.focus || '').split(/\s*·\s*/));
+  if (focusBits[0]) return focusBits[0];
+  const fromDay = String(day.day || day.short || 'Workout').trim();
+  return fromDay || 'Workout';
+}
+
+function buildPlanShareMessage(headerSubtitle, overview, importantNotes, nutritionGuidance) {
+  const parts = [headerSubtitle, overview, importantNotes, nutritionGuidance];
+  const kept = [];
+  for (let index = 0; index < parts.length; index += 1) {
+    const trimmed = String(parts[index] || '').trim();
+    if (!trimmed) continue;
+    kept.push(trimmed);
+  }
+  if (kept.length === 0) return SCREEN_TITLE;
+  return kept.join('\n\n');
+}
+
+function VideosTabPane({ videosSlotNode, isDark, videosOnboarding }) {
+  if (videosSlotNode != null) {
+    return videosSlotNode;
+  }
+  return (
+    <View style={{ flex: 1 }}>
+      {/* Videos agent may replace this embed — ExerciseVideosTab is the current library */}
+      <ExerciseVideosTab isDark={isDark} onboardingData={videosOnboarding} />
+    </View>
+  );
+}
+
+function PlanTabBody({
+  weekSlots,
+  selectedIndex,
+  todayIndex,
+  setSelectedIndex,
+  sectionLabel,
+  selectedDay,
+  workoutPlan,
+  handleStartSession,
+  setRecoveryModalIndex,
+  setExerciseModal,
+  emptyDayPlaceholder,
+  colors,
+}) {
+  let daySection = emptyDayPlaceholder;
+  if (selectedDay) {
+    daySection = (
+      <>
+        <TodayHeroCard
+          day={selectedDay}
+          workoutPlan={workoutPlan}
+          onStartSession={handleStartSession}
+          colors={colors}
+        />
+        <ExerciseListCard
+          day={selectedDay}
+          onOpenExercise={(exerciseIndex) => {
+            if (selectedDay.rest) {
+              setRecoveryModalIndex(exerciseIndex);
+              return;
+            }
+            setExerciseModal(exerciseIndex);
+          }}
+          colors={colors}
+        />
+      </>
+    );
+  }
+
+  return (
+    <View style={{ gap: 16 }}>
+      <WeekStrip
+        slots={weekSlots}
+        selectedIndex={selectedIndex}
+        todayIndex={todayIndex}
+        onSelect={setSelectedIndex}
+        colors={colors}
+      />
+      <SectionEyebrow label={sectionLabel} colors={colors} />
+      {daySection}
+      <RestOfWeekCard
+        slots={weekSlots}
+        selectedIndex={selectedIndex}
+        onSelectDay={setSelectedIndex}
+        colors={colors}
+      />
+    </View>
+  );
+}
 
 /**
  * Design Law weekly plan viewer (Plan + Notes + Videos).
@@ -1049,115 +1671,110 @@ export default function MyWorkoutPlanScreen({
   onboardingData,
   videosSlot,
 }) {
+  // 1. Theme + route bag → named locals (plain ifs, no route?.params?. chains).
   const theme = useTheme();
   const shellBottomPad = useShellBottomNavInset(SHELL_BOTTOM_INSET);
-  const reserveShellBottomNav = route?.params?.reserveShellBottomNav === true;
   const modalScrollBottomPad = useModalScrollBottomPad(MODAL_SCROLL_PAD);
-  const scrollBottomPad = reserveShellBottomNav ? shellBottomPad : modalScrollBottomPad;
+  const routeBag = readPlanRouteBag(route);
 
-  const isDarkOverride = route?.params?.isDarkOverride;
-  const isDark = typeof isDarkOverride === 'boolean' ? isDarkOverride : theme.isDark;
+  let scrollBottomPad = modalScrollBottomPad;
+  if (routeBag.reserveShellBottomNav) {
+    scrollBottomPad = shellBottomPad;
+  }
+
+  let isDark = theme.isDark;
+  if (typeof routeBag.isDarkOverride === 'boolean') {
+    isDark = routeBag.isDarkOverride;
+  }
   const colors = paletteFor(isDark);
 
+  const {
+    routeOnBack,
+    subViewBackRef,
+    onSubViewActiveChange,
+    workoutPlan,
+    overview,
+    weeksRemaining,
+    focusSummary,
+    heroTitle,
+    planWeek,
+    timelineText,
+    importantNotes,
+    nutritionGuidance,
+  } = routeBag;
+
+  let startSessionCb = onStartSession;
+  if (!startSessionCb) startSessionCb = routeBag.routeStartSession;
+
+  let viewPdfCb = onViewPdf;
+  if (!viewPdfCb) viewPdfCb = routeBag.routeViewPdf;
+
+  let sharePlanCb = onSharePlan;
+  if (!sharePlanCb) sharePlanCb = routeBag.routeSharePlan;
+
+  let videosOnboarding = onboardingData;
+  if (!videosOnboarding) videosOnboarding = routeBag.routeOnboardingData;
+
+  let videosSlotNode = videosSlot;
+  if (videosSlotNode == null) videosSlotNode = routeBag.routeVideosSlot;
+  if (videosSlotNode == null) videosSlotNode = null;
+
+  // 2. Back: parent callback → route callback → stack goBack.
   const handleRootBack = useCallback(() => {
     if (typeof onBack === 'function') {
       onBack();
       return;
     }
-    if (typeof route?.params?.onBack === 'function') {
-      route.params.onBack();
+    if (typeof routeOnBack === 'function') {
+      routeOnBack();
       return;
     }
-    if (navigation?.canGoBack?.()) navigation.goBack();
-  }, [onBack, route?.params, navigation]);
-
-  const subViewBackRef = route?.params?.subViewBackRef;
-  const onSubViewActiveChange = route?.params?.onSubViewActiveChange;
-
-  const workoutPlan = route?.params?.workoutPlan || [];
-  const overview = route?.params?.overview ? String(route.params.overview) : '';
-  const weeksRemaining = route?.params?.weeksRemaining ?? DEFAULT_WEEKS_REMAINING;
-  const focusSummary =
-    route?.params?.focusSummary != null ? String(route.params.focusSummary) : DEFAULT_FOCUS_SUMMARY;
-  const heroTitle =
-    route?.params?.planHeroTitle != null ? String(route.params.planHeroTitle) : DEFAULT_HERO_TITLE;
-  const planWeek = route?.params?.planWeek ?? route?.params?.currentWeek;
-
-  const timelineText =
-    route?.params?.timeline != null
-      ? String(route.params.timeline)
-      : route?.params?.expectedTimeline != null
-        ? String(route.params.expectedTimeline)
-        : '';
-  const importantNotes =
-    route?.params?.importantNotes != null
-      ? String(route.params.importantNotes)
-      : route?.params?.notes != null
-        ? String(route.params.notes)
-        : route?.params?.generalNotes != null
-          ? String(route.params.generalNotes)
-          : overview;
-  const nutritionGuidance =
-    route?.params?.nutritionGuidance != null
-      ? String(route.params.nutritionGuidance)
-      : route?.params?.nutrition != null
-        ? String(route.params.nutrition)
-        : route?.params?.nutritionNotes != null
-          ? String(route.params.nutritionNotes)
-          : '';
-
-  const startSessionCb = onStartSession || route?.params?.onStartSession;
-  const viewPdfCb = onViewPdf || route?.params?.onViewPdf;
-  const sharePlanCb = onSharePlan || route?.params?.onSharePlan;
-  const videosOnboarding = onboardingData || route?.params?.onboardingData;
-  const videosSlotNode = videosSlot ?? route?.params?.videosSlot ?? null;
+    if (!navigation) return;
+    if (typeof navigation.canGoBack !== 'function') return;
+    if (!navigation.canGoBack()) return;
+    navigation.goBack();
+  }, [onBack, routeOnBack, navigation]);
 
   const weekSlots = useMemo(() => buildWeekSlots(workoutPlan), [workoutPlan]);
-  // JS getDay: 0=Sun → map to our WEEK_SHORTS index (Mon=0)
-  const todayIndex = useMemo(() => {
-    const jsDay = new Date().getDay();
-    return jsDay === 0 ? 6 : jsDay - 1;
-  }, []);
+  const todayIndex = useMemo(() => mondayBasedTodayIndex(), []);
 
   const [tab, setTab] = useState(TAB_PLAN);
-  const [selectedIndex, setSelectedIndex] = useState(() => {
-    const todaySlot = weekSlots[todayIndex];
-    if (todaySlot?.day) return todayIndex;
-    const firstTraining = weekSlots.findIndex((s) => s.day && !s.day.rest);
-    if (firstTraining >= 0) return firstTraining;
-    const firstAny = weekSlots.findIndex((s) => s.day);
-    return firstAny >= 0 ? firstAny : todayIndex;
-  });
+  const [selectedIndex, setSelectedIndex] = useState(() =>
+    initialSelectedDayIndex(weekSlots, todayIndex),
+  );
   const [exerciseModal, setExerciseModal] = useState(null);
   const [recoveryModalIndex, setRecoveryModalIndex] = useState(null);
 
   const selectedSlot = weekSlots[selectedIndex] || weekSlots[0];
-  const selectedDay = selectedSlot?.day || null;
+  let selectedDay = null;
+  if (selectedSlot && selectedSlot.day) {
+    selectedDay = selectedSlot.day;
+  }
   const isSelectedToday = selectedIndex === todayIndex;
 
   const recoveryItems = useMemo(() => {
-    if (!selectedDay?.rest) return [];
+    if (!selectedDay) return [];
+    if (!selectedDay.rest) return [];
     return toRecoveryItems(selectedDay);
   }, [selectedDay]);
 
-  const headerSubtitle = useMemo(() => {
-    const name = heroTitle && heroTitle !== DEFAULT_HERO_TITLE ? heroTitle : focusSummary;
-    if (planWeek != null && String(planWeek).trim()) {
-      return `${name} · week ${planWeek}`;
-    }
-    return `${name} · ${weeksRemaining} weeks left`;
-  }, [heroTitle, focusSummary, planWeek, weeksRemaining]);
+  const headerSubtitle = useMemo(
+    () => buildHeaderSubtitle(heroTitle, focusSummary, planWeek, weeksRemaining),
+    [heroTitle, focusSummary, planWeek, weeksRemaining],
+  );
 
   const sectionLabel = useMemo(() => {
-    const full = selectedSlot?.fullName || '';
-    if (isSelectedToday) return `Today, ${full}`;
-    return full;
+    let fullName = '';
+    if (selectedSlot) fullName = selectedSlot.fullName || '';
+    if (isSelectedToday) return `Today, ${fullName}`;
+    return fullName;
   }, [selectedSlot, isSelectedToday]);
 
   const inSubView = exerciseModal != null || recoveryModalIndex != null;
 
   useEffect(() => {
-    onSubViewActiveChange?.(inSubView);
+    if (typeof onSubViewActiveChange !== 'function') return;
+    onSubViewActiveChange(inSubView);
   }, [inSubView, onSubViewActiveChange]);
 
   useEffect(() => {
@@ -1178,30 +1795,27 @@ export default function MyWorkoutPlanScreen({
     };
   }, [exerciseModal, recoveryModalIndex, subViewBackRef]);
 
+  // 3. Start session — parent callback first, else push WorkoutSession.
   const handleStartSession = useCallback(
     (day) => {
       if (!day || day.rest) return;
-
-      // Parent may pass (day) or already expect { workoutName, exercises } — CreateWorkoutPlanScreen wraps either.
       if (typeof startSessionCb === 'function') {
         startSessionCb(day);
         return;
       }
-
-      // Fallback: push Design Law session route directly (WorkoutPlanView / embeds without shell).
-      const focusBits = String(day.focus || '')
-        .split(/\s*·\s*/)
-        .filter(Boolean);
-      const workoutName =
-        focusBits[0] || String(day.day || day.short || 'Workout').trim() || 'Workout';
+      let exercises = [];
+      if (Array.isArray(day.exercises)) {
+        exercises = day.exercises;
+      }
       rootNavigate(CLIENT_ROUTES.WorkoutSession, {
-        workoutName,
-        exercises: Array.isArray(day.exercises) ? day.exercises : [],
+        workoutName: workoutNameForSession(day),
+        exercises,
       });
     },
     [startSessionCb],
   );
 
+  // 4. PDF — parent callback or “not available yet” alert.
   const handleViewPdf = useCallback(() => {
     if (typeof viewPdfCb === 'function') {
       viewPdfCb();
@@ -1210,34 +1824,94 @@ export default function MyWorkoutPlanScreen({
     Alert.alert('PDF', 'PDF export is not available for this plan yet.');
   }, [viewPdfCb]);
 
+  // 5. Share — parent callback or native share sheet with notes text.
   const handleShare = useCallback(async () => {
     if (typeof sharePlanCb === 'function') {
       sharePlanCb();
       return;
     }
     try {
-      const message = [headerSubtitle, overview, importantNotes, nutritionGuidance]
-        .map((part) => String(part || '').trim())
-        .filter(Boolean)
-        .join('\n\n');
+      const message = buildPlanShareMessage(
+        headerSubtitle,
+        overview,
+        importantNotes,
+        nutritionGuidance,
+      );
       await Share.share({
         title: SCREEN_TITLE,
-        message: message || SCREEN_TITLE,
+        message,
       });
-    } catch (_) {
-      /* user dismissed */
+    } catch {
+      /* user dismissed the sheet — ignore */
     }
   }, [sharePlanCb, headerSubtitle, overview, importantNotes, nutritionGuidance]);
 
+  let emptyDayName = 'this day';
+  if (selectedSlot && selectedSlot.fullName) {
+    emptyDayName = selectedSlot.fullName;
+  }
   const emptyDayPlaceholder = (
     <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard}>
       <NbCard noShadow>
         <Text style={[styles.notesBody, { color: colors.nbMuted }]}>
-          No session is planned for {selectedSlot?.fullName || 'this day'}. Pick another day from the week strip.
+          No session is planned for {emptyDayName}. Pick another day from the week strip.
         </Text>
       </NbCard>
     </HardShadow>
   );
+
+  // 6. Named pane decisions above JSX (no nested ternaries in the return).
+  const showVideosTab = tab === TAB_VIDEOS;
+  const showPlanTab = tab === TAB_PLAN;
+  const showNotesTab = tab === TAB_NOTES;
+  const showExerciseModal = Boolean(selectedDay && !selectedDay.rest);
+  let showRecoveryModal = false;
+  if (selectedDay && selectedDay.rest) {
+    showRecoveryModal = true;
+  }
+
+  let mainPane = (
+    <ScrollView
+      contentContainerStyle={[styles.scrollContent, { paddingBottom: scrollBottomPad }]}
+      {...FORM_SCROLL_PROPS}
+    >
+      {showPlanTab && (
+        <PlanTabBody
+          weekSlots={weekSlots}
+          selectedIndex={selectedIndex}
+          todayIndex={todayIndex}
+          setSelectedIndex={setSelectedIndex}
+          sectionLabel={sectionLabel}
+          selectedDay={selectedDay}
+          workoutPlan={workoutPlan}
+          handleStartSession={handleStartSession}
+          setRecoveryModalIndex={setRecoveryModalIndex}
+          setExerciseModal={setExerciseModal}
+          emptyDayPlaceholder={emptyDayPlaceholder}
+          colors={colors}
+        />
+      )}
+      {showNotesTab && (
+        <NotesTab
+          timelineText={timelineText}
+          importantNotes={importantNotes}
+          nutritionGuidance={nutritionGuidance}
+          onViewPdf={handleViewPdf}
+          onShare={handleShare}
+          colors={colors}
+        />
+      )}
+    </ScrollView>
+  );
+  if (showVideosTab) {
+    mainPane = (
+      <VideosTabPane
+        videosSlotNode={videosSlotNode}
+        isDark={isDark}
+        videosOnboarding={videosOnboarding}
+      />
+    );
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: colors.nbBackground }]}>
@@ -1256,73 +1930,9 @@ export default function MyWorkoutPlanScreen({
         />
       </View>
 
-      {tab === TAB_VIDEOS ? (
-        videosSlotNode != null ? (
-          videosSlotNode
-        ) : (
-          <View style={{ flex: 1 }}>
-            {/* Videos agent may replace this embed — ExerciseVideosTab is the current library */}
-            <ExerciseVideosTab isDark={isDark} onboardingData={videosOnboarding} />
-          </View>
-        )
-      ) : (
-        <ScrollView
-          contentContainerStyle={[styles.scrollContent, { paddingBottom: scrollBottomPad }]}
-          {...FORM_SCROLL_PROPS}
-        >
-          {tab === TAB_PLAN && (
-            <View style={{ gap: 16 }}>
-              <WeekStrip
-                slots={weekSlots}
-                selectedIndex={selectedIndex}
-                todayIndex={todayIndex}
-                onSelect={setSelectedIndex}
-                colors={colors}
-              />
-              <SectionEyebrow label={sectionLabel} colors={colors} />
-              {selectedDay ? (
-                <>
-                  <TodayHeroCard
-                    day={selectedDay}
-                    workoutPlan={workoutPlan}
-                    onStartSession={handleStartSession}
-                    colors={colors}
-                  />
-                  <ExerciseListCard
-                    day={selectedDay}
-                    onOpenExercise={(idx) => {
-                      if (selectedDay.rest) setRecoveryModalIndex(idx);
-                      else setExerciseModal(idx);
-                    }}
-                    colors={colors}
-                  />
-                </>
-              ) : (
-                emptyDayPlaceholder
-              )}
-              <RestOfWeekCard
-                slots={weekSlots}
-                selectedIndex={selectedIndex}
-                onSelectDay={setSelectedIndex}
-                colors={colors}
-              />
-            </View>
-          )}
+      {mainPane}
 
-          {tab === TAB_NOTES && (
-            <NotesTab
-              timelineText={timelineText}
-              importantNotes={importantNotes}
-              nutritionGuidance={nutritionGuidance}
-              onViewPdf={handleViewPdf}
-              onShare={handleShare}
-              colors={colors}
-            />
-          )}
-        </ScrollView>
-      )}
-
-      {selectedDay && !selectedDay.rest && (
+      {showExerciseModal && (
         <ExerciseDetailModal
           visible={exerciseModal != null}
           day={selectedDay}
@@ -1332,7 +1942,7 @@ export default function MyWorkoutPlanScreen({
           colors={colors}
         />
       )}
-      {selectedDay?.rest && (
+      {showRecoveryModal && (
         <RecoveryFocusModal
           visible={recoveryModalIndex != null}
           day={selectedDay}
@@ -1346,6 +1956,9 @@ export default function MyWorkoutPlanScreen({
     </View>
   );
 }
+
+// ===== PLUMBING — skip unless debugging layout tokens =====
+// StyleSheet numbers stay inline (CODING_STYLE: layout StyleSheet.create values).
 
 const styles = StyleSheet.create({
   container: { flex: 1 },

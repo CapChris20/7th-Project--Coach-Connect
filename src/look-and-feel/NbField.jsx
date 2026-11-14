@@ -1,9 +1,10 @@
-// Design Law text field — 48+ tall, 3px border, 12 caps label, dashed + ! error row.
-// Flow: label → HardShadow shell → TextInput → optional error line under the field.
-// Used by sheets/forms that need shared chrome (not LoginScreen AuthField — that stays local).
+// Design Law text field — tall enough to tap, 3px border, 12 caps label, dashed + ! error row.
+// Flow: optional uppercase label → HardShadow shell → TextInput → validation error row when failed.
+// Used by: sheets/forms that need shared chrome (LoginScreen AuthField stays local on purpose).
 //
-// vocab: dashedError = borderStyle dashed when validation failed (Android may square the corners)
-// Manipulate here: FIELD_MIN_HEIGHT 48 matches DESIGN-SYSTEM.md; raise for multiline comfort
+// vocab: HardShadow = hard offset fill / iOS shadow wrapper (Design Law — never soft blur)
+// vocab: dashedError = borderStyle dashed when validation failed (Android may square corners)
+// Manipulate here: FIELD_MIN_HEIGHT 48 matches DESIGN-SYSTEM.md; raise multiline multipliers for comfort
 
 import React from 'react';
 import { Text, TextInput, StyleSheet, View } from 'react-native';
@@ -14,12 +15,184 @@ import { useTheme } from './lightDarkMode';
 // ===== NAMED CONSTANTS =====
 
 const FIELD_MIN_HEIGHT = 48;
-const LABEL_SIZE = 12;
-const ERROR_BANG_SIZE = 18;
+const LABEL_FONT_SIZE = 12;
+const ERROR_BANG_BOX_SIZE = 18;
+// Manipulate here: taller shell when the field is a note / multi-line box
+const MULTILINE_SHELL_HEIGHT_MULTIPLIER = 2.5;
+const MULTILINE_INPUT_HEIGHT_MULTIPLIER = 2;
+// Manipulate here: single-line input sits slightly shorter than the shell so padding breathes
+const INPUT_HEIGHT_INSET = 6;
+const BORDER_STYLE_WHEN_ERROR = 'dashed';
+const BORDER_STYLE_WHEN_OK = 'solid';
+const TEXT_ALIGN_TOP = 'top';
+const TEXT_ALIGN_CENTER = 'center';
+
+// ===== HELPER FUNCTIONS =====
+
+function fieldHasValidationError(errorText) {
+  return Boolean(errorText);
+}
+
+function shellMinHeightForMode(isMultiline) {
+  if (isMultiline) {
+    return FIELD_MIN_HEIGHT * MULTILINE_SHELL_HEIGHT_MULTIPLIER;
+  }
+  return FIELD_MIN_HEIGHT;
+}
+
+function inputMinHeightForMode(isMultiline) {
+  if (isMultiline) {
+    return FIELD_MIN_HEIGHT * MULTILINE_INPUT_HEIGHT_MULTIPLIER;
+  }
+  return FIELD_MIN_HEIGHT - INPUT_HEIGHT_INSET;
+}
+
+function borderStyleForValidation(validationFailed) {
+  if (validationFailed) {
+    return BORDER_STYLE_WHEN_ERROR;
+  }
+  return BORDER_STYLE_WHEN_OK;
+}
+
+// Screen readers need a name; prefer the explicit a11y label, else the visible label.
+function accessibilityNameForInput(accessibilityLabel, visibleLabel) {
+  if (accessibilityLabel) {
+    return accessibilityLabel;
+  }
+  return visibleLabel;
+}
+
+function verticalAlignForMultiline(isMultiline) {
+  if (isMultiline) {
+    return TEXT_ALIGN_TOP;
+  }
+  return TEXT_ALIGN_CENTER;
+}
+
+function buildShellFrameStyle(themeColors, fieldBorderStyle, shellMinHeight) {
+  return [
+    styles.shell,
+    {
+      borderColor: themeColors.nbBorder,
+      backgroundColor: themeColors.nbSurface,
+      borderStyle: fieldBorderStyle,
+      minHeight: shellMinHeight,
+    },
+  ];
+}
+
+function buildInputTextStyle(themeColors, inputMinHeight, callerInputStyle) {
+  return [
+    styles.input,
+    {
+      color: themeColors.nbInk,
+      minHeight: inputMinHeight,
+    },
+    callerInputStyle,
+  ];
+}
+
+// ===== SMALL UI PIECES =====
+
+function FieldUppercaseLabel({ label, mutedColor }) {
+  if (!label) {
+    return null;
+  }
+  return (
+    <Text style={[styles.label, { color: mutedColor }]}>{label}</Text>
+  );
+}
+
+function ErrorBangBadge({ themeColors }) {
+  return (
+    <View
+      style={[
+        styles.errorDot,
+        {
+          borderColor: themeColors.nbBorder,
+          backgroundColor: themeColors.nbFill,
+        },
+      ]}
+    >
+      <Text style={[styles.errorBang, { color: themeColors.nbOnFill }]}>!</Text>
+    </View>
+  );
+}
+
+function FieldValidationErrorRow({ errorText, themeColors }) {
+  return (
+    <View style={styles.errorRow}>
+      <ErrorBangBadge themeColors={themeColors} />
+      <Text style={[styles.errorCopy, { color: themeColors.nbInk }]}>
+        {errorText}
+      </Text>
+    </View>
+  );
+}
+
+function OptionalValidationErrorRow({ validationFailed, errorText, themeColors }) {
+  if (!validationFailed) {
+    return null;
+  }
+  return (
+    <FieldValidationErrorRow errorText={errorText} themeColors={themeColors} />
+  );
+}
+
+function FieldHardShadowShell({
+  themeColors,
+  fieldBorderStyle,
+  shellMinHeight,
+  value,
+  onChangeText,
+  placeholder,
+  secureTextEntry,
+  keyboardType,
+  autoCapitalize,
+  editable,
+  isMultiline,
+  textAlignVertical,
+  accessibilityName,
+  inputMinHeight,
+  callerInputStyle,
+}) {
+  const shellFrameStyle = buildShellFrameStyle(
+    themeColors,
+    fieldBorderStyle,
+    shellMinHeight,
+  );
+  const inputTextStyle = buildInputTextStyle(
+    themeColors,
+    inputMinHeight,
+    callerInputStyle,
+  );
+
+  return (
+    <HardShadow offset={nb.shadowOffsetSmall} radius={borderRadius.nbInput}>
+      <View style={shellFrameStyle}>
+        <TextInput
+          value={value}
+          onChangeText={onChangeText}
+          placeholder={placeholder}
+          placeholderTextColor={themeColors.nbMuted}
+          secureTextEntry={secureTextEntry}
+          keyboardType={keyboardType}
+          autoCapitalize={autoCapitalize}
+          editable={editable}
+          multiline={isMultiline}
+          textAlignVertical={textAlignVertical}
+          accessibilityLabel={accessibilityName}
+          style={inputTextStyle}
+        />
+      </View>
+    </HardShadow>
+  );
+}
 
 // ===== MAIN FUNCTION =====
 
 /**
+ * Design Law text field with optional label and validation error row.
  * @param {{
  *   label?: string,
  *   value?: string,
@@ -51,73 +224,59 @@ export default function NbField({
   inputStyle,
   accessibilityLabel,
 }) {
-  const { colors } = useTheme();
-  const hasError = Boolean(errorText);
+  // vocab: useTheme = ThemeProvider hook — colors follow light/dark Design Law tokens
+  const { colors: themeColors } = useTheme();
 
+  // 1. Decide whether we show the dashed border + error row.
+  const validationFailed = fieldHasValidationError(errorText);
+
+  // 2. Heights follow single-line vs multiline without nesting ternaries in JSX.
+  const shellMinHeight = shellMinHeightForMode(multiline);
+  const inputMinHeight = inputMinHeightForMode(multiline);
+  const fieldBorderStyle = borderStyleForValidation(validationFailed);
+
+  // 3. Accessibility name falls back to the visible label string.
+  const accessibilityName = accessibilityNameForInput(accessibilityLabel, label);
+  const textAlignVertical = verticalAlignForMultiline(multiline);
+
+  // 4. Stack label → hard-shadow shell → optional error row.
   return (
     <View style={[styles.wrap, style]}>
-      {label ? (
-        <Text style={[styles.label, { color: colors.nbMuted }]}>{label}</Text>
-      ) : null}
-      <HardShadow offset={nb.shadowOffsetSmall} radius={borderRadius.nbInput}>
-        <View
-          style={[
-            styles.shell,
-            {
-              borderColor: colors.nbBorder,
-              backgroundColor: colors.nbSurface,
-              // vocab: dashed = error state from Design Law (solid when ok)
-              borderStyle: hasError ? 'dashed' : 'solid',
-              minHeight: multiline ? FIELD_MIN_HEIGHT * 2.5 : FIELD_MIN_HEIGHT,
-            },
-          ]}
-        >
-          <TextInput
-            value={value}
-            onChangeText={onChangeText}
-            placeholder={placeholder}
-            placeholderTextColor={colors.nbMuted}
-            secureTextEntry={secureTextEntry}
-            keyboardType={keyboardType}
-            autoCapitalize={autoCapitalize}
-            editable={editable}
-            multiline={multiline}
-            textAlignVertical={multiline ? 'top' : 'center'}
-            accessibilityLabel={accessibilityLabel || label}
-            style={[
-              styles.input,
-              {
-                color: colors.nbInk,
-                minHeight: multiline ? FIELD_MIN_HEIGHT * 2 : FIELD_MIN_HEIGHT - 6,
-              },
-              inputStyle,
-            ]}
-          />
-        </View>
-      </HardShadow>
-      {hasError ? (
-        <View style={styles.errorRow}>
-          <View
-            style={[
-              styles.errorDot,
-              { borderColor: colors.nbBorder, backgroundColor: colors.nbFill },
-            ]}
-          >
-            <Text style={[styles.errorBang, { color: colors.nbOnFill }]}>!</Text>
-          </View>
-          <Text style={[styles.errorCopy, { color: colors.nbInk }]}>{errorText}</Text>
-        </View>
-      ) : null}
+      <FieldUppercaseLabel label={label} mutedColor={themeColors.nbMuted} />
+      <FieldHardShadowShell
+        themeColors={themeColors}
+        fieldBorderStyle={fieldBorderStyle}
+        shellMinHeight={shellMinHeight}
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        secureTextEntry={secureTextEntry}
+        keyboardType={keyboardType}
+        autoCapitalize={autoCapitalize}
+        editable={editable}
+        isMultiline={multiline}
+        textAlignVertical={textAlignVertical}
+        accessibilityName={accessibilityName}
+        inputMinHeight={inputMinHeight}
+        callerInputStyle={inputStyle}
+      />
+      <OptionalValidationErrorRow
+        validationFailed={validationFailed}
+        errorText={errorText}
+        themeColors={themeColors}
+      />
     </View>
   );
 }
+
+// PLUMBING — skip unless debugging (static StyleSheet tokens)
 
 const styles = StyleSheet.create({
   wrap: {
     marginBottom: spacing.md,
   },
   label: {
-    fontSize: LABEL_SIZE,
+    fontSize: LABEL_FONT_SIZE,
     fontWeight: '800',
     letterSpacing: 1.1,
     textTransform: 'uppercase',
@@ -141,9 +300,9 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   errorDot: {
-    width: ERROR_BANG_SIZE,
-    height: ERROR_BANG_SIZE,
-    borderRadius: ERROR_BANG_SIZE / 2,
+    width: ERROR_BANG_BOX_SIZE,
+    height: ERROR_BANG_BOX_SIZE,
+    borderRadius: ERROR_BANG_BOX_SIZE / 2,
     borderWidth: nb.borderWidth,
     alignItems: 'center',
     justifyContent: 'center',

@@ -1,6 +1,6 @@
 // Shared styles for the workout plan viewer cards, day headers, and empty states.
-// Flow: named style groups → one StyleSheet.create → WorkoutPlanView spreads the result onto its layout.
-// Used by: WorkoutPlanView. Padding and colors stay as layout numbers; the platform bottom inset is the only extracted rule.
+// Flow: build named style groups → merge → StyleSheet.create → WorkoutPlanView imports planViewerRefStyles.
+// Used by: WorkoutPlanView. Padding and colors stay as layout numbers; platform bottom inset is extracted.
 
 import { Platform, StyleSheet } from 'react-native';
 import { lightColors } from '../../look-and-feel/colorPalette';
@@ -8,8 +8,11 @@ import { lightColors } from '../../look-and-feel/colorPalette';
 // ===== NAMED CONSTANTS =====
 
 const IOS_PLATFORM = 'ios';
+
+// Manipulate here: extra bottom pad on the log sheet so the save button clears the home indicator.
 const IOS_LOG_SHEET_BOTTOM_PADDING = 28;
 const ANDROID_LOG_SHEET_BOTTOM_PADDING = 16;
+
 const ERROR_TITLE_FONT_SIZE = 24;
 const ERROR_BUTTON_MARGIN_TOP = 24;
 const EMPTY_CONTAINER_PADDING = 24;
@@ -17,14 +20,33 @@ const EMPTY_BUTTON_MARGIN_TOP = 24;
 const BUTTON_HORIZONTAL_PADDING = 24;
 const LOG_CONTENT_MAX_HEIGHT = 420;
 
+const DROPDOWN_SHADOW_COLOR = '#000';
+const DROPDOWN_SHADOW_OFFSET = { width: 0, height: 4 };
+const DROPDOWN_SHADOW_OPACITY = 0.2;
+const DROPDOWN_SHADOW_RADIUS = 8;
+const DAY_SHORT_COLOR = lightColors.white;
+const DAY_FOCUS_COLOR = 'rgba(255,255,255,0.88)';
+const DETAIL_BADGE_BACKGROUND = 'rgba(255,255,255,0.06)';
+const MODAL_OVERLAY_SCRIM = 'rgba(0,0,0,0.45)';
+const SAVE_BUTTON_TEXT_COLOR = lightColors.white;
+const ERROR_BUTTON_TEXT_COLOR = lightColors.white;
+const EMPTY_BUTTON_TEXT_COLOR = lightColors.white;
+
 // ===== HELPER FUNCTIONS =====
 
-function logSheetBottomPadding() {
-  if (Platform.OS === IOS_PLATFORM) return IOS_LOG_SHEET_BOTTOM_PADDING;
+/**
+ * Bottom padding for the log bottom sheet — iOS needs more for the home indicator.
+ * @returns {number}
+ */
+function bottomPaddingForLogSheet() {
+  if (Platform.OS === IOS_PLATFORM) {
+    return IOS_LOG_SHEET_BOTTOM_PADDING;
+  }
   return ANDROID_LOG_SHEET_BOTTOM_PADDING;
 }
 
-function borderCardStyles() {
+/** Thin border wrappers used around gradient cards. */
+function buildBorderCardStyles() {
   return {
     borderCardContainer: { width: '100%' },
     borderGradient: { width: '100%' },
@@ -32,7 +54,8 @@ function borderCardStyles() {
   };
 }
 
-function logExerciseStyles() {
+/** Per-exercise log inputs (set rows, add/remove set buttons). */
+function buildLogExerciseStyles() {
   return {
     logExerciseContainer: {
       borderRadius: 14,
@@ -72,7 +95,8 @@ function logExerciseStyles() {
   };
 }
 
-function headerMenuStyles() {
+/** Top bar + overflow menu (Edit / Share / Delete). */
+function buildHeaderMenuStyles() {
   return {
     header: {
       flexDirection: 'row',
@@ -95,17 +119,18 @@ function headerMenuStyles() {
       paddingVertical: 6,
       zIndex: 50,
       elevation: 8,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.2,
-      shadowRadius: 8,
+      shadowColor: DROPDOWN_SHADOW_COLOR,
+      shadowOffset: DROPDOWN_SHADOW_OFFSET,
+      shadowOpacity: DROPDOWN_SHADOW_OPACITY,
+      shadowRadius: DROPDOWN_SHADOW_RADIUS,
     },
     menuItem: { paddingVertical: 12, paddingHorizontal: 14 },
     menuItemText: { fontSize: 15, fontWeight: '600' },
   };
 }
 
-function dayCardStyles() {
+/** Expandable day cards (header strip + expanded body / recovery). */
+function buildDayCardStyles() {
   return {
     planContent: { paddingHorizontal: 16, paddingBottom: 40, paddingTop: 8 },
     dayCardContainer: { marginBottom: 14 },
@@ -120,24 +145,35 @@ function dayCardStyles() {
     dayShort: {
       fontSize: 13,
       fontWeight: '800',
-      color: lightColors.white,
+      color: DAY_SHORT_COLOR,
       opacity: 0.95,
       letterSpacing: 0.5,
     },
     dayInfo: { flex: 1 },
     dayName: { fontSize: 16, fontWeight: '800', color: lightColors.white },
-    dayFocus: { fontSize: 13, color: 'rgba(255,255,255,0.88)', marginTop: 2 },
-    dayExpanded: { borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: 14, paddingBottom: 14, paddingTop: 12 },
+    dayFocus: { fontSize: 13, color: DAY_FOCUS_COLOR, marginTop: 2 },
+    dayExpanded: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      paddingHorizontal: 14,
+      paddingBottom: 14,
+      paddingTop: 12,
+    },
     recoveryContainer: { alignItems: 'center', paddingVertical: 12 },
     recoveryTitle: { fontSize: 16, fontWeight: '700', marginTop: 8 },
     recoveryNote: { fontSize: 14, textAlign: 'center', marginTop: 6, lineHeight: 20 },
   };
 }
 
-function exerciseRowStyles() {
+/** One exercise row inside an expanded day (sets, badges, complete, log link). */
+function buildExerciseRowStyles() {
   return {
     exerciseItem: { marginBottom: 14 },
-    exerciseHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 },
+    exerciseHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'flex-start',
+      gap: 10,
+    },
     exerciseName: { fontSize: 15, fontWeight: '700', flex: 1 },
     exerciseSets: { fontSize: 14, fontWeight: '700' },
     exerciseDetails: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
@@ -145,7 +181,7 @@ function exerciseRowStyles() {
       paddingHorizontal: 10,
       paddingVertical: 4,
       borderRadius: 8,
-      backgroundColor: 'rgba(255,255,255,0.06)',
+      backgroundColor: DETAIL_BADGE_BACKGROUND,
     },
     detailText: { fontSize: 12 },
     exerciseNotes: { fontSize: 13, marginTop: 8, lineHeight: 19 },
@@ -165,11 +201,12 @@ function exerciseRowStyles() {
   };
 }
 
-function logSheetStyles() {
+/** Bottom sheet used when logging sets for an exercise. */
+function buildLogSheetStyles() {
   return {
     modalOverlay: {
       flex: 1,
-      backgroundColor: 'rgba(0,0,0,0.45)',
+      backgroundColor: MODAL_OVERLAY_SCRIM,
       justifyContent: 'flex-end',
     },
     logBottomSheet: {
@@ -177,7 +214,7 @@ function logSheetStyles() {
       borderTopRightRadius: 20,
       borderWidth: 1,
       maxHeight: '88%',
-      paddingBottom: logSheetBottomPadding(),
+      paddingBottom: bottomPaddingForLogSheet(),
     },
     logHeader: {
       flexDirection: 'row',
@@ -191,11 +228,12 @@ function logSheetStyles() {
     logContent: { paddingHorizontal: 16, maxHeight: LOG_CONTENT_MAX_HEIGHT },
     saveBtnGradient: { marginHorizontal: 16, marginTop: 8, borderRadius: 14, overflow: 'hidden' },
     saveButton: { paddingVertical: 16, alignItems: 'center' },
-    saveButtonText: { color: lightColors.white, fontSize: 16, fontWeight: '800' },
+    saveButtonText: { color: SAVE_BUTTON_TEXT_COLOR, fontSize: 16, fontWeight: '800' },
   };
 }
 
-function overviewAndEmptyStyles() {
+/** Overview card, warm-up rows, error / loader / empty states. */
+function buildOverviewAndEmptyStyles() {
   return {
     subSectionLabel: {
       fontSize: 11,
@@ -204,7 +242,12 @@ function overviewAndEmptyStyles() {
       marginBottom: 8,
       marginTop: 4,
     },
-    warmRow: { flexDirection: 'row', paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth, gap: 10 },
+    warmRow: {
+      flexDirection: 'row',
+      paddingVertical: 8,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      gap: 10,
+    },
     warmName: { flex: 1, fontSize: 14, fontWeight: '600' },
     warmMeta: { fontSize: 12 },
     overviewCard: {
@@ -224,8 +267,13 @@ function overviewAndEmptyStyles() {
     },
     errorTitle: { fontSize: ERROR_TITLE_FONT_SIZE, fontWeight: '700', marginTop: 16 },
     errorMessage: { fontSize: 14, marginTop: 8, textAlign: 'center', lineHeight: 20 },
-    errorButton: { marginTop: ERROR_BUTTON_MARGIN_TOP, paddingVertical: 12, paddingHorizontal: BUTTON_HORIZONTAL_PADDING, borderRadius: 12 },
-    errorButtonText: { color: lightColors.white, fontWeight: '700' },
+    errorButton: {
+      marginTop: ERROR_BUTTON_MARGIN_TOP,
+      paddingVertical: 12,
+      paddingHorizontal: BUTTON_HORIZONTAL_PADDING,
+      borderRadius: 12,
+    },
+    errorButtonText: { color: ERROR_BUTTON_TEXT_COLOR, fontWeight: '700' },
     loaderContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     loaderText: { marginTop: 16, fontSize: 14 },
     emptyContainer: {
@@ -238,26 +286,63 @@ function overviewAndEmptyStyles() {
     },
     emptyTitle: { fontSize: 20, fontWeight: '700', marginTop: 16 },
     emptyMessage: { fontSize: 14, marginTop: 8, textAlign: 'center' },
-    emptyButton: { marginTop: EMPTY_BUTTON_MARGIN_TOP, paddingVertical: 12, paddingHorizontal: BUTTON_HORIZONTAL_PADDING, borderRadius: 12 },
-    emptyButtonText: { color: lightColors.white, fontWeight: '700' },
+    emptyButton: {
+      marginTop: EMPTY_BUTTON_MARGIN_TOP,
+      paddingVertical: 12,
+      paddingHorizontal: BUTTON_HORIZONTAL_PADDING,
+      borderRadius: 12,
+    },
+    emptyButtonText: { color: EMPTY_BUTTON_TEXT_COLOR, fontWeight: '700' },
     noExerciseText: { fontSize: 14, textAlign: 'center', paddingVertical: 16 },
   };
 }
 
-function allPlanViewerStyles() {
+/**
+ * Merge every style group into one plain object for StyleSheet.create.
+ * Flow: 1. border  2. log exercise  3. header  4. day  5. exercise row  6. sheet + empty
+ * @returns {object}
+ */
+function buildAllPlanViewerStyleGroups() {
+  // 1. Border card wrappers.
+  const borderCardStyles = buildBorderCardStyles();
+
+  // 2. Log-exercise inputs.
+  const logExerciseStyles = buildLogExerciseStyles();
+
+  // 3. Header + overflow menu.
+  const headerMenuStyles = buildHeaderMenuStyles();
+
+  // 4. Day cards.
+  const dayCardStyles = buildDayCardStyles();
+
+  // 5. Exercise rows inside a day.
+  const exerciseRowStyles = buildExerciseRowStyles();
+
+  // 6. Log sheet + overview / empty / error / loader.
+  const logSheetStyles = buildLogSheetStyles();
+  const overviewAndEmptyStyles = buildOverviewAndEmptyStyles();
+
   return {
-    ...borderCardStyles(),
-    ...logExerciseStyles(),
-    ...headerMenuStyles(),
-    ...dayCardStyles(),
-    ...exerciseRowStyles(),
-    ...logSheetStyles(),
-    ...overviewAndEmptyStyles(),
+    ...borderCardStyles,
+    ...logExerciseStyles,
+    ...headerMenuStyles,
+    ...dayCardStyles,
+    ...exerciseRowStyles,
+    ...logSheetStyles,
+    ...overviewAndEmptyStyles,
   };
 }
 
 // ===== MAIN FUNCTION =====
 
-const planViewerRefStyles = StyleSheet.create(allPlanViewerStyles());
+// vocab: StyleSheet.create = RN freezes style objects once (faster re-renders than inline objects).
+/**
+ * Frozen style map imported by WorkoutPlanView as planViewerRefStyles.
+ * Keys (dayHeader, logBottomSheet, …) are frozen — screens look them up by name.
+ */
+const planViewerRefStyles = StyleSheet.create(buildAllPlanViewerStyleGroups());
 
 export { planViewerRefStyles };
+
+// ===== PLUMBING — skip unless debugging =====
+// Style group builders live under HELPER FUNCTIONS above — open those when a key looks wrong.

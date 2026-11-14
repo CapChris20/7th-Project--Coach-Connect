@@ -1,8 +1,7 @@
 // Writes one error to a file (Node scripts) or to the API (the app), and also to Firestore.
 // Flow: build one error record → Node prepends it to ERRORS.md, the app POSTs /api/log-error → either way, add an app_errors document.
 // Called from the app's crash path. CommonJS so plain Node scripts can require() it.
-
-// ===== NAMED CONSTANTS =====
+// Read order: constants → recordError recipe → PLUMBING (filesystem, API, Firestore).
 
 const LOG_ERROR_PATH = '/api/log-error';
 const APP_ERRORS_COLLECTION = 'app_errors';
@@ -20,9 +19,76 @@ const ERROR_COUNT_PATTERN = /Total Errors: (\d+)/;
 const isNode = typeof process !== 'undefined' && process.versions && process.versions.node;
 const { getApiBase } = require('../for-both/online-connection/whereToConnect');
 
-// ===== HELPER FUNCTIONS =====
+/**
+ * Record one error to the file or the API, then to Firestore.
+ * The API call is not awaited — the app must not block the UI on logging.
+ * @param {Error|object} error
+ * @param {string} context
+ * @returns {Promise<void>}
+ */
+async function recordError(error, context) {
+  // 1. Turn the thrown value into one consistent record shape for every sink.
+  const recordedAt = new Date();
+  const errorData = buildErrorData(error, recordedAt, context);
+
+  // 2. Node scripts append to ERRORS.md; the mobile app posts to /api/log-error instead.
+  const fileSystem = getFs();
+  const errorLogFile = getErrorLogFile();
+  const shouldWriteMarkdown = canWriteMarkdownFile(fileSystem, errorLogFile);
+  if (shouldWriteMarkdown) {
+    writeErrorToMarkdownFile(fileSystem, errorLogFile, errorData, recordedAt);
+  } else {
+    writeErrorToApi(errorData);
+  }
+
+  // 3. Firestore is always attempted so support can search app_errors in anatrox-auth.
+  await writeErrorToFirestore(errorData);
+}
+
+module.exports = { recordError };
 
 // PLUMBING — skip unless ERRORS.md, /api/log-error, or app_errors is missing a crash.
+
+function formatReadableCrashTime(date) {
+  const moment = date || new Date();
+  const datePart = moment.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+  const timePart = moment.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+  return `${datePart} at ${timePart}`;
+}
+
+function messageFromCrashError(crashError) {
+  if (crashError && crashError.message) return crashError.message;
+  return UNKNOWN_ERROR_MESSAGE;
+}
+
+function codeFromCrashError(crashError) {
+  if (crashError && crashError.code) return crashError.code;
+  return null;
+}
+
+function stackFromCrashError(crashError) {
+  if (crashError && crashError.stack) return crashError.stack;
+  return null;
+}
+
+function buildErrorData(crashError, recordedAt, contextLabel) {
+  return {
+    message: messageFromCrashError(crashError),
+    code: codeFromCrashError(crashError),
+    stack: stackFromCrashError(crashError),
+    context: contextLabel || UNKNOWN_CONTEXT,
+    timestamp: recordedAt.toISOString(),
+    readableTime: formatReadableCrashTime(recordedAt),
+  };
+}
 
 function getFs() {
   if (!isNode) return null;
@@ -53,8 +119,12 @@ function getErrorLogFile() {
   }
 }
 
-let db = null;
-let dbChecked = false;
+function canWriteMarkdownFile(fileSystem, errorLogFile) {
+  return Boolean(isNode && fileSystem && errorLogFile);
+}
+
+let cachedFirestoreDb = null;
+let firestoreLookupAttempted = false;
 
 function firestoreHandleFromConfig(firebaseConfig) {
   if (!firebaseConfig || !firebaseConfig.db) {
@@ -66,42 +136,16 @@ function firestoreHandleFromConfig(firebaseConfig) {
 }
 
 function getDb() {
-  if (dbChecked) return db;
-  dbChecked = true;
-  if (typeof require === 'undefined') return db;
+  if (firestoreLookupAttempted) return cachedFirestoreDb;
+  firestoreLookupAttempted = true;
+  if (typeof require === 'undefined') return cachedFirestoreDb;
   try {
     const firebaseConfig = require('../app-start/cloudConnection');
-    db = firestoreHandleFromConfig(firebaseConfig);
-  } catch (error) {
-    console.warn('⚠️ Could not load Firestore config:', error.message);
+    cachedFirestoreDb = firestoreHandleFromConfig(firebaseConfig);
+  } catch (loadError) {
+    console.warn('⚠️ Could not load Firestore config:', loadError.message);
   }
-  return db;
-}
-
-function formatTimestamp(date) {
-  const now = date || new Date();
-  const dateStr = now.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
-  const timeStr = now.toLocaleTimeString('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-  });
-  return `${dateStr} at ${timeStr}`;
-}
-
-function buildErrorData(error, recordedAt, context) {
-  return {
-    message: error?.message || UNKNOWN_ERROR_MESSAGE,
-    code: error?.code || null,
-    stack: error?.stack || null,
-    context: context || UNKNOWN_CONTEXT,
-    timestamp: recordedAt.toISOString(),
-    readableTime: formatTimestamp(recordedAt),
-  };
+  return cachedFirestoreDb;
 }
 
 function errorCountFromFile(existingContent) {
@@ -128,23 +172,25 @@ function previousErrorEntries(existingContent) {
 }
 
 function formatErrorEntry(errorData, errorNumber) {
+  const codeLabel = errorData.code || NO_CODE_LABEL;
+  const stackLabel = errorData.stack || NO_STACK_LABEL;
   return `${ERROR_DIVIDER}
 ERROR ${errorNumber}
 ${ERROR_DIVIDER}
 
 Message: ${errorData.message}
-Code: ${errorData.code || NO_CODE_LABEL}
+Code: ${codeLabel}
 Context: ${errorData.context}
 Time: ${errorData.readableTime}
 Timestamp: ${errorData.timestamp}
 Stack Trace:
-${errorData.stack || NO_STACK_LABEL}
+${stackLabel}
 
 `;
 }
 
 function formatErrorLogHeader(newCount, recordedAt) {
-  const readableUpdateTime = formatTimestamp(recordedAt);
+  const readableUpdateTime = formatReadableCrashTime(recordedAt);
   return `${ERROR_LOG_TITLE}
 ${ERROR_DIVIDER}
 
@@ -177,7 +223,8 @@ function writeErrorToMarkdownFile(fileSystem, errorLogFile, errorData, recordedA
 function queueErrorIfApiCallFailed(errorData) {
   try {
     const errorSyncModule = require('./sendSavedErrors');
-    if (!errorSyncModule || !errorSyncModule.queueErrorForSync) return;
+    if (!errorSyncModule) return;
+    if (!errorSyncModule.queueErrorForSync) return;
     errorSyncModule.queueErrorForSync(errorData).catch(() => {});
   } catch (ignoredError) {
     console.log('📝 Error:', errorData);
@@ -207,6 +254,15 @@ function sendErrorToApiWithoutWaiting(baseUrl, errorData) {
   });
 }
 
+function writeErrorToApi(errorData) {
+  try {
+    const baseUrl = getApiBase();
+    sendErrorToApiWithoutWaiting(baseUrl, errorData);
+  } catch (ignoredError) {
+    console.log('📝 Error:', errorData);
+  }
+}
+
 async function writeErrorToFirestore(errorData) {
   const firestoreDb = getDb();
   if (!firestoreDb) return;
@@ -221,42 +277,3 @@ async function writeErrorToFirestore(errorData) {
     console.error('❌ Failed to log error to Firestore:', firestoreError.message);
   }
 }
-
-function writeErrorToApi(errorData) {
-  try {
-    const baseUrl = getApiBase();
-    sendErrorToApiWithoutWaiting(baseUrl, errorData);
-  } catch (ignoredError) {
-    console.log('📝 Error:', errorData);
-  }
-}
-
-function canWriteMarkdownFile(fileSystem, errorLogFile) {
-  return Boolean(isNode && fileSystem && errorLogFile);
-}
-
-// ===== MAIN FUNCTION =====
-
-/**
- * Record one error to the file or the API, then to Firestore.
- * The API call is not awaited.
- * @param {Error|object} error
- * @param {string} context
- * @returns {Promise<void>}
- */
-async function recordError(error, context) {
-  const recordedAt = new Date();
-  const errorData = buildErrorData(error, recordedAt, context);
-  const fileSystem = getFs();
-  const errorLogFile = getErrorLogFile();
-
-  if (canWriteMarkdownFile(fileSystem, errorLogFile)) {
-    writeErrorToMarkdownFile(fileSystem, errorLogFile, errorData, recordedAt);
-  } else {
-    writeErrorToApi(errorData);
-  }
-
-  await writeErrorToFirestore(errorData);
-}
-
-module.exports = { recordError };

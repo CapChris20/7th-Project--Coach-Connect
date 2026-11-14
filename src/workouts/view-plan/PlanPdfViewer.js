@@ -1,6 +1,7 @@
 // In-app PDF viewer for a generated workout plan.
-// Flow: show the PDF in a WebView → Save to Files / Share / Send to Trainer from the bottom bar.
-// Used by: the workout-plan flow after a PDF is generated (local uri or remote download url).
+// Flow: WebView preview → bottom bar Save / Share / Send to Trainer (Notes & Files).
+// Used by: workout-plan flow when a local file uri or remote download url exists.
+// Read order: constants → layout (no hooks) → main component → PLUMBING.
 
 import React, { useState } from 'react';
 import {
@@ -11,7 +12,6 @@ import {
   StyleSheet,
   SafeAreaView,
   ActivityIndicator,
-  Platform,
   Share,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
@@ -20,6 +20,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { addFile } from '../../for-both/files-and-notes/saveNotesAndFiles';
 import { auth } from '../../app-start/cloudConnection';
 import NbNoticeSheet from '../../look-and-feel/NbNoticeSheet';
+import { useTheme } from '../../look-and-feel/lightDarkMode';
 
 // ===== NAMED CONSTANTS =====
 
@@ -27,119 +28,139 @@ const PDF_MIME_TYPE = 'application/pdf';
 const FILE_TYPE_DOC = 'doc';
 const ADDED_BY_CLIENT = 'client';
 const SHARE_DIALOG_TITLE = 'Save Workout Plan';
-
-const DARK_TEXT = '#fff';
-const LIGHT_TEXT = '#1a0a2e';
-const DARK_MUTED = 'rgba(255,255,255,0.6)';
-const LIGHT_MUTED = 'rgba(26,10,46,0.6)';
-const DARK_SCREEN = '#0a0a0a';
-const LIGHT_SCREEN = '#f5f5f7';
-const LOADER_COLOR = '#64D2FF';
-const ACTION_BAR_BORDER_DARK = 'rgba(255,255,255,0.1)';
-const ACTION_BAR_BORDER_LIGHT = 'rgba(0,0,0,0.08)';
-
+// Manipulate here: header spacer mirrors Close width so the title stays centered.
+const HEADER_CLOSE_SPACER_WIDTH = 52;
+const ACTION_ICON_SIZE = 20;
+// vocab: originWhitelist = which URL schemes the WebView may load
 const WEBVIEW_ORIGINS = ['file://', 'https://', 'http://'];
 
 // ===== HELPER FUNCTIONS =====
 
-function viewerPalette(isDark) {
-  return {
-    textColor: isDark ? DARK_TEXT : LIGHT_TEXT,
-    muted: isDark ? DARK_MUTED : LIGHT_MUTED,
-    screenBackground: isDark ? DARK_SCREEN : LIGHT_SCREEN,
-    actionBarBorder: isDark ? ACTION_BAR_BORDER_DARK : ACTION_BAR_BORDER_LIGHT,
-  };
-}
-
-function pdfShareOptions() {
-  return { mimeType: PDF_MIME_TYPE, dialogTitle: SHARE_DIALOG_TITLE };
-}
-
-async function saveRemotePdfToFiles(pdfDownloadUrl, showNotice) {
-  if (!pdfDownloadUrl) return;
-  const canShare = await Sharing.isAvailableAsync();
-  if (!canShare) {
-    showNotice('Share', 'Use Share below to save or open the PDF.');
-    return;
-  }
-  try {
-    await Sharing.shareAsync(pdfDownloadUrl, pdfShareOptions());
-  } catch (_error) {
-    showNotice('Share', 'Use Share to save or open the PDF.');
-  }
-}
-
-async function saveLocalPdfToFiles(pdfLocalUri, setSaving, showNotice) {
-  try {
-    setSaving(true);
-    const canShare = await Sharing.isAvailableAsync();
-    if (!canShare) {
-      showNotice('Not available', 'Sharing is not available on this device.');
-      return;
-    }
-    await Sharing.shareAsync(pdfLocalUri, pdfShareOptions());
-  } catch (error) {
-    showNotice('Error', error.message || 'Could not save PDF.');
-  } finally {
-    setSaving(false);
-  }
-}
-
-async function shareWorkoutPlan(shareUri, planTitle, showNotice) {
-  if (!shareUri) return;
-  try {
-    await Share.share({
-      url: shareUri,
-      title: planTitle,
-      message: `Workout plan: ${planTitle}`,
-      type: PDF_MIME_TYPE,
-    });
-  } catch (error) {
-    if (error.code !== 'ERR_CANCELED') showNotice('Error', error.message || 'Could not share.');
-  }
-}
-
-function workoutPlanFileName() {
-  return `workout-plan-${Date.now()}.pdf`;
-}
-
-async function sendPdfToTrainerFiles(fileUri, setSendingToTrainer, showNotice) {
-  const uid = auth.currentUser?.uid;
-  if (!uid) {
-    showNotice('Error', 'You must be logged in to send to trainer.');
-    return;
-  }
-  if (!fileUri) return;
-  setSendingToTrainer(true);
-  try {
-    await addFile(uid, {
-      localUri: fileUri,
-      filename: workoutPlanFileName(),
-      mimeType: PDF_MIME_TYPE,
-      type: FILE_TYPE_DOC,
-    }, ADDED_BY_CLIENT);
-    showNotice('Sent', 'PDF has been added to your Notes & Files. Your trainer will see it.');
-  } catch (error) {
-    showNotice('Error', error.message || 'Could not send to trainer.');
-  } finally {
-    setSendingToTrainer(false);
-  }
-}
-
-function ActionButton({ onPress, disabled, icon, label, textColor }) {
+/**
+ * One bottom-bar action: icon + label.
+ */
+function PdfActionButton({ onPress, disabled, iconName, label, inkColor }) {
   return (
     <TouchableOpacity onPress={onPress} disabled={disabled} style={styles.actionBtn}>
-      <Ionicons name={icon} size={20} color={textColor} />
-      <Text style={[styles.actionLabel, { color: textColor }]}>{label}</Text>
+      <Ionicons name={iconName} size={ACTION_ICON_SIZE} color={inkColor} />
+      <Text style={[styles.actionLabel, { color: inkColor }]}>{label}</Text>
     </TouchableOpacity>
+  );
+}
+
+function saveButtonLabel(isSaving) {
+  if (isSaving) return 'Saving…';
+  return 'Save to Files';
+}
+
+function sendToTrainerLabel(isSending) {
+  if (isSending) return 'Sending…';
+  return 'Send to Trainer';
+}
+
+function overlayBackgroundColor(colors) {
+  if (colors.nbOverlay) {
+    return colors.nbOverlay;
+  }
+  return 'rgba(10,10,10,0.9)';
+}
+
+/**
+ * Pure layout — no hooks. Parent owns loading / notice / share handlers.
+ */
+function PlanPdfViewerLayout({
+  modalVisible,
+  planTitle,
+  pdfUri,
+  colors,
+  isWebViewLoading,
+  isSavingToFiles,
+  isSendingToTrainer,
+  notice,
+  onClose,
+  onDismissNotice,
+  onSaveToFiles,
+  onSharePlan,
+  onSendToTrainer,
+  onWebViewLoadEnd,
+  onWebViewError,
+}) {
+  const loadingOverlayColor = overlayBackgroundColor(colors);
+  const noticeTitle = notice?.title || '';
+  const noticeConfirmLabel = notice?.confirmLabel || 'OK';
+
+  return (
+    <Modal visible={modalVisible} animationType="slide" onRequestClose={onClose}>
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.nbBackground }]}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={onClose} hitSlop={12}>
+            <Text style={[styles.closeText, { color: colors.nbInk }]}>Close</Text>
+          </TouchableOpacity>
+          <Text style={[styles.title, { color: colors.nbInk }]} numberOfLines={1}>
+            {planTitle}
+          </Text>
+          <View style={{ width: HEADER_CLOSE_SPACER_WIDTH }} />
+        </View>
+
+        <View style={styles.webviewWrap}>
+          <WebView
+            source={{ uri: pdfUri }}
+            style={styles.webview}
+            onLoadEnd={onWebViewLoadEnd}
+            onError={onWebViewError}
+            originWhitelist={WEBVIEW_ORIGINS}
+          />
+          {isWebViewLoading ? (
+            <View style={[styles.loadingOverlay, { backgroundColor: loadingOverlayColor }]}>
+              <ActivityIndicator size="large" color={colors.nbFill} />
+              <Text style={[styles.loadingText, { color: colors.nbMuted }]}>Loading PDF…</Text>
+            </View>
+          ) : null}
+        </View>
+
+        <View style={[styles.actionBar, { borderTopColor: colors.nbBorder }]}>
+          <PdfActionButton
+            onPress={onSaveToFiles}
+            disabled={isSavingToFiles}
+            iconName="document-outline"
+            label={saveButtonLabel(isSavingToFiles)}
+            inkColor={colors.nbInk}
+          />
+          <PdfActionButton
+            onPress={onSharePlan}
+            iconName="share-outline"
+            label="Share"
+            inkColor={colors.nbInk}
+          />
+          <PdfActionButton
+            onPress={onSendToTrainer}
+            disabled={isSendingToTrainer}
+            iconName="person-outline"
+            label={sendToTrainerLabel(isSendingToTrainer)}
+            inkColor={colors.nbInk}
+          />
+        </View>
+
+        <NbNoticeSheet
+          visible={!!notice}
+          onClose={onDismissNotice}
+          title={noticeTitle}
+          message={notice?.message}
+          confirmLabel={noticeConfirmLabel}
+          cancelLabel={notice?.cancelLabel}
+          onConfirm={notice?.onConfirm}
+        />
+      </SafeAreaView>
+    </Modal>
   );
 }
 
 // ===== MAIN FUNCTION =====
 
 /**
- * Modal PDF viewer with Save / Share / Send to Trainer.
- * @param {object} props
+ * Modal PDF viewer.
+ * Props: visible, pdfLocalUri, pdfDownloadUrl, planTitle, clientName, isDark (legacy), onClose.
+ * Hook order: useTheme → four useState flags. Do not reorder.
  */
 export default function PlanPdfViewer({
   visible,
@@ -150,94 +171,152 @@ export default function PlanPdfViewer({
   isDark = true,
   onClose,
 }) {
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const theme = useTheme();
+  const colors = theme.colors;
+
+  const [webViewLoading, setWebViewLoading] = useState(true);
+  const [savingToFiles, setSavingToFiles] = useState(false);
   const [sendingToTrainer, setSendingToTrainer] = useState(false);
   const [notice, setNotice] = useState(null);
-  const showNotice = (title, message, extras = {}) => setNotice({ title, message, ...extras });
 
-  const uri = pdfDownloadUrl || pdfLocalUri;
-  const palette = viewerPalette(isDark);
+  const showNotice = (title, message, extras = {}) => {
+    setNotice({ title, message, ...extras });
+  };
 
+  // Prefer remote download url; fall back to a local file uri.
+  const pdfUri = pdfDownloadUrl || pdfLocalUri;
+  if (!pdfUri) return null;
+
+  // 1. Save — local file uses share sheet; remote url shares the download link.
   const handleSaveToFiles = async () => {
     if (!pdfLocalUri) {
-      await saveRemotePdfToFiles(pdfDownloadUrl, showNotice);
+      await shareRemotePdfDownloadLink(pdfDownloadUrl, showNotice);
       return;
     }
-    await saveLocalPdfToFiles(pdfLocalUri, setSaving, showNotice);
+    await shareLocalPdfFile(pdfLocalUri, setSavingToFiles, showNotice);
   };
 
-  const handleShare = async () => {
-    await shareWorkoutPlan(pdfLocalUri || pdfDownloadUrl, planTitle, showNotice);
+  // 2. OS share sheet with the plan title.
+  const handleSharePlan = async () => {
+    const shareUri = pdfLocalUri || pdfDownloadUrl;
+    await sharePdfWithSystemSheet(shareUri, planTitle, showNotice);
   };
 
+  // 3. Upload a copy into the user's Notes & Files for the trainer.
   const handleSendToTrainer = async () => {
-    await sendPdfToTrainerFiles(pdfDownloadUrl || pdfLocalUri, setSendingToTrainer, showNotice);
+    const fileUri = pdfDownloadUrl || pdfLocalUri;
+    await uploadPdfToTrainerFiles(fileUri, setSendingToTrainer, showNotice);
   };
 
-  if (!uri) return null;
+  const dismissNotice = () => setNotice(null);
+  const markWebViewReady = () => setWebViewLoading(false);
 
   return (
-    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <SafeAreaView style={[styles.container, { backgroundColor: palette.screenBackground }]}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={onClose} hitSlop={12}>
-            <Text style={[styles.closeText, { color: palette.textColor }]}>Close</Text>
-          </TouchableOpacity>
-          <Text style={[styles.title, { color: palette.textColor }]} numberOfLines={1}>{planTitle}</Text>
-          <View style={{ width: 52 }} />
-        </View>
-
-        <View style={styles.webviewWrap}>
-          <WebView
-            source={{ uri }}
-            style={styles.webview}
-            onLoadEnd={() => setLoading(false)}
-            onError={() => setLoading(false)}
-            originWhitelist={WEBVIEW_ORIGINS}
-          />
-          {loading && (
-            <View style={styles.loadingOverlay}>
-              <ActivityIndicator size="large" color={LOADER_COLOR} />
-              <Text style={[styles.loadingText, { color: palette.muted }]}>Loading PDF…</Text>
-            </View>
-          )}
-        </View>
-
-        <View style={[styles.actionBar, { borderTopColor: palette.actionBarBorder }]}>
-          <ActionButton
-            onPress={handleSaveToFiles}
-            disabled={saving}
-            icon="document-outline"
-            label={saving ? 'Saving…' : 'Save to Files'}
-            textColor={palette.textColor}
-          />
-          <ActionButton
-            onPress={handleShare}
-            icon="share-outline"
-            label="Share"
-            textColor={palette.textColor}
-          />
-          <ActionButton
-            onPress={handleSendToTrainer}
-            disabled={sendingToTrainer}
-            icon="person-outline"
-            label={sendingToTrainer ? 'Sending…' : 'Send to Trainer'}
-            textColor={palette.textColor}
-          />
-        </View>
-        <NbNoticeSheet
-          visible={!!notice}
-          onClose={() => setNotice(null)}
-          title={notice?.title || ''}
-          message={notice?.message}
-          confirmLabel={notice?.confirmLabel || 'OK'}
-          cancelLabel={notice?.cancelLabel}
-          onConfirm={notice?.onConfirm}
-        />
-      </SafeAreaView>
-    </Modal>
+    <PlanPdfViewerLayout
+      modalVisible={visible}
+      planTitle={planTitle}
+      pdfUri={pdfUri}
+      colors={colors}
+      isWebViewLoading={webViewLoading}
+      isSavingToFiles={savingToFiles}
+      isSendingToTrainer={sendingToTrainer}
+      notice={notice}
+      onClose={onClose}
+      onDismissNotice={dismissNotice}
+      onSaveToFiles={handleSaveToFiles}
+      onSharePlan={handleSharePlan}
+      onSendToTrainer={handleSendToTrainer}
+      onWebViewLoadEnd={markWebViewReady}
+      onWebViewError={markWebViewReady}
+    />
   );
+}
+
+// ===== PLUMBING — skip unless debugging share / Notes & Files upload =====
+
+function pdfShareSheetOptions() {
+  return { mimeType: PDF_MIME_TYPE, dialogTitle: SHARE_DIALOG_TITLE };
+}
+
+async function shareRemotePdfDownloadLink(pdfDownloadUrl, showNotice) {
+  if (!pdfDownloadUrl) return;
+
+  const canShare = await Sharing.isAvailableAsync();
+  if (!canShare) {
+    showNotice('Share', 'Use Share below to save or open the PDF.');
+    return;
+  }
+
+  try {
+    await Sharing.shareAsync(pdfDownloadUrl, pdfShareSheetOptions());
+  } catch (_error) {
+    showNotice('Share', 'Use Share to save or open the PDF.');
+  }
+}
+
+async function shareLocalPdfFile(pdfLocalUri, setSaving, showNotice) {
+  try {
+    setSaving(true);
+    const canShare = await Sharing.isAvailableAsync();
+    if (!canShare) {
+      showNotice('Not available', 'Sharing is not available on this device.');
+      return;
+    }
+    await Sharing.shareAsync(pdfLocalUri, pdfShareSheetOptions());
+  } catch (error) {
+    showNotice('Error', error.message || 'Could not save PDF.');
+  } finally {
+    setSaving(false);
+  }
+}
+
+async function sharePdfWithSystemSheet(shareUri, planTitle, showNotice) {
+  if (!shareUri) return;
+
+  try {
+    await Share.share({
+      url: shareUri,
+      title: planTitle,
+      message: `Workout plan: ${planTitle}`,
+      type: PDF_MIME_TYPE,
+    });
+  } catch (error) {
+    if (error.code !== 'ERR_CANCELED') {
+      showNotice('Error', error.message || 'Could not share.');
+    }
+  }
+}
+
+function generatedWorkoutPlanFileName() {
+  return `workout-plan-${Date.now()}.pdf`;
+}
+
+async function uploadPdfToTrainerFiles(fileUri, setSendingToTrainer, showNotice) {
+  const uid = auth.currentUser?.uid;
+  if (!uid) {
+    showNotice('Error', 'You must be logged in to send to trainer.');
+    return;
+  }
+  if (!fileUri) return;
+
+  setSendingToTrainer(true);
+  try {
+    await addFile(
+      uid,
+      {
+        localUri: fileUri,
+        filename: generatedWorkoutPlanFileName(),
+        mimeType: PDF_MIME_TYPE,
+        type: FILE_TYPE_DOC,
+      },
+      ADDED_BY_CLIENT,
+    );
+    showNotice('Sent', 'PDF has been added to your Notes & Files. Your trainer will see it.');
+  } catch (error) {
+    showNotice('Error', error.message || 'Could not send to trainer.');
+  } finally {
+    setSendingToTrainer(false);
+  }
 }
 
 const styles = StyleSheet.create({
@@ -255,7 +334,6 @@ const styles = StyleSheet.create({
   webview: { flex: 1 },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(10,10,10,0.9)',
     justifyContent: 'center',
     alignItems: 'center',
     gap: 12,

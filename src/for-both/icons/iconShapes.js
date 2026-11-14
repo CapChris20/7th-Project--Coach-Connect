@@ -1,10 +1,41 @@
-// SVG paths for the brand-gradient tab icons. Each icon is a 24 by 24 drawing.
-// Flow: a screen asks for a name like "home" and gets stroke or fill paths.
-// Used by: the colorful tab icons. Plain SVG so the shapes stay visible in dev builds.
+// SVG path atlas for brand-gradient tab icons (24×24 viewBox strings).
+// Flow: ColorfulIcon asks for a name like "home" → stroke or fill path list (or undefined).
+// Used by: colorful bottom-nav icons. Plain SVG strings so shapes stay visible in dev builds.
 
 // ===== NAMED CONSTANTS =====
 
-const BRAND_GRADIENT_ICON_PATHS = {
+// Manipulate here: only when Design Law ships new tab glyphs — path letters stay frozen until then.
+// All drawings sit in a square this many units on each side (SVG viewBox).
+const ICON_VIEWBOX_EDGE = 24;
+
+// ===== HELPER FUNCTIONS =====
+
+// Read one atlas row. Missing names come back undefined (ColorfulIcon skips drawing).
+function shapeRecordFromAtlas(iconName) {
+  return BRAND_GRADIENT_ICON_PATHS[iconName];
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Look up the stored 24×24 stroke/fill paths for one brand icon name.
+ * Unknown names return undefined so ColorfulIcon can skip drawing.
+ * @param {string} iconName
+ * @returns {{ style: string, paths: string[] }|undefined}
+ */
+export function iconShapeForName(iconName) {
+  // 1. Pull the stroke-or-fill record (or undefined). Paths stay letter-locked SVG `d` strings.
+  // vocab: style "stroke" = outline paths; "fill" = solid shapes (gemini stars).
+  // vocab: paths = SVG path `d` strings drawn inside a ICON_VIEWBOX_EDGE × ICON_VIEWBOX_EDGE viewBox.
+  const shapeRecord = shapeRecordFromAtlas(iconName);
+  return shapeRecord;
+}
+
+// ===== PLUMBING — skip unless debugging =====
+// ICON_VIEWBOX_EDGE documents the 24×24 contract for editors; paths below assume that square.
+// Path atlas keyed by ionicon-style names. Do not rename keys — ColorfulIcon looks them up by letter.
+
+export const BRAND_GRADIENT_ICON_PATHS = {
   home: {
     style: 'stroke',
     paths: [
@@ -72,19 +103,3 @@ const BRAND_GRADIENT_ICON_PATHS = {
     ],
   },
 };
-
-// ===== HELPER FUNCTIONS =====
-
-// ===== MAIN FUNCTION =====
-
-/**
- * Look up the stored 24×24 paths for one brand icon name.
- * @param {string} iconName
- * @returns {{ style: string, paths: string[] }|undefined}
- */
-export function iconShapeForName(iconName) {
-  // 1. Unknown name → no paths. ColorfulIcon then draws nothing.
-  return BRAND_GRADIENT_ICON_PATHS[iconName];
-}
-
-export { BRAND_GRADIENT_ICON_PATHS };

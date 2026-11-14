@@ -1,6 +1,7 @@
-// Weekly report light/dark colors, saved on this phone and shared down the report screens.
-// Flow: read the saved mode → share colors through context → write the mode back when it flips.
-// Used by WeeklyReportScreen and the report cards that call useTheme().
+// Weekly report light/dark palette — saved on device and shared through React context.
+// Flow: read AsyncStorage on mount → expose colors + toggle → write mode when user flips theme.
+// Used by WeeklyReportScreen and every report card that calls useTheme().
+// Read order: constants → provider recipe → useTheme → PLUMBING (mode helpers).
 
 import React, { createContext, useContext, useState, useMemo, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -8,97 +9,51 @@ import { DARK_COLORS, LIGHT_COLORS, STORAGE_KEY } from './reportColors';
 
 // ===== NAMED CONSTANTS =====
 
-// vocab: createContext = React's pipe so report screens can read the theme without a prop on every card.
-// null (not {}) lets useTheme tell "no provider above me" apart from a real theme value.
+// vocab: createContext = pipe so deep report cards read theme without prop-drilling every child
+// null (not {}) lets useTheme tell "no provider above me" apart from a real theme value
 const weeklyReportThemeContext = createContext(null);
 
 const DARK_MODE = 'dark';
 const LIGHT_MODE = 'light';
 const THEME_PROVIDER_MISSING_ERROR = 'useTheme must be used within WeeklyReportThemeProvider';
 
-// ===== HELPER FUNCTIONS =====
-
-// Anything other than the exact word "light" starts dark, including a missing initialMode.
-function startingColorMode(initialMode) {
-  if (initialMode === LIGHT_MODE) return LIGHT_MODE;
-  return DARK_MODE;
-}
-
-// AsyncStorage hands back a string. Only the two modes we write are safe to apply.
-function isStoredColorMode(storedValue) {
-  if (storedValue === DARK_MODE) return true;
-  if (storedValue === LIGHT_MODE) return true;
-  return false;
-}
-
-// The toggle has no third mode. Any unexpected current value lands on dark, matching the old ternary.
-function flippedColorMode(currentMode) {
-  if (currentMode === DARK_MODE) return LIGHT_MODE;
-  return DARK_MODE;
-}
-
-// A failed write must not throw through the toggle. The on-screen mode still changes.
-function rememberColorMode(colorMode) {
-  AsyncStorage.setItem(STORAGE_KEY, colorMode).catch(() => {});
-}
-
-function colorsForMode(colorMode) {
-  if (colorMode === DARK_MODE) return DARK_COLORS;
-  return LIGHT_COLORS;
-}
-
-function buildThemeValue(colorMode, isLoaded, setColorMode) {
-  return {
-    mode: colorMode,
-    colors: colorsForMode(colorMode),
-    loaded: isLoaded,
-    toggle: () => {
-      setColorMode((currentMode) => {
-        const flippedMode = flippedColorMode(currentMode);
-        rememberColorMode(flippedMode);
-        return flippedMode;
-      });
-    },
-    setMode: (requestedMode) => {
-      if (!isStoredColorMode(requestedMode)) return;
-      setColorMode(requestedMode);
-      rememberColorMode(requestedMode);
-    },
-  };
-}
-
 // ===== MAIN FUNCTION =====
 
 /**
  * Loads the saved report theme and shares mode, colors, and the toggle with the report tree.
+ * Hook order is frozen: colorMode state → loaded state → mount read → memoized value.
  * @param {{ children: import('react').ReactNode, initialMode?: string }} props
  * @returns {import('react').ReactElement}
  */
 export function WeeklyReportThemeProvider({ children, initialMode = DARK_MODE }) {
-  const [colorMode, setColorMode] = useState(startingColorMode(initialMode));
+  // vocab: useState = React hook that keeps a value across re-renders
+  const [colorMode, setColorMode] = useState(colorModeFromInitialProp(initialMode));
   const [isLoaded, setIsLoaded] = useState(false);
 
-  // vocab: useEffect = run after paint. Empty deps means once per mount, not on every theme flip.
-  // The flag skips setState if the screen is already gone when the read finishes.
+  // 1. After first paint, read persisted mode once (empty deps — not on every theme flip)
+  // vocab: useEffect = runs after paint; return cleanup runs when this provider unmounts
+  // vocab: isStillMounted flag skips setState if user left the screen before AsyncStorage returns
   useEffect(() => {
     let isStillMounted = true;
+
     AsyncStorage.getItem(STORAGE_KEY).then((storedValue) => {
-      if (isStillMounted && isStoredColorMode(storedValue)) {
-        setColorMode(storedValue);
-      }
-      if (isStillMounted) setIsLoaded(true);
+      applyStoredModeIfStillMounted(storedValue, isStillMounted, setColorMode);
+      markLoadedIfStillMounted(isStillMounted, setIsLoaded);
     });
+
     return () => {
       isStillMounted = false;
     };
   }, []);
 
-  // vocab: useMemo = rebuild this object only when the mode or the loaded flag changes.
+  // 2. Rebuild context object only when mode or loaded flag changes (not every child render)
+  // vocab: useMemo = cheap referential stability for consumers that depend on themeValue
   const themeValue = useMemo(
-    () => buildThemeValue(colorMode, isLoaded, setColorMode),
+    () => assembleThemeContextValue(colorMode, isLoaded, setColorMode),
     [colorMode, isLoaded],
   );
 
+  // 3. Wrap report subtree so every card can call useTheme()
   return (
     <weeklyReportThemeContext.Provider value={themeValue}>
       {children}
@@ -111,9 +66,74 @@ export function WeeklyReportThemeProvider({ children, initialMode = DARK_MODE })
  * @returns {{ mode: string, colors: object, loaded: boolean, toggle: function, setMode: function }}
  */
 export function useTheme() {
+  // vocab: useContext = read the nearest matching Provider value above this component
   const themeSettings = useContext(weeklyReportThemeContext);
   if (!themeSettings) throw new Error(THEME_PROVIDER_MISSING_ERROR);
   return themeSettings;
 }
 
 export { GRADIENTS } from './reportColors';
+
+// ===== HELPER FUNCTIONS =====
+
+function applyStoredModeIfStillMounted(storedValue, isStillMounted, setColorMode) {
+  if (!isStillMounted) return;
+  if (!storedValueIsKnownMode(storedValue)) return;
+  setColorMode(storedValue);
+}
+
+function markLoadedIfStillMounted(isStillMounted, setIsLoaded) {
+  if (!isStillMounted) return;
+  setIsLoaded(true);
+}
+
+// ===== PLUMBING — skip unless debugging =====
+
+// Anything other than the exact word "light" starts dark, including a missing initialMode prop
+function colorModeFromInitialProp(initialMode) {
+  if (initialMode === LIGHT_MODE) return LIGHT_MODE;
+  return DARK_MODE;
+}
+
+// AsyncStorage hands back a string. Only the two modes we write are safe to apply
+function storedValueIsKnownMode(storedValue) {
+  if (storedValue === DARK_MODE) return true;
+  if (storedValue === LIGHT_MODE) return true;
+  return false;
+}
+
+// Toggle has no third mode — unexpected current value lands on dark (same as the old ternary)
+function oppositeColorMode(currentMode) {
+  if (currentMode === DARK_MODE) return LIGHT_MODE;
+  return DARK_MODE;
+}
+
+// Failed write must not throw through the toggle — on-screen mode still changes
+function persistColorModeToDisk(colorMode) {
+  AsyncStorage.setItem(STORAGE_KEY, colorMode).catch(() => {});
+}
+
+function paletteForColorMode(colorMode) {
+  if (colorMode === DARK_MODE) return DARK_COLORS;
+  return LIGHT_COLORS;
+}
+
+function assembleThemeContextValue(colorMode, isLoaded, setColorMode) {
+  return {
+    mode: colorMode,
+    colors: paletteForColorMode(colorMode),
+    loaded: isLoaded,
+    toggle: () => {
+      setColorMode((currentMode) => {
+        const nextMode = oppositeColorMode(currentMode);
+        persistColorModeToDisk(nextMode);
+        return nextMode;
+      });
+    },
+    setMode: (requestedMode) => {
+      if (!storedValueIsKnownMode(requestedMode)) return;
+      setColorMode(requestedMode);
+      persistColorModeToDisk(requestedMode);
+    },
+  };
+}

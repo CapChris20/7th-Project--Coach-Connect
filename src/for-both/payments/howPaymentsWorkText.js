@@ -7,9 +7,11 @@
 // Manipulate here: these two rates are what the UI promises. They must stay in sync with the server charge split.
 export const TRAINER_PAYOUT_SHARE = 0.9;
 export const PLATFORM_FEE_RATE = 0.1;
+
 const WHOLE_DOLLAR_DECIMAL_PLACES = 0;
 const CENTS_DECIMAL_PLACES = 2;
 const INVALID_AMOUNT_LABEL = '$0';
+const DOLLAR_SIGN = '$';
 
 export const HOW_PAYMENTS_WORK = [
   'Clients pay you in the app (secure Stripe checkout)',
@@ -85,17 +87,28 @@ export const EARNINGS_MOCK = {
 };
 
 // ===== HELPER FUNCTIONS =====
+// PLUMBING — skip unless debugging dollar formatting or share-rate math
 
 // Blank, NaN, and Infinity all become 0 so a bad text field cannot print "NaN" in the fee line.
-function shareOfAmount(amountDollars, shareRate) {
+function multiplyDollarsByShareRate(amountDollars, shareRate) {
   const amountNumber = Number(amountDollars);
-  if (!Number.isFinite(amountNumber)) return 0;
+  if (!Number.isFinite(amountNumber)) {
+    return 0;
+  }
   return amountNumber * shareRate;
 }
 
 // $90 stays "$90". $90.5 stays "$90.50". The % 1 check is "is there anything after the decimal".
-function isWholeDollarAmount(amountNumber) {
-  return amountNumber % 1 === 0;
+function dollarAmountHasNoCents(amountNumber) {
+  const leftoverAfterWholeDollars = amountNumber % 1;
+  return leftoverAfterWholeDollars === 0;
+}
+
+function pickDollarDecimalPlaces(amountNumber) {
+  if (dollarAmountHasNoCents(amountNumber)) {
+    return WHOLE_DOLLAR_DECIMAL_PLACES;
+  }
+  return CENTS_DECIMAL_PLACES;
 }
 
 // ===== MAIN FUNCTION =====
@@ -107,7 +120,7 @@ function isWholeDollarAmount(amountNumber) {
  */
 export function trainerGetsFromAmount(amountDollars) {
   // 1. Trainer share of the typed dollars (90% today).
-  return shareOfAmount(amountDollars, TRAINER_PAYOUT_SHARE);
+  return multiplyDollarsByShareRate(amountDollars, TRAINER_PAYOUT_SHARE);
 }
 
 /**
@@ -117,7 +130,7 @@ export function trainerGetsFromAmount(amountDollars) {
  */
 export function platformFeeFromAmount(amountDollars) {
   // 1. Platform fee of the typed dollars (10% today).
-  return shareOfAmount(amountDollars, PLATFORM_FEE_RATE);
+  return multiplyDollarsByShareRate(amountDollars, PLATFORM_FEE_RATE);
 }
 
 /**
@@ -128,10 +141,11 @@ export function platformFeeFromAmount(amountDollars) {
 export function formatPaymentDollars(amount) {
   // 1. Blank, NaN, and Infinity print "$0" so a bad field cannot show "NaN".
   const amountNumber = Number(amount);
-  if (!Number.isFinite(amountNumber)) return INVALID_AMOUNT_LABEL;
+  if (!Number.isFinite(amountNumber)) {
+    return INVALID_AMOUNT_LABEL;
+  }
 
   // 2. Whole dollars drop the cents ($90). Anything else keeps two places ($90.50).
-  let decimalPlaces = CENTS_DECIMAL_PLACES;
-  if (isWholeDollarAmount(amountNumber)) decimalPlaces = WHOLE_DOLLAR_DECIMAL_PLACES;
-  return `$${amountNumber.toFixed(decimalPlaces)}`;
+  const decimalPlaces = pickDollarDecimalPlaces(amountNumber);
+  return DOLLAR_SIGN + amountNumber.toFixed(decimalPlaces);
 }

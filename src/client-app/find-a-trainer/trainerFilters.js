@@ -2,12 +2,13 @@
 // Flow: normalize each trainer doc into one card shape → drop cards that miss the
 //       active filters → sort by best client match, price, or who joined most recently.
 // Used by the find-a-trainer screens, the trainer card, and the filter popup.
-//
-// vocab: Design Law = black/white/gray neo-brutalist system (3px outlines, HardShadow, fill selected)
-
-// ===== NAMED CONSTANTS =====
+// Key exports: filterTrainers, normalizeTrainer, DEFAULT_FILTERS, THEMES, scoreTrainerMatch
 
 import { lightColors } from '../../look-and-feel/colorPalette';
+
+// lightColors stays imported (freeze: do not change import paths). Design Law screens use nb* tokens instead.
+
+// ===== NAMED CONSTANTS =====
 
 export const SORT_OPTIONS = ['Best match', 'Newest', 'Price: Low', 'Price: High'];
 export const FILTER_SPECIALTIES = [
@@ -26,7 +27,6 @@ const SORT_BEST_MATCH = 'Best match';
 const SORT_NEWEST = 'Newest';
 const SORT_PRICE_LOW = 'Price: Low';
 const SORT_PRICE_HIGH = 'Price: High';
-// Manipulate here: weight points for marketplace “Best match” ranking from client onboarding
 const MATCH_SPECIALTY_HIT = 24;
 const MATCH_GOAL_HIT = 18;
 const MATCH_AVAILABLE = 12;
@@ -37,10 +37,6 @@ const MATCH_LOCATION = 5;
 const MATCH_RATING_UNIT = 2;
 const MATCH_RATING_CAP = 10;
 
-/**
- * Client onboarding goal keys → specialties that should float those coaches.
- * Keys stay lose_fat / build_muscle etc. — same strings NewUserSetup writes.
- */
 const GOAL_TO_SPECIALTIES = {
   lose_fat: ['Weight Loss', 'Cardio', 'HIIT', 'Nutrition'],
   build_muscle: ['Strength', 'Bodybuilding'],
@@ -60,26 +56,33 @@ const DEFAULT_LOCATION = 'Location TBD';
 const DEFAULT_SPECIALTY = 'General Fitness';
 const DEFAULT_RESPONSE_TIME = 'within 2 hours';
 const DEFAULT_BIO = 'This coach is setting up their profile. Message them to learn more about their coaching style.';
-// Manipulate here: trial length shown when the trainer doc does not set one.
 const DEFAULT_TRIAL_DAYS = 5;
 const WAITLIST_AVAILABILITY = 'Waitlist';
-// Midpoint years for the stored "6_10" experience band (used only when parseInt cannot read a leading digit).
 const YEARS_FOR_SIX_TO_TEN_RANGE = 7;
+const EXPERIENCE_ANY = 'Any';
+const EXPERIENCE_LABEL_1_2 = '1-2 years';
+const EXPERIENCE_LABEL_3_5 = '3-5 years';
+const EXPERIENCE_LABEL_5_8 = '5-8 years';
+const EXPERIENCE_LABEL_8_PLUS = '8+ years';
+const AVAILABILITY_AVAILABLE = 'Available';
+const SESSION_IN_PERSON_ALT_DASH = 'In-Person';
+const SESSION_IN_PERSON_ALT_SPACE = 'In Person';
+const FORMAT_REMOTE_AND_IN_PERSON = 'Remote and in person';
+const FORMAT_IN_PERSON = 'In person';
+const FORMAT_REMOTE = 'Remote';
 
-// Default filter sheet values. Keys must stay stable — Browse / FilterPopup / Firestore path rely on them.
 export const DEFAULT_FILTERS = {
   sort: SORT_BEST_MATCH,
   specialties: [],
-  experience: 'Any',
+  experience: EXPERIENCE_ANY,
   availableOnly: false,
   verifiedOnly: false,
   availability: null,
   priceMin: '',
   priceMax: '',
-  sessionType: 'Both',
+  sessionType: SESSION_BOTH,
 };
 
-// Accent stops for avatar / Available pill / specialty pills only — never card fills or borders.
 export const BRAND = {
   pink: '#FF6B9D',
   purple: '#A78BFA',
@@ -87,7 +90,6 @@ export const BRAND = {
   orange: '#FB923C',
 };
 
-/** System-font roles used across marketplace chrome (no Inter/SpaceGrotesk requirement in Design Law). */
 export const MP_FONT = {
   displayBold: 'SpaceGrotesk_700Bold',
   displaySemi: 'SpaceGrotesk_600SemiBold',
@@ -97,7 +99,6 @@ export const MP_FONT = {
   bodyBold: 'Inter_700Bold',
 };
 
-/** Legacy aurora tints (unused by Design Law screens). Prefer HardShadow + nb tokens. */
 export const AURORA_GLOWS = {
   dark: {
     pink: 'rgba(255, 107, 157, 0.18)',
@@ -111,10 +112,6 @@ export const AURORA_GLOWS = {
   },
 };
 
-/**
- * Design Law screen tokens for marketplace (match DESIGN-SYSTEM.md).
- * Prefer `useTheme().colors.nb*` in JSX; this object remains for older callers.
- */
 export const THEMES = {
   light: {
     background: '#F2F2F0',
@@ -141,9 +138,8 @@ export const THEMES = {
   },
 };
 
-const GRAD_KEYS = ['pink', 'orange', 'purple', 'cyan'];
+const ACCENT_GRAD_KEYS = ['pink', 'orange', 'purple', 'cyan'];
 
-/** 135° avatar / accent gradients — rotate per card (stride of neighbors). */
 export const GRAD_GRADIENTS = {
   pink: [BRAND.pink, BRAND.orange],
   purple: [BRAND.purple, BRAND.pink],
@@ -151,7 +147,6 @@ export const GRAD_GRADIENTS = {
   orange: [BRAND.orange, BRAND.pink],
 };
 
-// Stored experience ranges, and the year count the filter bands compare against.
 const EXPERIENCE_YEAR_VALUES = {
   less_than_1: 0,
   '1_2': 2,
@@ -164,364 +159,48 @@ const EXPERIENCE_YEAR_VALUES = {
 
 // ===== HELPER FUNCTIONS =====
 
-/**
- * @param {*} rawPrice
- * @returns {number|null}
- */
-function finitePrice(rawPrice) {
-  if (rawPrice == null || rawPrice === '') return null;
+function isSnakeCaseLabel(labelText) {
+  return /^[a-z0-9]+(_[a-z0-9]+)+$/i.test(labelText);
+}
+
+function titleCaseSnakeParts(labelText) {
+  const words = labelText.split('_').filter(Boolean);
+  const titled = [];
+  for (let index = 0; index < words.length; index += 1) {
+    const part = words[index];
+    const firstLetter = part.charAt(0).toUpperCase();
+    const rest = part.slice(1).toLowerCase();
+    titled.push(firstLetter + rest);
+  }
+  return titled.join(' ');
+}
+
+function priceNumberOrNull(rawPrice) {
+  if (rawPrice == null) {
+    return null;
+  }
+  if (rawPrice === '') {
+    return null;
+  }
   const priceNumber = Number(rawPrice);
-  return Number.isFinite(priceNumber) ? priceNumber : null;
+  if (Number.isFinite(priceNumber)) {
+    return priceNumber;
+  }
+  return null;
 }
 
-/**
- * Years of experience from a number, a leading digit, or a stored range label.
- * @param {*} rawExperience
- * @returns {number}
- */
-function parseYears(rawExperience) {
-  if (rawExperience == null || rawExperience === '') return 0;
-  if (typeof rawExperience === 'number' && Number.isFinite(rawExperience)) return rawExperience;
-  const experienceText = String(rawExperience);
-  const leadingNumber = parseInt(experienceText, 10);
-  if (Number.isFinite(leadingNumber)) return leadingNumber;
-  for (const [rangeKey, years] of Object.entries(EXPERIENCE_YEAR_VALUES)) {
-    const rangeAsWords = rangeKey.replace(/_/g, ' ');
-    if (experienceText.includes(rangeKey) || experienceText.toLowerCase().includes(rangeAsWords)) {
-      return years;
+function pickFirstNonEmptyString(...candidates) {
+  for (let index = 0; index < candidates.length; index += 1) {
+    const value = candidates[index];
+    if (value == null) {
+      continue;
     }
-  }
-  if (experienceText.includes('1-2')) return 2;
-  if (experienceText.includes('3-5')) return 4;
-  if (experienceText.includes('5-8')) return 6;
-  if (experienceText.includes('8+')) return 9;
-  return 0;
-}
-
-/**
- * Remote / In-person / Hybrid, from whichever field the trainer doc happened to use.
- * @param {object} trainerDoc
- * @returns {string}
- */
-function resolveMode(trainerDoc) {
-  const sessionType = trainerDoc.sessionType || trainerDoc.coachingMode || trainerDoc.mode;
-  if (sessionType === SESSION_BOTH || sessionType === MODE_HYBRID) return MODE_HYBRID;
-  if (sessionType === SESSION_REMOTE || trainerDoc.isRemote === true) return SESSION_REMOTE;
-  if (sessionType === SESSION_IN_PERSON || sessionType === 'In-Person' || sessionType === 'In Person') {
-    return SESSION_IN_PERSON;
-  }
-  if (trainerDoc.isRemote === false && trainerDoc.location) return SESSION_IN_PERSON;
-  if (trainerDoc.isRemote) return SESSION_REMOTE;
-  return sessionType ? String(sessionType) : SESSION_REMOTE;
-}
-
-/**
- * Specialties from every field name we have stored, with duplicates removed.
- * @param {object} trainerDoc
- * @returns {string[]}
- */
-function collectSpecialties(trainerDoc) {
-  const list = [
-    ...(Array.isArray(trainerDoc.specialties) ? trainerDoc.specialties : []),
-    ...(Array.isArray(trainerDoc.specializations) ? trainerDoc.specializations : []),
-    ...(Array.isArray(trainerDoc.categories) ? trainerDoc.categories : []),
-    trainerDoc.specialty || '',
-  ]
-    .map((specialty) => String(specialty).trim())
-    .filter(Boolean);
-  const seen = new Set();
-  return list.filter((specialty) => {
-    const specialtyKey = specialty.toLowerCase();
-    if (seen.has(specialtyKey)) return false;
-    seen.add(specialtyKey);
-    return true;
-  });
-}
-
-/**
- * Two initials from the name. A stored initials string is kept as written.
- * @param {string} name
- * @param {string} [storedInitials]
- * @returns {string}
- */
-function trainerInitials(name, storedInitials) {
-  if (storedInitials) return storedInitials;
-  const nameParts = String(name || '').trim().split(/\s+/).filter(Boolean);
-  if (nameParts.length >= 2) {
-    return `${nameParts[0][0]}${nameParts[nameParts.length - 1][0]}`.toUpperCase();
-  }
-  return (nameParts[0]?.[0] || DEFAULT_INITIAL).toUpperCase();
-}
-
-/**
- * @param {object} trainerDoc
- * @returns {string}
- */
-function trainerBio(trainerDoc) {
-  const bio = String(
-    trainerDoc.bio ||
-      trainerDoc.trainerProfileBio ||
-      trainerDoc.about ||
-      trainerDoc.description ||
-      trainerDoc.trainingPhilosophy ||
-      '',
-  ).trim();
-  return bio || DEFAULT_BIO;
-}
-
-/**
- * "March 2024" from a Firestore timestamp, or whatever string was already stored.
- * vocab: toDate() = Firestore Timestamp → JavaScript Date
- * @param {object} trainerDoc
- * @returns {string}
- */
-function memberSinceLabel(trainerDoc) {
-  if (trainerDoc.memberSince) return trainerDoc.memberSince;
-  if (trainerDoc.joinedAt?.toDate?.()) {
-    return trainerDoc.joinedAt.toDate().toLocaleString('en-US', { month: 'long', year: 'numeric' });
+    const trimmed = String(value).trim();
+    if (trimmed) {
+      return trimmed;
+    }
   }
   return '';
-}
-
-/**
- * Milliseconds for "newest" sort. A missing date sorts as 0 (oldest).
- * @param {string} memberSince
- * @param {object} trainerDoc
- * @returns {number}
- */
-function parseJoinedAt(memberSince, trainerDoc) {
-  if (trainerDoc?.joinedAt?.toMillis) return trainerDoc.joinedAt.toMillis();
-  if (trainerDoc?.createdAt?.toMillis) return trainerDoc.createdAt.toMillis();
-  const timestamp = Date.parse(memberSince);
-  return Number.isNaN(timestamp) ? 0 : timestamp;
-}
-
-/**
- * @param {number} years
- * @param {string} experience
- * @returns {boolean}
- */
-function matchesExperience(years, experience) {
-  switch (experience) {
-    case '1-2 years':
-      return years >= 1 && years <= 2;
-    case '3-5 years':
-      return years >= 3 && years <= 5;
-    case '5-8 years':
-      return years >= 5 && years <= 8;
-    case '8+ years':
-      return years >= 8;
-    default:
-      return true;
-  }
-}
-
-/**
- * "In-person" also keeps Hybrid, because a hybrid coach can meet in person.
- * @param {string} mode
- * @param {string} sessionType
- * @returns {boolean}
- */
-function matchesSessionType(mode, sessionType) {
-  if (sessionType === SESSION_BOTH) return true;
-  if (sessionType === SESSION_REMOTE) return mode === SESSION_REMOTE;
-  if (sessionType === SESSION_IN_PERSON) return mode === SESSION_IN_PERSON || mode === MODE_HYBRID;
-  return true;
-}
-
-/**
- * @param {string[]} trainerSpecialties
- * @param {string} filterSpecialty
- * @returns {boolean}
- */
-function specialtyMatches(trainerSpecialties, filterSpecialty) {
-  const filterText = filterSpecialty.toLowerCase();
-  return trainerSpecialties.some((specialty) => {
-    const specialtyText = specialty.toLowerCase();
-    return specialtyText.includes(filterText) || filterText.includes(specialtyText);
-  });
-}
-
-/**
- * Every active filter is an AND. One miss drops the card.
- * @param {object} trainer
- * @param {object} filters
- * @param {string} searchText
- * @param {string} quickSpecialty
- * @param {number|null} minPrice
- * @param {number|null} maxPrice
- * @returns {boolean}
- */
-function doesTrainerMatchFilters(trainer, filters, searchText, quickSpecialty, minPrice, maxPrice) {
-  if (searchText) {
-    const searchableText = `${trainer.name} ${trainer.location} ${trainer.specialties.join(' ')}`.toLowerCase();
-    if (!searchableText.includes(searchText)) return false;
-  }
-  if (quickSpecialty !== QUICK_SPECIALTY_ALL && !specialtyMatches(trainer.specialties, quickSpecialty)) {
-    return false;
-  }
-  if (
-    filters.specialties.length > 0 &&
-    !filters.specialties.some((specialty) => specialtyMatches(trainer.specialties, specialty))
-  ) {
-    return false;
-  }
-  // availableOnly = "Hide waitlists" toggle from the filter sheet
-  if (filters.availableOnly && !trainer.available) return false;
-  // availability chip = Available or Waitlist exclusive pick
-  if (filters.availability === 'Available' && !trainer.available) return false;
-  if (filters.availability === WAITLIST_AVAILABILITY && trainer.available) return false;
-  if (filters.verifiedOnly && trainer.verified !== true) return false;
-  const price = getTrainerPrice(trainer) ?? trainer.price ?? 0;
-  if (minPrice !== null && !Number.isNaN(minPrice) && price < minPrice) return false;
-  if (maxPrice !== null && !Number.isNaN(maxPrice) && price > maxPrice) return false;
-  if (!matchesSessionType(trainer.mode, filters.sessionType)) return false;
-  if (!matchesExperience(trainer.years, filters.experience)) return false;
-  return true;
-}
-
-/**
- * Normalize client onboarding / userData into the prefs the match scorer reads.
- * @param {object|null|undefined} raw
- * @returns {{ goals: string[], fitnessLevel: string, preferredSessionType: string, location: string }|null}
- */
-export function clientMatchPrefsFromProfile(raw) {
-  if (!raw || typeof raw !== 'object') return null;
-  const goals = [];
-  if (Array.isArray(raw.goals)) {
-    for (const goal of raw.goals) {
-      if (goal) goals.push(String(goal));
-    }
-  }
-  if (raw.primaryGoal) goals.push(String(raw.primaryGoal));
-  if (raw.goal) goals.push(String(raw.goal));
-  const uniqueGoals = [...new Set(goals.map((goal) => goal.trim().toLowerCase()).filter(Boolean))];
-  const equipment = Array.isArray(raw.equipmentAccess)
-    ? raw.equipmentAccess.map((item) => String(item).toLowerCase())
-    : [];
-  // Bodyweight-only clients usually want remote; full gym leans in-person.
-  let preferredSessionType = SESSION_BOTH;
-  if (equipment.includes('bodyweight') && !equipment.includes('full_gym')) {
-    preferredSessionType = SESSION_REMOTE;
-  } else if (equipment.includes('full_gym')) {
-    preferredSessionType = SESSION_IN_PERSON;
-  }
-  return {
-    goals: uniqueGoals,
-    fitnessLevel: String(raw.fitnessLevel || raw.experience || '').toLowerCase(),
-    preferredSessionType,
-    location: String(raw.location || raw.city || '').trim().toLowerCase(),
-  };
-}
-
-/**
- * Rule-based match score from client onboarding → trainer card.
- * Higher = better fit. Used by Best match sort.
- * @param {object} trainer
- * @param {object|null|undefined} clientPrefs
- * @returns {number}
- */
-export function scoreTrainerMatch(trainer, clientPrefs) {
-  if (!trainer) return 0;
-  if (!clientPrefs) {
-    let score = 0;
-    if (trainer.available) score += MATCH_AVAILABLE;
-    if (trainer.verified) score += MATCH_VERIFIED;
-    const rating = Number(trainer.rating);
-    if (Number.isFinite(rating) && rating > 0) {
-      score += Math.min(MATCH_RATING_CAP, Math.round(rating * MATCH_RATING_UNIT));
-    }
-    return score;
-  }
-
-  let score = 0;
-  const specialties = Array.isArray(trainer.specialties) ? trainer.specialties : [];
-  const specialtyLower = specialties.map((specialty) => String(specialty).toLowerCase());
-
-  for (const goal of clientPrefs.goals || []) {
-    const mapped = GOAL_TO_SPECIALTIES[goal] || [];
-    for (const specialty of mapped) {
-      if (specialtyLower.some((text) => text.includes(specialty.toLowerCase()))) {
-        score += MATCH_GOAL_HIT;
-        break;
-      }
-    }
-    // Direct specialty string overlap (e.g. client typed "strength" into goals array)
-    if (specialtyLower.some((text) => text.includes(goal.replace(/_/g, ' ')))) {
-      score += MATCH_SPECIALTY_HIT;
-    }
-  }
-
-  if (trainer.available) score += MATCH_AVAILABLE;
-  if (trainer.verified) score += MATCH_VERIFIED;
-
-  const preferred = clientPrefs.preferredSessionType;
-  if (preferred && preferred !== SESSION_BOTH) {
-    if (matchesSessionType(trainer.mode, preferred)) score += MATCH_SESSION;
-  }
-
-  const level = clientPrefs.fitnessLevel;
-  const years = Number(trainer.years) || 0;
-  if (level === 'beginner' && years >= 1 && years <= 5) score += MATCH_EXPERIENCE;
-  if (level === 'intermediate' && years >= 3 && years <= 8) score += MATCH_EXPERIENCE;
-  if (level === 'advanced' && years >= 5) score += MATCH_EXPERIENCE;
-
-  const clientLocation = clientPrefs.location;
-  if (clientLocation && trainer.location) {
-    const trainerLocation = String(trainer.location).toLowerCase();
-    if (
-      trainerLocation.includes(clientLocation) ||
-      clientLocation.includes(trainerLocation.split(',')[0].trim())
-    ) {
-      score += MATCH_LOCATION;
-    }
-  }
-
-  const rating = Number(trainer.rating);
-  if (Number.isFinite(rating) && rating > 0) {
-    score += Math.min(MATCH_RATING_CAP, Math.round(rating * MATCH_RATING_UNIT));
-  }
-  return score;
-}
-
-/**
- * Price sorts read the raw Firestore doc. Newest uses the joined-at timestamp.
- * Best match uses scoreTrainerMatch when client prefs exist.
- * @param {object[]} trainers
- * @param {string} sortOption
- * @param {object|null} [clientPrefs]
- * @returns {object[]}
- */
-function sortTrainers(trainers, sortOption, clientPrefs = null) {
-  if (sortOption === SORT_PRICE_LOW) {
-    return [...trainers].sort((first, second) => {
-      const firstPrice = getTrainerPrice(first._firebase) ?? first.price;
-      const secondPrice = getTrainerPrice(second._firebase) ?? second.price;
-      return firstPrice - secondPrice;
-    });
-  }
-  if (sortOption === SORT_PRICE_HIGH) {
-    return [...trainers].sort((first, second) => {
-      const firstPrice = getTrainerPrice(first._firebase) ?? first.price;
-      const secondPrice = getTrainerPrice(second._firebase) ?? second.price;
-      return secondPrice - firstPrice;
-    });
-  }
-  if (sortOption === SORT_BEST_MATCH) {
-    return [...trainers].sort((first, second) => {
-      const scoreGap =
-        scoreTrainerMatch(second, clientPrefs) - scoreTrainerMatch(first, clientPrefs);
-      if (scoreGap !== 0) return scoreGap;
-      return (
-        parseJoinedAt(second.memberSince, second._firebase) -
-        parseJoinedAt(first.memberSince, first._firebase)
-      );
-    });
-  }
-  return [...trainers].sort(
-    (first, second) =>
-      parseJoinedAt(second.memberSince, second._firebase) - parseJoinedAt(first.memberSince, first._firebase),
-  );
 }
 
 // ===== MAIN FUNCTION =====
@@ -531,7 +210,10 @@ function sortTrainers(trainers, sortOption, clientPrefs = null) {
  * @returns {object}
  */
 export function getTheme(isDark) {
-  return isDark ? THEMES.dark : THEMES.light;
+  if (isDark) {
+    return THEMES.dark;
+  }
+  return THEMES.light;
 }
 
 /**
@@ -541,7 +223,12 @@ export function getTheme(isDark) {
  */
 export function trainerFirstName(name) {
   const fullName = String(name || DEFAULT_COACH_NAME).trim();
-  return fullName.split(/\s+/)[0] || fullName;
+  const parts = fullName.split(/\s+/);
+  const firstWord = parts[0];
+  if (firstWord) {
+    return firstWord;
+  }
+  return fullName;
 }
 
 /**
@@ -551,13 +238,11 @@ export function trainerFirstName(name) {
  */
 export function formatMarketplaceLabel(value) {
   const labelText = String(value || '').trim();
-  if (!labelText) return '';
-  if (/^[a-z0-9]+(_[a-z0-9]+)+$/i.test(labelText)) {
-    return labelText
-      .split('_')
-      .filter(Boolean)
-      .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
-      .join(' ');
+  if (!labelText) {
+    return '';
+  }
+  if (isSnakeCaseLabel(labelText)) {
+    return titleCaseSnakeParts(labelText);
   }
   return labelText;
 }
@@ -568,10 +253,20 @@ export function formatMarketplaceLabel(value) {
  * @returns {string}
  */
 export function formatSessionLabel(mode) {
-  if (mode === MODE_HYBRID || mode === SESSION_BOTH) return 'Remote and in person';
-  if (mode === SESSION_IN_PERSON) return 'In person';
-  if (mode === SESSION_REMOTE) return 'Remote';
-  return formatMarketplaceLabel(mode) || 'Remote';
+  if (mode === MODE_HYBRID || mode === SESSION_BOTH) {
+    return FORMAT_REMOTE_AND_IN_PERSON;
+  }
+  if (mode === SESSION_IN_PERSON) {
+    return FORMAT_IN_PERSON;
+  }
+  if (mode === SESSION_REMOTE) {
+    return FORMAT_REMOTE;
+  }
+  const formatted = formatMarketplaceLabel(mode);
+  if (formatted) {
+    return formatted;
+  }
+  return FORMAT_REMOTE;
 }
 
 /**
@@ -579,7 +274,11 @@ export function formatSessionLabel(mode) {
  * @returns {string}
  */
 export function gradColor(grad) {
-  return BRAND[grad] ?? BRAND.pink;
+  const brandColor = BRAND[grad];
+  if (brandColor) {
+    return brandColor;
+  }
+  return BRAND.pink;
 }
 
 /**
@@ -587,7 +286,11 @@ export function gradColor(grad) {
  * @returns {string[]}
  */
 export function gradGradient(grad) {
-  return GRAD_GRADIENTS[grad] || GRAD_GRADIENTS.pink;
+  const gradient = GRAD_GRADIENTS[grad];
+  if (gradient) {
+    return gradient;
+  }
+  return GRAD_GRADIENTS.pink;
 }
 
 /**
@@ -607,12 +310,24 @@ export function specPillGradient(grad) {
  * @returns {number|null}
  */
 export function getTrainerPrice(trainer) {
-  if (!trainer) return null;
-  const directPrice = finitePrice(trainer.price);
-  if (trainer.price != null && trainer.price !== '') return directPrice;
-  // vocab: ?? = use the right side only when the left side is null or undefined
-  const monthlyPrice = trainer.pricing?.perMonth ?? trainer.rate;
-  if (monthlyPrice != null && monthlyPrice !== '') return finitePrice(monthlyPrice);
+  if (!trainer) {
+    return null;
+  }
+
+  if (trainer.price != null && trainer.price !== '') {
+    return priceNumberOrNull(trainer.price);
+  }
+
+  let monthlyPrice = null;
+  if (trainer.pricing && trainer.pricing.perMonth != null) {
+    monthlyPrice = trainer.pricing.perMonth;
+  } else if (trainer.rate != null) {
+    monthlyPrice = trainer.rate;
+  }
+
+  if (monthlyPrice != null && monthlyPrice !== '') {
+    return priceNumberOrNull(monthlyPrice);
+  }
   return null;
 }
 
@@ -622,17 +337,129 @@ export function getTrainerPrice(trainer) {
  * @returns {number}
  */
 export function countActiveFilters(filters) {
-  if (!filters) return 0;
+  if (!filters) {
+    return 0;
+  }
+
   let count = 0;
-  if (Array.isArray(filters.specialties) && filters.specialties.length > 0) count += 1;
-  if (filters.experience && filters.experience !== 'Any') count += 1;
-  if (filters.sessionType && filters.sessionType !== SESSION_BOTH) count += 1;
-  if (filters.availableOnly) count += 1;
-  if (filters.verifiedOnly) count += 1;
-  if (filters.availability) count += 1;
-  if (String(filters.priceMin || '').trim()) count += 1;
-  if (String(filters.priceMax || '').trim()) count += 1;
+  if (Array.isArray(filters.specialties) && filters.specialties.length > 0) {
+    count += 1;
+  }
+  if (filters.experience && filters.experience !== EXPERIENCE_ANY) {
+    count += 1;
+  }
+  if (filters.sessionType && filters.sessionType !== SESSION_BOTH) {
+    count += 1;
+  }
+  if (filters.availableOnly) {
+    count += 1;
+  }
+  if (filters.verifiedOnly) {
+    count += 1;
+  }
+  if (filters.availability) {
+    count += 1;
+  }
+  if (String(filters.priceMin || '').trim()) {
+    count += 1;
+  }
+  if (String(filters.priceMax || '').trim()) {
+    count += 1;
+  }
   return count;
+}
+
+/**
+ * Normalize client onboarding / userData into the prefs the match scorer reads.
+ * @param {object|null|undefined} raw
+ * @returns {{ goals: string[], fitnessLevel: string, preferredSessionType: string, location: string }|null}
+ */
+export function clientMatchPrefsFromProfile(raw) {
+  if (!raw || typeof raw !== 'object') {
+    return null;
+  }
+
+  const goals = gatherGoalStringsFromProfile(raw);
+  const uniqueGoals = [];
+  const seenGoals = new Set();
+  for (let index = 0; index < goals.length; index += 1) {
+    const goal = goals[index];
+    const normalizedGoal = goal.trim().toLowerCase();
+    if (!normalizedGoal) {
+      continue;
+    }
+    if (seenGoals.has(normalizedGoal)) {
+      continue;
+    }
+    seenGoals.add(normalizedGoal);
+    uniqueGoals.push(normalizedGoal);
+  }
+
+  const equipment = [];
+  if (Array.isArray(raw.equipmentAccess)) {
+    for (let index = 0; index < raw.equipmentAccess.length; index += 1) {
+      const item = raw.equipmentAccess[index];
+      equipment.push(String(item).toLowerCase());
+    }
+  }
+
+  return {
+    goals: uniqueGoals,
+    fitnessLevel: String(raw.fitnessLevel || raw.experience || '').toLowerCase(),
+    preferredSessionType: sessionTypeFromEquipmentList(equipment),
+    location: String(raw.location || raw.city || '').trim().toLowerCase(),
+  };
+}
+
+/**
+ * Rule-based match score from client onboarding → trainer card.
+ * Higher = better fit. Used by Best match sort.
+ * @param {object} trainer
+ * @param {object|null|undefined} clientPrefs
+ * @returns {number}
+ */
+export function scoreTrainerMatch(trainer, clientPrefs) {
+  if (!trainer) {
+    return 0;
+  }
+  if (!clientPrefs) {
+    return matchScoreWithoutClientPrefs(trainer);
+  }
+
+  let score = 0;
+  let specialties = [];
+  if (Array.isArray(trainer.specialties)) {
+    specialties = trainer.specialties;
+  }
+
+  const specialtyLower = [];
+  for (let index = 0; index < specialties.length; index += 1) {
+    specialtyLower.push(String(specialties[index]).toLowerCase());
+  }
+
+  const goals = clientPrefs.goals || [];
+  for (let index = 0; index < goals.length; index += 1) {
+    score += pointsForOneClientGoal(goals[index], specialtyLower);
+  }
+
+  if (trainer.available) {
+    score += MATCH_AVAILABLE;
+  }
+  if (trainer.verified) {
+    score += MATCH_VERIFIED;
+  }
+
+  const preferred = clientPrefs.preferredSessionType;
+  if (preferred && preferred !== SESSION_BOTH) {
+    if (matchesSessionType(trainer.mode, preferred)) {
+      score += MATCH_SESSION;
+    }
+  }
+
+  score += experienceMatchPoints(clientPrefs.fitnessLevel, trainer.years);
+  score += locationMatchPoints(clientPrefs.location, trainer.location);
+  score += ratingBonusPoints(trainer.rating);
+  return score;
 }
 
 /**
@@ -642,55 +469,129 @@ export function countActiveFilters(filters) {
  * @returns {object}
  */
 export function normalizeTrainer(raw, index = 0) {
-  const name = raw.displayName || raw.name || DEFAULT_COACH_NAME;
-  const specialties = collectSpecialties(raw);
+  // 1. Pull display fields with the same fallbacks the marketplace cards already expect.
+  let name = DEFAULT_COACH_NAME;
+  if (raw.displayName) {
+    name = raw.displayName;
+  } else if (raw.name) {
+    name = raw.name;
+  }
+
+  const specialties = specialtiesFromTrainerDoc(raw);
   const price = getTrainerPrice(raw);
-  const years = parseYears(raw.years ?? raw.yearsExperience ?? raw.experienceRange);
-  const grad = GRAD_KEYS[index % GRAD_KEYS.length];
-  const location = String(raw.location || raw.city || '').trim() || DEFAULT_LOCATION;
-  // available: false or a Waitlist flag hides the "available" badge. Anything else counts as open.
+
+  let experienceRaw = raw.years;
+  if (experienceRaw == null) {
+    experienceRaw = raw.yearsExperience;
+  }
+  if (experienceRaw == null) {
+    experienceRaw = raw.experienceRange;
+  }
+  const years = yearsFromExperienceField(experienceRaw);
+
+  const gradFallback = ACCENT_GRAD_KEYS[index % ACCENT_GRAD_KEYS.length];
+  let location = String(raw.location || raw.city || '').trim();
+  if (!location) {
+    location = DEFAULT_LOCATION;
+  }
+
+  // 2. available: false or a Waitlist flag hides the "available" badge. Anything else counts as open.
   const available = raw.available !== false && raw.availability !== WAITLIST_AVAILABILITY;
-  // Face / manual verification badge — only when explicitly verified.
   const isVerified = raw.isVerified === true || raw.verified === true;
-  const trialDays = raw.trialDays ?? raw.trialPeriodDays ?? DEFAULT_TRIAL_DAYS;
-  const rawBio = String(
-    raw.bio ||
-      raw.trainerProfileBio ||
-      raw.about ||
-      raw.description ||
-      raw.trainingPhilosophy ||
-      '',
-  ).trim();
+
+  let trialDays = DEFAULT_TRIAL_DAYS;
+  if (raw.trialDays != null) {
+    trialDays = raw.trialDays;
+  } else if (raw.trialPeriodDays != null) {
+    trialDays = raw.trialPeriodDays;
+  }
+
+  const rawBio = pickFirstNonEmptyString(
+    raw.bio,
+    raw.trainerProfileBio,
+    raw.about,
+    raw.description,
+    raw.trainingPhilosophy,
+  );
+
+  // 3. Card shape — field letters stay name / specialties / price / years / verified / available.
+  const formattedSpecialties = [];
+  if (specialties.length) {
+    for (let specialtyIndex = 0; specialtyIndex < specialties.length; specialtyIndex += 1) {
+      formattedSpecialties.push(formatMarketplaceLabel(specialties[specialtyIndex]));
+    }
+  } else {
+    formattedSpecialties.push(DEFAULT_SPECIALTY);
+  }
+
+  let cardPrice = 0;
+  if (price != null) {
+    cardPrice = price;
+  }
+
+  let photoURL = null;
+  if (raw.photoURL) {
+    photoURL = raw.photoURL;
+  } else if (raw.photoUrl) {
+    photoURL = raw.photoUrl;
+  }
+
+  let rating = null;
+  if (raw.averageRating != null) {
+    rating = raw.averageRating;
+  } else if (raw.rating != null) {
+    rating = raw.rating;
+  }
+
+  let reviewCount = 0;
+  if (raw.reviewCount != null) {
+    reviewCount = raw.reviewCount;
+  }
+
+  let bioText = DEFAULT_BIO;
+  if (rawBio) {
+    bioText = rawBio;
+  }
+
+  let responds = DEFAULT_RESPONSE_TIME;
+  if (raw.responds) {
+    responds = raw.responds;
+  } else if (raw.responseTime) {
+    responds = raw.responseTime;
+  }
+
+  let grad = gradFallback;
+  if (raw.grad) {
+    grad = raw.grad;
+  }
 
   return {
     id: raw.id,
     _firebase: raw,
     name,
-    initials: trainerInitials(name, raw.initials),
+    initials: initialsFromCoachName(name, raw.initials),
     location,
-    mode: resolveMode(raw),
-    specialties: specialties.length
-      ? specialties.map((specialty) => formatMarketplaceLabel(specialty))
-      : [DEFAULT_SPECIALTY],
-    price: price ?? 0,
+    mode: sessionModeFromTrainerDoc(raw),
+    specialties: formattedSpecialties,
+    price: cardPrice,
     years,
-    bio: rawBio || DEFAULT_BIO,
-    // hasCustomBio: false when we fell back to the default — profile paints the dashed empty state.
+    bio: bioText,
     hasCustomBio: Boolean(rawBio),
     verified: isVerified,
     available,
-    responds: raw.responds || raw.responseTime || DEFAULT_RESPONSE_TIME,
-    memberSince: memberSinceLabel(raw),
-    grad: raw.grad || grad,
+    responds,
+    memberSince: joinedMonthYearLabel(raw),
+    grad,
     trialDays,
-    photoURL: raw.photoURL || raw.photoUrl || null,
-    rating: raw.averageRating ?? raw.rating ?? null,
-    reviewCount: raw.reviewCount ?? 0,
+    photoURL,
+    rating,
+    reviewCount,
   };
 }
 
 /**
  * Cards that match the search box, the quick chip, and the filter sheet, in sort order.
+ * Flow: 1. parse price bounds  2. keep matching cards  3. sort by the active option
  * @param {object[]} trainers
  * @param {object} filters
  * @param {{ query?: string, quickSpecialty?: string, clientPrefs?: object|null }} [options]
@@ -702,17 +603,552 @@ export function filterTrainers(
   { query = '', quickSpecialty = 'All', clientPrefs = null } = {},
 ) {
   // 1. Turn the typed min/max into numbers. Blank stays null so that filter is skipped.
-  // Blank / missing price fields skip that bound (draft + DEFAULT_FILTERS always use '').
-  const minPrice = String(filters.priceMin || '').trim() ? Number(filters.priceMin) : null;
-  const maxPrice = String(filters.priceMax || '').trim() ? Number(filters.priceMax) : null;
+  let minPrice = null;
+  if (String(filters.priceMin || '').trim()) {
+    minPrice = Number(filters.priceMin);
+  }
+  let maxPrice = null;
+  if (String(filters.priceMax || '').trim()) {
+    maxPrice = Number(filters.priceMax);
+  }
   const searchText = query.trim().toLowerCase();
 
   // 2. Drop any card that misses search, the quick chip, or the filter sheet (AND).
-  const matching = trainers.filter((trainer) =>
-    doesTrainerMatchFilters(trainer, filters, searchText, quickSpecialty, minPrice, maxPrice),
-  );
+  const matching = [];
+  for (let index = 0; index < trainers.length; index += 1) {
+    const trainer = trainers[index];
+    const passes = trainerPassesAllActiveFilters(
+      trainer,
+      filters,
+      searchText,
+      quickSpecialty,
+      minPrice,
+      maxPrice,
+    );
+    if (passes) {
+      matching.push(trainer);
+    }
+  }
 
   // 3. Best match uses onboarding prefs; price / newest fall back as before.
-  const sortOption = filters.sort || SORT_BEST_MATCH;
-  return sortTrainers(matching, sortOption, clientPrefs);
+  let sortOption = SORT_BEST_MATCH;
+  if (filters.sort) {
+    sortOption = filters.sort;
+  }
+  return sortTrainerCards(matching, sortOption, clientPrefs);
+}
+
+// ===== PLUMBING — skip unless debugging marketplace match / filter / sort =====
+
+function appendGoalIfPresent(goals, goal) {
+  if (!goal) {
+    return;
+  }
+  goals.push(String(goal));
+}
+
+function gatherGoalStringsFromProfile(raw) {
+  const goals = [];
+  if (Array.isArray(raw.goals)) {
+    for (let index = 0; index < raw.goals.length; index += 1) {
+      appendGoalIfPresent(goals, raw.goals[index]);
+    }
+  }
+  if (raw.primaryGoal) {
+    goals.push(String(raw.primaryGoal));
+  }
+  if (raw.goal) {
+    goals.push(String(raw.goal));
+  }
+  return goals;
+}
+
+function sessionTypeFromEquipmentList(equipment) {
+  const hasBodyweight = equipment.includes('bodyweight');
+  const hasFullGym = equipment.includes('full_gym');
+  if (hasBodyweight && !hasFullGym) {
+    return SESSION_REMOTE;
+  }
+  if (hasFullGym) {
+    return SESSION_IN_PERSON;
+  }
+  return SESSION_BOTH;
+}
+
+function matchScoreWithoutClientPrefs(trainer) {
+  let score = 0;
+  if (trainer.available) {
+    score += MATCH_AVAILABLE;
+  }
+  if (trainer.verified) {
+    score += MATCH_VERIFIED;
+  }
+  return score + ratingBonusPoints(trainer.rating);
+}
+
+function specialtyListIncludesPhrase(specialtyLower, phrase) {
+  const needle = phrase.toLowerCase();
+  for (let index = 0; index < specialtyLower.length; index += 1) {
+    const text = specialtyLower[index];
+    if (text.includes(needle)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function pointsForOneClientGoal(goal, specialtyLower) {
+  let points = 0;
+  let mapped = GOAL_TO_SPECIALTIES[goal];
+  if (!mapped) {
+    mapped = [];
+  }
+  for (let index = 0; index < mapped.length; index += 1) {
+    const specialty = mapped[index];
+    if (!specialtyListIncludesPhrase(specialtyLower, specialty)) {
+      continue;
+    }
+    points += MATCH_GOAL_HIT;
+    break;
+  }
+  const directGoalText = goal.replace(/_/g, ' ');
+  if (specialtyListIncludesPhrase(specialtyLower, directGoalText)) {
+    points += MATCH_SPECIALTY_HIT;
+  }
+  return points;
+}
+
+function experienceMatchPoints(fitnessLevel, trainerYears) {
+  const years = Number(trainerYears) || 0;
+  const level = fitnessLevel;
+  if (level === 'beginner' && years >= 1 && years <= 5) {
+    return MATCH_EXPERIENCE;
+  }
+  if (level === 'intermediate' && years >= 3 && years <= 8) {
+    return MATCH_EXPERIENCE;
+  }
+  if (level === 'advanced' && years >= 5) {
+    return MATCH_EXPERIENCE;
+  }
+  return 0;
+}
+
+function locationMatchPoints(clientLocation, trainerLocation) {
+  if (!clientLocation || !trainerLocation) {
+    return 0;
+  }
+  const trainerText = String(trainerLocation).toLowerCase();
+  const clientText = String(clientLocation).toLowerCase();
+  const cityChunk = trainerText.split(',')[0].trim();
+  if (trainerText.includes(clientText) || clientText.includes(cityChunk)) {
+    return MATCH_LOCATION;
+  }
+  return 0;
+}
+
+function ratingBonusPoints(rating) {
+  const ratingNumber = Number(rating);
+  if (!Number.isFinite(ratingNumber) || ratingNumber <= 0) {
+    return 0;
+  }
+  return Math.min(MATCH_RATING_CAP, Math.round(ratingNumber * MATCH_RATING_UNIT));
+}
+
+/**
+ * Years of experience from a number, a leading digit, or a stored range label.
+ * @param {*} rawExperience
+ * @returns {number}
+ */
+function yearsFromExperienceField(rawExperience) {
+  if (rawExperience == null || rawExperience === '') {
+    return 0;
+  }
+  if (typeof rawExperience === 'number' && Number.isFinite(rawExperience)) {
+    return rawExperience;
+  }
+
+  const experienceText = String(rawExperience);
+  const leadingNumber = parseInt(experienceText, 10);
+  if (Number.isFinite(leadingNumber)) {
+    return leadingNumber;
+  }
+
+  const rangeKeys = Object.keys(EXPERIENCE_YEAR_VALUES);
+  for (let index = 0; index < rangeKeys.length; index += 1) {
+    const rangeKey = rangeKeys[index];
+    const years = EXPERIENCE_YEAR_VALUES[rangeKey];
+    const rangeAsWords = rangeKey.replace(/_/g, ' ');
+    if (experienceText.includes(rangeKey)) {
+      return years;
+    }
+    if (experienceText.toLowerCase().includes(rangeAsWords)) {
+      return years;
+    }
+  }
+
+  if (experienceText.includes('1-2')) {
+    return 2;
+  }
+  if (experienceText.includes('3-5')) {
+    return 4;
+  }
+  if (experienceText.includes('5-8')) {
+    return 6;
+  }
+  if (experienceText.includes('8+')) {
+    return 9;
+  }
+  return 0;
+}
+
+/**
+ * Remote / In-person / Hybrid, from whichever field the trainer doc happened to use.
+ * @param {object} trainerDoc
+ * @returns {string}
+ */
+function sessionModeFromTrainerDoc(trainerDoc) {
+  let sessionType = trainerDoc.sessionType;
+  if (!sessionType) {
+    sessionType = trainerDoc.coachingMode;
+  }
+  if (!sessionType) {
+    sessionType = trainerDoc.mode;
+  }
+
+  if (sessionType === SESSION_BOTH || sessionType === MODE_HYBRID) {
+    return MODE_HYBRID;
+  }
+  if (sessionType === SESSION_REMOTE || trainerDoc.isRemote === true) {
+    return SESSION_REMOTE;
+  }
+  if (
+    sessionType === SESSION_IN_PERSON ||
+    sessionType === SESSION_IN_PERSON_ALT_DASH ||
+    sessionType === SESSION_IN_PERSON_ALT_SPACE
+  ) {
+    return SESSION_IN_PERSON;
+  }
+  if (trainerDoc.isRemote === false && trainerDoc.location) {
+    return SESSION_IN_PERSON;
+  }
+  if (trainerDoc.isRemote) {
+    return SESSION_REMOTE;
+  }
+  if (sessionType) {
+    return String(sessionType);
+  }
+  return SESSION_REMOTE;
+}
+
+/**
+ * Specialties from every field name we have stored, with duplicates removed.
+ * @param {object} trainerDoc
+ * @returns {string[]}
+ */
+function specialtiesFromTrainerDoc(trainerDoc) {
+  const rawList = [];
+  if (Array.isArray(trainerDoc.specialties)) {
+    for (let index = 0; index < trainerDoc.specialties.length; index += 1) {
+      rawList.push(trainerDoc.specialties[index]);
+    }
+  }
+  if (Array.isArray(trainerDoc.specializations)) {
+    for (let index = 0; index < trainerDoc.specializations.length; index += 1) {
+      rawList.push(trainerDoc.specializations[index]);
+    }
+  }
+  if (Array.isArray(trainerDoc.categories)) {
+    for (let index = 0; index < trainerDoc.categories.length; index += 1) {
+      rawList.push(trainerDoc.categories[index]);
+    }
+  }
+  if (trainerDoc.specialty) {
+    rawList.push(trainerDoc.specialty);
+  }
+
+  const cleaned = [];
+  for (let index = 0; index < rawList.length; index += 1) {
+    const trimmed = String(rawList[index]).trim();
+    if (trimmed) {
+      cleaned.push(trimmed);
+    }
+  }
+
+  const seen = new Set();
+  const unique = [];
+  for (let index = 0; index < cleaned.length; index += 1) {
+    const specialty = cleaned[index];
+    const specialtyKey = specialty.toLowerCase();
+    if (seen.has(specialtyKey)) {
+      continue;
+    }
+    seen.add(specialtyKey);
+    unique.push(specialty);
+  }
+  return unique;
+}
+
+/**
+ * Two initials from the name. A stored initials string is kept as written.
+ * @param {string} name
+ * @param {string} [storedInitials]
+ * @returns {string}
+ */
+function initialsFromCoachName(name, storedInitials) {
+  if (storedInitials) {
+    return storedInitials;
+  }
+  const nameParts = String(name || '').trim().split(/\s+/).filter(Boolean);
+  if (nameParts.length >= 2) {
+    const firstLetter = nameParts[0][0];
+    const lastLetter = nameParts[nameParts.length - 1][0];
+    return `${firstLetter}${lastLetter}`.toUpperCase();
+  }
+  let firstLetter = DEFAULT_INITIAL;
+  if (nameParts[0] && nameParts[0][0]) {
+    firstLetter = nameParts[0][0];
+  }
+  return firstLetter.toUpperCase();
+}
+
+/**
+ * Kept for callers / future profile empty-state that still want the bio fallback alone.
+ * @param {object} trainerDoc
+ * @returns {string}
+ */
+function trainerBio(trainerDoc) {
+  const bio = pickFirstNonEmptyString(
+    trainerDoc.bio,
+    trainerDoc.trainerProfileBio,
+    trainerDoc.about,
+    trainerDoc.description,
+    trainerDoc.trainingPhilosophy,
+  );
+  if (bio) {
+    return bio;
+  }
+  return DEFAULT_BIO;
+}
+
+/**
+ * "March 2024" from a Firestore timestamp, or whatever string was already stored.
+ * @param {object} trainerDoc
+ * @returns {string}
+ */
+function joinedMonthYearLabel(trainerDoc) {
+  if (trainerDoc.memberSince) {
+    return trainerDoc.memberSince;
+  }
+  if (trainerDoc.joinedAt && typeof trainerDoc.joinedAt.toDate === 'function') {
+    return trainerDoc.joinedAt.toDate().toLocaleString('en-US', { month: 'long', year: 'numeric' });
+  }
+  return '';
+}
+
+/**
+ * Milliseconds for "newest" sort. A missing date sorts as 0 (oldest).
+ * @param {string} memberSince
+ * @param {object} trainerDoc
+ * @returns {number}
+ */
+function joinedAtMilliseconds(memberSince, trainerDoc) {
+  if (trainerDoc && trainerDoc.joinedAt && trainerDoc.joinedAt.toMillis) {
+    return trainerDoc.joinedAt.toMillis();
+  }
+  if (trainerDoc && trainerDoc.createdAt && trainerDoc.createdAt.toMillis) {
+    return trainerDoc.createdAt.toMillis();
+  }
+  const timestamp = Date.parse(memberSince);
+  if (Number.isNaN(timestamp)) {
+    return 0;
+  }
+  return timestamp;
+}
+
+/**
+ * @param {number} years
+ * @param {string} experience
+ * @returns {boolean}
+ */
+function matchesExperience(years, experience) {
+  if (experience === EXPERIENCE_LABEL_1_2) {
+    return years >= 1 && years <= 2;
+  }
+  if (experience === EXPERIENCE_LABEL_3_5) {
+    return years >= 3 && years <= 5;
+  }
+  if (experience === EXPERIENCE_LABEL_5_8) {
+    return years >= 5 && years <= 8;
+  }
+  if (experience === EXPERIENCE_LABEL_8_PLUS) {
+    return years >= 8;
+  }
+  return true;
+}
+
+/**
+ * "In-person" also keeps Hybrid, because a hybrid coach can meet in person.
+ * @param {string} mode
+ * @param {string} sessionType
+ * @returns {boolean}
+ */
+function matchesSessionType(mode, sessionType) {
+  if (sessionType === SESSION_BOTH) {
+    return true;
+  }
+  if (sessionType === SESSION_REMOTE) {
+    return mode === SESSION_REMOTE;
+  }
+  if (sessionType === SESSION_IN_PERSON) {
+    return mode === SESSION_IN_PERSON || mode === MODE_HYBRID;
+  }
+  return true;
+}
+
+/**
+ * @param {string[]} trainerSpecialties
+ * @param {string} filterSpecialty
+ * @returns {boolean}
+ */
+function specialtyMatches(trainerSpecialties, filterSpecialty) {
+  const filterText = filterSpecialty.toLowerCase();
+  for (let index = 0; index < trainerSpecialties.length; index += 1) {
+    const specialtyText = trainerSpecialties[index].toLowerCase();
+    if (specialtyText.includes(filterText) || filterText.includes(specialtyText)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function anySheetSpecialtyMatches(trainerSpecialties, sheetSpecialties) {
+  for (let index = 0; index < sheetSpecialties.length; index += 1) {
+    if (specialtyMatches(trainerSpecialties, sheetSpecialties[index])) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Every active filter is an AND. One miss drops the card.
+ * @param {object} trainer
+ * @param {object} filters
+ * @param {string} searchText
+ * @param {string} quickSpecialty
+ * @param {number|null} minPrice
+ * @param {number|null} maxPrice
+ * @returns {boolean}
+ */
+function trainerPassesAllActiveFilters(trainer, filters, searchText, quickSpecialty, minPrice, maxPrice) {
+  if (searchText) {
+    const searchableText = `${trainer.name} ${trainer.location} ${trainer.specialties.join(' ')}`.toLowerCase();
+    if (!searchableText.includes(searchText)) {
+      return false;
+    }
+  }
+  if (quickSpecialty !== QUICK_SPECIALTY_ALL) {
+    if (!specialtyMatches(trainer.specialties, quickSpecialty)) {
+      return false;
+    }
+  }
+  if (filters.specialties.length > 0) {
+    if (!anySheetSpecialtyMatches(trainer.specialties, filters.specialties)) {
+      return false;
+    }
+  }
+  if (filters.availableOnly && !trainer.available) {
+    return false;
+  }
+  if (filters.availability === AVAILABILITY_AVAILABLE && !trainer.available) {
+    return false;
+  }
+  if (filters.availability === WAITLIST_AVAILABILITY && trainer.available) {
+    return false;
+  }
+  if (filters.verifiedOnly && trainer.verified !== true) {
+    return false;
+  }
+
+  let price = getTrainerPrice(trainer);
+  if (price == null) {
+    price = trainer.price;
+  }
+  if (price == null) {
+    price = 0;
+  }
+
+  if (minPrice !== null && !Number.isNaN(minPrice) && price < minPrice) {
+    return false;
+  }
+  if (maxPrice !== null && !Number.isNaN(maxPrice) && price > maxPrice) {
+    return false;
+  }
+  if (!matchesSessionType(trainer.mode, filters.sessionType)) {
+    return false;
+  }
+  if (!matchesExperience(trainer.years, filters.experience)) {
+    return false;
+  }
+  return true;
+}
+
+function priceFromCard(trainerCard) {
+  let price = getTrainerPrice(trainerCard._firebase);
+  if (price == null) {
+    price = trainerCard.price;
+  }
+  return price;
+}
+
+function comparePriceLowToHigh(first, second) {
+  return priceFromCard(first) - priceFromCard(second);
+}
+
+function comparePriceHighToLow(first, second) {
+  return priceFromCard(second) - priceFromCard(first);
+}
+
+function compareBestMatchThenNewest(first, second, clientPrefs) {
+  const scoreGap = scoreTrainerMatch(second, clientPrefs) - scoreTrainerMatch(first, clientPrefs);
+  if (scoreGap !== 0) {
+    return scoreGap;
+  }
+  return (
+    joinedAtMilliseconds(second.memberSince, second._firebase) -
+    joinedAtMilliseconds(first.memberSince, first._firebase)
+  );
+}
+
+function compareNewestFirst(first, second) {
+  return (
+    joinedAtMilliseconds(second.memberSince, second._firebase) -
+    joinedAtMilliseconds(first.memberSince, first._firebase)
+  );
+}
+
+/**
+ * Price sorts read the raw Firestore doc. Newest uses the joined-at timestamp.
+ * Best match uses scoreTrainerMatch when client prefs exist.
+ * @param {object[]} trainers
+ * @param {string} sortOption
+ * @param {object|null} [clientPrefs]
+ * @returns {object[]}
+ */
+function sortTrainerCards(trainers, sortOption, clientPrefs = null) {
+  if (sortOption === SORT_PRICE_LOW) {
+    return [...trainers].sort(comparePriceLowToHigh);
+  }
+  if (sortOption === SORT_PRICE_HIGH) {
+    return [...trainers].sort(comparePriceHighToLow);
+  }
+  if (sortOption === SORT_BEST_MATCH) {
+    return [...trainers].sort((first, second) =>
+      compareBestMatchThenNewest(first, second, clientPrefs),
+    );
+  }
+  if (sortOption === SORT_NEWEST) {
+    return [...trainers].sort(compareNewestFirst);
+  }
+  return [...trainers].sort(compareNewestFirst);
 }

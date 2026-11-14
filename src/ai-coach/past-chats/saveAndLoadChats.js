@@ -1,6 +1,7 @@
-// AI Coach chat persistence — session meta plus one Firestore doc per message (avoids rewriting the whole array).
-// Flow: serialize a message → write/merge session meta → write/merge each message doc → optional legacy `messages` field delete.
-// Used by: the coach conversation screen when a chat is saved, restored, or deleted.
+// AI Coach chat persistence — session meta plus one Firestore doc per message.
+// Flow: serialize message → merge session meta → merge each message doc → drop legacy messages array.
+// Used by the coach conversation screen when a chat is saved, restored, or deleted.
+// Read order: constants → small helpers → exported load/save recipes → PLUMBING.
 
 import {
   collection,
@@ -28,8 +29,42 @@ const ROLE_USER = 'user';
 const RESTORED_MESSAGE_ID_PREFIX = 'msg_restored_';
 const GENERATED_MESSAGE_ID_PREFIX = 'm_';
 
-// Firestore rejects `undefined` anywhere in a write payload.
-const omitUndefined = stripUndefinedForFirestore;
+// ===== HELPER FUNCTIONS =====
+// Tiny path / role helpers the mains need. Heavy serialize/restore lives under PLUMBING.
+
+function pathToSessionDoc(userId, sessionId) {
+  return doc(db, USERS_COLLECTION, userId, AI_CHATS_COLLECTION, sessionId);
+}
+
+function pathToMessagesCollection(userId, sessionId) {
+  return collection(
+    db,
+    USERS_COLLECTION,
+    userId,
+    AI_CHATS_COLLECTION,
+    sessionId,
+    MESSAGES_SUBCOLLECTION,
+  );
+}
+
+function roleForFirestoreWrite(role) {
+  if (role === ROLE_ASSISTANT) return ROLE_ASSISTANT;
+  if (role === ROLE_AI) return ROLE_ASSISTANT;
+  return ROLE_USER;
+}
+
+function roleForBubbleUi(role) {
+  if (role === ROLE_ASSISTANT) return ROLE_AI;
+  if (role === ROLE_AI) return ROLE_AI;
+  return ROLE_USER;
+}
+
+function chatIdsAreReady(userId, sessionId) {
+  if (!db) return false;
+  if (!userId) return false;
+  if (!sessionId) return false;
+  return true;
+}
 
 // ===== MAIN FUNCTION =====
 
@@ -40,11 +75,16 @@ const omitUndefined = stripUndefinedForFirestore;
  * @returns {Promise<Array>}
  */
 export async function loadAiChatMessages(userId, sessionId) {
-  if (!db || !userId || !sessionId) return [];
-  const snapshot = await getDoc(sessionRef(userId, sessionId));
-  if (!snapshot.exists()) return [];
-  const data = snapshot.data() || {};
-  return messagesFromLegacyArrayOrSubcollection(userId, sessionId, data);
+  // 1. Need db + ids.
+  if (!chatIdsAreReady(userId, sessionId)) return [];
+
+  // 2. Missing session doc → empty list.
+  const sessionSnapshot = await getDoc(pathToSessionDoc(userId, sessionId));
+  if (!sessionSnapshot.exists()) return [];
+
+  // 3. Prefer legacy `messages` array; otherwise read the messages subcollection.
+  const sessionData = sessionSnapshot.data() || {};
+  return loadMessagesFromLegacyArrayOrSubcollection(userId, sessionId, sessionData);
 }
 
 /**
@@ -54,10 +94,15 @@ export async function loadAiChatMessages(userId, sessionId) {
  * @returns {Promise<object|null>}
  */
 export async function loadAiChatSessionMeta(userId, sessionId) {
-  if (!db || !userId || !sessionId) return null;
-  const snapshot = await getDoc(sessionRef(userId, sessionId));
-  if (!snapshot.exists()) return null;
-  return sessionMetaFromDoc(snapshot.data() || {});
+  // 1. Need db + ids.
+  if (!chatIdsAreReady(userId, sessionId)) return null;
+
+  // 2. Missing session → null.
+  const sessionSnapshot = await getDoc(pathToSessionDoc(userId, sessionId));
+  if (!sessionSnapshot.exists()) return null;
+
+  // 3. Pull the three sidebar fields only.
+  return sidebarMetaFromSessionData(sessionSnapshot.data() || {});
 }
 
 /**
@@ -66,26 +111,49 @@ export async function loadAiChatSessionMeta(userId, sessionId) {
  * @returns {Array}
  */
 export function restoreChatMessagesFromSaved(saved = []) {
-  const savedList = Array.isArray(saved) ? saved : [];
-  return savedList
-    .map((savedMessage, index) => restoredMessageFromSaved(savedMessage, index))
-    .filter((message) => restoredMessageHasContent(message));
+  // 1. Tolerate a non-array.
+  let savedList = saved;
+  if (!Array.isArray(saved)) {
+    savedList = [];
+  }
+
+  // 2. Rebuild each row; skip empty text with no attachments.
+  const restoredMessages = [];
+  for (let index = 0; index < savedList.length; index += 1) {
+    const savedMessage = savedList[index];
+    const message = rebuildOneMessageForUi(savedMessage, index);
+    if (messageHasTextOrAttachments(message)) {
+      restoredMessages.push(message);
+    }
+  }
+
+  return restoredMessages;
 }
 
 /**
  * Full session write: meta + every message in one batch. Also deletes the legacy `messages` array field.
  * @param {string} userId
  * @param {string} sessionId
- * @param {{ messages?: Array, meta?: object }} [payload]
+ * @param {{ messages?: Array, meta?: object }} [options]
+ * @returns {Promise<void>}
  */
 export async function persistAiChatSession(userId, sessionId, { messages = [], meta = {} } = {}) {
-  if (!db || !userId || !sessionId) return;
-  const serialized = serializeMessageList(messages);
+  // 1. Need db + ids.
+  if (!chatIdsAreReady(userId, sessionId)) return;
+
+  // 2. Serialize every in-memory message into Firestore-safe rows.
+  const serializedMessages = serializeMessageList(messages);
   const batch = writeBatch(db);
-  writeSessionMeta(batch, userId, sessionId, meta, {
-    createdAt: meta.createdAt || serverTimestamp(),
-  });
-  writeSerializedMessages(batch, userId, sessionId, serialized);
+
+  // 3. Session meta (keep createdAt if the caller passed one) + each message doc + drop legacy array.
+  let createdAtField = meta.createdAt;
+  if (!createdAtField) {
+    createdAtField = serverTimestamp();
+  }
+  writeSessionMetaOntoBatch(batch, userId, sessionId, meta, { createdAt: createdAtField });
+  writeSerializedMessagesOntoBatch(batch, userId, sessionId, serializedMessages);
+
+  // 4. Commit once.
   await batch.commit();
 }
 
@@ -95,15 +163,22 @@ export async function persistAiChatSession(userId, sessionId, { messages = [], m
  * @param {string} sessionId
  * @param {Array} [messages]
  * @param {object} [meta]
+ * @returns {Promise<void>}
  */
 export async function upsertAiChatMessages(userId, sessionId, messages = [], meta = {}) {
-  if (!db || !userId || !sessionId) return;
-  const serialized = serializeMessageList(messages);
-  if (!serialized.length && !Object.keys(meta).length) return;
+  // 1. Need db + ids.
+  if (!chatIdsAreReady(userId, sessionId)) return;
 
+  // 2. Nothing to write → skip the batch.
+  const serializedMessages = serializeMessageList(messages);
+  const metaKeyCount = Object.keys(meta).length;
+  const metaIsEmpty = metaKeyCount === 0;
+  if (!serializedMessages.length && metaIsEmpty) return;
+
+  // 3. Merge session meta + only the messages we were given.
   const batch = writeBatch(db);
-  writeSessionMeta(batch, userId, sessionId, meta, {});
-  writeSerializedMessages(batch, userId, sessionId, serialized);
+  writeSessionMetaOntoBatch(batch, userId, sessionId, meta, {});
+  writeSerializedMessagesOntoBatch(batch, userId, sessionId, serializedMessages);
   await batch.commit();
 }
 
@@ -113,42 +188,57 @@ export async function upsertAiChatMessages(userId, sessionId, messages = [], met
  * @param {string} sessionId
  * @param {object} message
  * @param {object} [meta]
+ * @returns {Promise<void>}
  */
 export async function upsertAiChatMessage(userId, sessionId, message, meta = {}) {
-  if (!db || !userId || !sessionId || !message) return;
-  const serialized = serializeMessage(message);
+  // 1. Need db + ids + a message object.
+  if (!chatIdsAreReady(userId, sessionId)) return;
+  if (!message) return;
+
+  // 2. Serialize; bail if the message was empty / invalid.
+  const serialized = serializeOneMessage(message);
   if (!serialized) return;
-  await setDoc(
-    sessionRef(userId, sessionId),
-    omitUndefined({
-      sessionId,
-      ...meta,
-      messages: deleteField(),
-      updatedAt: serverTimestamp(),
-      ...lastMessageFieldsForRole(serialized, meta),
-    }),
-    { merge: true },
-  );
-  await setDoc(
-    doc(messagesCol(userId, sessionId), serialized.id),
-    omitUndefined({
-      ...serialized,
-      updatedAt: serverTimestamp(),
-    }),
-  );
+
+  // 3. Update last-user / last-assistant snippets on the session doc for the sidebar.
+  const lastSnippetFields = lastMessageSnippetsForRole(serialized, meta);
+  const sessionPayload = stripUndefinedForFirestore({
+    sessionId,
+    ...meta,
+    messages: deleteField(),
+    updatedAt: serverTimestamp(),
+    ...lastSnippetFields,
+  });
+  await setDoc(pathToSessionDoc(userId, sessionId), sessionPayload, { merge: true });
+
+  // 4. Upsert the single message doc under messages/{id}.
+  const messagePayload = stripUndefinedForFirestore({
+    ...serialized,
+    updatedAt: serverTimestamp(),
+  });
+  await setDoc(doc(pathToMessagesCollection(userId, sessionId), serialized.id), messagePayload);
 }
 
 /**
  * Delete every message doc, then the session doc, in one batch.
  * @param {string} userId
  * @param {string} sessionId
+ * @returns {Promise<void>}
  */
 export async function deleteAiChatSession(userId, sessionId) {
-  if (!db || !userId || !sessionId) return;
-  const messageSnapshot = await getDocs(messagesCol(userId, sessionId));
+  // 1. Need db + ids.
+  if (!chatIdsAreReady(userId, sessionId)) return;
+
+  // 2. Load every message doc so we can delete them in the same batch as the session.
+  const messageSnapshot = await getDocs(pathToMessagesCollection(userId, sessionId));
   const batch = writeBatch(db);
-  messageSnapshot.docs.forEach((messageDoc) => batch.delete(messageDoc.ref));
-  batch.delete(sessionRef(userId, sessionId));
+
+  for (let index = 0; index < messageSnapshot.docs.length; index += 1) {
+    const messageDoc = messageSnapshot.docs[index];
+    batch.delete(messageDoc.ref);
+  }
+
+  // 3. Delete the session doc itself, then commit.
+  batch.delete(pathToSessionDoc(userId, sessionId));
   await batch.commit();
 }
 
@@ -156,11 +246,12 @@ export async function deleteAiChatSession(userId, sessionId) {
  * Remove the legacy `messages` array on the session doc after the subcollection exists.
  * @param {string} userId
  * @param {string} sessionId
+ * @returns {Promise<void>}
  */
 export async function clearLegacyMessagesField(userId, sessionId) {
-  if (!db || !userId || !sessionId) return;
+  if (!chatIdsAreReady(userId, sessionId)) return;
   await setDoc(
-    sessionRef(userId, sessionId),
+    pathToSessionDoc(userId, sessionId),
     { messages: deleteField() },
     { merge: true },
   );
@@ -169,131 +260,252 @@ export async function clearLegacyMessagesField(userId, sessionId) {
 // ===== HELPER FUNCTIONS =====
 // PLUMBING — skip unless debugging
 
-function sessionRef(userId, sessionId) {
-  return doc(db, USERS_COLLECTION, userId, AI_CHATS_COLLECTION, sessionId);
-}
-
-function messagesCol(userId, sessionId) {
-  return collection(db, USERS_COLLECTION, userId, AI_CHATS_COLLECTION, sessionId, MESSAGES_SUBCOLLECTION);
-}
-
-function firestoreRole(role) {
-  if (role === ROLE_ASSISTANT || role === ROLE_AI) return ROLE_ASSISTANT;
-  return ROLE_USER;
-}
-
-function uiRole(role) {
-  if (role === ROLE_ASSISTANT || role === ROLE_AI) return ROLE_AI;
-  return ROLE_USER;
-}
-
-function generatedMessageId() {
+function makeGeneratedMessageId() {
   return `${GENERATED_MESSAGE_ID_PREFIX}${Date.now()}`;
 }
 
-function webSourcesFromMessage(msg) {
-  if (Array.isArray(msg.webSources)) return msg.webSources;
-  if (Array.isArray(msg.sources)) return msg.sources;
+function webSourcesListFromMessage(message) {
+  if (Array.isArray(message.webSources)) return message.webSources;
+  if (Array.isArray(message.sources)) return message.sources;
+  return undefined;
+}
+
+function urlFromWebSource(source) {
+  if (!source) return undefined;
+  if (source.url) return source.url;
+  if (source.link) return source.link;
+  return undefined;
+}
+
+function titleFromWebSource(source) {
+  if (!source) return undefined;
+  if (source.title) return source.title;
+  if (source.name) return source.name;
+  return undefined;
+}
+
+function imageFromWebSource(source) {
+  if (!source) return undefined;
+  if (source.image) return source.image;
+  if (source.thumbnail) return source.thumbnail;
+  if (source.ogImage) return source.ogImage;
   return undefined;
 }
 
 function serializeOneWebSource(source) {
-  return omitUndefined({
-    url: source?.url || source?.link,
-    title: source?.title || source?.name,
-    // Snippet was dropped here, so a restored source row lost its preview text.
-    snippet: source?.snippet || undefined,
-    image: source?.image || source?.thumbnail || source?.ogImage,
+  let snippetValue = undefined;
+  if (source && source.snippet) {
+    snippetValue = source.snippet;
+  }
+
+  return stripUndefinedForFirestore({
+    url: urlFromWebSource(source),
+    title: titleFromWebSource(source),
+    snippet: snippetValue,
+    image: imageFromWebSource(source),
   });
 }
 
-function sanitizeAttachments(attachments) {
-  if (!Array.isArray(attachments) || !attachments.length) return undefined;
-  const cleaned = attachments
-    .map((attachment) => {
-      if (!attachment || typeof attachment !== 'object') return null;
-      return omitUndefined({
+function sanitizeAttachmentsList(attachments) {
+  if (!Array.isArray(attachments)) return undefined;
+  if (!attachments.length) return undefined;
+
+  const cleaned = [];
+  for (let index = 0; index < attachments.length; index += 1) {
+    const attachment = attachments[index];
+    if (!attachment) continue;
+    if (typeof attachment !== 'object') continue;
+
+    let previewValue = attachment.preview;
+    if (!previewValue) {
+      previewValue = attachment.uri;
+    }
+
+    cleaned.push(
+      stripUndefinedForFirestore({
         id: attachment.id,
         name: attachment.name,
         type: attachment.type,
-        preview: attachment.preview || attachment.uri,
+        preview: previewValue,
         mimeType: attachment.mimeType,
-      });
-    })
-    .filter(Boolean);
+      }),
+    );
+  }
+
   if (!cleaned.length) return undefined;
   return cleaned;
 }
 
-function serializeMessage(msg) {
-  if (!msg || typeof msg !== 'object') return null;
-  const role = firestoreRole(msg.role);
-  const webSources = webSourcesFromMessage(msg);
-  return omitUndefined({
-    id: msg.id || generatedMessageId(),
+function serializeWebSourcesList(webSources) {
+  if (!webSources) return undefined;
+  const serializedWebSources = [];
+  for (let index = 0; index < webSources.length; index += 1) {
+    serializedWebSources.push(serializeOneWebSource(webSources[index]));
+  }
+  return serializedWebSources;
+}
+
+function followUpPromptsForSave(followUpPrompts) {
+  if (!Array.isArray(followUpPrompts)) return undefined;
+  if (!followUpPrompts.length) return undefined;
+
+  const cleaned = [];
+  for (let index = 0; index < followUpPrompts.length; index += 1) {
+    const trimmed = String(followUpPrompts[index] || '').trim();
+    if (trimmed) {
+      cleaned.push(trimmed);
+    }
+  }
+  return cleaned;
+}
+
+function optionalToolCallsArray(toolCalls) {
+  if (!Array.isArray(toolCalls)) return undefined;
+  if (!toolCalls.length) return undefined;
+  return toolCalls;
+}
+
+function trueFlagOrOmit(flag) {
+  if (flag === true) return true;
+  return undefined;
+}
+
+function toolCallFieldForSave(toolCall) {
+  if (!toolCall) return undefined;
+  return stripUndefinedForFirestore(toolCall);
+}
+
+function serializeOneMessage(message) {
+  if (!message) return null;
+  if (typeof message !== 'object') return null;
+
+  const role = roleForFirestoreWrite(message.role);
+  const webSources = webSourcesListFromMessage(message);
+  const serializedWebSources = serializeWebSourcesList(webSources);
+
+  let messageId = message.id;
+  if (!messageId) {
+    messageId = makeGeneratedMessageId();
+  }
+
+  let createdAtValue = message.createdAt;
+  if (!createdAtValue) {
+    createdAtValue = Date.now();
+  }
+
+  let sourceField = undefined;
+  if (message.source !== undefined && message.source !== null) {
+    sourceField = message.source;
+  }
+
+  return stripUndefinedForFirestore({
+    id: messageId,
     role,
-    text: String(msg.text || msg.content || ''),
-    createdAt: msg.createdAt || Date.now(),
-    attachments: sanitizeAttachments(msg.attachments),
-    source: msg.source ?? undefined,
-    toolCall: msg.toolCall ? omitUndefined(msg.toolCall) : undefined,
-    // Multi-action queue + progress, so a half-finished "log sleep + water"
-    // reply still shows the remaining chip after the chat is reopened.
-    toolCalls: Array.isArray(msg.toolCalls) && msg.toolCalls.length ? msg.toolCalls : undefined,
-    completedToolCalls:
-      Array.isArray(msg.completedToolCalls) && msg.completedToolCalls.length
-        ? msg.completedToolCalls
-        : undefined,
-    toolConfirmed: msg.toolConfirmed === true ? true : undefined,
-    isToolResult: msg.isToolResult === true ? true : undefined,
-    isError: msg.isError === true ? true : undefined,
-    searchedWeb: msg.searchedWeb === true ? true : undefined,
-    webProvider: msg.webProvider || undefined,
-    route: msg.route || undefined,
-    webSources: webSources ? webSources.map((source) => serializeOneWebSource(source)) : undefined,
-    // ASK NEXT chips — without this, reopening a chat drops follow-ups.
-    followUpPrompts:
-      Array.isArray(msg.followUpPrompts) && msg.followUpPrompts.length
-        ? msg.followUpPrompts.map((prompt) => String(prompt || '').trim()).filter(Boolean)
-        : undefined,
-    time: msg.time || undefined,
+    text: String(message.text || message.content || ''),
+    createdAt: createdAtValue,
+    attachments: sanitizeAttachmentsList(message.attachments),
+    source: sourceField,
+    toolCall: toolCallFieldForSave(message.toolCall),
+    toolCalls: optionalToolCallsArray(message.toolCalls),
+    completedToolCalls: optionalToolCallsArray(message.completedToolCalls),
+    toolConfirmed: trueFlagOrOmit(message.toolConfirmed),
+    isToolResult: trueFlagOrOmit(message.isToolResult),
+    isError: trueFlagOrOmit(message.isError),
+    searchedWeb: trueFlagOrOmit(message.searchedWeb),
+    webProvider: message.webProvider || undefined,
+    route: message.route || undefined,
+    webSources: serializedWebSources,
+    followUpPrompts: followUpPromptsForSave(message.followUpPrompts),
+    time: message.time || undefined,
   });
 }
 
 function serializeMessageList(messages) {
-  return (Array.isArray(messages) ? messages : []).map(serializeMessage).filter(Boolean);
+  let messageList = messages;
+  if (!Array.isArray(messages)) {
+    messageList = [];
+  }
+
+  const serialized = [];
+  for (let index = 0; index < messageList.length; index += 1) {
+    const row = serializeOneMessage(messageList[index]);
+    if (row) {
+      serialized.push(row);
+    }
+  }
+
+  return serialized;
 }
 
-function restoredMessageFromSaved(savedMessage, index) {
+function restoredFollowUpPrompts(followUpPrompts) {
+  if (!Array.isArray(followUpPrompts)) return undefined;
+
+  const cleaned = [];
+  for (let index = 0; index < followUpPrompts.length; index += 1) {
+    const trimmed = String(followUpPrompts[index] || '').trim();
+    if (trimmed) {
+      cleaned.push(trimmed);
+    }
+  }
+  return cleaned;
+}
+
+function rebuildOneMessageForUi(savedMessage, index) {
+  let messageId = savedMessage.id;
+  if (!messageId) {
+    messageId = `${RESTORED_MESSAGE_ID_PREFIX}${index}`;
+  }
+
+  let timeValue = undefined;
+  if (typeof savedMessage.time === 'string') {
+    timeValue = savedMessage.time;
+  }
+
+  let attachmentsValue = undefined;
+  if (Array.isArray(savedMessage.attachments)) {
+    attachmentsValue = savedMessage.attachments;
+  }
+
+  let toolCallsValue = [];
+  if (Array.isArray(savedMessage.toolCalls)) {
+    toolCallsValue = savedMessage.toolCalls;
+  }
+
+  let completedToolCallsValue = [];
+  if (Array.isArray(savedMessage.completedToolCalls)) {
+    completedToolCallsValue = savedMessage.completedToolCalls;
+  }
+
+  let webSourcesValue = [];
+  if (Array.isArray(savedMessage.webSources)) {
+    webSourcesValue = savedMessage.webSources;
+  }
+
   return {
-    id: savedMessage.id || `${RESTORED_MESSAGE_ID_PREFIX}${index}`,
-    role: uiRole(savedMessage.role),
+    id: messageId,
+    role: roleForBubbleUi(savedMessage.role),
     text: String(savedMessage.text || savedMessage.content || ''),
-    time: typeof savedMessage.time === 'string' ? savedMessage.time : undefined,
+    time: timeValue,
     source: savedMessage.source || null,
-    attachments: Array.isArray(savedMessage.attachments) ? savedMessage.attachments : undefined,
+    attachments: attachmentsValue,
     toolCall: savedMessage.toolCall || null,
-    toolCalls: Array.isArray(savedMessage.toolCalls) ? savedMessage.toolCalls : [],
-    completedToolCalls: Array.isArray(savedMessage.completedToolCalls)
-      ? savedMessage.completedToolCalls
-      : [],
+    toolCalls: toolCallsValue,
+    completedToolCalls: completedToolCallsValue,
     toolConfirmed: savedMessage.toolConfirmed === true,
     isToolResult: savedMessage.isToolResult === true,
-    // Web-search fields were saved above but never restored, so reopening a
-    // past chat made the Sources pill (and web formatting) silently vanish.
     searchedWeb: savedMessage.searchedWeb === true,
     webProvider: savedMessage.webProvider || null,
     route: savedMessage.route || null,
-    webSources: Array.isArray(savedMessage.webSources) ? savedMessage.webSources : [],
-    followUpPrompts: Array.isArray(savedMessage.followUpPrompts)
-      ? savedMessage.followUpPrompts.map((prompt) => String(prompt || '').trim()).filter(Boolean)
-      : undefined,
+    webSources: webSourcesValue,
+    followUpPrompts: restoredFollowUpPrompts(savedMessage.followUpPrompts),
   };
 }
 
-function restoredMessageHasContent(message) {
+function messageHasTextOrAttachments(message) {
   if (message.text.trim().length > 0) return true;
-  return Array.isArray(message.attachments) && message.attachments.length > 0;
+  if (!Array.isArray(message.attachments)) return false;
+  if (message.attachments.length > 0) return true;
+  return false;
 }
 
 function stringMetaField(value) {
@@ -301,7 +513,7 @@ function stringMetaField(value) {
   return '';
 }
 
-function sessionMetaFromDoc(data) {
+function sidebarMetaFromSessionData(data) {
   return {
     title: stringMetaField(data.title),
     lastUserMessage: stringMetaField(data.lastUserMessage),
@@ -310,25 +522,38 @@ function sessionMetaFromDoc(data) {
 }
 
 function sortMessagesOldestFirst(messages) {
-  return messages.sort((leftMessage, rightMessage) => (leftMessage.createdAt || 0) - (rightMessage.createdAt || 0));
+  messages.sort((leftMessage, rightMessage) => {
+    const leftTime = leftMessage.createdAt || 0;
+    const rightTime = rightMessage.createdAt || 0;
+    return leftTime - rightTime;
+  });
+  return messages;
 }
 
-async function messagesFromLegacyArrayOrSubcollection(userId, sessionId, data) {
+async function loadMessagesFromLegacyArrayOrSubcollection(userId, sessionId, data) {
   if (Array.isArray(data.messages) && data.messages.length) {
-    return data.messages.map(serializeMessage).filter(Boolean);
+    return serializeMessageList(data.messages);
   }
-  const messageSnapshot = await getDocs(messagesCol(userId, sessionId));
+
+  const messageSnapshot = await getDocs(pathToMessagesCollection(userId, sessionId));
   if (messageSnapshot.empty) return [];
-  const loaded = messageSnapshot.docs
-    .map((messageDoc) => serializeMessage({ id: messageDoc.id, ...messageDoc.data() }))
-    .filter(Boolean);
+
+  const loaded = [];
+  for (let index = 0; index < messageSnapshot.docs.length; index += 1) {
+    const messageDoc = messageSnapshot.docs[index];
+    const row = serializeOneMessage({ id: messageDoc.id, ...messageDoc.data() });
+    if (row) {
+      loaded.push(row);
+    }
+  }
+
   return sortMessagesOldestFirst(loaded);
 }
 
-function writeSessionMeta(batch, userId, sessionId, meta, extraFields) {
+function writeSessionMetaOntoBatch(batch, userId, sessionId, meta, extraFields) {
   batch.set(
-    sessionRef(userId, sessionId),
-    omitUndefined({
+    pathToSessionDoc(userId, sessionId),
+    stripUndefinedForFirestore({
       sessionId,
       ...meta,
       messages: deleteField(),
@@ -339,19 +564,30 @@ function writeSessionMeta(batch, userId, sessionId, meta, extraFields) {
   );
 }
 
-function writeSerializedMessages(batch, userId, sessionId, serialized) {
-  for (const msg of serialized) {
+function writeSerializedMessagesOntoBatch(batch, userId, sessionId, serializedMessages) {
+  for (let index = 0; index < serializedMessages.length; index += 1) {
+    const messageRow = serializedMessages[index];
     batch.set(
-      doc(messagesCol(userId, sessionId), msg.id),
-      omitUndefined({ ...msg, updatedAt: serverTimestamp() }),
+      doc(pathToMessagesCollection(userId, sessionId), messageRow.id),
+      stripUndefinedForFirestore({ ...messageRow, updatedAt: serverTimestamp() }),
       { merge: true },
     );
   }
 }
 
-function lastMessageFieldsForRole(serialized, meta) {
+function lastMessageSnippetsForRole(serialized, meta) {
+  let lastUserMessage = meta.lastUserMessage;
+  if (serialized.role === ROLE_USER) {
+    lastUserMessage = serialized.text;
+  }
+
+  let lastAssistantMessage = meta.lastAssistantMessage;
+  if (serialized.role === ROLE_ASSISTANT) {
+    lastAssistantMessage = serialized.text;
+  }
+
   return {
-    lastUserMessage: serialized.role === ROLE_USER ? serialized.text : meta.lastUserMessage,
-    lastAssistantMessage: serialized.role === ROLE_ASSISTANT ? serialized.text : meta.lastAssistantMessage,
+    lastUserMessage,
+    lastAssistantMessage,
   };
 }

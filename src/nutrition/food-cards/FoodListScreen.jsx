@@ -1,7 +1,7 @@
-// Today's logged foods as a searchable list of FoodCards.
-// Flow: pick foods (or the demo bowl) → filter by search → sticky header + calorie total + cards.
-// Used by nutrition demos / lists. FoodCard owns expand/collapse.
-// vocab: HardShadow = solid offset shadow (no blur)
+// Today's logged foods as a searchable FlatList of FoodCards.
+// Flow: parent foods (or demo bowl) → search filter → sticky header + kcal → one expanded card.
+// Used by nutrition demos and daily-log embeds. FoodCard owns expand/collapse chrome.
+// vocab: HardShadow = solid offset shadow chip (Design Law — no blur shadows)
 
 import React, { useMemo, useState, useCallback } from 'react';
 import {
@@ -24,20 +24,21 @@ import { useTheme } from '../../look-and-feel/lightDarkMode';
 
 // ===== NAMED CONSTANTS =====
 
+// Manipulate here: fixed US locale so the eyebrow always reads "Today · Mon Oct 8".
 const WEEKDAY_FORMAT = { weekday: 'short' };
 const MONTH_FORMAT = { month: 'short' };
 const LOCALE_US = 'en-US';
 const SEARCH_ICON_SIZE = 16;
 const SEARCH_ICON_STROKE_WIDTH = 2;
+const LIST_ROW_GAP = 10;
+const SEARCH_PLACEHOLDER = 'Search logged foods…';
+const SCREEN_TITLE = 'Nutrition';
+const KCAL_LABEL = 'KCAL';
 
 // ===== HELPER FUNCTIONS =====
 
-/**
- * "Today · Mon Oct 8" for the eyebrow above the Nutrition title.
- * Device locale is ignored on purpose so the header always looks the same.
- * @returns {string}
- */
-function formatTodayHeader() {
+// "Today · Mon Oct 8" for the eyebrow above the Nutrition title.
+function formatTodayHeaderLine() {
   const now = new Date();
   const weekday = now.toLocaleDateString(LOCALE_US, WEEKDAY_FORMAT);
   const month = now.toLocaleDateString(LOCALE_US, MONTH_FORMAT);
@@ -45,111 +46,150 @@ function formatTodayHeader() {
   return `Today · ${weekday} ${month} ${dayOfMonth}`;
 }
 
-/**
- * Every row needs an id for FlatList. Missing ids get food-0, food-1, …
- * @param {object} food
- * @param {number} index
- * @returns {object}
- */
-function foodWithListId(food, index) {
-  return { ...food, id: food.id || `food-${index}` };
+// FlatList needs stable ids; missing ids become food-0, food-1, …
+function foodRowWithListId(food, index) {
+  const listId = food.id || `food-${index}`;
+  return { ...food, id: listId };
 }
 
-/**
- * Empty search shows the full list. Match is case-insensitive on the food name.
- * @param {Array} foods
- * @param {string} searchText
- * @returns {Array}
- */
-function foodsMatchingSearch(foods, searchText) {
-  const baseFoods = foods?.length ? foods : [DEMO_YOGURT_BOWL];
+function foodsOrDemoBowl(foods) {
+  if (foods?.length) return foods;
+  return [DEMO_YOGURT_BOWL];
+}
+
+// Empty search → full list; otherwise case-insensitive name match.
+function filterFoodsForSearch(foods, searchText) {
+  const sourceFoods = foodsOrDemoBowl(foods);
   const trimmedSearch = searchText.trim().toLowerCase();
-  if (!trimmedSearch) return baseFoods.map(foodWithListId);
-  return baseFoods
-    .filter((food) => String(food.name || '').toLowerCase().includes(trimmedSearch))
-    .map(foodWithListId);
+  if (!trimmedSearch) {
+    return sourceFoods.map(foodRowWithListId);
+  }
+
+  const matchingFoods = [];
+  for (const food of sourceFoods) {
+    const foodNameLower = String(food.name || '').toLowerCase();
+    if (!foodNameLower.includes(trimmedSearch)) continue;
+    matchingFoods.push(food);
+  }
+  return matchingFoods.map(foodRowWithListId);
 }
 
-/**
- * Prefer the parent-supplied total so the header matches the rest of the nutrition tab.
- * @param {Array} foodItems
- * @param {number|null|undefined} totalCalories
- * @returns {number}
- */
-function roundedCalorieTotal(foodItems, totalCalories) {
-  if (totalCalories != null) return Math.round(totalCalories);
-  return foodItems.reduce((sum, food) => sum + (Number(food.calories) || 0), 0);
+function sumCaloriesFromFoodItems(foodItems) {
+  let runningSum = 0;
+  for (const food of foodItems) {
+    runningSum += Number(food.calories) || 0;
+  }
+  return runningSum;
 }
 
-// ===== MAIN FUNCTION =====
+// Parent total wins when supplied so the header matches the rest of the nutrition tab.
+function displayCalorieTotal(foodItems, parentTotalCalories) {
+  if (parentTotalCalories != null) {
+    return Math.round(parentTotalCalories);
+  }
+  return sumCaloriesFromFoodItems(foodItems);
+}
 
-/**
- * Premium nutrition list — FlatList of FoodCards with a search box and calorie total.
- * @param {{ foods?: Array, totalCalories?: number }} props
- */
-export default function FoodListScreen({ foods, totalCalories }) {
-  const { isDark } = useTheme();
-  const nbColors = isDark ? darkColors : lightColors;
-  const [expandedId, setExpandedId] = useState(null);
-  const [searchText, setSearchText] = useState('');
+// Design Law search field border — prefer food-card token, else theme border.
+function searchFieldBorderColor() {
+  const foodCardBorder = colors.cardBorder || colors.nbBorder;
+  if (foodCardBorder) return foodCardBorder;
+  return lightColors.nbBorder;
+}
 
-  const foodItems = useMemo(
-    () => foodsMatchingSearch(foods, searchText),
-    [foods, searchText],
+function themeInkColors(isDark) {
+  if (isDark) return darkColors;
+  return lightColors;
+}
+
+function nextExpandedFoodId(currentId, tappedFoodId) {
+  if (currentId === tappedFoodId) return null;
+  return tappedFoodId;
+}
+
+function FoodListRowGap() {
+  return <View style={styles.separator} />;
+}
+
+function FoodListStickyHeader({ eyebrowLine, totalKcal }) {
+  return (
+    <View style={styles.header}>
+      <View style={styles.headerLeft}>
+        <Text style={styles.eyebrow}>{eyebrowLine}</Text>
+        <Text style={styles.title}>{SCREEN_TITLE}</Text>
+      </View>
+      <View style={styles.headerRight}>
+        <Text style={styles.totalKcal}>{totalKcal}</Text>
+        <Text style={styles.totalLabel}>{KCAL_LABEL}</Text>
+      </View>
+    </View>
   );
+}
 
-  const totalKcal = useMemo(
-    () => roundedCalorieTotal(foodItems, totalCalories),
-    [foodItems, totalCalories],
-  );
-
-  // Tapping the open card closes it; tapping another opens that one instead.
-  const renderItem = useCallback(
-    ({ item }) => (
-      <FoodCard
-        food={item}
-        expanded={expandedId === item.id}
-        onToggle={() => setExpandedId((currentId) => (currentId === item.id ? null : item.id))}
-      />
-    ),
-    [expandedId],
-  );
+function FoodListSearchBar({ searchText, onSearchTextChange, isDark, inkColors }) {
+  let surfaceColor = lightColors.nbSurface;
+  if (isDark) {
+    surfaceColor = darkColors.nbSurface;
+  }
+  const borderColor = searchFieldBorderColor();
+  const searchFieldStyle = {
+    backgroundColor: surfaceColor,
+    borderWidth: nb.borderWidth,
+    borderColor,
+    borderRadius: borderRadius.nbCard,
+  };
+  const inputTextStyle = [styles.searchInput, { color: inkColors.nbInk }];
 
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: nbColors.nbBackground }]} edges={SHELL_SAFE_AREA_EDGES}>
-      <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <Text style={styles.eyebrow}>{formatTodayHeader()}</Text>
-          <Text style={styles.title}>Nutrition</Text>
-        </View>
-        <View style={styles.headerRight}>
-          <Text style={styles.totalKcal}>{totalKcal}</Text>
-          <Text style={styles.totalLabel}>KCAL</Text>
-        </View>
-      </View>
-
-      <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetCard} style={styles.searchFrame}>
-      <View style={[{ backgroundColor: isDark ? darkColors.nbSurface : lightColors.nbSurface, borderWidth: nb.borderWidth, borderColor: (typeof colors !== "undefined" && (colors.cardBorder || colors.nbBorder)) || lightColors.nbBorder, borderRadius: borderRadius.nbCard }, {}]}>
-
+    <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetCard} style={styles.searchFrame}>
+      <View style={searchFieldStyle}>
         <View style={styles.searchRow}>
-          <Search size={SEARCH_ICON_SIZE} color={nbColors.nbMuted} strokeWidth={SEARCH_ICON_STROKE_WIDTH} />
+          <Search
+            size={SEARCH_ICON_SIZE}
+            color={inkColors.nbMuted}
+            strokeWidth={SEARCH_ICON_STROKE_WIDTH}
+          />
           <TextInput
             value={searchText}
-            onChangeText={setSearchText}
-            placeholder="Search logged foods…"
-            placeholderTextColor={nbColors.nbMuted}
-            style={[styles.searchInput, { color: nbColors.nbInk }]}
+            onChangeText={onSearchTextChange}
+            placeholder={SEARCH_PLACEHOLDER}
+            placeholderTextColor={inkColors.nbMuted}
+            style={inputTextStyle}
             returnKeyType="search"
           />
         </View>
-            </View>
+      </View>
     </HardShadow>
+  );
+}
 
+function FoodListScreenLayout({
+  screenBackground,
+  eyebrowLine,
+  totalKcal,
+  searchText,
+  onSearchTextChange,
+  isDark,
+  inkColors,
+  foodItems,
+  renderFoodRow,
+}) {
+  const safeAreaStyle = [styles.safe, { backgroundColor: screenBackground }];
+
+  return (
+    <SafeAreaView style={safeAreaStyle} edges={SHELL_SAFE_AREA_EDGES}>
+      <FoodListStickyHeader eyebrowLine={eyebrowLine} totalKcal={totalKcal} />
+      <FoodListSearchBar
+        searchText={searchText}
+        onSearchTextChange={onSearchTextChange}
+        isDark={isDark}
+        inkColors={inkColors}
+      />
       <FlatList
         data={foodItems}
         keyExtractor={(item) => String(item.id)}
-        renderItem={renderItem}
-        ItemSeparatorComponent={() => <View style={styles.separator} />}
+        renderItem={renderFoodRow}
+        ItemSeparatorComponent={FoodListRowGap}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
@@ -158,6 +198,68 @@ export default function FoodListScreen({ foods, totalCalories }) {
   );
 }
 
+// ===== MAIN FUNCTION =====
+
+/**
+ * Premium nutrition list — FlatList of FoodCards with search and calorie total.
+ * Flow: 1. filter rows  2. header kcal  3. toggle expand  4. paint layout
+ */
+export default function FoodListScreen({ foods, totalCalories }) {
+  const { isDark } = useTheme();
+  const inkColors = themeInkColors(isDark);
+  const [expandedFoodId, setExpandedFoodId] = useState(null);
+  const [searchText, setSearchText] = useState('');
+
+  // 1. Derive visible rows from search + parent foods (or demo bowl).
+  const foodItems = useMemo(
+    () => filterFoodsForSearch(foods, searchText),
+    [foods, searchText],
+  );
+
+  // 2. Header calorie total — parent prop wins when provided.
+  const totalKcal = useMemo(
+    () => displayCalorieTotal(foodItems, totalCalories),
+    [foodItems, totalCalories],
+  );
+  const eyebrowLine = formatTodayHeaderLine();
+  const screenBackground = inkColors.nbBackground;
+
+  // 3. One expanded card at a time — tap open card to close, tap another to switch.
+  const toggleExpandedFoodCard = useCallback((foodId) => {
+    setExpandedFoodId((currentId) => nextExpandedFoodId(currentId, foodId));
+  }, []);
+
+  const renderFoodRow = useCallback(
+    ({ item }) => {
+      const cardIsExpanded = expandedFoodId === item.id;
+      return (
+        <FoodCard
+          food={item}
+          expanded={cardIsExpanded}
+          onToggle={() => toggleExpandedFoodCard(item.id)}
+        />
+      );
+    },
+    [expandedFoodId, toggleExpandedFoodCard],
+  );
+
+  // 4. Paint sticky header + search + list.
+  return (
+    <FoodListScreenLayout
+      screenBackground={screenBackground}
+      eyebrowLine={eyebrowLine}
+      totalKcal={totalKcal}
+      searchText={searchText}
+      onSearchTextChange={setSearchText}
+      isDark={isDark}
+      inkColors={inkColors}
+      foodItems={foodItems}
+      renderFoodRow={renderFoodRow}
+    />
+  );
+}
+
+// PLUMBING — skip unless debugging list chrome spacing.
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
@@ -226,6 +328,6 @@ const styles = StyleSheet.create({
     paddingBottom: 96,
   },
   separator: {
-    height: 10,
+    height: LIST_ROW_GAP,
   },
 });

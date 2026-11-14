@@ -150,8 +150,14 @@ import { lightColors } from '../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
+// Manipulate here: default calorie ring goal when profile has none.
+
 const DEFAULT_CALORIE_GOAL = 2000;
 const MILLISECONDS_PER_SECOND = 1000;
+// Manipulate here: cold-load stopwatch tick (ms) — lower = smoother second display, more wakeups
+const LOADING_ELAPSED_TICK_MS = 100;
+// Manipulate here: payment sheet top corners (matches Nb sheet chrome)
+const PAYMENT_SHEET_TOP_RADIUS = 24;
 
 const CARD_GAP = 16;
 /** Kept for any layout/style references; prefer useWindowDimensions() inside components for live width. */
@@ -171,422 +177,459 @@ const LOTTIE_STRESS_EMPTY = require('../assets/Stressed Employee At Work.json');
 const LOTTIE_NUTRITION_EMPTY = require('../assets/animations/legacy/Food squeeze_With Burger and hot dog.json');
 const WORKOUT_EMPTY_ICON = require('../assets/icons/workout.png');
 
+
+// Empty macro totals object used when resetting or seeding home nutrition state.
 // ===== HELPER FUNCTIONS =====
 
-/**
- * Pending session cards sort by date+time strings (zero-padded), not parsed Dates.
- * @param {Array} sessionRows
- * @returns {Array}
- */
-function sortClientPendingSessions(sessionRows) {
-  const sortedRows = [...sessionRows];
-  sortedRows.sort((leftSession, rightSession) => {
-    const leftKey = String(leftSession.date) + String(leftSession.time);
-    const rightKey = String(rightSession.date) + String(rightSession.time);
-    return leftKey.localeCompare(rightKey);
-  });
-  return sortedRows;
+// ----- optional-field readers (plain ifs — no optional chaining in callers) -----
+
+function uidFromUser(user) {
+  if (!user) return null;
+  return user.uid;
 }
 
-/**
- * @param {import('firebase/firestore').QuerySnapshot} snapshot
- * @returns {Array}
- */
-function pendingSessionsFromSnapshot(snapshot) {
-  const sessionRows = [];
-  snapshot.forEach((sessionDoc) => {
-    sessionRows.push({ id: sessionDoc.id, ...sessionDoc.data() });
-  });
-  return sortClientPendingSessions(sessionRows);
+function displayNameFromUser(user) {
+  if (!user) return null;
+  return user.displayName;
 }
 
-// Re-reads today's food log and pushes the totals into home-screen state.
-// Handed to anything that can change what the user ate (the nutrition screen, the AI coach logging a
-// meal), so the home cards update without a full refresh.
-function useClientHomeNutrition({ user, db, setCaloriesConsumed, setMacroTotals }) {
-  // vocab: useCallback = keep the SAME function identity between renders unless a dependency changes.
-  // It matters here because this function is passed into the shell object and into child screens —
-  // a new identity every render would retrigger their effects.
-  const refetchNutritionData = useCallback(async () => {
-    if (!user?.uid || !db) return;
-    try {
-      // Local date, not UTC: "today's food" must follow the phone's calendar day or logs jump at
-      // midnight for anyone not on UTC.
-      const todayKey = getLocalDateKey();
-      const nutritionLogs = await getFoodLogsForDate(user.uid, todayKey);
-      const totals = calculateMacroTotals(nutritionLogs);
-      setCaloriesConsumed(totals.calories || 0);
-      setMacroTotals({
-        protein: totals.protein || 0,
-        carbs: totals.carbs || 0,
-        // Note the rename: the calculator returns `fat` (singular), the UI state uses `fats`.
-        fats: totals.fat || 0,
-      });
-    } catch (nutritionError) {
-      console.error('Refetch nutrition:', nutritionError);
-    }
-  }, [user?.uid, db, setCaloriesConsumed, setMacroTotals]);
-
-  return refetchNutritionData;
+function roleFromUserData(userData) {
+  if (!userData) return null;
+  return userData.role;
 }
 
-async function clearTrainerFieldsOnClient(clientUid) {
-  await updateDoc(doc(db, 'users', clientUid), {
-    trainerId: deleteField(),
-    trainerName: deleteField(),
-    trainerAssignedAt: deleteField(),
-  });
+function trainerIdFromUserData(userData) {
+  if (!userData) return null;
+  return userData.trainerId;
 }
 
-async function keepTrainerWhenLinkExists(clientUid, trainerId, setters) {
-  const linkDoc = await getDoc(doc(db, `trainer_clients/${trainerId}/clients/${clientUid}`));
-  if (!linkDoc.exists()) return false;
-  const trainerDoc = await getDoc(doc(db, 'users', trainerId));
-  if (trainerDoc.exists()) {
-    setters.setTrainerData({ id: trainerDoc.id, ...trainerDoc.data() });
+function firstNameFromUserData(userData) {
+  if (!userData) return null;
+  return userData.firstName;
+}
+
+function monthlyRateFromUserData(userData) {
+  if (!userData) return null;
+  return userData.monthlyRate;
+}
+
+function sessionRateFromUserData(userData) {
+  if (!userData) return null;
+  return userData.sessionRate;
+}
+
+function idFromTrainerData(trainerData) {
+  if (!trainerData) return null;
+  return trainerData.id;
+}
+
+function uidFromTrainerData(trainerData) {
+  if (!trainerData) return null;
+  return trainerData.uid;
+}
+
+function pricingFromTrainerData(trainerData) {
+  if (!trainerData) return null;
+  return trainerData.pricing;
+}
+
+function sessionRateFromTrainerData(trainerData) {
+  if (!trainerData) return null;
+  return trainerData.sessionRate;
+}
+
+function monthlyRateFromTrainerData(trainerData) {
+  if (!trainerData) return null;
+  return trainerData.monthlyRate;
+}
+
+function pricingPerSession(trainerData) {
+  const pricing = pricingFromTrainerData(trainerData);
+  if (!pricing) return null;
+  return pricing.perSession;
+}
+
+function pricingMonthly(trainerData) {
+  const pricing = pricingFromTrainerData(trainerData);
+  if (!pricing) return null;
+  return pricing.monthly;
+}
+
+function pricingPerMonth(trainerData) {
+  const pricing = pricingFromTrainerData(trainerData);
+  if (!pricing) return null;
+  return pricing.perMonth;
+}
+
+function messageFromCaughtError(caughtError) {
+  if (!caughtError) return '';
+  if (caughtError.message) return caughtError.message;
+  return String(caughtError);
+}
+
+function nameFromFileRow(fileRow) {
+  if (!fileRow) return null;
+  return fileRow.name;
+}
+
+function titleFromFileRow(fileRow) {
+  if (!fileRow) return null;
+  return fileRow.title;
+}
+
+function urlFromFileRow(fileRow) {
+  if (!fileRow) return null;
+  return fileRow.url;
+}
+
+function typeFromFileRow(fileRow) {
+  if (!fileRow) return null;
+  return fileRow.type;
+}
+
+function documentIdFromFileRow(fileRow) {
+  if (!fileRow) return null;
+  return fileRow.documentId;
+}
+
+function trainerIdFromFileRow(fileRow) {
+  if (!fileRow) return null;
+  return fileRow.trainerId;
+}
+
+function idFromFileRow(fileRow) {
+  if (!fileRow) return null;
+  return fileRow.id;
+}
+
+function callIfFunction(fn, ...args) {
+  if (typeof fn !== 'function') return undefined;
+  return fn(...args);
+}
+
+function statusFromLinkDocData(linkDoc) {
+  if (!linkDoc) return undefined;
+  const data = linkDoc.data();
+  if (!data) return undefined;
+  return data.status;
+}
+
+function trainerIdFromLinkDocData(linkDoc) {
+  if (!linkDoc) return '';
+  const data = linkDoc.data();
+  if (!data) return '';
+  return data.trainerId || '';
+}
+
+function nutritionMacroLogLines(nutritionMacros) {
+  const lines = [];
+  for (const macroRow of nutritionMacros) {
+    lines.push({ label: macroRow.label, value: macroRow.value });
   }
-  setters.setTrainerLinkError(false);
-  return true;
+  return lines;
 }
 
-async function dropTrainerAfterRejection(clientUid, trainerId, setters) {
-  const conversationId = `conv_${clientUid}_${trainerId}`;
-  const rejectedQuery = query(
-    collection(db, 'messages'),
-    where('conversationId', '==', conversationId),
-    where('senderId', '==', clientUid),
-    where('status', '==', 'rejected'),
-    limit(1),
-  );
-  const rejectedSnap = await getDocs(rejectedQuery);
-  if (rejectedSnap.empty) return false;
-  const status = rejectedSnap.docs[0].data().status;
-  if (status === 'rejected') {
-    await clearTrainerFieldsOnClient(clientUid);
-    setters.setTrainerData(null);
-    setters.setTrainerLinkError(false);
-    setters.onRefetchUserData?.();
+
+function emptyMacroTotals() {
+  return { protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0, potassium: 0 };
+}
+
+function bootScreenBackground(isDark) {
+  if (isDark) return '#0A0A0A';
+  return lightColors.white;
+}
+
+function keyboardAvoidBehavior() {
+  if (Platform.OS === 'ios') return 'padding';
+  return 'height';
+}
+
+// Prefer linked coach id fields; fall back to the client's trainerId on their profile.
+function trainerUidForClientShell(trainerData, userData) {
+  return idFromTrainerData(trainerData) || uidFromTrainerData(trainerData) || trainerIdFromUserData(userData) || '';
+}
+
+function coachingPaymentUserData(userData, trainerData, shellUserUid) {
+  return {
+    ...(userData || {}),
+    uid: shellUserUid || (userData ? userData.uid : undefined),
+    id: shellUserUid || (userData ? userData.id : undefined),
+    sessionRate:
+      sessionRateFromUserData(userData) ||
+      sessionRateFromTrainerData(trainerData) ||
+      pricingPerSession(trainerData) ||
+      null,
+    monthlyRate:
+      monthlyRateFromUserData(userData) ||
+      monthlyRateFromTrainerData(trainerData) ||
+      pricingMonthly(trainerData) ||
+      null,
+  };
+}
+
+function formatOneExerciseSetLabel(setRow) {
+  // Manipulate here: both values → "8×135", reps only → "8 reps", weight only → "135".
+  const reps = setRow.reps != null ? setRow.reps : '';
+  const weight = setRow.weight != null ? setRow.weight : '';
+  if (reps && weight) return `${reps}×${weight}`;
+  if (reps) return `${reps} reps`;
+  if (weight) return `${weight}`;
+  return '';
+}
+
+function formatExerciseDisplayLine(exercise) {
+  if (typeof exercise === 'string') return exercise;
+  const label = (exercise ? exercise.name : undefined) || (exercise ? exercise.exerciseName : undefined) || '';
+  if (!label) return '';
+  if (!Array.isArray(exercise.sets) || exercise.sets.length === 0) return label;
+
+  const setLabels = [];
+  for (const setRow of exercise.sets) {
+    const setLabel = formatOneExerciseSetLabel(setRow);
+    if (setLabel) setLabels.push(setLabel);
   }
-  return true;
+  if (setLabels.length === 0) return label;
+  return `${label} (${setLabels.join(', ')})`;
 }
 
-async function rebuildMissingTrainerLink(clientUid, trainerId, setters) {
-  if (!functions) {
-    setters.setTrainerLinkError(true);
-    return;
+function exerciseLinesFromTodayWorkout(todayWorkout) {
+  if (!Array.isArray(todayWorkout.exercises)) return todayWorkout.exercises;
+  const lines = [];
+  for (const exercise of todayWorkout.exercises) {
+    const line = formatExerciseDisplayLine(exercise);
+    if (line) lines.push(line);
   }
-  try {
-    const linkClient = httpsCallable(functions, 'linkClientWithTrainerCode');
-    await linkClient({ clientId: clientUid, trainerId });
-    const trainerDoc = await getDoc(doc(db, 'users', trainerId));
-    if (trainerDoc.exists()) {
-      setters.setTrainerData({ id: trainerDoc.id, ...trainerDoc.data() });
-    }
-    setters.setTrainerLinkError(false);
-  } catch (linkError) {
-    await clearTrainerFieldsOnClient(clientUid);
-    setters.setTrainerData(null);
-    setters.setTrainerLinkError(true);
-    setters.onRefetchUserData?.();
+  return lines;
+}
+
+// Reshape workout data into the flat { name, exercises, workoutName } rows TrainingAgenda expects.
+function buildAgendaWorkouts(todayWorkout, dashboardWorkoutSummary) {
+  if (todayWorkout) {
+    return [
+      {
+        name: todayWorkout.name,
+        exercises: exerciseLinesFromTodayWorkout(todayWorkout),
+        sets: null,
+        reps: 0,
+        workoutName: todayWorkout.name,
+      },
+    ];
   }
-}
-
-async function repairKnownTrainerLink(clientUid, trainerId, setters) {
-  const linkStillExists = await keepTrainerWhenLinkExists(clientUid, trainerId, setters);
-  if (linkStillExists) return;
-  const rejectionHandled = await dropTrainerAfterRejection(clientUid, trainerId, setters);
-  if (rejectionHandled) return;
-  await rebuildMissingTrainerLink(clientUid, trainerId, setters);
-}
-
-async function adoptTrainerFromConversation(conversationDoc, clientUid, setters) {
-  const participants = conversationDoc.data().participants || [];
-  const trainerUid = participants.find((participantId) => participantId !== clientUid);
-  if (!trainerUid) return false;
-  const linkDoc = await getDoc(doc(db, `trainer_clients/${trainerUid}/clients/${clientUid}`));
-  if (!linkDoc.exists()) return false;
-  const trainerDoc = await getDoc(doc(db, 'users', trainerUid));
-  const trainerProfile = trainerDoc.exists() ? trainerDoc.data() : {};
-  await updateDoc(doc(db, 'users', clientUid), {
-    trainerId: trainerUid,
-    trainerName: trainerProfile.name || trainerProfile.displayName || 'Trainer',
-    trainerAssignedAt: serverTimestamp(),
-  });
-  setters.setTrainerData({ id: trainerUid, ...trainerProfile });
-  setters.onRefetchUserData?.();
-  return true;
-}
-
-async function adoptFirstLinkedTrainer(clientUid, setters) {
-  const conversationQuery = query(
-    collection(db, 'conversations'),
-    where('participants', 'array-contains', clientUid),
-  );
-  const conversationSnap = await getDocs(conversationQuery);
-  for (const conversationDoc of conversationSnap.docs) {
-    const adopted = await adoptTrainerFromConversation(conversationDoc, clientUid, setters);
-    if (adopted) return;
+  if (dashboardWorkoutSummary) {
+    return [
+      {
+        name: dashboardWorkoutSummary,
+        exercises: null,
+        sets: null,
+        reps: null,
+        workoutName: dashboardWorkoutSummary,
+      },
+    ];
   }
+  return [];
 }
 
-async function reconcileClientTrainerLink(clientUid, trainerId, setters) {
-  try {
-    if (trainerId) {
-      await repairKnownTrainerLink(clientUid, trainerId, setters);
-      return;
-    }
-    await adoptFirstLinkedTrainer(clientUid, setters);
-  } catch (error) {
-    console.error('Reconcile trainerId:', error);
+function buildNutritionMacroRows(macroTotals) {
+  // Manipulate here: the icon/label pairs and the `g` unit suffix are the card's copy.
+  return [
+    { icon: require('../assets/icons/Protein.png'), label: 'Protein', value: `${Math.round(macroTotals.protein)}g` },
+    { icon: require('../assets/icons/Carbs.png'), label: 'Carbs', value: `${Math.round(macroTotals.carbs)}g` },
+    { icon: require('../assets/icons/Fats.png'), label: 'Fats', value: `${Math.round(macroTotals.fats || 0)}g` },
+  ];
+}
+
+function buildAdditionalNutrientRows(macroTotals) {
+  // Manipulate here: emoji icons, labels, and units (g vs mg) are all display copy.
+  const rows = [];
+  if (macroTotals.fiber > 0) {
+    rows.push({ icon: '🌾', label: 'Fiber', value: `${Math.round(macroTotals.fiber)}g` });
   }
-}
-
-function activeTrainerLinkDocs(snap) {
-  return snap.docs.filter((linkDoc) => {
-    const status = linkDoc.data()?.status;
-    if (status == null || status === '') return true;
-    return status === 'active';
-  });
-}
-
-async function mirrorTrainerIdOntoClient(clientUid, trainerUid, trainerProfile, onRefetchUserData) {
-  try {
-    const userRef = doc(db, 'users', clientUid);
-    const userSnap = await getDoc(userRef);
-    const currentProfile = userSnap.exists() ? userSnap.data() : {};
-    const savedTrainerId = currentProfile?.trainerId;
-    const trainerIdChanged = !savedTrainerId || String(savedTrainerId) !== String(trainerUid);
-    if (!trainerIdChanged) return;
-    await updateDoc(userRef, {
-      trainerId: trainerUid,
-      trainerName: trainerProfile.name || trainerProfile.displayName || 'Trainer',
-      trainerAssignedAt: serverTimestamp(),
-    });
-    onRefetchUserData?.();
-  } catch (mirrorError) {
-    console.warn('Mirror trainerId to client user doc skipped:', mirrorError?.message || mirrorError);
+  if (macroTotals.sugar > 0) {
+    rows.push({ icon: '🍯', label: 'Sugar', value: `${Math.round(macroTotals.sugar)}g` });
   }
+  if (macroTotals.sodium > 0) {
+    rows.push({ icon: '🧂', label: 'Sodium', value: `${Math.round(macroTotals.sodium)}mg` });
+  }
+  if (macroTotals.potassium > 0) {
+    rows.push({ icon: '🥔', label: 'Potassium', value: `${Math.round(macroTotals.potassium)}mg` });
+  }
+  return rows;
 }
 
-async function applyTrainerFromLink(trainerUid, clientUid, setters) {
-  const trainerDoc = await getDoc(doc(db, 'users', trainerUid));
-  if (!trainerDoc.exists()) {
-    setters.setTrainerData(null);
-    return;
-  }
-  const trainerProfile = trainerDoc.data();
-  if (trainerProfile?.role !== 'trainer') {
-    setters.setTrainerData(null);
-    return;
-  }
-  setters.setTrainerData({ id: trainerUid, ...trainerProfile });
-  await mirrorTrainerIdOntoClient(clientUid, trainerUid, trainerProfile, setters.onRefetchUserData);
-}
-
-async function handleTrainerClientLinksSnapshot(snap, clientUid, setters) {
-  if (snap.empty) {
-    setters.setTrainerData(null);
-    return;
-  }
-  const activeDocs = activeTrainerLinkDocs(snap);
-  if (!activeDocs.length) {
-    setters.setTrainerData(null);
-    return;
-  }
-  const linkDoc = activeDocs[0];
-  const trainerUid = String(linkDoc.data()?.trainerId || '').trim();
-  if (!trainerUid || trainerUid === clientUid) {
-    setters.setTrainerData(null);
-    return;
-  }
-  try {
-    await applyTrainerFromLink(trainerUid, clientUid, setters);
-  } catch (linkError) {
-    console.warn('trainer_client_links listener handler:', linkError?.message || linkError);
-  }
-}
-
-function openHomeFromScheduledSession(context) {
-  context.rootGoBack();
-  context.setShowMyDashboard(false);
-  context.rootGoBack();
-  context.rootGoBack();
-  context.setAiChatState(null);
-}
-
-function openDashboardFromSessionAlert(context) {
-  context.rootGoBack();
-  context.rootGoBack();
-  context.rootGoBack();
-  context.setAiChatState(null);
-  context.setShowTrainerMessaging(false);
-  context.setShowConversationsList(false);
-  context.setShowMyDashboard(true);
-}
-
-function openNutritionFromAlert(context) {
-  context.rootGoBack();
-  context.rootGoBack();
-  context.setAiChatState(null);
-  context.setShowTrainerMessaging(false);
-  context.setShowConversationsList(false);
-  context.setShowMyDashboard(false);
-  context.openNutrition();
-}
-
-function openSharedFilesFromAlert(context) {
-  context.rootGoBack();
-  context.rootGoBack();
-  context.setAiChatState(null);
-  context.setShowTrainerMessaging(false);
-  context.setShowConversationsList(false);
-  context.rootGoBack();
-  context.setShowMyDashboard(true);
-  context.setShowTrainerSharedFilesPopup(true);
-}
-
-function openDashboardAfterRequestAccepted(context) {
-  context.onRefetchUserData?.();
-  context.rootGoBack();
-  context.rootGoBack();
-  context.rootGoBack();
-  context.setAiChatState(null);
-  context.setShowTrainerMessaging(false);
-  context.setShowConversationsList(false);
-  context.setShowMyDashboard(true);
-}
-
-function openClientInboxFromAlert(context) {
-  context.rootGoBack();
-  context.setShowMyDashboard(false);
-  context.rootGoBack();
-  context.rootGoBack();
-  context.setAiChatState(null);
-  context.setShowTrainerMessaging(false);
-  context.setShowConversationsList(true);
-}
-
-async function loadChatPartner(otherId) {
-  if (!otherId) return null;
-  const otherParticipant = { id: otherId };
-  try {
-    const userSnap = await getDoc(doc(db, 'users', otherId));
-    if (!userSnap.exists()) return otherParticipant;
-    return { id: userSnap.id, ...userSnap.data() };
-  } catch (_) {
-    return otherParticipant;
-  }
-}
-
-function showClientMessageThread(context, conversationId, conversationData, otherParticipant) {
-  context.rootGoBack();
-  context.setShowMyDashboard(false);
-  context.rootGoBack();
-  context.rootGoBack();
-  context.setAiChatState(null);
-  context.setShowConversationsList(false);
-  context.setSelectedConversation({ id: conversationId, ...conversationData });
-  context.setSelectedTrainer(otherParticipant);
-  context.setShowTrainerMessaging(true);
-}
-
-async function openClientMessageThread(conversationId, context) {
-  const conversationSnap = await getDoc(doc(db, 'conversations', conversationId));
-  if (!conversationSnap.exists()) {
-    context.setShowConversationsList(true);
-    return;
-  }
-  const conversationData = conversationSnap.data();
-  const participants = conversationData?.participants || [];
-  const otherId = participants.find((participantId) => participantId !== context.user.uid);
-  const otherParticipant = await loadChatPartner(otherId);
-  showClientMessageThread(context, conversationId, conversationData, otherParticipant);
-}
-
-async function routeClientNotificationTap(data, context) {
-  if (!context.user?.uid || !data || typeof data !== 'object') return;
-  const type = data.type;
-  if (type === 'session_scheduled') {
-    openHomeFromScheduledSession(context);
-    return;
-  }
-  if (type === 'session_reminder' || type === 'session_update') {
-    openDashboardFromSessionAlert(context);
-    return;
-  }
-  if (type === 'nutrition_reminder') {
-    openNutritionFromAlert(context);
-    return;
-  }
-  if (type === 'notes_shared') {
-    openSharedFilesFromAlert(context);
-    return;
-  }
-  if (type === 'client_request_accepted') {
-    openDashboardAfterRequestAccepted(context);
-    return;
-  }
-  if (type !== 'message') {
-    openClientInboxFromAlert(context);
-    return;
-  }
-  const conversationId = data.conversationId;
-  if (!conversationId || typeof conversationId !== 'string') {
-    openClientInboxFromAlert(context);
-    return;
-  }
-  await openClientMessageThread(conversationId, context);
-}
-
-async function clientNameForSessionReply(clientUid, fallbackName) {
-  try {
-    const userSnap = await getDoc(doc(db, 'users', clientUid));
-    if (!userSnap.exists()) return fallbackName;
-    const clientProfile = userSnap.data();
-    return clientProfile?.firstName || clientProfile?.name || clientProfile?.displayName || fallbackName;
-  } catch (_) {
-    return fallbackName;
-  }
-}
-
-function sessionReplyVerb(status) {
-  if (status === 'accepted') return 'accepted';
-  if (status === 'declined') return 'declined';
-  return 'updated';
-}
-
-async function tellTrainerAboutSessionReply({ trainerUid, clientUid, fallbackName, sessionId, status }) {
-  if (!clientUid) return;
-  const clientName = await clientNameForSessionReply(clientUid, fallbackName);
-  const verb = sessionReplyVerb(status);
-  void postRemotePushNotify({
-    recipientId: trainerUid,
-    senderName: clientName,
-    messageText: `${clientName} ${verb} a session.`,
-    senderId: clientUid,
-    messageId: sessionId,
-    notificationType: 'session_response',
-  });
-}
-
-async function loadWorkoutPlanForViewer(uid, planId) {
-  if (planId === 'current') {
-    const current = await getCurrentWorkoutPlan(uid);
-    if (!current) return null;
-    return { id: 'current', ...current };
-  }
-  const planSnap = await getDoc(doc(db, 'users', uid, 'workoutPlans', planId));
-  if (!planSnap.exists()) return null;
-  return { id: planId, ...planSnap.data() };
-}
-
-function planHasViewableContent(planData) {
-  if (!planData) return false;
-  if (planData.rawPlan) return true;
-  if (planData.planText) return true;
-  if (planData.structuredPlan) return true;
+function isTrainerSharedFileRow(fileRow) {
+  if (fileRow.addedBy === 'trainer') return true;
+  if (fileRow.type === 'document' && fileRow.trainerId) return true;
   return false;
 }
+
+function isClientOwnedFileRow(fileRow) {
+  if (fileRow.type === 'note') return false;
+  const addedBy = fileRow.addedBy || 'client';
+  if (addedBy !== 'client') return false;
+  if (fileRow.type === 'document' && fileRow.trainerId && fileRow.documentId) return false;
+  return true;
+}
+
+function dollarsLabelFromMonthlyRate(rate) {
+  if (rate == null || rate === '') return null;
+  const rateAmount = Number(rate);
+  if (!Number.isFinite(rateAmount) || rateAmount <= 0) return null;
+  // Some stored rates are cents (12000) and some are dollars (120). 100 is the split.
+  const dollars = rateAmount >= 100 ? rateAmount / 100 : rateAmount;
+  if (dollars % 1 === 0) return `$${dollars.toFixed(0)}`;
+  return `$${dollars.toFixed(2)}`;
+}
+
+function coachingRateLabelFromProfiles(userData, trainerData) {
+  const fromClient = dollarsLabelFromMonthlyRate(monthlyRateFromUserData(userData));
+  if (fromClient) return fromClient;
+  const pricing = pricingFromTrainerData(trainerData);
+  if ((pricing ? pricing.perMonth : undefined) != null && pricing.perMonth !== '') {
+    return `$${pricing.perMonth}`;
+  }
+  return null;
+}
+
+function coachingTrainerDisplayName(trainerRecord) {
+  if (!trainerRecord) return 'Your trainer';
+  const first = trainerRecord.firstName || trainerRecord.givenName;
+  const last = trainerRecord.lastName || trainerRecord.familyName;
+  if (first || last) return `${first ?? ''} ${last ?? ''}`.trim();
+  return trainerRecord.displayName || trainerRecord.name || 'Your trainer';
+}
+
+function queryNeedsCompositeIndex(err) {
+  // vocab: composite index = Firestore requires a pre-built index for multi-field filters.
+  const msg = String((err ? err.message : undefined) || '');
+  if ((err ? err.code : undefined) === 'failed-precondition') return true;
+  if (msg.toLowerCase().includes('requires an index')) return true;
+  if (msg.toLowerCase().includes('create_composite')) return true;
+  return false;
+}
+
+function filterPendingSessionsClientSide(allSessions, todayKey) {
+  const pendingOnly = [];
+  for (const session of allSessions) {
+    const status = session.status || 'pending';
+    if (status !== 'pending') continue;
+    if (String(session.date || '') < String(todayKey)) continue;
+    pendingOnly.push(session);
+  }
+  pendingOnly.sort((left, right) => {
+    const leftKey = String(left.date) + String(left.time);
+    const rightKey = String(right.date) + String(right.time);
+    return leftKey.localeCompare(rightKey);
+  });
+  return pendingOnly.slice(0, 5);
+}
+
+function openSpreadsheetViewerFromResolve(res, file, setSpreadsheetViewer, showNotice) {
+  const name = titleFromFileRow(file) || nameFromFileRow(file) || res.title || 'Spreadsheet';
+  if (packSpreadsheetRowsHaveContent(res.rows)) {
+    setSpreadsheetViewer({
+      visible: true,
+      url: res.storageUrl || null,
+      rows: res.rows,
+      name,
+    });
+    return;
+  }
+  if (res.storageUrl) {
+    setSpreadsheetViewer({
+      visible: true,
+      url: res.storageUrl,
+      rows: null,
+      name,
+    });
+    return;
+  }
+  showNotice('Spreadsheet unavailable', 'Your coach may have removed this spreadsheet.');
+}
+
+function openTrainerPackagedFile(file, setters) {
+  const { setDocumentViewer, setSpreadsheetViewer, showNotice } = setters;
+  resolveTrainerSpreadsheetView(file.trainerId, file.documentId)
+    .then((res) => {
+      if (!res) {
+        if (typeFromFileRow(file) === 'document' || documentIdFromFileRow(file)) {
+          setDocumentViewer({
+            visible: true,
+            trainerId: file.trainerId,
+            documentId: file.documentId,
+            title: file.title || 'Document',
+          });
+          return;
+        }
+        showNotice('Spreadsheet unavailable', 'Your coach may have removed this spreadsheet.');
+        return;
+      }
+      openSpreadsheetViewerFromResolve(res, file, setSpreadsheetViewer, showNotice);
+    })
+    .catch(() => {
+      showNotice('Spreadsheet unavailable', 'Could not load this spreadsheet.');
+    });
+}
+
+function openLocalNotesFileByType(file, setters) {
+  const {
+    setSpreadsheetViewer,
+    setDocumentViewer,
+    setMediaViewer,
+    setPdfViewer,
+    setEmbedWebViewer,
+  } = setters;
+
+  if (typeFromFileRow(file) === 'spreadsheet' && file.url) {
+    setSpreadsheetViewer({
+      visible: true,
+      url: file.url,
+      name: nameFromFileRow(file) || 'Spreadsheet',
+      rows: null,
+    });
+    return true;
+  }
+  if (typeFromFileRow(file) === 'document' || (documentIdFromFileRow(file) && trainerIdFromFileRow(file))) {
+    setDocumentViewer({
+      visible: true,
+      trainerId: file.trainerId,
+      documentId: file.documentId,
+      title: file.title || 'Document',
+    });
+    return true;
+  }
+  if (urlFromFileRow(file) && isNotesImageFile(file)) {
+    setMediaViewer({
+      visible: true,
+      url: file.url,
+      kind: 'image',
+      name: nameFromFileRow(file) || titleFromFileRow(file) || 'Photo',
+    });
+    return true;
+  }
+  if (urlFromFileRow(file) && isNotesVideoFile(file)) {
+    setMediaViewer({
+      visible: true,
+      url: file.url,
+      kind: 'video',
+      name: nameFromFileRow(file) || titleFromFileRow(file) || 'Video',
+    });
+    return true;
+  }
+  if (urlFromFileRow(file) && isNotesPdfFile(file, file.url)) {
+    setPdfViewer({ visible: true, url: file.url, name: nameFromFileRow(file) || 'Document' });
+    return true;
+  }
+  if (urlFromFileRow(file)) {
+    setEmbedWebViewer({
+      visible: true,
+      uri: getEmbedViewerUri(file, file.url),
+      title: file.name || file.title || 'Document',
+    });
+    return true;
+  }
+  return false;
+}
+
 
 function ClientAppShellLayout({
   loading,
@@ -600,12 +643,28 @@ function ClientAppShellLayout({
   onRefetchUserData,
 }) {
   if (loading) {
-    const bootBackground = isDark ? '#0A0A0A' : lightColors.white;
+    const bootBackground = bootScreenBackground(isDark);
     return <View style={{ flex: 1, backgroundColor: bootBackground }} />;
   }
 
-  const keyboardBehavior = Platform.OS === 'ios' ? 'padding' : 'height';
-  const trainerId = trainerData?.id || trainerData?.uid || userData?.trainerId || '';
+  const keyboardBehavior = keyboardAvoidBehavior();
+  const trainerId = trainerUidForClientShell(trainerData, userData);
+  const shellUserUid = (shell ? shell.uidFromUser : undefined)(user);
+  const paymentUserData = coachingPaymentUserData(userData, trainerData, shellUserUid);
+  const noticeVisible = !!shell.notice;
+  const noticeTitle = shell.(notice ? notice.title : undefined) || '';
+  const noticeConfirmLabel = shell.(notice ? notice.confirmLabel : undefined) || 'OK';
+  const removeTrainerVisible = !!shell.showRemoveTrainerPopup;
+  const removeTrainerDisplayName = shell.(trainerData ? trainerData.displayName : undefined) || shell.(trainerData ? trainerData.name : undefined);
+  const removeClientDisplayName = shell.displayNameFromUser(user) || shell.firstNameFromUserData(userData);
+  const sheetLiftStyle = { flex: 1, justifyContent: 'flex-end' };
+  // Manipulate here: rgba(0,0,0,0.55) is how dark the app behind the sheet goes.
+  const scrimStyle = { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.55)' };
+  const paymentSheetFrameStyle = {
+    borderTopLeftRadius: PAYMENT_SHEET_TOP_RADIUS,
+    borderTopRightRadius: PAYMENT_SHEET_TOP_RADIUS,
+    overflow: 'hidden',
+  };
 
   return (
     <ClientAppStartShellProvider value={shell}>
@@ -632,50 +691,25 @@ function ClientAppShellLayout({
       >
         {/* Card fields sit near the bottom, so the sheet has to lift when the keyboard opens.
             iOS and Android need different strategies for that, hence the platform check. */}
-        <KeyboardAvoidingView
-          behavior={keyboardBehavior}
-          // justifyContent 'flex-end' is what pins the sheet to the bottom of the screen.
-          style={{ flex: 1, justifyContent: 'flex-end' }}
-        >
+        <KeyboardAvoidingView behavior={keyboardBehavior} style={sheetLiftStyle}>
           {/* Tap-outside-to-close scrim. activeOpacity={1} stops it flashing on press — it's a
-              backdrop, not a button, so it shouldn't look tappable.
-              Manipulate here: rgba(0,0,0,0.55) is how dark the app behind the sheet goes. */}
+              backdrop, not a button, so it shouldn't look tappable. */}
           <TouchableOpacity
-            style={{ ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.55)' }}
+            style={scrimStyle}
             activeOpacity={1}
             onPress={closeCoachingPayment}
           />
           {/* overflow: 'hidden' is what actually clips the payment form's square corners to these
               rounded top corners — without it the radius has no visible effect. */}
-          <View
-            style={{
-              borderTopLeftRadius: 24,
-              borderTopRightRadius: 24,
-              overflow: 'hidden',
-            }}
-          >
+          <View style={paymentSheetFrameStyle}>
             {/* Design Law Coaching payment (PNG 07/08). Card charge form opens from Update / Add. */}
             <CoachingPaymentScreen
               trainerId={trainerId}
               trainerName={coachingTrainerName}
-              userData={{
-                ...(userData || {}),
-                uid: shell?.user?.uid || userData?.uid,
-                id: shell?.user?.uid || userData?.id,
-                sessionRate:
-                  userData?.sessionRate ||
-                  trainerData?.sessionRate ||
-                  trainerData?.pricing?.perSession ||
-                  null,
-                monthlyRate:
-                  userData?.monthlyRate ||
-                  trainerData?.monthlyRate ||
-                  trainerData?.pricing?.monthly ||
-                  null,
-              }}
+              userData={paymentUserData}
               onClose={closeCoachingPayment}
               onSuccess={() => {
-                onRefetchUserData?.();
+                callIfFunction(onRefetchUserData);
               }}
             />
           </View>
@@ -685,22 +719,22 @@ function ClientAppShellLayout({
       {/* Remove-trainer sheet lives outside the navigator (same idea as PayTrainerPopup) so Dashboard
           and Settings can both open it without fighting the stack. */}
       <NbNoticeSheet
-        visible={!!shell.notice}
-        onClose={() => shell.dismissNotice?.()}
-        title={shell.notice?.title || ''}
-        message={shell.notice?.message}
-        confirmLabel={shell.notice?.confirmLabel || 'OK'}
-        cancelLabel={shell.notice?.cancelLabel}
-        onConfirm={shell.notice?.onConfirm}
+        visible={noticeVisible}
+        onClose={() => callIfFunction(shell.dismissNotice)}
+        title={noticeTitle}
+        message={shell.(notice ? notice.message : undefined)}
+        confirmLabel={noticeConfirmLabel}
+        cancelLabel={shell.(notice ? notice.cancelLabel : undefined)}
+        onConfirm={shell.(notice ? notice.onConfirm : undefined)}
       />
 
       <RemoveTrainerPopup
-        visible={!!shell.showRemoveTrainerPopup}
-        onClose={() => shell.setShowRemoveTrainerPopup?.(false)}
+        visible={removeTrainerVisible}
+        onClose={() => callIfFunction(shell.setShowRemoveTrainerPopup, false)}
         onRemovalComplete={() => {
           // Keep the removed coach’s name for the optional “leave a review” banner on home.
           if (shell.trainerData) {
-            shell.setReviewPromptTrainer?.({
+            callIfFunction(shell.setReviewPromptTrainer, {
               id: shell.trainerData.id,
               name:
                 shell.trainerData.displayName ||
@@ -708,20 +742,23 @@ function ClientAppShellLayout({
                 'Your trainer',
             });
           }
-          shell.setTrainerData?.(null);
-          shell.setShowRemoveTrainerPopup?.(false);
+          callIfFunction(shell.setTrainerData, null);
+          callIfFunction(shell.setShowRemoveTrainerPopup, false);
         }}
-        trainerName={shell.trainerData?.displayName || shell.trainerData?.name}
-        clientName={shell.user?.displayName || shell.userData?.firstName}
+        trainerName={removeTrainerDisplayName}
+        clientName={removeClientDisplayName}
         removedBy="client"
-        trainerId={shell.trainerData?.id}
-        clientId={shell.user?.uid}
+        trainerId={shell.idFromTrainerData(trainerData)}
+        clientId={shell.uidFromUser(user)}
       />
     </ClientAppStartShellProvider>
   );
 }
 
+
 // ===== MAIN FUNCTION =====
+
+// ClientAppStart — numbered setup lives inside the export below.
 
 // user = the Firebase auth user; userData = their profile document; onRefetchUserData = ask LoginGate
 // to re-read that profile (used after we change something on it, e.g. webLinks a trainer).
@@ -780,7 +817,7 @@ export default function ClientAppStart({ user, userData, onRefetchUserData }) {
   const [programCount, setProgramCount] = useState(0);
   const [upcomingItems, setUpcomingItems] = useState([]);
   const [userWeight, setUserWeight] = useState(null);
-  const [macroTotals, setMacroTotals] = useState({ protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0, potassium: 0 });
+  const [macroTotals, setMacroTotals] = useState(emptyMacroTotals);
   const [waterIntake, setWaterIntake] = useState(null);
   const [sleepHours, setSleepHours] = useState(null);
   const [soreness, setSoreness] = useState(null);
@@ -899,7 +936,7 @@ export default function ClientAppStart({ user, userData, onRefetchUserData }) {
     mainTabActiveKey,
   } = clientNavigation;
 
-  const { applyFromSnapshots } = keepDailyStatsFresh(user?.uid, {
+  const { applyFromSnapshots } = keepDailyStatsFresh(uidFromUser(user), {
     setWaterIntake,
     setSleepHours,
     setSoreness,
@@ -915,7 +952,7 @@ export default function ClientAppStart({ user, userData, onRefetchUserData }) {
   // of state is explicitly reset — otherwise the new user briefly sees the previous user's calories,
   // trainer, and files. Long and repetitive by design: anything missed here leaks between accounts.
   useEffect(() => {
-    if (!user?.uid) return;
+    if (!uidFromUser(user)) return;
     
     console.log(`🔄 ClientAppStart: User changed to ${user.uid} - resetting state`);
     
@@ -933,7 +970,7 @@ export default function ClientAppStart({ user, userData, onRefetchUserData }) {
     setProgramCount(0);
     setUpcomingItems([]);
     setUserWeight(null);
-    setMacroTotals({ protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0, potassium: 0 });
+    setMacroTotals(emptyMacroTotals());
     setWaterIntake(null);
     setSleepHours(null);
     setSoreness(null);
@@ -947,7 +984,7 @@ export default function ClientAppStart({ user, userData, onRefetchUserData }) {
     clearAllUserData().catch(e => {
       console.log('⚠️ Failed to clear cache in ClientAppStart:', e.message);
     });
-  }, [user?.uid]);
+  }, [uidFromUser(user)]);
 
   // Badge count for the messages icon. One listener on a precomputed index rather than counting
   // unread messages across conversations, which would mean many reads on every render.
@@ -970,14 +1007,14 @@ export default function ClientAppStart({ user, userData, onRefetchUserData }) {
 
   // trainerId on the user doc and trainer_clients can drift. Repair on mount.
   useEffect(() => {
-    if (!user?.uid || !db || userData?.role !== 'client') return;
+    if (!uidFromUser(user) || !db || roleFromUserData(userData) !== 'client') return;
 
     reconcileClientTrainerLink(user.uid, userData.trainerId, {
       setTrainerData,
       setTrainerLinkError,
       onRefetchUserData,
     });
-  }, [user?.uid, userData?.trainerId, userData?.role, onRefetchUserData]);
+  }, [uidFromUser(user), trainerIdFromUserData(userData), roleFromUserData(userData), onRefetchUserData]);
 
 
   // Live version of the reconcile above: watches the flat `trainer_client_links` collection so a
@@ -987,7 +1024,7 @@ export default function ClientAppStart({ user, userData, onRefetchUserData }) {
   // rejected by Firestore, which demands a full path for documentId() on a collection group and
   // throws an "odd number of segments" error on device.
   useEffect(() => {
-    if (!db || !user?.uid || userData?.role !== 'client') return undefined;
+    if (!db || !uidFromUser(user) || roleFromUserData(userData) !== 'client') return undefined;
 
     const clientUid = user.uid;
     let cancelled = false;
@@ -1012,17 +1049,17 @@ export default function ClientAppStart({ user, userData, onRefetchUserData }) {
         unsub();
       } catch (_) {}
     };
-  }, [db, user?.uid, userData?.role, onRefetchUserData]);
+  }, [db, uidFromUser(user), roleFromUserData(userData), onRefetchUserData]);
 
   // If a trainer accepts while the user is browsing "Find a Trainer", close that screen — they have
   // a coach now, and leaving the marketplace open invites them to request a second one.
   useEffect(() => {
-    if (!trainerData?.id || !rootNavigationRef.isReady()) return;
+    if (!idFromTrainerData(trainerData) || !rootNavigationRef.isReady()) return;
     const route = rootNavigationRef.getCurrentRoute();
-    if (route?.name === CLIENT_ROUTES.TrainerSearch) {
+    if ((route ? route.name : undefined) === CLIENT_ROUTES.TrainerSearch) {
       rootGoBack();
     }
-  }, [trainerData?.id, rootGoBack]);
+  }, [idFromTrainerData(trainerData), rootGoBack]);
 
 
 
@@ -1030,11 +1067,12 @@ export default function ClientAppStart({ user, userData, onRefetchUserData }) {
   useEffect(() => {
     let interval;
     if (loading && loadingStartTime) {
-      // Manipulate here: ticks every 100ms but displays whole seconds (Math.floor(ms / 1000)). The
-      // fast tick just keeps the displayed second from lagging behind the real one.
+      // Manipulate here: LOADING_ELAPSED_TICK_MS — fast tick keeps the displayed second from lagging.
       interval = setInterval(() => {
-        setElapsedTime(Math.floor((Date.now() - loadingStartTime) / MILLISECONDS_PER_SECOND));
-      }, 100);
+        const elapsedMs = Date.now() - loadingStartTime;
+        const elapsedWholeSeconds = Math.floor(elapsedMs / MILLISECONDS_PER_SECOND);
+        setElapsedTime(elapsedWholeSeconds);
+      }, LOADING_ELAPSED_TICK_MS);
     } else {
       setElapsedTime(0);
       setLoadingStartTime(null);
@@ -1052,7 +1090,7 @@ export default function ClientAppStart({ user, userData, onRefetchUserData }) {
   // vocab: push token = the address the notification service uses to reach THIS install. It can be
   // issued before the user is signed in (so we stash it locally) and it can rotate at any time.
   useEffect(() => {
-    if (!user?.uid || !db) return undefined;
+    if (!uidFromUser(user) || !db) return undefined;
     let cancelled = false;
 
     (async () => {
@@ -1071,7 +1109,7 @@ export default function ClientAppStart({ user, userData, onRefetchUserData }) {
         }
       } catch (e) {
         // vocab: __DEV__ = true only in development builds, so this noise never ships to users.
-        if (__DEV__) console.warn('[push] pending token flush failed:', e?.message || e);
+        if (__DEV__) console.warn('[push] pending token flush failed:', messageFromCaughtError(e) || e);
       }
 
       if (!cancelled) {
@@ -1087,7 +1125,7 @@ export default function ClientAppStart({ user, userData, onRefetchUserData }) {
       cancelled = true;
       unsubResume();
     };
-  }, [user?.uid]);
+  }, [uidFromUser(user)]);
 
   // "What happens when the user taps a notification."
   // Stored in a ref so the handler registered with the notification system (further down, once) can
@@ -1115,13 +1153,13 @@ export default function ClientAppStart({ user, userData, onRefetchUserData }) {
         setShowConversationsList(true);
       }
     };
-  }, [user?.uid]);
+  }, [uidFromUser(user)]);
 
   // Register the tap handler exactly once. The arrow function reads through the ref each time it
   // fires, which is what keeps it current even though this effect never re-runs.
   useEffect(() => {
     setNotificationTapHandler((d) => {
-      clientNotifTapRef.current?.(d);
+      callIfFunction(clientNotifTapRef.current, d);
     });
     return () => setNotificationTapHandler(null);
   }, []);
@@ -1131,14 +1169,14 @@ export default function ClientAppStart({ user, userData, onRefetchUserData }) {
   // Manipulate here: 650ms delay gives the navigator time to mount — replay too early and the
   // navigation is dropped.
   useEffect(() => {
-    if (!user?.uid) return undefined;
+    if (!uidFromUser(user)) return undefined;
     return flushInitialNotificationResponse(650);
-  }, [user?.uid]);
+  }, [uidFromUser(user)]);
 
   // Notes & Files live in the same subcollection the trainer writes to, so one realtime listener
   // covers both the client's own uploads and anything the coach shares.
   useEffect(() => {
-    if (!user?.uid || !db) {
+    if (!uidFromUser(user) || !db) {
       setNotesAndFiles([]);            
       return;
     }
@@ -1163,15 +1201,15 @@ export default function ClientAppStart({ user, userData, onRefetchUserData }) {
         unsubscribe();
       } catch (_) {}
     };
-  }, [user?.uid]);
+  }, [uidFromUser(user)]);
 
   // Session invites (client): show upcoming pending sessions with accept/decline.
   useEffect(() => {
-    if (!user?.uid || !db) {
+    if (!uidFromUser(user) || !db) {
       setPendingSessions([]);
       return;
     }
-    const trainerUid = trainerData?.id || trainerData?.uid || null;
+    const trainerUid = idFromTrainerData(trainerData) || uidFromTrainerData(trainerData) || null;
     if (!trainerUid) {
       setPendingSessions([]);
       return;
@@ -1209,11 +1247,7 @@ export default function ClientAppStart({ user, userData, onRefetchUserData }) {
         // several fields at once (here: clientId + status + date). If it hasn't been created in the
         // console yet, the query fails with failed-precondition. Firebase words this error a few
         // different ways, hence checking the code AND two message shapes.
-        const msg = String(err?.message || '');
-        const needsIndex =
-          err?.code === 'failed-precondition' ||
-          msg.toLowerCase().includes('requires an index') ||
-          msg.toLowerCase().includes('create_composite');
+        const needsIndex = queryNeedsCompositeIndex(err);
 
         // Fallback: a single-field query needs no composite index, so fetch a wider set and do the
         // status/date filtering in JS. Costs a few extra reads but keeps the feature working
@@ -1231,13 +1265,11 @@ export default function ClientAppStart({ user, userData, onRefetchUserData }) {
             fallbackUnsub = onSnapshot(
               fallbackQuery,
               (snap) => {
-                const all = [];
-                snap.forEach((d) => all.push({ id: d.id, ...d.data() }));
-                const filtered = all
-                  .filter((s) => (s.status || 'pending') === 'pending' && String(s.date || '') >= String(todayKey))
-                  .sort((a, b) => (String(a.date) + String(a.time)).localeCompare(String(b.date) + String(b.time)))
-                  .slice(0, 5);
-                setPendingSessions(filtered);
+                const allSessions = [];
+                snap.forEach((sessionDoc) => {
+                  allSessions.push({ id: sessionDoc.id, ...sessionDoc.data() });
+                });
+                setPendingSessions(filterPendingSessionsClientSide(allSessions, todayKey));
               },
               (e2) => {
                 console.error('Client pending sessions fallback listener:', e2);
@@ -1255,15 +1287,15 @@ export default function ClientAppStart({ user, userData, onRefetchUserData }) {
     );
     return () => {
       try { unsub(); } catch (_) {}
-      try { fallbackUnsub?.(); } catch (_) {}
+      try { callIfFunction(fallbackUnsub); } catch (_) {}
     };
-  }, [user?.uid, trainerData?.id]);
+  }, [uidFromUser(user), idFromTrainerData(trainerData)]);
 
   // Accept/decline a session invite, then tell the trainer about it.
   // Note the ordering: the Firestore write happens first and the push is best-effort after — the
   // trainer's calendar must be correct even if the notification never sends.
   const respondToSession = useCallback(async ({ sessionId, status }) => {
-    const trainerUid = trainerData?.id || trainerData?.uid || null;
+    const trainerUid = idFromTrainerData(trainerData) || uidFromTrainerData(trainerData) || null;
     if (!trainerUid || !sessionId) return;
     try {
       await updateDoc(doc(db, `trainer_clients/${trainerUid}/sessions/${sessionId}`), {
@@ -1273,19 +1305,19 @@ export default function ClientAppStart({ user, userData, onRefetchUserData }) {
       });
       await tellTrainerAboutSessionReply({
         trainerUid,
-        clientUid: user?.uid,
-        fallbackName: user?.displayName || 'Client',
+        clientUid: uidFromUser(user),
+        fallbackName: displayNameFromUser(user) || 'Client',
         sessionId,
         status,
       });
     } catch (sessionError) {
       console.error('Respond to session failed:', sessionError);
-      showNotice('Could not update', sessionError?.message || 'Please try again.');
+      showNotice('Could not update', (sessionError ? sessionError.message : undefined) || 'Please try again.');
     }
-  }, [trainerData?.id, trainerData?.uid, user?.uid, user?.displayName, showNotice]);
+  }, [idFromTrainerData(trainerData), uidFromTrainerData(trainerData), uidFromUser(user), displayNameFromUser(user), showNotice]);
 
   const refreshNotesAndFiles = () => {
-    if (user?.uid) getNotesAndFiles(user.uid).then(setNotesAndFiles).catch(() => {});
+    if (uidFromUser(user)) getNotesAndFiles(user.uid).then(setNotesAndFiles).catch(() => {});
   };
 
   const addNotesFilesModalEl = (
@@ -1301,10 +1333,7 @@ export default function ClientAppStart({ user, userData, onRefetchUserData }) {
   // Trainer-shared: explicitly tagged as from the trainer, OR a document that carries a trainerId
   // (older shares predate the addedBy field).
   const trainerSharedFiles = useMemo(
-    () =>
-      (notesAndFiles || []).filter(
-        (x) => x.addedBy === 'trainer' || (x.type === 'document' && x.trainerId),
-      ),
+    () => (notesAndFiles || []).filter(isTrainerSharedFileRow),
     [notesAndFiles],
   );
 
@@ -1313,21 +1342,14 @@ export default function ClientAppStart({ user, userData, onRefetchUserData }) {
   // legacy rows as client-owned — with the second condition re-excluding trainer documents that
   // would otherwise slip through that default.
   const myOwnFiles = useMemo(
-    () =>
-      (notesAndFiles || []).filter((x) => {
-        if (x.type === 'note') return false;
-        return (
-          (x.addedBy || 'client') === 'client' &&
-          !(x.type === 'document' && x.trainerId && x.documentId)
-        );
-      }),
+    () => (notesAndFiles || []).filter(isClientOwnedFileRow),
     [notesAndFiles],
   );
 
   const [deletingMyFiles, setDeletingMyFiles] = useState(false);
 
   const deleteSingleMyFile = useCallback(async (file) => {
-    if (!user?.uid || !file?.id) return;
+    if (!uidFromUser(user) || !idFromFileRow(file)) return;
     // Hard guard: a client may only delete their own uploads. Deleting a trainer's shared file
     // would also fail at the security-rules layer, but refusing here avoids a confusing error.
     if ((file.addedBy || 'client') !== 'client') return;
@@ -1337,15 +1359,15 @@ export default function ClientAppStart({ user, userData, onRefetchUserData }) {
       refreshNotesAndFiles();
     } catch (e) {
       console.error('Delete notes/file failed:', e);
-      showNotice('Could not delete', e?.message || 'Please try again.');
+      showNotice('Could not delete', messageFromCaughtError(e) || 'Please try again.');
     } finally {
       setDeletingMyFiles(false);
     }
-  }, [user?.uid, refreshNotesAndFiles, showNotice]);
+  }, [uidFromUser(user), refreshNotesAndFiles, showNotice]);
 
   const deleteAllMyFiles = useCallback(async () => {
-    if (!user?.uid) return;
-    const list = (myOwnFiles || []).filter((f) => (f.addedBy || 'client') === 'client' && f?.id);
+    if (!uidFromUser(user)) return;
+    const list = (myOwnFiles || []).filter((f) => (f.addedBy || 'client') === 'client' && (f ? f.id : undefined));
     if (list.length === 0) return;
     setDeletingMyFiles(true);
     try {
@@ -1360,106 +1382,40 @@ export default function ClientAppStart({ user, userData, onRefetchUserData }) {
       console.error('Delete all notes/files failed:', e);
       showNotice(
         'Could not delete all',
-        e?.message || 'Some files may not have been deleted. Try again.',
+        messageFromCaughtError(e) || 'Some files may not have been deleted. Try again.',
       );
       refreshNotesAndFiles();
     } finally {
       setDeletingMyFiles(false);
     }
-  }, [user?.uid, myOwnFiles, refreshNotesAndFiles, showNotice]);
+  }, [uidFromUser(user), myOwnFiles, refreshNotesAndFiles, showNotice]);
 
   // Router for "the user tapped a file". Every branch ends in a `return`, so the order below IS the
   // precedence: trainer-authored content first (it needs a server lookup to resolve), then explicit
   // types, then guesses based on the file extension, then a generic web viewer as the last resort.
   const openNotesFile = useCallback((file) => {
-    // Trainer spreadsheet/document: the row only stores ids, so we have to ask the server what it
-    // actually is before we know which viewer to open.
-    if (file?.trainerId && file?.documentId) {
-      resolveTrainerSpreadsheetView(file.trainerId, file.documentId)
-        .then((res) => {
-          if (!res) {
-            if (file?.type === 'document' || file?.documentId) {
-              setDocumentViewer({
-                visible: true,
-                trainerId: file.trainerId,
-                documentId: file.documentId,
-                title: file.title || 'Document',
-              });
-            } else {
-              showNotice('Spreadsheet unavailable', 'Your coach may have removed this spreadsheet.');
-            }
-            return;
-          }
-          const name = file?.title || file?.name || res.title || 'Spreadsheet';
-          // A spreadsheet can arrive two ways: as parsed rows (render natively, best experience) or
-          // as a stored file URL (render from the download). Prefer rows when they have content —
-          // an empty rows array means the parse produced nothing, so fall through to the URL.
-          if (packSpreadsheetRowsHaveContent(res.rows)) {
-            setSpreadsheetViewer({
-              visible: true,
-              url: res.storageUrl || null,
-              rows: res.rows,
-              name,
-            });
-            return;
-          }
-          if (res.storageUrl) {
-            setSpreadsheetViewer({
-              visible: true,
-              url: res.storageUrl,
-              rows: null,
-              name,
-            });
-            return;
-          }
-          showNotice('Spreadsheet unavailable', 'Your coach may have removed this spreadsheet.');
-        })
-        .catch(() => {
-          showNotice('Spreadsheet unavailable', 'Could not load this spreadsheet.');
-        });
+    const viewerSetters = {
+      setDocumentViewer,
+      setSpreadsheetViewer,
+      setMediaViewer,
+      setPdfViewer,
+      setEmbedWebViewer,
+      showNotice,
+    };
+    // Trainer spreadsheet/document: the row only stores ids, so we ask the server what it is.
+    if (trainerIdFromFileRow(file) && documentIdFromFileRow(file)) {
+      openTrainerPackagedFile(file, viewerSetters);
       return;
     }
-    if (file?.type === 'spreadsheet' && file.url) {
-      setSpreadsheetViewer({ visible: true, url: file.url, name: file?.name || 'Spreadsheet', rows: null });
-      return;
-    }
-    if (file?.type === 'document' || (file?.documentId && file?.trainerId)) {
-      setDocumentViewer({
-        visible: true,
-        trainerId: file.trainerId,
-        documentId: file.documentId,
-        title: file.title || 'Document',
-      });
-      return;
-    }
-    // From here down we're guessing from the filename/extension, so order matters: image, then
-    // video, then PDF, and finally an embedded web view for anything still unrecognized.
-    if (file?.url && isNotesImageFile(file)) {
-      setMediaViewer({ visible: true, url: file.url, kind: 'image', name: file?.name || file?.title || 'Photo' });
-      return;
-    }
-    if (file?.url && isNotesVideoFile(file)) {
-      setMediaViewer({ visible: true, url: file.url, kind: 'video', name: file?.name || file?.title || 'Video' });
-      return;
-    }
-    if (file?.url && isNotesPdfFile(file, file.url)) {
-      setPdfViewer({ visible: true, url: file.url, name: file?.name || 'Document' });
-      return;
-    }
-    if (file?.url) {
-      setEmbedWebViewer({
-        visible: true,
-        uri: getEmbedViewerUri(file, file.url),
-        title: file.name || file.title || 'Document',
-      });
-    }
+    openLocalNotesFileByType(file, viewerSetters);
   }, [showNotice]);
+
 
   // Pull-to-refresh on the home screen.
   const onRefresh = async () => {
     setRefreshing(true);
     refreshNotesAndFiles();
-    if (user?.uid && db) {
+    if (uidFromUser(user) && db) {
       try {
         const todayKey = getLocalDateKey();
         // vocab: Promise.all = run both reads at the same time and wait for both. Sequential awaits
@@ -1472,54 +1428,37 @@ export default function ClientAppStart({ user, userData, onRefetchUserData }) {
         applyFromSnapshots(logsDoc, trackingDoc);
         await refetchNutritionData();
       } catch (e) {
-        console.warn('Home refresh daily metrics:', e?.message || e);
+        console.warn('Home refresh daily metrics:', messageFromCaughtError(e) || e);
       }
     }
     setRefreshing(false);
   };
 
   // The price label on the coaching payment card.
-  const coachingRateLabel = useMemo(() => {
-    // The rate agreed with THIS client wins over the trainer's public price.
-    const rate = userData?.monthlyRate;
-    if (rate != null && rate !== '') {
-      const rateAmount = Number(rate);
-      if (Number.isFinite(rateAmount) && rateAmount > 0) {
-        // Some stored rates are cents (12000) and some are dollars (120). 100 is the split.
-        const dollars = rateAmount >= 100 ? rateAmount / 100 : rateAmount;
-        return `$${dollars % 1 === 0 ? dollars.toFixed(0) : dollars.toFixed(2)}`;
-      }
-    }
-    const pricing = trainerData?.pricing;
-    if (pricing?.perMonth != null && pricing.perMonth !== '') {
-      return `$${pricing.perMonth}`;
-    }
-    return null;
-  }, [userData?.monthlyRate, trainerData?.pricing]);
+  const coachingRateLabel = useMemo(
+    () => coachingRateLabelFromProfiles(userData, trainerData),
+    [monthlyRateFromUserData(userData), pricingFromTrainerData(trainerData)],
+  );
 
   // Trainer's display name, hunting through every field shape profiles have used over time and
   // falling back to generic copy so the payment sheet never shows "undefined".
-  const coachingTrainerName = useMemo(() => {
-    const tr = trainerData;
-    if (!tr) return 'Your trainer';
-    const first = tr.firstName || tr.givenName;
-    const last = tr.lastName || tr.familyName;
-    if (first || last) return `${first ?? ''} ${last ?? ''}`.trim();
-    return tr.displayName || tr.name || 'Your trainer';
-  }, [trainerData]);
+  const coachingTrainerName = useMemo(
+    () => coachingTrainerDisplayName(trainerData),
+    [trainerData],
+  );
 
   // "Request this coach" from the marketplace.
   // Throws (rather than returning a flag) so the calling screen can show the message in its own
   // error UI — each string below is user-facing copy.
   const requestTrainerConnection = useCallback(
     async (trainer, { clientIntro } = {}) => {
-      const clientId = user?.uid;
-      const trainerId = trainer?.id || trainer?.uid;
+      const clientId = uidFromUser(user);
+      const trainerId = (trainer ? trainer.id : undefined) || (trainer ? trainer.uid : undefined);
       if (!clientId) throw new Error('Please log in first.');
       if (!trainerId) throw new Error('Trainer not found.');
       // One coach at a time. Requesting a second would create a conflicting link the reconcile
       // effects above would then fight over.
-      if (trainerData?.id && String(trainerData.id) !== String(trainerId)) {
+      if (idFromTrainerData(trainerData) && String(trainerData.id) !== String(trainerId)) {
         throw new Error('You already have a coach. Open your dashboard to message them.');
       }
       // Requests ride on the messaging system, so a conversation must exist first (created if needed).
@@ -1528,14 +1467,14 @@ export default function ClientAppStart({ user, userData, onRefetchUserData }) {
       // round of questions. Each field has several possible names across profile versions, hence the
       // || chains, and every one ends in a readable default rather than blank.
       await sendClientRequest(conversationId, clientId, clientIntro || '', {
-        clientName: userData?.firstName || user?.displayName || 'Client',
-        clientGoals: onboardingData?.goal || onboardingData?.primaryGoal || 'Not specified',
-        clientExperienceLevel: onboardingData?.fitnessLevel || onboardingData?.experience || 'Beginner',
-        clientEquipment: onboardingData?.equipment || onboardingData?.availableEquipment || 'Not specified',
-        clientLimitations: onboardingData?.injuries || onboardingData?.limitations || 'None',
+        clientName: firstNameFromUserData(userData) || displayNameFromUser(user) || 'Client',
+        clientGoals: (onboardingData ? onboardingData.goal : undefined) || (onboardingData ? onboardingData.primaryGoal : undefined) || 'Not specified',
+        clientExperienceLevel: (onboardingData ? onboardingData.fitnessLevel : undefined) || (onboardingData ? onboardingData.experience : undefined) || 'Beginner',
+        clientEquipment: (onboardingData ? onboardingData.equipment : undefined) || (onboardingData ? onboardingData.availableEquipment : undefined) || 'Not specified',
+        clientLimitations: (onboardingData ? onboardingData.injuries : undefined) || (onboardingData ? onboardingData.limitations : undefined) || 'None',
       });
     },
-    [user?.uid, user?.displayName, userData, onboardingData, trainerData?.id],
+    [uidFromUser(user), displayNameFromUser(user), userData, onboardingData, idFromTrainerData(trainerData)],
   );
 
   // IMPORTANT: no early `return` above this point. React requires hooks to run in the same order on
@@ -1563,7 +1502,7 @@ export default function ClientAppStart({ user, userData, onRefetchUserData }) {
     // Unlike the other handlers it returns { success, message } — that message is spoken back to the
     // user by the assistant, which is why every failure path returns readable copy instead of throwing.
     onOpenWorkoutPlan: async ({ planId = 'current', title, todayPreview } = {}) => {
-      const uid = user?.uid;
+      const uid = uidFromUser(user);
       if (!uid) return { success: false, message: 'Please sign in again.' };
       try {
         const planData = await loadWorkoutPlanForViewer(uid, planId);
@@ -1580,7 +1519,7 @@ export default function ClientAppStart({ user, userData, onRefetchUserData }) {
           message: `Opened ${planTitle}.${preview}`.trim(),
         };
       } catch (planError) {
-        return { success: false, message: planError?.message || 'Could not load workout plan.' };
+        return { success: false, message: (planError ? planError.message : undefined) || 'Could not load workout plan.' };
       }
     },
     onMessagesPress: () => {
@@ -1599,114 +1538,24 @@ export default function ClientAppStart({ user, userData, onRefetchUserData }) {
 
   // Display values derived from whatever data has loaded. Profile name first, then the auth
   // display name, then the onboarding answer, then a neutral default — so the greeting is never blank.
-  const userName = userData?.firstName || user?.displayName || onboardingData?.name || 'User';
-  const userRole = userData?.role || 'client';
+  const userName = firstNameFromUserData(userData) || displayNameFromUser(user) || (onboardingData ? onboardingData.name : undefined) || 'User';
+  const userRole = roleFromUserData(userData) || 'client';
   // vocab/symbol: !! = coerce to a real boolean, so children get `false` rather than `null`.
   const hasTrainer = !!trainerData;
 
   // Reshapes workout data into the flat { name, exercises, workoutName } rows TrainingAgenda expects.
   // Three-way fallback: today's actual workout → the dashboard's one-line summary → nothing at all.
-  const agendaWorkouts = todayWorkout
-    ? [
-        {
-          name: todayWorkout.name,
-          // Exercises arrive either as plain strings (older/AI-generated plans) or as objects with
-          // sets. This map flattens both into display strings like "Bench Press (8×135, 8×145)".
-          exercises: Array.isArray(todayWorkout.exercises)
-            ? todayWorkout.exercises
-                .map((ex) => {
-                  if (typeof ex === 'string') return ex;
-                  const label = ex?.name || ex?.exerciseName || '';
-                  // No name = unusable row; return '' and let the .filter(Boolean) below drop it.
-                  if (!label) return '';
-                  if (Array.isArray(ex.sets) && ex.sets.length > 0) {
-                    const setsSummary = ex.sets
-                      .map((s) => {
-                        // Manipulate here: these three lines are the set label formats —
-                        // both values → "8×135", reps only → "8 reps", weight only → "135".
-                        const reps = s.reps != null ? s.reps : '';
-                        const weight = s.weight != null ? s.weight : '';
-                        if (reps && weight) return `${reps}×${weight}`;
-                        if (reps) return `${reps} reps`;
-                        if (weight) return `${weight}`;
-                        return '';
-                      })
-                      // vocab: .filter(Boolean) = drop every falsy entry, i.e. remove the '' rows
-                      // the map produced for unusable data.
-                      .filter(Boolean)
-                      .join(', ');
-                    return setsSummary
-                      ? `${label} (${setsSummary})`
-                      : label;
-                  }
-                  return label;
-                })
-                .filter(Boolean)
-            : todayWorkout.exercises,
-          sets: null,
-          reps: 0,
-          workoutName: todayWorkout.name,
-        },
-      ]
-    : dashboardWorkoutSummary
-    ? [
-        {
-          name: dashboardWorkoutSummary,
-          exercises: null,
-          sets: null,
-          reps: null,
-          workoutName: dashboardWorkoutSummary,
-        },
-      ]
-    : [];
+  const agendaWorkouts = buildAgendaWorkouts(todayWorkout, dashboardWorkoutSummary);
 
   // The three headline macros on the nutrition card. Always shown, even at 0.
-  // Manipulate here: the icon/label pairs and the `g` unit suffix are the card's copy.
-  const nutritionMacros = [
-    { icon: require('../assets/icons/Protein.png'), label: "Protein", value: `${Math.round(macroTotals.protein)}g` },
-    { icon: require('../assets/icons/Carbs.png'), label: "Carbs", value: `${Math.round(macroTotals.carbs)}g` },
-    { icon: require('../assets/icons/Fats.png'), label: "Fats", value: `${Math.round(macroTotals.fats || 0)}g` },
-  ];
+  const nutritionMacros = buildNutritionMacroRows(macroTotals);
 
-  console.log(`📊 Nutrition macros being passed to card:`, nutritionMacros.map(m => ({ label: m.label, value: m.value })));
+  console.log(`📊 Nutrition macros being passed to card:`, nutritionMacroLogLines(nutritionMacros));
   console.log(`🎯 Current nutrition goals:`, nutritionGoals);
 
   // Secondary nutrients, each added only when it's actually above zero — a row of "0g" everywhere
   // is noise, so the card grows as the user logs more detailed food data.
-  // Manipulate here: the emoji icons, labels, and units (g vs mg) are all display copy.
-  const additionalNutrients = [];
-  
-  if (macroTotals.fiber > 0) {
-    additionalNutrients.push({ 
-      icon: "🌾", 
-      label: "Fiber", 
-      value: `${Math.round(macroTotals.fiber)}g` 
-    });
-  }
-  
-  if (macroTotals.sugar > 0) {
-    additionalNutrients.push({ 
-      icon: "🍯", 
-      label: "Sugar", 
-      value: `${Math.round(macroTotals.sugar)}g` 
-    });
-  }
-  
-  if (macroTotals.sodium > 0) {
-    additionalNutrients.push({ 
-      icon: "🧂", 
-      label: "Sodium", 
-      value: `${Math.round(macroTotals.sodium)}mg` 
-    });
-  }
-  
-  if (macroTotals.potassium > 0) {
-    additionalNutrients.push({ 
-      icon: "🥔", 
-      label: "Potassium", 
-      value: `${Math.round(macroTotals.potassium)}mg` 
-    });
-  }
+  const additionalNutrients = buildAdditionalNutrientRows(macroTotals);
 
   // THE handoff. Everything above — data, panel flags, open*/handle* functions, viewers — is bundled
   // into one object and published through ClientAppStartShellProvider, so any screen can pull what it
@@ -1915,4 +1764,422 @@ export default function ClientAppStart({ user, userData, onRefetchUserData }) {
       onRefetchUserData={onRefetchUserData}
     />
   );
+}
+
+// PLUMBING — skip unless debugging (trainer link repair, notification routes, nutrition refetch).
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * Pending session cards sort by date+time strings (zero-padded), not parsed Dates.
+ * @param {Array} sessionRows
+ * @returns {Array}
+ */
+function sortClientPendingSessions(sessionRows) {
+  const sortedRows = [...sessionRows];
+  sortedRows.sort((leftSession, rightSession) => {
+    const leftKey = String(leftSession.date) + String(leftSession.time);
+    const rightKey = String(rightSession.date) + String(rightSession.time);
+    return leftKey.localeCompare(rightKey);
+  });
+  return sortedRows;
+}
+
+/**
+ * @param {import('firebase/firestore').QuerySnapshot} snapshot
+ * @returns {Array}
+ */
+function pendingSessionsFromSnapshot(snapshot) {
+  const sessionRows = [];
+  snapshot.forEach((sessionDoc) => {
+    sessionRows.push({ id: sessionDoc.id, ...sessionDoc.data() });
+  });
+  return sortClientPendingSessions(sessionRows);
+}
+
+// Re-reads today's food log and pushes the totals into home-screen state.
+// Handed to anything that can change what the user ate (the nutrition screen, the AI coach logging a
+// meal), so the home cards update without a full refresh.
+function useClientHomeNutrition({ user, db, setCaloriesConsumed, setMacroTotals }) {
+  // vocab: useCallback = keep the SAME function identity between renders unless a dependency changes.
+  // It matters here because this function is passed into the shell object and into child screens —
+  // a new identity every render would retrigger their effects.
+  const refetchNutritionData = useCallback(async () => {
+    if (!uidFromUser(user) || !db) return;
+    try {
+      // Local date, not UTC: "today's food" must follow the phone's calendar day or logs jump at
+      // midnight for anyone not on UTC.
+      const todayKey = getLocalDateKey();
+      const nutritionLogs = await getFoodLogsForDate(user.uid, todayKey);
+      const totals = calculateMacroTotals(nutritionLogs);
+      setCaloriesConsumed(totals.calories || 0);
+      setMacroTotals({
+        protein: totals.protein || 0,
+        carbs: totals.carbs || 0,
+        // Note the rename: the calculator returns `fat` (singular), the UI state uses `fats`.
+        fats: totals.fat || 0,
+      });
+    } catch (nutritionError) {
+      console.error('Refetch nutrition:', nutritionError);
+    }
+  }, [uidFromUser(user), db, setCaloriesConsumed, setMacroTotals]);
+
+  return refetchNutritionData;
+}
+
+async function clearTrainerFieldsOnClient(clientUid) {
+  await updateDoc(doc(db, 'users', clientUid), {
+    trainerId: deleteField(),
+    trainerName: deleteField(),
+    trainerAssignedAt: deleteField(),
+  });
+}
+
+async function keepTrainerWhenLinkExists(clientUid, trainerId, setters) {
+  const linkDoc = await getDoc(doc(db, `trainer_clients/${trainerId}/clients/${clientUid}`));
+  if (!linkDoc.exists()) return false;
+  const trainerDoc = await getDoc(doc(db, 'users', trainerId));
+  if (trainerDoc.exists()) {
+    setters.setTrainerData({ id: trainerDoc.id, ...trainerDoc.data() });
+  }
+  setters.setTrainerLinkError(false);
+  return true;
+}
+
+async function dropTrainerAfterRejection(clientUid, trainerId, setters) {
+  const conversationId = `conv_${clientUid}_${trainerId}`;
+  const rejectedQuery = query(
+    collection(db, 'messages'),
+    where('conversationId', '==', conversationId),
+    where('senderId', '==', clientUid),
+    where('status', '==', 'rejected'),
+    limit(1),
+  );
+  const rejectedSnap = await getDocs(rejectedQuery);
+  if (rejectedSnap.empty) return false;
+  const status = rejectedSnap.docs[0].data().status;
+  if (status === 'rejected') {
+    await clearTrainerFieldsOnClient(clientUid);
+    setters.setTrainerData(null);
+    setters.setTrainerLinkError(false);
+    callIfFunction(setters.onRefetchUserData);
+  }
+  return true;
+}
+
+async function rebuildMissingTrainerLink(clientUid, trainerId, setters) {
+  if (!functions) {
+    setters.setTrainerLinkError(true);
+    return;
+  }
+  try {
+    const linkClient = httpsCallable(functions, 'linkClientWithTrainerCode');
+    await linkClient({ clientId: clientUid, trainerId });
+    const trainerDoc = await getDoc(doc(db, 'users', trainerId));
+    if (trainerDoc.exists()) {
+      setters.setTrainerData({ id: trainerDoc.id, ...trainerDoc.data() });
+    }
+    setters.setTrainerLinkError(false);
+  } catch (linkError) {
+    await clearTrainerFieldsOnClient(clientUid);
+    setters.setTrainerData(null);
+    setters.setTrainerLinkError(true);
+    callIfFunction(setters.onRefetchUserData);
+  }
+}
+
+async function repairKnownTrainerLink(clientUid, trainerId, setters) {
+  const linkStillExists = await keepTrainerWhenLinkExists(clientUid, trainerId, setters);
+  if (linkStillExists) return;
+  const rejectionHandled = await dropTrainerAfterRejection(clientUid, trainerId, setters);
+  if (rejectionHandled) return;
+  await rebuildMissingTrainerLink(clientUid, trainerId, setters);
+}
+
+async function adoptTrainerFromConversation(conversationDoc, clientUid, setters) {
+  const participants = conversationDoc.data().participants || [];
+  const trainerUid = participants.find((participantId) => participantId !== clientUid);
+  if (!trainerUid) return false;
+  const linkDoc = await getDoc(doc(db, `trainer_clients/${trainerUid}/clients/${clientUid}`));
+  if (!linkDoc.exists()) return false;
+  const trainerDoc = await getDoc(doc(db, 'users', trainerUid));
+  const trainerProfile = trainerDoc.exists() ? trainerDoc.data() : {};
+  await updateDoc(doc(db, 'users', clientUid), {
+    trainerId: trainerUid,
+    trainerName: trainerProfile.name || trainerProfile.displayName || 'Trainer',
+    trainerAssignedAt: serverTimestamp(),
+  });
+  setters.setTrainerData({ id: trainerUid, ...trainerProfile });
+  callIfFunction(setters.onRefetchUserData);
+  return true;
+}
+
+async function adoptFirstLinkedTrainer(clientUid, setters) {
+  const conversationQuery = query(
+    collection(db, 'conversations'),
+    where('participants', 'array-contains', clientUid),
+  );
+  const conversationSnap = await getDocs(conversationQuery);
+  for (const conversationDoc of conversationSnap.docs) {
+    const adopted = await adoptTrainerFromConversation(conversationDoc, clientUid, setters);
+    if (adopted) return;
+  }
+}
+
+async function reconcileClientTrainerLink(clientUid, trainerId, setters) {
+  try {
+    if (trainerId) {
+      await repairKnownTrainerLink(clientUid, trainerId, setters);
+      return;
+    }
+    await adoptFirstLinkedTrainer(clientUid, setters);
+  } catch (error) {
+    console.error('Reconcile trainerId:', error);
+  }
+}
+
+function activeTrainerLinkDocs(snap) {
+  return snap.docs.filter((linkDoc) => {
+    const status = statusFromLinkDocData(linkDoc);
+    if (status == null || status === '') return true;
+    return status === 'active';
+  });
+}
+
+async function mirrorTrainerIdOntoClient(clientUid, trainerUid, trainerProfile, onRefetchUserData) {
+  try {
+    const userRef = doc(db, 'users', clientUid);
+    const userSnap = await getDoc(userRef);
+    const currentProfile = userSnap.exists() ? userSnap.data() : {};
+    const savedTrainerId = (currentProfile ? currentProfile.trainerId : undefined);
+    const trainerIdChanged = !savedTrainerId || String(savedTrainerId) !== String(trainerUid);
+    if (!trainerIdChanged) return;
+    await updateDoc(userRef, {
+      trainerId: trainerUid,
+      trainerName: trainerProfile.name || trainerProfile.displayName || 'Trainer',
+      trainerAssignedAt: serverTimestamp(),
+    });
+    callIfFunction(onRefetchUserData);
+  } catch (mirrorError) {
+    console.warn('Mirror trainerId to client user doc skipped:', (mirrorError ? mirrorError.message : undefined) || mirrorError);
+  }
+}
+
+async function applyTrainerFromLink(trainerUid, clientUid, setters) {
+  const trainerDoc = await getDoc(doc(db, 'users', trainerUid));
+  if (!trainerDoc.exists()) {
+    setters.setTrainerData(null);
+    return;
+  }
+  const trainerProfile = trainerDoc.data();
+  if ((trainerProfile ? trainerProfile.role : undefined) !== 'trainer') {
+    setters.setTrainerData(null);
+    return;
+  }
+  setters.setTrainerData({ id: trainerUid, ...trainerProfile });
+  await mirrorTrainerIdOntoClient(clientUid, trainerUid, trainerProfile, setters.onRefetchUserData);
+}
+
+async function handleTrainerClientLinksSnapshot(snap, clientUid, setters) {
+  if (snap.empty) {
+    setters.setTrainerData(null);
+    return;
+  }
+  const activeDocs = activeTrainerLinkDocs(snap);
+  if (!activeDocs.length) {
+    setters.setTrainerData(null);
+    return;
+  }
+  const linkDoc = activeDocs[0];
+  const trainerUid = String(trainerIdFromLinkDocData(linkDoc) || '').trim();
+  if (!trainerUid || trainerUid === clientUid) {
+    setters.setTrainerData(null);
+    return;
+  }
+  try {
+    await applyTrainerFromLink(trainerUid, clientUid, setters);
+  } catch (linkError) {
+    console.warn('trainer_client_links listener handler:', (linkError ? linkError.message : undefined) || linkError);
+  }
+}
+
+function openHomeFromScheduledSession(context) {
+  context.rootGoBack();
+  context.setShowMyDashboard(false);
+  context.rootGoBack();
+  context.rootGoBack();
+  context.setAiChatState(null);
+}
+
+function openDashboardFromSessionAlert(context) {
+  context.rootGoBack();
+  context.rootGoBack();
+  context.rootGoBack();
+  context.setAiChatState(null);
+  context.setShowTrainerMessaging(false);
+  context.setShowConversationsList(false);
+  context.setShowMyDashboard(true);
+}
+
+function openNutritionFromAlert(context) {
+  context.rootGoBack();
+  context.rootGoBack();
+  context.setAiChatState(null);
+  context.setShowTrainerMessaging(false);
+  context.setShowConversationsList(false);
+  context.setShowMyDashboard(false);
+  context.openNutrition();
+}
+
+function openSharedFilesFromAlert(context) {
+  context.rootGoBack();
+  context.rootGoBack();
+  context.setAiChatState(null);
+  context.setShowTrainerMessaging(false);
+  context.setShowConversationsList(false);
+  context.rootGoBack();
+  context.setShowMyDashboard(true);
+  context.setShowTrainerSharedFilesPopup(true);
+}
+
+function openDashboardAfterRequestAccepted(context) {
+  callIfFunction(context.onRefetchUserData);
+  context.rootGoBack();
+  context.rootGoBack();
+  context.rootGoBack();
+  context.setAiChatState(null);
+  context.setShowTrainerMessaging(false);
+  context.setShowConversationsList(false);
+  context.setShowMyDashboard(true);
+}
+
+function openClientInboxFromAlert(context) {
+  context.rootGoBack();
+  context.setShowMyDashboard(false);
+  context.rootGoBack();
+  context.rootGoBack();
+  context.setAiChatState(null);
+  context.setShowTrainerMessaging(false);
+  context.setShowConversationsList(true);
+}
+
+async function loadChatPartner(otherId) {
+  if (!otherId) return null;
+  const otherParticipant = { id: otherId };
+  try {
+    const userSnap = await getDoc(doc(db, 'users', otherId));
+    if (!userSnap.exists()) return otherParticipant;
+    return { id: userSnap.id, ...userSnap.data() };
+  } catch (_) {
+    return otherParticipant;
+  }
+}
+
+function showClientMessageThread(context, conversationId, conversationData, otherParticipant) {
+  context.rootGoBack();
+  context.setShowMyDashboard(false);
+  context.rootGoBack();
+  context.rootGoBack();
+  context.setAiChatState(null);
+  context.setShowConversationsList(false);
+  context.setSelectedConversation({ id: conversationId, ...conversationData });
+  context.setSelectedTrainer(otherParticipant);
+  context.setShowTrainerMessaging(true);
+}
+
+async function openClientMessageThread(conversationId, context) {
+  const conversationSnap = await getDoc(doc(db, 'conversations', conversationId));
+  if (!conversationSnap.exists()) {
+    context.setShowConversationsList(true);
+    return;
+  }
+  const conversationData = conversationSnap.data();
+  const participants = (conversationData ? conversationData.participants : undefined) || [];
+  const otherId = participants.find((participantId) => participantId !== context.user.uid);
+  const otherParticipant = await loadChatPartner(otherId);
+  showClientMessageThread(context, conversationId, conversationData, otherParticipant);
+}
+
+async function routeClientNotificationTap(data, context) {
+  if (!context.uidFromUser(user) || !data || typeof data !== 'object') return;
+  const type = data.type;
+  if (type === 'session_scheduled') {
+    openHomeFromScheduledSession(context);
+    return;
+  }
+  if (type === 'session_reminder' || type === 'session_update') {
+    openDashboardFromSessionAlert(context);
+    return;
+  }
+  if (type === 'nutrition_reminder') {
+    openNutritionFromAlert(context);
+    return;
+  }
+  if (type === 'notes_shared') {
+    openSharedFilesFromAlert(context);
+    return;
+  }
+  if (type === 'client_request_accepted') {
+    openDashboardAfterRequestAccepted(context);
+    return;
+  }
+  if (type !== 'message') {
+    openClientInboxFromAlert(context);
+    return;
+  }
+  const conversationId = data.conversationId;
+  if (!conversationId || typeof conversationId !== 'string') {
+    openClientInboxFromAlert(context);
+    return;
+  }
+  await openClientMessageThread(conversationId, context);
+}
+
+async function clientNameForSessionReply(clientUid, fallbackName) {
+  try {
+    const userSnap = await getDoc(doc(db, 'users', clientUid));
+    if (!userSnap.exists()) return fallbackName;
+    const clientProfile = userSnap.data();
+    return (clientProfile ? clientProfile.firstName : undefined) || (clientProfile ? clientProfile.name : undefined) || (clientProfile ? clientProfile.displayName : undefined) || fallbackName;
+  } catch (_) {
+    return fallbackName;
+  }
+}
+
+function sessionReplyVerb(status) {
+  if (status === 'accepted') return 'accepted';
+  if (status === 'declined') return 'declined';
+  return 'updated';
+}
+
+async function tellTrainerAboutSessionReply({ trainerUid, clientUid, fallbackName, sessionId, status }) {
+  if (!clientUid) return;
+  const clientName = await clientNameForSessionReply(clientUid, fallbackName);
+  const verb = sessionReplyVerb(status);
+  void postRemotePushNotify({
+    recipientId: trainerUid,
+    senderName: clientName,
+    messageText: `${clientName} ${verb} a session.`,
+    senderId: clientUid,
+    messageId: sessionId,
+    notificationType: 'session_response',
+  });
+}
+
+async function loadWorkoutPlanForViewer(uid, planId) {
+  if (planId === 'current') {
+    const current = await getCurrentWorkoutPlan(uid);
+    if (!current) return null;
+    return { id: 'current', ...current };
+  }
+  const planSnap = await getDoc(doc(db, 'users', uid, 'workoutPlans', planId));
+  if (!planSnap.exists()) return null;
+  return { id: planId, ...planSnap.data() };
+}
+
+function planHasViewableContent(planData) {
+  if (!planData) return false;
+  if (planData.rawPlan) return true;
+  if (planData.planText) return true;
+  if (planData.structuredPlan) return true;
+  return false;
 }

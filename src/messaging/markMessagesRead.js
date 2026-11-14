@@ -1,6 +1,7 @@
 // Marks other people's unread chat messages as read, one Firestore page at a time.
-// Flow: load a page of messages → mark the unread ones from someone else → repeat until the last page → clear the unread badge.
-// Used by: opening a conversation, and the "mark all read" path across every chat the user is in.
+// Flow: load page → batch-update unread rows from someone else → clear badge when done.
+// Used by alertTrainer (open thread) and inbox mark-read paths.
+// Read order: constants → mains → PLUMBING helpers.
 
 import { db } from '../app-start/cloudConnection';
 import {
@@ -8,7 +9,6 @@ import {
   query,
   where,
   getDocs,
-  updateDoc,
   doc,
   writeBatch,
   limit,
@@ -24,106 +24,49 @@ const CONVERSATIONS_COLLECTION = 'conversations';
 export const READ_PAGE_SIZE = 50;
 
 // ===== HELPER FUNCTIONS =====
-
-/**
- * True only when this message is from someone else and is explicitly unread.
- * `read === false` is required — a missing `read` field is left alone.
- * @param {object} messageData
- * @param {string} userId
- * @returns {boolean}
- */
-function shouldMarkMessageRead(messageData, userId) {
-  return messageData.senderId !== userId && messageData.read === false;
-}
-
-/**
- * One page of this conversation's messages. `startAfter` continues from the last doc of the previous page.
- * @param {string} conversationId
- * @param {object|null} lastDocumentOnPage
- * @returns {object}
- */
-function messagesPageQuery(conversationId, lastDocumentOnPage) {
-  const messagesRef = collection(db, MESSAGES_COLLECTION);
-  if (lastDocumentOnPage) {
-    // vocab: startAfter = skip every doc up to and including this one, so pages do not overlap.
-    return query(
-      messagesRef,
-      where('conversationId', '==', conversationId),
-      startAfter(lastDocumentOnPage),
-      limit(READ_PAGE_SIZE),
-    );
-  }
-  return query(
-    messagesRef,
-    where('conversationId', '==', conversationId),
-    limit(READ_PAGE_SIZE),
-  );
-}
-
-/**
- * Queue an update for each unread message on this page that someone else sent.
- * @param {object} pageSnapshot
- * @param {string} userId
- * @returns {{ batch: object, markedOnThisPage: number }}
- */
-function queueUnreadUpdatesOnPage(pageSnapshot, userId) {
-  // vocab: writeBatch groups many writes into one commit so we do not hit Firestore once per message.
-  const batch = writeBatch(db);
-  let markedOnThisPage = 0;
-
-  pageSnapshot.forEach((messageDoc) => {
-    const messageData = messageDoc.data();
-    if (!shouldMarkMessageRead(messageData, userId)) return;
-    batch.update(doc(db, MESSAGES_COLLECTION, messageDoc.id), { read: true });
-    markedOnThisPage += 1;
-  });
-
-  return { batch, markedOnThisPage };
-}
-
-/**
- * @param {object} pageSnapshot
- * @returns {boolean}
- */
-function isLastMessagesPage(pageSnapshot) {
-  return pageSnapshot.size < READ_PAGE_SIZE;
-}
+// (page query / batch helpers live under PLUMBING)
 
 // ===== MAIN FUNCTION =====
 
 /**
- * Mark unread messages in one conversation as read, in pages of READ_PAGE_SIZE.
+ * Page through one conversation's messages and set read:true on unread rows from others.
  * @param {string} conversationId
  * @param {string} userId
- * @returns {Promise<number>} how many messages were marked
+ * @returns {Promise<number>} how many messages we flipped to read
  */
 export async function markConversationMessagesReadPaginated(conversationId, userId) {
-  if (!conversationId || !userId) return 0;
+  if (!conversationId || !userId) {
+    return 0;
+  }
 
   let lastDocumentOnPage = null;
   let totalMarked = 0;
-  let hasMore = true;
+  let hasMorePages = true;
 
-  while (hasMore) {
-    const pageQuery = messagesPageQuery(conversationId, lastDocumentOnPage);
+  while (hasMorePages) {
+    // 1. Load the next slice of messages for this conversation.
+    const pageQuery = buildMessagesPageQuery(conversationId, lastDocumentOnPage);
     const pageSnapshot = await getDocs(pageQuery);
     if (pageSnapshot.empty) {
-      hasMore = false;
       break;
     }
 
-    const { batch, markedOnThisPage } = queueUnreadUpdatesOnPage(pageSnapshot, userId);
-    if (markedOnThisPage > 0) {
-      await batch.commit();
-      totalMarked += markedOnThisPage;
+    // 2. Queue read:true for every unread message on this page from someone else.
+    const pageUpdate = queueUnreadUpdatesOnPage(pageSnapshot, userId);
+    if (pageUpdate.markedOnThisPage > 0) {
+      await pageUpdate.batch.commit();
+      totalMarked += pageUpdate.markedOnThisPage;
     }
 
-    lastDocumentOnPage = pageSnapshot.docs[pageSnapshot.docs.length - 1];
-    if (isLastMessagesPage(pageSnapshot)) {
-      hasMore = false;
+    // 3. Advance the cursor; stop when this page was shorter than READ_PAGE_SIZE.
+    lastDocumentOnPage = lastDocumentFromPage(pageSnapshot);
+    const thisPageWasShort = pageSnapshot.size < READ_PAGE_SIZE;
+    if (thisPageWasShort) {
+      hasMorePages = false;
     }
   }
 
+  // 4. Drop the user's unread badge when we actually flipped any messages.
   if (totalMarked > 0) {
     await clearUnreadForConversation(userId, conversationId, totalMarked);
   }
@@ -132,27 +75,87 @@ export async function markConversationMessagesReadPaginated(conversationId, user
 }
 
 /**
- * Mark unread messages as read in every conversation this user is in.
+ * Walk every conversation the user is in and mark unread messages read.
  * @param {string} userId
- * @returns {Promise<number>}
+ * @returns {Promise<number>} total messages flipped across all threads
  */
 export async function markMessagesReadForUser(userId) {
-  if (!userId) return 0;
+  if (!userId) {
+    return 0;
+  }
 
+  // 1. Find every conversation where this user is a participant.
   const conversationsRef = collection(db, CONVERSATIONS_COLLECTION);
-  // vocab: 'array-contains' means this array field includes this value.
+  // vocab: array-contains = Firestore filter where participants array includes userId
   const conversationsQuery = query(
     conversationsRef,
     where('participants', 'array-contains', userId),
   );
-
   const conversationsSnapshot = await getDocs(conversationsQuery);
-  let totalMarked = 0;
 
+  // 2. Mark each thread paginated; sum the flips.
+  let totalMarked = 0;
   for (const conversationDoc of conversationsSnapshot.docs) {
-    const marked = await markConversationMessagesReadPaginated(conversationDoc.id, userId);
-    totalMarked += marked;
+    const markedInThread = await markConversationMessagesReadPaginated(
+      conversationDoc.id,
+      userId,
+    );
+    totalMarked += markedInThread;
   }
 
   return totalMarked;
+}
+
+// ===== PLUMBING — skip unless debugging =====
+
+// Only explicit read === false from someone else — missing read field stays alone.
+function messageNeedsMarkAsRead(messageData, userId) {
+  const fromSomeoneElse = messageData.senderId !== userId;
+  const explicitlyUnread = messageData.read === false;
+  return fromSomeoneElse && explicitlyUnread;
+}
+
+function buildMessagesPageQuery(conversationId, lastDocumentOnPage) {
+  const messagesRef = collection(db, MESSAGES_COLLECTION);
+
+  if (lastDocumentOnPage) {
+    // vocab: startAfter = skip every doc up to and including this cursor so pages do not overlap
+    return query(
+      messagesRef,
+      where('conversationId', '==', conversationId),
+      startAfter(lastDocumentOnPage),
+      limit(READ_PAGE_SIZE),
+    );
+  }
+
+  return query(
+    messagesRef,
+    where('conversationId', '==', conversationId),
+    limit(READ_PAGE_SIZE),
+  );
+}
+
+function queueUnreadUpdatesOnPage(pageSnapshot, userId) {
+  // vocab: writeBatch = group many writes into one commit (not one network hit per message)
+  const batch = writeBatch(db);
+  let markedOnThisPage = 0;
+
+  pageSnapshot.forEach((messageDoc) => {
+    const messageData = messageDoc.data();
+    if (!messageNeedsMarkAsRead(messageData, userId)) {
+      return;
+    }
+    batch.update(doc(db, MESSAGES_COLLECTION, messageDoc.id), { read: true });
+    markedOnThisPage += 1;
+  });
+
+  return { batch, markedOnThisPage };
+}
+
+function lastDocumentFromPage(pageSnapshot) {
+  const docsOnPage = pageSnapshot.docs;
+  if (!docsOnPage.length) {
+    return null;
+  }
+  return docsOnPage[docsOnPage.length - 1];
 }

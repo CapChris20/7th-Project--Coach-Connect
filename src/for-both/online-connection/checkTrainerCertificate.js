@@ -42,43 +42,191 @@ const DETAIL_CHECKING = 'Usually finishes in under a minute.';
 const NON_IMAGE_ERROR =
   'AI verification requires a JPEG or PNG image of the certificate. Your file was still uploaded for manual review.';
 const UNREADABLE_IMAGE_ERROR = 'Could not read image for AI verification.';
+const LOGIN_REQUIRED_ERROR = 'Please log in first.';
+const VERIFICATION_TIMEOUT_ERROR = 'Verification timed out';
+const VERIFICATION_FAILED_ERROR = 'Certification verification failed';
 
 // ===== HELPER FUNCTIONS =====
 
-function normalizedStatus(status) {
+/**
+ * Short label for a certificate status string from the server.
+ * @param {string} status
+ * @returns {string|null}
+ */
+export function certificationStatusLabel(status) {
+  if (certificateStatusMeansApproved(status)) {
+    return LABEL_VERIFIED;
+  }
+  if (certificateStatusMeansUnderReview(status)) {
+    return LABEL_UNDER_REVIEW;
+  }
+  if (certificateStatusMeansRejected(status)) {
+    return LABEL_REJECTED;
+  }
+  if (certificateStatusMeansStillChecking(status)) {
+    return LABEL_CHECKING;
+  }
+  return null;
+}
+
+/**
+ * Longer detail line under the status label.
+ * @param {string} status
+ * @returns {string|null}
+ */
+export function certificationStatusDetail(status) {
+  if (certificateStatusMeansApproved(status)) {
+    return DETAIL_APPROVED;
+  }
+  if (certificateStatusMeansUnderReview(status)) {
+    return DETAIL_UNDER_REVIEW;
+  }
+  if (certificateStatusMeansRejected(status)) {
+    return DETAIL_REJECTED;
+  }
+  if (certificateStatusMeansStillChecking(status)) {
+    return DETAIL_CHECKING;
+  }
+  return null;
+}
+
+/**
+ * Tone key for chips / banners (success, danger, pending, muted).
+ * @param {string} status
+ * @returns {string}
+ */
+export function certificationStatusTone(status) {
+  if (certificateStatusMeansApproved(status)) {
+    return TONE_SUCCESS;
+  }
+  if (certificateStatusMeansRejected(status)) {
+    return TONE_DANGER;
+  }
+  if (certificateStatusMeansStillChecking(status)) {
+    return TONE_PENDING;
+  }
+  if (certificateStatusMeansUnderReview(status)) {
+    return TONE_PENDING;
+  }
+  return TONE_MUTED;
+}
+
+/**
+ * Read a local image URI as base64 text for the verify POST body.
+ * @param {string} localUri
+ * @returns {Promise<string|null>}
+ */
+export async function localImageUriToBase64(localUri) {
+  if (!localUri) {
+    return null;
+  }
+  // vocab: EncodingType.Base64 reads the file as text-safe base64, not raw bytes.
+  return readAsStringAsync(localUri, { encoding: EncodingType.Base64 });
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Ask the cloud API to AI-check a trainer certificate photo.
+ * @param {object} [options]
+ * @returns {Promise<object>}
+ */
+export async function checkTrainerCertificate(options = {}) {
+  const {
+    trainerName,
+    imageUrl,
+    localUri,
+    mediaType,
+    storagePath,
+    fileName,
+    trainerId,
+  } = options;
+
+  const mimeTypeLowercase = String(mediaType || '').toLowerCase();
+
+  // 1. PDFs and other non-images skip AI. The file is already uploaded for a human.
+  const fileIsDefinitelyNotAnImage =
+    Boolean(mimeTypeLowercase) && !mimeTypeLowercase.startsWith('image/');
+  if (fileIsDefinitelyNotAnImage) {
+    return skipAiAndLeaveForManualReview(NON_IMAGE_ERROR);
+  }
+
+  // 2. Read the local photo. No bytes and no hosted URL → skip the same way.
+  const imageBase64 = await tryReadCertificateFileAsBase64(localUri, mimeTypeLowercase);
+  if (!imageBase64 && !imageUrl) {
+    return skipAiAndLeaveForManualReview(UNREADABLE_IMAGE_ERROR);
+  }
+
+  // 3. Fresh login token — the verify route rejects a stale one.
+  const idToken = await fetchFreshFirebaseIdToken();
+
+  // 4. One body: base64 when we have it, otherwise the hosted URL.
+  const requestBody = buildCertificationVerifyBody({
+    trainerId,
+    trainerName,
+    imageBase64,
+    imageUrl,
+    mediaType,
+    storagePath,
+    fileName,
+  });
+
+  // 5. Try each cloud API base until one accepts.
+  return verifyCertificateOnFirstAcceptingBase(idToken, requestBody);
+}
+
+// ===== PLUMBING — skip unless debugging =====
+
+function lowercaseCertificateStatus(status) {
   return String(status || '').toLowerCase();
 }
 
-// The server uses two strings for the same outcome. Callers shouldn't have to remember both.
-function isApprovedStatus(status) {
-  const normalized = normalizedStatus(status);
-  return normalized === STATUS_APPROVED || normalized === STATUS_AUTO_APPROVED;
+function certificateStatusMeansApproved(status) {
+  const normalized = lowercaseCertificateStatus(status);
+  if (normalized === STATUS_APPROVED) {
+    return true;
+  }
+  if (normalized === STATUS_AUTO_APPROVED) {
+    return true;
+  }
+  return false;
 }
 
-function isUnderReviewStatus(status) {
-  const normalized = normalizedStatus(status);
-  return normalized === STATUS_MANUAL_REVIEW || normalized === STATUS_UNDER_REVIEW;
+function certificateStatusMeansUnderReview(status) {
+  const normalized = lowercaseCertificateStatus(status);
+  if (normalized === STATUS_MANUAL_REVIEW) {
+    return true;
+  }
+  if (normalized === STATUS_UNDER_REVIEW) {
+    return true;
+  }
+  return false;
 }
 
-function isCheckingStatus(status) {
-  const normalized = normalizedStatus(status);
-  return normalized === STATUS_CHECKING || normalized === STATUS_VERIFYING;
+function certificateStatusMeansStillChecking(status) {
+  const normalized = lowercaseCertificateStatus(status);
+  if (normalized === STATUS_CHECKING) {
+    return true;
+  }
+  if (normalized === STATUS_VERIFYING) {
+    return true;
+  }
+  return false;
 }
 
-function isRejectedStatus(status) {
-  return normalizedStatus(status) === STATUS_REJECTED;
+function certificateStatusMeansRejected(status) {
+  return lowercaseCertificateStatus(status) === STATUS_REJECTED;
 }
 
-// Empty mime still counts as an image: the upload screen doesn't always know the type yet.
-function isNonImageMimeType(mimeType) {
-  return Boolean(mimeType) && !mimeType.startsWith('image/');
+function mimeTypeIsImageOrUnknown(mimeType) {
+  // Empty mime still counts as an image: the upload screen doesn't always know the type yet.
+  if (!mimeType) {
+    return true;
+  }
+  return mimeType.startsWith('image/');
 }
 
-function isImageOrUnknownMimeType(mimeType) {
-  return !mimeType || mimeType.startsWith('image/');
-}
-
-function manualReviewSkip(errorMessage) {
+function skipAiAndLeaveForManualReview(errorMessage) {
   return {
     success: false,
     skipped: true,
@@ -88,22 +236,31 @@ function manualReviewSkip(errorMessage) {
   };
 }
 
-async function requireSignedInIdToken() {
+async function fetchFreshFirebaseIdToken() {
   const currentUser = auth?.currentUser;
-  if (!currentUser) throw new Error('Please log in first.');
+  if (!currentUser) {
+    throw new Error(LOGIN_REQUIRED_ERROR);
+  }
   // vocab: getIdToken(true) forces a fresh Firebase token. true means don't reuse the cache.
   return currentUser.getIdToken(true);
 }
 
-// Prefer bases that are actually hosted. If none qualify, keep the first resilient base
-// so a local dev server can still answer.
-function cloudHostedApiBases() {
-  const hostedBases = getResilientApiBases().filter(isCloudHostedApiBase);
-  if (hostedBases.length) return hostedBases;
-  return getResilientApiBases().slice(0, 1);
+function cloudHostedApiBaseUrls() {
+  const allBases = getResilientApiBases();
+  const hostedBases = [];
+  for (let baseIndex = 0; baseIndex < allBases.length; baseIndex += 1) {
+    const baseUrl = allBases[baseIndex];
+    if (isCloudHostedApiBase(baseUrl)) {
+      hostedBases.push(baseUrl);
+    }
+  }
+  if (hostedBases.length) {
+    return hostedBases;
+  }
+  return allBases.slice(0, 1);
 }
 
-function successfulVerification(data) {
+function mapServerPayloadToSuccessResult(data) {
   return {
     success: true,
     status: data.status,
@@ -114,16 +271,18 @@ function successfulVerification(data) {
   };
 }
 
-function httpErrorFromResponse(data, statusCode) {
+function httpFailureError(data, statusCode) {
   return new Error(data?.error || `HTTP ${statusCode}`);
 }
 
-function timeoutOrNetworkError(error) {
-  if (error?.name === 'AbortError') return new Error('Verification timed out');
+function normalizeTimeoutOrNetworkError(error) {
+  if (error?.name === 'AbortError') {
+    return new Error(VERIFICATION_TIMEOUT_ERROR);
+  }
   return error;
 }
 
-async function parseJsonOrEmpty(response) {
+async function parseResponseJsonOrEmptyObject(response) {
   try {
     return await response.json();
   } catch (ignoredError) {
@@ -131,8 +290,8 @@ async function parseJsonOrEmpty(response) {
   }
 }
 
-// Does not throw. A failure comes back as error so the caller can try the next base.
-async function requestCertificationVerification(baseUrl, idToken, requestBody) {
+async function postCertificationVerifyToBase(baseUrl, idToken, requestBody) {
+  // vocab: AbortController = cancel the fetch when the timeout fires
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), CERTIFICATION_TIMEOUT_MS);
   try {
@@ -147,29 +306,33 @@ async function requestCertificationVerification(baseUrl, idToken, requestBody) {
       signal: controller.signal,
     });
     clearTimeout(timeoutId);
-    const data = await parseJsonOrEmpty(response);
+    const data = await parseResponseJsonOrEmptyObject(response);
     if (!response.ok) {
-      return { error: httpErrorFromResponse(data, response.status) };
+      return { error: httpFailureError(data, response.status) };
     }
-    return { result: successfulVerification(data) };
+    return { result: mapServerPayloadToSuccessResult(data) };
   } catch (error) {
     clearTimeout(timeoutId);
-    return { error: timeoutOrNetworkError(error) };
+    return { error: normalizeTimeoutOrNetworkError(error) };
   }
 }
 
-async function readLocalCertificateBase64(localUri, mimeType) {
-  const shouldReadLocalFile = localUri && isImageOrUnknownMimeType(mimeType);
-  if (!shouldReadLocalFile) return null;
+async function tryReadCertificateFileAsBase64(localUri, mimeType) {
+  const shouldReadFromDisk = localUri && mimeTypeIsImageOrUnknown(mimeType);
+  if (!shouldReadFromDisk) {
+    return null;
+  }
   try {
     return await localImageUriToBase64(localUri);
-  } catch (error) {
-    if (__DEV__) console.warn('cert base64 read failed:', error?.message || error);
+  } catch (readError) {
+    if (__DEV__) {
+      console.warn('cert base64 read failed:', readError?.message || readError);
+    }
     return null;
   }
 }
 
-function buildVerificationRequestBody({
+function buildCertificationVerifyBody({
   trainerId,
   trainerName,
   imageBase64,
@@ -179,132 +342,31 @@ function buildVerificationRequestBody({
   fileName,
 }) {
   // Send base64 when we have it, and only then omit imageUrl. The server should see one source.
-  // mediaType keeps the caller's original spelling; the lowercase copy was only for the image/ check.
+  const trainerIdOrCurrentUser = trainerId || auth?.currentUser?.uid || undefined;
+  const imageUrlWhenNoBase64 = imageBase64 ? undefined : imageUrl;
+  const mediaTypeOrJpegDefault = mediaType || DEFAULT_CERTIFICATE_MIME_TYPE;
+
   return {
-    trainerId: trainerId || auth?.currentUser?.uid || undefined,
+    trainerId: trainerIdOrCurrentUser,
     trainerName,
     imageBase64,
-    imageUrl: imageBase64 ? undefined : imageUrl,
-    mediaType: mediaType || DEFAULT_CERTIFICATE_MIME_TYPE,
+    imageUrl: imageUrlWhenNoBase64,
+    mediaType: mediaTypeOrJpegDefault,
     storagePath,
     fileName,
   };
 }
 
-async function verifyOnFirstAcceptingBase(idToken, requestBody) {
+async function verifyCertificateOnFirstAcceptingBase(idToken, requestBody) {
   let lastError = null;
-  for (const baseUrl of cloudHostedApiBases()) {
-    const outcome = await requestCertificationVerification(baseUrl, idToken, requestBody);
-    if (outcome.result) return outcome.result;
+  const baseUrls = cloudHostedApiBaseUrls();
+  for (let baseIndex = 0; baseIndex < baseUrls.length; baseIndex += 1) {
+    const baseUrl = baseUrls[baseIndex];
+    const outcome = await postCertificationVerifyToBase(baseUrl, idToken, requestBody);
+    if (outcome.result) {
+      return outcome.result;
+    }
     lastError = outcome.error;
   }
-  throw lastError || new Error('Certification verification failed');
-}
-
-// ===== MAIN FUNCTION =====
-
-/**
- * Short label for a certification status, or null when the status is unknown.
- * @param {string} status
- * @returns {string|null}
- */
-export function certificationStatusLabel(status) {
-  if (isApprovedStatus(status)) return LABEL_VERIFIED;
-  if (isUnderReviewStatus(status)) return LABEL_UNDER_REVIEW;
-  if (isRejectedStatus(status)) return LABEL_REJECTED;
-  if (isCheckingStatus(status)) return LABEL_CHECKING;
-  return null;
-}
-
-/**
- * Extra line under the status (how long it takes, or what to do next).
- * @param {string} status
- * @returns {string|null}
- */
-export function certificationStatusDetail(status) {
-  if (isApprovedStatus(status)) return DETAIL_APPROVED;
-  if (isUnderReviewStatus(status)) return DETAIL_UNDER_REVIEW;
-  if (isRejectedStatus(status)) return DETAIL_REJECTED;
-  if (isCheckingStatus(status)) return DETAIL_CHECKING;
-  return null;
-}
-
-/**
- * Color tone for the status line: success, danger, pending, or muted.
- * @param {string} status
- * @returns {'success'|'danger'|'pending'|'muted'}
- */
-export function certificationStatusTone(status) {
-  if (isApprovedStatus(status)) return TONE_SUCCESS;
-  if (isRejectedStatus(status)) return TONE_DANGER;
-  if (isCheckingStatus(status)) return TONE_PENDING;
-  if (isUnderReviewStatus(status)) return TONE_PENDING;
-  return TONE_MUTED;
-}
-
-/**
- * Read a local image file as base64 text.
- * @param {string} localUri
- * @returns {Promise<string|null>}
- */
-export async function localImageUriToBase64(localUri) {
-  if (!localUri) return null;
-  // vocab: EncodingType.Base64 reads the file as text-safe base64, not raw bytes.
-  return readAsStringAsync(localUri, { encoding: EncodingType.Base64 });
-}
-
-/**
- * Send a certificate image to the verify route. Non-images and unreadable files
- * come back as a manual-review skip instead of a thrown error — the file is already uploaded.
- * @param {{
- *   trainerName: string,
- *   imageUrl?: string,
- *   localUri?: string,
- *   mediaType?: string,
- *   storagePath?: string,
- *   fileName?: string,
- *   trainerId?: string,
- * }} [options]
- * @returns {Promise<object>}
- */
-export async function checkTrainerCertificate(options = {}) {
-  const {
-    trainerName,
-    imageUrl,
-    localUri,
-    mediaType,
-    storagePath,
-    fileName,
-    trainerId,
-  } = options;
-
-  const mimeType = String(mediaType || '').toLowerCase();
-
-  // 1. PDFs and other non-images skip AI. The file is already uploaded for a human.
-  if (isNonImageMimeType(mimeType)) {
-    return manualReviewSkip(NON_IMAGE_ERROR);
-  }
-
-  // 2. Read the local photo. No bytes and no hosted URL → skip the same way.
-  const imageBase64 = await readLocalCertificateBase64(localUri, mimeType);
-  if (!imageBase64 && !imageUrl) {
-    return manualReviewSkip(UNREADABLE_IMAGE_ERROR);
-  }
-
-  // 3. Fresh login token — the verify route rejects a stale one.
-  const idToken = await requireSignedInIdToken();
-
-  // 4. One body: base64 when we have it, otherwise the hosted URL.
-  const requestBody = buildVerificationRequestBody({
-    trainerId,
-    trainerName,
-    imageBase64,
-    imageUrl,
-    mediaType,
-    storagePath,
-    fileName,
-  });
-
-  // 5. Try each cloud API base until one accepts.
-  return verifyOnFirstAcceptingBase(idToken, requestBody);
+  throw lastError || new Error(VERIFICATION_FAILED_ERROR);
 }

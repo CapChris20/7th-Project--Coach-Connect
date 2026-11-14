@@ -1,6 +1,7 @@
 // Design Law remove-trainer sheet — reason chips, “What changes”, Keep / Remove.
 // Flow: pick why → Remove calls removeTrainerClientLink → parent refreshes → close.
 // Used from client Settings / home card and trainer client detail. Firebase projectId stays anatrox-auth.
+// Read order: constants → chip layout → RemoveTrainerPopup → PLUMBING (copy + cloud call).
 
 import React, { useState, useEffect } from 'react';
 import {
@@ -23,6 +24,7 @@ import { nb, spacing } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
+// Manipulate here: reason chips shown on the sheet (order = display order)
 const REASONS = [
   'Not seeing results',
   'Poor communication',
@@ -32,56 +34,76 @@ const REASONS = [
   'Other',
 ];
 
+const OTHER_REASON_LABEL = 'Other';
+const REMOVAL_GENERIC_ERROR = 'Something went wrong. Please try again.';
+const CLOUD_FN_NOT_READY = 'Cloud Functions not initialized';
+const REMOVE_TRAINER_CLIENT_LINK_FN = 'removeTrainerClientLink';
+const ENDS_COACHING_PILL = 'Ends coaching';
+
 // ===== HELPER FUNCTIONS =====
 
-function nextSelectedReasons(currentReasons, reasonLabel) {
-  if (currentReasons.includes(reasonLabel)) {
-    return currentReasons.filter((label) => label !== reasonLabel);
+function RemoveReasonChip({ reasonLabel, selected, colors, onToggle }) {
+  let chipBackground = colors.nbSurface;
+  let labelColor = colors.nbInk;
+  if (selected) {
+    chipBackground = colors.nbFill;
+    labelColor = colors.nbOnFill;
   }
-  return [...currentReasons, reasonLabel];
+
+  return (
+    <Pressable
+      onPress={() => onToggle(reasonLabel)}
+      style={[
+        styles.chip,
+        {
+          borderColor: colors.nbBorder,
+          backgroundColor: chipBackground,
+          shadowColor: colors.nbShadow,
+        },
+      ]}
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
+    >
+      <Text style={[styles.chipText, { color: labelColor }]}>{reasonLabel}</Text>
+    </Pressable>
+  );
 }
 
-/**
- * Cloud Function that ends the trainer–client link. Same argument keys as before.
- * vocab: httpsCallable = Firebase callable. Server name stays removeTrainerClientLink.
- * @param {{ trainerId: string, clientId: string, reasons: string[], otherText: string|null, removedBy: string }} args
- * @returns {Promise<unknown>}
- */
-async function callRemoveTrainerClientLink({ trainerId, clientId, reasons, otherText, removedBy }) {
-  if (!functions) {
-    throw new Error('Cloud Functions not initialized');
-  }
-  const removeLinkCall = httpsCallable(functions, 'removeTrainerClientLink');
-  return removeLinkCall({
-    trainerId,
-    clientId,
-    reasons,
-    otherText,
-    removedBy,
-  });
+function ReasonChipRow({ selectedReasons, colors, onToggleReason }) {
+  return (
+    <View style={styles.chipWrap}>
+      {REASONS.map((reasonLabel) => (
+        <RemoveReasonChip
+          key={reasonLabel}
+          reasonLabel={reasonLabel}
+          selected={selectedReasons.includes(reasonLabel)}
+          colors={colors}
+          onToggle={onToggleReason}
+        />
+      ))}
+    </View>
+  );
 }
 
-function keepLabel(removedBy, displayName) {
-  if (removedBy === 'client') {
-    return displayName ? `Keep ${displayName.split(' ')[0]}` : 'Keep trainer';
-  }
-  return displayName ? `Keep ${displayName.split(' ')[0]}` : 'Keep client';
-}
+function WhatChangesCard({ colors, displayName }) {
+  const whoStopsSeeingLogs = displayName || 'They';
 
-function removeTitle(removedBy, displayName) {
-  if (removedBy === 'client') {
-    return displayName
-      ? `Remove ${displayName.split(' ')[0]} as your trainer?`
-      : 'Remove your trainer?';
-  }
-  return displayName ? `Remove ${displayName.split(' ')[0]} as a client?` : 'Remove this client?';
+  return (
+    <NbCard style={styles.changesCard}>
+      <Text style={[styles.changesTitle, { color: colors.nbInk }]}>What changes</Text>
+      <Text style={[styles.changesBody, { color: colors.nbMuted }]}>
+        Your plans stay on your phone. {whoStopsSeeingLogs} stop seeing new logs. Billing
+        for future sessions stops.
+      </Text>
+    </NbCard>
+  );
 }
 
 // ===== MAIN FUNCTION =====
 
 /**
  * Single Design Law sheet (not the old 3-step purple wizard).
- * @param {object} props
+ * Hook order stays: theme → insets → selectedReasons → otherText → isRemoving → removalError → reset effect.
  */
 export default function RemoveTrainerPopup({
   visible,
@@ -100,6 +122,7 @@ export default function RemoveTrainerPopup({
   const [isRemoving, setIsRemoving] = useState(false);
   const [removalError, setRemovalError] = useState(null);
 
+  // Reset form when the sheet closes so the next open starts blank.
   useEffect(() => {
     if (!visible) {
       setSelectedReasons([]);
@@ -111,45 +134,47 @@ export default function RemoveTrainerPopup({
 
   const displayName = removedBy === 'client' ? trainerName : clientName;
   const canRemove = selectedReasons.length > 0 && !isRemoving;
+  const sheetBottomPadding = Math.max(insets.bottom, spacing.md) + spacing.sm;
+  const showOtherField = selectedReasons.includes(OTHER_REASON_LABEL);
+  const removeButtonWords = labelForRemoveButton(removedBy, isRemoving);
+  const keepButtonWords = keepRelationshipLabel(removedBy, displayName);
+  const sheetTitle = removeSheetTitle(removedBy, displayName);
+  const whyLeavingLine = `Why are you leaving? This helps other clients and ${displayName || 'them'}.`;
+  const sheetSurfaceStyle = {
+    backgroundColor: colors.nbSurface,
+    borderColor: colors.nbBorder,
+    paddingBottom: sheetBottomPadding,
+  };
 
   const toggleReason = (reasonLabel) => {
-    setSelectedReasons((currentReasons) => nextSelectedReasons(currentReasons, reasonLabel));
+    setSelectedReasons((currentReasons) => toggleReasonInList(currentReasons, reasonLabel));
   };
 
   const handleRemoval = async () => {
+    // 1. Bail when ids or reasons are missing.
     if (!trainerId || !clientId || !canRemove) return;
+
+    // 2. Call the cloud function, then let the parent refresh.
     setRemovalError(null);
     setIsRemoving(true);
-    try {
-      await callRemoveTrainerClientLink({
-        trainerId,
-        clientId,
-        reasons: selectedReasons,
-        otherText: otherText || null,
-        removedBy,
-      });
-      onRemovalComplete?.();
-      onClose?.();
-    } catch (caughtError) {
-      console.error('RemoveTrainerPopup removal error:', caughtError);
-      setRemovalError('Something went wrong. Please try again.');
-    } finally {
-      setIsRemoving(false);
-    }
+    await runRemovalThenClose({
+      trainerId,
+      clientId,
+      selectedReasons,
+      otherText,
+      removedBy,
+      onRemovalComplete,
+      onClose,
+      setRemovalError,
+      setIsRemoving,
+    });
   };
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.scrim} onPress={onClose}>
         <Pressable
-          style={[
-            styles.sheet,
-            {
-              backgroundColor: colors.nbSurface,
-              borderColor: colors.nbBorder,
-              paddingBottom: Math.max(insets.bottom, spacing.md) + spacing.sm,
-            },
-          ]}
+          style={[styles.sheet, sheetSurfaceStyle]}
           onPress={(event) => event.stopPropagation?.()}
         >
           <View style={styles.handleWrap}>
@@ -161,48 +186,18 @@ export default function RemoveTrainerPopup({
             keyboardShouldPersistTaps="handled"
             contentContainerStyle={styles.scrollPad}
           >
-            {/* Design Law accent pill — small gradient OK; no purple borders */}
-            <NbPill variant="energy">Ends coaching</NbPill>
+            <NbPill variant="energy">{ENDS_COACHING_PILL}</NbPill>
 
-            <Text style={[styles.title, { color: colors.nbInk }]}>
-              {removeTitle(removedBy, displayName)}
-            </Text>
-            <Text style={[styles.sub, { color: colors.nbMuted }]}>
-              Why are you leaving? This helps other clients and {displayName || 'them'}.
-            </Text>
+            <Text style={[styles.title, { color: colors.nbInk }]}>{sheetTitle}</Text>
+            <Text style={[styles.sub, { color: colors.nbMuted }]}>{whyLeavingLine}</Text>
 
-            <View style={styles.chipWrap}>
-              {REASONS.map((reasonLabel) => {
-                const selected = selectedReasons.includes(reasonLabel);
-                return (
-                  <Pressable
-                    key={reasonLabel}
-                    onPress={() => toggleReason(reasonLabel)}
-                    style={[
-                      styles.chip,
-                      {
-                        borderColor: colors.nbBorder,
-                        backgroundColor: selected ? colors.nbFill : colors.nbSurface,
-                        shadowColor: colors.nbShadow,
-                      },
-                    ]}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected }}
-                  >
-                    <Text
-                      style={[
-                        styles.chipText,
-                        { color: selected ? colors.nbOnFill : colors.nbInk },
-                      ]}
-                    >
-                      {reasonLabel}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
+            <ReasonChipRow
+              selectedReasons={selectedReasons}
+              colors={colors}
+              onToggleReason={toggleReason}
+            />
 
-            {selectedReasons.includes('Other') ? (
+            {showOtherField ? (
               <TextInput
                 placeholder="Tell us more (optional)"
                 placeholderTextColor={colors.nbMuted}
@@ -220,13 +215,7 @@ export default function RemoveTrainerPopup({
               />
             ) : null}
 
-            <NbCard style={styles.changesCard}>
-              <Text style={[styles.changesTitle, { color: colors.nbInk }]}>What changes</Text>
-              <Text style={[styles.changesBody, { color: colors.nbMuted }]}>
-                Your plans stay on your phone. {displayName || 'They'} stop seeing new logs. Billing
-                for future sessions stops.
-              </Text>
-            </NbCard>
+            <WhatChangesCard colors={colors} displayName={displayName} />
 
             {removalError ? (
               <Text style={[styles.errorText, { color: colors.nbInk }]}>{removalError}</Text>
@@ -235,16 +224,12 @@ export default function RemoveTrainerPopup({
             <View style={styles.actions}>
               <View style={styles.actionFlex}>
                 <NbButton variant="ghost" onPress={onClose} disabled={isRemoving}>
-                  {keepLabel(removedBy, displayName)}
+                  {keepButtonWords}
                 </NbButton>
               </View>
               <View style={styles.actionFlex}>
                 <NbButton variant="fill" onPress={handleRemoval} disabled={!canRemove}>
-                  {isRemoving
-                    ? 'Removing…'
-                    : removedBy === 'client'
-                      ? 'Remove trainer'
-                      : 'Remove client'}
+                  {removeButtonWords}
                 </NbButton>
               </View>
             </View>
@@ -253,6 +238,91 @@ export default function RemoveTrainerPopup({
       </Pressable>
     </Modal>
   );
+}
+
+// ===== PLUMBING — skip unless debugging copy strings or the cloud call =====
+
+async function runRemovalThenClose({
+  trainerId,
+  clientId,
+  selectedReasons,
+  otherText,
+  removedBy,
+  onRemovalComplete,
+  onClose,
+  setRemovalError,
+  setIsRemoving,
+}) {
+  try {
+    await callRemoveTrainerClientLink({
+      trainerId,
+      clientId,
+      reasons: selectedReasons,
+      otherText: otherText || null,
+      removedBy,
+    });
+    onRemovalComplete?.();
+    onClose?.();
+  } catch (caughtError) {
+    console.error('RemoveTrainerPopup removal error:', caughtError);
+    setRemovalError(REMOVAL_GENERIC_ERROR);
+  } finally {
+    setIsRemoving(false);
+  }
+}
+
+function firstNameFromDisplayName(displayName) {
+  if (!displayName) return '';
+  return displayName.split(' ')[0];
+}
+
+function keepRelationshipLabel(removedBy, displayName) {
+  const firstName = firstNameFromDisplayName(displayName);
+  if (removedBy === 'client') {
+    return firstName ? `Keep ${firstName}` : 'Keep trainer';
+  }
+  return firstName ? `Keep ${firstName}` : 'Keep client';
+}
+
+function removeSheetTitle(removedBy, displayName) {
+  const firstName = firstNameFromDisplayName(displayName);
+  if (removedBy === 'client') {
+    return firstName ? `Remove ${firstName} as your trainer?` : 'Remove your trainer?';
+  }
+  return firstName ? `Remove ${firstName} as a client?` : 'Remove this client?';
+}
+
+function labelForRemoveButton(removedBy, isRemoving) {
+  if (isRemoving) return 'Removing…';
+  if (removedBy === 'client') return 'Remove trainer';
+  return 'Remove client';
+}
+
+function toggleReasonInList(currentReasons, reasonLabel) {
+  if (currentReasons.includes(reasonLabel)) {
+    return currentReasons.filter((label) => label !== reasonLabel);
+  }
+  return [...currentReasons, reasonLabel];
+}
+
+/**
+ * Cloud Function that ends the trainer–client link. Same argument keys as before.
+ * vocab: httpsCallable = Firebase callable. Server name stays removeTrainerClientLink.
+ * @param {{ trainerId: string, clientId: string, reasons: string[], otherText: string|null, removedBy: string }} args
+ * @returns {Promise<unknown>}
+ */
+async function callRemoveTrainerClientLink({ trainerId, clientId, reasons, otherText, removedBy }) {
+  if (!functions) {
+    throw new Error(CLOUD_FN_NOT_READY);
+  }
+  const removeLinkCall = httpsCallable(functions, REMOVE_TRAINER_CLIENT_LINK_FN);
+  return removeLinkCall({
+    trainerId,
+    clientId,
+    reasons,
+    otherText,
+    removedBy,
+  });
 }
 
 const styles = StyleSheet.create({

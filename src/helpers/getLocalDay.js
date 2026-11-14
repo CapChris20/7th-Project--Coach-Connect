@@ -1,6 +1,7 @@
 // Device-timezone "today" helpers. Every daily reset in the app starts here.
 // Flow: stamp today as YYYY-MM-DD → say how long until the next local midnight.
-// Used by: nutrition logs and the midnight archive. Weekly trainer jobs use dateKeys.js instead.
+// Used by: nutrition logs and the midnight archive. Weekly trainer jobs use dateStrings.js instead.
+// Read order: constants → helpers → numbered mains.
 
 // ===== NAMED CONSTANTS =====
 
@@ -15,12 +16,13 @@ const NEXT_MIDNIGHT_MS = 0;
 // ===== HELPER FUNCTIONS =====
 
 /**
- * Copies the date so setHours does not change the caller's object.
+ * Copy the date so setHours does not change the caller's object, then pin to next local midnight.
  * @param {Date} now
  * @returns {Date}
  */
-function dateAtNextLocalMidnight(now) {
+function copyDatePinnedToNextLocalMidnight(now) {
   const nextMidnight = new Date(now);
+  // vocab: setHours(24, 0, 0, 0) = jump to midnight of the following local calendar day
   nextMidnight.setHours(
     NEXT_MIDNIGHT_HOUR,
     NEXT_MIDNIGHT_MINUTE,
@@ -30,9 +32,16 @@ function dateAtNextLocalMidnight(now) {
   return nextMidnight;
 }
 
-function millisecondsUntil(targetDate, now) {
-  // Never negative, so a clock shift cannot spin a timer.
-  return Math.max(0, targetDate.getTime() - now.getTime());
+/**
+ * Milliseconds from now until a target Date. Never negative.
+ * @param {Date} targetDate
+ * @param {Date} now
+ * @returns {number}
+ */
+function nonNegativeMillisecondsUntil(targetDate, now) {
+  // Never negative, so a clock shift cannot spin a timer backward.
+  const rawGap = targetDate.getTime() - now.getTime();
+  return Math.max(0, rawGap);
 }
 
 // ===== MAIN FUNCTION =====
@@ -42,6 +51,7 @@ function millisecondsUntil(targetDate, now) {
  * @returns {string} YYYY-MM-DD in the device timezone
  */
 export function getLocalDateKey(date = new Date()) {
+  // 1. Ask the device locale for today's calendar date in YYYY-MM-DD form.
   return date.toLocaleDateString(LOCAL_DATE_LOCALE);
 }
 
@@ -51,8 +61,10 @@ export function getLocalDateKey(date = new Date()) {
  * @returns {number}
  */
 export function msUntilLocalMidnight(now = new Date()) {
-  const nextMidnight = dateAtNextLocalMidnight(now);
-  return millisecondsUntil(nextMidnight, now);
+  // 1. Build the instant of the next local midnight (without mutating `now`).
+  const nextMidnight = copyDatePinnedToNextLocalMidnight(now);
+  // 2. Return nonnegative ms so a clock jump cannot spin a timer backward.
+  return nonNegativeMillisecondsUntil(nextMidnight, now);
 }
 
 /**
@@ -60,5 +72,6 @@ export function msUntilLocalMidnight(now = new Date()) {
  * @returns {Date}
  */
 export function nextLocalMidnight(now = new Date()) {
-  return dateAtNextLocalMidnight(now);
+  // 1. Return a fresh Date object pinned to the next local midnight.
+  return copyDatePinnedToNextLocalMidnight(now);
 }

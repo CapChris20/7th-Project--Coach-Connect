@@ -1,9 +1,10 @@
 // Design Law session detail bottom sheet (scheduling PNG 13/14).
 // Flow: open from agenda card → When/Length/Where + notes → Message / Reschedule / Delete.
-// Used by BookSessionScreen (trainer calendar + list).
+// Used by BookSessionScreen (trainer calendar + list). Do not rewrite BookSessionScreen here.
+// Read order: constants → layout pieces → main → PLUMBING (label helpers).
 //
 // vocab: NbSheet = bottom sheet; status fill chip = Confirmed black pill
-// Manipulate here: row labels, button labels
+// Manipulate here: row labels, button labels, avatar size
 
 import React, { useMemo } from 'react';
 import { Text, View, StyleSheet } from 'react-native';
@@ -21,62 +22,26 @@ import { nb, spacing } from '../../look-and-feel/colorPalette';
 
 const DEFAULT_DURATION = 60;
 const STATUS_ACCEPTED = 'accepted';
+const STATUS_DECLINED = 'declined';
+const STATUS_PENDING = 'pending';
+const CLIENT_NAME_DEFAULT = 'Client';
 const AVATAR_SIZE = 48;
+const FALLBACK_TIME_LABEL = '—';
 
-// ===== HELPERS =====
+// ===== PURE LAYOUT (no hooks) =====
 
-function initialsFromName(name) {
-  const parts = String(name || '')
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-  if (parts.length === 0) return '?';
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return `${parts[0][0] || ''}${parts[1][0] || ''}`.toUpperCase();
-}
-
-function sessionTypeLabel(session) {
-  return (
-    session?.title ||
-    session?.focus ||
-    session?.type ||
-    session?.sessionType ||
-    'Training'
-  );
-}
-
-function whereLabel(session) {
-  if (session?.zoomLink) return 'Video link';
-  return 'In person';
-}
-
-function formatWhen(session) {
-  const dateKey = String(session?.date || '').slice(0, 10);
-  const timeLabel = formatTime12(session?.time) || '—';
-  if (!dateKey) return timeLabel;
-  try {
-    const d = parseISO(dateKey);
-    if (!isValid(d)) return `${dateKey} · ${timeLabel}`;
-    return `${format(d, 'EEE, MMM d')} · ${timeLabel}`;
-  } catch (_e) {
-    return `${dateKey} · ${timeLabel}`;
+function DetailRow({ label, value, colors, isLastRow }) {
+  // Name the border decision before JSX — no nested ternary in the style array.
+  let rowBorderStyle = null;
+  if (!isLastRow) {
+    rowBorderStyle = {
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.nbBorder,
+    };
   }
-}
 
-function statusLabel(status) {
-  if (status === STATUS_ACCEPTED) return 'Confirmed';
-  if (status === 'declined') return 'Declined';
-  return 'Pending';
-}
-
-function DetailRow({ label, value, colors, last }) {
   return (
-    <View
-      style={[
-        styles.detailRow,
-        !last && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.nbBorder },
-      ]}
-    >
+    <View style={[styles.detailRow, rowBorderStyle]}>
       <Text style={[styles.detailLabel, { color: colors.nbInk }]}>{label}</Text>
       <Text style={[styles.detailValue, { color: colors.nbInk }]} numberOfLines={2}>
         {value}
@@ -85,17 +50,131 @@ function DetailRow({ label, value, colors, last }) {
   );
 }
 
+function SessionDetailHeader({
+  name,
+  typeLabel,
+  initials,
+  isConfirmed,
+  statusChipVariant,
+  statusText,
+  colors,
+}) {
+  return (
+    <View style={styles.headerRow}>
+      <NbAvatar initials={initials} size={AVATAR_SIZE} />
+      <View style={styles.headerText}>
+        <Text style={[styles.name, { color: colors.nbInk }]} numberOfLines={1}>
+          {name}
+        </Text>
+        <Text style={[styles.sub, { color: colors.nbMuted }]} numberOfLines={1}>
+          {typeLabel}
+        </Text>
+      </View>
+      <NbChip selected={isConfirmed} variant={statusChipVariant}>
+        {statusText}
+      </NbChip>
+    </View>
+  );
+}
+
+function SessionDetailNotesBox({ notes, colors }) {
+  const notesSurfaceColor = colors.nbSurfaceChip || colors.nbBackground;
+
+  return (
+    <View
+      style={[
+        styles.notesBox,
+        { borderColor: colors.nbBorder, backgroundColor: notesSurfaceColor },
+      ]}
+    >
+      <Text style={[styles.notesLabel, { color: colors.nbMuted }]}>NOTES</Text>
+      <Text style={[styles.notesBody, { color: colors.nbInk }]}>{notes}</Text>
+    </View>
+  );
+}
+
+function SessionDetailActions({ session, onMessage, onReschedule, onDelete }) {
+  const handleMessagePress = () => {
+    onMessage?.(session);
+  };
+  const handleReschedulePress = () => {
+    onReschedule?.(session);
+  };
+  const handleDeletePress = () => {
+    onDelete?.(session);
+  };
+
+  return (
+    <>
+      <View style={styles.actionRow}>
+        <NbButton variant="plain" onPress={handleMessagePress} style={styles.half}>
+          Message
+        </NbButton>
+        <NbButton variant="fill" onPress={handleReschedulePress} style={styles.half}>
+          Reschedule
+        </NbButton>
+      </View>
+      <NbButton variant="ghost" onPress={handleDeletePress}>
+        Delete Session
+      </NbButton>
+    </>
+  );
+}
+
+function SessionDetailSheetLayout({
+  colors,
+  name,
+  typeLabel,
+  isConfirmed,
+  statusChipVariant,
+  statusText,
+  initials,
+  whenLabel,
+  durationLabel,
+  whereText,
+  notes,
+  onMessage,
+  onReschedule,
+  onDelete,
+  session,
+}) {
+  const hasNotes = Boolean(notes);
+
+  return (
+    <View style={styles.body}>
+      <SessionDetailHeader
+        name={name}
+        typeLabel={typeLabel}
+        initials={initials}
+        isConfirmed={isConfirmed}
+        statusChipVariant={statusChipVariant}
+        statusText={statusText}
+        colors={colors}
+      />
+
+      <NbCard style={styles.detailCard}>
+        <DetailRow label="When" value={whenLabel} colors={colors} />
+        <DetailRow label="Length" value={durationLabel} colors={colors} />
+        <DetailRow label="Where" value={whereText} colors={colors} isLastRow />
+      </NbCard>
+
+      {hasNotes ? <SessionDetailNotesBox notes={notes} colors={colors} /> : null}
+
+      <SessionDetailActions
+        session={session}
+        onMessage={onMessage}
+        onReschedule={onReschedule}
+        onDelete={onDelete}
+      />
+    </View>
+  );
+}
+
 // ===== MAIN =====
 
 /**
- * @param {{
- *   visible: boolean,
- *   session: object|null,
- *   onClose: Function,
- *   onMessage?: Function,
- *   onReschedule?: Function,
- *   onDelete?: Function,
- * }} props
+ * Bottom sheet for one session: when/length/where, notes, and action buttons.
+ * @param {object} props
  */
 export default function SessionDetailSheet({
   visible,
@@ -107,67 +186,126 @@ export default function SessionDetailSheet({
 }) {
   const { colors } = useTheme();
 
-  const name = session?.clientName || 'Client';
+  // 1. Client-facing labels from the session doc (Firestore keys unchanged).
+  const name = session?.clientName || CLIENT_NAME_DEFAULT;
   const typeLabel = sessionTypeLabel(session);
-  const status = session?.status || 'pending';
+  const status = session?.status || STATUS_PENDING;
   const isConfirmed = status === STATUS_ACCEPTED;
   const durationMin = Number(session?.durationMin || session?.duration || DEFAULT_DURATION);
-  const notes = session?.notes ? String(session.notes) : '';
+  const notesText = session?.notes ? String(session.notes) : '';
+
+  // 2. Avatar initials memoized so long names do not re-split every render.
+  // vocab: useMemo = cache the string until `name` changes
   const initials = useMemo(() => initialsFromName(name), [name]);
 
+  // 3. Chip / row labels for the layout.
+  const statusChipVariant = pickStatusChipVariant(isConfirmed);
+  const statusText = statusLabel(status);
+  const whenLabel = formatWhen(session);
+  const durationLabel = `${durationMin} min`;
+  const whereText = whereLabel(session);
+  const sheetIsOpen = visible && Boolean(session);
+
   return (
-    <NbSheet visible={visible && !!session} onClose={onClose}>
-      <View style={styles.body}>
-        {/* Header: avatar + name/type + status chip */}
-        <View style={styles.headerRow}>
-          <NbAvatar initials={initials} size={AVATAR_SIZE} />
-          <View style={styles.headerText}>
-            <Text style={[styles.name, { color: colors.nbInk }]} numberOfLines={1}>
-              {name}
-            </Text>
-            <Text style={[styles.sub, { color: colors.nbMuted }]} numberOfLines={1}>
-              {typeLabel}
-            </Text>
-          </View>
-          <NbChip selected={isConfirmed} variant={isConfirmed ? 'default' : 'outline'}>
-            {statusLabel(status)}
-          </NbChip>
-        </View>
-
-        {/* When / Length / Where card */}
-        <NbCard style={styles.detailCard}>
-          <DetailRow label="When" value={formatWhen(session)} colors={colors} />
-          <DetailRow label="Length" value={`${durationMin} min`} colors={colors} />
-          <DetailRow label="Where" value={whereLabel(session)} colors={colors} last />
-        </NbCard>
-
-        {notes ? (
-          <View
-            style={[
-              styles.notesBox,
-              { borderColor: colors.nbBorder, backgroundColor: colors.nbSurfaceChip || colors.nbBackground },
-            ]}
-          >
-            <Text style={[styles.notesLabel, { color: colors.nbMuted }]}>NOTES</Text>
-            <Text style={[styles.notesBody, { color: colors.nbInk }]}>{notes}</Text>
-          </View>
-        ) : null}
-
-        <View style={styles.actionRow}>
-          <NbButton variant="plain" onPress={() => onMessage?.(session)} style={styles.half}>
-            Message
-          </NbButton>
-          <NbButton variant="fill" onPress={() => onReschedule?.(session)} style={styles.half}>
-            Reschedule
-          </NbButton>
-        </View>
-
-        <NbButton variant="ghost" onPress={() => onDelete?.(session)}>
-          Delete Session
-        </NbButton>
-      </View>
+    <NbSheet visible={sheetIsOpen} onClose={onClose}>
+      <SessionDetailSheetLayout
+        colors={colors}
+        name={name}
+        typeLabel={typeLabel}
+        isConfirmed={isConfirmed}
+        statusChipVariant={statusChipVariant}
+        statusText={statusText}
+        initials={initials}
+        whenLabel={whenLabel}
+        durationLabel={durationLabel}
+        whereText={whereText}
+        notes={notesText}
+        onMessage={onMessage}
+        onReschedule={onReschedule}
+        onDelete={onDelete}
+        session={session}
+      />
     </NbSheet>
   );
+}
+
+// ===== PLUMBING — skip unless debugging =====
+
+function initialsFromName(fullName) {
+  const nameParts = String(fullName || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (nameParts.length === 0) {
+    return '?';
+  }
+  if (nameParts.length === 1) {
+    return nameParts[0].slice(0, 2).toUpperCase();
+  }
+
+  const firstInitial = nameParts[0][0] || '';
+  const secondInitial = nameParts[1][0] || '';
+  return `${firstInitial}${secondInitial}`.toUpperCase();
+}
+
+function sessionTypeLabel(session) {
+  if (session?.title) {
+    return session.title;
+  }
+  if (session?.focus) {
+    return session.focus;
+  }
+  if (session?.type) {
+    return session.type;
+  }
+  if (session?.sessionType) {
+    return session.sessionType;
+  }
+  return 'Training';
+}
+
+function whereLabel(session) {
+  if (session?.zoomLink) {
+    return 'Video link';
+  }
+  return 'In person';
+}
+
+function formatWhen(session) {
+  const dateKey = String(session?.date || '').slice(0, 10);
+  const timeLabel = formatTime12(session?.time) || FALLBACK_TIME_LABEL;
+  if (!dateKey) {
+    return timeLabel;
+  }
+
+  try {
+    // vocab: parseISO = turn "2026-11-13" into a Date; isValid = date-fns guard
+    const parsedDay = parseISO(dateKey);
+    if (!isValid(parsedDay)) {
+      return `${dateKey} · ${timeLabel}`;
+    }
+    return `${format(parsedDay, 'EEE, MMM d')} · ${timeLabel}`;
+  } catch {
+    return `${dateKey} · ${timeLabel}`;
+  }
+}
+
+function statusLabel(status) {
+  if (status === STATUS_ACCEPTED) {
+    return 'Confirmed';
+  }
+  if (status === STATUS_DECLINED) {
+    return 'Declined';
+  }
+  return 'Pending';
+}
+
+function pickStatusChipVariant(isConfirmed) {
+  if (isConfirmed) {
+    return 'default';
+  }
+  return 'outline';
 }
 
 const styles = StyleSheet.create({

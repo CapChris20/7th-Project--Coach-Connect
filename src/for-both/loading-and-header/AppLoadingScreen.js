@@ -1,6 +1,6 @@
 // Full-screen loading state shared by the client and trainer apps.
-// Flow: pick the dark or light shell → set the status-bar text so it stays readable → show the loading bar.
-// Used wherever the app is waiting on startup before a real screen can render.
+// Flow: theme → status bar readable on that shell → centered prism loading bar.
+// Used wherever startup waits before a real screen can render.
 
 import React from 'react';
 import { StyleSheet, View, StatusBar } from 'react-native';
@@ -17,38 +17,46 @@ const LOADING_BAR_WIDTH = 300;
 
 // ===== HELPER FUNCTIONS =====
 
-/**
- * Light status-bar text sits on the dark shell. Dark text sits on the white shell.
- * @param {boolean} isDark
- * @returns {string}
- */
-function statusBarStyleForTheme(isDark) {
-  if (isDark) return STATUS_BAR_LIGHT_CONTENT;
+// Light status-bar glyphs on a dark shell; dark glyphs on a white shell.
+function statusBarStyleForDarkShell(isDarkShell) {
+  if (isDarkShell) {
+    return STATUS_BAR_LIGHT_CONTENT;
+  }
   return STATUS_BAR_DARK_CONTENT;
 }
 
-function shellStyleForTheme(isDark) {
-  if (isDark) return styles.dark;
+function shellBackgroundStyleForDarkShell(isDarkShell) {
+  if (isDarkShell) {
+    return styles.dark;
+  }
   return styles.light;
+}
+
+function themePresentationForShell(isDarkShell) {
+  return {
+    statusBarStyle: statusBarStyleForDarkShell(isDarkShell),
+    shellBackgroundStyle: shellBackgroundStyleForDarkShell(isDarkShell),
+  };
 }
 
 // ===== MAIN FUNCTION =====
 
 /**
- * Full-screen loading shell with the shared loading-bar animation.
- * @param {object} [props]
- * @param {boolean} [props.isDark]
- * @returns {JSX.Element}
+ * Full-screen loading shell with the shared prism loading-bar animation.
+ * @param {{ isDark?: boolean }} props
+ * @returns {import('react').ReactElement}
  */
 export default function AppLoadingScreen({ isDark = true }) {
-  const statusBarStyle = statusBarStyleForTheme(isDark);
-  const shellStyle = shellStyleForTheme(isDark);
+  // 1. Pick status-bar text color + shell fill so the bar stays readable.
+  const themePresentation = themePresentationForShell(isDark);
+  const statusBarStyle = themePresentation.statusBarStyle;
+  const shellBackgroundStyle = themePresentation.shellBackgroundStyle;
 
-  // 1. Dark or light shell, and a status-bar color that stays readable on it.
-  // 2. Center the shared loading bar.
+  // 2. Safe-area shell, then center the shared loading bar at LOADING_BAR_WIDTH.
+  // vocab: SafeAreaView = inset padding for notch and home indicator.
+  // vocab: StatusBar barStyle = iOS glyph color ("light-content" = white icons).
   return (
-    // vocab: SafeAreaView = pads inside the notch and home indicator so the spinner is not clipped.
-    <SafeAreaView style={[styles.container, shellStyle]}>
+    <SafeAreaView style={[styles.container, shellBackgroundStyle]}>
       <StatusBar barStyle={statusBarStyle} />
       <View style={styles.content}>
         <LoadingBarAnimation isDark={isDark} width={LOADING_BAR_WIDTH} />
@@ -57,12 +65,15 @@ export default function AppLoadingScreen({ isDark = true }) {
   );
 }
 
+// ===== PLUMBING — skip unless debugging =====
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
+  // Manipulate here: dark shell fill (near-black, not a theme token — matches Design Law boot).
   dark: {
     backgroundColor: '#0A0A0A',
   },

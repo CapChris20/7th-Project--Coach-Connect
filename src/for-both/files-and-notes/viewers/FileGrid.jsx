@@ -16,6 +16,7 @@ import { getFriendlyFileTitle } from '../../../helpers/fileSizeAndDateText';
 
 // ===== NAMED CONSTANTS =====
 
+// Manipulate here: hold-to-delete timing (ms)
 const HOLD_DURATION_MS = 850;
 const HOLD_MIN_DURATION_MS = 250;
 const HOLD_RESET_DELAY_MS = 250;
@@ -25,7 +26,7 @@ const ICON_WEEK = require('../../../assets/icons/handoff/week.png');
 const ICON_MUSCLE = require('../../../assets/icons/handoff/muscle.png');
 const ICON_CHECKIN = require('../../../assets/icons/handoff/checkin.png');
 
-const TYPE_PILL = {
+const TYPE_PILL_BY_DISPLAY = {
   PDF: { label: 'PDF', chip: 3 },
   Document: { label: 'DOC', chip: 6 },
   Spreadsheet: { label: 'SHEET', chip: 4 },
@@ -35,40 +36,66 @@ const TYPE_PILL = {
   Other: { label: 'FILE', chip: 2 },
 };
 
+const SKELETON_LINE_WIDTH_FRACTIONS = [0.92, 0.85, 0.72, 0.88];
+const HOLD_OVERLAY_MAX_OPACITY = 0.22;
+const HOLD_BAR_FILL_COLOR = '#000';
+const LEGACY_PALETTE_FALLBACK = ['#000', '#000'];
+const WHO_BADGE_FROM_COACH = 'From your coach';
+const WHO_BADGE_FROM_YOU = 'From you';
+const FALLBACK_FILE_TITLE = 'File';
+const SHORT_DATE_OPTIONS = { month: 'short', day: 'numeric' };
+
 // ===== HELPER FUNCTIONS =====
 
-function thumbHeight(dense) {
+function pickFilesForGrid(files, maxItems) {
+  if (typeof maxItems === 'number') {
+    return files.slice(0, maxItems);
+  }
+  return files.slice();
+}
+
+function thumbnailHeightForDensity(dense) {
   // Manipulate here: dense = modal / compact tiles
-  return dense ? 72 : 96;
+  if (dense) return 72;
+  return 96;
 }
 
-function googleEmbedUrl(url) {
-  if (!url || typeof url !== 'string') return '';
-  return `https://docs.google.com/gview?embedded=true&url=${encodeURIComponent(url)}`;
+function cardKeyForFile(file, fileIndex) {
+  if (file.id) return file.id;
+  const namePart = file.name || file.title || 'file';
+  return `${namePart}_${fileIndex}`;
 }
 
-function officeEmbedUrl(url) {
-  if (!url || typeof url !== 'string') return '';
-  return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(url)}`;
+function googleEmbedUrl(fileUrl) {
+  if (!fileUrl || typeof fileUrl !== 'string') return '';
+  return `https://docs.google.com/gview?embedded=true&url=${encodeURIComponent(fileUrl)}`;
+}
+
+function officeEmbedUrl(fileUrl) {
+  if (!fileUrl || typeof fileUrl !== 'string') return '';
+  return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(fileUrl)}`;
 }
 
 /** Decode storage-safe titles like Quiz-2%28CIS%29.docx */
 function decodeFileTitle(file) {
-  const raw = getFriendlyFileTitle(file) || file?.name || file?.title || 'File';
+  const rawTitle = getFriendlyFileTitle(file) || file.name || file.title || FALLBACK_FILE_TITLE;
   try {
-    return decodeURIComponent(String(raw));
-  } catch {
-    return String(raw);
+    return decodeURIComponent(String(rawTitle));
+  } catch (_decodeError) {
+    return String(rawTitle);
   }
 }
 
-function normalizePreviewText(rawText) {
-  if (!rawText || typeof rawText !== 'string') return '';
-  return rawText.replace(/[#*_`[\]]/g, '').replace(/\s+/g, ' ').trim();
+function normalizePreviewText(excerptText) {
+  if (!excerptText || typeof excerptText !== 'string') return '';
+  return excerptText.replace(/[#*_`[\]]/g, '').replace(/\s+/g, ' ').trim();
 }
 
 function isPdfFile(file, fileName, mimeType) {
-  return file.type === 'pdf' || fileName.endsWith('.pdf') || mimeType.includes('pdf');
+  if (file.type === 'pdf') return true;
+  if (fileName.endsWith('.pdf')) return true;
+  if (mimeType.includes('pdf')) return true;
+  return false;
 }
 
 function isOfficeFile(file, fileName, mimeType) {
@@ -82,90 +109,34 @@ function isOfficeFile(file, fileName, mimeType) {
 }
 
 function uniqueStrategies(strategies) {
-  const seen = new Set();
-  return strategies.filter((strategy) => {
-    if (!strategy.uri || seen.has(strategy.uri)) return false;
-    seen.add(strategy.uri);
-    return true;
-  });
+  const seenUris = new Set();
+  const uniqueList = [];
+  for (let strategyIndex = 0; strategyIndex < strategies.length; strategyIndex += 1) {
+    const strategy = strategies[strategyIndex];
+    if (!strategy.uri) continue;
+    if (seenUris.has(strategy.uri)) continue;
+    seenUris.add(strategy.uri);
+    uniqueList.push(strategy);
+  }
+  return uniqueList;
 }
 
-function buildEmbedStrategies(file, url) {
-  if (!url) return [];
+function buildEmbedStrategies(file, fileUrl) {
+  if (!fileUrl) return [];
+
   const fileName = (file.name || file.title || '').toLowerCase();
   const mimeType = (file.mimeType && String(file.mimeType).toLowerCase()) || '';
   const strategies = [];
 
   if (isPdfFile(file, fileName, mimeType)) {
-    strategies.push({ uri: url, key: 'pdf-direct' });
+    strategies.push({ uri: fileUrl, key: 'pdf-direct' });
   }
   if (isOfficeFile(file, fileName, mimeType)) {
-    strategies.push({ uri: officeEmbedUrl(url), key: 'office' });
+    strategies.push({ uri: officeEmbedUrl(fileUrl), key: 'office' });
   }
-  strategies.push({ uri: googleEmbedUrl(url), key: 'google' });
+  strategies.push({ uri: googleEmbedUrl(fileUrl), key: 'google' });
+
   return uniqueStrategies(strategies);
-}
-
-/** Try PDF → Office → Google until one loads (snapshots for uploaded files with url). */
-function MultiStrategyDocPreview({ file, url, height, previewBackground, fallback }) {
-  const strategies = React.useMemo(() => buildEmbedStrategies(file, url), [file, url]);
-  const [strategyIndex, setStrategyIndex] = React.useState(0);
-
-  React.useEffect(() => {
-    setStrategyIndex(0);
-  }, [url, strategies.length]);
-
-  if (strategies.length === 0 || strategyIndex >= strategies.length) {
-    return fallback;
-  }
-
-  const strategy = strategies[strategyIndex];
-  return (
-    <View style={[styles.previewSlot, { height, backgroundColor: previewBackground, overflow: 'hidden' }]}>
-      <WebView
-        key={strategy.key}
-        source={{ uri: strategy.uri }}
-        style={styles.webInner}
-        scrollEnabled={false}
-        pointerEvents="none"
-        originWhitelist={['*']}
-        androidLayerType="hardware"
-        mixedContentMode="always"
-        allowsInlineMediaPlayback
-        onError={() => setStrategyIndex((index) => index + 1)}
-        onHttpError={() => setStrategyIndex((index) => index + 1)}
-      />
-    </View>
-  );
-}
-
-/** Trainer-shared doc stubs have no Storage URL — show body text like a document snapshot. */
-function PaperDocPreview({ title, excerpt, height, colors, showSkeleton }) {
-  const mono = Platform.OS === 'ios' ? 'Menlo' : 'monospace';
-  const bodyText = normalizePreviewText(excerpt);
-
-  return (
-    <View style={[styles.paperPreview, { height, backgroundColor: colors.nbSoft }]}>
-      <View style={[styles.paperAccent, { backgroundColor: colors.nbInk }]} />
-      <Text style={[styles.paperTitle, { color: colors.nbInk }]} numberOfLines={2}>
-        {title}
-      </Text>
-      {bodyText.length > 0 ? (
-        <Text style={[styles.paperBody, { color: colors.nbMuted, fontFamily: mono }]} numberOfLines={7}>
-          {bodyText}
-        </Text>
-      ) : showSkeleton ? (
-        <View style={styles.fakeLines}>
-          {[0.92, 0.85, 0.72, 0.88].map((widthFraction, index) => (
-            <View
-              key={index}
-              style={[styles.fakeLine, { width: `${widthFraction * 100}%`, backgroundColor: colors.nbBorder }]}
-            />
-          ))}
-        </View>
-      ) : null}
-    </View>
-  );
 }
 
 function displayTypeForFile(file) {
@@ -175,33 +146,30 @@ function displayTypeForFile(file) {
   if (file.type === 'pdf') return 'PDF';
   if (file.type === 'photo') return 'Image';
   if (file.type === 'video') return 'Video';
+
   const fileName = (file.name || file.title || '').toLowerCase();
   if (fileName.endsWith('.pdf')) return 'PDF';
-  if (fileName.endsWith('.csv') || fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) return 'Spreadsheet';
+  if (fileName.endsWith('.csv') || fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
+    return 'Spreadsheet';
+  }
   if (fileName.endsWith('.doc') || fileName.endsWith('.docx')) return 'Document';
   return 'File';
 }
 
-function shortDate(dateValue) {
+function shortDateLabel(dateValue) {
   if (!dateValue) return '';
   try {
     const parsedDate = dateValue instanceof Date ? dateValue : new Date(dateValue);
     if (Number.isNaN(parsedDate.getTime())) return '';
-    return parsedDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-  } catch {
+    return parsedDate.toLocaleDateString(undefined, SHORT_DATE_OPTIONS);
+  } catch (_dateError) {
     return '';
   }
 }
 
 function storedThumbnailUri(file) {
-  return file?.thumbnailUrl || file?.thumbUrl || file?.previewUrl || file?.thumb || null;
-}
-
-function isImageFile(file) {
-  if (!file) return false;
-  if (file.type === 'photo') return true;
-  if (file.mimeType && String(file.mimeType).startsWith('image/')) return true;
-  return false;
+  if (!file) return null;
+  return file.thumbnailUrl || file.thumbUrl || file.previewUrl || file.thumb || null;
 }
 
 function isVideoFile(file) {
@@ -212,7 +180,8 @@ function isVideoFile(file) {
 }
 
 function mimeLooksLikeImage(file) {
-  return file.mimeType && String(file.mimeType).startsWith('image/');
+  if (!file || !file.mimeType) return false;
+  return String(file.mimeType).startsWith('image/');
 }
 
 function nameLooksLikeDocument(fileName) {
@@ -221,19 +190,28 @@ function nameLooksLikeDocument(fileName) {
 
 function mimeLooksLikeDocument(mimeType) {
   if (mimeType.includes('pdf')) return true;
-  if (mimeType.includes('word') || mimeType.includes('officedocument') || mimeType.includes('msword')) return true;
-  if (mimeType.includes('sheet') || mimeType.includes('excel') || mimeType.includes('csv')) return true;
+  if (mimeType.includes('word') || mimeType.includes('officedocument') || mimeType.includes('msword')) {
+    return true;
+  }
+  if (mimeType.includes('sheet') || mimeType.includes('excel') || mimeType.includes('csv')) {
+    return true;
+  }
   return false;
 }
 
 /** PDF, Word, spreadsheet, etc. — embed snapshot via Google viewer (public HTTPS URLs). */
 function shouldEmbedDocumentPreview(file) {
-  if (!file?.url) return false;
+  if (!file || !file.url) return false;
+
   const mimeType = (file.mimeType && String(file.mimeType).toLowerCase()) || '';
   if (mimeType.startsWith('image/') || mimeType.startsWith('video/')) return false;
+
   const fileType = file.type;
   if (fileType === 'photo' || fileType === 'video') return false;
-  if (fileType === 'pdf' || fileType === 'spreadsheet' || fileType === 'document' || fileType === 'doc') return true;
+  if (fileType === 'pdf' || fileType === 'spreadsheet' || fileType === 'document' || fileType === 'doc') {
+    return true;
+  }
+
   const fileName = (file.name || file.title || '').toLowerCase();
   if (nameLooksLikeDocument(fileName)) return true;
   return mimeLooksLikeDocument(mimeType);
@@ -247,10 +225,373 @@ function thumbIconForDisplayType(displayType) {
 }
 
 function whoBadgeForFile(file) {
-  if (file?.addedBy === 'trainer' || (file?.type === 'document' && file?.trainerId)) {
-    return 'From your coach';
+  const addedByTrainer = file && file.addedBy === 'trainer';
+  const trainerOwnedDocument = file && file.type === 'document' && file.trainerId;
+  if (addedByTrainer || trainerOwnedDocument) {
+    return WHO_BADGE_FROM_COACH;
   }
-  return 'From you';
+  return WHO_BADGE_FROM_YOU;
+}
+
+function isTrainerDocumentStub(file, fileUrl) {
+  return file.type === 'document' && file.documentId && file.trainerId && !fileUrl;
+}
+
+function shouldShowPaperPreview(isTrainerDocStub, fileUrl, snippet) {
+  const hasStubOrSnippetWithoutUrl = isTrainerDocStub || (!fileUrl && snippet);
+  if (!hasStubOrSnippetWithoutUrl) return false;
+  return Boolean(snippet || isTrainerDocStub);
+}
+
+function holdActionForFile(holdToDelete, onLongPressItem, holdDurationMs) {
+  if (!holdToDelete || !onLongPressItem) return null;
+  return {
+    durationMs: holdDurationMs,
+    onComplete: (file) => {
+      onLongPressItem(file);
+    },
+  };
+}
+
+function fileShowsRealPreview({
+  file,
+  storedThumbUri,
+  fileUrl,
+  previewSnippet,
+  isTrainerDocStub,
+  displayLabel,
+}) {
+  if (storedThumbUri) return true;
+  if (isVideoFile(file) && fileUrl) return true;
+  if (shouldShowPaperPreview(isTrainerDocStub, fileUrl, previewSnippet)) return true;
+  if (fileUrl && shouldEmbedDocumentPreview(file)) return true;
+  if (fileUrl && (displayLabel === 'Image' || mimeLooksLikeImage(file))) return true;
+  return false;
+}
+
+/**
+ * Pick the richest thumb we can: stored thumb → video → paper stub → embed → image → hatch.
+ */
+function previewForGalleryFile({
+  file,
+  title,
+  snippet,
+  isTrainerDocStub,
+  storedThumbUri,
+  fileUrl,
+  thumbnailHeight,
+  tintBase,
+  displayLabel,
+  colors,
+  iconFallback,
+}) {
+  if (storedThumbUri) {
+    return (
+      <Image
+        source={{ uri: storedThumbUri }}
+        style={[styles.previewImg, { height: thumbnailHeight }]}
+      />
+    );
+  }
+
+  if (isVideoFile(file) && fileUrl) {
+    return <VideoThumb url={fileUrl} posterUri={null} height={thumbnailHeight} />;
+  }
+
+  if (shouldShowPaperPreview(isTrainerDocStub, fileUrl, snippet)) {
+    return (
+      <PaperDocPreview
+        title={title}
+        excerpt={snippet}
+        height={thumbnailHeight}
+        colors={colors}
+        showSkeleton={isTrainerDocStub && !snippet}
+      />
+    );
+  }
+
+  if (fileUrl && shouldEmbedDocumentPreview(file)) {
+    return (
+      <MultiStrategyDocPreview
+        file={file}
+        url={fileUrl}
+        height={thumbnailHeight}
+        previewBackground={tintBase}
+        fallback={iconFallback}
+      />
+    );
+  }
+
+  const looksLikeImage = displayLabel === 'Image' || mimeLooksLikeImage(file);
+  if (fileUrl && looksLikeImage) {
+    return (
+      <Image source={{ uri: fileUrl }} style={[styles.previewImg, { height: thumbnailHeight }]} />
+    );
+  }
+
+  return iconFallback;
+}
+
+// ===== CARD SHELL =====
+
+/**
+ * One grid cell: resolve display type + hold-to-delete, then hand off to GalleryCard.
+ */
+function FileGridCard({
+  file,
+  colors,
+  thumbnailHeight,
+  onPressItem,
+  onLongPressItem,
+  holdToDelete,
+  holdDurationMs,
+}) {
+  const handleCardPress = () => {
+    if (onPressItem) onPressItem(file);
+  };
+  const holdToAction = holdActionForFile(holdToDelete, onLongPressItem, holdDurationMs);
+  const displayType = displayTypeForFile(file);
+
+  return (
+    <GalleryCard
+      file={file}
+      colors={colors}
+      onPress={handleCardPress}
+      displayType={displayType}
+      thumbnailHeight={thumbnailHeight}
+      holdToAction={holdToAction}
+    />
+  );
+}
+
+/**
+ * HardShadow card: thumb, title, type pill, date, who-badge.
+ */
+function GalleryCard({
+  file,
+  colors,
+  onPress,
+  displayType,
+  thumbnailHeight,
+  holdToAction,
+}) {
+  const displayLabel = displayType || displayTypeForFile(file);
+  const typePillInfo = TYPE_PILL_BY_DISPLAY[displayLabel] || TYPE_PILL_BY_DISPLAY.Other;
+  const metaDateLabel = shortDateLabel(file.createdAt || file.updatedAt);
+  const cardTitle = decodeFileTitle(file);
+  const storedThumbUri = storedThumbnailUri(file);
+  const fileUrl = file.url;
+  const previewSnippet = String(file.previewSnippet || file.previewText || '').trim();
+  const isTrainerDocStub = isTrainerDocumentStub(file, fileUrl);
+
+  const iconFallback = (
+    <IconPlaceholderThumb
+      thumbnailHeight={thumbnailHeight}
+      displayLabel={displayLabel}
+      chipIndex={typePillInfo.chip}
+    />
+  );
+
+  const shouldShowRealPreview = fileShowsRealPreview({
+    file,
+    storedThumbUri,
+    fileUrl,
+    previewSnippet,
+    isTrainerDocStub,
+    displayLabel,
+  });
+
+  let previewInner = iconFallback;
+  if (shouldShowRealPreview) {
+    previewInner = previewForGalleryFile({
+      file,
+      title: cardTitle,
+      snippet: previewSnippet,
+      isTrainerDocStub,
+      storedThumbUri,
+      fileUrl,
+      thumbnailHeight,
+      tintBase: colors.nbSoft,
+      displayLabel,
+      colors,
+      iconFallback,
+    });
+  }
+
+  const cardInnerStyle = [
+    styles.cardInner,
+    { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder },
+  ];
+  const thumbBoxStyle = [
+    styles.thumbBox,
+    {
+      height: thumbnailHeight,
+      borderColor: colors.nbBorder,
+      backgroundColor: colors.nbSoft,
+    },
+  ];
+  const whoBadgeLabel = whoBadgeForFile(file);
+  const holdIsEnabled = Boolean(holdToAction);
+  let holdDuration = HOLD_DURATION_MS;
+  if (holdToAction && holdToAction.durationMs) {
+    holdDuration = holdToAction.durationMs;
+  }
+  let handleHoldComplete;
+  if (holdToAction) {
+    handleHoldComplete = () => {
+      if (holdToAction.onComplete) holdToAction.onComplete(file);
+    };
+  }
+
+  return (
+    <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard} style={styles.cardWrap}>
+      <HoldPressable
+        style={styles.cardPress}
+        enabled={holdIsEnabled}
+        durationMs={holdDuration}
+        onPress={onPress}
+        onHoldComplete={handleHoldComplete}
+      >
+        <View style={cardInnerStyle}>
+          <View style={thumbBoxStyle}>{previewInner}</View>
+          <Text style={[styles.cardName, { color: colors.nbInk }]} numberOfLines={2}>
+            {cardTitle}
+          </Text>
+          <View style={styles.metaRow}>
+            <View style={[styles.typePill, { backgroundColor: colors.nbFill }]}>
+              <Text style={[styles.typePillText, { color: colors.nbOnFill }]}>
+                {typePillInfo.label}
+              </Text>
+            </View>
+            {metaDateLabel ? (
+              <Text style={[styles.cardMeta, { color: colors.nbMuted }]} numberOfLines={1}>
+                {metaDateLabel}
+              </Text>
+            ) : null}
+          </View>
+          <View
+            style={[
+              styles.whoPill,
+              { backgroundColor: colors.nbSoft, borderColor: colors.nbBorder },
+            ]}
+          >
+            <Text style={[styles.whoPillText, { color: colors.nbInk }]} numberOfLines={1}>
+              {whoBadgeLabel}
+            </Text>
+          </View>
+        </View>
+      </HoldPressable>
+    </HardShadow>
+  );
+}
+
+function IconPlaceholderThumb({ thumbnailHeight, displayLabel, chipIndex }) {
+  const slotStyle = [styles.previewSlot, styles.iconPlaceholder, { height: thumbnailHeight }];
+  const chipSource = thumbIconForDisplayType(displayLabel);
+
+  return (
+    <View style={slotStyle}>
+      <HatchedThumbFill />
+      <View style={styles.thumbChipCenter}>
+        <NbIconChip source={chipSource} size={40} index={chipIndex} />
+      </View>
+    </View>
+  );
+}
+
+// ===== PREVIEW COMPONENTS =====
+
+/**
+ * Try PDF → Office → Google until one loads (snapshots for uploaded files with url).
+ */
+function MultiStrategyDocPreview({ file, url, height, previewBackground, fallback }) {
+  // vocab: useMemo = rebuild embed strategy list only when file/url change
+  const strategies = React.useMemo(() => buildEmbedStrategies(file, url), [file, url]);
+  const [strategyIndex, setStrategyIndex] = React.useState(0);
+
+  React.useEffect(() => {
+    setStrategyIndex(0);
+  }, [url, strategies.length]);
+
+  const strategiesAreExhausted =
+    strategies.length === 0 || strategyIndex >= strategies.length;
+  if (strategiesAreExhausted) {
+    return fallback;
+  }
+
+  const activeStrategy = strategies[strategyIndex];
+  const slotStyle = [
+    styles.previewSlot,
+    { height, backgroundColor: previewBackground, overflow: 'hidden' },
+  ];
+
+  const advanceToNextStrategy = () => {
+    setStrategyIndex((currentIndex) => currentIndex + 1);
+  };
+
+  return (
+    <View style={slotStyle}>
+      <WebView
+        key={activeStrategy.key}
+        source={{ uri: activeStrategy.uri }}
+        style={styles.webInner}
+        scrollEnabled={false}
+        pointerEvents="none"
+        originWhitelist={['*']}
+        androidLayerType="hardware"
+        mixedContentMode="always"
+        allowsInlineMediaPlayback
+        onError={advanceToNextStrategy}
+        onHttpError={advanceToNextStrategy}
+      />
+    </View>
+  );
+}
+
+/**
+ * Trainer-shared doc stubs have no Storage URL — show body text like a document snapshot.
+ */
+function PaperDocPreview({ title, excerpt, height, colors, showSkeleton }) {
+  const monoFontFamily = Platform.OS === 'ios' ? 'Menlo' : 'monospace';
+  const bodyText = normalizePreviewText(excerpt);
+  const hasBodyText = bodyText.length > 0;
+  const shouldShowSkeletonLines = !hasBodyText && showSkeleton;
+
+  return (
+    <View style={[styles.paperPreview, { height, backgroundColor: colors.nbSoft }]}>
+      <View style={[styles.paperAccent, { backgroundColor: colors.nbInk }]} />
+      <Text style={[styles.paperTitle, { color: colors.nbInk }]} numberOfLines={2}>
+        {title}
+      </Text>
+      {hasBodyText ? (
+        <Text
+          style={[styles.paperBody, { color: colors.nbMuted, fontFamily: monoFontFamily }]}
+          numberOfLines={7}
+        >
+          {bodyText}
+        </Text>
+      ) : null}
+      {shouldShowSkeletonLines ? (
+        <SkeletonPreviewLines borderColor={colors.nbBorder} />
+      ) : null}
+    </View>
+  );
+}
+
+function SkeletonPreviewLines({ borderColor }) {
+  return (
+    <View style={styles.fakeLines}>
+      {SKELETON_LINE_WIDTH_FRACTIONS.map((widthFraction, lineIndex) => (
+        <View
+          key={lineIndex}
+          style={[
+            styles.fakeLine,
+            { width: `${widthFraction * 100}%`, backgroundColor: borderColor },
+          ]}
+        />
+      ))}
+    </View>
+  );
 }
 
 function VideoThumb({ url, posterUri, height }) {
@@ -273,6 +614,10 @@ function VideoThumb({ url, posterUri, height }) {
   );
 }
 
+/**
+ * Pressable that optionally fills a delete bar while the finger is held down.
+ * When hold is off, a normal tap still calls onPress.
+ */
 function HoldPressable({
   enabled,
   durationMs = HOLD_DURATION_MS,
@@ -281,223 +626,90 @@ function HoldPressable({
   children,
   style,
 }) {
-  const progress = React.useRef(new Animated.Value(0)).current;
-  const didCompleteRef = React.useRef(false);
+  // vocab: Animated.Value = RN (non-Reanimated) progress 0→1 for the hold fill
+  const holdProgress = React.useRef(new Animated.Value(0)).current;
+  const holdAlreadyFiredRef = React.useRef(false);
 
-  const reset = React.useCallback(() => {
-    didCompleteRef.current = false;
-    progress.stopAnimation();
-    progress.setValue(0);
-  }, [progress]);
+  const resetHoldProgress = React.useCallback(() => {
+    holdAlreadyFiredRef.current = false;
+    holdProgress.stopAnimation();
+    holdProgress.setValue(0);
+  }, [holdProgress]);
 
-  const start = React.useCallback(() => {
+  const startHoldProgress = React.useCallback(() => {
     if (!enabled) return;
-    didCompleteRef.current = false;
-    progress.setValue(0);
-    Animated.timing(progress, {
+
+    holdAlreadyFiredRef.current = false;
+    holdProgress.setValue(0);
+
+    const holdMs = Math.max(HOLD_MIN_DURATION_MS, Number(durationMs) || HOLD_DURATION_MS);
+    Animated.timing(holdProgress, {
       toValue: 1,
-      duration: Math.max(HOLD_MIN_DURATION_MS, Number(durationMs) || HOLD_DURATION_MS),
+      duration: holdMs,
       useNativeDriver: false,
     }).start(({ finished }) => {
+      // 1. Finger lifted early → animation cancelled; do nothing.
       if (!finished) return;
-      if (didCompleteRef.current) return;
-      didCompleteRef.current = true;
-      onHoldComplete?.();
-      setTimeout(() => reset(), HOLD_RESET_DELAY_MS);
+      // 2. Already fired for this press → ignore duplicate completion.
+      if (holdAlreadyFiredRef.current) return;
+      // 3. Hold completed → tell the parent, then clear the bar.
+      holdAlreadyFiredRef.current = true;
+      if (onHoldComplete) onHoldComplete();
+      setTimeout(() => resetHoldProgress(), HOLD_RESET_DELAY_MS);
     });
-  }, [enabled, durationMs, onHoldComplete, progress, reset]);
+  }, [enabled, durationMs, onHoldComplete, holdProgress, resetHoldProgress]);
+
+  let tapHandlerWhenHoldOff;
+  if (!enabled) {
+    tapHandlerWhenHoldOff = onPress;
+  }
+
+  const overlayFillOpacity = holdProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, HOLD_OVERLAY_MAX_OPACITY],
+  });
+  const overlayFillScaleX = holdProgress;
+  const holdBarWidth = holdProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0%', '100%'],
+  });
+
+  let holdOverlay = null;
+  if (enabled) {
+    holdOverlay = (
+      <View pointerEvents="none" style={styles.holdOverlayWrap}>
+        <Animated.View
+          style={[
+            styles.holdOverlayFill,
+            {
+              opacity: overlayFillOpacity,
+              transform: [{ scaleX: overlayFillScaleX }],
+            },
+          ]}
+        />
+        <Animated.View
+          style={[
+            styles.holdBar,
+            {
+              width: holdBarWidth,
+              backgroundColor: HOLD_BAR_FILL_COLOR,
+            },
+          ]}
+        />
+      </View>
+    );
+  }
 
   return (
     <Pressable
-      onPress={enabled ? undefined : onPress}
-      onPressIn={start}
-      onPressOut={reset}
+      onPress={tapHandlerWhenHoldOff}
+      onPressIn={startHoldProgress}
+      onPressOut={resetHoldProgress}
       style={style}
     >
       {children}
-      {enabled ? (
-        <View pointerEvents="none" style={styles.holdOverlayWrap}>
-          <Animated.View
-            style={[
-              styles.holdOverlayFill,
-              {
-                opacity: progress.interpolate({ inputRange: [0, 1], outputRange: [0, 0.22] }),
-                transform: [{ scaleX: progress }],
-              },
-            ]}
-          />
-          <Animated.View
-            style={[
-              styles.holdBar,
-              {
-                width: progress.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }),
-                backgroundColor: '#000',
-              },
-            ]}
-          />
-        </View>
-      ) : null}
+      {holdOverlay}
     </Pressable>
-  );
-}
-
-function shouldShowPaperPreview(isTrainerDocStub, url, snippet) {
-  if (!(isTrainerDocStub || (!url && snippet))) return false;
-  return !!(snippet || isTrainerDocStub);
-}
-
-function previewForGalleryFile({
-  file,
-  title,
-  snippet,
-  isTrainerDocStub,
-  stored,
-  url,
-  thumbH,
-  tintBase,
-  label,
-  colors,
-  iconFallback,
-}) {
-  if (stored) {
-    return <Image source={{ uri: stored }} style={[styles.previewImg, { height: thumbH }]} />;
-  }
-  if (isVideoFile(file) && url) {
-    return <VideoThumb url={url} posterUri={null} height={thumbH} />;
-  }
-  if (shouldShowPaperPreview(isTrainerDocStub, url, snippet)) {
-    return (
-      <PaperDocPreview
-        title={title}
-        excerpt={snippet}
-        height={thumbH}
-        colors={colors}
-        showSkeleton={isTrainerDocStub && !snippet}
-      />
-    );
-  }
-  if (url && shouldEmbedDocumentPreview(file)) {
-    return (
-      <MultiStrategyDocPreview
-        file={file}
-        url={url}
-        height={thumbH}
-        previewBackground={tintBase}
-        fallback={iconFallback}
-      />
-    );
-  }
-  if (url && (label === 'Image' || mimeLooksLikeImage(file))) {
-    return <Image source={{ uri: url }} style={[styles.previewImg, { height: thumbH }]} />;
-  }
-  return iconFallback;
-}
-
-function GalleryCard({
-  file,
-  colors,
-  onPress,
-  displayType,
-  thumbH,
-  holdToAction,
-}) {
-  const label = displayType || displayTypeForFile(file);
-  const pill = TYPE_PILL[label] || TYPE_PILL.Other;
-  const metaDate = shortDate(file.createdAt || file.updatedAt);
-  const title = decodeFileTitle(file);
-  const stored = storedThumbnailUri(file);
-  const url = file.url;
-  const snippet = String(file.previewSnippet || file.previewText || '').trim();
-  const isTrainerDocStub =
-    file.type === 'document' && file.documentId && file.trainerId && !url;
-
-  const iconFallback = (
-    <View style={[styles.previewSlot, styles.iconPlaceholder, { height: thumbH }]}>
-      <HatchedThumbFill />
-      <View style={styles.thumbChipCenter}>
-        <NbIconChip source={thumbIconForDisplayType(label)} size={40} index={pill.chip} />
-      </View>
-    </View>
-  );
-
-  const showRealPreview =
-    stored ||
-    (isVideoFile(file) && url) ||
-    shouldShowPaperPreview(isTrainerDocStub, url, snippet) ||
-    (url && shouldEmbedDocumentPreview(file)) ||
-    (url && (label === 'Image' || mimeLooksLikeImage(file)));
-
-  const inner = showRealPreview
-    ? previewForGalleryFile({
-        file,
-        title,
-        snippet,
-        isTrainerDocStub,
-        stored,
-        url,
-        thumbH,
-        tintBase: colors.nbSoft,
-        label,
-        colors,
-        iconFallback,
-      })
-    : iconFallback;
-
-  return (
-    <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard} style={styles.cardWrap}>
-      <HoldPressable
-        style={styles.cardPress}
-        enabled={!!holdToAction}
-        durationMs={holdToAction?.durationMs}
-        onPress={onPress}
-        onHoldComplete={holdToAction ? () => holdToAction.onComplete?.(file) : undefined}
-      >
-        <View style={[styles.cardInner, { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder }]}>
-          <View style={[styles.thumbBox, { height: thumbH, borderColor: colors.nbBorder, backgroundColor: colors.nbSoft }]}>
-            {inner}
-          </View>
-          <Text style={[styles.cardName, { color: colors.nbInk }]} numberOfLines={2}>
-            {title}
-          </Text>
-          <View style={styles.metaRow}>
-            <View style={[styles.typePill, { backgroundColor: colors.nbFill }]}>
-              <Text style={[styles.typePillText, { color: colors.nbOnFill }]}>{pill.label}</Text>
-            </View>
-            {metaDate ? (
-              <Text style={[styles.cardMeta, { color: colors.nbMuted }]} numberOfLines={1}>
-                {metaDate}
-              </Text>
-            ) : null}
-          </View>
-          <View style={[styles.whoPill, { backgroundColor: colors.nbSoft, borderColor: colors.nbBorder }]}>
-            <Text style={[styles.whoPillText, { color: colors.nbInk }]} numberOfLines={1}>
-              {whoBadgeForFile(file)}
-            </Text>
-          </View>
-        </View>
-      </HoldPressable>
-    </HardShadow>
-  );
-}
-
-function holdActionForFile(holdToDelete, onLongPressItem, holdDurationMs) {
-  if (!holdToDelete || !onLongPressItem) return null;
-  return { durationMs: holdDurationMs, onComplete: (file) => onLongPressItem?.(file) };
-}
-
-function FileGridCard({ file, colors, thumbH, onPressItem, onLongPressItem, holdToDelete, holdDurationMs }) {
-  const handler = () => onPressItem?.(file);
-  const holdToAction = holdActionForFile(holdToDelete, onLongPressItem, holdDurationMs);
-
-  return (
-    <GalleryCard
-      file={file}
-      colors={colors}
-      onPress={handler}
-      displayType={displayTypeForFile(file)}
-      thumbH={thumbH}
-      holdToAction={holdToAction}
-    />
   );
 }
 
@@ -521,20 +733,28 @@ export default function FileGrid({
   holdDurationMs = HOLD_DURATION_MS,
 }) {
   const { colors } = useTheme();
-  const list = typeof maxItems === 'number' ? files.slice(0, maxItems) : [...files];
-  const thumbH = thumbHeight(dense);
 
-  if (hideWhenEmpty && list.length === 0) return null;
+  // 1. Cap the list when the parent asks for a max (home preview, etc.).
+  const filesToShow = pickFilesForGrid(files, maxItems);
+  const thumbnailHeight = thumbnailHeightForDensity(dense);
+
+  // 2. Optional early exit when the parent hides empty grids.
+  const shouldHideEmptyGrid = hideWhenEmpty && filesToShow.length === 0;
+  if (shouldHideEmptyGrid) return null;
+
+  // 3. Paint the gallery + optional footer link under it.
+  const shouldShowFooterLink = Boolean(footerLink);
+  const footerLabelStyle = [styles.footerText, { color: colors.nbInk }];
 
   return (
     <View>
       <View style={styles.gallery}>
-        {list.map((file, index) => (
+        {filesToShow.map((file, fileIndex) => (
           <FileGridCard
-            key={file.id || `${file.name || file.title || 'file'}_${index}`}
+            key={cardKeyForFile(file, fileIndex)}
             file={file}
             colors={colors}
-            thumbH={thumbH}
+            thumbnailHeight={thumbnailHeight}
             onPressItem={onPressItem}
             onLongPressItem={onLongPressItem}
             holdToDelete={holdToDelete}
@@ -542,9 +762,13 @@ export default function FileGrid({
           />
         ))}
       </View>
-      {footerLink ? (
-        <TouchableOpacity activeOpacity={0.85} onPress={footerLink.onPress} style={styles.footerBtn}>
-          <Text style={[styles.footerText, { color: colors.nbInk }]}>{footerLink.label}</Text>
+      {shouldShowFooterLink ? (
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={footerLink.onPress}
+          style={styles.footerBtn}
+        >
+          <Text style={footerLabelStyle}>{footerLink.label}</Text>
         </TouchableOpacity>
       ) : null}
     </View>
@@ -556,9 +780,19 @@ export const FILE_GALLERY_THEME_COLORS = {
   light: {},
   dark: {},
 };
+
+/**
+ * Legacy stub — old gallery callers still import this; paint no longer uses gradients.
+ * @returns {string[]}
+ */
 export function getPaletteGradient() {
-  return ['#000', '#000'];
+  return LEGACY_PALETTE_FALLBACK;
 }
+
+/**
+ * Legacy stub — always returns the ink class name for old theme helpers.
+ * @returns {string}
+ */
 export function paletteClass() {
   return 'ink';
 }

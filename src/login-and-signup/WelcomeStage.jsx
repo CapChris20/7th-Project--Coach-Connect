@@ -23,38 +23,62 @@ const HANDOFF_DUMBBELL = require('../assets/icons/handoff/dumbbell.png');
 const HANDOFF_CHECKIN = require('../assets/icons/handoff/checkin.png');
 const HANDOFF_PROGRESS = require('../assets/icons/handoff/progress.png');
 
-// Manipulate here: feature tile copy from UPDATE-WELCOME-AND-HEROES.md
+const ORBIT_RING_SIZE = 182;
+const LOGO_WIDTH = 196;
+const STICKER_TILT_DEGREES = -5;
+
+// Manipulate here: feature tile copy + tilt from UPDATE-WELCOME-AND-HEROES.md / Design Law PNGs.
 const FEATURE_TILES = [
-  { key: 'plans', label: 'Plans and logs', icon: HANDOFF_DUMBBELL, tilt: -2, radius: { tl: 6, tr: 20, br: 6, bl: 6 }, lift: 0 },
-  { key: 'checkins', label: 'Daily check-ins', icon: HANDOFF_CHECKIN, tilt: 1.5, radius: { tl: 6, tr: 6, br: 6, bl: 6 }, lift: 8 },
-  { key: 'progress', label: 'Real progress', icon: HANDOFF_PROGRESS, tilt: -1, radius: { tl: 20, tr: 6, br: 6, bl: 6 }, lift: 0 },
+  {
+    key: 'plans',
+    label: 'Plans and logs',
+    icon: HANDOFF_DUMBBELL,
+    tiltDegrees: -2,
+    cornerRadius: { topLeft: 6, topRight: 20, bottomRight: 6, bottomLeft: 6 },
+    liftPixels: 0,
+  },
+  {
+    key: 'checkins',
+    label: 'Daily check-ins',
+    icon: HANDOFF_CHECKIN,
+    tiltDegrees: 1.5,
+    cornerRadius: { topLeft: 6, topRight: 6, bottomRight: 6, bottomLeft: 6 },
+    liftPixels: 8,
+  },
+  {
+    key: 'progress',
+    label: 'Real progress',
+    icon: HANDOFF_PROGRESS,
+    tiltDegrees: -1,
+    cornerRadius: { topLeft: 20, topRight: 6, bottomRight: 6, bottomLeft: 6 },
+    liftPixels: 0,
+  },
 ];
 
-// ===== TILE =====
+// ===== HELPER FUNCTIONS =====
 
-function FeatureTile({ label, icon, tilt, radius, lift, theme }) {
+// Per-corner radii match the uneven sticker look on the Design Law welcome PNG.
+function cornerRadiusStyle(cornerRadius) {
+  return {
+    borderTopLeftRadius: cornerRadius.topLeft,
+    borderTopRightRadius: cornerRadius.topRight,
+    borderBottomRightRadius: cornerRadius.bottomRight,
+    borderBottomLeftRadius: cornerRadius.bottomLeft,
+  };
+}
+
+// One tilted sticker tile — icon shell, label, per-corner radius from Design Law PNGs.
+function FeatureTile({ label, icon, tiltDegrees, cornerRadius, liftPixels, theme }) {
+  const tileTransform = [{ translateY: liftPixels }, { rotate: `${tiltDegrees}deg` }];
+  const tileSurfaceStyle = {
+    backgroundColor: theme.surface,
+    borderColor: theme.border,
+    ...cornerRadiusStyle(cornerRadius),
+  };
+
   return (
-    <HardShadow
-      offset={nb.shadowOffsetSmall}
-      radius={6}
-      style={{
-        flex: 1,
-        transform: [{ translateY: lift }, { rotate: `${tilt}deg` }],
-      }}
-    >
-      <View
-        style={[
-          styles.tile,
-          {
-            backgroundColor: theme.surface,
-            borderColor: theme.border,
-            borderTopLeftRadius: radius.tl,
-            borderTopRightRadius: radius.tr,
-            borderBottomRightRadius: radius.br,
-            borderBottomLeftRadius: radius.bl,
-          },
-        ]}
-      >
+    <HardShadow offset={nb.shadowOffsetSmall} radius={6} style={{ flex: 1, transform: tileTransform }}>
+      <View style={[styles.tile, tileSurfaceStyle]}>
         <View style={[styles.tileIconShell, { borderColor: theme.border }]}>
           <Image source={icon} style={styles.tileIcon} />
         </View>
@@ -64,89 +88,106 @@ function FeatureTile({ label, icon, tilt, radius, lift, theme }) {
   );
 }
 
-// ===== MAIN =====
+// Black fill stage: sticker, logo, wordmark, ticker strip — matches hero PNG 01.
+function WelcomePosterStage({ theme }) {
+  const stageSurfaceStyle = {
+    backgroundColor: theme.fill,
+    borderColor: theme.border,
+  };
+  const stickerRotate = [{ rotate: `${STICKER_TILT_DEGREES}deg` }];
 
-/**
- * @param {{ theme: Record<string, string> }} props
- */
-export default function WelcomeStage({ theme }) {
   return (
-    <View>
-      {/* Black/white fill stage — logo is the centerpiece, not a side accent */}
-      <HardShadow offset={nb.shadowOffsetHero} radius={10} style={{ marginBottom: 14 }}>
-        <View
-          style={[
-            styles.stage,
-            {
-              backgroundColor: theme.fill,
-              borderColor: theme.border,
-            },
-          ]}
+    <HardShadow offset={nb.shadowOffsetHero} radius={10} style={{ marginBottom: 14 }}>
+      <View style={[styles.stage, stageSurfaceStyle]}>
+        <FaintGrid lineColor={theme.onFill} opacity={0.09} />
+
+        <LinearGradient
+          colors={WELCOME_STICKER_GRADIENT}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={[styles.sticker, { borderColor: theme.border, transform: stickerRotate }]}
         >
-          <FaintGrid lineColor={theme.onFill} opacity={0.09} />
+          <Text style={styles.stickerText}>Day One starts here</Text>
+        </LinearGradient>
 
-          {/* “Day One starts here” sticker — g9 peach→lilac, tilted */}
-          <LinearGradient
-            colors={WELCOME_STICKER_GRADIENT}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={[styles.sticker, { borderColor: theme.border }]}
-          >
-            <Text style={styles.stickerText}>Day One starts here</Text>
-          </LinearGradient>
-
-          <View style={styles.markArea}>
-            {/* Rings sit behind the transparent CC mark; both centered in the stage */}
-            <View style={styles.ringsBehind} pointerEvents="none">
-              <OrbitRings color={theme.onFill} size={182} />
-            </View>
-            <AppLogo
-              variant="transparent"
-              width={196}
-              accessibilityLabel="Coach Connect logo"
-            />
+        <View style={styles.markArea}>
+          <View style={styles.ringsBehind} pointerEvents="none">
+            <OrbitRings color={theme.onFill} size={ORBIT_RING_SIZE} />
           </View>
-
-          <View style={styles.wordmark}>
-            <Text style={[styles.wordmarkLine, { color: theme.onFill }]}>COACH</Text>
-            <Text style={[styles.wordmarkLine, { color: theme.onFill }]}>CONNECT</Text>
-            <LinearGradient
-              colors={HERO_ACCENT_GRADIENT}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.bar}
-            />
-          </View>
-
-          <TaglineStrip textColor={theme.onFill} borderColor={theme.onFill} />
+          <AppLogo variant="transparent" width={LOGO_WIDTH} accessibilityLabel="Coach Connect logo" />
         </View>
-      </HardShadow>
 
-      {/* Three tilted sticker tiles — replace the old AI + plans pair */}
-      <View style={styles.tilesRow}>
-        {FEATURE_TILES.map((tile) => (
-          <FeatureTile key={tile.key} theme={theme} {...tile} />
-        ))}
-      </View>
+        <View style={styles.wordmark}>
+          <Text style={[styles.wordmarkLine, { color: theme.onFill }]}>COACH</Text>
+          <Text style={[styles.wordmarkLine, { color: theme.onFill }]}>CONNECT</Text>
+          <LinearGradient
+            colors={HERO_ACCENT_GRADIENT}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.bar}
+          />
+        </View>
 
-      {/* RN can’t nest Views inside Text — wrap the highlight as a sibling chip */}
-      <View style={styles.headlineRow}>
-        <Text style={[styles.headline, { color: theme.heading }]}>
-          Trainers and clients, finally{' '}
-        </Text>
-        <BrandHighlight
-          style={styles.syncMark}
-          textStyle={styles.syncMarkText}
-          borderColor={theme.border}
-        >
-          in sync.
-        </BrandHighlight>
+        <TaglineStrip textColor={theme.onFill} borderColor={theme.onFill} />
       </View>
+    </HardShadow>
+  );
+}
+
+// Headline row: plain text + BrandHighlight sibling (RN cannot nest Views inside Text).
+function WelcomeHeadline({ theme }) {
+  return (
+    <View style={styles.headlineRow}>
+      <Text style={[styles.headline, { color: theme.heading }]}>Trainers and clients, finally </Text>
+      <BrandHighlight
+        style={styles.syncMark}
+        textStyle={styles.syncMarkText}
+        borderColor={theme.border}
+      >
+        in sync.
+      </BrandHighlight>
     </View>
   );
 }
 
-// ===== STYLES =====
+function WelcomeFeatureTilesRow({ theme }) {
+  return (
+    <View style={styles.tilesRow}>
+      {FEATURE_TILES.map((tile) => (
+        <FeatureTile
+          key={tile.key}
+          theme={theme}
+          label={tile.label}
+          icon={tile.icon}
+          tiltDegrees={tile.tiltDegrees}
+          cornerRadius={tile.cornerRadius}
+          liftPixels={tile.liftPixels}
+        />
+      ))}
+    </View>
+  );
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Welcome hero block for the login screen — poster, tiles, headline only (no buttons here).
+ * @param {{ theme: Record<string, string> }} props Theme colors from LoginScreen landingTheme.
+ */
+export default function WelcomeStage({ theme }) {
+  // 1. Center stage (logo + wordmark).
+  // 2. Three feature tiles in a row.
+  // 3. “in sync.” headline under the tiles.
+  return (
+    <View>
+      <WelcomePosterStage theme={theme} />
+      <WelcomeFeatureTilesRow theme={theme} />
+      <WelcomeHeadline theme={theme} />
+    </View>
+  );
+}
+
+// PLUMBING — skip unless debugging
 
 const styles = StyleSheet.create({
   stage: {
@@ -166,7 +207,6 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 5,
-    transform: [{ rotate: '-5deg' }],
   },
   stickerText: {
     fontSize: 12,

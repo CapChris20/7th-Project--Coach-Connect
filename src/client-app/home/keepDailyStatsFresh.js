@@ -1,6 +1,7 @@
 // Keeps the client home screen's today numbers live: water, sleep, soreness, energy, stress, workout, calories, and macros.
-// Flow: a timer archives yesterday → a watcher clears the screen when the local date changes → a listener fills today's log.
+// Flow: rollover timer archives yesterday → date watcher clears stale UI → listener fills today's log.
 // Used by the client home screen. Today is the device's local date.
+// Key export: keepDailyStatsFresh — the screen owns state and passes setters in.
 
 import { useCallback, useEffect, useRef } from 'react';
 import { doc, onSnapshot } from 'firebase/firestore';
@@ -22,7 +23,6 @@ import {
 const USERS_COLLECTION = 'users';
 const DAILY_LOGS_COLLECTION = 'dailyLogs';
 const SNAPSHOT_ERROR_LABEL = 'Client dailyLogs listener:';
-// Manipulate here: how often the home screen checks whether the local day rolled over.
 const ROLLOVER_TICK_MS = 30_000;
 
 const EMPTY_MACRO_TOTALS = {
@@ -37,9 +37,162 @@ const EMPTY_MACRO_TOTALS = {
 
 // ===== HELPER FUNCTIONS =====
 
-// PLUMBING — skip unless today's cards stay stuck on yesterday or the live log never arrives.
+function bundleAllHomeMetricSetters({
+  setWaterIntake,
+  setSleepHours,
+  setSoreness,
+  setEnergyLevel,
+  setStressLevel,
+  setTodayWorkout,
+  setDashboardWorkoutSummary,
+  setCaloriesConsumed,
+  setMacroTotals,
+}) {
+  return {
+    setWaterIntake,
+    setSleepHours,
+    setSoreness,
+    setEnergyLevel,
+    setStressLevel,
+    setTodayWorkout,
+    setDashboardWorkoutSummary,
+    setCaloriesConsumed,
+    setMacroTotals,
+  };
+}
 
-function writeEmptyHomeDailyMetrics(setters) {
+function bundleParsedMetricSetters({
+  setWaterIntake,
+  setSleepHours,
+  setSoreness,
+  setEnergyLevel,
+  setStressLevel,
+  setTodayWorkout,
+  setDashboardWorkoutSummary,
+}) {
+  return {
+    setWaterIntake,
+    setSleepHours,
+    setSoreness,
+    setEnergyLevel,
+    setStressLevel,
+    setDashboardWorkoutSummary,
+    setTodayWorkout,
+  };
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Home-screen daily metrics: midnight rollover, archive, and the live log for today.
+ * The screen owns the state and passes its setters in.
+ * Flow: 1. bundle setters  2. clear/apply callbacks  3. rollover timer  4. date watcher  5. live log
+ * Hook order is frozen — do not reorder useRef / useCallback / useEffect calls.
+ * @param {string|null|undefined} userId
+ * @param {object} setters
+ * @returns {{ todayDateKey: string, clearHomeDailyMetrics: Function, applyFromSnapshots: Function }}
+ */
+export function keepDailyStatsFresh(userId, {
+  setWaterIntake,
+  setSleepHours,
+  setSoreness,
+  setEnergyLevel,
+  setStressLevel,
+  setTodayWorkout,
+  setDashboardWorkoutSummary,
+  setCaloriesConsumed,
+  setMacroTotals,
+}) {
+  // 1. Today's local date key + a ref that remembers which day the UI last showed.
+  const todayDateKey = todaysDate();
+  const homeDateKeyRef = useRef(null);
+
+  const allMetricSetters = bundleAllHomeMetricSetters({
+    setWaterIntake,
+    setSleepHours,
+    setSoreness,
+    setEnergyLevel,
+    setStressLevel,
+    setTodayWorkout,
+    setDashboardWorkoutSummary,
+    setCaloriesConsumed,
+    setMacroTotals,
+  });
+
+  const parsedMetricSetters = bundleParsedMetricSetters({
+    setWaterIntake,
+    setSleepHours,
+    setSoreness,
+    setEnergyLevel,
+    setStressLevel,
+    setTodayWorkout,
+    setDashboardWorkoutSummary,
+  });
+
+  // 2. Stable “wipe today’s cards” callback — used when the calendar day rolls over.
+  const clearHomeDailyMetrics = useCallback(() => {
+    wipeHomeDailyMetricsToEmpty(allMetricSetters);
+  }, [
+    setWaterIntake,
+    setSleepHours,
+    setSoreness,
+    setEnergyLevel,
+    setStressLevel,
+    setTodayWorkout,
+    setDashboardWorkoutSummary,
+    setCaloriesConsumed,
+    setMacroTotals,
+  ]);
+
+  // 3. Stable “paint from snapshots” callback — live log + optional legacy tracking.
+  const applyFromSnapshots = useCallback(
+    (logsSnap, trackingSnap) => {
+      const parsed = parseDailyMetricsFromSnapshots(logsSnap, trackingSnap);
+      paintHomeDailyMetricsFromParsed(parsed, parsedMetricSetters);
+    },
+    [
+      setWaterIntake,
+      setSleepHours,
+      setSoreness,
+      setEnergyLevel,
+      setStressLevel,
+      setDashboardWorkoutSummary,
+      setTodayWorkout,
+    ],
+  );
+
+  // 4. Background rollover timer — archive yesterday and retry failed archives.
+  useEffect(() => {
+    if (!userId) return undefined;
+    if (!db) return undefined;
+    return startRolloverTimer(userId, clearHomeDailyMetrics);
+  }, [userId, clearHomeDailyMetrics]);
+
+  // 5. When the local date string changes, archive the previous day and clear stale UI.
+  useEffect(() => {
+    if (!userId) return;
+    archiveIfLocalDateChanged({
+      userId,
+      previousDateKey: homeDateKeyRef.current,
+      todayDateKey,
+      homeDateKeyRef,
+      clearHomeDailyMetrics,
+    });
+  }, [todayDateKey, userId, clearHomeDailyMetrics]);
+
+  // 6. Live listener on users/{id}/dailyLogs/{today} (+ legacy tracking fallback).
+  useEffect(() => {
+    if (!userId) return undefined;
+    if (!db) return undefined;
+    return subscribeToTodayDailyLogs({ userId, todayDateKey, applyFromSnapshots });
+  }, [userId, todayDateKey, applyFromSnapshots]);
+
+  return { todayDateKey, clearHomeDailyMetrics, applyFromSnapshots };
+}
+
+// ===== PLUMBING — skip unless today's cards stay stuck on yesterday or the live log never arrives =====
+
+function wipeHomeDailyMetricsToEmpty(setters) {
   setters.setWaterIntake(null);
   setters.setSleepHours(null);
   setters.setSoreness(null);
@@ -51,7 +204,7 @@ function writeEmptyHomeDailyMetrics(setters) {
   setters.setMacroTotals(EMPTY_MACRO_TOTALS);
 }
 
-function writeParsedDailyMetrics(parsed, setters) {
+function paintHomeDailyMetricsFromParsed(parsed, setters) {
   setters.setWaterIntake(parsed.waterIntake);
   setters.setSleepHours(parsed.sleepHours);
   setters.setSoreness(parsed.soreness);
@@ -63,8 +216,8 @@ function writeParsedDailyMetrics(parsed, setters) {
 
 async function tickRolloverAndRetryArchive(userId, clearHomeDailyMetrics) {
   try {
-    const rolled = await tickDailyDashboardDayRollover(userId);
-    if (rolled) clearHomeDailyMetrics();
+    const dayRolledOver = await tickDailyDashboardDayRollover(userId);
+    if (dayRolledOver) clearHomeDailyMetrics();
     await retryPendingDailyDashboardArchive(userId);
   } catch (ignoredError) {
     /* retry on next interval */
@@ -85,24 +238,24 @@ function archiveIfLocalDateChanged({
   clearHomeDailyMetrics();
 }
 
-function todayLogsRef(userId, todayDateKey) {
+function firestorePathForTodayDailyLog(userId, todayDateKey) {
   return doc(db, USERS_COLLECTION, userId, DAILY_LOGS_COLLECTION, todayDateKey);
 }
 
 function subscribeToTodayDailyLogs({ userId, todayDateKey, applyFromSnapshots }) {
-  const logsRef = todayLogsRef(userId, todayDateKey);
+  const logsRef = firestorePathForTodayDailyLog(userId, todayDateKey);
   let logsSnap = null;
   let trackingSnap = null;
 
-  const applyWhenPrimaryArrives = () => {
+  function applyWhenBothSourcesReady() {
     if (logsSnap == null) return;
     applyFromSnapshots(logsSnap, trackingSnap);
-  };
+  }
 
   fetchLegacyDailyTrackingSnap(userId, todayDateKey)
     .then((snapshot) => {
       trackingSnap = snapshot;
-      applyWhenPrimaryArrives();
+      applyWhenBothSourcesReady();
     })
     .catch(() => {});
 
@@ -110,7 +263,7 @@ function subscribeToTodayDailyLogs({ userId, todayDateKey, applyFromSnapshots })
     logsRef,
     (snapshot) => {
       logsSnap = snapshot;
-      applyWhenPrimaryArrives();
+      applyWhenBothSourcesReady();
     },
     (error) => logSnapshotError(error, SNAPSHOT_ERROR_LABEL),
   );
@@ -118,7 +271,9 @@ function subscribeToTodayDailyLogs({ userId, todayDateKey, applyFromSnapshots })
   return () => {
     try {
       unsubscribeLogs();
-    } catch (ignoredError) {}
+    } catch (ignoredError) {
+      /* already gone */
+    }
   };
 }
 
@@ -128,103 +283,4 @@ function startRolloverTimer(userId, clearHomeDailyMetrics) {
     tickRolloverAndRetryArchive(userId, clearHomeDailyMetrics);
   }, ROLLOVER_TICK_MS);
   return () => clearInterval(intervalId);
-}
-
-// ===== MAIN FUNCTION =====
-
-/**
- * Home-screen daily metrics: midnight rollover, archive, and the live log for today.
- * The screen owns the state and passes its setters in.
- * @param {string} userId
- * @param {object} setters
- * @returns {{ todayDateKey: string, clearHomeDailyMetrics: Function, applyFromSnapshots: Function }}
- */
-export function keepDailyStatsFresh(userId, {
-  setWaterIntake,
-  setSleepHours,
-  setSoreness,
-  setEnergyLevel,
-  setStressLevel,
-  setTodayWorkout,
-  setDashboardWorkoutSummary,
-  setCaloriesConsumed,
-  setMacroTotals,
-}) {
-  const todayDateKey = todaysDate();
-  const homeDateKeyRef = useRef(null);
-
-  const metricSetters = {
-    setWaterIntake,
-    setSleepHours,
-    setSoreness,
-    setEnergyLevel,
-    setStressLevel,
-    setTodayWorkout,
-    setDashboardWorkoutSummary,
-    setCaloriesConsumed,
-    setMacroTotals,
-  };
-
-  const parsedMetricSetters = {
-    setWaterIntake,
-    setSleepHours,
-    setSoreness,
-    setEnergyLevel,
-    setStressLevel,
-    setDashboardWorkoutSummary,
-    setTodayWorkout,
-  };
-
-  const clearHomeDailyMetrics = useCallback(() => {
-    writeEmptyHomeDailyMetrics(metricSetters);
-  }, [
-    setWaterIntake,
-    setSleepHours,
-    setSoreness,
-    setEnergyLevel,
-    setStressLevel,
-    setTodayWorkout,
-    setDashboardWorkoutSummary,
-    setCaloriesConsumed,
-    setMacroTotals,
-  ]);
-
-  const applyFromSnapshots = useCallback(
-    (logsSnap, trackingSnap) => {
-      const parsed = parseDailyMetricsFromSnapshots(logsSnap, trackingSnap);
-      writeParsedDailyMetrics(parsed, parsedMetricSetters);
-    },
-    [
-      setWaterIntake,
-      setSleepHours,
-      setSoreness,
-      setEnergyLevel,
-      setStressLevel,
-      setDashboardWorkoutSummary,
-      setTodayWorkout,
-    ],
-  );
-
-  useEffect(() => {
-    if (!userId || !db) return;
-    return startRolloverTimer(userId, clearHomeDailyMetrics);
-  }, [userId, clearHomeDailyMetrics]);
-
-  useEffect(() => {
-    if (!userId) return;
-    archiveIfLocalDateChanged({
-      userId,
-      previousDateKey: homeDateKeyRef.current,
-      todayDateKey,
-      homeDateKeyRef,
-      clearHomeDailyMetrics,
-    });
-  }, [todayDateKey, userId, clearHomeDailyMetrics]);
-
-  useEffect(() => {
-    if (!userId || !db) return;
-    return subscribeToTodayDailyLogs({ userId, todayDateKey, applyFromSnapshots });
-  }, [userId, todayDateKey, applyFromSnapshots]);
-
-  return { todayDateKey, clearHomeDailyMetrics, applyFromSnapshots };
 }

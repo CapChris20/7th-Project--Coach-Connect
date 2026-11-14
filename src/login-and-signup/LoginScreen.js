@@ -27,7 +27,8 @@ import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signInWithC
 import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db, functions } from '../app-start/cloudConnection';
 import { httpsCallable } from 'firebase/functions';
-import * as Google from 'expo-auth-session/providers/google';import * as WebBrowser from 'expo-web-browser';
+import * as Google from 'expo-auth-session/providers/google';
+import * as WebBrowser from 'expo-web-browser';
 import { pickImage } from '../ai-coach/conversation/photoPermissions';
 import { uploadProfileImage } from '../for-both/cloud-database/uploadAndDownloadFiles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -80,13 +81,13 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function extractGoogleOAuthTokens(authentication, params = {}) {
   const idToken =
-    authentication?.idToken ||
-    authentication?.id_token ||
+    (authentication == null ? undefined : authentication.idToken) ||
+    (authentication == null ? undefined : authentication.id_token) ||
     params.id_token ||
     params.idToken;
   const accessToken =
-    authentication?.accessToken ||
-    authentication?.access_token ||
+    (authentication == null ? undefined : authentication.accessToken) ||
+    (authentication == null ? undefined : authentication.access_token) ||
     params.access_token ||
     params.accessToken ||
     null;
@@ -105,7 +106,7 @@ function getGoogleIosOAuthRedirectUri(iosClientId) {
 }
 
 function buildAppleDisplayName(appleCredential) {
-  const fullName = appleCredential?.fullName;
+  const fullName = (appleCredential == null ? undefined : appleCredential.fullName);
   if (!fullName) return null;
   const parts = [fullName.givenName, fullName.familyName].filter(Boolean);
   return parts.length ? parts.join(' ') : null;
@@ -121,23 +122,6 @@ let roleMismatchNextViewInMemory = null;
 const GOOGLE_OAUTH_NOT_READY_TITLE = 'Google Sign-In Not Ready';
 const GOOGLE_OAUTH_NOT_READY_MESSAGE =
   'Google Sign-In is not configured. Please check:\n\n1. Firebase Console > Authentication > Sign-in methods > Enable Google\n2. Google Cloud Console > OAuth consent screen\n3. Add authorized domains';
-
-async function readNormalizedFirestoreRole(uid) {
-  if (!db || !uid) return null;
-  try {
-    const snap = await getDoc(doc(db, 'users', uid));
-    if (!snap.exists()) return null;
-    const raw = snap.data()?.role;
-    if (raw == null || String(raw).trim() === '') return null;
-    const roleText = String(raw).toLowerCase().trim();
-    if (roleText === 'trainer') return 'trainer';
-    if (roleText === 'client') return 'client';
-    return null;
-  } catch (e) {
-    console.warn('readNormalizedFirestoreRole:', e?.message || e);
-    return null;
-  }
-}
 
 const googleIcon = require('../assets/icons/Illustration-of-Google-icon-on-transparent-background-PNG.png');
 const appleLogo = require('../assets/icons/apple-logo.png');
@@ -255,7 +239,7 @@ function collectLoginErrors({ loginEmail, loginPassword }) {
 
 // Maps Firebase sign-in failures to PNG 07/08 field copy (dashed border + ! row under the field).
 function mapFirebaseLoginErrorToFields(error) {
-  const code = error?.code || '';
+  const code = (error == null ? undefined : error.code) || '';
   if (code === 'auth/user-not-found') {
     return { fieldErrors: { email: 'No account found with this email address.' }, banner: null };
   }
@@ -281,9 +265,38 @@ function mapFirebaseLoginErrorToFields(error) {
     fieldErrors: {},
     banner: {
       title: 'Sign-in failed',
-      message: error?.message || 'Failed to sign in. Please try again.',
+      message: (error == null ? undefined : error.message) || 'Failed to sign in. Please try again.',
     },
   };
+}
+
+/**
+ * Apply a Firebase login error onto field dashes and/or the banner.
+ * Field errors win (PNG 07/08); otherwise show the banner message.
+ */
+function applyFirebaseLoginErrorToForm(error, setLoginErrors, setLoginBannerError) {
+  const { fieldErrors, banner } = mapFirebaseLoginErrorToFields(error);
+  const hasFieldErrors = Boolean(fieldErrors.email || fieldErrors.password);
+  if (hasFieldErrors) {
+    setLoginErrors((previousErrors) => ({ ...previousErrors, ...fieldErrors }));
+    setLoginBannerError(null);
+    return;
+  }
+  if (banner) {
+    setLoginBannerError(banner);
+  }
+}
+
+/**
+ * Pick which full-screen auth view to mount from `currentView`.
+ * Factories stay lazy so only the active screen runs (same as the old if/else).
+ * Early returns keep nesting flat (else-if chains count as depth 3+).
+ */
+function pickActiveAuthView(currentView, viewFactories) {
+  if (currentView === 'welcome') return viewFactories.welcome();
+  if (currentView === 'chooseRole') return viewFactories.chooseRole();
+  if (currentView === 'signup') return viewFactories.signup();
+  return viewFactories.login();
 }
 
 function roleMismatchSheetContent(selectedRole, actualRole) {
@@ -302,56 +315,56 @@ function roleMismatchSheetContent(selectedRole, actualRole) {
 }
 
 function messageForSignupAuthError(error) {
-  if (error?.code === 'auth/email-already-in-use') return 'An account with this email already exists.';
-  if (error?.code === 'auth/invalid-email') return 'Invalid email address.';
-  if (error?.code === 'auth/weak-password') return 'Password is too weak. Please use a stronger password.';
-  return error?.message || 'Failed to create account. Please try again.';
+  if ((error == null ? undefined : error.code) === 'auth/email-already-in-use') return 'An account with this email already exists.';
+  if ((error == null ? undefined : error.code) === 'auth/invalid-email') return 'Invalid email address.';
+  if ((error == null ? undefined : error.code) === 'auth/weak-password') return 'Password is too weak. Please use a stronger password.';
+  return (error == null ? undefined : error.message) || 'Failed to create account. Please try again.';
 }
 
 function messageForGoogleSignUpError(error) {
   let errorMessage = 'Failed to sign up with Google. ';
-  if (error?.code === 'auth/account-exists-with-different-credential') {
+  if ((error == null ? undefined : error.code) === 'auth/account-exists-with-different-credential') {
     return errorMessage + 'An account already exists with this email. Please sign in instead.';
   }
-  if (error?.code === 'auth/operation-not-allowed') {
+  if ((error == null ? undefined : error.code) === 'auth/operation-not-allowed') {
     return errorMessage + 'Google Sign-In is not enabled. Please enable it in Firebase Console > Authentication > Sign-in methods.';
   }
-  if (error?.message?.includes('blocked') || error?.message?.includes('disabled')) {
+  if (((error == null ? undefined : error.message) == null ? undefined : (error == null ? undefined : error.message).includes('blocked')) || ((error == null ? undefined : error.message) == null ? undefined : (error == null ? undefined : error.message).includes('disabled'))) {
     return errorMessage + 'Google Sign-In is blocked. Please check:\n1. Firebase Console > Authentication > Sign-in methods > Enable Google\n2. Google Cloud Console > OAuth consent screen is configured\n3. Authorized domains include your app domain';
   }
-  return errorMessage + (error?.message || 'Please try again.');
+  return errorMessage + ((error == null ? undefined : error.message) || 'Please try again.');
 }
 
 function messageForGoogleSignInError(error) {
   let errorMessage = 'Failed to sign in with Google. ';
-  if (error?.code === 'auth/account-exists-with-different-credential') {
+  if ((error == null ? undefined : error.code) === 'auth/account-exists-with-different-credential') {
     return errorMessage + 'An account already exists with this email. Please sign in with email/password first.';
   }
-  if (error?.code === 'auth/popup-blocked') {
+  if ((error == null ? undefined : error.code) === 'auth/popup-blocked') {
     return errorMessage + 'Popup was blocked. Please allow popups and try again.';
   }
-  if (error?.code === 'auth/popup-closed-by-user') {
+  if ((error == null ? undefined : error.code) === 'auth/popup-closed-by-user') {
     return errorMessage + 'Sign-in was cancelled.';
   }
-  if (error?.code === 'auth/operation-not-allowed') {
+  if ((error == null ? undefined : error.code) === 'auth/operation-not-allowed') {
     return errorMessage + 'Google Sign-In is not enabled. Please enable it in Firebase Console > Authentication > Sign-in methods.';
   }
-  if (error?.message?.includes('blocked') || error?.message?.includes('disabled')) {
+  if (((error == null ? undefined : error.message) == null ? undefined : (error == null ? undefined : error.message).includes('blocked')) || ((error == null ? undefined : error.message) == null ? undefined : (error == null ? undefined : error.message).includes('disabled'))) {
     return errorMessage + 'Google Sign-In is blocked. Please check:\n1. Firebase Console > Authentication > Sign-in methods > Enable Google\n2. Google Cloud Console > OAuth consent screen is configured\n3. Authorized domains include your app domain';
   }
-  return errorMessage + (error?.message || 'Please try again.');
+  return errorMessage + ((error == null ? undefined : error.message) || 'Please try again.');
 }
 
 function messageForAppleAuthError(error, mode) {
   let errorMessage =
     mode === 'signup' ? 'Failed to sign up with Apple. ' : 'Failed to sign in with Apple. ';
-  if (error?.code === 'auth/account-exists-with-different-credential') {
+  if ((error == null ? undefined : error.code) === 'auth/account-exists-with-different-credential') {
     return errorMessage + 'An account already exists with this email. Try email/password or the other sign-in method.';
   }
-  if (error?.code === 'auth/operation-not-allowed') {
+  if ((error == null ? undefined : error.code) === 'auth/operation-not-allowed') {
     return errorMessage + 'Apple Sign-In is not enabled. Enable it in Firebase Console > Authentication > Sign-in methods.';
   }
-  return errorMessage + (error?.message || 'Please try again.');
+  return errorMessage + ((error == null ? undefined : error.message) || 'Please try again.');
 }
 
 function onboardingIsExplicitlyIncomplete(existing) {
@@ -375,6 +388,8 @@ function recentProviderWithoutOnboarding(existing, authProvider) {
   if (existing.onboardingCompleted === 1) return false;
   return accountCreatedRecently(existing);
 }
+
+// PLUMBING — skip unless debugging (Google / Apple OAuth + Firestore user docs)
 
 async function routeIncompleteSocialUser({
   existing,
@@ -549,7 +564,7 @@ async function storeAppleAuthCodeBestEffort(authorizationCode) {
     const storeApple = httpsCallable(functions, 'storeAppleAuthForRevoke');
     await storeApple({ authorizationCode });
   } catch (storeErr) {
-    if (__DEV__) console.warn('storeAppleAuthForRevoke:', storeErr?.message || storeErr);
+    if (__DEV__) console.warn('storeAppleAuthForRevoke:', (storeErr == null ? undefined : storeErr.message) || storeErr);
   }
 }
 
@@ -561,16 +576,16 @@ async function applyAppleDisplayName(user, appleResult) {
   try {
     await updateProfile(user, { displayName: appleDisplayName });
   } catch (profileErr) {
-    console.warn('Apple updateProfile displayName:', profileErr?.message || profileErr);
+    console.warn('Apple updateProfile displayName:', (profileErr == null ? undefined : profileErr.message) || profileErr);
   }
   return appleDisplayName || user.displayName || 'User';
 }
 
 async function signInWithGoogleCredential(authentication) {
-  const params = authentication?.params || {};
+  const params = (authentication == null ? undefined : authentication.params) || {};
   const { idToken, accessToken } = extractGoogleOAuthTokens(authentication, params);
-  const id_token = authentication?.id_token ?? idToken;
-  const access_token = authentication?.access_token ?? accessToken;
+  const id_token = (authentication == null ? undefined : authentication.id_token) ?? idToken;
+  const access_token = (authentication == null ? undefined : authentication.access_token) ?? accessToken;
   if (!id_token) throw new Error('No ID token received from Google');
   const credential = GoogleAuthProvider.credential(id_token, access_token);
   return signInWithCredential(auth, credential);
@@ -657,7 +672,7 @@ async function signInWithAppleCredential() {
     ],
     nonce: hashedNonce,
   });
-  if (!appleResult?.identityToken) {
+  if (!(appleResult == null ? undefined : appleResult.identityToken)) {
     throw new Error('No identity token received from Apple');
   }
   const provider = new OAuthProvider('apple.com');
@@ -678,7 +693,7 @@ async function runAppleAuthFlow({
   onLoginSuccess,
 }) {
   const { userCredential, appleResult } = await signInWithAppleCredential();
-  await storeAppleAuthCodeBestEffort(appleResult?.authorizationCode);
+  await storeAppleAuthCodeBestEffort((appleResult == null ? undefined : appleResult.authorizationCode));
   const resolvedName = await applyAppleDisplayName(userCredential.user, appleResult);
   const resolvedEmail = userCredential.user.email || appleResult.email || '';
   const userRef = doc(db, 'users', userCredential.user.uid);
@@ -709,6 +724,29 @@ async function runAppleAuthFlow({
     onSignupSuccess,
     onLoginSuccess,
   });
+}
+
+async function readNormalizedFirestoreRole(uid) {
+  if (!db || !uid) return null;
+  try {
+    const snap = await getDoc(doc(db, 'users', uid));
+    if (!snap.exists()) return null;
+    const snapData = snap.data();
+    let raw;
+    if (snapData == null) {
+      raw = undefined;
+    } else {
+      raw = snapData.role;
+    }
+    if (raw == null || String(raw).trim() === '') return null;
+    const roleText = String(raw).toLowerCase().trim();
+    if (roleText === 'trainer') return 'trainer';
+    if (roleText === 'client') return 'client';
+    return null;
+  } catch (error) {
+    console.warn('readNormalizedFirestoreRole:', (error == null ? undefined : error.message) || error);
+    return null;
+  }
 }
 
 function splitSpecializationList(specializationsText) {
@@ -1287,6 +1325,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
   const { colors, typography, spacing, isDark, themeMode = 'light', toggleTheme: togglelightDarkMode } = useTheme();
   const insets = useSafeAreaInsets();
 
+  // 1. Finish any in-flight Google OAuth redirect when the signed-out stack mounts.
   useEffect(() => {
     try {
       WebBrowser.maybeCompleteAuthSession();
@@ -1304,20 +1343,24 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
   const bgAnim = useRef(new RNAnimated.Value(0)).current;
 
   useEffect(() => {
-    AsyncStorage.getItem(THEME_KEY).then((val) => {
+    AsyncStorage.getItem(THEME_KEY).then((storedTheme) => {
       // Manipulate here: null = first visit → light (not dark)
-      const dark = val === 'dark';
-      setIsDarkLanding(dark);
-      togglelightDarkMode?.(dark ? 'dark' : 'light');
-      bgAnim.setValue(dark ? 1 : 0);
+      const storedThemeIsDark = storedTheme === 'dark';
+      const themeModeName = storedThemeIsDark ? 'dark' : 'light';
+      const backgroundAnimValue = storedThemeIsDark ? 1 : 0;
+      setIsDarkLanding(storedThemeIsDark);
+      if (togglelightDarkMode) {
+        togglelightDarkMode(themeModeName);
+      }
+      bgAnim.setValue(backgroundAnimValue);
     });
   }, []);
 
   useEffect(() => {
     // If we just bounced due to client/trainer role mismatch, keep them on the sign-in view.
     AsyncStorage.getItem(ROLE_MISMATCH_NEXT_VIEW_KEY)
-      .then((val) => {
-        if (val === 'login') setCurrentView('login');
+      .then((storedNextView) => {
+        if (storedNextView === 'login') setCurrentView('login');
       })
       .finally(() => {
         roleMismatchNextViewInMemory = null;
@@ -1326,18 +1369,23 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
   }, []);
 
   const toggleTheme = () => {
-    const next = !isDarkLanding;
-    setIsDarkLanding(next);
-    AsyncStorage.setItem(THEME_KEY, next ? 'dark' : 'light');
+    const nextLandingIsDark = !isDarkLanding;
+    const nextThemeModeName = nextLandingIsDark ? 'dark' : 'light';
+    const nextBackgroundAnimValue = nextLandingIsDark ? 1 : 0;
+    setIsDarkLanding(nextLandingIsDark);
+    AsyncStorage.setItem(THEME_KEY, nextThemeModeName);
     // Sync lightDarkMode so Signup (and any shared UI) matches Welcome toggle.
-    togglelightDarkMode?.(next ? 'dark' : 'light');
+    if (togglelightDarkMode) {
+      togglelightDarkMode(nextThemeModeName);
+    }
     RNAnimated.timing(bgAnim, {
-      toValue: next ? 1 : 0,
+      toValue: nextBackgroundAnimValue,
       duration: THEME_ANIM_MS,
       useNativeDriver: false,
     }).start();
   };
 
+  // 2. Landing theme tokens follow the welcome toggle (not only global app theme).
   const landingTheme = isDarkLanding ? DARK : LIGHT;
 
   const animatedBg = bgAnim.interpolate({
@@ -1345,7 +1393,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
     outputRange: [LIGHT.bg, DARK.bg],
   });
 
-  // Get Started → Choose role (tiles) → Create account. Role is required before signup fields.
+  // 3. View navigation — Get Started → Choose role → Create account (role locked before fields).
   const onGetStarted = () => setCurrentView('chooseRole');
   const onSignIn = () => setCurrentView('login');
   const onChooseRoleContinue = (pickedRole) => {
@@ -1397,8 +1445,8 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
       roleMismatchNextViewInMemory = 'login';
       await AsyncStorage.setItem(ROLE_MISMATCH_NEXT_VIEW_KEY, 'login').catch(() => {});
       await signOut(auth);
-    } catch (e) {
-      console.warn('signOut after role mismatch:', e?.message || e);
+    } catch (error) {
+      console.warn('signOut after role mismatch:', (error == null ? undefined : error.message) || error);
     }
     setRoleMismatchSheet({ actualRole: actual });
     return false;
@@ -1453,8 +1501,8 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
       setLoginLoading(false);
       console.error('Google OAuth error:', {
         error: response.error,
-        description: response.params?.error_description,
-        redirectUri: request?.redirectUri,
+        description: (response.params == null ? undefined : response.params.error_description),
+        redirectUri: (request == null ? undefined : request.redirectUri),
       });
       setErrorPopup({
         title: 'Google Sign-In',
@@ -1482,9 +1530,9 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
     const payload = { id_token: idToken, access_token: accessToken };
     const view = currentViewRef.current;
     if (view === 'signup') {
-      void handleGoogleSignUpRef.current?.(payload);
+      void (handleGoogleSignUpRef.current == null ? undefined : handleGoogleSignUpRef.current(payload));
     } else {
-      void handleGoogleSignInRef.current?.(payload);
+      void (handleGoogleSignInRef.current == null ? undefined : handleGoogleSignInRef.current(payload));
     }
   }, [response, request]);
 
@@ -1515,10 +1563,15 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
     return Object.keys(newErrors).length === 0;
   };
 
+  /**
+   * Email/password create-account.
+   * Flow: 1. validate  2. create Auth user  3. optional trainer photo  4. cache role  5. write users doc  6. hand off
+   */
   const handleSignup = async () => {
     console.log('🚀 Starting signup process...');
     console.log('📝 Form data:', { name: name.trim(), email: email.trim(), role, bioLength: bio.length, credentialsLength: credentials.length, locationLength: location.length });
 
+    // 1. Refuse empty / invalid fields before we touch Firebase.
     if (!validateSignupForm()) {
       console.log('❌ Form validation failed:', signupErrors);
       return;
@@ -1533,12 +1586,16 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
       return;
     }
 
+    // 2. Create the Auth user (projectId stays anatrox-auth).
     setSignupLoading(true);
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
       const displayName = name.trim();
+
+      // 3. Trainers may upload a profile photo; clients skip this.
       let photoURL = null;
-      setUploadingImage(Boolean(profileImageUri && role === 'trainer'));
+      const shouldUploadTrainerPhoto = Boolean(profileImageUri && role === 'trainer');
+      setUploadingImage(shouldUploadTrainerPhoto);
       try {
         photoURL = await uploadTrainerProfilePhotoIfNeeded({
           profileImageUri,
@@ -1552,6 +1609,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
         setUploadingImage(false);
       }
 
+      // 4. Remember role on the phone so onboarding can finish after the redirect.
       await cachePendingSignupProfile(userCredential.user.uid, role, AsyncStorage);
       const userData = buildEmailSignupUserData({
         name,
@@ -1564,11 +1622,14 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
         photoURL,
       });
 
+      // 5. Write users/{uid} (and trainers/{uid} photo when we have one).
       await setDoc(doc(db, 'users', userCredential.user.uid), userData);
-      if (role === 'trainer' && photoURL) {
+      const trainerNeedsPhotoDoc = role === 'trainer' && Boolean(photoURL);
+      if (trainerNeedsPhotoDoc) {
         await setDoc(doc(db, 'trainers', userCredential.user.uid), { photoURL, avatarUrl: photoURL }, { merge: true });
       }
 
+      // 6. Tell LoginGate signup finished so onboarding can mount.
       if (onSignupSuccess) onSignupSuccess(userCredential.user, role);
     } catch (error) {
       console.error('❌ Signup error:', error);
@@ -1608,7 +1669,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
         retryText: 'Try again',
         onRetry: () => {
           setErrorPopup(null);
-          void handleGoogleSignUpRef.current?.(authentication);
+          void (handleGoogleSignUpRef.current == null ? undefined : handleGoogleSignUpRef.current(authentication));
         },
       });
     } finally {
@@ -1623,7 +1684,12 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
     return Object.keys(newErrors).length === 0;
   };
 
+  /**
+   * Email/password sign-in.
+   * Flow: 1. validate  2. Firebase sign-in  3. role match  4. hand off to LoginGate
+   */
   const handleLogin = async () => {
+    // 1. Clear prior banner and refuse empty / invalid fields.
     setLoginBannerError(null);
     if (!validateLoginForm()) return;
 
@@ -1635,26 +1701,27 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
       return;
     }
 
+    // 2. Sign in with Firebase Auth (projectId stays anatrox-auth).
     setLoginLoading(true);
     try {
-      const userCredential = await signInWithEmailAndPassword(auth, loginEmail.trim(), loginPassword);
+      const userCredential = await signInWithEmailAndPassword(
+        auth,
+        loginEmail.trim(),
+        loginPassword,
+      );
       console.log('Login successful:', userCredential.user.email);
 
+      // 3. Role toggle must match users/{uid}.role — mismatch opens NbSheet, not a hard fail here.
       const roleOk = await ensureRoleMatchesToggle(userCredential.user.uid, role);
       if (!roleOk) return;
 
+      // 4. Tell LoginGate the user is in so the signed-out stack unmounts.
       if (onLoginSuccess) {
         onLoginSuccess(userCredential.user);
       }
     } catch (error) {
       console.error('Login error:', error);
-      const { fieldErrors, banner } = mapFirebaseLoginErrorToFields(error);
-      if (fieldErrors.email || fieldErrors.password) {
-        setLoginErrors((prev) => ({ ...prev, ...fieldErrors }));
-        setLoginBannerError(null);
-      } else if (banner) {
-        setLoginBannerError(banner);
-      }
+      applyFirebaseLoginErrorToForm(error, setLoginErrors, setLoginBannerError);
     } finally {
       setLoginLoading(false);
     }
@@ -1683,7 +1750,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
         retryText: 'Try again',
         onRetry: () => {
           setErrorPopup(null);
-          void handleGoogleSignInRef.current?.(authentication);
+          void (handleGoogleSignInRef.current == null ? undefined : handleGoogleSignInRef.current(authentication));
         },
       });
     } finally {
@@ -1721,8 +1788,8 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
         onLoginSuccess,
       });
     } catch (appleError) {
-      if (appleError?.code === 'ERR_REQUEST_CANCELED') return;
-      if (appleError?.code === 'apple_unavailable') {
+      if ((appleError == null ? undefined : appleError.code) === 'ERR_REQUEST_CANCELED') return;
+      if ((appleError == null ? undefined : appleError.code) === 'apple_unavailable') {
         setErrorPopup({
           title: 'Apple Sign-In',
           message: 'Apple Sign-In is not available on this device.',
@@ -2564,7 +2631,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
               <TouchableOpacity
                 style={loginStyles.forgotPassword}
                 disabled={loginLoading}
-                onPress={() => onForgotPasswordFlowPress?.()}
+                onPress={() => (onForgotPasswordFlowPress == null ? undefined : onForgotPasswordFlowPress())}
               >
                 <Text style={loginStyles.forgotPasswordText}>Forgot Password?</Text>
               </TouchableOpacity>
@@ -2873,7 +2940,7 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
             />
 
             <TouchableOpacity
-              onPress={() => onForgotPasswordFlowPress?.(loginEmail)}
+              onPress={() => (onForgotPasswordFlowPress == null ? undefined : onForgotPasswordFlowPress(loginEmail))}
               activeOpacity={0.8}
               disabled={loginLoading}
               style={{ alignSelf: 'flex-end', marginBottom: spacing.md }}
@@ -2937,21 +3004,23 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
     ? roleMismatchSheetContent(role, roleMismatchSheet.actualRole)
     : null;
 
+  // 6. Pick one full-screen auth view — welcome, role tiles, signup, or sign-in.
+  const activeAuthView = pickActiveAuthView(currentView, {
+    welcome: () => renderWelcomeView(),
+    chooseRole: () => (
+      <ChooseRoleScreen
+        initialRole={role}
+        onBack={() => setCurrentView('welcome')}
+        onContinue={onChooseRoleContinue}
+      />
+    ),
+    signup: () => renderSignupViewLiquid(),
+    login: () => renderLoginViewLiquid(),
+  });
+
   return (
     <>
-      {currentView === 'welcome'
-        ? renderWelcomeView()
-        : currentView === 'chooseRole'
-          ? (
-            <ChooseRoleScreen
-              initialRole={role}
-              onBack={() => setCurrentView('welcome')}
-              onContinue={onChooseRoleContinue}
-            />
-          )
-          : currentView === 'signup'
-            ? renderSignupViewLiquid()
-            : renderLoginViewLiquid()}
+      {activeAuthView}
       <NbSheet
         visible={!!roleMismatchSheet && currentView === 'login'}
         onClose={() => setRoleMismatchSheet(null)}
@@ -3002,18 +3071,18 @@ export default function LoginScreen({ onSignupSuccess, onLoginSuccess, onForgotP
       </NbSheet>
       <ErrorPopup
         visible={!!errorModal}
-        title={errorModal?.title ?? 'Error'}
-        message={errorModal?.message ?? ''}
-        icon={errorModal?.icon}
+        title={(errorModal == null ? undefined : errorModal.title) ?? 'Error'}
+        message={(errorModal == null ? undefined : errorModal.message) ?? ''}
+        icon={(errorModal == null ? undefined : errorModal.icon)}
         onDismiss={() => setErrorPopup(null)}
-        onRetry={errorModal?.onRetry}
-        retryText={errorModal?.retryText}
+        onRetry={(errorModal == null ? undefined : errorModal.onRetry)}
+        retryText={(errorModal == null ? undefined : errorModal.retryText)}
       />
     </>
   );
 }
 
-// ==================== STYLES ====================
+// PLUMBING — skip unless debugging (legacy + liquid auth StyleSheets)
 const welcomeStyles = StyleSheet.create({
   container: {
     flex: 1,

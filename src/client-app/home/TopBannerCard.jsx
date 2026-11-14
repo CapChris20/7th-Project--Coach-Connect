@@ -1,8 +1,6 @@
-// Client-home hero that opens the full dashboard (workouts, stats, progress, history).
-// Flow: pick dark/light colors → paint the neobrutalist card → show an unread badge on Explore if needed.
-// Used by the client home screen. Tapping Explore Dashboard runs the `onPress` the parent passed in.
-//
-// vocab: neobrutalist = thick borders, hard shadows, gradient only for primary button
+// Client-home hero card that sells the full dashboard and opens it on Explore.
+// Flow: read theme colors → paint eyebrow + headline + feature chips → Explore CTA (optional unread badge).
+// Used by the client home screen. Parent passes onPress for Explore Dashboard.
 
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
@@ -16,96 +14,122 @@ import { useTheme } from '../../look-and-feel/lightDarkMode';
 
 const UNREAD_BADGE_CAP = 99;
 
-const FEATURES = [
+const DASHBOARD_FEATURE_CHIPS = [
   { icon: 'fitness-outline', label: 'Workouts' },
   { icon: 'stats-chart-outline', label: 'Analytics' },
   { icon: 'flash-outline', label: 'Progress' },
   { icon: 'calendar-outline', label: 'History' },
 ];
 
+const EYEBROW_COPY = 'YOUR COMPLETE DASHBOARD';
+const HEADLINE_COPY = 'Everything You Need in One Place';
+const SUBHEAD_COPY = 'Log workouts, view stats, track progress, and more';
+const EXPLORE_BUTTON_LABEL = 'Explore Dashboard';
+
 // ===== HELPER FUNCTIONS =====
 
-/**
- * Badge copy. 100+ unread would overflow the circle, so we cap the digits.
- * @param {number} unreadMessageCount
- * @returns {string|number}
- */
-function unreadBadgeLabel(unreadMessageCount) {
+function doNothingWhenPressed() {}
+
+function explorePressOrDoNothing(onPress) {
+  if (typeof onPress === 'function') return onPress;
+  return doNothingWhenPressed;
+}
+
+function unreadBadgeText(unreadMessageCount) {
   if (unreadMessageCount > UNREAD_BADGE_CAP) return '99+';
   return unreadMessageCount;
 }
 
-/**
- * Four feature chips under the subhead. Keys are labels so a duplicate icon still stays unique.
- * @param {object} colors
- */
-function FeaturePills({ colors }) {
+function FeatureChip({ iconName, label, colors }) {
+  const chipSurfaceStyle = [
+    styles.pill,
+    { backgroundColor: colors.nbSurfaceChip, borderColor: colors.nbBorder },
+  ];
+  const labelStyle = [styles.pillText, { color: colors.nbInk }];
+
   return (
-    <View style={styles.pillsRow}>
-      {FEATURES.map((feature) => (
-        <View key={feature.label} style={[styles.pill, { backgroundColor: colors.nbSurfaceChip, borderColor: colors.nbBorder }]}>
-          <Ionicons name={feature.icon} size={14} color={colors.nbMuted} />
-          <Text style={[styles.pillText, { color: colors.nbInk }]} numberOfLines={1}>
-            {feature.label}
-          </Text>
-        </View>
-      ))}
+    <View style={chipSurfaceStyle}>
+      <Ionicons name={iconName} size={14} color={colors.nbMuted} />
+      <Text style={labelStyle} numberOfLines={1}>
+        {label}
+      </Text>
     </View>
   );
 }
 
-/**
- * Explore button plus the unread bubble sitting on its top-right corner.
- * The bubble uses pointerEvents="none" so it never steals the tap meant for Explore.
- * One gradient moment per screen: this button.
- * @param {object} props
- */
+function buildFeatureChipViews(colors) {
+  const chipViews = [];
+  for (let chipIndex = 0; chipIndex < DASHBOARD_FEATURE_CHIPS.length; chipIndex += 1) {
+    const feature = DASHBOARD_FEATURE_CHIPS[chipIndex];
+    chipViews.push(
+      <FeatureChip
+        key={feature.label}
+        iconName={feature.icon}
+        label={feature.label}
+        colors={colors}
+      />,
+    );
+  }
+  return chipViews;
+}
+
+function FeatureChipsRow({ colors }) {
+  const chipViews = buildFeatureChipViews(colors);
+  return <View style={styles.pillsRow}>{chipViews}</View>;
+}
+
+function UnreadBadgeBubble({ unreadMessageCount, colors }) {
+  const badgeSurfaceStyle = [
+    styles.badge,
+    { borderColor: colors.nbBorder, backgroundColor: colors.error },
+  ];
+  return (
+    <View style={badgeSurfaceStyle} pointerEvents="none">
+      <Text style={styles.badgeText}>{unreadBadgeText(unreadMessageCount)}</Text>
+    </View>
+  );
+}
+
 function ExploreDashboardButton({ onPress, unreadMessageCount, colors }) {
-  const hasUnread = unreadMessageCount > 0;
+  const hasUnreadMessages = unreadMessageCount > 0;
+
+  let unreadBadgeNode = null;
+  if (hasUnreadMessages) {
+    unreadBadgeNode = (
+      <UnreadBadgeBubble unreadMessageCount={unreadMessageCount} colors={colors} />
+    );
+  }
+
   return (
     <View style={styles.ctaWrap}>
-      {hasUnread ? (
-        <View style={[styles.badge, { borderColor: colors.nbBorder, backgroundColor: colors.error }]} pointerEvents="none">
-          <Text style={styles.badgeText}>{unreadBadgeLabel(unreadMessageCount)}</Text>
-        </View>
-      ) : null}
+      {unreadBadgeNode}
       <NbButton variant="brand" onPress={onPress}>
-        Explore Dashboard
+        {EXPLORE_BUTTON_LABEL}
       </NbButton>
     </View>
   );
 }
 
-// ===== MAIN FUNCTION =====
-
-/**
- * Premium hero for the client home "full dashboard" entry.
- * Neobrutalist redesign: thick borders, hard shadows, gradient only on the CTA button.
- * @param {{ onPress?: function, unreadMessageCount?: number }} props
- */
-export default function TopBannerCard({ onPress, unreadMessageCount = 0, isDark: _isDark }) {
-  // vocab: useTheme follows in-app light/dark toggle — NOT device useColorScheme alone
-  // (device scheme mismatch made this card unreadable / looked "broken" vs Settings)
-  const { colors } = useTheme();
+function DashboardHeroCard({ colors, explorePress, unreadMessageCount }) {
+  const eyebrowStyle = [styles.label, { color: colors.nbMuted }];
+  const headlineStyle = [styles.headline, { color: colors.nbInk }];
+  const subheadStyle = [styles.subhead, { color: colors.nbMuted }];
 
   return (
     <View style={styles.wrapper}>
       <NbCard style={styles.card}>
         <View style={styles.headerRow}>
-          <Text style={[styles.label, { color: colors.nbMuted }]}>YOUR COMPLETE DASHBOARD</Text>
+          <Text style={eyebrowStyle}>{EYEBROW_COPY}</Text>
           <Ionicons name="grid-outline" size={24} color={colors.nbMuted} />
         </View>
 
-        <Text style={[styles.headline, { color: colors.nbInk }]}>Everything You Need in One Place</Text>
+        <Text style={headlineStyle}>{HEADLINE_COPY}</Text>
+        <Text style={subheadStyle}>{SUBHEAD_COPY}</Text>
 
-        <Text style={[styles.subhead, { color: colors.nbMuted }]}>
-          Log workouts, view stats, track progress, and more
-        </Text>
-
-        <FeaturePills colors={colors} />
+        <FeatureChipsRow colors={colors} />
 
         <ExploreDashboardButton
-          onPress={typeof onPress === 'function' ? onPress : () => {}}
+          onPress={explorePress}
           unreadMessageCount={unreadMessageCount}
           colors={colors}
         />
@@ -113,6 +137,34 @@ export default function TopBannerCard({ onPress, unreadMessageCount = 0, isDark:
     </View>
   );
 }
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Home-screen dashboard hero.
+ * Flow: 1. theme  2. safe Explore handler  3. paint hero card
+ * @param {object} props
+ * @param {Function} [props.onPress]
+ * @param {number} [props.unreadMessageCount]
+ * @param {boolean} [props.isDark] kept for callers; theme hook owns colors now
+ */
+export default function TopBannerCard({ onPress, unreadMessageCount = 0, isDark: _isDark }) {
+  const { colors } = useTheme();
+
+  // 1. Resolve Explore so a missing parent callback cannot crash NbButton.
+  const explorePress = explorePressOrDoNothing(onPress);
+
+  // 2. Paint eyebrow → headline → chips → CTA (badge only when unread > 0).
+  return (
+    <DashboardHeroCard
+      colors={colors}
+      explorePress={explorePress}
+      unreadMessageCount={unreadMessageCount}
+    />
+  );
+}
+
+// PLUMBING — skip unless spacing / type / badge size looks wrong on device.
 
 const styles = StyleSheet.create({
   wrapper: {

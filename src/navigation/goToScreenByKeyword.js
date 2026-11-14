@@ -1,6 +1,7 @@
-// Lets a screen say navigate('settings') without knowing whether it lives in the client or trainer shell.
-// Flow: read whichever shell context is mounted → turn a plain screen keyword into the shell's own open*/handle* call.
-// Used by: shared screens reused in both shells that cannot rely on a navigation prop being passed in.
+// Lets a shared screen say navigate('settings') without knowing which shell is mounted.
+// Flow: pick client or trainer shell context → build a navigate(keyword) function → open the matching panel.
+// Used by: Settings and other screens reused in both shells when no navigation prop is passed in.
+// Read order: constants → exported recipes → keyword table PLUMBING.
 
 import { useContext, useMemo } from 'react';
 import { ClientOpenScreenTracker } from '../client-app/navigation/ClientOpenScreenTracker';
@@ -8,6 +9,7 @@ import { TrainerOpenScreenTracker } from '../trainer-app/navigation/TrainerOpenS
 
 // ===== NAMED CONSTANTS =====
 
+// Manipulate here: keyword strings callers pass into navigate(...). Letters are frozen for existing call sites.
 const SCREEN_HOME = 'home';
 const SCREEN_PROFILE = 'profile';
 const SCREEN_PROFILE_LEGACY = 'ViewMyMyProfileScreen';
@@ -31,158 +33,203 @@ const SCREEN_DASHBOARD_BILLING = 'dashboardBilling';
 const SCREEN_COACHING_PAYMENT = 'coachingPayment';
 
 // ===== HELPER FUNCTIONS =====
-
-/**
- * Close the open panel, then open the next one. Order matters — home first, or the new panel
- * would sit on a stale screen and then bounce back.
- * @param {object} shell
- * @param {Function} [openScreen]
- */
-function goHomeThenOpen(shell, openScreen) {
-  shell.handleHomePress?.();
-  openScreen?.();
-}
-
-/**
- * Settings-family destinations pop the settings stack instead of going all the way home.
- * @param {object} shell
- * @param {Function} [openScreen]
- */
-function popSettingsThenOpen(shell, openScreen) {
-  shell.rootGoBack?.();
-  openScreen?.();
-}
-
-/**
- * Newer shells expose handleOpenConversations(); older ones only have the two setters.
- * @param {object} shell
- */
-function openMessagesInShell(shell) {
-  shell.handleHomePress?.();
-  if (typeof shell.handleOpenConversations === 'function') {
-    shell.handleOpenConversations();
-  } else {
-    shell.setShowTrainerMessaging?.(false);
-    shell.setShowConversationsList?.(true);
-  }
-}
-
-/**
- * Dispatch one keyword to the matching shell method. Unknown keywords are a quiet no-op.
- * vocab/symbol: shell.openProfile?.() = call it only if that shell defines it.
- * Manipulate here: adding a destination = add an `if (screenKeyword === ...)` block.
- * @param {object} shell
- * @param {string} screenKeyword
- */
-function dispatchScreenKeyword(shell, screenKeyword) {
-  if (!screenKeyword) return;
-
-  if (screenKeyword === SCREEN_HOME) {
-    shell.handleHomePress?.();
-    return;
-  }
-
-  if (screenKeyword === SCREEN_PROFILE || screenKeyword === SCREEN_PROFILE_LEGACY) {
-    goHomeThenOpen(shell, () => shell.openProfile?.());
-    return;
-  }
-  if (screenKeyword === SCREEN_SETTINGS || screenKeyword === SCREEN_SETTINGS_LEGACY) {
-    goHomeThenOpen(shell, () => shell.openSettings?.());
-    return;
-  }
-
-  if (screenKeyword === SCREEN_HELP_FAQ) {
-    popSettingsThenOpen(shell, () => shell.openHelpFAQ?.());
-    return;
-  }
-  if (screenKeyword === SCREEN_TERMS) {
-    popSettingsThenOpen(shell, () => shell.openTerms?.());
-    return;
-  }
-  if (screenKeyword === SCREEN_PRIVACY) {
-    popSettingsThenOpen(shell, () => shell.openPrivacy?.());
-    return;
-  }
-  if (screenKeyword === SCREEN_CONTACT_SUPPORT) {
-    popSettingsThenOpen(shell, () => shell.openContactSupport?.());
-    return;
-  }
-  if (screenKeyword === SCREEN_BUG_REPORT) {
-    popSettingsThenOpen(shell, () => shell.openBugReport?.());
-    return;
-  }
-  if (screenKeyword === SCREEN_PRIVACY_DATA_RIGHTS) {
-    popSettingsThenOpen(shell, () => shell.openPrivacyDataRights?.());
-    return;
-  }
-
-  if (screenKeyword === SCREEN_NUTRITION) {
-    goHomeThenOpen(shell, () => shell.openNutrition?.());
-    return;
-  }
-
-  // Workout has two possible shell method names. ?? uses the result of the first call:
-  // missing method → undefined → run the fallback.
-  if (screenKeyword === SCREEN_WORKOUT) {
-    shell.openWorkout?.() ?? shell.openWorkoutPlan?.();
-    return;
-  }
-
-  if (screenKeyword === SCREEN_MESSAGES) {
-    openMessagesInShell(shell);
-    return;
-  }
-
-  if (screenKeyword === SCREEN_CREATE) {
-    shell.setShowAddFilePopup?.(true);
-    return;
-  }
-
-  if (screenKeyword === SCREEN_VOICE || screenKeyword === SCREEN_AI_CHAT) {
-    goHomeThenOpen(shell, () => {
-      shell.openAIChatHome?.() ?? shell.openVoiceAI?.();
-    });
-    return;
-  }
-
-  if (screenKeyword === SCREEN_PAYMENTS || screenKeyword === SCREEN_EARNINGS_LEGACY) {
-    popSettingsThenOpen(shell, () => shell.openPayments?.());
-    return;
-  }
-  if (screenKeyword === SCREEN_DASHBOARD_BILLING || screenKeyword === SCREEN_COACHING_PAYMENT) {
-    popSettingsThenOpen(shell, () => shell.openCoachingPayment?.());
-    return;
-  }
-}
+// (keyword table helpers live under PLUMBING)
 
 // ===== MAIN FUNCTION =====
 
 /**
- * Builds the navigate(screen) function for one shell.
- * vocab: "shell" = ClientAppStart / TrainerAppStart, which often toggles booleans instead of pushing routes.
- * @param {object|null} shell
+ * Build a navigate(screenKeyword) function from a mounted shell context.
+ * Returns null when nothing is mounted; callers should no-op.
+ * @param {object|null|undefined} shellContext
  * @returns {Function|null}
  */
-export function buildNavigateFromShell(shell) {
-  if (!shell) return null;
-  if (typeof shell.onNavigate === 'function') return shell.onNavigate;
-  return (screenKeyword) => dispatchScreenKeyword(shell, screenKeyword);
+export function buildNavigateFromShell(shellContext) {
+  // 1. No shell → caller gets null and should skip navigation.
+  if (!shellContext) return null;
+
+  // 2. Some shells already expose one onNavigate — hand it back unchanged.
+  const shellAlreadyHasNavigate = typeof shellContext.onNavigate === 'function';
+  if (shellAlreadyHasNavigate) return shellContext.onNavigate;
+
+  // 3. Otherwise wrap our keyword table around this shell instance.
+  return function navigateByScreenKeyword(screenKeyword) {
+    runScreenKeywordOnShell(shellContext, screenKeyword);
+  };
 }
 
 /**
- * Hook version for components: the best available navigate function.
- * An explicitly passed navigate prop always wins so a parent can override routing for one screen.
- * vocab: useMemo = cache this value; a new function identity every render would retrigger child effects.
- * @param {Function} [propNavigate]
+ * Hook: prefer a parent-passed navigate, else build one from whichever shell context is live.
+ * Hook order frozen: client context → trainer context → useMemo.
+ * @param {Function|undefined} navigateFromParent
  * @returns {Function|null}
  */
-export function useShellNavigate(propNavigate) {
+export function useShellNavigate(navigateFromParent) {
+  // vocab: useContext = read the nearest provider value for that tracker (client or trainer shell)
   const clientShell = useContext(ClientOpenScreenTracker);
   const trainerShell = useContext(TrainerOpenScreenTracker);
-  const shell = clientShell || trainerShell;
+  const activeShell = clientShell || trainerShell;
 
+  // vocab: useMemo = keep the same function identity unless shell or parent override changes
   return useMemo(() => {
-    if (typeof propNavigate === 'function') return propNavigate;
-    return buildNavigateFromShell(shell);
-  }, [propNavigate, shell]);
+    const parentPassedANavigate = typeof navigateFromParent === 'function';
+    if (parentPassedANavigate) return navigateFromParent;
+    return buildNavigateFromShell(activeShell);
+  }, [navigateFromParent, activeShell]);
+}
+
+// ===== PLUMBING — skip unless debugging =====
+
+/**
+ * Close whatever panel is open by returning to home, then open the next panel.
+ * Order matters: home first, or the new panel sits on a stale screen and bounces back.
+ * @param {object} shellContext
+ * @param {Function} [openNextPanel]
+ */
+function goHomeThenOpenNextPanel(shellContext, openNextPanel) {
+  var _optCallObj, _optCallFn;
+  (_optCallObj = shellContext, _optCallFn = _optCallObj.handleHomePress) == null ? void 0 : _optCallFn.call(_optCallObj);
+  openNextPanel == null ? void 0 : openNextPanel();
+}
+
+/**
+ * Settings-family destinations pop one level instead of going all the way home.
+ * @param {object} shellContext
+ * @param {Function} [openNextPanel]
+ */
+function popSettingsStackThenOpen(shellContext, openNextPanel) {
+  var _optCallObj2, _optCallFn2;
+  (_optCallObj2 = shellContext, _optCallFn2 = _optCallObj2.rootGoBack) == null ? void 0 : _optCallFn2.call(_optCallObj2);
+  openNextPanel == null ? void 0 : openNextPanel();
+}
+
+/**
+ * Newer shells expose handleOpenConversations(); older ones only have the two setters.
+ * @param {object} shellContext
+ */
+function openMessagesPanelInShell(shellContext) {
+  var _optCallObj3, _optCallFn3, _optCallObj4, _optCallFn4, _optCallObj5, _optCallFn5;
+  (_optCallObj3 = shellContext, _optCallFn3 = _optCallObj3.handleHomePress) == null ? void 0 : _optCallFn3.call(_optCallObj3);
+  const hasConversationsHandler = typeof shellContext.handleOpenConversations === 'function';
+  if (hasConversationsHandler) {
+    shellContext.handleOpenConversations();
+    return;
+  }
+  (_optCallObj4 = shellContext, _optCallFn4 = _optCallObj4.setShowTrainerMessaging) == null ? void 0 : _optCallFn4.call(_optCallObj4, false);
+  (_optCallObj5 = shellContext, _optCallFn5 = _optCallObj5.setShowConversationsList) == null ? void 0 : _optCallFn5.call(_optCallObj5, true);
+}
+
+/**
+ * Workout panel: prefer openWorkout, fall back to openWorkoutPlan when the first is missing.
+ * vocab/symbol: ?? = use the right side only when the left is null/undefined (missing method → undefined)
+ * @param {object} shellContext
+ */
+function openWorkoutPanelInShell(shellContext) {
+  var _optCallObj6, _optCallFn6, _optCallObj7, _optCallFn7;
+  ((_optCallObj6 = shellContext, _optCallFn6 = _optCallObj6.openWorkout) == null ? void 0 : _optCallFn6.call(_optCallObj6)) ?? ((_optCallObj7 = shellContext, _optCallFn7 = _optCallObj7.openWorkoutPlan) == null ? void 0 : _optCallFn7.call(_optCallObj7));
+}
+
+/**
+ * AI / voice chat: prefer openAIChatHome, fall back to openVoiceAI.
+ * @param {object} shellContext
+ */
+function openAiOrVoicePanelInShell(shellContext) {
+  goHomeThenOpenNextPanel(shellContext, () => {
+    var _optCallObj8, _optCallFn8, _optCallObj9, _optCallFn9;
+    ((_optCallObj8 = shellContext, _optCallFn8 = _optCallObj8.openAIChatHome) == null ? void 0 : _optCallFn8.call(_optCallObj8)) ?? ((_optCallObj9 = shellContext, _optCallFn9 = _optCallObj9.openVoiceAI) == null ? void 0 : _optCallFn9.call(_optCallObj9));
+  });
+}
+
+/**
+ * One keyword → one shell opener. Built once so the dispatcher is a table lookup, not a long if-chain.
+ * Manipulate here: add a destination by putting a new SCREEN_* key here (and a constant above).
+ */
+function buildKeywordOpenerTable() {
+  const openProfile = shellContext => goHomeThenOpenNextPanel(shellContext, () => {
+    var _optCallObj0, _optCallFn0;
+    return (_optCallObj0 = shellContext, _optCallFn0 = _optCallObj0.openProfile) == null ? void 0 : _optCallFn0.call(_optCallObj0);
+  });
+  const openSettings = shellContext => goHomeThenOpenNextPanel(shellContext, () => {
+    var _optCallObj1, _optCallFn1;
+    return (_optCallObj1 = shellContext, _optCallFn1 = _optCallObj1.openSettings) == null ? void 0 : _optCallFn1.call(_optCallObj1);
+  });
+  const openHelpFaq = shellContext => popSettingsStackThenOpen(shellContext, () => {
+    var _optCallObj10, _optCallFn10;
+    return (_optCallObj10 = shellContext, _optCallFn10 = _optCallObj10.openHelpFAQ) == null ? void 0 : _optCallFn10.call(_optCallObj10);
+  });
+  const openTerms = shellContext => popSettingsStackThenOpen(shellContext, () => {
+    var _optCallObj11, _optCallFn11;
+    return (_optCallObj11 = shellContext, _optCallFn11 = _optCallObj11.openTerms) == null ? void 0 : _optCallFn11.call(_optCallObj11);
+  });
+  const openPrivacy = shellContext => popSettingsStackThenOpen(shellContext, () => {
+    var _optCallObj12, _optCallFn12;
+    return (_optCallObj12 = shellContext, _optCallFn12 = _optCallObj12.openPrivacy) == null ? void 0 : _optCallFn12.call(_optCallObj12);
+  });
+  const openContactSupport = shellContext => popSettingsStackThenOpen(shellContext, () => {
+    var _optCallObj13, _optCallFn13;
+    return (_optCallObj13 = shellContext, _optCallFn13 = _optCallObj13.openContactSupport) == null ? void 0 : _optCallFn13.call(_optCallObj13);
+  });
+  const openBugReport = shellContext => popSettingsStackThenOpen(shellContext, () => {
+    var _optCallObj14, _optCallFn14;
+    return (_optCallObj14 = shellContext, _optCallFn14 = _optCallObj14.openBugReport) == null ? void 0 : _optCallFn14.call(_optCallObj14);
+  });
+  const openPrivacyDataRights = shellContext => popSettingsStackThenOpen(shellContext, () => {
+    var _optCallObj15, _optCallFn15;
+    return (_optCallObj15 = shellContext, _optCallFn15 = _optCallObj15.openPrivacyDataRights) == null ? void 0 : _optCallFn15.call(_optCallObj15);
+  });
+  const openNutrition = shellContext => goHomeThenOpenNextPanel(shellContext, () => {
+    var _optCallObj16, _optCallFn16;
+    return (_optCallObj16 = shellContext, _optCallFn16 = _optCallObj16.openNutrition) == null ? void 0 : _optCallFn16.call(_optCallObj16);
+  });
+  const openPayments = shellContext => popSettingsStackThenOpen(shellContext, () => {
+    var _optCallObj17, _optCallFn17;
+    return (_optCallObj17 = shellContext, _optCallFn17 = _optCallObj17.openPayments) == null ? void 0 : _optCallFn17.call(_optCallObj17);
+  });
+  const openCoachingPayment = shellContext => popSettingsStackThenOpen(shellContext, () => {
+    var _optCallObj18, _optCallFn18;
+    return (_optCallObj18 = shellContext, _optCallFn18 = _optCallObj18.openCoachingPayment) == null ? void 0 : _optCallFn18.call(_optCallObj18);
+  });
+  const openCreateFilePopup = shellContext => {
+    var _optCallObj19, _optCallFn19;
+    (_optCallObj19 = shellContext, _optCallFn19 = _optCallObj19.setShowAddFilePopup) == null ? void 0 : _optCallFn19.call(_optCallObj19, true);
+  };
+  const openHome = shellContext => {
+    var _optCallObj20, _optCallFn20;
+    (_optCallObj20 = shellContext, _optCallFn20 = _optCallObj20.handleHomePress) == null ? void 0 : _optCallFn20.call(_optCallObj20);
+  };
+  return {
+    [SCREEN_HOME]: openHome,
+    [SCREEN_PROFILE]: openProfile,
+    [SCREEN_PROFILE_LEGACY]: openProfile,
+    [SCREEN_SETTINGS]: openSettings,
+    [SCREEN_SETTINGS_LEGACY]: openSettings,
+    [SCREEN_HELP_FAQ]: openHelpFaq,
+    [SCREEN_TERMS]: openTerms,
+    [SCREEN_PRIVACY]: openPrivacy,
+    [SCREEN_CONTACT_SUPPORT]: openContactSupport,
+    [SCREEN_BUG_REPORT]: openBugReport,
+    [SCREEN_PRIVACY_DATA_RIGHTS]: openPrivacyDataRights,
+    [SCREEN_NUTRITION]: openNutrition,
+    [SCREEN_WORKOUT]: openWorkoutPanelInShell,
+    [SCREEN_MESSAGES]: openMessagesPanelInShell,
+    [SCREEN_CREATE]: openCreateFilePopup,
+    [SCREEN_VOICE]: openAiOrVoicePanelInShell,
+    [SCREEN_AI_CHAT]: openAiOrVoicePanelInShell,
+    [SCREEN_PAYMENTS]: openPayments,
+    [SCREEN_EARNINGS_LEGACY]: openPayments,
+    [SCREEN_DASHBOARD_BILLING]: openCoachingPayment,
+    [SCREEN_COACHING_PAYMENT]: openCoachingPayment
+  };
+}
+const KEYWORD_OPENER_BY_SCREEN = buildKeywordOpenerTable();
+
+/**
+ * Look up the keyword in the table and run that opener. Unknown keywords are a quiet no-op.
+ * @param {object} shellContext
+ * @param {string} screenKeyword
+ */
+function runScreenKeywordOnShell(shellContext, screenKeyword) {
+  if (!screenKeyword) return;
+  const openThisScreen = KEYWORD_OPENER_BY_SCREEN[screenKeyword];
+  if (!openThisScreen) return;
+  openThisScreen(shellContext);
 }

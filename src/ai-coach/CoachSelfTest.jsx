@@ -1,5 +1,5 @@
 // Dev screen that runs canned prompts against the AI Coach and grades the replies.
-// Flow: load the 7-day snapshot → pick a tab → send each prompt → show pass / warn / fail.
+// Flow: load the 7-day snapshot → pick a suite tab → send each prompt → show pass / warn / fail.
 // Used from the trainer/dev tools. Not part of the client chat.
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -22,18 +22,20 @@ import { lightColors, darkColors } from '../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
-// Strip pass: solid nb chrome — no soft-white glass hairlines / indigo pink.
-const COLORS = {
-  bg: lightColors.nbInk,
-  cardBg: darkColors.nbSurface,
+// Solid nb chrome for the self-test sheet — no glass hairlines / indigo pink.
+// Manipulate here: accent colors for pass/warn/fail chips on this dark test sheet only.
+const SHEET_COLORS = {
+  sheetBackground: lightColors.nbInk,
+  cardBackground: darkColors.nbSurface,
   textPrimary: lightColors.white,
   textSecondary: darkColors.nbMuted,
-  pink: '#FB923C',
-  orange: '#F97316',
-  green: '#10B981',
-  red: '#FF6B6B',
+  accentPink: '#FB923C',
+  accentOrange: '#F97316',
+  accentGreen: '#10B981',
+  accentRed: '#FF6B6B',
 };
 
+// vocab: each suite is a list of { name, prompt } the Run button walks in order.
 const TEST_SUITES = {
   context: [
     { name: 'Context Aggregation', prompt: 'What are my macros looking like this week?' },
@@ -83,6 +85,7 @@ const TEST_SUITES = {
   ],
 };
 
+// Which tool name(s) count as a pass for each tools-suite row.
 const TOOL_EXPECTATIONS = {
   updateWorkout: ['updateWorkout'],
   adjustMacros: ['adjustMacroTargets', 'adjustMacros'],
@@ -101,18 +104,22 @@ const TAB_CONTEXT = 'context';
 const TAB_TOOLS = 'tools';
 const TAB_PERPLEXITY = 'perplexity';
 const DEFAULT_TRAINER_NAME = 'Coach';
+// Manipulate here: how many reply characters show in the result card preview.
 const PREVIEW_MESSAGE_CHARS = 120;
+// Manipulate here: replies shorter than this fail the length check.
 const MINIMUM_REPLY_CHARS = 10;
 // Manipulate here: pause between prompts so the suite does not hammer the coach API.
 const TEST_PAUSE_MS = 1000;
 const SIGN_IN_ERROR = 'Sign in to run tests';
 const CONTEXT_LOAD_ERROR = 'Failed to load context — check Firebase / server';
 const CONTEXT_MISSING_MESSAGE = 'Context not loaded';
+const FOOTER_SAFE_PAD_MIN = 12;
+const RESULTS_SCROLL_BOTTOM_PAD = 24;
 
 const STATUS_COLORS = {
-  [STATUS_PASS]: COLORS.green,
-  [STATUS_FAIL]: COLORS.red,
-  [STATUS_WARN]: COLORS.orange,
+  [STATUS_PASS]: SHEET_COLORS.accentGreen,
+  [STATUS_FAIL]: SHEET_COLORS.accentRed,
+  [STATUS_WARN]: SHEET_COLORS.accentOrange,
 };
 
 const STATUS_ICONS = {
@@ -124,37 +131,48 @@ const STATUS_ICONS = {
 // ===== HELPER FUNCTIONS =====
 
 /**
+ * Shorten a reply so the result card stays skim-friendly.
  * @param {string} text
  * @param {number} [maxChars]
  * @returns {string}
  */
-function truncateText(text, maxChars = 100) {
+function cutTextToMaxChars(text, maxChars = 100) {
   const fullText = String(text || '');
   if (fullText.length <= maxChars) return fullText;
   return `${fullText.slice(0, maxChars)}…`;
 }
 
 /**
+ * Names that count as a correct tool for this test row.
+ * Falls back to TOOL_NAME_ALIASES, then the row name itself.
  * @param {string} testName
  * @returns {string[]}
  */
 function expectedToolNames(testName) {
-  return TOOL_EXPECTATIONS[testName] || [TOOL_NAME_ALIASES[testName] || testName];
+  const fromExpectations = TOOL_EXPECTATIONS[testName];
+  if (fromExpectations) return fromExpectations;
+
+  const aliasName = TOOL_NAME_ALIASES[testName];
+  if (aliasName) return [aliasName];
+
+  return [testName];
 }
 
 /**
+ * True when the coach’s toolCall.name is one of the names we accept for this row.
  * @param {string} testName
  * @param {object} toolCall
  * @returns {boolean}
  */
 function toolMatchesExpectation(testName, toolCall) {
+  // vocab: optional chaining — no name means “no tool call to grade”
   if (!toolCall?.name) return false;
-  const expected = expectedToolNames(testName);
-  return expected.includes(toolCall.name);
+  const expectedNames = expectedToolNames(testName);
+  return expectedNames.includes(toolCall.name);
 }
 
 /**
- * Fail already stays fail. Otherwise take the milder next status (warn).
+ * Fail already stays fail. Otherwise take the milder next status (usually warn).
  * @param {string} currentStatus
  * @param {string} nextStatus
  * @returns {string}
@@ -165,6 +183,7 @@ function worseStatus(currentStatus, nextStatus) {
 }
 
 /**
+ * Result shape when the 7-day snapshot never loaded.
  * @param {object} testItem
  * @returns {object}
  */
@@ -178,34 +197,44 @@ function missingContextResult(testItem) {
 }
 
 /**
+ * Result shape when sendToAI threw.
  * @param {object} testItem
  * @param {*} error
  * @returns {object}
  */
 function testErrorResult(testItem, error) {
+  const errorMessage = error?.message || String(error);
   return {
     ...testItem,
     status: STATUS_ERROR,
-    message: error?.message || String(error),
-    validations: [error?.message || String(error)],
+    message: errorMessage,
+    validations: [errorMessage],
   };
 }
 
 /**
+ * First gate: API success + reply long enough to be a real answer.
  * @param {object} response
  * @returns {{ status: string, validations: string[] }}
  */
 function gradeReplyLengthAndSuccess(response) {
   if (!response?.success) {
-    return { status: STATUS_FAIL, validations: [response?.error || 'API call failed'] };
+    const failReason = response?.error || 'API call failed';
+    return { status: STATUS_FAIL, validations: [failReason] };
   }
-  if (!response.message || response.message.length < MINIMUM_REPLY_CHARS) {
+
+  const replyText = response.message || '';
+  const replyIsTooShort = replyText.length < MINIMUM_REPLY_CHARS;
+  if (replyIsTooShort) {
     return { status: STATUS_FAIL, validations: ['Response too short'] };
   }
+
   return { status: STATUS_PASS, validations: [] };
 }
 
 /**
+ * Tools suite: warn when the tool is missing or the wrong name.
+ * Mutates validations in place; returns the (possibly worse) status.
  * @param {string} testName
  * @param {object} response
  * @param {string} status
@@ -217,16 +246,21 @@ function addToolValidations(testName, response, status, validations) {
     validations.push('No tool call detected (expected for tool tests)');
     return worseStatus(status, STATUS_WARN);
   }
-  if (!toolMatchesExpectation(testName, response.toolCall)) {
+
+  const toolNameMatches = toolMatchesExpectation(testName, response.toolCall);
+  if (!toolNameMatches) {
+    const expectedList = (TOOL_EXPECTATIONS[testName] || [testName]).join(', ');
     validations.push(
-      `Tool was ${response.toolCall.name}; expected one of: ${(TOOL_EXPECTATIONS[testName] || [testName]).join(', ')}`,
+      `Tool was ${response.toolCall.name}; expected one of: ${expectedList}`,
     );
     return worseStatus(status, STATUS_WARN);
   }
+
   return status;
 }
 
 /**
+ * Perplexity suite: warn when the heuristic or the reply source is wrong.
  * @param {boolean} isPerplexityRoute
  * @param {object} response
  * @param {string} status
@@ -235,20 +269,28 @@ function addToolValidations(testName, response, status, validations) {
  */
 function addPerplexityValidations(isPerplexityRoute, response, status, validations) {
   let nextStatus = status;
+
   if (!isPerplexityRoute) {
     nextStatus = worseStatus(nextStatus, STATUS_WARN);
     validations.push('Perplexity route heuristic did not match prompt');
   }
-  if (response.source !== 'perplexity' && response.searchedWeb !== true) {
+
+  const usedPerplexitySource = response.source === 'perplexity';
+  const searchedTheWeb = response.searchedWeb === true;
+  const looksLikeWebAnswer = usedPerplexitySource || searchedTheWeb;
+
+  if (!looksLikeWebAnswer) {
     nextStatus = worseStatus(nextStatus, STATUS_WARN);
     validations.push(
       `Expected Perplexity (source=perplexity); got source=${response.source || 'unknown'}`,
     );
   }
+
   return nextStatus;
 }
 
 /**
+ * Grade one canned prompt after sendToAI returns.
  * @param {object} testItem
  * @param {object} response
  * @param {boolean} isPerplexityRoute
@@ -270,7 +312,7 @@ function gradeOneTest(testItem, response, isPerplexityRoute, activeTab) {
   return {
     ...testItem,
     status,
-    message: truncateText(response.message, PREVIEW_MESSAGE_CHARS),
+    message: cutTextToMaxChars(response.message, PREVIEW_MESSAGE_CHARS),
     fullResponse: response.message,
     toolCall: response.toolCall,
     source: response.source,
@@ -281,6 +323,7 @@ function gradeOneTest(testItem, response, isPerplexityRoute, activeTab) {
 }
 
 /**
+ * Wait between prompts so we do not hammer the coach API.
  * @returns {Promise<void>}
  */
 function pauseBetweenTests() {
@@ -288,14 +331,16 @@ function pauseBetweenTests() {
 }
 
 /**
+ * Border / icon color for a graded result status.
  * @param {string} status
  * @returns {string}
  */
 function statusColor(status) {
-  return STATUS_COLORS[status] || COLORS.textSecondary;
+  return STATUS_COLORS[status] || SHEET_COLORS.textSecondary;
 }
 
 /**
+ * MaterialCommunityIcons name for a graded result status.
  * @param {string} status
  * @returns {string}
  */
@@ -304,6 +349,8 @@ function statusIcon(status) {
 }
 
 /**
+ * Tally pass / fail / warn for the summary strip.
+ * Errors count with fails.
  * @param {Array} testResults
  * @returns {{ passCount: number, failCount: number, warnCount: number }}
  */
@@ -311,13 +358,25 @@ function countResultsByStatus(testResults) {
   let passCount = 0;
   let failCount = 0;
   let warnCount = 0;
+
   for (const result of testResults) {
     if (result.status === STATUS_PASS) passCount += 1;
     if (result.status === STATUS_FAIL || result.status === STATUS_ERROR) failCount += 1;
     if (result.status === STATUS_WARN) warnCount += 1;
   }
+
   return { passCount, failCount, warnCount };
 }
+
+function listSuiteTabNames() {
+  return Object.keys(TEST_SUITES);
+}
+
+function testsForActiveTab(activeTab) {
+  return TEST_SUITES[activeTab] || [];
+}
+
+// ===== PURE LAYOUT (no hooks) =====
 
 function LoadingContextLine({ contextLoading }) {
   if (!contextLoading) return null;
@@ -331,22 +390,150 @@ function ContextErrorLine({ contextError }) {
 
 function LoadedContextLine({ context, contextLoading }) {
   if (!context || contextLoading) return null;
+
+  // Named local so JSX does not bury the template string.
   const contextSummary = `Context: ${context.userName} · ${context.goal} · ${context.nutritionDaysLogged}/7 nutrition days`;
   return <Text style={styles.contextInfo}>{contextSummary}</Text>;
 }
 
 function RunTestsLabel({ running, tabTestCount }) {
-  if (running) return <ActivityIndicator color={COLORS.textPrimary} />;
+  if (running) {
+    return <ActivityIndicator color={SHEET_COLORS.textPrimary} />;
+  }
+
   return (
     <>
       <MaterialCommunityIcons
         name="play"
         size={20}
-        color={COLORS.textPrimary}
-        style={{ marginRight: 8 }}
+        color={SHEET_COLORS.textPrimary}
+        style={styles.runButtonIcon}
       />
       <Text style={styles.runButtonText}>Run {tabTestCount} tests</Text>
     </>
+  );
+}
+
+function SuiteTabButton({ tabName, isActive, onSelectTab }) {
+  const tabStyle = isActive ? [styles.tab, styles.activeTab] : styles.tab;
+  const tabTextStyle = isActive
+    ? [styles.tabText, styles.activeTabText]
+    : styles.tabText;
+
+  return (
+    <TouchableOpacity style={tabStyle} onPress={onSelectTab}>
+      <Text style={tabTextStyle}>{tabName}</Text>
+    </TouchableOpacity>
+  );
+}
+
+function SuiteTabBar({ activeTab, onPickTab }) {
+  const tabNames = listSuiteTabNames();
+  const tabButtons = [];
+  for (let index = 0; index < tabNames.length; index += 1) {
+    const tabName = tabNames[index];
+    tabButtons.push(
+      <SuiteTabButton
+        key={tabName}
+        tabName={tabName}
+        isActive={activeTab === tabName}
+        onSelectTab={() => onPickTab(tabName)}
+      />,
+    );
+  }
+
+  return <View style={styles.tabs}>{tabButtons}</View>;
+}
+
+function PassFailSummaryStrip({ passCount, failCount, warnCount }) {
+  return (
+    <View style={styles.summary}>
+      <View style={styles.summaryItem}>
+        <MaterialCommunityIcons name="check-circle" size={20} color={SHEET_COLORS.accentGreen} />
+        <Text style={styles.summaryText}>{passCount} passed</Text>
+      </View>
+      <View style={styles.summaryItem}>
+        <MaterialCommunityIcons name="alert-circle" size={20} color={SHEET_COLORS.accentOrange} />
+        <Text style={styles.summaryText}>{warnCount} warned</Text>
+      </View>
+      <View style={styles.summaryItem}>
+        <MaterialCommunityIcons name="close-circle" size={20} color={SHEET_COLORS.accentRed} />
+        <Text style={styles.summaryText}>{failCount} failed</Text>
+      </View>
+    </View>
+  );
+}
+
+function ToolCallDetectedBox({ toolCall }) {
+  if (!toolCall) return null;
+
+  return (
+    <View style={styles.toolCallBox}>
+      <Text style={styles.toolCallLabel}>Tool call detected</Text>
+      <Text style={styles.toolCallName}>{toolCall.name}</Text>
+    </View>
+  );
+}
+
+function WebSearchBadge({ source, searchedWeb }) {
+  const usedWebSearch = source === 'perplexity' || searchedWeb;
+  if (!usedWebSearch) return null;
+
+  const sourceLabel = source || 'perplexity';
+
+  return (
+    <View style={styles.perplexityBox}>
+      <MaterialCommunityIcons name="web" size={14} color={SHEET_COLORS.accentPink} />
+      <Text style={styles.perplexityText}>Web search ({sourceLabel})</Text>
+    </View>
+  );
+}
+
+function ValidationBulletList({ validations }) {
+  if (!validations?.length) return null;
+
+  return (
+    <View style={styles.validations}>
+      {validations.map((validation, validationIndex) => (
+        <Text key={validationIndex} style={styles.validationText}>
+          • {validation}
+        </Text>
+      ))}
+    </View>
+  );
+}
+
+function OneTestResultCard({ result, resultIndex }) {
+  const borderColor = statusColor(result.status);
+  const iconName = statusIcon(result.status);
+  const iconColor = statusColor(result.status);
+  const cardKey = `${result.name}-${resultIndex}`;
+
+  return (
+    <View key={cardKey} style={[styles.resultCard, { borderLeftColor: borderColor }]}>
+      <View style={styles.resultHeader}>
+        <View style={styles.resultTitleBlock}>
+          <Text style={styles.resultName}>{result.name}</Text>
+          <Text style={styles.resultPrompt}>&ldquo;{result.prompt}&rdquo;</Text>
+        </View>
+        <MaterialCommunityIcons name={iconName} size={24} color={iconColor} />
+      </View>
+
+      {result.message ? <Text style={styles.resultMessage}>{result.message}</Text> : null}
+
+      <ToolCallDetectedBox toolCall={result.toolCall} />
+      <WebSearchBadge source={result.source} searchedWeb={result.searchedWeb} />
+      <ValidationBulletList validations={result.validations} />
+    </View>
+  );
+}
+
+function RunningTestsSpinner() {
+  return (
+    <View style={styles.loadingBox}>
+      <ActivityIndicator size="large" color={SHEET_COLORS.accentPink} />
+      <Text style={styles.loadingText}>Running tests…</Text>
+    </View>
   );
 }
 
@@ -366,10 +553,46 @@ function CoachSelfTestLayout({
   runAllTests,
 }) {
   const { passCount, failCount, warnCount } = countResultsByStatus(testResults);
-  const tabTests = TEST_SUITES[activeTab] || [];
-  const footerPad = Math.max(insets.bottom, 12);
+  const tabTests = testsForActiveTab(activeTab);
+  const footerPad = Math.max(insets.bottom, FOOTER_SAFE_PAD_MIN);
   const canRunTests = Boolean(context) && !running && !contextLoading;
   const showSummary = testResults.length > 0;
+  const runButtonStyle = canRunTests
+    ? styles.runButton
+    : [styles.runButton, styles.runButtonDisabled];
+
+  function pickSuiteTab(tabName) {
+    setActiveTab(tabName);
+    setTestResults([]);
+  }
+
+  const resultCards = [];
+  for (let resultIndex = 0; resultIndex < testResults.length; resultIndex += 1) {
+    const result = testResults[resultIndex];
+    resultCards.push(
+      <OneTestResultCard
+        key={`${result.name}-${resultIndex}`}
+        result={result}
+        resultIndex={resultIndex}
+      />,
+    );
+  }
+
+  let summaryStrip = null;
+  if (showSummary) {
+    summaryStrip = (
+      <PassFailSummaryStrip
+        passCount={passCount}
+        failCount={failCount}
+        warnCount={warnCount}
+      />
+    );
+  }
+
+  let runningSpinner = null;
+  if (running) {
+    runningSpinner = <RunningTestsSpinner />;
+  }
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -381,103 +604,31 @@ function CoachSelfTestLayout({
         <LoadingContextLine contextLoading={contextLoading} />
         <ContextErrorLine contextError={contextError} />
         <LoadedContextLine context={context} contextLoading={contextLoading} />
-        <TouchableOpacity onPress={loadContext} style={styles.reloadContext} disabled={contextLoading}>
-          <MaterialCommunityIcons name="refresh" size={16} color={COLORS.pink} />
+        <TouchableOpacity
+          onPress={loadContext}
+          style={styles.reloadContext}
+          disabled={contextLoading}
+        >
+          <MaterialCommunityIcons name="refresh" size={16} color={SHEET_COLORS.accentPink} />
           <Text style={styles.reloadText}>Reload context</Text>
         </TouchableOpacity>
       </View>
 
-      <View style={styles.tabs}>
-        {Object.keys(TEST_SUITES).map((tab) => (
-          <TouchableOpacity
-            key={tab}
-            style={[styles.tab, activeTab === tab && styles.activeTab]}
-            onPress={() => {
-              setActiveTab(tab);
-              setTestResults([]);
-            }}
-          >
-            <Text style={[styles.tabText, activeTab === tab && styles.activeTabText]}>{tab}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+      <SuiteTabBar activeTab={activeTab} onPickTab={pickSuiteTab} />
 
-      {showSummary && (
-        <View style={styles.summary}>
-          <View style={styles.summaryItem}>
-            <MaterialCommunityIcons name="check-circle" size={20} color={COLORS.green} />
-            <Text style={styles.summaryText}>{passCount} passed</Text>
-          </View>
-          <View style={styles.summaryItem}>
-            <MaterialCommunityIcons name="alert-circle" size={20} color={COLORS.orange} />
-            <Text style={styles.summaryText}>{warnCount} warned</Text>
-          </View>
-          <View style={styles.summaryItem}>
-            <MaterialCommunityIcons name="close-circle" size={20} color={COLORS.red} />
-            <Text style={styles.summaryText}>{failCount} failed</Text>
-          </View>
-        </View>
-      )}
+      {summaryStrip}
 
-      <ScrollView style={styles.results} contentContainerStyle={{ paddingBottom: 24 }}>
-        {testResults.map((result, idx) => (
-          <View
-            key={`${result.name}-${idx}`}
-            style={[styles.resultCard, { borderLeftColor: statusColor(result.status) }]}
-          >
-            <View style={styles.resultHeader}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.resultName}>{result.name}</Text>
-                <Text style={styles.resultPrompt}>&ldquo;{result.prompt}&rdquo;</Text>
-              </View>
-              <MaterialCommunityIcons
-                name={statusIcon(result.status)}
-                size={24}
-                color={statusColor(result.status)}
-              />
-            </View>
-
-            {result.message ? <Text style={styles.resultMessage}>{result.message}</Text> : null}
-
-            {result.toolCall ? (
-              <View style={styles.toolCallBox}>
-                <Text style={styles.toolCallLabel}>Tool call detected</Text>
-                <Text style={styles.toolCallName}>{result.toolCall.name}</Text>
-              </View>
-            ) : null}
-
-            {(result.source === 'perplexity' || result.searchedWeb) && (
-              <View style={styles.perplexityBox}>
-                <MaterialCommunityIcons name="web" size={14} color={COLORS.pink} />
-                <Text style={styles.perplexityText}>
-                  Web search ({result.source || 'perplexity'})
-                </Text>
-              </View>
-            )}
-
-            {result.validations?.length > 0 && (
-              <View style={styles.validations}>
-                {result.validations.map((validation, vIdx) => (
-                  <Text key={vIdx} style={styles.validationText}>
-                    • {validation}
-                  </Text>
-                ))}
-              </View>
-            )}
-          </View>
-        ))}
-
-        {running && (
-          <View style={styles.loadingBox}>
-            <ActivityIndicator size="large" color={COLORS.pink} />
-            <Text style={styles.loadingText}>Running tests…</Text>
-          </View>
-        )}
+      <ScrollView
+        style={styles.results}
+        contentContainerStyle={styles.resultsContent}
+      >
+        {resultCards}
+        {runningSpinner}
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: footerPad }]}>
         <TouchableOpacity
-          style={[styles.runButton, !canRunTests && styles.runButtonDisabled]}
+          style={runButtonStyle}
           onPress={runAllTests}
           disabled={!canRunTests}
         >
@@ -492,6 +643,7 @@ function CoachSelfTestLayout({
 
 /**
  * Runs the canned coach prompts for one signed-in user and grades each reply.
+ * Hook order frozen: insets → tab → results → running → context → error → loading.
  * @param {{ userId?: string, userProfile?: object, trainerName?: string, onBack?: Function }} props
  */
 export default function CoachSelfTest({
@@ -500,6 +652,7 @@ export default function CoachSelfTest({
   trainerName = DEFAULT_TRAINER_NAME,
   onBack,
 }) {
+  // vocab: useSafeAreaInsets = notch / home-indicator padding from the device
   const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState(TAB_CONTEXT);
   const [testResults, setTestResults] = useState([]);
@@ -508,6 +661,7 @@ export default function CoachSelfTest({
   const [contextError, setContextError] = useState(null);
   const [contextLoading, setContextLoading] = useState(true);
 
+  // vocab: useCallback keeps loadContext stable so the mount effect does not loop
   const loadContext = useCallback(async () => {
     // 1. Tests need a signed-in user.
     if (!userId) {
@@ -533,16 +687,21 @@ export default function CoachSelfTest({
     }
   }, [userId, userProfile]);
 
+  // vocab: useEffect — run loadContext once the callback identity settles / changes
   useEffect(() => {
     loadContext();
   }, [loadContext]);
 
-  const runSingleTest = async (testItem) => {
+  /**
+   * Send one canned prompt and return a graded result object.
+   */
+  async function runSingleTest(testItem) {
     try {
       // 1. Need week context first — a missing snapshot is an error, not a fail.
       if (!context) return missingContextResult(testItem);
 
       // 2. Ask the coach the canned prompt.
+      // vocab: shouldRouteToPerplexity = local heuristic; sendToAI still decides the real source
       const isPerplexityRoute = shouldRouteToPerplexity(testItem.prompt);
       const response = await sendToAI(testItem.prompt, context, userId, userProfile);
 
@@ -551,9 +710,12 @@ export default function CoachSelfTest({
     } catch (error) {
       return testErrorResult(testItem, error);
     }
-  };
+  }
 
-  const runAllTests = async () => {
+  /**
+   * Walk every prompt in the active suite, updating the list as each finishes.
+   */
+  async function runAllTests() {
     if (!context || running) return;
 
     // 1. Clear last run and lock the button.
@@ -561,18 +723,19 @@ export default function CoachSelfTest({
     setTestResults([]);
 
     // 2. Run each prompt in this tab, pausing so we do not hammer the API.
-    const tests = TEST_SUITES[activeTab] || [];
+    const tests = testsForActiveTab(activeTab);
     const results = [];
-    for (const testItem of tests) {
-      const result = await runSingleTest(testItem);
+    for (let testIndex = 0; testIndex < tests.length; testIndex += 1) {
+      const result = await runSingleTest(tests[testIndex]);
       results.push(result);
+      // Spread a new array so React sees a new reference each step.
       setTestResults([...results]);
       await pauseBetweenTests();
     }
 
     // 3. Unlock the button.
     setRunning(false);
-  };
+  }
 
   return (
     <CoachSelfTestLayout
@@ -593,11 +756,12 @@ export default function CoachSelfTest({
   );
 }
 
+// ===== PLUMBING — skip unless debugging =====
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.bg,
+    backgroundColor: SHEET_COLORS.sheetBackground,
   },
   header: {
     paddingHorizontal: 16,
@@ -608,22 +772,22 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 20,
     fontWeight: '700',
-    color: COLORS.textPrimary,
+    color: SHEET_COLORS.textPrimary,
     marginBottom: 4,
   },
   subtitle: {
     fontSize: 12,
-    color: COLORS.textSecondary,
+    color: SHEET_COLORS.textSecondary,
     marginBottom: 6,
   },
   contextInfo: {
     fontSize: 12,
-    color: COLORS.textSecondary,
+    color: SHEET_COLORS.textSecondary,
     fontWeight: '600',
   },
   error: {
     fontSize: 12,
-    color: COLORS.red,
+    color: SHEET_COLORS.accentRed,
     marginTop: 4,
   },
   reloadContext: {
@@ -634,7 +798,7 @@ const styles = StyleSheet.create({
   },
   reloadText: {
     fontSize: 12,
-    color: COLORS.pink,
+    color: SHEET_COLORS.accentPink,
     fontWeight: '600',
   },
   tabs: {
@@ -650,19 +814,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 8,
-    backgroundColor: COLORS.cardBg,
+    backgroundColor: SHEET_COLORS.cardBackground,
   },
   activeTab: {
-    backgroundColor: COLORS.pink,
+    backgroundColor: SHEET_COLORS.accentPink,
   },
   tabText: {
     fontSize: 12,
     fontWeight: '600',
-    color: COLORS.textSecondary,
+    color: SHEET_COLORS.textSecondary,
     textTransform: 'capitalize',
   },
   activeTabText: {
-    color: COLORS.textPrimary,
+    color: SHEET_COLORS.textPrimary,
   },
   summary: {
     flexDirection: 'row',
@@ -678,14 +842,17 @@ const styles = StyleSheet.create({
   summaryText: {
     fontSize: 12,
     fontWeight: '600',
-    color: COLORS.textSecondary,
+    color: SHEET_COLORS.textSecondary,
   },
   results: {
     flex: 1,
     padding: 16,
   },
+  resultsContent: {
+    paddingBottom: RESULTS_SCROLL_BOTTOM_PAD,
+  },
   resultCard: {
-    backgroundColor: COLORS.cardBg,
+    backgroundColor: SHEET_COLORS.cardBackground,
     borderLeftWidth: 4,
     borderRadius: 12,
     padding: 12,
@@ -697,20 +864,23 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     marginBottom: 8,
   },
+  resultTitleBlock: {
+    flex: 1,
+  },
   resultName: {
     fontSize: 14,
     fontWeight: '700',
-    color: COLORS.textPrimary,
+    color: SHEET_COLORS.textPrimary,
     marginBottom: 4,
   },
   resultPrompt: {
     fontSize: 12,
-    color: COLORS.textSecondary,
+    color: SHEET_COLORS.textSecondary,
     fontStyle: 'italic',
   },
   resultMessage: {
     fontSize: 13,
-    color: COLORS.textSecondary,
+    color: SHEET_COLORS.textSecondary,
     marginBottom: 8,
   },
   toolCallBox: {
@@ -721,13 +891,13 @@ const styles = StyleSheet.create({
   },
   toolCallLabel: {
     fontSize: 11,
-    color: COLORS.textSecondary,
+    color: SHEET_COLORS.textSecondary,
     marginBottom: 4,
   },
   toolCallName: {
     fontSize: 13,
     fontWeight: '700',
-    color: COLORS.pink,
+    color: SHEET_COLORS.accentPink,
   },
   perplexityBox: {
     flexDirection: 'row',
@@ -740,7 +910,7 @@ const styles = StyleSheet.create({
   },
   perplexityText: {
     fontSize: 12,
-    color: COLORS.pink,
+    color: SHEET_COLORS.accentPink,
     fontWeight: '600',
   },
   validations: {
@@ -748,7 +918,7 @@ const styles = StyleSheet.create({
   },
   validationText: {
     fontSize: 11,
-    color: COLORS.textSecondary,
+    color: SHEET_COLORS.textSecondary,
   },
   loadingBox: {
     justifyContent: 'center',
@@ -756,7 +926,7 @@ const styles = StyleSheet.create({
     paddingVertical: 32,
   },
   loadingText: {
-    color: COLORS.textSecondary,
+    color: SHEET_COLORS.textSecondary,
     marginTop: 12,
   },
   footer: {
@@ -767,7 +937,7 @@ const styles = StyleSheet.create({
   },
   runButton: {
     flexDirection: 'row',
-    backgroundColor: COLORS.pink,
+    backgroundColor: SHEET_COLORS.accentPink,
     paddingVertical: 14,
     borderRadius: 12,
     justifyContent: 'center',
@@ -776,8 +946,11 @@ const styles = StyleSheet.create({
   runButtonDisabled: {
     opacity: 0.5,
   },
+  runButtonIcon: {
+    marginRight: 8,
+  },
   runButtonText: {
-    color: COLORS.textPrimary,
+    color: SHEET_COLORS.textPrimary,
     fontWeight: '700',
     fontSize: 16,
   },

@@ -1,11 +1,11 @@
 // Dev-only gallery for eyeballing every onboarding screen without creating an account.
 // Flow: pick a role chip and a step number → those choices are handed to the real NewUserSetupScreen in preview mode.
 // Opened from the dev menu; nothing here ships to users, and no onboarding data is ever saved.
+// Read order: constants → chip helpers → main screen → StyleSheet PLUMBING.
 
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { TRAINER_PLATFORM_SUBSCRIPTION_ENABLED } from '../trainer-pro-plan/proPlanSwitches';
 import { ProPlanSetup } from '../trainer-pro-plan/ProPlanSetup';
 import NewUserSetupScreen from './NewUserSetupScreen';
 import { useTheme } from '../look-and-feel/lightDarkMode';
@@ -19,6 +19,8 @@ const PREVIEW_ROLES = [ROLE_CLIENT, ROLE_TRAINER];
 const CLIENT_STEP_COUNT = 9;
 const TRAINER_STEP_COUNT = 8;
 const FIRST_STEP = 1;
+const TOOLBAR_TOP_PADDING_EXTRA = 8;
+const CHIP_HIT_SLOP = 12;
 
 // ===== HELPER FUNCTIONS =====
 
@@ -29,7 +31,8 @@ const FIRST_STEP = 1;
  * @returns {number}
  */
 function stepCountForRole(role) {
-  return role === ROLE_CLIENT ? CLIENT_STEP_COUNT : TRAINER_STEP_COUNT;
+  if (role === ROLE_CLIENT) return CLIENT_STEP_COUNT;
+  return TRAINER_STEP_COUNT;
 }
 
 /**
@@ -42,7 +45,64 @@ function stepNumbers(totalSteps) {
 }
 
 function roleChipLabel(role) {
-  return role === ROLE_CLIENT ? 'Client' : 'Trainer';
+  if (role === ROLE_CLIENT) return 'Client';
+  return 'Trainer';
+}
+
+/**
+ * One role chip. Colors are decided here so the map stays flat.
+ */
+function PreviewRoleChip({ previewRole, previewRoleSelected, colors, onPickRole }) {
+  const roleChipBackground = previewRoleSelected
+    ? gradients.brand.colors[0]
+    : colors.nbSurface;
+  const roleChipTextColor = previewRoleSelected ? colors.nbInk : colors.nbMuted;
+
+  return (
+    <TouchableOpacity
+      onPress={() => onPickRole(previewRole)}
+      style={[
+        styles.roleChip,
+        {
+          backgroundColor: roleChipBackground,
+          borderColor: colors.nbBorder,
+          borderWidth: nb.borderWidth,
+        },
+      ]}
+    >
+      <Text style={[styles.roleChipText, { color: roleChipTextColor }]}>
+        {roleChipLabel(previewRole)}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
+/**
+ * One step number chip.
+ */
+function PreviewStepChip({ stepNumber, stepIsSelected, colors, onPickStep }) {
+  const stepChipBackground = stepIsSelected
+    ? gradients.ink.colors[0]
+    : colors.nbSurface;
+  const stepChipTextColor = stepIsSelected ? lightColors.white : colors.nbMuted;
+
+  return (
+    <TouchableOpacity
+      onPress={() => onPickStep(stepNumber)}
+      style={[
+        styles.stepChip,
+        {
+          backgroundColor: stepChipBackground,
+          borderColor: colors.nbBorder,
+          borderWidth: nb.borderWidth,
+        },
+      ]}
+    >
+      <Text style={[styles.stepChipText, { color: stepChipTextColor }]}>
+        {stepNumber}
+      </Text>
+    </TouchableOpacity>
+  );
 }
 
 // ===== MAIN FUNCTION =====
@@ -53,97 +113,116 @@ function roleChipLabel(role) {
  */
 export default function SetupPreviewScreen({ onClose }) {
   // vocab: useSafeAreaInsets = how much of the screen the notch/status bar covers on this device.
+  // Hook order frozen: insets → theme → role → step.
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
 
   const [role, setRole] = useState(ROLE_CLIENT);
   const [step, setStep] = useState(FIRST_STEP);
 
+  // 1. Figure out how many step chips to paint for the current role.
   const totalSteps = stepCountForRole(role);
+  const stepChipList = stepNumbers(totalSteps);
 
+  // 2. Toolbar sits above the wizard and must clear the notch.
+  // Manipulate here: TOOLBAR_TOP_PADDING_EXTRA is extra space under the status bar.
+  const toolbarPaddingTop = insets.top + TOOLBAR_TOP_PADDING_EXTRA;
   const toolbarStyle = {
     ...styles.toolbar,
-    paddingTop: insets.top + 8,
+    paddingTop: toolbarPaddingTop,
     backgroundColor: colors.nbSurface,
     borderBottomColor: colors.nbBorder,
     borderBottomWidth: nb.borderWidth,
   };
+  const screenBackgroundStyle = {
+    flex: 1,
+    backgroundColor: colors.nbBackground,
+  };
 
+  // 3. Remount the wizard whenever role or step jumps so previewInitialStep sticks.
+  const wizardRemountKey = `${role}-${step}`;
+
+  function pickPreviewRole(previewRole) {
+    // Trainer onboarding has fewer steps — reset to 1 so we never land past the end.
+    setRole(previewRole);
+    setStep(FIRST_STEP);
+  }
+
+  function pickPreviewStep(stepNumber) {
+    setStep(stepNumber);
+  }
+
+  function ignorePreviewComplete() {
+    // Preview never saves; complete is a no-op so the wizard does not crash.
+  }
+
+  // 4. Render dev chrome, then the real wizard in preview mode (no auth user).
   return (
-    <View style={{ flex: 1, backgroundColor: colors.nbBackground }}>
-      {/* Dev toolbar sits above the wizard and pads itself past the notch. */}
+    <View style={screenBackgroundStyle}>
       <View style={toolbarStyle}>
         <View style={styles.toolbarRow}>
-          <Text style={[styles.toolbarTitle, { color: colors.nbInk }]}>Onboarding preview</Text>
-          <TouchableOpacity onPress={onClose} hitSlop={12}>
+          <Text style={[styles.toolbarTitle, { color: colors.nbInk }]}>
+            Onboarding preview
+          </Text>
+          <TouchableOpacity onPress={onClose} hitSlop={CHIP_HIT_SLOP}>
             <Text style={styles.closeBtn}>Close</Text>
           </TouchableOpacity>
         </View>
-        <Text style={[styles.toolbarHint, { color: colors.nbMuted }]}>No signup — tap a step to jump</Text>
+        <Text style={[styles.toolbarHint, { color: colors.nbMuted }]}>
+          No signup — tap a step to jump
+        </Text>
 
         <View style={styles.roleRow}>
-          {PREVIEW_ROLES.map((previewRole) => (
-            <TouchableOpacity
-              key={previewRole}
-              onPress={() => {
-                // Reset to step 1: trainer onboarding has fewer steps, so staying on 9 would miss.
-                setRole(previewRole);
-                setStep(FIRST_STEP);
-              }}
-              style={[
-                styles.roleChip,
-                { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder, borderWidth: nb.borderWidth },
-                role === previewRole && { backgroundColor: gradients.brand.colors[0] }
-              ]}
-            >
-              <Text style={[
-                styles.roleChipText,
-                { color: colors.nbMuted },
-                role === previewRole && { color: colors.nbInk }
-              ]}>
-                {roleChipLabel(previewRole)}
-              </Text>
-            </TouchableOpacity>
-          ))}
+          {PREVIEW_ROLES.map((previewRole) => {
+            const previewRoleSelected = role === previewRole;
+            return (
+              <PreviewRoleChip
+                key={previewRole}
+                previewRole={previewRole}
+                previewRoleSelected={previewRoleSelected}
+                colors={colors}
+                onPickRole={pickPreviewRole}
+              />
+            );
+          })}
         </View>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.stepRow}>
-          {stepNumbers(totalSteps).map((stepNumber) => (
-            <TouchableOpacity
-              key={stepNumber}
-              onPress={() => setStep(stepNumber)}
-              style={[
-                styles.stepChip,
-                { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder, borderWidth: nb.borderWidth },
-                step === stepNumber && { backgroundColor: gradients.ink.colors[0] }
-              ]}
-            >
-              <Text style={[
-                styles.stepChipText,
-                { color: colors.nbMuted },
-                step === stepNumber && { color: lightColors.white }
-              ]}>
-                {stepNumber}
-              </Text>
-            </TouchableOpacity>
-          ))}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.stepRow}
+        >
+          {stepChipList.map((stepNumber) => {
+            const stepIsSelected = step === stepNumber;
+            return (
+              <PreviewStepChip
+                key={stepNumber}
+                stepNumber={stepNumber}
+                stepIsSelected={stepIsSelected}
+                colors={colors}
+                onPickStep={pickPreviewStep}
+              />
+            );
+          })}
         </ScrollView>
       </View>
 
       {/* userId={null} = nobody signed in, so the provider serves logged-out defaults. */}
       <ProPlanSetup userId={null}>
         <NewUserSetupScreen
-          key={`${role}-${step}`}
+          key={wizardRemountKey}
           role={role}
           previewMode
           previewInitialStep={step}
           onPreviewClose={onClose}
-          onComplete={() => {}}
+          onComplete={ignorePreviewComplete}
         />
       </ProPlanSetup>
     </View>
   );
 }
+
+// ===== PLUMBING — skip unless debugging =====
 
 const styles = StyleSheet.create({
   toolbar: {

@@ -1,19 +1,17 @@
 // Centered uppercase section label with a fading pink-to-orange underline.
-// Flow: paint the gradient word → draw a short rule under it that fades at both ends.
-// Used by home sections that need the same header treatment as the workout tab.
+// Flow: uppercase the words → SpaceGrotesk ColorText → short rule that fades at both ends.
+// Used by home / workout sections that share the same header treatment.
 
 import React from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import ColorText from '../../look-and-feel/ColorText';
-import { useTheme } from '../../look-and-feel/lightDarkMode';
 import { lightColors } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
 const SECTION_TITLE_FONT = 'SpaceGrotesk_600SemiBold';
 
-// Manipulate here: brighter pink → orange, matching the workout tab header.
 const SECTION_HEADER_GRADIENT = [lightColors.primary, lightColors.accent];
 
 const DARK_UNDERLINE_COLORS = [
@@ -29,20 +27,18 @@ const LIGHT_UNDERLINE_COLORS = [
   'transparent',
 ];
 
-// The color stops sit in the middle so both ends of the rule fade out.
 const UNDERLINE_LOCATIONS = [0, 0.35, 0.65, 1];
 const HORIZONTAL_GRADIENT_START = { x: 0, y: 0.5 };
 const HORIZONTAL_GRADIENT_END = { x: 1, y: 0.5 };
 
 // ===== HELPER FUNCTIONS =====
 
-function underlineColors(isDark) {
+function pickUnderlineColors(isDark) {
   if (isDark) return DARK_UNDERLINE_COLORS;
   return LIGHT_UNDERLINE_COLORS;
 }
 
-// Every platform maps to the same family on purpose, so a missing face does not swap in a system font.
-function sectionTitleFontFamily() {
+function fontFamilyForEveryPlatform() {
   return Platform.select({
     ios: SECTION_TITLE_FONT,
     android: SECTION_TITLE_FONT,
@@ -50,12 +46,12 @@ function sectionTitleFontFamily() {
   });
 }
 
-function uppercaseSectionLabel(text) {
-  const rawLabel = text || '';
-  return String(rawLabel).toUpperCase();
+function makeSectionWordsUppercase(text) {
+  const rawWords = text || '';
+  return String(rawWords).toUpperCase();
 }
 
-function SectionTitleWords({ label, fontFamily }) {
+function GradientTitleWords({ words, fontFamily }) {
   const titleStyle = [styles.label, { fontFamily, alignSelf: 'center' }];
   return (
     <ColorText
@@ -64,15 +60,15 @@ function SectionTitleWords({ label, fontFamily }) {
       end={HORIZONTAL_GRADIENT_END}
       style={titleStyle}
     >
-      {label}
+      {words}
     </ColorText>
   );
 }
 
-function SectionTitleRule({ colors }) {
+function FadeOutUnderline({ underlineColors }) {
   return (
     <LinearGradient
-      colors={colors}
+      colors={underlineColors}
       locations={UNDERLINE_LOCATIONS}
       start={HORIZONTAL_GRADIENT_START}
       end={HORIZONTAL_GRADIENT_END}
@@ -89,19 +85,23 @@ function SectionTitleRule({ colors }) {
  * @returns {import('react').ReactElement}
  */
 export default function SectionTitle({ text, isDark = true, style }) {
-  const sectionLabel = uppercaseSectionLabel(text);
-  const titleFontFamily = sectionTitleFontFamily();
-  const ruleColors = underlineColors(isDark);
+  // 1. Uppercase the label and lock SpaceGrotesk on every platform.
+  const sectionWords = makeSectionWordsUppercase(text);
+  const titleFontFamily = fontFamilyForEveryPlatform();
+  const underlineColors = pickUnderlineColors(isDark);
 
-  // 1. Uppercase the label and paint it in the pink-to-orange gradient.
-  // 2. Draw the short rule under it that fades at both ends.
+  // 2. Stack gradient words over the fading rule.
+  const wrapStyle = [styles.wrap, style];
+
   return (
-    <View style={[styles.wrap, style]}>
-      <SectionTitleWords label={sectionLabel} fontFamily={titleFontFamily} />
-      <SectionTitleRule colors={ruleColors} />
+    <View style={wrapStyle}>
+      <GradientTitleWords words={sectionWords} fontFamily={titleFontFamily} />
+      <FadeOutUnderline underlineColors={underlineColors} />
     </View>
   );
 }
+
+// ===== PLUMBING — skip unless debugging =====
 
 const styles = StyleSheet.create({
   wrap: {

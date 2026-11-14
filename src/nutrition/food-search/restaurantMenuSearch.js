@@ -1,13 +1,25 @@
 // Turn casual restaurant searches ("mcdonalds big mac") into extra Serper queries + a friendly title.
 // Flow: detect chain → leftover item words → aliases / pizza-slice phrases → ranking context.
 // Used only on the server. The user's typed query in the UI is never rewritten.
+// Read order: constants → mains → PLUMBING (chain tables + regex helpers).
 
 const { normalizeQueryText, significantQueryTokens } = require('../food-search/rankFoodResults');
 const { servingLabelFromQueryStructure } = require('../food-search/guessServingLabel');
 
 // ===== NAMED CONSTANTS =====
 
-const SIZE_WORDS = ['large', 'medium', 'small', 'personal', 'family', 'regular', 'mini', 'grande', 'venti', 'tall'];
+const SIZE_WORDS = [
+  'large',
+  'medium',
+  'small',
+  'personal',
+  'family',
+  'regular',
+  'mini',
+  'grande',
+  'venti',
+  'tall',
+];
 const DEFAULT_PIZZA_TOPPING = 'pepperoni';
 const DEFAULT_PIZZA_SIZE = 'large';
 const DEFAULT_COFFEE_SIZE = 'grande';
@@ -18,11 +30,30 @@ const MEXICAN_KIND = 'mexican';
 const BURGER_KIND = 'burger';
 
 const PIZZA_TOPPINGS = [
-  'pepperoni', 'cheese', 'sausage', 'mushroom', 'veggie', 'vegetable', 'hawaiian',
-  'meat', 'supreme', 'buffalo', 'bbq', 'chicken', 'ham', 'bacon', 'margherita', 'plain',
+  'pepperoni',
+  'cheese',
+  'sausage',
+  'mushroom',
+  'veggie',
+  'vegetable',
+  'hawaiian',
+  'meat',
+  'supreme',
+  'buffalo',
+  'bbq',
+  'chicken',
+  'ham',
+  'bacon',
+  'margherita',
+  'plain',
 ];
 
-/** Chains users search by name — not an exhaustive directory, covers specs + common US chains. */
+const MENU_ITEM_SIGNAL =
+  /\b(burger|cheeseburger|sandwich|wrap|bowl|salad|taco|burrito|wing|nugget|combo|meal|latte|mocha|frappuccino|sub|hoagie|slice|fries|frosty|slider|crunchwrap|quesadilla|nachos|pizza|chicken|beef|pork|fish|pasta|bread|biscuit|croissant|burrito|orange|italian|turkey|pepperoni|sausage|cheese|mac|pounder|baconator|whopper|shackburger|blizzard|fingers|breast|thigh|drumstick|tender)\b/i;
+
+// ===== HELPER FUNCTIONS =====
+
+/** Chains users search by name — covers specs + common US chains; not exhaustive. */
 const RESTAURANT_CHAINS = [
   { re: /\bmcdonald'?s?\b/i, label: "McDonald's", serper: 'mcdonalds', kind: 'burger' },
   { re: /\bburger\s*king\b/i, label: 'Burger King', serper: 'burger king', kind: 'burger' },
@@ -49,7 +80,8 @@ const RESTAURANT_CHAINS = [
   { re: /\bpizza\s*hut\b/i, label: 'Pizza Hut', serper: 'pizza hut pizza', kind: 'pizza' },
   { re: /\bpapa\s*john'?s?\b/i, label: "Papa John's", serper: 'papa johns pizza', kind: 'pizza' },
   { re: /\blittle\s*caesars?\b/i, label: 'Little Caesars', serper: 'little caesars pizza', kind: 'pizza' },
-  { re: /\bjets\s*pizza\b/i, label: "Jet's Pizza", serper: 'jets pizza', kind: 'pizza' },
+  // jets / jet's alone — users type "Jets bread", not always "Jets pizza"
+  { re: /\bjets\b|\bjet'?s\b/i, label: "Jet's Pizza", serper: 'jets pizza', kind: 'pizza' },
   { re: /\bmarco'?s?\s*pizza\b/i, label: "Marco's Pizza", serper: 'marcos pizza', kind: 'pizza' },
   { re: /\bhungry\s*howie'?s?\b/i, label: "Hungry Howie's", serper: 'hungry howies pizza', kind: 'pizza' },
   { re: /\bround\s*table\b/i, label: 'Round Table', serper: 'round table pizza', kind: 'pizza' },
@@ -104,44 +136,43 @@ const CASUAL_ITEM_ALIASES = [
   { chainRe: /\bshake\s*shack\b/i, itemRe: /\bshackburger\b/i, serper: ['shake shack shackburger'] },
   { chainRe: /\bportillo/i, itemRe: /\bitalian\s*beef\b/i, serper: ['portillos italian beef sandwich'] },
   { chainRe: /\bwhite\s*castle\b/i, itemRe: /\b(slider|cheese)\b/i, serper: ['white castle cheese slider'] },
-  { chainRe: /\bjets\s*pizza\b/i, itemRe: /\bcrazy\s*bread\b/i, serper: ['jets pizza crazy bread'] },
+  { chainRe: /\bjets\b|\bjet'?s\b/i, itemRe: /\b(crazy\s*)?bread(sticks?)?\b/i, serper: ['jets pizza breadsticks', 'jets pizza bread nutrition'] },
   { chainRe: /\blittle\s*caesars?\b/i, itemRe: /\bcrazy\s*bread\b/i, serper: ['little caesars crazy bread', 'little caesars crazy bread nutrition'] },
   { chainRe: /\blittle\s*caesars?\b/i, itemRe: /\bstuffed\s*crazy\s*bread\b/i, serper: ['little caesars stuffed crazy bread'] },
 ];
 
-const MENU_ITEM_SIGNAL =
-  /\b(burger|cheeseburger|sandwich|wrap|bowl|salad|taco|burrito|wing|nugget|combo|meal|latte|mocha|frappuccino|sub|hoagie|slice|fries|frosty|slider|crunchwrap|quesadilla|nachos|pizza|chicken|beef|pork|fish|pasta|bread|biscuit|croissant|burrito|orange|italian|turkey|pepperoni|sausage|cheese|mac|pounder|baconator|whopper|shackburger|blizzard|fingers|breast|thigh|drumstick|tender)\b/i;
-
 const CHAIN_RE_SOURCE = RESTAURANT_CHAINS.map((chain) => chain.re.source).join('|');
 const ANY_CHAIN_RE = new RegExp(CHAIN_RE_SOURCE, 'i');
 
-// ===== HELPER FUNCTIONS =====
-
-function escapeRe(str) {
-  return String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+function escapeRegexSpecialChars(text) {
+  return String(text).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function wordBoundaryRegex(word) {
-  return new RegExp(`\\b${escapeRe(word)}\\b`, 'i');
+  return new RegExp(`\\b${escapeRegexSpecialChars(word)}\\b`, 'i');
 }
 
 function titleCase(text) {
-  return String(text || '')
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-    .join(' ');
+  const words = String(text || '').split(/\s+/).filter(Boolean);
+  const titled = [];
+  for (let index = 0; index < words.length; index += 1) {
+    const word = words[index];
+    titled.push(word.charAt(0).toUpperCase() + word.slice(1).toLowerCase());
+  }
+  return titled.join(' ');
 }
 
 function firstMatchingListItem(queryText, words) {
-  for (const word of words) {
+  for (let index = 0; index < words.length; index += 1) {
+    const word = words[index];
     if (wordBoundaryRegex(word).test(queryText)) return word;
   }
   return null;
 }
 
 function detectRestaurantChain(queryText) {
-  for (const chain of RESTAURANT_CHAINS) {
+  for (let index = 0; index < RESTAURANT_CHAINS.length; index += 1) {
+    const chain = RESTAURANT_CHAINS[index];
     if (chain.re.test(queryText)) return chain;
   }
   return null;
@@ -160,23 +191,30 @@ function extractItemPhrase(queryText, chain) {
   let phrase = queryText;
   if (chain?.re) phrase = phrase.replace(chain.re, ' ');
   phrase = phrase.replace(/\s+/g, ' ').trim();
-  return phrase || queryText;
+  if (phrase) return phrase;
+  return queryText;
 }
 
-function itemTokens(itemPhrase) {
+function itemTokensFromPhrase(itemPhrase) {
   return significantQueryTokens(itemPhrase);
 }
 
 function aliasRowMatches(aliasRow, queryText, itemPhrase) {
   if (!aliasRow.chainRe.test(queryText)) return false;
-  return aliasRow.itemRe.test(itemPhrase) || aliasRow.itemRe.test(queryText);
+  if (aliasRow.itemRe.test(itemPhrase)) return true;
+  if (aliasRow.itemRe.test(queryText)) return true;
+  return false;
 }
 
 function matchItemAliases(chain, queryText, itemPhrase) {
+  void chain;
   const aliases = [];
-  for (const aliasRow of CASUAL_ITEM_ALIASES) {
+  for (let index = 0; index < CASUAL_ITEM_ALIASES.length; index += 1) {
+    const aliasRow = CASUAL_ITEM_ALIASES[index];
     if (!aliasRowMatches(aliasRow, queryText, itemPhrase)) continue;
-    aliases.push(...aliasRow.serper);
+    for (let aliasIndex = 0; aliasIndex < aliasRow.serper.length; aliasIndex += 1) {
+      aliases.push(aliasRow.serper[aliasIndex]);
+    }
   }
   return aliases;
 }
@@ -184,18 +222,29 @@ function matchItemAliases(chain, queryText, itemPhrase) {
 function buildPizzaSerperQueries(chain, intent) {
   const topping = intent.topping || DEFAULT_PIZZA_TOPPING;
   const size = intent.size || DEFAULT_PIZZA_SIZE;
-  const brand = chain.serper;
+  const brandSerperName = chain.serper;
   const queries = [
-    `${brand} ${size} ${topping} slice`,
-    `${brand} ${topping} 1 slice calories`,
-    `${brand} medium ${topping} slice`,
+    `${brandSerperName} ${size} ${topping} slice`,
+    `${brandSerperName} ${topping} 1 slice calories`,
+    `${brandSerperName} medium ${topping} slice`,
   ];
-  if (!intent.hasPizza) queries.push(`${chain.label.toLowerCase()} ${size} ${topping} slice`);
-  if (!intent.hasSlice) queries.push(`${brand} ${size} ${topping} pizza slice`);
+  if (!intent.hasPizza) {
+    queries.push(`${chain.label.toLowerCase()} ${size} ${topping} slice`);
+  }
+  if (!intent.hasSlice) {
+    queries.push(`${brandSerperName} ${size} ${topping} pizza slice`);
+  }
   return queries;
 }
 
-function isCasualPizzaSliceIntent({ chain, wholePizza, hasSlice, topping, hasPizza, queryText }) {
+function isCasualPizzaSliceIntent({
+  chain,
+  wholePizza,
+  hasSlice,
+  topping,
+  hasPizza,
+  queryText,
+}) {
   if (chain?.kind !== PIZZA_KIND) return false;
   if (wholePizza) return false;
   if (hasSlice || topping) return true;
@@ -205,29 +254,38 @@ function isCasualPizzaSliceIntent({ chain, wholePizza, hasSlice, topping, hasPiz
 
 function uniqueQueryCollector() {
   const out = [];
-  const seen = new Set();
+  const seenLowerKeys = new Set();
+
   const addQuery = (queryText) => {
     const key = String(queryText || '').toLowerCase().trim();
-    if (!key || seen.has(key)) return;
-    seen.add(key);
+    if (!key) return;
+    if (seenLowerKeys.has(key)) return;
+    seenLowerKeys.add(key);
     out.push(queryText.trim());
   };
+
   return { out, addQuery };
 }
 
 function addKindSpecificSerperQueries(intent, addQuery) {
-  const brand = intent.chain.serper;
+  const brandSerperName = intent.chain.serper;
+
   if (intent.kind === COFFEE_KIND && intent.itemPhrase) {
-    addQuery(`${brand} ${intent.size || DEFAULT_COFFEE_SIZE} ${intent.itemPhrase} calories`);
+    addQuery(
+      `${brandSerperName} ${intent.size || DEFAULT_COFFEE_SIZE} ${intent.itemPhrase} calories`,
+    );
   }
+
   if (intent.kind === SUB_KIND && /\b(footlong|sub)\b/i.test(intent.itemPhrase)) {
-    addQuery(`${brand} ${intent.itemPhrase.replace(/\bsub\b/i, 'footlong')}`);
+    addQuery(`${brandSerperName} ${intent.itemPhrase.replace(/\bsub\b/i, 'footlong')}`);
   }
+
   if (intent.kind === MEXICAN_KIND && /\bbowl\b/i.test(intent.itemPhrase)) {
-    addQuery(`${brand} ${intent.itemPhrase} calories protein`);
+    addQuery(`${brandSerperName} ${intent.itemPhrase} calories protein`);
   }
+
   if (intent.kind === BURGER_KIND && intent.itemTokens.length === 1) {
-    addQuery(`${brand} ${intent.itemTokens[0]} sandwich calories`);
+    addQuery(`${brandSerperName} ${intent.itemTokens[0]} sandwich calories`);
   }
 }
 
@@ -239,19 +297,41 @@ function pizzaSliceDisplayName(intent) {
   return parts.join(' ');
 }
 
+module.exports = {
+  RESTAURANT_CHAINS,
+  PIZZA_TOPPINGS,
+  ANY_CHAIN_RE,
+  parseCasualMenuIntent,
+  isCasualPizzaMenuQuery,
+  isCasualMenuQuery,
+  buildCasualMenuSerperQueries,
+  displayNameFromCasualQuery,
+  casualMenuRankingContext,
+  servingLabelFromQueryStructure,
+};
+
 // ===== MAIN FUNCTION =====
 
 /**
  * Parse casual intent for any chain + short item query.
  * Return keys stay stable for ranking: chain, kind, itemPhrase, itemTokens, size, topping, flags, serperAliases.
+ * Flow: 1. normalize + chain  2. item phrase  3. size/topping flags  4. aliases + return
  * @param {string} userQuery
  * @returns {object}
  */
 function parseCasualMenuIntent(userQuery) {
+  // 1. Normalize the typed text and detect a known chain.
   const queryText = normalizeQueryText(userQuery);
   const chain = detectRestaurantChain(queryText);
-  const itemPhrase = chain ? extractItemPhrase(queryText, chain) : queryText;
-  const tokens = itemTokens(itemPhrase);
+
+  // 2. Leftover words after the chain name = the menu item.
+  let itemPhrase = queryText;
+  if (chain) {
+    itemPhrase = extractItemPhrase(queryText, chain);
+  }
+
+  // 3. Size / topping / pizza flags for ranking.
+  const tokens = itemTokensFromPhrase(itemPhrase);
   const size = detectSize(queryText);
   const topping = detectTopping(queryText);
   const hasSlice = /\b(slice|slices)\b/.test(queryText);
@@ -267,13 +347,32 @@ function parseCasualMenuIntent(userQuery) {
     queryText,
   });
 
-  const hasMenuSignal = MENU_ITEM_SIGNAL.test(itemPhrase) || MENU_ITEM_SIGNAL.test(queryText);
-  const isCasualMenuQuery =
-    !!chain && (hasMenuSignal || tokens.length >= 1 || isCasualPizzaSlice);
+  // 4. Casual menu query = chain + some menu signal (or pizza-slice shorthand).
+  const hasMenuSignal =
+    MENU_ITEM_SIGNAL.test(itemPhrase) || MENU_ITEM_SIGNAL.test(queryText);
+  let isCasualMenuQuery = false;
+  if (chain) {
+    if (hasMenuSignal || tokens.length >= 1 || isCasualPizzaSlice) {
+      isCasualMenuQuery = true;
+    }
+  }
+
+  let kind = null;
+  if (chain) kind = chain.kind;
+
+  let impliesSingleSlice = false;
+  if (isCasualPizzaSlice && !wholePizza) {
+    if (hasSlice || topping) impliesSingleSlice = true;
+  }
+
+  let serperAliases = [];
+  if (chain) {
+    serperAliases = matchItemAliases(chain, queryText, itemPhrase);
+  }
 
   return {
     chain,
-    kind: chain?.kind || null,
+    kind,
     itemPhrase,
     itemTokens: tokens,
     size,
@@ -283,56 +382,88 @@ function parseCasualMenuIntent(userQuery) {
     wholePizza,
     isCasualPizzaSlice,
     isCasualMenuQuery,
-    impliesSingleSlice: isCasualPizzaSlice && (hasSlice || !!topping) && !wholePizza,
-    serperAliases: chain ? matchItemAliases(chain, queryText, itemPhrase) : [],
+    impliesSingleSlice,
+    serperAliases,
   };
 }
 
+/**
+ * True when the typed text is a casual pizza-slice ask (not whole pie / breadsticks).
+ * @param {string} query
+ * @returns {boolean}
+ */
 function isCasualPizzaMenuQuery(query) {
   return parseCasualMenuIntent(query).isCasualPizzaSlice;
 }
 
+/**
+ * True when the typed text looks like chain + menu item (burgers, bowls, subs, …).
+ * @param {string} query
+ * @returns {boolean}
+ */
 function isCasualMenuQuery(query) {
   return parseCasualMenuIntent(query).isCasualMenuQuery;
 }
 
 /**
  * Extra Serper queries for any casual chain search (pizza, burgers, bowls, subs, coffee, etc.).
+ * Flow: 1. parse intent  2. brand + item phrases  3. aliases / pizza / kind extras
  * @param {string} userQuery
  * @returns {string[]}
  */
 function buildCasualMenuSerperQueries(userQuery) {
+  // 1. Need a known chain that looks like a casual menu ask.
   const intent = parseCasualMenuIntent(userQuery);
-  const { out, addQuery } = uniqueQueryCollector();
-  if (!intent.chain || !intent.isCasualMenuQuery) return out;
+  const { out: uniqueQueries, addQuery } = uniqueQueryCollector();
+  if (!intent.chain || !intent.isCasualMenuQuery) return uniqueQueries;
 
-  const { chain, itemPhrase, serperAliases } = intent;
-  const brand = chain.serper;
+  // 2. Brand + leftover item words (nutrition / menu facts phrasing).
+  const chain = intent.chain;
+  const itemPhrase = intent.itemPhrase;
+  const serperAliases = intent.serperAliases;
+  const brandSerperName = chain.serper;
 
   if (itemPhrase) {
-    addQuery(`${brand} ${itemPhrase} nutrition calories`);
-    addQuery(`${brand} ${itemPhrase} menu nutrition facts`);
+    addQuery(`${brandSerperName} ${itemPhrase} nutrition calories`);
+    addQuery(`${brandSerperName} ${itemPhrase} menu nutrition facts`);
   }
-  for (const alias of serperAliases) addQuery(alias);
+
+  // 3. Casual aliases + pizza-slice expansions + kind-specific extras.
+  for (let index = 0; index < serperAliases.length; index += 1) {
+    addQuery(serperAliases[index]);
+  }
 
   if (intent.isCasualPizzaSlice) {
-    for (const pizzaQuery of buildPizzaSerperQueries(chain, intent)) addQuery(pizzaQuery);
+    const pizzaQueries = buildPizzaSerperQueries(chain, intent);
+    for (let index = 0; index < pizzaQueries.length; index += 1) {
+      addQuery(pizzaQueries[index]);
+    }
   }
 
   addKindSpecificSerperQueries(intent, addQuery);
-  return out;
+  return uniqueQueries;
 }
 
-/** Friendly card title from casual query — e.g. "Chick-fil-A Sandwich", "Domino's Large Pepperoni Slice". */
+/**
+ * Friendly card title from casual query — e.g. "Chick-fil-A Sandwich", "Domino's Large Pepperoni Slice".
+ * @param {string} userQuery
+ * @returns {string|null}
+ */
 function displayNameFromCasualQuery(userQuery) {
   const intent = parseCasualMenuIntent(userQuery);
   if (!intent.chain || !intent.isCasualMenuQuery) return null;
   if (intent.isCasualPizzaSlice) return pizzaSliceDisplayName(intent);
-  const item = titleCase(intent.itemPhrase);
-  if (!item) return intent.chain.label;
-  return `${intent.chain.label} ${item}`;
+
+  const itemTitle = titleCase(intent.itemPhrase);
+  if (!itemTitle) return intent.chain.label;
+  return `${intent.chain.label} ${itemTitle}`;
 }
 
+/**
+ * Ranking context for server search — intent fields plus query tokens.
+ * @param {string} userQuery
+ * @returns {object}
+ */
 function casualMenuRankingContext(userQuery) {
   const intent = parseCasualMenuIntent(userQuery);
   return {
@@ -341,15 +472,3 @@ function casualMenuRankingContext(userQuery) {
   };
 }
 
-module.exports = {
-  RESTAURANT_CHAINS,
-  PIZZA_TOPPINGS,
-  ANY_CHAIN_RE,
-  parseCasualMenuIntent,
-  isCasualPizzaMenuQuery,
-  isCasualMenuQuery,
-  buildCasualMenuSerperQueries,
-  displayNameFromCasualQuery,
-  casualMenuRankingContext,
-  servingLabelFromQueryStructure,
-};

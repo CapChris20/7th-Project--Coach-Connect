@@ -1,12 +1,13 @@
 // Fitness math shared by client and trainer screens: BMR, TDEE, macros, body fat, BMI, weight goals.
-// Flow: each export checks its inputs, applies one formula, and returns a rounded number or a small object.
+// Flow: each export checks its inputs → applies one formula → returns a rounded number or a small object.
 // Used by the client home screen and the onboarding calculation tests.
+// Read order: constants → exported recipes → PLUMBING formula helpers.
 
 // ===== NAMED CONSTANTS =====
 
 const MALE_GENDER = 'male';
 
-// vocab: Mifflin-St Jeor. Resting calories from weight (kg), height (cm), and age.
+// Mifflin-St Jeor resting calories from weight (kg), height (cm), and age.
 // Manipulate here: these are the published equation constants, not display tweaks.
 const BMR_WEIGHT_COEFFICIENT = 10;
 const BMR_HEIGHT_COEFFICIENT = 6.25;
@@ -14,7 +15,7 @@ const BMR_AGE_COEFFICIENT = 5;
 const BMR_MALE_CONSTANT = 5;
 const BMR_FEMALE_CONSTANT = 161;
 
-// vocab: TDEE = resting calories times how active the person is.
+// TDEE = resting calories times how active the person is.
 // Unknown activity levels use the sedentary multiplier.
 const SEDENTARY_ACTIVITY_MULTIPLIER = 1.2;
 const ACTIVITY_MULTIPLIERS = {
@@ -28,8 +29,9 @@ const ACTIVITY_MULTIPLIERS = {
 const WEIGHT_LOSS_GOAL = 'weight_loss';
 const MUSCLE_GAIN_GOAL = 'muscle_gain';
 
-// Grams of protein per kilogram of body weight. Anything that isn't weight_loss or muscle_gain
-// (including "maintenance" and "build_muscle") uses the maintenance multiplier.
+// Grams of protein per kilogram of body weight.
+// Anything that is not weight_loss or muscle_gain (including "maintenance" and "build_muscle")
+// uses the maintenance multiplier.
 const PROTEIN_GRAMS_PER_KG_WEIGHT_LOSS = 2.2;
 const PROTEIN_GRAMS_PER_KG_MUSCLE_GAIN = 2.5;
 const PROTEIN_GRAMS_PER_KG_MAINTENANCE = 2.0;
@@ -40,7 +42,7 @@ const CALORIES_PER_GRAM_FAT = 9;
 // Fat is always this share of calories. Carbs get whatever calories are left.
 const FAT_CALORIE_SHARE = 0.25;
 
-// vocab: Deurenberg estimate. Not a scan — a rough percent from BMI, age, and sex.
+// Deurenberg estimate = rough body-fat percent from BMI, age, and sex — not a scan.
 const BODY_FAT_BMI_COEFFICIENT = 1.2;
 const BODY_FAT_AGE_COEFFICIENT = 0.23;
 const BODY_FAT_MALE_OFFSET = 16.2;
@@ -56,56 +58,12 @@ const DAYS_PER_WEEK = 7;
 // Manipulate here: changing it shifts every weight-goal plan in the app.
 const CALORIES_PER_KG_OF_WEEKLY_CHANGE = 500;
 
-// ===== HELPER FUNCTIONS =====
-
-function isMale(gender) {
-  return gender.toLowerCase() === MALE_GENDER;
-}
-
-function basalMetabolicRateForGender(weight, height, age, gender) {
-  const restingCalories =
-    BMR_WEIGHT_COEFFICIENT * weight +
-    BMR_HEIGHT_COEFFICIENT * height -
-    BMR_AGE_COEFFICIENT * age;
-  if (isMale(gender)) return restingCalories + BMR_MALE_CONSTANT;
-  return restingCalories - BMR_FEMALE_CONSTANT;
-}
-
-function activityMultiplier(activityLevel) {
-  const namedMultiplier = ACTIVITY_MULTIPLIERS[activityLevel.toLowerCase()];
-  if (namedMultiplier) return namedMultiplier;
-  return SEDENTARY_ACTIVITY_MULTIPLIER;
-}
-
-function proteinGramsForGoal(goal, bodyWeight) {
-  if (goal === WEIGHT_LOSS_GOAL) return Math.round(bodyWeight * PROTEIN_GRAMS_PER_KG_WEIGHT_LOSS);
-  if (goal === MUSCLE_GAIN_GOAL) return Math.round(bodyWeight * PROTEIN_GRAMS_PER_KG_MUSCLE_GAIN);
-  return Math.round(bodyWeight * PROTEIN_GRAMS_PER_KG_MAINTENANCE);
-}
-
-// Same fat-then-carbs fill for every goal. Only the protein grams change.
-function macroSplitFromProtein(calories, proteinGrams) {
-  const fatGrams = Math.round((calories * FAT_CALORIE_SHARE) / CALORIES_PER_GRAM_FAT);
-  const carbGrams = Math.round(
-    (calories - proteinGrams * CALORIES_PER_GRAM_PROTEIN - fatGrams * CALORIES_PER_GRAM_FAT) /
-      CALORIES_PER_GRAM_CARBS
-  );
-  return { protein: proteinGrams, carbs: carbGrams, fat: fatGrams };
-}
-
-function bodyFatPercentForGender(gender, age, bodyMassIndex) {
-  const fromBmiAndAge = BODY_FAT_BMI_COEFFICIENT * bodyMassIndex + BODY_FAT_AGE_COEFFICIENT * age;
-  if (isMale(gender)) return fromBmiAndAge - BODY_FAT_MALE_OFFSET;
-  return fromBmiAndAge - BODY_FAT_FEMALE_OFFSET;
-}
-
-function clampBodyFatPercent(bodyFatPercent) {
-  return Math.max(MINIMUM_BODY_FAT_PERCENT, Math.min(MAXIMUM_BODY_FAT_PERCENT, bodyFatPercent));
-}
-
-function roundToOneDecimal(value) {
-  return Math.round(value * ONE_DECIMAL_SCALE) / ONE_DECIMAL_SCALE;
-}
+const EMPTY_MACROS = { protein: 0, carbs: 0, fat: 0 };
+const EMPTY_WEIGHT_GOAL = {
+  weightDifference: 0,
+  weeklyChange: 0,
+  dailyCalorieAdjustment: 0,
+};
 
 // ===== MAIN FUNCTION =====
 
@@ -120,21 +78,29 @@ function roundToOneDecimal(value) {
  */
 export function calculateBMR(weight, height, age, gender) {
   try {
-    // 1. Refuse zero height or weight. Missing gender is treated as male.
-    let genderForFormula = gender;
-    if (!genderForFormula) {
-      console.warn('calculateBMR: missing gender, defaulting to male');
-      genderForFormula = MALE_GENDER;
-    }
-    if (height <= 0 || weight <= 0) {
+    // 1. Pick a gender for the formula. Missing → male (and warn).
+    const genderForFormula = genderOrMaleDefault(gender, 'calculateBMR');
+
+    // 2. Refuse zero / negative height or weight.
+    if (heightOrWeightIsInvalid(height, weight)) {
       console.warn('calculateBMR: invalid height or weight', { height, weight });
       return null;
     }
-    console.log('Calculating BMR for:', { weight, height, age, gender: genderForFormula });
 
-    // 2. Mifflin-St Jeor, then round to a whole calorie.
-    const basalMetabolicRate = basalMetabolicRateForGender(weight, height, age, genderForFormula);
+    console.log('Calculating BMR for:', {
+      weight,
+      height,
+      age,
+      gender: genderForFormula,
+    });
 
+    // 3. Mifflin-St Jeor, then round to a whole calorie.
+    const basalMetabolicRate = basalMetabolicRateForGender(
+      weight,
+      height,
+      age,
+      genderForFormula,
+    );
     console.log('BMR calculated:', basalMetabolicRate);
     return Math.round(basalMetabolicRate);
   } catch (error) {
@@ -154,12 +120,10 @@ export function calculateTDEE(basalMetabolicRate, activityLevel) {
   try {
     // 1. Unknown activity names use the sedentary multiplier.
     console.log('Calculating TDEE with activity level:', activityLevel);
-
     const multiplier = activityMultiplier(activityLevel);
 
     // 2. Resting calories times how active the person is.
     const totalDailyEnergyExpenditure = basalMetabolicRate * multiplier;
-
     console.log('TDEE calculated:', totalDailyEnergyExpenditure);
     return Math.round(totalDailyEnergyExpenditure);
   } catch (error) {
@@ -180,17 +144,15 @@ export function calculateMacros(calories, goal, bodyWeight) {
   try {
     // 1. Protein grams from the goal. Everything else uses the maintenance rate.
     console.log('Calculating macros for calories:', calories, 'goal:', goal);
-
     const proteinGrams = proteinGramsForGoal(goal, bodyWeight);
 
     // 2. Fat is a fixed share. Carbs get the leftover calories.
     const result = macroSplitFromProtein(calories, proteinGrams);
-
     console.log('Macros calculated:', result);
     return result;
   } catch (error) {
     console.error('Macro calculation error:', error);
-    return { protein: 0, carbs: 0, fat: 0 };
+    return EMPTY_MACROS;
   }
 }
 
@@ -206,16 +168,11 @@ export function estimateBodyFat(gender, age, bodyMassIndex) {
   try {
     // 1. Missing gender is treated as male. The log still shows what was passed in.
     console.log('Estimating body fat for:', { gender, age, bmi: bodyMassIndex });
-
-    let genderForFormula = gender;
-    if (!genderForFormula) {
-      genderForFormula = MALE_GENDER;
-    }
+    const genderForFormula = genderOrMaleDefault(gender, null);
 
     // 2. Deurenberg estimate, then clamp between 3% and 50%.
     const unclamped = bodyFatPercentForGender(genderForFormula, age, bodyMassIndex);
     const clamped = clampBodyFatPercent(unclamped);
-
     console.log('Body fat estimated:', clamped);
     return Math.round(clamped);
   } catch (error) {
@@ -233,13 +190,11 @@ export function estimateBodyFat(gender, age, bodyMassIndex) {
 export function calculateBMI(weight, height) {
   try {
     // 1. Height is centimeters. Zero or missing height cannot make a BMI.
-    if (!height || height <= 0) return null;
+    if (heightIsMissingOrZero(height)) return null;
     console.log('Calculating BMI for:', { weight, height });
 
     // 2. kg / m², then one decimal place.
-    const heightInMeters = height / CENTIMETERS_PER_METER;
-    const bodyMassIndex = weight / (heightInMeters * heightInMeters);
-
+    const bodyMassIndex = bodyMassIndexFromKgAndCm(weight, height);
     console.log('BMI calculated:', bodyMassIndex);
     return roundToOneDecimal(bodyMassIndex);
   } catch (error) {
@@ -260,14 +215,18 @@ export function calculateWeightGoal(currentWeight, targetWeight, timeframe) {
   try {
     // 1. How far the target is, and how many kilograms that is per week.
     console.log('Calculating weight goal:', { currentWeight, targetWeight, timeframe });
-
     const weightDifference = targetWeight - currentWeight;
-    const weeklyChange = weightDifference / (timeframe / DAYS_PER_WEEK);
+    const weeksInTimeframe = timeframe / DAYS_PER_WEEK;
+    const weeklyChange = weightDifference / weeksInTimeframe;
 
     // 2. Each kilogram per week shifts daily calories by the app's rule.
     const dailyCalorieAdjustment = weeklyChange * CALORIES_PER_KG_OF_WEEKLY_CHANGE;
+    console.log('Weight goal calculated:', {
+      weightDifference,
+      weeklyChange,
+      dailyCalorieAdjustment,
+    });
 
-    console.log('Weight goal calculated:', { weightDifference, weeklyChange, dailyCalorieAdjustment });
     return {
       weightDifference,
       weeklyChange: roundToOneDecimal(weeklyChange),
@@ -275,6 +234,89 @@ export function calculateWeightGoal(currentWeight, targetWeight, timeframe) {
     };
   } catch (error) {
     console.error('Weight goal calculation error:', error);
-    return { weightDifference: 0, weeklyChange: 0, dailyCalorieAdjustment: 0 };
+    return EMPTY_WEIGHT_GOAL;
   }
+}
+
+// ===== HELPER FUNCTIONS =====
+// PLUMBING — skip unless you are changing the formulas.
+
+function genderOrMaleDefault(gender, warnLabel) {
+  if (gender) return gender;
+  if (warnLabel) console.warn(`${warnLabel}: missing gender, defaulting to male`);
+  return MALE_GENDER;
+}
+
+function heightOrWeightIsInvalid(height, weight) {
+  if (height <= 0) return true;
+  if (weight <= 0) return true;
+  return false;
+}
+
+function heightIsMissingOrZero(height) {
+  if (!height) return true;
+  if (height <= 0) return true;
+  return false;
+}
+
+function genderIsMale(gender) {
+  return gender.toLowerCase() === MALE_GENDER;
+}
+
+function basalMetabolicRateForGender(weight, height, age, gender) {
+  const restingCalories =
+    BMR_WEIGHT_COEFFICIENT * weight +
+    BMR_HEIGHT_COEFFICIENT * height -
+    BMR_AGE_COEFFICIENT * age;
+
+  if (genderIsMale(gender)) return restingCalories + BMR_MALE_CONSTANT;
+  return restingCalories - BMR_FEMALE_CONSTANT;
+}
+
+function activityMultiplier(activityLevel) {
+  const namedMultiplier = ACTIVITY_MULTIPLIERS[activityLevel.toLowerCase()];
+  if (namedMultiplier) return namedMultiplier;
+  return SEDENTARY_ACTIVITY_MULTIPLIER;
+}
+
+function proteinGramsForGoal(goal, bodyWeight) {
+  if (goal === WEIGHT_LOSS_GOAL) {
+    return Math.round(bodyWeight * PROTEIN_GRAMS_PER_KG_WEIGHT_LOSS);
+  }
+  if (goal === MUSCLE_GAIN_GOAL) {
+    return Math.round(bodyWeight * PROTEIN_GRAMS_PER_KG_MUSCLE_GAIN);
+  }
+  return Math.round(bodyWeight * PROTEIN_GRAMS_PER_KG_MAINTENANCE);
+}
+
+function macroSplitFromProtein(calories, proteinGrams) {
+  const fatGrams = Math.round((calories * FAT_CALORIE_SHARE) / CALORIES_PER_GRAM_FAT);
+  const caloriesUsedByProtein = proteinGrams * CALORIES_PER_GRAM_PROTEIN;
+  const caloriesUsedByFat = fatGrams * CALORIES_PER_GRAM_FAT;
+  const caloriesLeftForCarbs = calories - caloriesUsedByProtein - caloriesUsedByFat;
+  const carbGrams = Math.round(caloriesLeftForCarbs / CALORIES_PER_GRAM_CARBS);
+  return { protein: proteinGrams, carbs: carbGrams, fat: fatGrams };
+}
+
+function bodyFatPercentForGender(gender, age, bodyMassIndex) {
+  const fromBmiAndAge =
+    BODY_FAT_BMI_COEFFICIENT * bodyMassIndex + BODY_FAT_AGE_COEFFICIENT * age;
+
+  if (genderIsMale(gender)) return fromBmiAndAge - BODY_FAT_MALE_OFFSET;
+  return fromBmiAndAge - BODY_FAT_FEMALE_OFFSET;
+}
+
+function clampBodyFatPercent(bodyFatPercent) {
+  if (bodyFatPercent < MINIMUM_BODY_FAT_PERCENT) return MINIMUM_BODY_FAT_PERCENT;
+  if (bodyFatPercent > MAXIMUM_BODY_FAT_PERCENT) return MAXIMUM_BODY_FAT_PERCENT;
+  return bodyFatPercent;
+}
+
+function bodyMassIndexFromKgAndCm(weight, heightCentimeters) {
+  const heightInMeters = heightCentimeters / CENTIMETERS_PER_METER;
+  return weight / (heightInMeters * heightInMeters);
+}
+
+function roundToOneDecimal(value) {
+  return Math.round(value * ONE_DECIMAL_SCALE) / ONE_DECIMAL_SCALE;
 }

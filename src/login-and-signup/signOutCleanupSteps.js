@@ -8,68 +8,66 @@
 
 // ===== HELPER FUNCTIONS =====
 
-/**
- * Read the next account id. A missing user or a blank uid counts as signed out.
- * @param {{ uid?: string }|null} nextFirebaseUser Firebase hands us null when nobody is signed in.
- * @returns {string|null}
- */
-function nextUidFromFirebaseUser(nextFirebaseUser) {
-  // vocab: uid = Firebase's permanent id for one account (not the email).
-  // vocab/symbol: ?. = read .uid only if nextFirebaseUser exists, otherwise undefined.
-  const nextUid = nextFirebaseUser?.uid;
-  if (!nextUid) return null;
-  return nextUid;
+// vocab: uid = Firebase's permanent id for one account (not the email address).
+// vocab/symbol: ?. = read .uid only when nextFirebaseUser exists; otherwise undefined.
+function uidFromFirebaseUserOrNull(nextFirebaseUser) {
+  const maybeUid = nextFirebaseUser?.uid;
+  if (!maybeUid) {
+    return null;
+  }
+  return maybeUid;
 }
 
-/**
- * Drop the previous account's push token and cached profile off this device.
- * A failed token clear must not block the rest of the wipe. Leftover tokens
- * would keep sending the old account this phone's notifications.
- * @param {string} previousUid
- * @param {{ clearPushTokensForUid: Function, clearAllUserData: Function }} cleanupDependencies
- */
-async function clearCachedDataForPreviousUser(previousUid, cleanupDependencies) {
+// True for sign-out (had a uid, now nobody) and for account-switch (uid A → uid B).
+// First sign-in and a same-user refresh keep the cache so we do not throw away live data.
+function mustWipeLocalCacheForThisTransition(previousUid, nextUid) {
+  const userJustSignedOut = !nextUid && Boolean(previousUid);
+  if (userJustSignedOut) {
+    return true;
+  }
+
+  const bothUidsAreKnown = Boolean(previousUid) && Boolean(nextUid);
+  if (!bothUidsAreKnown) {
+    return false;
+  }
+
+  const differentPersonSignedIn = nextUid !== previousUid;
+  return differentPersonSignedIn;
+}
+
+// Drop the outgoing account's push token, then wipe AsyncStorage profile cache.
+// A failed token clear must not block the profile wipe — leftover tokens would keep
+// notifying the old account on this phone.
+async function wipePushTokenAndCachedProfile(previousUid, cleanupDependencies) {
   try {
     await cleanupDependencies.clearPushTokensForUid(previousUid);
   } catch {
-    // Best-effort. The profile wipe below still has to run.
+    // Best-effort. Profile wipe below still has to run.
   }
   await cleanupDependencies.clearAllUserData();
-}
-
-/**
- * First sign-in (no previous uid) and a refresh of the same user keep the cache.
- * Wiping those would throw away data that still belongs to the person on screen.
- * @param {string|null} previousUid
- * @param {string|null} nextUid
- * @returns {boolean}
- */
-function shouldWipeCachedUserData(previousUid, nextUid) {
-  const signedOut = !nextUid && Boolean(previousUid);
-  if (signedOut) return true;
-
-  const bothPresent = Boolean(nextUid) && Boolean(previousUid);
-  if (!bothPresent) return false;
-
-  const switchedAccounts = nextUid !== previousUid;
-  return switchedAccounts;
 }
 
 // ===== MAIN FUNCTION =====
 
 /**
  * Wipe local user data when the signed-in uid changes, then return the new uid.
- * @param {string|null} previousUid
- * @param {{ uid?: string }|null} nextFirebaseUser
- * @param {{ clearPushTokensForUid: Function, clearAllUserData: Function }} cleanupDependencies
- * @returns {Promise<string|null>}
+ * @param {string|null} previousUid Uid LoginGate remembered from the last auth tick.
+ * @param {{ uid?: string }|null} nextFirebaseUser Firebase Auth user (null when signed out).
+ * @param {{ clearPushTokensForUid: Function, clearAllUserData: Function }} cleanupDependencies Injected wipe helpers.
+ * @returns {Promise<string|null>} The uid to store next (null when signed out).
  */
 export async function handleAuthUidTransition(previousUid, nextFirebaseUser, cleanupDependencies) {
-  const nextUid = nextUidFromFirebaseUser(nextFirebaseUser);
+  // 1. Read who Firebase says is signed in now (null = nobody).
+  const nextUid = uidFromFirebaseUserOrNull(nextFirebaseUser);
 
-  if (shouldWipeCachedUserData(previousUid, nextUid)) {
-    await clearCachedDataForPreviousUser(previousUid, cleanupDependencies);
+  // 2. Sign-out and account-switch both need a full wipe; same-user refresh does not.
+  const shouldWipeLocalData = mustWipeLocalCacheForThisTransition(previousUid, nextUid);
+
+  // 3. Best-effort token + cache clear for the outgoing account only when required.
+  if (shouldWipeLocalData) {
+    await wipePushTokenAndCachedProfile(previousUid, cleanupDependencies);
   }
 
+  // 4. Hand the new uid back so LoginGate can update its ref.
   return nextUid;
 }

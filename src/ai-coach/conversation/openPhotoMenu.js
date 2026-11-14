@@ -1,76 +1,138 @@
-// Legacy native attach menu — DO NOT call from coach screens.
-// Flow was: ActionSheet / Alert → picker callback. Replaced by CoachAttachSheet (Design Law NbSheet).
-// Kept only so old imports do not crash; new code must open CoachAttachSheet instead.
+// Legacy native “attach” menu — do not wire this into new coach screens.
+// Flow: warn in dev → iOS ActionSheet or Android Alert → user picks source → short delay → callback.
+// Replaced by: CoachAttachSheet (Design Law NbSheet). File stays so stale imports do not crash.
 
 import { ActionSheetIOS, Alert, Platform } from 'react-native';
 
 // ===== NAMED CONSTANTS =====
 
-const ATTACH_MENU_LABELS = ['Cancel', 'Photo Library', 'Camera', 'File'];
-const CANCEL_MENU_INDEX = 0;
-const LIBRARY_MENU_INDEX = 1;
-const CAMERA_MENU_INDEX = 2;
-const FILE_MENU_INDEX = 3;
-const IOS_DISMISS_WAIT_MS = 50;
-const ANDROID_DISMISS_WAIT_MS = 150;
+const MENU_LABEL_CANCEL = 'Cancel';
+const MENU_LABEL_LIBRARY = 'Photo Library';
+const MENU_LABEL_CAMERA = 'Camera';
+const MENU_LABEL_FILE = 'File';
+
+// Order matches MENU_INDEX_* below — ActionSheetIOS uses these indices.
+const ATTACH_MENU_OPTIONS = [
+  MENU_LABEL_CANCEL,
+  MENU_LABEL_LIBRARY,
+  MENU_LABEL_CAMERA,
+  MENU_LABEL_FILE,
+];
+
+const MENU_INDEX_CANCEL = 0;
+const MENU_INDEX_PHOTO_LIBRARY = 1;
+const MENU_INDEX_CAMERA = 2;
+const MENU_INDEX_FILE = 3;
+
+// Manipulate here: wait for the native sheet to dismiss before opening the picker (avoids iOS glitches).
+const IOS_POST_MENU_WAIT_MS = 50;
+const ANDROID_POST_MENU_WAIT_MS = 150;
+
+const ATTACH_SHEET_TITLE = 'Attach';
+const ATTACH_SHEET_MESSAGE = 'Choose an option';
+
+const DEPRECATION_WARNING =
+  '[AI Coach] showCoachAttachMenu is deprecated — open CoachAttachSheet (Design Law) instead.';
 
 // ===== MAIN FUNCTION =====
 
 /**
- * @deprecated Use CoachAttachSheet from conversation screens — native ActionSheet is old chrome.
- * @param {{ onPhotoLibrary?: function, onCamera?: function, onFile?: function }} callbacks
+ * @deprecated Open CoachAttachSheet on conversation screens — this ActionSheet/Alert path is old chrome.
+ * @param {{ onPhotoLibrary?: Function, onCamera?: Function, onFile?: Function }} callbacks
  */
 export function showCoachAttachMenu(callbacks) {
   if (__DEV__) {
-    console.warn(
-      '[AI Coach] showCoachAttachMenu is deprecated — open CoachAttachSheet (Design Law) instead.',
-    );
+    console.warn(DEPRECATION_WARNING);
   }
-  const isIosDevice = Platform.OS === 'ios';
-  if (isIosDevice) {
-    openIosAttachSheet(callbacks);
+
+  // 1. Pick the native chrome for this OS, then return — only one branch runs.
+  const runningOnIos = Platform.OS === 'ios';
+  if (runningOnIos) {
+    showIosActionSheetAttachMenu(callbacks);
     return;
   }
-  openAlertAttachMenu(callbacks);
+
+  showAndroidAlertAttachMenu(callbacks);
 }
 
-// ===== HELPER FUNCTIONS =====
+// ===== PLUMBING — skip unless debugging =====
 
-function attachPickerCallbackForIndex(selectedIndex, callbacks) {
-  if (selectedIndex === LIBRARY_MENU_INDEX) return callbacks.onPhotoLibrary ?? null;
-  if (selectedIndex === CAMERA_MENU_INDEX) return callbacks.onCamera ?? null;
-  if (selectedIndex === FILE_MENU_INDEX) return callbacks.onFile ?? null;
+function pickCallbackForMenuIndex(selectedIndex, callbacks) {
+  if (selectedIndex === MENU_INDEX_PHOTO_LIBRARY) {
+    return callbackOrNull(callbacks.onPhotoLibrary);
+  }
+  if (selectedIndex === MENU_INDEX_CAMERA) {
+    return callbackOrNull(callbacks.onCamera);
+  }
+  if (selectedIndex === MENU_INDEX_FILE) {
+    return callbackOrNull(callbacks.onFile);
+  }
   return null;
 }
 
-function schedulePickerAfterMenuDismiss(pickerCallback) {
-  if (typeof pickerCallback !== 'function') return;
-  const isIosDevice = Platform.OS === 'ios';
-  const waitMs = isIosDevice ? IOS_DISMISS_WAIT_MS : ANDROID_DISMISS_WAIT_MS;
-  setTimeout(() => {
-    pickerCallback();
-  }, waitMs);
+function callbackOrNull(maybeCallback) {
+  if (maybeCallback === null || maybeCallback === undefined) {
+    return null;
+  }
+  return maybeCallback;
 }
 
-function openIosAttachSheet(callbacks) {
+function runPickerAfterNativeMenuCloses(pickerCallback) {
+  if (typeof pickerCallback !== 'function') {
+    return;
+  }
+
+  const runningOnIos = Platform.OS === 'ios';
+  let waitMilliseconds = ANDROID_POST_MENU_WAIT_MS;
+  if (runningOnIos) {
+    waitMilliseconds = IOS_POST_MENU_WAIT_MS;
+  }
+
+  setTimeout(() => {
+    pickerCallback();
+  }, waitMilliseconds);
+}
+
+function showIosActionSheetAttachMenu(callbacks) {
+  // vocab: ActionSheetIOS.showActionSheetWithOptions = iOS system bottom sheet with labeled rows.
   ActionSheetIOS.showActionSheetWithOptions(
     {
-      options: ATTACH_MENU_LABELS,
-      cancelButtonIndex: CANCEL_MENU_INDEX,
+      options: ATTACH_MENU_OPTIONS,
+      cancelButtonIndex: MENU_INDEX_CANCEL,
     },
     (selectedIndex) => {
-      const pickerCallback = attachPickerCallbackForIndex(selectedIndex, callbacks);
-      schedulePickerAfterMenuDismiss(pickerCallback);
+      const pickerCallback = pickCallbackForMenuIndex(selectedIndex, callbacks);
+      runPickerAfterNativeMenuCloses(pickerCallback);
     },
   );
 }
 
-function openAlertAttachMenu(callbacks) {
-  const wrap = (pickerCallback) => () => schedulePickerAfterMenuDismiss(pickerCallback);
-  Alert.alert('Attach', 'Choose an option', [
-    { text: ATTACH_MENU_LABELS[CANCEL_MENU_INDEX], style: 'cancel' },
-    { text: ATTACH_MENU_LABELS[LIBRARY_MENU_INDEX], onPress: wrap(callbacks.onPhotoLibrary) },
-    { text: ATTACH_MENU_LABELS[CAMERA_MENU_INDEX], onPress: wrap(callbacks.onCamera) },
-    { text: ATTACH_MENU_LABELS[FILE_MENU_INDEX], onPress: wrap(callbacks.onFile) },
-  ]);
+function delayedPickerPressHandler(pickerCallback) {
+  return () => {
+    runPickerAfterNativeMenuCloses(pickerCallback);
+  };
+}
+
+function buildAndroidAttachAlertButtons(callbacks) {
+  return [
+    { text: MENU_LABEL_CANCEL, style: 'cancel' },
+    {
+      text: MENU_LABEL_LIBRARY,
+      onPress: delayedPickerPressHandler(callbacks.onPhotoLibrary),
+    },
+    {
+      text: MENU_LABEL_CAMERA,
+      onPress: delayedPickerPressHandler(callbacks.onCamera),
+    },
+    {
+      text: MENU_LABEL_FILE,
+      onPress: delayedPickerPressHandler(callbacks.onFile),
+    },
+  ];
+}
+
+function showAndroidAlertAttachMenu(callbacks) {
+  // vocab: Alert.alert = Android/iOS system dialog; on Android this is our attach menu stand-in.
+  const alertButtons = buildAndroidAttachAlertButtons(callbacks);
+  Alert.alert(ATTACH_SHEET_TITLE, ATTACH_SHEET_MESSAGE, alertButtons);
 }

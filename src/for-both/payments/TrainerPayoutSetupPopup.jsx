@@ -1,6 +1,6 @@
 // In-app Stripe Connect WebView so a trainer can finish bank setup without leaving the app.
-// Flow: open the Account Link URL → watch navigation → if it hits our return/refresh URL, call onComplete.
-// Used by: payout reminder, settings, earnings, and the trainer payout onboarding step.
+// Flow: open Account Link URL → watch navigation → return/refresh URLs call onComplete and stop loading.
+// Used by: payout reminder, settings, earnings, trainer payout onboarding step.
 
 import React, { useEffect, useState } from 'react';
 import {
@@ -18,15 +18,20 @@ import { lightColors } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
+// Manipulate here: deep-link prefixes Stripe redirects to when Connect finishes or needs reauth.
 const STRIPE_RETURN_PREFIXES = [
   'coachconnect://stripe/complete',
   'coachconnect://stripe/reauth',
 ];
+
+// Manipulate here: server path Stripe hits for return/refresh (also treated as "done").
 const STRIPE_CONNECT_RETURN_PATH =
   /\/api\/stripe\/connect\/(return|refresh)(?:\?|#|$)/i;
+
 const DEFAULT_TITLE = 'Connect with Stripe';
 const CLOSE_LABEL = 'Close';
 const OPENING_STRIPE_HINT = 'Opening Stripe form…';
+
 const DARK_BACKGROUND = lightColors.nbInk;
 const LIGHT_BACKGROUND = '#F9FAFB';
 const DARK_TEXT_COLOR = lightColors.white;
@@ -34,119 +39,196 @@ const LIGHT_TEXT_COLOR = '#020617';
 const SPINNER_COLOR = lightColors.primary;
 const DARK_HINT_COLOR = 'rgba(148,163,184,1)';
 const LIGHT_HINT_COLOR = '#64748B';
+
 const CLOSE_SIDE_SPACER_WIDTH = 60;
 const CLOSE_HIT_SLOP = { top: 12, bottom: 12, left: 12, right: 12 };
+const ANDROID_HEADER_TOP_PAD = 24;
+const IOS_HEADER_TOP_PAD = 8;
 
 // ===== HELPER FUNCTIONS =====
 
-/**
- * True for our deep links and for the server return/refresh paths Stripe redirects through.
- * @param {string} url
- * @returns {boolean}
- */
-function isStripeReturnUrl(url) {
-  if (!url || typeof url !== 'string') return false;
-  if (urlStartsWithStripeReturnPrefix(url)) return true;
-  return STRIPE_CONNECT_RETURN_PATH.test(url);
+function pickStripeConnectModalColors(isDark) {
+  if (isDark) {
+    return {
+      backgroundColor: DARK_BACKGROUND,
+      textColor: DARK_TEXT_COLOR,
+      hintColor: DARK_HINT_COLOR,
+    };
+  }
+
+  return {
+    backgroundColor: LIGHT_BACKGROUND,
+    textColor: LIGHT_TEXT_COLOR,
+    hintColor: LIGHT_HINT_COLOR,
+  };
 }
 
-function urlStartsWithStripeReturnPrefix(url) {
-  for (const prefix of STRIPE_RETURN_PREFIXES) {
-    if (url.startsWith(prefix)) return true;
+function urlMatchesStripeReturnPrefix(urlText) {
+  for (let index = 0; index < STRIPE_RETURN_PREFIXES.length; index += 1) {
+    const prefix = STRIPE_RETURN_PREFIXES[index];
+    if (urlText.startsWith(prefix)) {
+      return true;
+    }
   }
   return false;
 }
 
-/**
- * Return/refresh URLs finish setup and must not keep loading inside the WebView.
- * @param {{ url?: string }} request
- * @param {Function} [onComplete]
- * @returns {boolean}
- */
-function shouldAllowStripeNavigation(request, onComplete) {
-  if (isStripeReturnUrl(request?.url)) {
-    onComplete?.({ url: request.url });
+function isStripeConnectFinishUrl(urlText) {
+  if (!urlText) {
     return false;
   }
-  return true;
-}
-
-/**
- * Same return/refresh check for Android navigation-state changes.
- * @param {{ url?: string }} navigationState
- * @param {Function} [onComplete]
- */
-function noteStripeNavigationChange(navigationState, onComplete) {
-  if (isStripeReturnUrl(navigationState?.url)) {
-    onComplete?.({ url: navigationState.url });
+  if (typeof urlText !== 'string') {
+    return false;
   }
+  if (urlMatchesStripeReturnPrefix(urlText)) {
+    return true;
+  }
+  return STRIPE_CONNECT_RETURN_PATH.test(urlText);
 }
 
-/**
- * @param {boolean} isDark
- * @returns {{ backgroundColor: string, textColor: string, hintColor: string }}
- */
-function payoutPopupColors(isDark) {
-  return {
-    backgroundColor: isDark ? DARK_BACKGROUND : LIGHT_BACKGROUND,
-    textColor: isDark ? DARK_TEXT_COLOR : LIGHT_TEXT_COLOR,
-    hintColor: isDark ? DARK_HINT_COLOR : LIGHT_HINT_COLOR,
-  };
+function tellParentSetupFinished(onComplete, finishedUrl) {
+  if (!onComplete) {
+    return;
+  }
+  onComplete({ url: finishedUrl });
+}
+
+// iOS asks before each navigation. Return false to stop loading after we finish.
+function allowStripeNavigationOrFinish(request, onComplete) {
+  let requestUrl = null;
+  if (request) {
+    requestUrl = request.url;
+  }
+  if (!isStripeConnectFinishUrl(requestUrl)) {
+    return true;
+  }
+
+  tellParentSetupFinished(onComplete, requestUrl);
+  return false;
+}
+
+// Android also fires navigation-state changes for the same return/refresh URLs.
+function noteStripeReturnNavigation(navigationState, onComplete) {
+  let navigationUrl = null;
+  if (navigationState) {
+    navigationUrl = navigationState.url;
+  }
+  if (!isStripeConnectFinishUrl(navigationUrl)) {
+    return;
+  }
+
+  tellParentSetupFinished(onComplete, navigationUrl);
+}
+
+function StripeConnectModalHeader({ title, textColor, onClose }) {
+  const headerTitle = title || DEFAULT_TITLE;
+
+  return (
+    <View style={styles.header}>
+      <TouchableOpacity onPress={onClose} hitSlop={CLOSE_HIT_SLOP}>
+        <Text style={[styles.closeText, { color: textColor }]}>{CLOSE_LABEL}</Text>
+      </TouchableOpacity>
+      <Text style={[styles.title, { color: textColor }]} numberOfLines={1}>
+        {headerTitle}
+      </Text>
+      <View style={{ width: CLOSE_SIDE_SPACER_WIDTH }} />
+    </View>
+  );
+}
+
+function StripeWebViewLoadingOverlay({ show, hintColor }) {
+  if (!show) {
+    return null;
+  }
+
+  return (
+    <View style={styles.loader}>
+      <ActivityIndicator size="large" color={SPINNER_COLOR} />
+      <Text style={[styles.hint, { color: hintColor }]}>{OPENING_STRIPE_HINT}</Text>
+    </View>
+  );
+}
+
+function headerTopPaddingForPlatform() {
+  if (Platform.OS === 'android') {
+    return ANDROID_HEADER_TOP_PAD;
+  }
+  return IOS_HEADER_TOP_PAD;
 }
 
 // ===== MAIN FUNCTION =====
 
 /**
- * Load Stripe Account Link URL and detect return/refresh deep links.
+ * Full-screen modal with Stripe Connect inside a WebView.
  * @param {{ visible: boolean, url: string, title?: string, isDark?: boolean, onClose: Function, onComplete?: Function }} props
  */
-export function TrainerPayoutSetupPopup({ visible, url, title, isDark = true, onClose, onComplete }) {
-  const [isLoading, setIsLoading] = useState(true);
+export function TrainerPayoutSetupPopup({
+  visible,
+  url,
+  title,
+  isDark = true,
+  onClose,
+  onComplete,
+}) {
+  // vocab: useState = React hook that holds a value across paints
+  const [isPageLoading, setIsPageLoading] = useState(true);
 
+  // vocab: useEffect = runs after paint; here we reset the spinner when the modal reopens
   useEffect(() => {
-    if (visible && url) setIsLoading(true);
+    const modalJustOpenedWithUrl = visible && url;
+    if (modalJustOpenedWithUrl) {
+      setIsPageLoading(true);
+    }
   }, [visible, url]);
 
   // 1. Hidden until the parent has a Stripe Account Link URL.
-  if (!visible || !url) return null;
+  if (!visible || !url) {
+    return null;
+  }
 
-  // 2. Load that URL. Return/refresh deep links call onComplete and stop the WebView.
-  const popupColors = payoutPopupColors(isDark);
+  // 2. Theme colors for header + spinner hint (dark vs light).
+  const themeColors = pickStripeConnectModalColors(isDark);
+
+  // 3. Load that URL; return/refresh deep links call onComplete and block further loads.
+  function handleShouldStartLoad(request) {
+    return allowStripeNavigationOrFinish(request, onComplete);
+  }
+
+  function handleNavigationStateChange(navigationState) {
+    noteStripeReturnNavigation(navigationState, onComplete);
+  }
+
+  function handleLoadEnded() {
+    setIsPageLoading(false);
+  }
+
+  function handleLoadFailed() {
+    setIsPageLoading(false);
+  }
 
   return (
     <Modal visible={visible} animationType="slide" transparent={false} onRequestClose={onClose}>
-      <SafeAreaView style={[styles.container, { backgroundColor: popupColors.backgroundColor }]}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={onClose} hitSlop={CLOSE_HIT_SLOP}>
-            <Text style={[styles.closeText, { color: popupColors.textColor }]}>{CLOSE_LABEL}</Text>
-          </TouchableOpacity>
-          <Text style={[styles.title, { color: popupColors.textColor }]} numberOfLines={1}>
-            {title || DEFAULT_TITLE}
-          </Text>
-          <View style={{ width: CLOSE_SIDE_SPACER_WIDTH }} />
-        </View>
-        <View style={[styles.wrap, { backgroundColor: popupColors.backgroundColor }]}>
+      <SafeAreaView style={[styles.container, { backgroundColor: themeColors.backgroundColor }]}>
+        <StripeConnectModalHeader
+          title={title}
+          textColor={themeColors.textColor}
+          onClose={onClose}
+        />
+        <View style={[styles.wrap, { backgroundColor: themeColors.backgroundColor }]}>
           {/* vocab: WebView = in-app browser. Stripe Account Link must not open Safari. */}
           <WebView
             source={{ uri: url }}
             style={styles.webview}
-            onLoadEnd={() => setIsLoading(false)}
-            onError={() => setIsLoading(false)}
+            onLoadEnd={handleLoadEnded}
+            onError={handleLoadFailed}
             originWhitelist={['*']}
             mixedContentMode="always"
             allowsInlineMediaPlayback
             androidLayerType="hardware"
-            onShouldStartLoadWithRequest={(request) => shouldAllowStripeNavigation(request, onComplete)}
-            onNavigationStateChange={(navigationState) => noteStripeNavigationChange(navigationState, onComplete)}
+            onShouldStartLoadWithRequest={handleShouldStartLoad}
+            onNavigationStateChange={handleNavigationStateChange}
           />
-          {isLoading ? (
-            <View style={styles.loader}>
-              <ActivityIndicator size="large" color={SPINNER_COLOR} />
-              <Text style={[styles.hint, { color: popupColors.hintColor }]}>
-                {OPENING_STRIPE_HINT}
-              </Text>
-            </View>
-          ) : null}
+          <StripeWebViewLoadingOverlay show={isPageLoading} hintColor={themeColors.hintColor} />
         </View>
       </SafeAreaView>
     </Modal>
@@ -160,12 +242,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingTop: Platform.OS === 'android' ? 24 : 8,
+    paddingTop: headerTopPaddingForPlatform(),
     paddingBottom: 8,
   },
   closeText: { fontSize: 16, fontWeight: '600' },
   title: { flex: 1, textAlign: 'center', fontSize: 15, fontWeight: '700', marginHorizontal: 12 },
   wrap: { flex: 1, position: 'relative' },
+  // opacity 0.99 avoids an Android WebView blank-screen bug
   webview: { flex: 1, opacity: 0.99 },
   loader: {
     ...StyleSheet.absoluteFillObject,

@@ -1,6 +1,6 @@
 // Ask the coach API for a short chat title, then fall back to a local title.
-// Flow: excerpt the first messages → try the dedicated title route → optionally try the main coach route → otherwise use the local title.
-// Used by: the coach conversation when a chat is saved, and by fixOldChatTitles.
+// Flow: excerpt first messages → dedicated title route → optional main coach route → local fallback.
+// Used by the coach conversation when a chat is saved, and by fixOldChatTitles.
 
 import { auth } from '../../app-start/cloudConnection';
 import { getAICoachApiBases } from '../../for-both/online-connection/whereToConnect';
@@ -24,13 +24,12 @@ const DEDICATED_TITLE_PATH = '/api/ai-coach/chat-title';
 const MAIN_COACH_PATH = '/api/ai-coach';
 const NOT_FOUND_STATUS = 404;
 
-// The model sometimes echoes the "live search" disclaimer as the title. Cut that prefix
-// before we ask, or the title comes back as the disclaimer.
+// The model sometimes echoes the "live search" disclaimer as the title. Cut that prefix before we ask.
 const LIVE_SEARCH_DISCLAIMER_PREFIX = /^Live search wasn't available this turn[^.]*\.\s*/i;
 
 const TITLE_QUOTE_PATTERN = /^["'`]+|["'`]+$/g;
 const TITLE_WHITESPACE_PATTERN = /\s+/g;
-// Period, exclamation, or em dash — a title that long is a sentence, and we keep the first clause.
+// Period, exclamation, or em dash — a title that long is a sentence; keep the first clause.
 const TITLE_SENTENCE_BREAK_PATTERN = /[.!—]/;
 
 const TITLE_PROMPT = `Based on this fitness coaching conversation, generate ONE creative, catchy chat title (3-5 words, can include one emoji). Make it feel natural and conversational — like a playlist name, not a status message. Examples: "Sleep Recovery Tactics", "Macro Math Breakdown", "Late Night Gains 🌙", "Recomp Roadmap", "Creatine Clarity".
@@ -55,36 +54,62 @@ export async function makeChatTitle(
   userId,
   { allowMainCoachFallback = true } = {},
 ) {
-  const excerpt = excerptFromMessages(messages);
-  if (!excerpt) return fallback;
+  // 1. Build a short transcript the model can title. Empty thread → caller fallback.
+  const conversationExcerpt = excerptFromMessages(messages);
+  if (!conversationExcerpt) return fallback;
 
-  const localFallback = localTitleFallback(messages, fallback);
+  const localFallbackTitle = pickLocalTitleFallback(messages, fallback);
 
-  // vocab: getIdToken() is the Firebase ID token the API expects in Authorization.
-  const idToken = await auth?.currentUser?.getIdToken?.();
-  const uid = userId || auth?.currentUser?.uid;
-  if (!idToken || !uid) return localFallback;
+  // 2. Need a Firebase ID token + uid before hitting any coach API.
+  const signedInProof = await readSignedInTitleAuth(userId);
+  if (!signedInProof) return localFallbackTitle;
 
-  const dedicatedTitle = await requestTitleFromDedicatedRoute(excerpt, idToken);
+  // 3. Dedicated lightweight title endpoint (preferred).
+  const dedicatedTitle = await requestTitleFromDedicatedRoute(
+    conversationExcerpt,
+    signedInProof.idToken,
+  );
   if (dedicatedTitle) return dedicatedTitle;
 
+  // 4. Full coach route when allowed (heavier).
   if (allowMainCoachFallback) {
-    const mainCoachTitle = await requestTitleFromMainCoach(excerpt, idToken, uid);
+    const mainCoachTitle = await requestTitleFromMainCoach(
+      conversationExcerpt,
+      signedInProof.idToken,
+      signedInProof.uid,
+    );
     if (mainCoachTitle) return mainCoachTitle;
   }
 
-  return localFallback;
+  // 5. On-device rules + deriveChatTitle.
+  return localFallbackTitle;
 }
 
 // ===== HELPER FUNCTIONS =====
 // PLUMBING — skip unless debugging
 
+async function readSignedInTitleAuth(userId) {
+  if (!auth) return null;
+  if (!auth.currentUser) return null;
+
+  const currentUser = auth.currentUser;
+  if (typeof currentUser.getIdToken !== 'function') return null;
+
+  const idToken = await currentUser.getIdToken();
+  const uid = userId || currentUser.uid;
+  if (!idToken || !uid) return null;
+  return { idToken, uid };
+}
+
 function isCoachRole(role) {
-  return role === COACH_ROLE_AI || role === COACH_ROLE_ASSISTANT;
+  if (role === COACH_ROLE_AI) return true;
+  if (role === COACH_ROLE_ASSISTANT) return true;
+  return false;
 }
 
 function coachEndpointUrl(baseUrl, path) {
-  return `${String(baseUrl).replace(/\/$/, '')}${path}`;
+  const baseWithoutTrailingSlash = String(baseUrl).replace(/\/$/, '');
+  return `${baseWithoutTrailingSlash}${path}`;
 }
 
 function speakerLabel(role) {
@@ -93,52 +118,70 @@ function speakerLabel(role) {
 }
 
 function messageTextForExcerpt(message) {
-  let text = String(message?.content || message?.text || '').trim();
+  if (!message) return '';
+
+  let text = message.content || message.text || '';
+  text = String(text).trim();
   text = text.replace(LIVE_SEARCH_DISCLAIMER_PREFIX, '').trim();
   return text;
 }
 
 function excerptFromMessages(messages = []) {
-  return messages
-    .slice(0, EXCERPT_MESSAGE_LIMIT)
-    .map((message) => {
-      const text = messageTextForExcerpt(message);
-      if (!text) return '';
-      return `${speakerLabel(message?.role)}: ${text}`;
-    })
-    .filter(Boolean)
-    .join('\n')
-    .slice(0, EXCERPT_CHARACTER_LIMIT);
+  const firstMessages = messages.slice(0, EXCERPT_MESSAGE_LIMIT);
+  const lines = [];
+
+  for (let index = 0; index < firstMessages.length; index += 1) {
+    const message = firstMessages[index];
+    const text = messageTextForExcerpt(message);
+    if (!text) continue;
+    const roleLabel = speakerLabel(message.role);
+    lines.push(`${roleLabel}: ${text}`);
+  }
+
+  const joined = lines.join('\n');
+  return joined.slice(0, EXCERPT_CHARACTER_LIMIT);
 }
 
 function textOfFirstUserMessage(messages) {
-  const firstUserMessage = messages.find((message) => message.role === USER_ROLE);
-  return firstUserMessage?.content || firstUserMessage?.text || '';
+  for (let index = 0; index < messages.length; index += 1) {
+    const message = messages[index];
+    if (message.role !== USER_ROLE) continue;
+    return message.content || message.text || '';
+  }
+  return '';
 }
 
 function textOfLastCoachMessage(messages) {
-  const lastCoachMessage = [...messages]
-    .reverse()
-    .find((message) => isCoachRole(message.role));
-  return lastCoachMessage?.content || lastCoachMessage?.text || '';
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (!isCoachRole(message.role)) continue;
+    return message.content || message.text || '';
+  }
+  return '';
 }
 
 function cutRunOnSentence(title) {
-  const isRunOnSentence = title.length > LONG_TITLE_CUTOFF && TITLE_SENTENCE_BREAK_PATTERN.test(title);
-  if (!isRunOnSentence) return title;
-  return title.split(TITLE_SENTENCE_BREAK_PATTERN)[0].trim().slice(0, TITLE_CHARACTER_LIMIT);
+  const isLongEnough = title.length > LONG_TITLE_CUTOFF;
+  const hasSentenceBreak = TITLE_SENTENCE_BREAK_PATTERN.test(title);
+  if (!isLongEnough || !hasSentenceBreak) return title;
+
+  const firstClause = title.split(TITLE_SENTENCE_BREAK_PATTERN)[0].trim();
+  return firstClause.slice(0, TITLE_CHARACTER_LIMIT);
 }
 
 function cleanTitle(rawTitle) {
-  let title = String(rawTitle || '')
-    .replace(TITLE_QUOTE_PATTERN, '')
-    .replace(TITLE_WHITESPACE_PATTERN, ' ')
-    .trim()
-    .slice(0, TITLE_CHARACTER_LIMIT);
-  if (!title || isJunkChatTitle(title)) return null;
+  let title = String(rawTitle || '');
+  title = title.replace(TITLE_QUOTE_PATTERN, '');
+  title = title.replace(TITLE_WHITESPACE_PATTERN, ' ');
+  title = title.trim();
+  title = title.slice(0, TITLE_CHARACTER_LIMIT);
+
+  if (!title) return null;
+  if (isJunkChatTitle(title)) return null;
 
   title = cutRunOnSentence(title);
-  if (!title || isJunkChatTitle(title)) return null;
+  if (!title) return null;
+  if (isJunkChatTitle(title)) return null;
   return title;
 }
 
@@ -171,36 +214,79 @@ function mainCoachTitlePayload(excerpt, userId) {
   };
 }
 
+function rawTitleFromDedicatedData(data) {
+  if (!data) return null;
+  if (data.title) return data.title;
+  if (data.text) return data.text;
+  if (data.reply) return data.reply;
+  return null;
+}
+
+function rawTitleFromMainCoachData(data) {
+  if (!data) return null;
+  if (data.reply) return data.reply;
+  if (data.message) return data.message;
+  if (data.title) return data.title;
+  return null;
+}
+
 async function tryDedicatedTitleOnBase(baseUrl, idToken, payload) {
   try {
-    const response = await postJson(coachEndpointUrl(baseUrl, DEDICATED_TITLE_PATH), idToken, payload);
+    const url = coachEndpointUrl(baseUrl, DEDICATED_TITLE_PATH);
+    const response = await postJson(url, idToken, payload);
+
+    // 404 means this host has no dedicated title route — stop trying other bases.
     if (response.status === NOT_FOUND_STATUS) {
-      return { shouldStop: true, title: null };
+      return { shouldStopTryingBases: true, cleanedTitle: null };
     }
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) return { shouldStop: false, title: null };
-    return { shouldStop: false, title: cleanTitle(data?.title || data?.text || data?.reply) };
+
+    let data = {};
+    try {
+      data = await response.json();
+    } catch {
+      data = {};
+    }
+
+    if (!response.ok) {
+      return { shouldStopTryingBases: false, cleanedTitle: null };
+    }
+
+    const rawTitle = rawTitleFromDedicatedData(data);
+    return { shouldStopTryingBases: false, cleanedTitle: cleanTitle(rawTitle) };
   } catch (_error) {
-    return { shouldStop: false, title: null };
+    return { shouldStopTryingBases: false, cleanedTitle: null };
   }
 }
 
 async function requestTitleFromDedicatedRoute(excerpt, idToken) {
   const payload = dedicatedTitlePayload(excerpt);
-  for (const baseUrl of getAICoachApiBases()) {
+  const apiBases = getAICoachApiBases();
+
+  for (let index = 0; index < apiBases.length; index += 1) {
+    const baseUrl = apiBases[index];
     const result = await tryDedicatedTitleOnBase(baseUrl, idToken, payload);
-    if (result.shouldStop) return null;
-    if (result.title) return result.title;
+    if (result.shouldStopTryingBases) return null;
+    if (result.cleanedTitle) return result.cleanedTitle;
   }
   return null;
 }
 
 async function tryMainCoachTitleOnBase(baseUrl, idToken, payload) {
   try {
-    const response = await postJson(coachEndpointUrl(baseUrl, MAIN_COACH_PATH), idToken, payload);
-    const data = await response.json().catch(() => ({}));
+    const url = coachEndpointUrl(baseUrl, MAIN_COACH_PATH);
+    const response = await postJson(url, idToken, payload);
+
+    let data = {};
+    try {
+      data = await response.json();
+    } catch {
+      data = {};
+    }
+
     if (!response.ok) return null;
-    return cleanTitle(data?.reply || data?.message || data?.title);
+
+    const rawTitle = rawTitleFromMainCoachData(data);
+    return cleanTitle(rawTitle);
   } catch (_error) {
     return null;
   }
@@ -208,15 +294,21 @@ async function tryMainCoachTitleOnBase(baseUrl, idToken, payload) {
 
 async function requestTitleFromMainCoach(excerpt, idToken, userId) {
   const payload = mainCoachTitlePayload(excerpt, userId);
-  for (const baseUrl of getAICoachApiBases()) {
+  const apiBases = getAICoachApiBases();
+
+  for (let index = 0; index < apiBases.length; index += 1) {
+    const baseUrl = apiBases[index];
     const title = await tryMainCoachTitleOnBase(baseUrl, idToken, payload);
     if (title) return title;
   }
   return null;
 }
 
-function localTitleFallback(messages, fallback) {
+function pickLocalTitleFallback(messages, fallback) {
   const firstUserText = textOfFirstUserMessage(messages);
-  const firstCoachText = textOfLastCoachMessage(messages);
-  return buildCreativeTitleLocal(firstUserText, firstCoachText) || fallback || deriveChatTitle(firstUserText);
+  const lastCoachText = textOfLastCoachMessage(messages);
+  const creativeLocal = buildCreativeTitleLocal(firstUserText, lastCoachText);
+  if (creativeLocal) return creativeLocal;
+  if (fallback) return fallback;
+  return deriveChatTitle(firstUserText);
 }

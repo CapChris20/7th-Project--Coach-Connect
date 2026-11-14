@@ -1,6 +1,7 @@
 // Boots Firebase once for the whole app and hands out the shared service handles.
-// Flow: read config from env vars → sanity-check it (loudly) → create/reuse the Firebase app → init auth, Firestore, functions, storage.
-// Used by: anywhere that touches the backend; every `import { db } from '.../cloudConnection'` gets these same instances.
+// Flow: read env config → sanity-check (loudly) → create/reuse app → auth + Firestore + extras.
+// Used by: anywhere that touches the backend (`import { db, auth } from '.../cloudConnection'`).
+// Read order: constants → boot recipe → exports → PLUMBING at the bottom.
 
 import { initializeApp, getApps } from 'firebase/app';
 import { getAuth, initializeAuth, getReactNativePersistence } from 'firebase/auth';
@@ -11,11 +12,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // ===== NAMED CONSTANTS =====
 
-// Where the credentials come from.
-// vocab: EXPO_PUBLIC_* = Expo's rule that only env vars with this prefix get bundled into the app
-// at build time. They are NOT secret — they ship inside the binary; real security comes from Firestore rules.
-// app.json also carries literal strings, but we deliberately ignore those and read process.env so
-// switching .env files is the single way to point at a different backend.
+// vocab: EXPO_PUBLIC_* = Expo only bundles env vars with this prefix into the app binary.
 const firebaseConfig = {
   apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
@@ -39,35 +36,99 @@ const FIREBASE_ENV_NAMES = {
   appId: 'EXPO_PUBLIC_FIREBASE_APP_ID',
 };
 
-// ===== HELPER FUNCTIONS =====
+// ===== MAIN FUNCTION =====
 
 /**
- * Tripwire: 'anatrox-auth' is the real backend project id where all users and data live.
- * It does NOT match the app's display name on purpose, so this check catches a well-meaning
- * rename of the env var. Pointing at any other project = an app with zero accounts in it.
- * Manipulate here: only change this string if you are intentionally migrating Firebase projects.
+ * One-shot boot: scream if misconfigured, then build the shared Firebase handles.
+ * Flow: 1. sanity  2. app  3. auth  4. Firestore  5. optional siblings
+ * @returns {{ firebaseApp: object|null, auth: object|null, db: object|null, functions: object|null, storage: object|null, supabase: null }}
  */
-function warnIfWrongFirebaseProject() {
-  if (firebaseConfig.projectId !== LIVE_FIREBASE_PROJECT_ID) {
-    console.error('🚨 WRONG FIREBASE PROJECT — expected anatrox-auth, got:', firebaseConfig.projectId);
-    console.error('🚨 Check your .env file immediately');
+function bootSharedFirebaseServices() {
+  // 1. Scream early if env points at the wrong project or missing keys.
+  runFirebaseConfigSanityChecks();
+
+  // 2. App singleton (Fast Refresh safe — never call initializeApp twice for the same name).
+  const firebaseApp = createOrReuseFirebaseApp();
+
+  // 3. Auth with AsyncStorage persistence (React Native requirement).
+  const authHandle = createFirebaseAuth(firebaseApp);
+
+  // 4. Firestore with RN transport tweaks + network wake-up.
+  const firestoreHandle = createFirestore(firebaseApp);
+
+  // 5. Optional siblings — null when the app failed to boot.
+  const functionsHandle = functionsHandleForApp(firebaseApp);
+  const storageHandle = storageHandleForApp(firebaseApp);
+  const supabasePlaceholder = createSupabasePlaceholder();
+
+  return {
+    firebaseApp,
+    auth: authHandle,
+    db: firestoreHandle,
+    functions: functionsHandle,
+    storage: storageHandle,
+    supabase: supabasePlaceholder,
+  };
+}
+
+const sharedServices = bootSharedFirebaseServices();
+const auth = sharedServices.auth;
+const db = sharedServices.db;
+const functions = sharedServices.functions;
+const storage = sharedServices.storage;
+const supabase = sharedServices.supabase;
+const firebaseApp = sharedServices.firebaseApp;
+
+export { auth, db, storage, firebaseApp as app, functions };
+export default supabase;
+
+// ===== PLUMBING — skip unless debugging =====
+
+function functionsHandleForApp(firebaseAppHandle) {
+  if (!firebaseAppHandle) {
+    return null;
   }
+  return getFunctions(firebaseAppHandle);
+}
+
+function storageHandleForApp(firebaseAppHandle) {
+  if (!firebaseAppHandle) {
+    return null;
+  }
+  return getStorage(firebaseAppHandle);
 }
 
 /**
- * A Firebase project has separate app ids per platform, and the id encodes which one it is
+ * Tripwire: 'anatrox-auth' is the real backend project id where all users and data live.
+ * Manipulate here: only change LIVE_FIREBASE_PROJECT_ID if you are intentionally migrating projects.
+ */
+function warnIfWrongFirebaseProject() {
+  if (firebaseConfig.projectId === LIVE_FIREBASE_PROJECT_ID) {
+    return;
+  }
+  console.error('🚨 WRONG FIREBASE PROJECT — expected anatrox-auth, got:', firebaseConfig.projectId);
+  console.error('🚨 Check your .env file immediately');
+}
+
+/**
+ * A Firebase project has separate app ids per platform; the id encodes which one
  * (…:web:… vs …:ios:…). Native Apple/Google sign-in only works with the iOS id.
  */
 function warnIfWebAppId() {
-  if (!firebaseConfig.appId?.includes(WEB_APP_ID_MARKER)) return;
+  const appIdText = firebaseConfig.appId;
+  if (!appIdText) {
+    return;
+  }
+  if (!appIdText.includes(WEB_APP_ID_MARKER)) {
+    return;
+  }
   console.error(
-    '🚨 EXPO_PUBLIC_FIREBASE_APP_ID is a WEB app id — native Apple/Google sign-in will fail. Use the iOS app id (…:ios:…) from Firebase project settings.'
+    '🚨 EXPO_PUBLIC_FIREBASE_APP_ID is a WEB app id — native Apple/Google sign-in will fail. Use the iOS app id (…:ios:…) from Firebase project settings.',
   );
 }
 
 /**
- * Collect every missing key first, then report once — otherwise you fix one var, restart,
- * and discover the next missing one, over and over.
+ * Collect every missing key first, then report once.
  * @returns {string[]}
  */
 function collectMissingFirebaseEnvNames() {
@@ -82,14 +143,17 @@ function collectMissingFirebaseEnvNames() {
 }
 
 function presentOrMissingMark(value) {
-  return value ? '✓' : '✗';
+  if (value) {
+    return '✓';
+  }
+  return '✗';
 }
 
 function logMissingFirebaseConfig(missingNames) {
-  if (missingNames.length === 0) return;
+  if (missingNames.length === 0) {
+    return;
+  }
   console.error('❌ Firebase configuration is missing:', missingNames.join(', '));
-  // Print check/cross marks rather than the values themselves: this lands in dev logs and we don't
-  // want keys pasted into screenshots or CI output.
   console.error('Current values:', {
     apiKey: presentOrMissingMark(firebaseConfig.apiKey),
     authDomain: presentOrMissingMark(firebaseConfig.authDomain),
@@ -98,14 +162,42 @@ function logMissingFirebaseConfig(missingNames) {
     messagingSenderId: presentOrMissingMark(firebaseConfig.messagingSenderId),
     appId: presentOrMissingMark(firebaseConfig.appId),
   });
-  // Env vars are baked in when Metro starts, so editing .env with the server running changes nothing.
   console.error('💡 Make sure to restart your Expo dev server after updating .env file!');
 }
 
 function warnIfCannotInitialize() {
-  if (firebaseConfig.apiKey && firebaseConfig.projectId) return;
+  if (firebaseConfig.apiKey && firebaseConfig.projectId) {
+    return;
+  }
   console.error('❌ Cannot initialize Firebase - missing required config values');
   console.error('Please check your .env file and restart the Expo dev server');
+}
+
+function runFirebaseConfigSanityChecks() {
+  warnIfWrongFirebaseProject();
+  warnIfWebAppId();
+  logMissingFirebaseConfig(collectMissingFirebaseEnvNames());
+  warnIfCannotInitialize();
+}
+
+function projectIdFromAppOptions(existingApp) {
+  if (!existingApp) {
+    return null;
+  }
+  if (!existingApp.options) {
+    return null;
+  }
+  return existingApp.options.projectId || null;
+}
+
+function appIdFromAppOptions(existingApp) {
+  if (!existingApp) {
+    return null;
+  }
+  if (!existingApp.options) {
+    return null;
+  }
+  return existingApp.options.appId || null;
 }
 
 /**
@@ -115,30 +207,48 @@ function warnIfCannotInitialize() {
  * @returns {object|null}
  */
 function findMatchingFirebaseApp(apps) {
-  const matchingApp = apps.find((existingApp) =>
-    existingApp?.options?.projectId === firebaseConfig.projectId &&
-    existingApp?.options?.appId === firebaseConfig.appId
-  );
-  return matchingApp || null;
+  for (let index = 0; index < apps.length; index += 1) {
+    const existingApp = apps[index];
+    const projectMatches = projectIdFromAppOptions(existingApp) === firebaseConfig.projectId;
+    const appIdMatches = appIdFromAppOptions(existingApp) === firebaseConfig.appId;
+    if (projectMatches && appIdMatches) {
+      return existingApp;
+    }
+  }
+  return null;
+}
+
+function projectIdsFromExistingApps(apps) {
+  const projectIds = [];
+  for (let index = 0; index < apps.length; index += 1) {
+    const projectId = projectIdFromAppOptions(apps[index]);
+    if (projectId) {
+      projectIds.push(projectId);
+    } else {
+      projectIds.push('unknown');
+    }
+  }
+  return projectIds;
 }
 
 function warnIfStaleFirebaseApps(apps) {
-  if (apps.length === 0) return;
+  if (apps.length === 0) {
+    return;
+  }
   console.warn('⚠️ Existing Firebase app(s) do not match expected project; creating isolated app', {
     expectedProjectId: firebaseConfig.projectId,
-    existingProjectIds: apps.map((existingApp) => existingApp?.options?.projectId || 'unknown'),
+    existingProjectIds: projectIdsFromExistingApps(apps),
   });
 }
 
 function initializeIsolatedFirebaseApp() {
   try {
-    const firebaseApp = initializeApp(firebaseConfig);
+    const newFirebaseApp = initializeApp(firebaseConfig);
     console.log('✅ Firebase initialized successfully (new isolated app)', {
-      projectId: firebaseApp?.options?.projectId,
+      projectId: projectIdFromAppOptions(newFirebaseApp),
     });
-    return firebaseApp;
+    return newFirebaseApp;
   } catch (error) {
-    // Swallow rather than throw: a hard crash at import time takes down the whole bundle.
     console.error('❌ Firebase initialization error:', error.message);
     return null;
   }
@@ -159,7 +269,7 @@ function createOrReuseFirebaseApp() {
   const matchingApp = findMatchingFirebaseApp(apps);
   if (matchingApp) {
     console.log('✅ Firebase initialized successfully (reused matching app)', {
-      projectId: matchingApp?.options?.projectId,
+      projectId: projectIdFromAppOptions(matchingApp),
     });
     return matchingApp;
   }
@@ -168,9 +278,9 @@ function createOrReuseFirebaseApp() {
   return initializeIsolatedFirebaseApp();
 }
 
-function getExistingFirebaseAuth(firebaseApp) {
+function getExistingFirebaseAuth(firebaseAppHandle) {
   try {
-    return getAuth(firebaseApp);
+    return getAuth(firebaseAppHandle);
   } catch (error) {
     console.error('❌ Failed to get Firebase auth:', error.message);
     return null;
@@ -179,96 +289,79 @@ function getExistingFirebaseAuth(firebaseApp) {
 
 /**
  * initializeAuth (not getAuth) is required on React Native to choose where the session is stored.
- * vocab: persistence = where the signed-in session is saved between app launches. AsyncStorage is
- * RN's key/value store — without this, users get logged out every time they close the app.
- * initializeAuth throws if auth was already set up (Fast Refresh) — then getAuth is what we want.
- * @param {object|null} firebaseApp
+ * vocab: persistence = where the signed-in session is saved between launches.
+ * @param {object|null} firebaseAppHandle
  * @returns {object|null}
  */
-function createFirebaseAuth(firebaseApp) {
-  if (!firebaseApp) return null;
+function createFirebaseAuth(firebaseAppHandle) {
+  if (!firebaseAppHandle) {
+    return null;
+  }
   try {
-    return initializeAuth(firebaseApp, {
+    return initializeAuth(firebaseAppHandle, {
       persistence: getReactNativePersistence(AsyncStorage),
     });
   } catch (_alreadyInitialized) {
-    return getExistingFirebaseAuth(firebaseApp);
+    return getExistingFirebaseAuth(firebaseAppHandle);
   }
 }
 
-function initializeOrReuseFirestore(firebaseApp, forceLongPolling) {
+function initializeOrReuseFirestore(firebaseAppHandle, forceLongPolling) {
+  const autoDetectLongPolling = !forceLongPolling;
   try {
     console.log('🔥 Firestore init (RN)', {
       forceLongPolling,
-      experimentalAutoDetectLongPolling: !forceLongPolling,
+      experimentalAutoDetectLongPolling: autoDetectLongPolling,
     });
-    return initializeFirestore(firebaseApp, {
-      // These two are mutually exclusive: auto-detect probes the connection and decides; force skips
-      // the probe. The `!forceLongPolling` flip is what keeps exactly one of them active.
-      experimentalAutoDetectLongPolling: !forceLongPolling,
+    return initializeFirestore(firebaseAppHandle, {
+      experimentalAutoDetectLongPolling: autoDetectLongPolling,
       experimentalForceLongPolling: forceLongPolling,
-      // RN's fetch implementation doesn't support streaming bodies; leaving this on causes hangs.
       useFetchStreams: false,
     });
   } catch (_alreadyInitialized) {
-    return getFirestore(firebaseApp);
+    return getFirestore(firebaseAppHandle);
   }
 }
 
-function enableFirestoreNetwork(firestore) {
-  // Firestore can be left in a disabled-network state by a previous session; this explicitly wakes it.
-  // Fire-and-forget on purpose — module load must not await the network.
-  enableNetwork(firestore)
+function messageFromCaughtError(error) {
+  if (error && error.message) {
+    return error.message;
+  }
+  return error;
+}
+
+function enableFirestoreNetwork(firestoreHandle) {
+  enableNetwork(firestoreHandle)
     .then(() => console.log('🛰️ Firestore network enabled'))
-    .catch((error) => console.warn('🛰️ Firestore enableNetwork failed:', error?.message || error));
+    .catch((error) => {
+      console.warn('🛰️ Firestore enableNetwork failed:', messageFromCaughtError(error));
+    });
 }
 
 /**
- * On React Native / Expo the default WebChannel transport often fails and Firestore reports
- * "Failed to get document because the client is offline" on perfectly good Wi-Fi. Long-polling fixes it.
- * Manipulate here: set EXPO_PUBLIC_FIRESTORE_FORCE_LONG_POLLING=true in .env when a device still
- * reports phantom "offline" errors.
- * @param {object|null} firebaseApp
+ * On React Native / Expo the default WebChannel transport often fails; long-polling fixes it.
+ * Manipulate here: set EXPO_PUBLIC_FIRESTORE_FORCE_LONG_POLLING=true in .env when needed.
+ * @param {object|null} firebaseAppHandle
  * @returns {object|null}
  */
-function createFirestore(firebaseApp) {
-  if (!firebaseApp) return null;
-  const forceLongPolling = process.env.EXPO_PUBLIC_FIRESTORE_FORCE_LONG_POLLING === FIRESTORE_FORCE_LONG_POLLING_FLAG;
-  const firestore = initializeOrReuseFirestore(firebaseApp, forceLongPolling);
-  enableFirestoreNetwork(firestore);
-  return firestore;
+function createFirestore(firebaseAppHandle) {
+  if (!firebaseAppHandle) {
+    return null;
+  }
+  const forceLongPolling =
+    process.env.EXPO_PUBLIC_FIRESTORE_FORCE_LONG_POLLING === FIRESTORE_FORCE_LONG_POLLING_FLAG;
+  const firestoreHandle = initializeOrReuseFirestore(firebaseAppHandle, forceLongPolling);
+  enableFirestoreNetwork(firestoreHandle);
+  return firestoreHandle;
 }
 
 /**
  * Kept so `import supabase from '.../cloudConnection'` keeps resolving for legacy call sites.
- * It is always null today; the env check just marks where a real client would be created.
  * @returns {null}
  */
 function createSupabasePlaceholder() {
   if (process.env.EXPO_PUBLIC_SUPABASE_URL && process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY) {
     // Supabase initialization would go here if needed
-    // import { createClient } from '../supabase/supabase-js';
-    // supabase = createClient(
-    //   process.env.EXPO_PUBLIC_SUPABASE_URL,
-    //   process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY
-    // );
   }
   return null;
 }
-
-// ===== MAIN FUNCTION =====
-
-warnIfWrongFirebaseProject();
-warnIfWebAppId();
-logMissingFirebaseConfig(collectMissingFirebaseEnvNames());
-warnIfCannotInitialize();
-
-const firebaseApp = createOrReuseFirebaseApp();
-const auth = createFirebaseAuth(firebaseApp);
-const db = createFirestore(firebaseApp);
-const functions = firebaseApp ? getFunctions(firebaseApp) : null;
-const storage = firebaseApp ? getStorage(firebaseApp) : null;
-const supabase = createSupabasePlaceholder();
-
-export { auth, db, storage, firebaseApp as app, functions };
-export default supabase;

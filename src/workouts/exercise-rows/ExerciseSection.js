@@ -1,6 +1,6 @@
-// Section heading for a group of exercises: title, optional subtitle, and a fading accent line.
-// Flow: pick title and subtitle colors → build the line gradient → render the heading, then the children.
-// Used by the exercise videos tab to group exercises under a labeled block.
+// Section heading above a group of exercise rows: title, optional subtitle, fading accent line.
+// Flow: resolve theme tokens → build gradient stops → render header, then children.
+// Used by: exercise videos tab and other workout lists that need a labeled block.
 
 import React from 'react';
 import { View, Text, StyleSheet, useColorScheme } from 'react-native';
@@ -9,55 +9,100 @@ import { lightColors, darkColors, gradients } from '../../look-and-feel/colorPal
 
 // ===== NAMED CONSTANTS =====
 
-const ACCENT_FADE_COLOR = 'transparent';
-const MINIMUM_GRADIENT_STOPS = 2;
+const FADE_OUT_STOP = 'transparent';
+// LinearGradient refuses a single stop — need at least two before we append transparent.
+const MIN_GRADIENT_STOP_COUNT = 2;
+// Horizontal fade: left → right across the accent hairline.
 const ACCENT_LINE_START = { x: 0, y: 0.5 };
 const ACCENT_LINE_END = { x: 1, y: 0.5 };
 
 // ===== HELPER FUNCTIONS =====
 
 /**
- * The line needs at least two stops. A short or missing gradient uses the brand gradient, then fades out.
- * @param {Array|undefined} accentGradient
- * @returns {Array}
+ * Color stops for the accent hairline.
+ * Always ends with transparent so the brand gradient fades out to the right.
+ * @param {string[]|undefined} customStops
+ * @returns {string[]}
  */
-function fadingAccentGradient(accentGradient) {
-  const hasEnoughStops = accentGradient?.length >= MINIMUM_GRADIENT_STOPS;
-  const lineColors = hasEnoughStops ? accentGradient : gradients.brand.colors;
-  return [...lineColors, ACCENT_FADE_COLOR];
+function accentLineColorStops(customStops) {
+  const customStopCount = customStops?.length || 0;
+  const hasCustomStops = customStopCount >= MIN_GRADIENT_STOP_COUNT;
+
+  let baseStops = gradients.brand.colors;
+  if (hasCustomStops) {
+    baseStops = customStops;
+  }
+
+  return [...baseStops, FADE_OUT_STOP];
+}
+
+function pickThemeColorsForScheme(colorScheme) {
+  if (colorScheme === 'dark') {
+    return darkColors;
+  }
+  return lightColors;
 }
 
 // ===== MAIN FUNCTION =====
 
 /**
- * Labeled exercise group with a fading accent line under the heading.
+ * Labeled block: uppercase title, optional subtitle, fading accent, then children rows.
  * @param {object} props
  * @param {string} props.title
  * @param {string} [props.subtitle]
  * @param {string[]} [props.accentGradient]
  * @param {React.ReactNode} props.children
  * @param {object} [props.style]
- * @param {object} [props.colors] Deprecated - uses nb tokens now
- * @param {boolean} props.isDark Deprecated - uses color scheme now
- * @returns {JSX.Element}
+ * @param {object} [props.colors] deprecated
+ * @param {boolean} [props.isDark] deprecated
  */
-export default function ExerciseSection({ title, subtitle, accentGradient, children, style, colors: deprecatedColors, isDark: deprecatedIsDark }) {
-  const colorScheme = useColorScheme();
-  const colors = colorScheme === 'dark' ? darkColors : lightColors;
-  const accentLineColors = fadingAccentGradient(accentGradient);
+export default function ExerciseSection({
+  title,
+  subtitle,
+  accentGradient,
+  children,
+  style,
+  colors: deprecatedColors,
+  isDark: deprecatedIsDark,
+}) {
+  void deprecatedColors;
+  void deprecatedIsDark;
 
+  // 1. Pick light/dark tokens from the OS scheme (ignore deprecated props).
+  // vocab: useColorScheme = RN hook reading OS light/dark
+  const colorScheme = useColorScheme();
+  const themeColors = pickThemeColorsForScheme(colorScheme);
+
+  // 2. Build the fading accent hairline stops (custom or brand, always ends transparent).
+  const lineGradientStops = accentLineColorStops(accentGradient);
+
+  // 3. Name colors + optional subtitle before JSX.
+  const titleColor = themeColors.nbInk;
+  const subtitleColor = themeColors.nbMuted;
+  const hasSubtitle = Boolean(subtitle);
+
+  const sectionWrapStyle = [sectionStyles.wrap, style];
+  const titleStyle = [sectionStyles.title, { color: titleColor }];
+  const subtitleStyle = [sectionStyles.subtitle, { color: subtitleColor }];
+
+  let subtitleNode = null;
+  if (hasSubtitle) {
+    subtitleNode = <Text style={subtitleStyle}>{subtitle}</Text>;
+  }
+
+  // 4. Header (title → subtitle → hairline) then the exercise row children.
   return (
-    <View style={[styles.wrap, style]}>
-      <View style={styles.header}>
-        <Text style={[styles.title, { color: colors.nbInk }]}>{title}</Text>
-        {subtitle ? <Text style={[styles.subtitle, { color: colors.nbMuted }]}>{subtitle}</Text> : null}
-        <View style={styles.lineWrap}>
-          {/* vocab: LinearGradient = a view painted with color stops. The last stop is transparent so the line fades. */}
+    <View style={sectionWrapStyle}>
+      <View style={sectionStyles.header}>
+        <Text style={titleStyle}>{title}</Text>
+        {subtitleNode}
+        <View style={sectionStyles.lineWrap}>
+          {/* vocab: LinearGradient paints a view with color stops along start→end vectors */}
           <LinearGradient
-            colors={accentLineColors}
+            colors={lineGradientStops}
             start={ACCENT_LINE_START}
             end={ACCENT_LINE_END}
-            style={styles.accentLine}
+            style={sectionStyles.accentLine}
           />
         </View>
       </View>
@@ -66,7 +111,10 @@ export default function ExerciseSection({ title, subtitle, accentGradient, child
   );
 }
 
-const styles = StyleSheet.create({
+// ===== PLUMBING — skip unless debugging =====
+
+const sectionStyles = StyleSheet.create({
+  // Manipulate here: space below the whole section (title + kids)
   wrap: { marginBottom: 28 },
   header: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 10 },
   title: {

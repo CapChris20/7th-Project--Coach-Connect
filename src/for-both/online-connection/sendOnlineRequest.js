@@ -1,12 +1,12 @@
-// Shared fetch helpers for Coach Connect API calls that must not hang forever.
-// Flow: start a timer → fetch → if the timer wins, throw a timeout error → always clear the timer.
-// Used by workout-plan generation and the other JSON posts that share this timeout.
+// Timed fetch helpers so Coach Connect API calls cannot hang the UI forever.
+// Flow: arm a cancel timer → run fetch → on timer win, throw a timeout-shaped error → always disarm the timer.
+// Used by: workout-plan generation and other JSON POSTs that share this timeout wrapper.
 
 import logger from '../online-connection/sendCrashReport';
 
 // ===== NAMED CONSTANTS =====
 
-// Manipulate here: callers can pass a shorter timeout. This is the fallback when they do not.
+// Manipulate here: callers can pass a shorter ceiling; this is the default when they omit one.
 const DEFAULT_TIMEOUT_MS = 60000;
 const ABORT_ERROR_NAME = 'AbortError';
 const TIMEOUT_ERROR_CODE = 'timeout';
@@ -21,9 +21,10 @@ const MILLISECONDS_PER_SECOND = 1000;
  * @param {number} timeoutMs
  * @returns {Error}
  */
-function errorForFailedFetch(caughtError, timeoutMs) {
-  const wasAbortedByTimer = caughtError?.name === ABORT_ERROR_NAME;
-  if (!wasAbortedByTimer) return caughtError;
+function rewriteAbortAsTimeoutError(caughtError, timeoutMs) {
+  const wasAbortedByOurTimer = caughtError?.name === ABORT_ERROR_NAME;
+  if (!wasAbortedByOurTimer) return caughtError;
+
   const secondsWaited = Math.round(timeoutMs / MILLISECONDS_PER_SECOND);
   const timeoutError = new Error(`Request timed out after ${secondsWaited}s`);
   timeoutError.code = TIMEOUT_ERROR_CODE;
@@ -40,22 +41,31 @@ function errorForFailedFetch(caughtError, timeoutMs) {
  * @returns {Promise<Response>}
  */
 export async function fetchWithTimeout(url, requestOptions = {}, timeoutMs = DEFAULT_TIMEOUT_MS) {
-  // vocab: AbortController = a handle that can cancel this fetch through its signal.
-  const abortController = new AbortController();
-  const timeoutTimer = setTimeout(() => abortController.abort(), timeoutMs);
+  // 1. Arm a cancel handle the timer can trip when the deadline passes.
+  // vocab: AbortController = browser/RN object whose .signal cancels an in-flight fetch
+  const cancelController = new AbortController();
+  const deadlineTimer = setTimeout(() => {
+    cancelController.abort();
+  }, timeoutMs);
+
   try {
-    // Our signal is last so the timer can cancel the request even if requestOptions brought its own.
-    return await fetch(url, { ...requestOptions, signal: abortController.signal });
+    // 2. Our signal wins last so a caller-supplied signal does not block our timeout.
+    const response = await fetch(url, {
+      ...requestOptions,
+      signal: cancelController.signal,
+    });
+    return response;
   } catch (caughtError) {
-    throw errorForFailedFetch(caughtError, timeoutMs);
+    // 3. Turn a timer abort into a readable timeout error; leave real network errors alone.
+    throw rewriteAbortAsTimeoutError(caughtError, timeoutMs);
   } finally {
-    // The timer has to die on success too. Otherwise it still fires and aborts a request that already finished.
-    clearTimeout(timeoutTimer);
+    // 4. Disarm the timer on success too — otherwise it still fires after a finished request.
+    clearTimeout(deadlineTimer);
   }
 }
 
 /**
- * POST JSON and give up after timeoutMs. The timeout is optional; fetchWithTimeout fills in the default.
+ * POST JSON and give up after timeoutMs. Omitting timeoutMs uses fetchWithTimeout's default.
  * @param {string} url
  * @param {object} body
  * @param {object} headers
@@ -63,15 +73,13 @@ export async function fetchWithTimeout(url, requestOptions = {}, timeoutMs = DEF
  * @returns {Promise<Response>}
  */
 export async function postJsonWithTimeout(url, body, headers, timeoutMs) {
-  return fetchWithTimeout(
-    url,
-    {
-      method: HTTP_METHOD_POST,
-      headers,
-      body: JSON.stringify(body),
-    },
-    timeoutMs,
-  );
+  // 1. Build the POST options once, then reuse the timed fetch path.
+  const postOptions = {
+    method: HTTP_METHOD_POST,
+    headers,
+    body: JSON.stringify(body),
+  };
+  return fetchWithTimeout(url, postOptions, timeoutMs);
 }
 
 /**
@@ -83,9 +91,11 @@ export async function postJsonWithTimeout(url, body, headers, timeoutMs) {
  */
 export function logApiAttempt(label, url, error) {
   if (!__DEV__) return;
+
+  const errorMessage = error?.message || String(error);
   logger.warn(`[api] ${label} failed`, {
     url,
-    message: error?.message || String(error),
+    message: errorMessage,
     code: error?.code,
   });
 }

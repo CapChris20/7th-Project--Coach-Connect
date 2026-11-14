@@ -1,22 +1,27 @@
 // One card in the client Notes & Files list: thumbnail, title, type, date, size, and optional actions.
 // Flow: pick type meta → theme colors → thumbnail or icon → title row → download / share / delete if allowed.
 // Used by: the client files list. Trainers' shared files hide share/delete so the client cannot remove them.
-//
-// vocab: neobrutalist = thick borders, hard shadows, no gradients except for NEW badge
 
 import React from 'react';
-import { Image, Text, TouchableOpacity, View, useColorScheme } from 'react-native';
+import { Image, StyleSheet, Text, TouchableOpacity, View, useColorScheme } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import NbCard from '../../look-and-feel/NbCard';
 import { lightColors, darkColors, gradients } from '../../look-and-feel/colorPalette';
-import { formatDateShort, formatFileSize, getFileTypeFromItem, getFriendlyFileTitle } from '../../helpers/fileSizeAndDateText';
+import {
+  formatDateShort,
+  formatFileSize,
+  getFileTypeFromItem,
+  getFriendlyFileTitle,
+} from '../../helpers/fileSizeAndDateText';
 
 // ===== NAMED CONSTANTS =====
 
 const ADDED_BY_CLIENT = 'client';
 const FILE_TYPE_IMAGE = 'image';
 const DEFAULT_FILE_NAME = 'File';
+const DARK_SCHEME = 'dark';
+// vocab: neobrutalist = thick borders, hard shadows, no gradients except for NEW badge
 
 const TYPE_META = {
   image: { icon: 'image', label: 'Photo' },
@@ -30,147 +35,212 @@ const TYPE_META = {
 
 // ===== HELPER FUNCTIONS =====
 
-function createdAtFromItem(item) {
-  if (item?.createdAt instanceof Date) return item.createdAt;
-  return item?.createdAt?.toDate?.() || item?.createdAt;
+// Firestore Timestamp → Date, or pass through a real Date / raw value.
+function createdAtDateFromItem(item) {
+  if (item?.createdAt instanceof Date) {
+    return item.createdAt;
+  }
+  // vocab: toDate = Firestore Timestamp → JS Date
+  if (item?.createdAt?.toDate) {
+    return item.createdAt.toDate();
+  }
+  return item?.createdAt;
 }
 
-function thumbnailFromItem(item, fileType) {
-  if (item?.thumbnailUrl) return item.thumbnailUrl;
-  if (fileType === FILE_TYPE_IMAGE) return item?.url;
+// Prefer an explicit thumbnailUrl; for photos fall back to the file url itself.
+function thumbnailUrlFromItem(item, fileType) {
+  if (item?.thumbnailUrl) {
+    return item.thumbnailUrl;
+  }
+  if (fileType === FILE_TYPE_IMAGE) {
+    return item?.url;
+  }
   return null;
 }
 
-function isClientOwned(item) {
-  return (item?.addedBy || ADDED_BY_CLIENT) === ADDED_BY_CLIENT;
+function itemWasAddedByClient(item) {
+  const addedBy = item?.addedBy || ADDED_BY_CLIENT;
+  return addedBy === ADDED_BY_CLIENT;
 }
 
-function stopAndRun(event, action) {
-  event?.stopPropagation?.();
+// Stop the card's onOpen from firing when the user taps an action icon.
+function runActionWithoutBubbling(event, action) {
+  if (event && event.stopPropagation) {
+    event.stopPropagation();
+  }
   action();
 }
 
+function typeLabelWithDate(meta, createdAt) {
+  if (!createdAt) {
+    return meta.label;
+  }
+  const shortDate = formatDateShort(createdAt);
+  return `${meta.label} \u00B7 ${shortDate}`;
+}
+
+// Trainer-shared rows never get share/delete — client cannot remove coach files.
+function resolveFileCardPermissions(item, isTrainerShared) {
+  const clientOwnsFile = itemWasAddedByClient(item);
+
+  let canDelete = false;
+  let canShare = false;
+  if (!isTrainerShared && clientOwnsFile) {
+    canDelete = true;
+    canShare = true;
+  }
+
+  return { canDelete, canShare };
+}
+
+function colorsForScheme(colorScheme) {
+  if (colorScheme === DARK_SCHEME) {
+    return darkColors;
+  }
+  return lightColors;
+}
+
+function typeMetaForFileType(fileType) {
+  const knownMeta = TYPE_META[fileType];
+  if (knownMeta) {
+    return knownMeta;
+  }
+  return TYPE_META.file;
+}
+
+// ===== SMALL UI PIECES =====
+
+// Design Law: brand gradient accent OK on NEW pill — always pair with nbBorder outline.
 function NewBadge({ borderColor }) {
-  // Design Law: brand gradient accent OK on NEW pill — always pair with nbBorder outline
+  let badgeBorderColor = lightColors.nbBorder;
+  if (borderColor) {
+    badgeBorderColor = borderColor;
+  }
+  const badgeStyle = [styles.newBadge, { borderColor: badgeBorderColor }];
+
   return (
     <LinearGradient
       colors={gradients.brand.colors}
       start={gradients.brand.start}
       end={gradients.brand.end}
-      style={{
-        position: 'absolute',
-        top: 10,
-        right: 10,
-        borderRadius: 8,
-        paddingHorizontal: 8,
-        paddingVertical: 4,
-        zIndex: 5,
-        borderWidth: 2.5,
-        borderColor: borderColor || lightColors.nbBorder,
-      }}
+      style={badgeStyle}
     >
-      <Text style={{ fontSize: 10, fontFamily: 'Inter_600SemiBold', color: lightColors.nbInk, letterSpacing: 0.1, textTransform: 'uppercase' }}>NEW</Text>
+      <Text style={styles.newBadgeText}>NEW</Text>
     </LinearGradient>
   );
 }
 
-function FileThumbnail({ fileType, thumb, colors, meta }) {
-  if (fileType === FILE_TYPE_IMAGE && thumb) {
+function FileThumbnailArea({ fileType, thumbnailUrl, colors, meta }) {
+  const isImageWithUrl = fileType === FILE_TYPE_IMAGE && thumbnailUrl;
+
+  if (isImageWithUrl) {
     return (
       <Image
-        source={{ uri: thumb }}
-        style={{
-          width: '100%',
-          height: 120,
-          borderRadius: 12,
-          marginBottom: 12,
-          backgroundColor: colors.nbSurfaceChip,
-        }}
+        source={{ uri: thumbnailUrl }}
+        style={[styles.photoThumb, { backgroundColor: colors.nbSurfaceChip }]}
         resizeMode="cover"
       />
     );
   }
+
+  const shellStyle = [
+    styles.iconThumbShell,
+    { backgroundColor: colors.nbSurfaceChip, borderColor: colors.nbBorder },
+  ];
+
   return (
-    <View
-      style={{
-        width: '100%',
-        height: 80,
-        borderRadius: 12,
-        marginBottom: 12,
-        backgroundColor: colors.nbSurfaceChip,
-        alignItems: 'center',
-        justifyContent: 'center',
-        borderWidth: 3,
-        borderColor: colors.nbBorder,
-      }}
-    >
-      <View
-        style={{
-          width: 48,
-          height: 48,
-          borderRadius: 12,
-          backgroundColor: colors.nbSurfaceChip,
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
+    <View style={shellStyle}>
+      <View style={[styles.iconThumbInner, { backgroundColor: colors.nbSurfaceChip }]}>
         <Feather name={meta.icon} size={24} color={colors.nbMuted} />
       </View>
     </View>
   );
 }
 
-function ActionIconButton({ onPress, icon, colors }) {
+function FileActionIconButton({ onPress, icon, colors }) {
+  const buttonStyle = [
+    styles.actionButton,
+    { backgroundColor: colors.nbSurfaceChip, borderColor: colors.nbBorder },
+  ];
+
+  function handlePress(event) {
+    runActionWithoutBubbling(event, onPress);
+  }
+
   return (
-    <TouchableOpacity
-      onPress={(event) => stopAndRun(event, onPress)}
-      style={{
-        width: 44,
-        height: 44,
-        borderRadius: 12,
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: colors.nbSurfaceChip,
-        borderWidth: 3,
-        borderColor: colors.nbBorder,
-      }}
-    >
+    <TouchableOpacity onPress={handlePress} style={buttonStyle}>
       <Feather name={icon} size={18} color={colors.nbInk} />
     </TouchableOpacity>
   );
 }
 
-function FileCardActions({ colors, onDownload, onShare, onDelete, canShare, canDelete }) {
-  return (
-    <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
-      {onDownload && (
-        <ActionIconButton
-          onPress={onDownload}
-          icon="download"
-          colors={colors}
-        />
-      )}
-      {canShare && onShare && (
-        <ActionIconButton
-          onPress={onShare}
-          icon="share-2"
-          colors={colors}
-        />
-      )}
-      {canDelete && onDelete && (
-        <ActionIconButton
-          onPress={onDelete}
-          icon="trash-2"
-          colors={colors}
-        />
-      )}
-    </View>
-  );
+function FileCardActionRow({
+  colors,
+  onDownload,
+  onShare,
+  onDelete,
+  canShare,
+  canDelete,
+}) {
+  const showDownload = Boolean(onDownload);
+  const showShare = canShare && Boolean(onShare);
+  const showDelete = canDelete && Boolean(onDelete);
+
+  const actionButtons = [];
+
+  if (showDownload) {
+    actionButtons.push(
+      <FileActionIconButton
+        key="download"
+        onPress={onDownload}
+        icon="download"
+        colors={colors}
+      />,
+    );
+  }
+  if (showShare) {
+    actionButtons.push(
+      <FileActionIconButton
+        key="share"
+        onPress={onShare}
+        icon="share-2"
+        colors={colors}
+      />,
+    );
+  }
+  if (showDelete) {
+    actionButtons.push(
+      <FileActionIconButton
+        key="delete"
+        onPress={onDelete}
+        icon="trash-2"
+        colors={colors}
+      />,
+    );
+  }
+
+  return <View style={styles.actionRow}>{actionButtons}</View>;
 }
 
-function typeAndDateLabel(meta, createdAt) {
-  if (!createdAt) return meta.label;
-  return `${meta.label} \u00B7 ${formatDateShort(createdAt)}`;
+function FileTitleBlock({ colors, name, meta, createdAt, size }) {
+  const typeAndDateLine = typeLabelWithDate(meta, createdAt);
+  const sizeLine = formatFileSize(size);
+
+  return (
+    <View style={styles.titleBlock}>
+      <Text style={[styles.fileTitle, { color: colors.nbInk }]} numberOfLines={2}>
+        {name}
+      </Text>
+      <View style={styles.metaRow}>
+        <Text style={[styles.metaText, { color: colors.nbMuted }]} numberOfLines={1}>
+          {typeAndDateLine}
+        </Text>
+        <Text style={[styles.metaText, { color: colors.nbMuted }]} numberOfLines={1}>
+          {sizeLine}
+        </Text>
+      </View>
+    </View>
+  );
 }
 
 // ===== MAIN FUNCTION =====
@@ -190,57 +260,131 @@ export function FileCard({
   onDelete,
   onShare,
 }) {
+  // 1. Light / dark palette for this card (does not use the shared ThemeProvider).
+  // vocab: useColorScheme = OS light/dark; we map it onto lightColors / darkColors
   const colorScheme = useColorScheme();
-  const colors = colorScheme === 'dark' ? darkColors : lightColors;
-  
+  const colors = colorsForScheme(colorScheme);
+
+  // 2. Classify the row and pick icon + label copy.
   const fileType = getFileTypeFromItem(item);
-  const meta = TYPE_META[fileType] || TYPE_META.file;
-  const name = getFriendlyFileTitle(item) || DEFAULT_FILE_NAME;
-  const createdAt = createdAtFromItem(item);
-  const size = item?.size;
-  const thumb = thumbnailFromItem(item, fileType);
-  const canDelete = !isTrainerShared && isClientOwned(item);
-  const canShare = !isTrainerShared && isClientOwned(item);
+  const typeMeta = typeMetaForFileType(fileType);
+
+  // 3. Friendly title, created date, bytes, and preview URL.
+  const displayName = getFriendlyFileTitle(item) || DEFAULT_FILE_NAME;
+  const createdAt = createdAtDateFromItem(item);
+  const fileSizeBytes = item?.size;
+  const thumbnailUrl = thumbnailUrlFromItem(item, fileType);
+
+  // 4. Trainer-shared rows never get share/delete — client cannot remove coach files.
+  const permissions = resolveFileCardPermissions(item, isTrainerShared);
+  const canDelete = permissions.canDelete;
+  const canShare = permissions.canShare;
+
+  // 5. Paint NEW badge → thumb → title/meta → optional action icons.
+  let newBadge = null;
+  if (isNew) {
+    newBadge = <NewBadge borderColor={colors.nbBorder} />;
+  }
+
+  let actionRow = null;
+  if (showActions) {
+    actionRow = (
+      <FileCardActionRow
+        colors={colors}
+        onDownload={onDownload}
+        onShare={onShare}
+        onDelete={onDelete}
+        canShare={canShare}
+        canDelete={canDelete}
+      />
+    );
+  }
 
   return (
-    <TouchableOpacity
-      activeOpacity={0.85}
-      onPress={onOpen}
-    >
-      <NbCard style={{ padding: 12, position: 'relative' }}>
-        {isNew ? <NewBadge borderColor={colors.nbBorder} /> : null}
+    <TouchableOpacity activeOpacity={0.85} onPress={onOpen}>
+      <NbCard style={styles.cardRoot}>
+        {newBadge}
 
-        <FileThumbnail fileType={fileType} thumb={thumb} colors={colors} meta={meta} />
+        <FileThumbnailArea
+          fileType={fileType}
+          thumbnailUrl={thumbnailUrl}
+          colors={colors}
+          meta={typeMeta}
+        />
 
-        <View style={{ gap: 6 }}>
-          <Text
-            style={{ fontSize: 15, fontFamily: 'Inter_600SemiBold', color: colors.nbInk }}
-            numberOfLines={2}
-          >
-            {name}
-          </Text>
+        <FileTitleBlock
+          colors={colors}
+          name={displayName}
+          meta={typeMeta}
+          createdAt={createdAt}
+          size={fileSizeBytes}
+        />
 
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10 }}>
-            <Text style={{ fontSize: 13, color: colors.nbMuted, fontFamily: 'Inter_400Regular' }} numberOfLines={1}>
-              {typeAndDateLabel(meta, createdAt)}
-            </Text>
-            <Text style={{ fontSize: 13, color: colors.nbMuted, fontFamily: 'Inter_400Regular' }} numberOfLines={1}>
-              {formatFileSize(size)}
-            </Text>
-          </View>
-        </View>
-
-        {showActions && (
-          <FileCardActions
-            colors={colors}
-            onDownload={onDownload}
-            onShare={onShare}
-            onDelete={onDelete}
-            canShare={canShare}
-            canDelete={canDelete}
-          />
-        )}
+        {actionRow}
       </NbCard>
     </TouchableOpacity>
   );
 }
+
+// ===== PLUMBING — skip unless debugging =====
+
+const styles = StyleSheet.create({
+  cardRoot: { padding: 12, position: 'relative' },
+  newBadge: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    zIndex: 5,
+    borderWidth: 2.5,
+  },
+  newBadgeText: {
+    fontSize: 10,
+    fontFamily: 'Inter_600SemiBold',
+    color: lightColors.nbInk,
+    letterSpacing: 0.1,
+    textTransform: 'uppercase',
+  },
+  photoThumb: {
+    width: '100%',
+    height: 120,
+    borderRadius: 12,
+    marginBottom: 12,
+  },
+  iconThumbShell: {
+    width: '100%',
+    height: 80,
+    borderRadius: 12,
+    marginBottom: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+  },
+  iconThumbInner: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 8,
+    marginTop: 12,
+  },
+  titleBlock: { gap: 6 },
+  fileTitle: { fontSize: 15, fontFamily: 'Inter_600SemiBold' },
+  metaRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 10 },
+  metaText: { fontSize: 13, fontFamily: 'Inter_400Regular' },
+});

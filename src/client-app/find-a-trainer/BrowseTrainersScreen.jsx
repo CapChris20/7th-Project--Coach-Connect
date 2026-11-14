@@ -1,9 +1,6 @@
-// Client marketplace list — Design Law header, HardShadow search, specialty chips, trainer cards (PNG 03 / 09).
-// Flow: header (back + title + filter) → search → specialty chips → count/sort row → HardShadow TrainerCards.
-// Used by SearchTrainersScreen. Filters and paging stay in the parent; this screen paints the list chrome.
-//
-// vocab: useShellTopPad = status-bar safe top inset so titles never sit under the Dynamic Island
-// vocab: HardShadow = solid offset shadow (no blur); nbFill = selected chip fill
+// Client marketplace list — Design Law header, HardShadow search, specialty chips, trainer cards.
+// Flow: header (back + title + filter) → search → specialty chips → count/sort row → TrainerCards.
+// Used by SearchTrainersScreen. Filters and paging stay in the parent; this screen paints the list.
 
 import React from 'react';
 import {
@@ -29,26 +26,103 @@ import { borderRadius, nb, spacing } from '../../look-and-feel/colorPalette';
 
 const DEFAULT_LIST_BOTTOM_PAD = 100;
 const DEFAULT_QUICK_SPECIALTY = 'All';
+// Manipulate here: how early FlatList asks for the next page (0 = end, 1 = start)
 const END_REACHED_THRESHOLD = 0.35;
 const TITLE = 'Find a Trainer';
 const SEARCH_PLACEHOLDER = 'Search trainers, cities…';
 const EMPTY_TITLE = 'No coaches match';
-const EMPTY_SUBTITLE = 'Try fewer filters or a wider price range. Remote trainers work from anywhere.';
+const EMPTY_SUBTITLE =
+  'Try fewer filters or a wider price range. Remote trainers work from anywhere.';
+const SORT_FALLBACK_LABEL = 'Newest';
+const FILTER_LABEL_ALONE = 'Filter';
+const INITIAL_ROWS_TO_PAINT = 12;
+const ROWS_PER_BATCH = 8;
+const LIST_WINDOW_SIZE = 8;
+const PRESSED_HEADER_OPACITY = 0.9;
+const HEADER_ICON_BACK_SIZE = 22;
+const HEADER_ICON_FILTER_SIZE = 20;
+const SEARCH_ICON_SIZE = 18;
+const EMPTY_ICON_SIZE = 22;
 
 // ===== HELPER FUNCTIONS =====
 
-function trainerCountLabel(count) {
-  return `${count} TRAINER${count === 1 ? '' : 'S'}`;
+function trainerCountLabel(trainerCount) {
+  if (trainerCount === 1) {
+    return '1 TRAINER';
+  }
+  return `${trainerCount} TRAINERS`;
 }
 
-function filterChipLabel(activeCount) {
-  if (activeCount > 0) return `Filter · ${activeCount}`;
-  return 'Filter';
+function filterChipLabel(activeFilterCount) {
+  if (activeFilterCount > 0) {
+    return `Filter · ${activeFilterCount}`;
+  }
+  return FILTER_LABEL_ALONE;
 }
 
-/**
- * 44×44 outlined square with HardShadow — back chevron or filter lines (PNG 03 header).
- */
+function headerSquarePressStyle(colors, isPressed) {
+  let pressOpacity = 1;
+  if (isPressed) {
+    pressOpacity = PRESSED_HEADER_OPACITY;
+  }
+  return {
+    borderColor: colors.nbBorder,
+    backgroundColor: colors.nbSurface,
+    opacity: pressOpacity,
+  };
+}
+
+function specialtyChipColors(colors, isSelected) {
+  if (isSelected) {
+    return {
+      backgroundColor: colors.nbFill,
+      textColor: colors.nbOnFill,
+    };
+  }
+  return {
+    backgroundColor: colors.nbSurface,
+    textColor: colors.nbInk,
+  };
+}
+
+function sortLabelFromFilters(filters) {
+  if (!filters) {
+    return undefined;
+  }
+  return filters.sort;
+}
+
+function callIfFunction(maybeFunction, ...args) {
+  if (typeof maybeFunction !== 'function') {
+    return;
+  }
+  maybeFunction(...args);
+}
+
+function buildSpecialtyChipElements(quickSpecialty, onQuickSpecialtyChange, colors) {
+  const chipElements = [];
+  for (let index = 0; index < QUICK_SPECIALTIES.length; index += 1) {
+    const specialtyName = QUICK_SPECIALTIES[index];
+    const isSelected = quickSpecialty === specialtyName;
+    chipElements.push(
+      <SpecialtyChip
+        key={specialtyName}
+        specialtyName={specialtyName}
+        isSelected={isSelected}
+        onPress={() => callIfFunction(onQuickSpecialtyChange, specialtyName)}
+        colors={colors}
+      />,
+    );
+  }
+  return chipElements;
+}
+
+function trainerRowKey(trainer) {
+  return String(trainer.id);
+}
+
+// ===== SMALL UI PIECES =====
+
 function HeaderSquare({ onPress, accessibilityLabel, children, colors }) {
   return (
     <HardShadow offset={nb.shadowOffsetSmall} radius={borderRadius.nbIconChip}>
@@ -56,13 +130,9 @@ function HeaderSquare({ onPress, accessibilityLabel, children, colors }) {
         onPress={onPress}
         accessibilityRole="button"
         accessibilityLabel={accessibilityLabel}
-        style={({ pressed }) => [
+        style={({ pressed: isPressed }) => [
           styles.headerSq,
-          {
-            borderColor: colors.nbBorder,
-            backgroundColor: colors.nbSurface,
-            opacity: pressed ? 0.9 : 1,
-          },
+          headerSquarePressStyle(colors, isPressed),
         ]}
       >
         {children}
@@ -71,32 +141,31 @@ function HeaderSquare({ onPress, accessibilityLabel, children, colors }) {
   );
 }
 
-/**
- * Back + title + filter square. Owns status-bar clearance via useShellTopPad.
- */
 function MarketplaceHeader({ onBack, onOpenFilters, colors, topPad }) {
+  const hasBackHandler = typeof onBack === 'function';
+
+  let leftControl = <View style={styles.headerSqSpacer} />;
+  if (hasBackHandler) {
+    leftControl = (
+      <HeaderSquare onPress={onBack} accessibilityLabel="Go back" colors={colors}>
+        <Ionicons name="chevron-back" size={HEADER_ICON_BACK_SIZE} color={colors.nbInk} />
+      </HeaderSquare>
+    );
+  }
+
   return (
     <View style={[styles.headerRow, { paddingTop: topPad }]}>
-      {typeof onBack === 'function' ? (
-        <HeaderSquare onPress={onBack} accessibilityLabel="Go back" colors={colors}>
-          <Ionicons name="chevron-back" size={22} color={colors.nbInk} />
-        </HeaderSquare>
-      ) : (
-        <View style={styles.headerSqSpacer} />
-      )}
+      {leftControl}
       <Text style={[styles.headerTitle, { color: colors.nbInk }]} numberOfLines={1}>
         {TITLE}
       </Text>
       <HeaderSquare onPress={onOpenFilters} accessibilityLabel="Open filters" colors={colors}>
-        <Ionicons name="options-outline" size={20} color={colors.nbInk} />
+        <Ionicons name="options-outline" size={HEADER_ICON_FILTER_SIZE} color={colors.nbInk} />
       </HeaderSquare>
     </View>
   );
 }
 
-/**
- * HardShadow search field — thick border, no nested Filter button (filter lives in the header square).
- */
 function SearchBar({ colors, search, onSearchChange }) {
   return (
     <HardShadow offset={nb.shadowOffsetSmall} radius={borderRadius.nbInput} style={styles.searchWrap}>
@@ -106,7 +175,7 @@ function SearchBar({ colors, search, onSearchChange }) {
           { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder },
         ]}
       >
-        <Ionicons name="search" size={18} color={colors.nbMuted} />
+        <Ionicons name="search" size={SEARCH_ICON_SIZE} color={colors.nbMuted} />
         <TextInput
           value={search}
           onChangeText={onSearchChange}
@@ -122,51 +191,50 @@ function SearchBar({ colors, search, onSearchChange }) {
   );
 }
 
-/**
- * Horizontal specialty quick chips — selected = solid nbFill (not gradient).
- */
+function SpecialtyChip({ specialtyName, isSelected, onPress, colors }) {
+  const chipColors = specialtyChipColors(colors, isSelected);
+
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected: isSelected }}
+      style={[
+        styles.chip,
+        {
+          borderColor: colors.nbBorder,
+          backgroundColor: chipColors.backgroundColor,
+        },
+      ]}
+    >
+      <Text
+        style={[styles.chipText, { color: chipColors.textColor }]}
+        numberOfLines={1}
+      >
+        {specialtyName}
+      </Text>
+    </Pressable>
+  );
+}
+
 function QuickSpecialtyChips({ quickSpecialty, onQuickSpecialtyChange, colors }) {
+  const chipElements = buildSpecialtyChipElements(
+    quickSpecialty,
+    onQuickSpecialtyChange,
+    colors,
+  );
+
   return (
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={styles.chipScroll}
     >
-      {QUICK_SPECIALTIES.map((spec) => {
-        const selected = quickSpecialty === spec;
-        return (
-          <Pressable
-            key={spec}
-            onPress={() => onQuickSpecialtyChange?.(spec)}
-            accessibilityRole="button"
-            accessibilityState={{ selected }}
-            style={[
-              styles.chip,
-              {
-                borderColor: colors.nbBorder,
-                backgroundColor: selected ? colors.nbFill : colors.nbSurface,
-              },
-            ]}
-          >
-            <Text
-              style={[
-                styles.chipText,
-                { color: selected ? colors.nbOnFill : colors.nbInk },
-              ]}
-              numberOfLines={1}
-            >
-              {spec}
-            </Text>
-          </Pressable>
-        );
-      })}
+      {chipElements}
     </ScrollView>
   );
 }
 
-/**
- * "N TRAINERS" + Newest + Filter · N pills (PNG 03 count row).
- */
 function ResultsHeader({
   colors,
   trainerCount,
@@ -174,26 +242,29 @@ function ResultsHeader({
   activeFilterCount,
   onOpenFilters,
 }) {
+  const countText = trainerCountLabel(trainerCount);
+  let sortPillText = SORT_FALLBACK_LABEL;
+  if (sortLabel) {
+    sortPillText = sortLabel;
+  }
+  const filterPillText = filterChipLabel(activeFilterCount);
+  const miniPillChrome = {
+    borderColor: colors.nbBorder,
+    backgroundColor: colors.nbSurface,
+  };
+
   return (
     <View style={styles.resultsRow}>
-      <Text style={[styles.resultsCount, { color: colors.nbMuted }]}>
-        {trainerCountLabel(trainerCount)}
-      </Text>
+      <Text style={[styles.resultsCount, { color: colors.nbMuted }]}>{countText}</Text>
       <View style={styles.resultsPills}>
-        <Pressable
-          onPress={onOpenFilters}
-          style={[styles.miniPill, { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface }]}
-        >
+        <Pressable onPress={onOpenFilters} style={[styles.miniPill, miniPillChrome]}>
           <Text style={[styles.miniPillText, { color: colors.nbInk }]} numberOfLines={1}>
-            {sortLabel || 'Newest'}
+            {sortPillText}
           </Text>
         </Pressable>
-        <Pressable
-          onPress={onOpenFilters}
-          style={[styles.miniPill, { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface }]}
-        >
+        <Pressable onPress={onOpenFilters} style={[styles.miniPill, miniPillChrome]}>
           <Text style={[styles.miniPillText, { color: colors.nbInk }]} numberOfLines={1}>
-            {filterChipLabel(activeFilterCount)}
+            {filterPillText}
           </Text>
         </Pressable>
       </View>
@@ -201,10 +272,22 @@ function ResultsHeader({
   );
 }
 
-/**
- * Empty state — dashed HardShadow box + Clear filters / Show remote (PNG 09).
- */
 function EmptyTrainerResults({ colors, onClearFilters, onShowRemote }) {
+  let emptyIconBackground = colors.nbSurfaceChip;
+  if (colors.nbSoft) {
+    emptyIconBackground = colors.nbSoft;
+  }
+  const hasShowRemoteHandler = typeof onShowRemote === 'function';
+
+  let showRemoteButton = null;
+  if (hasShowRemoteHandler) {
+    showRemoteButton = (
+      <NbButton variant="plain" onPress={onShowRemote}>
+        Show remote trainers
+      </NbButton>
+    );
+  }
+
   return (
     <View
       style={[
@@ -215,19 +298,20 @@ function EmptyTrainerResults({ colors, onClearFilters, onShowRemote }) {
         },
       ]}
     >
-      <View style={[styles.emptyIcon, { borderColor: colors.nbBorder, backgroundColor: colors.nbSoft || colors.nbSurfaceChip }]}>
-        <Ionicons name="search-outline" size={22} color={colors.nbInk} />
+      <View
+        style={[
+          styles.emptyIcon,
+          { borderColor: colors.nbBorder, backgroundColor: emptyIconBackground },
+        ]}
+      >
+        <Ionicons name="search-outline" size={EMPTY_ICON_SIZE} color={colors.nbInk} />
       </View>
       <Text style={[styles.emptyTitle, { color: colors.nbInk }]}>{EMPTY_TITLE}</Text>
       <Text style={[styles.emptySubtitle, { color: colors.nbMuted }]}>{EMPTY_SUBTITLE}</Text>
       <NbButton variant="fill" onPress={onClearFilters}>
         Clear filters
       </NbButton>
-      {typeof onShowRemote === 'function' ? (
-        <NbButton variant="plain" onPress={onShowRemote}>
-          Show remote trainers
-        </NbButton>
-      ) : null}
+      {showRemoteButton}
     </View>
   );
 }
@@ -239,6 +323,79 @@ function MarketplaceLoading({ colors }) {
         <ActivityIndicator size="large" color={colors.nbInk} />
       </View>
     </View>
+  );
+}
+
+function LoadMoreFooter({ colors, showSpinner }) {
+  if (!showSpinner) {
+    return null;
+  }
+  return (
+    <View style={styles.footerLoader}>
+      <ActivityIndicator size="small" color={colors.nbInk} />
+    </View>
+  );
+}
+
+function MarketplaceListHeader({
+  colors,
+  topPad,
+  search,
+  onSearchChange,
+  quickSpecialty,
+  onQuickSpecialtyChange,
+  trainerCount,
+  sortLabel,
+  activeFilterCount,
+  onOpenFilters,
+  onBack,
+}) {
+  return (
+    <>
+      <MarketplaceHeader
+        onBack={onBack}
+        onOpenFilters={onOpenFilters}
+        colors={colors}
+        topPad={topPad}
+      />
+      <SearchBar colors={colors} search={search} onSearchChange={onSearchChange} />
+      <QuickSpecialtyChips
+        quickSpecialty={quickSpecialty}
+        onQuickSpecialtyChange={onQuickSpecialtyChange}
+        colors={colors}
+      />
+      <ResultsHeader
+        colors={colors}
+        trainerCount={trainerCount}
+        sortLabel={sortLabel}
+        activeFilterCount={activeFilterCount}
+        onOpenFilters={onOpenFilters}
+      />
+    </>
+  );
+}
+
+function renderTrainerRow(trainer, onViewProfile) {
+  return <TrainerCard trainer={trainer} onViewProfile={onViewProfile} />;
+}
+
+function pickClearFiltersHandler(onClearFilters, onOpenFilters) {
+  if (onClearFilters) {
+    return onClearFilters;
+  }
+  return onOpenFilters;
+}
+
+function buildEmptyListNode(showEmptyResults, colors, clearFiltersHandler, onShowRemote) {
+  if (!showEmptyResults) {
+    return null;
+  }
+  return (
+    <EmptyTrainerResults
+      colors={colors}
+      onClearFilters={clearFiltersHandler}
+      onShowRemote={onShowRemote}
+    />
   );
 }
 
@@ -264,79 +421,82 @@ export function BrowseTrainersScreen({
   onBack,
   onClearFilters,
   onShowRemote,
-  /** Bottom clearance for floating shell BottomMenuBar (defaults to legacy fixed pad). */
   listBottomPad = DEFAULT_LIST_BOTTOM_PAD,
 }) {
+  // 1. Theme + status-bar pad. Count how many filters are "on" for the mini pill.
   const { colors } = useTheme();
   // Manipulate here: extra gap under status bar after the safe inset
   const topPad = useShellTopPad(spacing.sm);
   const activeFilterCount = countActiveFilters(filters);
+  const sortLabel = sortLabelFromFilters(filters);
+  const showEmptyResults = !loading;
 
+  // 2. First paint: full-screen spinner until the parent has the first page.
   if (loading) {
     return <MarketplaceLoading colors={colors} />;
   }
 
-  const handleEndReached = () => {
-    if (loading || loadingMore || !hasMore) return;
-    onLoadMore?.();
-  };
+  // 3. Ask parent for the next page only when idle and more rows exist.
+  function tryLoadNextPage() {
+    if (loading) {
+      return;
+    }
+    if (loadingMore) {
+      return;
+    }
+    if (!hasMore) {
+      return;
+    }
+    callIfFunction(onLoadMore);
+  }
 
+  // 4. Header / empty locals named before JSX.
   const listHeader = (
-    <>
-      <MarketplaceHeader
-        onBack={onBack}
-        onOpenFilters={onOpenFilters}
-        colors={colors}
-        topPad={topPad}
-      />
-      <SearchBar colors={colors} search={search} onSearchChange={onSearchChange} />
-      <QuickSpecialtyChips
-        quickSpecialty={quickSpecialty}
-        onQuickSpecialtyChange={onQuickSpecialtyChange}
-        colors={colors}
-      />
-      <ResultsHeader
-        colors={colors}
-        trainerCount={trainers.length}
-        sortLabel={filters?.sort}
-        activeFilterCount={activeFilterCount}
-        onOpenFilters={onOpenFilters}
-      />
-    </>
+    <MarketplaceListHeader
+      colors={colors}
+      topPad={topPad}
+      search={search}
+      onSearchChange={onSearchChange}
+      quickSpecialty={quickSpecialty}
+      onQuickSpecialtyChange={onQuickSpecialtyChange}
+      trainerCount={trainers.length}
+      sortLabel={sortLabel}
+      activeFilterCount={activeFilterCount}
+      onOpenFilters={onOpenFilters}
+      onBack={onBack}
+    />
   );
 
+  const clearFiltersHandler = pickClearFiltersHandler(onClearFilters, onOpenFilters);
+  const emptyList = buildEmptyListNode(
+    showEmptyResults,
+    colors,
+    clearFiltersHandler,
+    onShowRemote,
+  );
+  const listBottomStyle = [styles.listScroll, { paddingBottom: listBottomPad }];
+  const screenBackground = { backgroundColor: colors.nbBackground };
+  const loadMoreFooter = (
+    <LoadMoreFooter colors={colors} showSpinner={loadingMore} />
+  );
+
+  // 5. Virtualized list of HardShadow TrainerCards.
   return (
-    <View style={[styles.flex, { backgroundColor: colors.nbBackground }]}>
+    <View style={[styles.flex, screenBackground]}>
       <FlatList
         style={styles.flex}
-        contentContainerStyle={[styles.listScroll, { paddingBottom: listBottomPad }]}
+        contentContainerStyle={listBottomStyle}
         data={trainers}
-        keyExtractor={(trainer) => String(trainer.id)}
-        initialNumToRender={12}
-        maxToRenderPerBatch={8}
-        windowSize={8}
-        onEndReached={handleEndReached}
+        keyExtractor={trainerRowKey}
+        initialNumToRender={INITIAL_ROWS_TO_PAINT}
+        maxToRenderPerBatch={ROWS_PER_BATCH}
+        windowSize={LIST_WINDOW_SIZE}
+        onEndReached={tryLoadNextPage}
         onEndReachedThreshold={END_REACHED_THRESHOLD}
         ListHeaderComponent={listHeader}
-        ListEmptyComponent={
-          !loading ? (
-            <EmptyTrainerResults
-              colors={colors}
-              onClearFilters={onClearFilters || onOpenFilters}
-              onShowRemote={onShowRemote}
-            />
-          ) : null
-        }
-        renderItem={({ item: trainer }) => (
-          <TrainerCard trainer={trainer} onViewProfile={onViewProfile} />
-        )}
-        ListFooterComponent={
-          loadingMore ? (
-            <View style={styles.footerLoader}>
-              <ActivityIndicator size="small" color={colors.nbInk} />
-            </View>
-          ) : null
-        }
+        ListEmptyComponent={emptyList}
+        renderItem={({ item: trainer }) => renderTrainerRow(trainer, onViewProfile)}
+        ListFooterComponent={loadMoreFooter}
         {...FORM_SCROLL_PROPS}
       />
     </View>
@@ -344,6 +504,8 @@ export function BrowseTrainersScreen({
 }
 
 export default BrowseTrainersScreen;
+
+// ===== PLUMBING — skip unless debugging =====
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },

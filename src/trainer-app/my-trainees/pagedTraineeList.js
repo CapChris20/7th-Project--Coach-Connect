@@ -1,6 +1,7 @@
-// Paginated client roster for the trainer, with pull-to-refresh and "Load more".
-// Flow: fetch one page of CRM rows → filter/enrich them via the linked-trainees resolver → merge into state.
-// Used by the trainer's My Trainees list. Paginated reads so a full-collection listener cannot re-read every client on each edit.
+// Paginated “My Trainees” roster hook for a signed-in trainer.
+// Flow: reset or load-more → one Firestore page → enrich link fields → merge/sort into state.
+// Used by TrainerAppStart, My Trainees, and scheduling screens that need the client chip list.
+// Hook order and return keys (clients / loading / loadingMore / hasMore / error / refresh / loadMore) stay frozen.
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
@@ -11,38 +12,113 @@ import { loadMyLinkedTrainees } from '../trainee-records/loadMyLinkedTrainees';
 
 // ===== NAMED CONSTANTS =====
 
-// Page size lives in traineeDatabaseLocations (TRAINER_ROSTER_PAGE_SIZE) so list and fetch stay in sync.
+// Manipulate here: page size lives in traineeDatabaseLocations as TRAINER_ROSTER_PAGE_SIZE — keep both in sync.
 
 // ===== HELPER FUNCTIONS =====
 
-function mergeAndSortClients(existingClients, incomingClients) {
-  // Dedupe by id through a Map, because the legacy rows and the paginated rows can overlap.
-  // Seeding it from existingClients and then setting the new rows means the FRESH data wins, while
-  // spreading the old entry first preserves any fields the new page didn't include.
-  const clientsById = new Map(
-    (existingClients || []).map((existingClient) => [existingClient.id, existingClient]),
-  );
-  for (const incomingClient of incomingClients) {
-    clientsById.set(incomingClient.id, { ...(clientsById.get(incomingClient.id) || {}), ...incomingClient });
-  }
-  // Re-sort the whole merged list: pages arrive in Firestore order, but the roster is shown
-  // alphabetically, so appending without re-sorting would interleave names wrongly.
-  return [...clientsById.values()].sort((leftClient, rightClient) =>
-    String(leftClient.name || '').toLowerCase().localeCompare(String(rightClient.name || '').toLowerCase()),
-  );
+/**
+ * Clear roster rows and stop the first-page spinner when no trainer is signed in.
+ */
+function wipeRosterState(setClients, setIsLoading, setHasMore) {
+  setClients([]);
+  setIsLoading(false);
+  setHasMore(false);
 }
 
-function canLoadMorePage(hasMore, isLoadingMore, isLoading) {
-  return hasMore && !isLoadingMore && !isLoading;
+/**
+ * Bump the load generation so an older in-flight page cannot overwrite a newer one.
+ */
+function claimNextLoadGeneration(loadGenerationRef) {
+  loadGenerationRef.current += 1;
+  return loadGenerationRef.current;
+}
+
+/**
+ * True when a newer load started after this one began.
+ */
+function thisLoadIsStale(thisLoadGeneration, loadGenerationRef) {
+  return thisLoadGeneration !== loadGenerationRef.current;
+}
+
+/**
+ * Flip the right loading flag and clear the cursor on a full reset.
+ */
+function beginLoadingFlags(isReset, setIsLoading, setIsLoadingMore, lastDocRef) {
+  if (isReset) {
+    setIsLoading(true);
+    lastDocRef.current = null;
+    return;
+  }
+  setIsLoadingMore(true);
+}
+
+/**
+ * Options bag for fetchTrainerClientRosterPage (page size + cursor + legacy on reset).
+ */
+function buildRosterPageOptions(isReset, lastDocRef) {
+  return {
+    pageSize: TRAINER_ROSTER_PAGE_SIZE,
+    startAfterDoc: isReset ? null : lastDocRef.current,
+    includeLegacy: isReset,
+  };
+}
+
+/**
+ * Write cursor + merge (or replace on reset) into React state after a successful page.
+ */
+function writeSuccessfulRosterPage({
+  isReset,
+  linkedClients,
+  rosterPage,
+  setClients,
+  setHasMore,
+  setError,
+  lastDocRef,
+}) {
+  lastDocRef.current = rosterPage.lastDoc;
+  setHasMore(rosterPage.hasMore);
+  setError(null);
+  setClients((existingClients) => {
+    if (isReset) return linkedClients;
+    return mergeClientsByIdThenSortByName(existingClients, linkedClients);
+  });
+}
+
+/**
+ * Dedupe by id — legacy rows and paginated rows can overlap; newer fields win.
+ */
+function mergeClientsByIdThenSortByName(existingClients, incomingClients) {
+  const clientsById = new Map();
+  const existingList = existingClients || [];
+  for (let i = 0; i < existingList.length; i += 1) {
+    const existingClient = existingList[i];
+    clientsById.set(existingClient.id, existingClient);
+  }
+  for (let i = 0; i < incomingClients.length; i += 1) {
+    const incomingClient = incomingClients[i];
+    const previousRow = clientsById.get(incomingClient.id) || {};
+    clientsById.set(incomingClient.id, { ...previousRow, ...incomingClient });
+  }
+  const mergedClients = [...clientsById.values()];
+  mergedClients.sort(compareClientNamesAToZ);
+  return mergedClients;
+}
+
+/**
+ * A→Z by display name (case-insensitive).
+ */
+function compareClientNamesAToZ(leftClient, rightClient) {
+  const leftName = String(leftClient.name || '').toLowerCase();
+  const rightName = String(rightClient.name || '').toLowerCase();
+  return leftName.localeCompare(rightName);
 }
 
 // ===== MAIN FUNCTION =====
 
 /**
- * Trainer client roster — paginated Firestore reads (Load more), no full-collection listeners.
- * Hooks stay in this order: clients, loading, loadingMore, hasMore, error, lastDoc ref,
- * generation ref, loadPage, refresh, loadMore, then the initial-load effect.
- * @param {string} trainerUid
+ * Live paginated client roster for one trainer uid.
+ * vocab: custom hook — callers treat the return object like React state; hook order below must not move.
+ * @param {string|null|undefined} trainerUid
  * @returns {{
  *   clients: Array,
  *   loading: boolean,
@@ -54,78 +130,54 @@ function canLoadMorePage(hasMore, isLoadingMore, isLoading) {
  * }}
  */
 export const pagedTraineeList = (trainerUid) => {
+  // Hook order frozen: clients → loading → loadingMore → hasMore → error → lastDoc → generation → loadPage → refresh → loadMore → effect.
   const [clients, setClients] = useState([]);
-  // Two separate loading flags so the UI can show a full skeleton on first load but only a small
-  // spinner at the bottom while appending a page.
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const [error, setError] = useState(null);
-  // vocab: useRef = a mutable box that survives re-renders without triggering one.
-  // lastDocRef holds the Firestore cursor (the last doc of the previous page) — that's how the next
-  // query knows where to resume.
+  // vocab: useRef = box that survives re-renders without causing one; holds the Firestore cursor + load generation.
   const lastDocRef = useRef(null);
-  // Generation counter guarding against out-of-order async results. See its use below.
-  const loadGenRef = useRef(0);
+  const loadGenerationRef = useRef(0);
 
   const loadPage = useCallback(
     async (isReset) => {
+      // 1. No trainer signed in → empty roster and stop the spinner.
       if (!trainerUid) {
-        setClients([]);
-        setIsLoading(false);
-        setHasMore(false);
+        wipeRosterState(setClients, setIsLoading, setHasMore);
         return;
       }
 
-      // Claim a generation number for THIS run. Every later await re-checks it, so if a newer load
-      // starts (trainer taps refresh, or switches account) this stale run bails out instead of
-      // overwriting the newer results — the classic async race in paginated lists.
-      const loadGeneration = ++loadGenRef.current;
-      if (isReset) {
-        setIsLoading(true);
-        // Clearing the cursor is what makes the next fetch start from the beginning.
-        lastDocRef.current = null;
-      } else {
-        setIsLoadingMore(true);
-      }
+      // 2. Bump generation so an older in-flight page cannot overwrite a newer one.
+      const thisLoadGeneration = claimNextLoadGeneration(loadGenerationRef);
+      beginLoadingFlags(isReset, setIsLoading, setIsLoadingMore, lastDocRef);
 
       try {
-        const rosterPage = await fetchTrainerClientRosterPage(trainerUid, {
-          pageSize: TRAINER_ROSTER_PAGE_SIZE,
-          // On reset, no cursor = page one. Otherwise resume after the last doc we saw.
-          startAfterDoc: isReset ? null : lastDocRef.current,
-          // includeLegacy only on a reset: older roster docs live outside the paginated path, so
-          // they're pulled in once with the first page rather than re-scanned on every "Load more".
-          includeLegacy: isReset,
-        });
+        // 3. Read one page, then resolve linked-trainee display fields (re-check generation after each await).
+        const pageQueryOptions = buildRosterPageOptions(isReset, lastDocRef);
+        const rosterPage = await fetchTrainerClientRosterPage(trainerUid, pageQueryOptions);
+        if (thisLoadIsStale(thisLoadGeneration, loadGenerationRef)) return;
 
-        if (loadGeneration !== loadGenRef.current) return;
-
-        // Second async step: verify the trainer↔client links and resolve names/photos. This is why
-        // there are two generation checks — either await is a chance for a newer load to start.
         const linkedClients = await loadMyLinkedTrainees(trainerUid, rosterPage.clients);
-        if (loadGeneration !== loadGenRef.current) return;
+        if (thisLoadIsStale(thisLoadGeneration, loadGenerationRef)) return;
 
-        lastDocRef.current = rosterPage.lastDoc;
-        setHasMore(rosterPage.hasMore);
-        // Clear a previous error on success so a recovered retry visibly resets the UI.
-        setError(null);
-
-        setClients((existingClients) => {
-          if (isReset) return linkedClients;
-          return mergeAndSortClients(existingClients, linkedClients);
+        // 4. Write cursor + merge (or replace on reset) into React state.
+        writeSuccessfulRosterPage({
+          isReset,
+          linkedClients,
+          rosterPage,
+          setClients,
+          setHasMore,
+          setError,
+          lastDocRef,
         });
       } catch (fetchError) {
-        if (loadGeneration !== loadGenRef.current) return;
+        if (thisLoadIsStale(thisLoadGeneration, loadGenerationRef)) return;
         console.error('Error fetching trainer clients:', fetchError);
         setError(fetchError?.message || String(fetchError));
-        // Only wipe the list if this was a fresh load. A failed "Load more" keeps the pages the
-        // trainer already has on screen.
         if (isReset) setClients([]);
       } finally {
-        // Guarded by the generation check too: a stale run must not clear the spinner that the
-        // current, still-running load owns.
-        if (loadGeneration === loadGenRef.current) {
+        if (!thisLoadIsStale(thisLoadGeneration, loadGenerationRef)) {
           setIsLoading(false);
           setIsLoadingMore(false);
         }
@@ -134,19 +186,16 @@ export const pagedTraineeList = (trainerUid) => {
     [trainerUid],
   );
 
-  // Pull-to-refresh: start over from page one.
   const refresh = useCallback(() => loadPage(true), [loadPage]);
 
-  // Append the next page. The three guards prevent the two ways this gets misfired: reaching the
-  // end of the list, and a scroll handler firing again while a page is already in flight.
   const loadMore = useCallback(() => {
-    if (!canLoadMorePage(hasMore, isLoadingMore, isLoading)) return;
+    const mayLoadMore = hasMore && !isLoadingMore && !isLoading;
+    if (!mayLoadMore) return;
     loadPage(false);
   }, [hasMore, isLoadingMore, isLoading, loadPage]);
 
-  // Initial load, and a full reload whenever the trainer changes (loadPage's identity is keyed to
-  // trainerUid, so sign-out/sign-in re-runs this with a clean list).
   useEffect(() => {
+    // First mount / trainer change always starts at page one.
     loadPage(true);
   }, [loadPage]);
 
@@ -160,3 +209,6 @@ export const pagedTraineeList = (trainerUid) => {
     loadMore,
   };
 };
+
+// ===== PLUMBING — skip unless debugging page merge / stale loads =====
+// Page merge / stale-load helpers live under HELPER FUNCTIONS so the main hook stays a short recipe.

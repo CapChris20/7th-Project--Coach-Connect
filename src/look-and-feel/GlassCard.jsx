@@ -1,27 +1,51 @@
-// Compat card wrapper — Design Law solid surface (no glass blur / gradient stroke).
-// Flow: Pressable when tappable → nb surface + ink border → children.
-// Used by: any leftover GlassCard imports — API unchanged; prefer NbCard for new UI.
-// vocab: GlassCard name is legacy; paint is neo-brutalist nb tokens only
+// Legacy card shell — solid nb surface + ink border (no blur, no glass stroke).
+// Flow: keep legacy glass props (ignored) → theme colors → Pressable or View → rounded surface → children.
+// Used by leftover GlassCard imports; prefer NbCard for new screens.
+// vocab: blurIntensity and strokeColors stay on the API but paint nothing (call-site compat).
 
 import React from 'react';
 import { Platform, Pressable, StyleSheet, View } from 'react-native';
-import { useTheme } from './lightDarkMode';
+
 import { nb } from './colorPalette';
+import { useTheme } from './lightDarkMode';
 
 // ===== NAMED CONSTANTS =====
 
-const PRESSED_OPACITY = 0.96;
-const PLATFORM_IOS = 'ios';
-const DEFAULT_RADIUS = 14;
+// Manipulate here: pressed fade; default corner radius when the caller omits radius.
+const OPACITY_WHEN_PRESSED = 0.96;
+const OPACITY_WHEN_IDLE = 1;
+const PLATFORM_NAME_IOS = 'ios';
+const DEFAULT_CORNER_RADIUS = 14;
+
+const styles = StyleSheet.create({
+  hitTarget: {
+    minHeight: 44,
+    minWidth: 44,
+  },
+  surfaceFace: {
+    flex: 1,
+    overflow: 'hidden',
+  },
+});
 
 // ===== HELPER FUNCTIONS =====
 
-function iosContinuousCurveStyle() {
-  return Platform.OS === PLATFORM_IOS ? { borderCurve: 'continuous' } : null;
-}
+/**
+ * Inner face: nb surface fill, thick ink border, optional continuous corners on iOS.
+ */
+function GlassCardSurfaceFace({ radius, borderColor, surfaceColor, contentStyle, children }) {
+  const iosCurveExtras =
+    Platform.OS === PLATFORM_NAME_IOS ? { borderCurve: 'continuous' } : null;
 
-function pressedCardStyle(isPressed, extraStyle) {
-  return [styles.hit, { opacity: isPressed ? PRESSED_OPACITY : 1 }, extraStyle];
+  const surfacePaint = {
+    borderRadius: radius,
+    borderWidth: nb.borderWidth,
+    borderColor,
+    backgroundColor: surfaceColor,
+    ...iosCurveExtras,
+  };
+
+  return <View style={[styles.surfaceFace, surfacePaint, contentStyle]}>{children}</View>;
 }
 
 // ===== MAIN FUNCTION =====
@@ -36,47 +60,43 @@ export default function GlassCard({
   contentStyle,
   onPress,
   disabled,
-  radius = DEFAULT_RADIUS,
-  blurIntensity, // ignored — kept for call-site compat
-  strokeColors, // ignored — kept for call-site compat
+  radius = DEFAULT_CORNER_RADIUS,
+  blurIntensity,
+  strokeColors,
 }) {
+  // 1. Legacy glass props are no-ops but must stay destructured so call sites do not warn.
   void blurIntensity;
   void strokeColors;
-  const { colors } = useTheme();
-  const Container = onPress ? Pressable : View;
-  const containerStyle = onPress
-    ? ({ pressed }) => pressedCardStyle(pressed, style)
-    : [styles.hit, style];
-  const continuousCurve = iosContinuousCurveStyle();
 
+  // vocab: useTheme = light/dark palette from the app theme provider
+  const { colors } = useTheme();
+
+  // 2. Tappable cards use Pressable; static cards stay a plain View.
+  const cardIsTappable = Boolean(onPress);
+  const OuterWrapper = cardIsTappable ? Pressable : View;
+
+  const outerStyle = cardIsTappable
+    ? ({ pressed }) => hitTargetStyleWhenPressed(pressed, style)
+    : [styles.hitTarget, style];
+
+  // 3. Theme tokens drive border + fill; contentStyle can override padding inside the face.
   return (
-    <Container disabled={disabled} onPress={onPress} style={containerStyle}>
-      <View
-        style={[
-          styles.surface,
-          {
-            borderRadius: radius,
-            borderWidth: nb.borderWidth,
-            borderColor: colors.nbBorder,
-            backgroundColor: colors.nbSurface,
-            ...continuousCurve,
-          },
-          contentStyle,
-        ]}
+    <OuterWrapper disabled={disabled} onPress={onPress} style={outerStyle}>
+      <GlassCardSurfaceFace
+        radius={radius}
+        borderColor={colors.nbBorder}
+        surfaceColor={colors.nbSurface}
+        contentStyle={contentStyle}
       >
         {children}
-      </View>
-    </Container>
+      </GlassCardSurfaceFace>
+    </OuterWrapper>
   );
 }
 
-const styles = StyleSheet.create({
-  hit: {
-    minHeight: 44,
-    minWidth: 44,
-  },
-  surface: {
-    flex: 1,
-    overflow: 'hidden',
-  },
-});
+// PLUMBING — skip unless debugging
+
+function hitTargetStyleWhenPressed(fingerIsDown, extraStyle) {
+  const pressOpacity = fingerIsDown ? OPACITY_WHEN_PRESSED : OPACITY_WHEN_IDLE;
+  return [styles.hitTarget, { opacity: pressOpacity }, extraStyle];
+}

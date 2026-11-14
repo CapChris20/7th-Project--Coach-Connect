@@ -18,7 +18,7 @@ const ONBOARDING_SNAPSHOT_TOTAL = manifest.length;
 // A physical phone would need the Mac's LAN address instead.
 // Manipulate here: port 9876 must match the port in the snapshot script.
 const SNAPSHOT_SERVER_PORT = 9876;
-const SNAP_SERVER = `http://127.0.0.1:${SNAPSHOT_SERVER_PORT}`;
+const CAPTURE_SERVER_BASE_URL = `http://127.0.0.1:${SNAPSHOT_SERVER_PORT}`;
 
 // The wizard animates in. Capturing immediately saves a half-drawn screen.
 // Manipulate here: raise if shots land mid-animation. Lower to make a full run faster.
@@ -34,36 +34,40 @@ const STATUS_DONE = 'Done — check docs/onboarding-snapshots/';
 // ===== HELPER FUNCTIONS =====
 
 // vocab: a Promise that resolves after the wait. JavaScript has no built-in sleep, so the loop awaits this.
-function sleep(waitMilliseconds) {
-  return new Promise((resolve) => setTimeout(resolve, waitMilliseconds));
+function waitMilliseconds(durationMs) {
+  return new Promise((resolve) => setTimeout(resolve, durationMs));
 }
 
-async function postScreenshotRequest(fileName) {
+async function askMacServerToCaptureFile(fileName) {
   // vocab: encodeURIComponent escapes spaces and slashes so the filename cannot break the query string.
-  const snapUrl = `${SNAP_SERVER}/snap?file=${encodeURIComponent(fileName)}`;
+  const snapUrl = `${CAPTURE_SERVER_BASE_URL}/snap?file=${encodeURIComponent(fileName)}`;
   const response = await fetch(snapUrl, { method: 'POST' });
   if (!response.ok) {
     throw new Error(`Capture failed (${response.status})`);
   }
 }
 
-function captureServerFailureMessage(error) {
-  const message = error?.message || String(error);
+function messageWhenCaptureServerIsDown(error) {
+  const errorMessage = error?.message || String(error);
   // Manipulate here: this copy names the command to run. "fetch failed" alone does not say a Mac process is required.
-  return `Could not reach capture server on :${SNAPSHOT_SERVER_PORT}. Run: npm run snapshot:onboarding\n\n${message}`;
+  return `Could not reach capture server on :${SNAPSHOT_SERVER_PORT}. Run: npm run snapshot:onboarding\n\n${errorMessage}`;
 }
 
-// isRunCancelled is a function, not a boolean copied once. The loop lasts many seconds, and the
-// cleanup flag flips while we are sitting in sleep(). Reading it fresh is the only way to notice.
-function renderingStatusText(captureStep) {
+function statusWhileRenderingStep(captureStep) {
   return `Rendering ${captureStep.role} step ${captureStep.step}…`;
 }
 
-function capturedStatusText(captureIndex) {
-  return `Captured ${captureIndex + 1}/${ONBOARDING_SNAPSHOT_TOTAL}`;
+function statusAfterCaptureSaved(captureIndex) {
+  const humanIndex = captureIndex + 1;
+  return `Captured ${humanIndex}/${ONBOARDING_SNAPSHOT_TOTAL}`;
 }
 
-async function captureOneStep({
+function remountKeyForWizardStep(captureStep) {
+  return `${captureStep.role}-${captureStep.step}`;
+}
+
+// isRunCancelled is a function, not a boolean copied once — the loop can sit in sleep() while cleanup flips the flag.
+async function captureOneOnboardingStep({
   captureStep,
   captureIndex,
   isRunCancelled,
@@ -72,28 +76,30 @@ async function captureOneStep({
   setStatus,
   setError,
 }) {
-  // Setting the capture re-renders the wizard. The sleep is what lets that paint finish.
+  // Setting the capture re-renders the wizard. The wait is what lets that paint finish.
   setCurrentCapture(captureStep);
   setProgress(captureIndex + 1);
-  setStatus(renderingStatusText(captureStep));
+  setStatus(statusWhileRenderingStep(captureStep));
 
-  await sleep(RENDER_WAIT_MS);
-  if (isRunCancelled()) return false;
-
-  try {
-    await postScreenshotRequest(captureStep.file);
-    setStatus(capturedStatusText(captureIndex));
-  } catch (captureError) {
-    // Stop on the first failure. If the server is down, every later shot fails too.
-    setError(captureServerFailureMessage(captureError));
+  await waitMilliseconds(RENDER_WAIT_MS);
+  if (isRunCancelled()) {
     return false;
   }
 
-  await sleep(PAUSE_BETWEEN_CAPTURES_MS);
+  try {
+    await askMacServerToCaptureFile(captureStep.file);
+    setStatus(statusAfterCaptureSaved(captureIndex));
+  } catch (captureError) {
+    // Stop on the first failure. If the server is down, every later shot fails too.
+    setError(messageWhenCaptureServerIsDown(captureError));
+    return false;
+  }
+
+  await waitMilliseconds(PAUSE_BETWEEN_CAPTURES_MS);
   return true;
 }
 
-async function captureAllSteps({
+async function walkEntireCaptureList({
   isRunCancelled,
   setCurrentCapture,
   setProgress,
@@ -102,9 +108,12 @@ async function captureAllSteps({
   onDone,
 }) {
   for (let captureIndex = 0; captureIndex < ONBOARDING_SNAPSHOT_CAPTURES.length; captureIndex += 1) {
-    if (isRunCancelled()) return;
+    if (isRunCancelled()) {
+      return;
+    }
+
     const captureStep = ONBOARDING_SNAPSHOT_CAPTURES[captureIndex];
-    const keepGoing = await captureOneStep({
+    const keepGoing = await captureOneOnboardingStep({
       captureStep,
       captureIndex,
       isRunCancelled,
@@ -113,35 +122,49 @@ async function captureAllSteps({
       setStatus,
       setError,
     });
-    if (!keepGoing) return;
+    if (!keepGoing) {
+      return;
+    }
   }
 
   setStatus(STATUS_DONE);
-  await sleep(DONE_HOLD_MS);
-  // vocab: onDone?.() calls the parent callback only when one was passed.
-  onDone?.();
+  await waitMilliseconds(DONE_HOLD_MS);
+  // vocab: only call the parent callback when one was passed.
+  if (onDone) {
+    onDone();
+  }
+}
+
+function SnapshotErrorScreen({ error, colors }) {
+  const errorTitleColor = gradients.brand.colors[0];
+  return (
+    <View style={[styles.center, { backgroundColor: colors.nbBackground }]}>
+      <Text style={[styles.errorTitle, { color: errorTitleColor }]}>Snapshot capture failed</Text>
+      <Text style={[styles.errorBody, { color: colors.nbMuted }]}>{error}</Text>
+    </View>
+  );
 }
 
 // ===== MAIN FUNCTION =====
 
 /**
  * Renders each onboarding step and asks the local Mac server to screenshot it.
- * @param {{ onDone?: () => void }} props
+ * @param {{ onDone?: () => void }} props Optional callback after the last shot (or after DONE_HOLD_MS).
  */
 export default function SetupScreenshotTool({ onDone }) {
   const { colors } = useTheme();
   const [currentCapture, setCurrentCapture] = useState(ONBOARDING_SNAPSHOT_CAPTURES[0]);
   // progress and status drive a debug readout that is intentionally not painted.
   // Painting it would bake a banner into every screenshot.
-  const [progress, setProgress] = useState(0);
-  const [status, setStatus] = useState(STATUS_STARTING);
+  const [, setProgress] = useState(0);
+  const [, setStatus] = useState(STATUS_STARTING);
   const [error, setError] = useState(null);
 
   // vocab: useEffect runs after the component is on screen. [onDone] means "start again only if onDone changes".
   useEffect(() => {
     let isCancelled = false;
 
-    captureAllSteps({
+    walkEntireCaptureList({
       isRunCancelled: () => isCancelled,
       setCurrentCapture,
       setProgress,
@@ -156,22 +179,18 @@ export default function SetupScreenshotTool({ onDone }) {
     };
   }, [onDone]);
 
+  // 1. Hard-stop UI when the Mac capture server is unreachable.
   if (error) {
-    return (
-      <View style={[styles.center, { backgroundColor: colors.nbBackground }]}>
-        <Text style={[styles.errorTitle, { color: gradients.brand.colors[0] }]}>Snapshot capture failed</Text>
-        <Text style={[styles.errorBody, { color: colors.nbMuted }]}>{error}</Text>
-      </View>
-    );
+    return <SnapshotErrorScreen error={error} colors={colors} />;
   }
 
-  // No progress banner on purpose. Any overlay would be saved into the screenshot.
+  // 2. Full-screen wizard only — any overlay would be saved into the PNG.
+  const wizardRemountKey = remountKeyForWizardStep(currentCapture);
+
   return (
     <View style={[styles.root, { backgroundColor: colors.nbBackground }]}>
       <NewUserSetupScreen
-        // Changing the key forces a remount, so the wizard actually jumps to this step
-        // instead of keeping the step it was already on.
-        key={`${currentCapture.role}-${currentCapture.step}`}
+        key={wizardRemountKey}
         role={currentCapture.role}
         previewMode
         previewInitialStep={currentCapture.step}
@@ -181,8 +200,9 @@ export default function SetupScreenshotTool({ onDone }) {
   );
 }
 
+// PLUMBING — skip unless debugging
+
 // banner and bannerText are the unused debug chip. Leave them if you want that overlay later.
-// The error-screen styles below are the ones this file actually paints.
 const styles = StyleSheet.create({
   root: { flex: 1 },
   banner: {

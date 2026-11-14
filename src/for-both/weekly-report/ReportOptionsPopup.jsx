@@ -1,5 +1,5 @@
-// Design Law report-options sheet — export / share / settings rows (progress PNG).
-// Flow: NbSheet chrome → icon-chip rows → export closes sheet. Theme toggle kept for app mode.
+// Report-options bottom sheet — export / share / theme rows for the weekly report.
+// Flow: NbSheet chrome → haptic rows → export closes sheet → theme toggle stays open.
 // Used by WeeklyReportBody when the header “…” opens.
 
 import React from 'react';
@@ -17,38 +17,19 @@ const WORKOUT_ICON = require('../../assets/icons/handoff/muscle.png');
 const PEOPLE_ICON = require('../../assets/icons/handoff/people.png');
 const SETTINGS_ICON = require('../../assets/icons/handoff/settings.png');
 
-// ===== HELPER FUNCTIONS =====
+// Manipulate here: accent slots for the three option rows (Design Law handoff cycle)
+const EXPORT_GRADIENT_INDEX = 0;
+const SHARE_GRADIENT_INDEX = 3;
+const SETTINGS_GRADIENT_INDEX = 6;
 
-function playSelectionHaptic() {
-  Haptics.selectionAsync().catch(() => {});
-}
-
-function OptionRow({ icon, title, subtitle, index, onPress, colors, testID }) {
-  return (
-    <Pressable
-      testID={testID}
-      onPress={() => {
-        playSelectionHaptic();
-        onPress?.();
-      }}
-      style={[
-        styles.row,
-        { borderColor: colors.border, backgroundColor: colors.surfacePrimary },
-      ]}
-    >
-      <NbIconChip source={icon} index={index} size={40} colors={accentGradients[index % accentGradients.length]} />
-      <View style={styles.rowText}>
-        <Text style={[styles.rowTitle, { color: colors.textPrimary }]}>{title}</Text>
-        <Text style={[styles.rowSub, { color: colors.textMuted }]}>{subtitle}</Text>
-      </View>
-      <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-    </Pressable>
-  );
-}
+const DARK_MODE_NAME = 'dark';
+const CHEVRON_ICON_SIZE = 18;
 
 // ===== MAIN FUNCTION =====
 
 /**
+ * Options sheet for one weekly report (export, share, theme).
+ * Flow: 1. theme labels  2. export+close handler  3. theme toggle  4. sheet rows
  * @param {{
  *   visible: boolean,
  *   onClose: Function,
@@ -56,56 +37,143 @@ function OptionRow({ icon, title, subtitle, index, onPress, colors, testID }) {
  *   trainerName?: string,
  * }} props
  */
-export function ReportOptionsPopup({ visible, onClose, onExport, trainerName = 'your trainer' }) {
+export function ReportOptionsPopup({
+  visible,
+  onClose,
+  onExport,
+  trainerName = 'your trainer',
+}) {
+  // vocab: useTheme = { colors, mode, toggle } for in-app light/dark (not system auto alone)
   const { colors, mode, toggle } = useTheme();
-  const themeLabel = mode === 'dark' ? 'Dark mode' : 'Light mode';
+
+  // 1. Labels that track the in-app light/dark toggle.
+  let themeLabel = 'Light mode';
+  if (mode === DARK_MODE_NAME) {
+    themeLabel = 'Dark mode';
+  }
+  const settingsSubtitle = `Colors and what to show · ${themeLabel}`;
+
+  // 2. Export and share both run export then dismiss — sheet must not sit over the PDF flow.
+  const runExportAndClose = () => {
+    if (typeof onExport === 'function') {
+      onExport();
+    }
+    if (typeof onClose === 'function') {
+      onClose();
+    }
+  };
+
+  // 3. Settings row flips theme and leaves the sheet open so the user can see the change.
+  const flipThemeAndStayOpen = () => {
+    toggle();
+  };
+
+  // 4. Done button surface named before JSX.
+  const doneButtonStyle = [
+    styles.done,
+    { borderColor: colors.border, backgroundColor: colors.soft },
+  ];
+  const doneLabelStyle = [styles.doneText, { color: colors.textPrimary }];
 
   return (
     <NbSheet visible={visible} onClose={onClose} title="Report options">
       <View style={styles.stack}>
-        <OptionRow
+        <ReportOptionRow
           icon={WORKOUT_ICON}
-          index={0}
+          gradientIndex={EXPORT_GRADIENT_INDEX}
           title="Export weekly report"
           subtitle="PDF for this week"
           colors={colors}
           testID="sheet-export"
-          onPress={() => {
-            onExport?.();
-            onClose?.();
-          }}
+          onPress={runExportAndClose}
         />
-        <OptionRow
+        <ReportOptionRow
           icon={PEOPLE_ICON}
-          index={3}
+          gradientIndex={SHARE_GRADIENT_INDEX}
           title="Share with your trainer"
           subtitle={trainerName}
           colors={colors}
           testID="sheet-digest"
-          onPress={() => {
-            onExport?.();
-            onClose?.();
-          }}
+          onPress={runExportAndClose}
         />
-        <OptionRow
+        <ReportOptionRow
           icon={SETTINGS_ICON}
-          index={6}
+          gradientIndex={SETTINGS_GRADIENT_INDEX}
           title="Report settings"
-          subtitle={`Colors and what to show · ${themeLabel}`}
+          subtitle={settingsSubtitle}
           colors={colors}
           testID="theme-toggle"
-          onPress={() => toggle()}
+          onPress={flipThemeAndStayOpen}
         />
-        <Pressable
-          testID="sheet-close"
-          onPress={onClose}
-          style={[styles.done, { borderColor: colors.border, backgroundColor: colors.soft }]}
-        >
-          <Text style={[styles.doneText, { color: colors.textPrimary }]}>Done</Text>
+        <Pressable testID="sheet-close" onPress={onClose} style={doneButtonStyle}>
+          <Text style={doneLabelStyle}>Done</Text>
         </Pressable>
       </View>
     </NbSheet>
   );
+}
+
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * One tappable option row: accent chip + title/subtitle + chevron.
+ */
+function ReportOptionRow({
+  icon,
+  title,
+  subtitle,
+  gradientIndex,
+  onPress,
+  colors,
+  testID,
+}) {
+  const gradientCount = accentGradients.length;
+  const safeGradientIndex = gradientIndex % gradientCount;
+  const gradientColors = accentGradients[safeGradientIndex];
+
+  const rowSurfaceStyle = [
+    styles.row,
+    { borderColor: colors.border, backgroundColor: colors.surfacePrimary },
+  ];
+  const titleStyle = [styles.rowTitle, { color: colors.textPrimary }];
+  const subtitleStyle = [styles.rowSub, { color: colors.textMuted }];
+
+  const handlePress = () => {
+    fireSelectionHaptic();
+    if (typeof onPress === 'function') {
+      onPress();
+    }
+  };
+
+  return (
+    <Pressable testID={testID} onPress={handlePress} style={rowSurfaceStyle}>
+      <NbIconChip
+        source={icon}
+        index={gradientIndex}
+        size={40}
+        colors={gradientColors}
+      />
+      <View style={styles.rowText}>
+        <Text style={titleStyle}>{title}</Text>
+        <Text style={subtitleStyle}>{subtitle}</Text>
+      </View>
+      <Ionicons
+        name="chevron-forward"
+        size={CHEVRON_ICON_SIZE}
+        color={colors.textMuted}
+      />
+    </Pressable>
+  );
+}
+
+// ===== PLUMBING — skip unless debugging =====
+
+/**
+ * Light tap feedback. Ignore errors when haptics are unavailable (simulator / web).
+ * vocab: Haptics.selectionAsync = Expo soft “tick” for selection changes
+ */
+function fireSelectionHaptic() {
+  Haptics.selectionAsync().catch(() => {});
 }
 
 const styles = StyleSheet.create({

@@ -38,16 +38,37 @@ const SHEET_PINNED_IDS = [
   'plank',
 ];
 
+const EMPTY_CATALOG_MESSAGE = 'No matches — add a custom exercise below.';
+const LAYOUT_SHEET = 'sheet';
+
 // ===== HELPER FUNCTIONS =====
 
-function idsWithToggledId(selectedIds, id) {
-  if (selectedIds.includes(id)) return selectedIds.filter((selectedId) => selectedId !== id);
-  return [...selectedIds, id];
+/**
+ * Add or remove one exercise id from the current selection.
+ * @param {string[]} currentSelectedIds
+ * @param {string} exerciseId
+ * @returns {string[]}
+ */
+function selectedIdsAfterToggle(currentSelectedIds, exerciseId) {
+  const alreadySelected = currentSelectedIds.includes(exerciseId);
+  if (alreadySelected) {
+    return currentSelectedIds.filter((id) => id !== exerciseId);
+  }
+  return [...currentSelectedIds, exerciseId];
 }
 
-function pickerHintText({ isPrefer, selectedCount }) {
-  const countSuffix = selectedCount > 0 ? ` (${selectedCount} selected)` : '';
-  if (isPrefer) {
+/**
+ * Hint under the search box — prefer vs avoid wording + optional count.
+ * @param {{ isPreferIntent: boolean, selectedCount: number }} options
+ * @returns {string}
+ */
+function helperHintForPicker({ isPreferIntent, selectedCount }) {
+  let countSuffix = '';
+  if (selectedCount > 0) {
+    countSuffix = ` (${selectedCount} selected)`;
+  }
+
+  if (isPreferIntent) {
     return `Tap exercises you would prefer in your plan. Skip any you don't care about.${countSuffix}`;
   }
   return `Tap exercises you never want in your plan. Selected = avoided.${countSuffix}`;
@@ -55,219 +76,370 @@ function pickerHintText({ isPrefer, selectedCount }) {
 
 /**
  * Flat catalog for the avoid sheet: pinned names first, then the rest A→Z.
- * @param {Array} filtered
+ * @param {Array<{id: string, name: string}>} filteredExercises
  * @returns {Array}
  */
-function orderSheetExercises(filtered) {
-  const byId = new Map(filtered.map((exercise) => [exercise.id, exercise]));
-  const pinned = SHEET_PINNED_IDS.map((id) => byId.get(id)).filter(Boolean);
-  const pinnedSet = new Set(pinned.map((exercise) => exercise.id));
-  const rest = filtered
-    .filter((exercise) => !pinnedSet.has(exercise.id))
-    .slice()
-    .sort((a, b) => a.name.localeCompare(b.name));
-  return [...pinned, ...rest];
-}
+function flatSheetExerciseOrder(filteredExercises) {
+  const exerciseById = new Map(filteredExercises.map((row) => [row.id, row]));
 
-function exercisesGroupedByCategory(filteredExercises) {
-  const byCategory = {};
-  for (const category of EXERCISE_DISLIKE_CATEGORIES) {
-    byCategory[category.id] = [];
+  const pinnedRows = [];
+  for (const pinnedId of SHEET_PINNED_IDS) {
+    const pinnedRow = exerciseById.get(pinnedId);
+    if (pinnedRow) {
+      pinnedRows.push(pinnedRow);
+    }
   }
-  for (const exercise of filteredExercises) {
-    if (byCategory[exercise.category]) byCategory[exercise.category].push(exercise);
+
+  const pinnedIdSet = new Set(pinnedRows.map((row) => row.id));
+  const unpinnedRows = [];
+  for (const row of filteredExercises) {
+    if (!pinnedIdSet.has(row.id)) {
+      unpinnedRows.push(row);
+    }
   }
-  return EXERCISE_DISLIKE_CATEGORIES
-    .map((category) => ({ ...category, exercises: byCategory[category.id] || [] }))
-    .filter((category) => category.exercises.length > 0);
+  unpinnedRows.sort((left, right) => left.name.localeCompare(right.name));
+
+  return [...pinnedRows, ...unpinnedRows];
 }
 
 /**
- * Fill chip: selected = nbFill + check + HardShadow; idle = surface + border only.
- * vocab: HardShadow = solid offset sibling (Android) / shadowRadius 0 (iOS)
- * Matches mockup: `.chip[aria-pressed=true]` gets shadow; `.tick` only when selected.
+ * Group search hits under EXERCISE_DISLIKE_CATEGORIES; drop empty sections.
+ * @param {Array} filteredExercises
+ * @returns {Array}
  */
-function AvoidChip({ label, selected, onPress }) {
-  const { colors } = useTheme();
-  const bg = selected ? colors.nbFill : colors.nbSurfaceChip || colors.nbSurface;
-  const fg = selected ? colors.nbOnFill : colors.nbInk;
+function categorySectionsFromSearchHits(filteredExercises) {
+  const exercisesByCategoryId = {};
+  for (const category of EXERCISE_DISLIKE_CATEGORIES) {
+    exercisesByCategoryId[category.id] = [];
+  }
 
-  const chip = (
+  for (const exercise of filteredExercises) {
+    const bucket = exercisesByCategoryId[exercise.category];
+    if (bucket) {
+      bucket.push(exercise);
+    }
+  }
+
+  const sectionsWithExercises = [];
+  for (const category of EXERCISE_DISLIKE_CATEGORIES) {
+    const exercisesInCategory = exercisesByCategoryId[category.id] || [];
+    if (exercisesInCategory.length === 0) {
+      continue;
+    }
+    sectionsWithExercises.push({
+      ...category,
+      exercises: exercisesInCategory,
+    });
+  }
+  return sectionsWithExercises;
+}
+
+/**
+ * Legacy callers may pass `t` with old theme keys; merge with live useTheme() tokens.
+ * @param {object|undefined} legacyThemeProp
+ * @param {object} liveThemeColors
+ * @returns {object}
+ */
+function resolvePickerColors(legacyThemeProp, liveThemeColors) {
+  if (!legacyThemeProp) {
+    return liveThemeColors;
+  }
+  return {
+    nbInk: legacyThemeProp.textPrimary || liveThemeColors.nbInk,
+    nbMuted: legacyThemeProp.textSecondary || liveThemeColors.nbMuted,
+    nbSurface: legacyThemeProp.cardBg || liveThemeColors.nbSurface,
+    nbBorder: legacyThemeProp.cardBorder || liveThemeColors.nbBorder,
+    nbFill: liveThemeColors.nbFill,
+    nbOnFill: liveThemeColors.nbOnFill,
+    nbSoft: liveThemeColors.nbSoft,
+  };
+}
+
+// Fill chip: selected = nbFill + check + HardShadow; idle = surface + border only.
+// vocab: HardShadow = solid offset sibling (Android) / shadowRadius 0 (iOS)
+function AvoidChip({ label, selected, onPress }) {
+  const { colors: themeColors } = useTheme();
+
+  let chipBackground = themeColors.nbSurfaceChip || themeColors.nbSurface;
+  let chipForeground = themeColors.nbInk;
+  if (selected) {
+    chipBackground = themeColors.nbFill;
+    chipForeground = themeColors.nbOnFill;
+  }
+
+  const chipBody = (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
       accessibilityState={{ selected }}
       style={[
-        styles.chip,
+        chipStyles.chip,
         {
-          backgroundColor: bg,
-          borderColor: colors.nbBorder,
+          backgroundColor: chipBackground,
+          borderColor: themeColors.nbBorder,
           minHeight: nb.minTouchTarget,
         },
       ]}
     >
-      <Text style={[styles.chipText, { color: fg }]} numberOfLines={1}>
+      <Text style={[chipStyles.chipText, { color: chipForeground }]} numberOfLines={1}>
         {label}
       </Text>
       {selected ? (
-        <Ionicons name="checkmark" size={16} color={fg} style={styles.chipCheck} />
+        <Ionicons name="checkmark" size={16} color={chipForeground} style={chipStyles.chipCheck} />
       ) : null}
     </Pressable>
   );
 
-  if (!selected) return <View style={styles.chipShadow}>{chip}</View>;
+  if (!selected) {
+    return <View style={chipStyles.chipShadow}>{chipBody}</View>;
+  }
+
   return (
-    <HardShadow radius={999} offset={nb.shadowOffsetSmall} style={styles.chipShadow}>
-      {chip}
+    <HardShadow radius={999} offset={nb.shadowOffsetSmall} style={chipStyles.chipShadow}>
+      {chipBody}
     </HardShadow>
   );
+}
+
+function ChipRow({ exercises, selectedIds, onToggleExerciseId }) {
+  return (
+    <View style={pickerStyles.pillRow}>
+      {exercises.map((exercise) => {
+        const isSelected = selectedIds.includes(exercise.id);
+        const pressThisChip = () => {
+          onToggleExerciseId(exercise.id);
+        };
+        return (
+          <AvoidChip
+            key={exercise.id}
+            label={exercise.name}
+            selected={isSelected}
+            onPress={pressThisChip}
+          />
+        );
+      })}
+    </View>
+  );
+}
+
+function SheetExerciseList({ flatSheetList, selectedIds, onToggleExerciseId, mutedTextStyle }) {
+  if (flatSheetList.length === 0) {
+    return <Text style={mutedTextStyle}>{EMPTY_CATALOG_MESSAGE}</Text>;
+  }
+
+  return (
+    <ChipRow
+      exercises={flatSheetList}
+      selectedIds={selectedIds}
+      onToggleExerciseId={onToggleExerciseId}
+    />
+  );
+}
+
+function GroupedCategoryLists({
+  groupedSections,
+  selectedIds,
+  onToggleExerciseId,
+  sectionLabelColor,
+}) {
+  return groupedSections.map((section) => (
+    <View key={section.id} style={pickerStyles.section}>
+      <Text style={[pickerStyles.sectionLabel, { color: sectionLabelColor }]}>
+        {section.label}
+      </Text>
+      <ChipRow
+        exercises={section.exercises}
+        selectedIds={selectedIds}
+        onToggleExerciseId={onToggleExerciseId}
+      />
+    </View>
+  ));
 }
 
 // ===== MAIN FUNCTION =====
 
 /**
- * Catalog multi-select. `intent` only changes hint copy; stored field is still exercisesDislike.
+ * Multi-select chip picker for prefer / avoid exercise lists.
  * @param {object} props
- * @param {'sheet'|'grouped'} [props.layout] sheet = flat wrap (avoid NbSheet); grouped = onboarding sections
- * @param {boolean} [props.showSearch] search field under the hint
- * @param {boolean} [props.showHint] helper sentence above chips
- * @param {boolean} [props.showOtherField] free-text "Other" input
+ * @param {string} [props.value]
+ * @param {Function} [props.onChange]
+ * @param {object} [props.t] legacy theme bridge
+ * @param {string} [props.layout] 'grouped' | 'sheet'
+ * @param {boolean} [props.showSearch]
+ * @param {boolean} [props.showHint]
+ * @param {boolean} [props.showOtherField]
+ * @param {string} [props.intent] 'prefer' | 'dislike' — stored field is still exercisesDislike
+ * @param {boolean} [props.animatePills] deprecated
  */
 export default function DislikedExercisesPicker({
   value = '',
   onChange,
-  t: themeProp,
+  t: legacyThemeProp,
   layout = 'grouped',
   showSearch = true,
   showHint = true,
   showOtherField = true,
   /** Stored field is still `exercisesDislike`; selected items = exercises to prioritize when prefer */
   intent = INTENT_PREFER,
-  animatePills: _deprecatedAnimate,
+  animatePills: deprecatedAnimatePills,
 }) {
-  void _deprecatedAnimate;
+  void deprecatedAnimatePills;
 
-  const { colors: themeColors } = useTheme();
-  // Prefer live theme tokens; fall back to legacy `t` prop from older callers
-  const colors = themeProp
-    ? {
-        nbInk: themeProp.textPrimary || themeColors.nbInk,
-        nbMuted: themeProp.textSecondary || themeColors.nbMuted,
-        nbSurface: themeProp.cardBg || themeColors.nbSurface,
-        nbBorder: themeProp.cardBorder || themeColors.nbBorder,
-        nbFill: themeColors.nbFill,
-        nbOnFill: themeColors.nbOnFill,
-        nbSoft: themeColors.nbSoft,
-      }
-    : themeColors;
+  // vocab: useTheme = Design Law light/dark tokens from lightDarkMode
+  const { colors: liveThemeColors } = useTheme();
+  const pickerColors = resolvePickerColors(legacyThemeProp, liveThemeColors);
 
-  const { selectedIds, customText } = useMemo(() => parseExerciseDislikes(value), [value]);
-  const [search, setSearch] = useState('');
+  // vocab: useMemo = re-parse only when the stored string changes
+  const parsedDislikes = useMemo(() => parseExerciseDislikes(value), [value]);
+  const selectedIds = parsedDislikes.selectedIds;
+  const customText = parsedDislikes.customText;
 
-  const filtered = useMemo(() => searchExerciseDislikeCatalog(search), [search]);
-  const grouped = useMemo(() => exercisesGroupedByCategory(filtered), [filtered]);
-  const flatList = useMemo(() => orderSheetExercises(filtered), [filtered]);
+  const [searchQuery, setSearchQuery] = useState('');
 
-  const toggleId = (id) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    const nextIds = idsWithToggledId(selectedIds, id);
-    onChange?.(serializeExerciseDislikes(nextIds, customText));
-  };
+  const searchHits = useMemo(() => searchExerciseDislikeCatalog(searchQuery), [searchQuery]);
+  const groupedSections = useMemo(() => categorySectionsFromSearchHits(searchHits), [searchHits]);
+  const flatSheetList = useMemo(() => flatSheetExerciseOrder(searchHits), [searchHits]);
 
-  const handleCustomChange = (text) => {
-    onChange?.(serializeExerciseDislikes(selectedIds, text));
-  };
-
+  const isPreferIntent = intent !== INTENT_DISLIKE;
+  const isSheetLayout = layout === LAYOUT_SHEET;
   const selectedCount = selectedIds.length;
-  const isPrefer = intent !== INTENT_DISLIKE;
-  const hintText = pickerHintText({ isPrefer, selectedCount });
-  const otherLabel = isPrefer ? 'Other exercises you prefer' : 'Other (not listed)';
-  const isSheet = layout === 'sheet';
+  const hintText = helperHintForPicker({ isPreferIntent, selectedCount });
 
-  const renderChipRow = (exercises) => (
-    <View style={styles.pillRow}>
-      {exercises.map((exercise) => (
-        <AvoidChip
-          key={exercise.id}
-          label={exercise.name}
-          selected={selectedIds.includes(exercise.id)}
-          onPress={() => toggleId(exercise.id)}
-        />
-      ))}
-    </View>
-  );
+  let otherFieldLabel = 'Other (not listed)';
+  if (isPreferIntent) {
+    otherFieldLabel = 'Other exercises you prefer';
+  }
 
-  return (
-    <View style={styles.root}>
-      {showHint ? (
-        <Text style={[styles.hint, { color: colors.nbMuted }]}>{hintText}</Text>
-      ) : null}
+  const noSearchMatches = searchHits.length === 0;
+  const mutedTextColor = pickerColors.nbMuted;
+  const mutedTextStyle = { color: mutedTextColor, fontSize: 13, marginTop: 8 };
 
-      {showSearch ? (
+  // 1. Haptic tap → flip id in serialized string → notify parent.
+  const toggleExerciseSelection = (exerciseId) => {
+    // vocab: impactAsync = fire-and-forget light haptic; ignore failures on unsupported devices
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    const nextSelectedIds = selectedIdsAfterToggle(selectedIds, exerciseId);
+    onChange?.(serializeExerciseDislikes(nextSelectedIds, customText));
+  };
+
+  const handleCustomTextChange = (nextCustomText) => {
+    onChange?.(serializeExerciseDislikes(selectedIds, nextCustomText));
+  };
+
+  let hintNode = null;
+  if (showHint) {
+    hintNode = (
+      <Text style={[pickerStyles.hint, { color: pickerColors.nbMuted }]}>{hintText}</Text>
+    );
+  }
+
+  let searchNode = null;
+  if (showSearch) {
+    searchNode = (
+      <TextInput
+        value={searchQuery}
+        onChangeText={setSearchQuery}
+        placeholder="Search exercises..."
+        placeholderTextColor={pickerColors.nbMuted}
+        style={[
+          pickerStyles.search,
+          {
+            color: pickerColors.nbInk,
+            backgroundColor: pickerColors.nbSurface,
+            borderColor: pickerColors.nbBorder,
+          },
+        ]}
+      />
+    );
+  }
+
+  let catalogNode;
+  if (isSheetLayout) {
+    catalogNode = (
+      <SheetExerciseList
+        flatSheetList={flatSheetList}
+        selectedIds={selectedIds}
+        onToggleExerciseId={toggleExerciseSelection}
+        mutedTextStyle={mutedTextStyle}
+      />
+    );
+  } else {
+    catalogNode = (
+      <GroupedCategoryLists
+        groupedSections={groupedSections}
+        selectedIds={selectedIds}
+        onToggleExerciseId={toggleExerciseSelection}
+        sectionLabelColor={pickerColors.nbMuted}
+      />
+    );
+  }
+
+  let emptyGroupedMessageNode = null;
+  if (!isSheetLayout && noSearchMatches) {
+    emptyGroupedMessageNode = <Text style={mutedTextStyle}>{EMPTY_CATALOG_MESSAGE}</Text>;
+  }
+
+  let otherFieldNode = null;
+  if (showOtherField) {
+    otherFieldNode = (
+      <View style={{ marginTop: 12 }}>
+        <Text style={[pickerStyles.sectionLabel, { color: pickerColors.nbMuted }]}>
+          {otherFieldLabel}
+        </Text>
         <TextInput
-          value={search}
-          onChangeText={setSearch}
-          placeholder="Search exercises..."
-          placeholderTextColor={colors.nbMuted}
+          value={customText}
+          onChangeText={handleCustomTextChange}
+          placeholder="e.g. sled drags, specific machine at your gym..."
+          placeholderTextColor={pickerColors.nbMuted}
+          multiline
           style={[
-            styles.search,
+            pickerStyles.otherInput,
             {
-              color: colors.nbInk,
-              backgroundColor: colors.nbSurface,
-              borderColor: colors.nbBorder,
+              color: pickerColors.nbInk,
+              backgroundColor: pickerColors.nbSurface,
+              borderColor: pickerColors.nbBorder,
             },
           ]}
         />
-      ) : null}
+      </View>
+    );
+  }
 
-      {isSheet ? (
-        flatList.length ? (
-          renderChipRow(flatList)
-        ) : (
-          <Text style={{ color: colors.nbMuted, fontSize: 13, marginTop: 8 }}>
-            No matches — add a custom exercise below.
-          </Text>
-        )
-      ) : (
-        grouped.map((section) => (
-          <View key={section.id} style={styles.section}>
-            <Text style={[styles.sectionLabel, { color: colors.nbMuted }]}>{section.label}</Text>
-            {renderChipRow(section.exercises)}
-          </View>
-        ))
-      )}
-
-      {!isSheet && !grouped.length ? (
-        <Text style={{ color: colors.nbMuted, fontSize: 13, marginTop: 8 }}>
-          No matches — add a custom exercise below.
-        </Text>
-      ) : null}
-
-      {showOtherField ? (
-        <View style={{ marginTop: 12 }}>
-          <Text style={[styles.sectionLabel, { color: colors.nbMuted }]}>{otherLabel}</Text>
-          <TextInput
-            value={customText}
-            onChangeText={handleCustomChange}
-            placeholder="e.g. sled drags, specific machine at your gym..."
-            placeholderTextColor={colors.nbMuted}
-            multiline
-            style={[
-              styles.otherInput,
-              {
-                color: colors.nbInk,
-                backgroundColor: colors.nbSurface,
-                borderColor: colors.nbBorder,
-              },
-            ]}
-          />
-        </View>
-      ) : null}
+  return (
+    <View style={pickerStyles.root}>
+      {hintNode}
+      {searchNode}
+      {catalogNode}
+      {emptyGroupedMessageNode}
+      {otherFieldNode}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+// ===== PLUMBING — skip unless debugging =====
+
+const chipStyles = StyleSheet.create({
+  chipShadow: {
+    marginBottom: 2,
+  },
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 999,
+    borderWidth: nb.borderWidth,
+  },
+  chipText: {
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 14,
+  },
+  chipCheck: {
+    marginLeft: 6,
+  },
+});
+
+const pickerStyles = StyleSheet.create({
   root: {
     marginTop: 4,
   },
@@ -301,24 +473,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
-  },
-  chipShadow: {
-    marginBottom: 2,
-  },
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 999,
-    borderWidth: nb.borderWidth,
-  },
-  chipText: {
-    fontFamily: 'SpaceGrotesk_700Bold',
-    fontSize: 14,
-  },
-  chipCheck: {
-    marginLeft: 6,
   },
   otherInput: {
     borderWidth: nb.borderWidth,

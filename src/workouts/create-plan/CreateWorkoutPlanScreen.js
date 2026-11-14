@@ -1,27 +1,11 @@
 // Create / review / generate a personalized workout plan from onboarding answers.
 // Flow: Design Law New plan (PNG 13) → edit profile rows → Generate / Ask trainer → Building (PNG 15) → MyWorkoutPlan viewer.
 // Used by client Workout tab and trainer client views. Re-exports usage helpers and askForWorkoutPlan.
+// Read order: constants + plan-builder chrome → MAIN CreateWorkoutPlanScreen (hooks + numbered handlers) → PLUMBING (parse / normalize / load).
 // Key exports: CreateWorkoutPlanScreen (default), plus re-exports from countPlansCreated / askForWorkoutPlan.
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  Animated,
-  AppState,
-  Dimensions,
-  FlatList,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Alert, Animated, AppState, Dimensions, FlatList, KeyboardAvoidingView, Modal, Platform, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -50,70 +34,29 @@ import { lightColors, darkColors, gradients, nb, borderRadius, accentGradients, 
 import WorkoutPlanBuilderFieldEditBody from '../create-plan/editPlanFieldForms';
 import ProfileIcon from '../../for-both/icons/ProfileIcon';
 import SectionTitle from '../../for-both/home-cards/SectionTitle';
-import {
-  PROFILE_CARD_ICON_SIZE,
-  PROFILE_FIELD_ICON_ID,
-  profileCardIconWrapStyle,
-} from '../../for-both/profileCardIconSizes';
-import {
-  filterProfileCardSections,
-  getProfileCardSectionLabels,
-} from '../../for-both/whichProfileCardsToShow';
+import { PROFILE_CARD_ICON_SIZE, PROFILE_FIELD_ICON_ID, profileCardIconWrapStyle } from '../../for-both/profileCardIconSizes';
+import { filterProfileCardSections, getProfileCardSectionLabels } from '../../for-both/whichProfileCardsToShow';
 import { saveGeneratedPlanToCollection, getCurrentWorkoutPlan, setCurrentWorkoutPlan } from './saveAndLoadWorkoutPlan';
 import { nameWorkoutPlan } from './nameWorkoutPlan';
 import Markdown from 'react-native-markdown-display';
 import { useAI } from '../../for-both/app-wide-settings/AIPermission';
 import { getOrCreateConversation, sendClientRequest, getUserData, CLIENT_REQUEST_TYPES } from '../../ai-coach/coach-actions/alertTrainer';
-import {
-  stripMarkdown,
-  stripEmojis,
-} from '../view-plan/makePlanPdf';
+import { stripMarkdown, stripEmojis } from '../view-plan/makePlanPdf';
 import PlanPdfViewer from '../view-plan/PlanPdfViewer';
 import MyWorkoutPlanScreen from '../../client-app/workout-plans/MyWorkoutPlanScreen';
 import ExerciseVideosTab from '../exercise-videos/ExerciseVideosTab';
 import { EditModalForm } from './EditWorkoutPopup';
-import {
-  PLAN_LIMIT_TOTAL,
-  nextMonthResetDate,
-  nextMonthResetsAtIso,
-  formatWorkoutLimitResetLabel,
-  resolveWorkoutGenerationUsage,
-} from '../create-plan/countPlansCreated';
-import {
-  askForWorkoutPlanFromApi,
-  loadOnboardingAndPlanArtifacts,
-  generateWorkoutPlanWithClaude,
-} from '../create-plan/askForWorkoutPlan';
-import {
-  readWorkoutGenerationSession,
-  markWorkoutGenerationStarted,
-  markWorkoutGenerationSucceeded,
-  markWorkoutGenerationFailed,
-  clearWorkoutPlanReadyBadge,
-  subscribeWorkoutGenerationSession,
-} from '../create-plan/keepPlanBuildingInBackground';
+import { PLAN_LIMIT_TOTAL, nextMonthResetDate, nextMonthResetsAtIso, formatWorkoutLimitResetLabel, resolveWorkoutGenerationUsage } from '../create-plan/countPlansCreated';
+import { askForWorkoutPlanFromApi, loadOnboardingAndPlanArtifacts, generateWorkoutPlanWithClaude } from '../create-plan/askForWorkoutPlan';
+import { readWorkoutGenerationSession, markWorkoutGenerationStarted, markWorkoutGenerationSucceeded, markWorkoutGenerationFailed, clearWorkoutPlanReadyBadge, subscribeWorkoutGenerationSession } from '../create-plan/keepPlanBuildingInBackground';
 import { normalizeClientProfileFields } from '../../helpers/fillTraineeProfile';
-
-export {
-  WORKOUT_GENERATION_LIMIT,
-  PLAN_LIMIT_TOTAL,
-  nextMonthResetDate,
-  nextMonthResetsAtIso,
-  formatWorkoutLimitResetLabel,
-  resolveWorkoutGenerationUsage,
-  loadWorkoutGenerationUsage,
-} from '../create-plan/countPlansCreated';
-export {
-  askForWorkoutPlanFromApi,
-  loadOnboardingAndPlanArtifacts,
-  generateWorkoutPlanWithClaude,
-} from '../create-plan/askForWorkoutPlan';
+export { WORKOUT_GENERATION_LIMIT, PLAN_LIMIT_TOTAL, nextMonthResetDate, nextMonthResetsAtIso, formatWorkoutLimitResetLabel, resolveWorkoutGenerationUsage, loadWorkoutGenerationUsage } from '../create-plan/countPlansCreated';
+export { askForWorkoutPlanFromApi, loadOnboardingAndPlanArtifacts, generateWorkoutPlanWithClaude } from '../create-plan/askForWorkoutPlan';
 
 // ===== NAMED CONSTANTS =====
 
 /** Survives screen unmount so ClientAppStart / logs can tell a request is still running */
 let workoutPlanGenerationInFlight = false;
-
 const EMPTY_DISPLAY = '—';
 const INCHES_PER_FOOT = 12;
 const MIN_HEIGHT_INCHES = 36;
@@ -140,38 +83,43 @@ const MIN_EXERCISE_NAME_LENGTH = 3;
 const MIN_BULLET_CONTENT_LENGTH = 2;
 
 // Manipulate here: top Workout tab labels (Exercise Library was removed in New plan rewrite — keep both)
-const WORKOUT_ROOT_SEGMENTS = [
-  { id: 'plans', label: 'Workout Plans' },
-  { id: 'library', label: 'Exercise Library' },
-];
+const WORKOUT_ROOT_SEGMENTS = [{
+  id: 'plans',
+  label: 'Workout Plans'
+}, {
+  id: 'library',
+  label: 'Exercise Library'
+}];
 
 // ===== HELPER FUNCTIONS =====
 
-const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
-
-/**
- * Profile height label: `{ feet, inches }` object or legacy total inches (number).
- * @param {*} heightValue
- * @returns {string}
- */
-function formatFeetInchesFromObject(heightObject) {
+function clampNumberBetween(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+function heightLabelFromFeetInchesObject(heightObject) {
   const feetRaw = heightObject.feet;
   const inchesRaw = heightObject.inches;
   const hasFeet = feetRaw != null && feetRaw !== '';
   const hasInches = inchesRaw != null && inchesRaw !== '';
-  if (!hasFeet && !hasInches) return EMPTY_DISPLAY;
+  if (!hasFeet && !hasInches) {
+    return EMPTY_DISPLAY;
+  }
   const feet = hasFeet ? Number(feetRaw) : 0;
   const inches = hasInches ? Number(inchesRaw) : 0;
-  if (!Number.isFinite(feet) || !Number.isFinite(inches)) return EMPTY_DISPLAY;
+  if (!Number.isFinite(feet) || !Number.isFinite(inches)) {
+    return EMPTY_DISPLAY;
+  }
   return `${feet}'${inches}"`;
 }
-
-function formatFeetInchesFromTotalInches(heightValue) {
-  const totalInches =
-    typeof heightValue === 'number'
-      ? heightValue
-      : Number(String(heightValue).replace(/[^0-9.]/g, ''));
-  if (!Number.isFinite(totalInches)) return EMPTY_DISPLAY;
+function heightLabelFromTotalInches(heightValue) {
+  let totalInches = heightValue;
+  if (typeof heightValue !== 'number') {
+    const digitsOnly = String(heightValue).replace(/[^0-9.]/g, '');
+    totalInches = Number(digitsOnly);
+  }
+  if (!Number.isFinite(totalInches)) {
+    return EMPTY_DISPLAY;
+  }
   if (totalInches < MIN_HEIGHT_INCHES || totalInches > MAX_HEIGHT_INCHES) {
     return EMPTY_DISPLAY;
   }
@@ -180,94 +128,163 @@ function formatFeetInchesFromTotalInches(heightValue) {
   const leftoverInches = roundedInches % INCHES_PER_FOOT;
   return `${feet}'${leftoverInches}"`;
 }
-
 function formatProfileHeightDisplay(heightValue) {
-  if (heightValue == null) return EMPTY_DISPLAY;
-  if (typeof heightValue === 'object') return formatFeetInchesFromObject(heightValue);
-  return formatFeetInchesFromTotalInches(heightValue);
+  if (heightValue == null) {
+    return EMPTY_DISPLAY;
+  }
+  if (typeof heightValue === 'object') {
+    return heightLabelFromFeetInchesObject(heightValue);
+  }
+  return heightLabelFromTotalInches(heightValue);
 }
-
 const MARKDOWN_STYLES = {
-  body: { color: 'rgba(255,255,255,0.9)', fontSize: 14, lineHeight: 22 },
-  heading1: { color: '#ffffff', fontSize: 20, fontWeight: '800', marginBottom: 12, marginTop: 8 },
-  heading2: { color: '#ffffff', fontSize: 16, fontWeight: '700', marginBottom: 8, marginTop: 16 },
-  strong: { color: '#ffffff', fontWeight: '700' },
-  hr: { backgroundColor: 'rgba(255,255,255,0.1)', height: 1, marginVertical: 16 },
-  paragraph: { color: 'rgba(255,255,255,0.8)', fontSize: 14, lineHeight: 22, marginBottom: 8 },
-  bullet_list: { marginBottom: 8 },
-  list_item: { color: 'rgba(255,255,255,0.8)', fontSize: 14, lineHeight: 22 },
+  body: {
+    color: 'rgba(255,255,255,0.9)',
+    fontSize: 14,
+    lineHeight: 22
+  },
+  heading1: {
+    color: '#ffffff',
+    fontSize: 20,
+    fontWeight: '800',
+    marginBottom: 12,
+    marginTop: 8
+  },
+  heading2: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 8,
+    marginTop: 16
+  },
+  strong: {
+    color: '#ffffff',
+    fontWeight: '700'
+  },
+  hr: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    height: 1,
+    marginVertical: 16
+  },
+  paragraph: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 14,
+    lineHeight: 22,
+    marginBottom: 8
+  },
+  bullet_list: {
+    marginBottom: 8
+  },
+  list_item: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 14,
+    lineHeight: 22
+  }
 };
-
 const MARKDOWN_STYLES_LIGHT = {
-  body: { color: 'rgba(30,16,64,0.9)', fontSize: 14, lineHeight: 22 },
-  heading1: { color: '#0A0A0A', fontSize: 20, fontWeight: '800', marginBottom: 12, marginTop: 8 },
-  heading2: { color: '#0A0A0A', fontSize: 16, fontWeight: '700', marginBottom: 8, marginTop: 16 },
-  strong: { color: '#0A0A0A', fontWeight: '700' },
-  hr: { backgroundColor: 'rgba(0,0,0,0.12)', height: 1, marginVertical: 16 },
-  paragraph: { color: 'rgba(30,16,64,0.85)', fontSize: 14, lineHeight: 22, marginBottom: 8 },
-  bullet_list: { marginBottom: 8 },
-  list_item: { color: 'rgba(30,16,64,0.85)', fontSize: 14, lineHeight: 22 },
+  body: {
+    color: 'rgba(30,16,64,0.9)',
+    fontSize: 14,
+    lineHeight: 22
+  },
+  heading1: {
+    color: '#0A0A0A',
+    fontSize: 20,
+    fontWeight: '800',
+    marginBottom: 12,
+    marginTop: 8
+  },
+  heading2: {
+    color: '#0A0A0A',
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 8,
+    marginTop: 16
+  },
+  strong: {
+    color: '#0A0A0A',
+    fontWeight: '700'
+  },
+  hr: {
+    backgroundColor: 'rgba(0,0,0,0.12)',
+    height: 1,
+    marginVertical: 16
+  },
+  paragraph: {
+    color: 'rgba(30,16,64,0.85)',
+    fontSize: 14,
+    lineHeight: 22,
+    marginBottom: 8
+  },
+  bullet_list: {
+    marginBottom: 8
+  },
+  list_item: {
+    color: 'rgba(30,16,64,0.85)',
+    fontSize: 14,
+    lineHeight: 22
+  }
 };
 
-/** Strip ALL markdown symbols before rendering. No raw markdown ever visible. */
-function cleanText(str) {
-  if (str == null || typeof str !== 'string') return '';
-  return String(str)
-    .replace(/\*\*([^*]*)\*\*/g, '$1')
-    .replace(/\*([^*]*)\*/g, '$1')
-    .replace(/__([^_]*)__/g, '$1')
-    .replace(/_([^_]*)_/g, '$1')
-    .replace(/^#{1,6}\s*/gm, '')
-    .replace(/^[-*•]\s*/gm, '')
-    .replace(/^\d+\.\s*/gm, '')
-    .replace(/^---+\s*$/gm, '')
-    .replace(/\|[-:\s|]+\|/g, '')
-    .replace(/\|/g, ' ')
-    .replace(/\s+/g, ' ')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
+// Strip markdown decoration so plan viewer never shows raw ** or ## tokens.
+function stripMarkdownDecorationsFromLine(str) {
+  if (str == null || typeof str !== 'string') {
+    return '';
+  }
+  let plain = String(str);
+  plain = plain.replace(/\*\*([^*]*)\*\*/g, '$1');
+  plain = plain.replace(/\*([^*]*)\*/g, '$1');
+  plain = plain.replace(/__([^_]*)__/g, '$1');
+  plain = plain.replace(/_([^_]*)_/g, '$1');
+  plain = plain.replace(/^#{1,6}\s*/gm, '');
+  plain = plain.replace(/^[-*•]\s*/gm, '');
+  plain = plain.replace(/^\d+\.\s*/gm, '');
+  plain = plain.replace(/^---+\s*$/gm, '');
+  plain = plain.replace(/\|[-:\s|]+\|/g, '');
+  plain = plain.replace(/\|/g, ' ');
+  plain = plain.replace(/\s+/g, ' ');
+  plain = plain.replace(/\n{3,}/g, '\n\n');
+  return plain.trim();
 }
-
-/**
- * Robustly extract a JSON object from an API response that may contain
- * prose, markdown fences, or other noise around the JSON.
- */
-/**
- * Pull the outermost JSON object out of an API reply that may wrap it in fences or prose.
- * @param {string} rawText
- * @returns {string}
- */
-function stripMarkdownJsonFence(rawText) {
+function cleanText(str) {
+  return stripMarkdownDecorationsFromLine(str);
+}
+function removeMarkdownCodeFenceFromReply(rawText) {
   let text = rawText.trim();
   const fencePattern = /```(?:json)?\s*\n?/i;
   const fenceHit = text.match(fencePattern);
   if (fenceHit && fenceHit.index != null) {
     text = text.slice(fenceHit.index + fenceHit[0].length);
     const closeIndex = text.indexOf('```');
-    if (closeIndex !== -1) text = text.slice(0, closeIndex).trim();
+    if (closeIndex !== -1) {
+      text = text.slice(0, closeIndex).trim();
+    }
     return text;
   }
   return text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
 }
-
-function sliceOutermostJsonObject(text) {
+function keepOnlyOutermostJsonBraces(text) {
   const firstBrace = text.indexOf('{');
   const lastBrace = text.lastIndexOf('}');
-  if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) return text;
+  if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
+    return text;
+  }
   return text.slice(firstBrace, lastBrace + 1);
 }
-
 function extractJSON(rawText) {
-  if (!rawText || typeof rawText !== 'string') return '';
-  const withoutFence = stripMarkdownJsonFence(rawText);
-  return sliceOutermostJsonObject(withoutFence).trim();
+  if (!rawText || typeof rawText !== 'string') {
+    return '';
+  }
+  const withoutFence = removeMarkdownCodeFenceFromReply(rawText);
+  return keepOnlyOutermostJsonBraces(withoutFence).trim();
 }
-
 function tryParseJsonObject(str) {
   try {
-    const raw = extractJSON(String(str || ''));
-    if (!raw) return null;
-    return JSON.parse(raw);
+    const jsonSlice = extractJSON(String(str || ''));
+    if (!jsonSlice) {
+      return null;
+    }
+    return JSON.parse(jsonSlice);
   } catch {
     return null;
   }
@@ -285,28 +302,18 @@ const PLAN_BUILDER_COLORS = {
   purple: gradients.water.colors[0],
   cyan: gradients.water.colors[0],
   orange: gradients.brand.colors[1],
-  green: lightColors.nbMuted,
+  green: lightColors.nbMuted
 };
-
-const WORKOUT_PLAN_BUILDER_SECTIONS = [
-  { sectionLabel: 'Profile', keys: ['personalInfo', 'fitnessLevel', 'goal'] },
-  {
-    sectionLabel: 'Training Setup',
-    keys: ['equipment', 'frequency', 'trainingEnvironment', 'preferredWorkoutTime', 'exercisesDislike'],
-  },
-  {
-    sectionLabel: 'Recovery & Extras',
-    keys: [
-      'injuries',
-      'supplementsCurrentlyTaking',
-      'currentStressLevel',
-      'sleepQuality',
-      'energyLevels',
-      'hydrationHabits',
-      'situationDescription',
-    ],
-  },
-];
+const WORKOUT_PLAN_BUILDER_SECTIONS = [{
+  sectionLabel: 'Profile',
+  keys: ['personalInfo', 'fitnessLevel', 'goal']
+}, {
+  sectionLabel: 'Training Setup',
+  keys: ['equipment', 'frequency', 'trainingEnvironment', 'preferredWorkoutTime', 'exercisesDislike']
+}, {
+  sectionLabel: 'Recovery & Extras',
+  keys: ['injuries', 'supplementsCurrentlyTaking', 'currentStressLevel', 'sleepQuality', 'energyLevels', 'hydrationHabits', 'situationDescription']
+}];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // NEW UI (Lovable hero + pills) — UI ONLY, same editing/generation logic
@@ -314,31 +321,100 @@ const WORKOUT_PLAN_BUILDER_SECTIONS = [
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Legacy accent slots for profile-card grid indexing (no pink rims — chips use nbSurface/nbFill). */
-const LOVABLE_ACCENTS = [
-  { key: 'ink-a', gradient: [lightColors.nbFill, lightColors.nbMuted], text: lightColors.nbInk },
-  { key: 'ink-b', gradient: [lightColors.nbMuted, lightColors.nbFill], text: lightColors.nbInk },
-  { key: 'ink-c', gradient: [lightColors.nbFill, lightColors.nbBorder], text: lightColors.nbInk },
-  { key: 'ink-d', gradient: [lightColors.nbBorder, lightColors.nbMuted], text: lightColors.nbInk },
-];
-
-const LOVABLE_PILLS = [
-  { key: 'personalInfo', label: 'Personal', helper: 'age/height/weight', icon: 'person-outline' },
-  { key: 'fitnessLevel', label: 'Level', helper: 'training status', icon: 'flame-outline' },
-  { key: 'goal', label: 'Goal', helper: 'primary goal', icon: 'trophy-outline' },
-  { key: 'equipment', label: 'Equipment', helper: 'available tools', icon: 'barbell-outline' },
-  { key: 'frequency', label: 'Frequency', helper: 'weekly sessions', icon: 'calendar-outline' },
-  { key: 'trainingEnvironment', label: 'Environment', helper: 'training place', icon: 'navigate-outline' },
-  { key: 'preferredWorkoutTime', label: 'Workout time', helper: 'preferred time', icon: 'time-outline' },
-  { key: 'exercisesDislike', label: 'Prefer', helper: 'exercise preferences', icon: 'heart-outline' },
-  { key: 'injuries', label: 'Injuries', helper: 'limitations', icon: 'heart-outline' },
-  { key: 'supplementsCurrentlyTaking', label: 'Supplements', helper: 'currently taking', icon: 'star-outline' },
-  { key: 'currentStressLevel', label: 'Stress', helper: 'current level', icon: 'water-outline' },
-  { key: 'sleepQuality', label: 'Sleep', helper: 'sleep quality', icon: 'moon-outline' },
-  { key: 'energyLevels', label: 'Energy', helper: 'daily energy', icon: 'battery-charging-outline' },
-  { key: 'hydrationHabits', label: 'Hydration', helper: 'water habits', icon: 'water-outline' },
-  { key: 'situationDescription', label: 'My journey', helper: 'tap to expand', icon: 'document-text-outline', wide: true },
-];
-
+const LOVABLE_ACCENTS = [{
+  key: 'ink-a',
+  gradient: [lightColors.nbFill, lightColors.nbMuted],
+  text: lightColors.nbInk
+}, {
+  key: 'ink-b',
+  gradient: [lightColors.nbMuted, lightColors.nbFill],
+  text: lightColors.nbInk
+}, {
+  key: 'ink-c',
+  gradient: [lightColors.nbFill, lightColors.nbBorder],
+  text: lightColors.nbInk
+}, {
+  key: 'ink-d',
+  gradient: [lightColors.nbBorder, lightColors.nbMuted],
+  text: lightColors.nbInk
+}];
+const LOVABLE_PILLS = [{
+  key: 'personalInfo',
+  label: 'Personal',
+  helper: 'age/height/weight',
+  icon: 'person-outline'
+}, {
+  key: 'fitnessLevel',
+  label: 'Level',
+  helper: 'training status',
+  icon: 'flame-outline'
+}, {
+  key: 'goal',
+  label: 'Goal',
+  helper: 'primary goal',
+  icon: 'trophy-outline'
+}, {
+  key: 'equipment',
+  label: 'Equipment',
+  helper: 'available tools',
+  icon: 'barbell-outline'
+}, {
+  key: 'frequency',
+  label: 'Frequency',
+  helper: 'weekly sessions',
+  icon: 'calendar-outline'
+}, {
+  key: 'trainingEnvironment',
+  label: 'Environment',
+  helper: 'training place',
+  icon: 'navigate-outline'
+}, {
+  key: 'preferredWorkoutTime',
+  label: 'Workout time',
+  helper: 'preferred time',
+  icon: 'time-outline'
+}, {
+  key: 'exercisesDislike',
+  label: 'Prefer',
+  helper: 'exercise preferences',
+  icon: 'heart-outline'
+}, {
+  key: 'injuries',
+  label: 'Injuries',
+  helper: 'limitations',
+  icon: 'heart-outline'
+}, {
+  key: 'supplementsCurrentlyTaking',
+  label: 'Supplements',
+  helper: 'currently taking',
+  icon: 'star-outline'
+}, {
+  key: 'currentStressLevel',
+  label: 'Stress',
+  helper: 'current level',
+  icon: 'water-outline'
+}, {
+  key: 'sleepQuality',
+  label: 'Sleep',
+  helper: 'sleep quality',
+  icon: 'moon-outline'
+}, {
+  key: 'energyLevels',
+  label: 'Energy',
+  helper: 'daily energy',
+  icon: 'battery-charging-outline'
+}, {
+  key: 'hydrationHabits',
+  label: 'Hydration',
+  helper: 'water habits',
+  icon: 'water-outline'
+}, {
+  key: 'situationDescription',
+  label: 'My journey',
+  helper: 'tap to expand',
+  icon: 'document-text-outline',
+  wide: true
+}];
 const WORKOUT_BUILDER_ROW_META = {
   personalInfo: {
     label: 'Personal Info',
@@ -346,7 +422,7 @@ const WORKOUT_BUILDER_ROW_META = {
     multiline: false,
     icon: 'person-outline',
     iconLib: 'ion',
-    color: PLAN_BUILDER_COLORS.pink,
+    color: PLAN_BUILDER_COLORS.pink
   },
   fitnessLevel: {
     label: 'Fitness Level',
@@ -354,7 +430,7 @@ const WORKOUT_BUILDER_ROW_META = {
     multiline: false,
     icon: 'dumbbell',
     iconLib: 'mci',
-    color: PLAN_BUILDER_COLORS.purple,
+    color: PLAN_BUILDER_COLORS.purple
   },
   goal: {
     label: 'Goal',
@@ -362,7 +438,7 @@ const WORKOUT_BUILDER_ROW_META = {
     multiline: false,
     icon: 'trophy-outline',
     iconLib: 'ion',
-    color: PLAN_BUILDER_COLORS.orange,
+    color: PLAN_BUILDER_COLORS.orange
   },
   equipment: {
     label: 'Available Equipment',
@@ -370,7 +446,7 @@ const WORKOUT_BUILDER_ROW_META = {
     multiline: false,
     icon: 'cube-outline',
     iconLib: 'ion',
-    color: PLAN_BUILDER_COLORS.cyan,
+    color: PLAN_BUILDER_COLORS.cyan
   },
   frequency: {
     label: 'Frequency',
@@ -378,7 +454,7 @@ const WORKOUT_BUILDER_ROW_META = {
     multiline: false,
     icon: 'calendar-outline',
     iconLib: 'ion',
-    color: PLAN_BUILDER_COLORS.purple,
+    color: PLAN_BUILDER_COLORS.purple
   },
   trainingEnvironment: {
     label: 'Environment',
@@ -386,7 +462,7 @@ const WORKOUT_BUILDER_ROW_META = {
     multiline: false,
     icon: 'leaf-outline',
     iconLib: 'ion',
-    color: PLAN_BUILDER_COLORS.green,
+    color: PLAN_BUILDER_COLORS.green
   },
   preferredWorkoutTime: {
     label: 'Workout Time',
@@ -394,7 +470,7 @@ const WORKOUT_BUILDER_ROW_META = {
     multiline: false,
     icon: 'time-outline',
     iconLib: 'ion',
-    color: PLAN_BUILDER_COLORS.orange,
+    color: PLAN_BUILDER_COLORS.orange
   },
   exercisesDislike: {
     label: 'Exercises Preferred',
@@ -402,7 +478,7 @@ const WORKOUT_BUILDER_ROW_META = {
     multiline: false,
     icon: 'close-circle-outline',
     iconLib: 'ion',
-    color: PLAN_BUILDER_COLORS.pink,
+    color: PLAN_BUILDER_COLORS.pink
   },
   injuries: {
     label: 'Any Injuries',
@@ -410,7 +486,7 @@ const WORKOUT_BUILDER_ROW_META = {
     multiline: false,
     icon: 'bandage-outline',
     iconLib: 'ion',
-    color: PLAN_BUILDER_COLORS.green,
+    color: PLAN_BUILDER_COLORS.green
   },
   supplementsCurrentlyTaking: {
     label: 'Supplements',
@@ -418,7 +494,7 @@ const WORKOUT_BUILDER_ROW_META = {
     multiline: false,
     icon: 'medical-bag',
     iconLib: 'mci',
-    color: PLAN_BUILDER_COLORS.green,
+    color: PLAN_BUILDER_COLORS.green
   },
   currentStressLevel: {
     label: 'Stress Level',
@@ -426,7 +502,7 @@ const WORKOUT_BUILDER_ROW_META = {
     multiline: false,
     icon: 'pulse-outline',
     iconLib: 'ion',
-    color: PLAN_BUILDER_COLORS.purple,
+    color: PLAN_BUILDER_COLORS.purple
   },
   sleepQuality: {
     label: 'Sleep',
@@ -434,7 +510,7 @@ const WORKOUT_BUILDER_ROW_META = {
     multiline: false,
     icon: 'moon-outline',
     iconLib: 'ion',
-    color: PLAN_BUILDER_COLORS.cyan,
+    color: PLAN_BUILDER_COLORS.cyan
   },
   energyLevels: {
     label: 'Energy',
@@ -442,7 +518,7 @@ const WORKOUT_BUILDER_ROW_META = {
     multiline: false,
     icon: 'battery-charging',
     iconLib: 'mci',
-    color: PLAN_BUILDER_COLORS.orange,
+    color: PLAN_BUILDER_COLORS.orange
   },
   hydrationHabits: {
     label: 'Hydration',
@@ -450,7 +526,7 @@ const WORKOUT_BUILDER_ROW_META = {
     multiline: false,
     icon: 'water-outline',
     iconLib: 'ion',
-    color: PLAN_BUILDER_COLORS.cyan,
+    color: PLAN_BUILDER_COLORS.cyan
   },
   situationDescription: {
     label: 'My Journey',
@@ -458,53 +534,50 @@ const WORKOUT_BUILDER_ROW_META = {
     multiline: true,
     icon: 'book-outline',
     iconLib: 'ion',
-    color: PLAN_BUILDER_COLORS.orange,
-  },
+    color: PLAN_BUILDER_COLORS.orange
+  }
 };
-
+function capitalizeFirstLetterOfEachWord(snakeOrPlain) {
+  return String(snakeOrPlain || '').replace('_', ' ').replace(/\b\w/g, wordChar => wordChar.toUpperCase());
+}
+function titleCaseWord(word) {
+  if (!word) {
+    return '';
+  }
+  return word.charAt(0).toUpperCase() + word.slice(1);
+}
 function getWorkoutBuilderFieldRawDisplay(key, onboardingData) {
-  if (!onboardingData) return '';
+  var _optObj, _optObj2, _optFn, _optObj3;
+  if (!onboardingData) {
+    return '';
+  }
   switch (key) {
     case 'personalInfo':
-      return `${onboardingData.gender || 'N/A'}, ${onboardingData.age || 'N/A'}yrs, ${onboardingData.weight || 'N/A'}lbs, ${onboardingData.height?.feet || 0}'${onboardingData.height?.inches || 0}"`;
+      return `${onboardingData.gender || 'N/A'}, ${onboardingData.age || 'N/A'}yrs, ${onboardingData.weight || 'N/A'}lbs, ${((_optObj = onboardingData.height) == null ? void 0 : _optObj.feet) || 0}'${((_optObj2 = onboardingData.height) == null ? void 0 : _optObj2.inches) || 0}"`;
     case 'fitnessLevel':
-      return onboardingData.fitnessLevel
-        ? onboardingData.fitnessLevel.charAt(0).toUpperCase() + onboardingData.fitnessLevel.slice(1)
-        : 'Not set';
+      return onboardingData.fitnessLevel ? titleCaseWord(onboardingData.fitnessLevel) : 'Not set';
     case 'goal':
-      return onboardingData.primaryGoal
-        ? onboardingData.primaryGoal.replace('_', ' ').replace(/\b\w/g, (l) => l.toUpperCase())
-        : 'Not set';
+      return onboardingData.primaryGoal ? capitalizeFirstLetterOfEachWord(onboardingData.primaryGoal) : 'Not set';
     case 'equipment':
-      return onboardingData.equipmentAccess?.join(', ') || 'None selected';
+      return ((_optFn = (_optObj3 = onboardingData.equipmentAccess) == null ? void 0 : _optObj3.join) == null ? void 0 : _optFn(', ')) || 'None selected';
     case 'frequency':
       return `${onboardingData.daysPerWeek || 0} days per week`;
     case 'injuries':
       return onboardingData.injuries || 'None reported';
     case 'trainingEnvironment':
-      return onboardingData.trainingEnvironment
-        ? onboardingData.trainingEnvironment.charAt(0).toUpperCase() + onboardingData.trainingEnvironment.slice(1)
-        : 'Not set';
+      return onboardingData.trainingEnvironment ? titleCaseWord(onboardingData.trainingEnvironment) : 'Not set';
     case 'preferredWorkoutTime':
-      return onboardingData.preferredWorkoutTime
-        ? onboardingData.preferredWorkoutTime.charAt(0).toUpperCase() + onboardingData.preferredWorkoutTime.slice(1)
-        : 'Not set';
+      return onboardingData.preferredWorkoutTime ? titleCaseWord(onboardingData.preferredWorkoutTime) : 'Not set';
     case 'exercisesDislike':
       return onboardingData.exercisesDislike || 'None';
     case 'supplementsCurrentlyTaking':
       return onboardingData.supplementsCurrentlyTaking || 'None';
     case 'currentStressLevel':
-      return onboardingData.currentStressLevel
-        ? onboardingData.currentStressLevel.charAt(0).toUpperCase() + onboardingData.currentStressLevel.slice(1)
-        : 'Not set';
+      return onboardingData.currentStressLevel ? titleCaseWord(onboardingData.currentStressLevel) : 'Not set';
     case 'sleepQuality':
-      return onboardingData.sleepQuality
-        ? onboardingData.sleepQuality.charAt(0).toUpperCase() + onboardingData.sleepQuality.slice(1)
-        : 'Not set';
+      return onboardingData.sleepQuality ? titleCaseWord(onboardingData.sleepQuality) : 'Not set';
     case 'energyLevels':
-      return onboardingData.energyLevels
-        ? onboardingData.energyLevels.charAt(0).toUpperCase() + onboardingData.energyLevels.slice(1)
-        : 'Not set';
+      return onboardingData.energyLevels ? titleCaseWord(onboardingData.energyLevels) : 'Not set';
     case 'hydrationHabits':
       if (onboardingData.hydrationHabits === 'less_than_4') return 'Less than 4 cups/day';
       if (onboardingData.hydrationHabits === '4_8') return '4–8 cups/day';
@@ -516,43 +589,42 @@ function getWorkoutBuilderFieldRawDisplay(key, onboardingData) {
       return '';
   }
 }
-
 const planBuilderRefStyles = StyleSheet.create({
   borderCardContainer: {
-    overflow: 'hidden',
+    overflow: 'hidden'
   },
   borderGradient: {
-    justifyContent: 'center',
+    justifyContent: 'center'
   },
   cardInner: {
-    overflow: 'hidden',
+    overflow: 'hidden'
   },
   rowContainer: {
     flexDirection: 'row',
     paddingVertical: 14,
     paddingHorizontal: 16,
-    gap: 12,
+    gap: 12
   },
   iconContainer: {
     width: 24,
     height: 24,
     justifyContent: 'center',
-    alignItems: 'center',
+    alignItems: 'center'
   },
   rowContent: {
-    flex: 1,
+    flex: 1
   },
   rowLabel: {
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 1,
     textTransform: 'uppercase',
-    marginBottom: 4,
+    marginBottom: 4
   },
   rowValue: {
     fontSize: 14,
     fontWeight: '700',
-    lineHeight: 20,
+    lineHeight: 20
   },
   sectionLabel: {
     fontSize: 11,
@@ -560,12 +632,12 @@ const planBuilderRefStyles = StyleSheet.create({
     letterSpacing: 2,
     textTransform: 'uppercase',
     marginBottom: 8,
-    paddingLeft: 4,
+    paddingLeft: 4
   },
   themeToggleContainer: {
     paddingHorizontal: 16,
     paddingBottom: 12,
-    alignItems: 'flex-end',
+    alignItems: 'flex-end'
   },
   themeToggle: {
     flexDirection: 'row',
@@ -574,15 +646,15 @@ const planBuilderRefStyles = StyleSheet.create({
     borderRadius: 999,
     paddingVertical: 10,
     paddingHorizontal: 14,
-    borderWidth: 1,
+    borderWidth: 1
   },
   themeToggleText: {
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '700'
   },
   heroCardContainer: {
     paddingHorizontal: 16,
-    marginBottom: 28,
+    marginBottom: 28
   },
   heroInner: {
     minHeight: 276,
@@ -592,142 +664,129 @@ const planBuilderRefStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 6,
-    gap: 4,
+    gap: 4
   },
   herLottie: {
     width: 124,
-    height: 124,
+    height: 124
   },
   heroText: {
     flex: 1,
     alignItems: 'center',
-    paddingHorizontal: 8,
+    paddingHorizontal: 8
   },
   heroTitle: {
     fontSize: 24,
     fontWeight: '800',
-    letterSpacing: -0.4,
+    letterSpacing: -0.4
   },
   heroSubtitle: {
     fontSize: 13,
-    marginTop: 4,
+    marginTop: 4
   },
   dividerContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     marginHorizontal: 16,
     marginVertical: 20,
-    gap: 12,
+    gap: 12
   },
   dividerLine: {
     flex: 1,
-    height: 1,
+    height: 1
   },
   dividerText: {
     fontSize: 10,
     fontWeight: '700',
     letterSpacing: 2,
-    textTransform: 'uppercase',
+    textTransform: 'uppercase'
   },
   sectionContainer: {
     marginHorizontal: 16,
-    marginBottom: 16,
+    marginBottom: 16
   },
   viewPlanContainer: {
     marginHorizontal: 16,
-    marginTop: 8,
+    marginTop: 8
   },
   viewPlanButton: {
     borderWidth: 1,
     borderRadius: 12,
     paddingVertical: 12,
     paddingHorizontal: 16,
-    alignItems: 'center',
+    alignItems: 'center'
   },
   viewPlanText: {
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '600'
   },
   /** Pinned over ScrollView bottom (absolute inside flex:1 wrapper). */
   bottomButtonContainer: {
     paddingTop: 12,
     paddingHorizontal: 16,
-    flexShrink: 0,
+    flexShrink: 0
   },
   bottomText: {
     fontSize: 11,
     textAlign: 'center',
-    marginBottom: 8,
+    marginBottom: 8
   },
   generateButton: {
     borderRadius: 14,
-    overflow: 'hidden',
+    overflow: 'hidden'
   },
   generateButtonInner: {
     height: 52,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: 8
   },
   generateButtonText: {
     color: lightColors.white,
     fontSize: 16,
-    fontFamily: 'SpaceGrotesk_700Bold',
-  },
+    fontFamily: 'SpaceGrotesk_700Bold'
+  }
 });
-
 function PlanBuilderAnimatedBorderCard({
   children,
   radius = 18,
   duration = 4,
   cardBg,
   padding = 0,
-  borderColors = [...gradients.ink.colors, ...gradients.ink.colors, gradients.ink.colors[0]],
+  borderColors = [...gradients.ink.colors, ...gradients.ink.colors, gradients.ink.colors[0]]
 }) {
   const rotateAnim = useMemo(() => new Animated.Value(0), []);
-
   useEffect(() => {
-    Animated.loop(
-      Animated.timing(rotateAnim, {
-        toValue: 1,
-        duration: duration * MS_PER_SECOND,
-        useNativeDriver: false,
-      }),
-    ).start();
+    Animated.loop(Animated.timing(rotateAnim, {
+      toValue: 1,
+      duration: duration * MS_PER_SECOND,
+      useNativeDriver: false
+    })).start();
   }, [duration, rotateAnim]);
-
-  return (
-    <View style={[planBuilderRefStyles.borderCardContainer, { borderRadius: radius }]}>
-      <LinearGradient
-        colors={borderColors}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={[
-          planBuilderRefStyles.borderGradient,
-          {
-            borderRadius: radius,
-            padding: 2,
-          },
-        ]}
-      >
-        <View
-          style={[
-            planBuilderRefStyles.cardInner,
-            {
-              borderRadius: radius - 2,
-              backgroundColor: cardBg,
-              padding: padding || 0,
-            },
-          ]}
-        >
+  return <View style={[planBuilderRefStyles.borderCardContainer, {
+    borderRadius: radius
+  }]}>
+      <LinearGradient colors={borderColors} start={{
+      x: 0,
+      y: 0
+    }} end={{
+      x: 1,
+      y: 1
+    }} style={[planBuilderRefStyles.borderGradient, {
+      borderRadius: radius,
+      padding: 2
+    }]}>
+        <View style={[planBuilderRefStyles.cardInner, {
+        borderRadius: radius - 2,
+        backgroundColor: cardBg,
+        padding: padding || 0
+      }]}>
           {children}
         </View>
       </LinearGradient>
-    </View>
-  );
+    </View>;
 }
-
 function PlanBuilderRow({
   icon,
   label,
@@ -737,67 +796,47 @@ function PlanBuilderRow({
   mutedColor,
   dividerColor,
   isLast = false,
-  multiline = false,
+  multiline = false
 }) {
   const isEmpty = !value || String(value).trim() === '';
-
-  return (
-    <View
-      style={[
-        planBuilderRefStyles.rowContainer,
-        {
-          borderBottomWidth: isLast ? 0 : 1,
-          borderBottomColor: dividerColor,
-          alignItems: multiline ? 'flex-start' : 'center',
-        },
-      ]}
-    >
-      <View style={[planBuilderRefStyles.iconContainer, { opacity: isEmpty ? 0.55 : 1 }]}>{icon}</View>
+  return <View style={[planBuilderRefStyles.rowContainer, {
+    borderBottomWidth: isLast ? 0 : 1,
+    borderBottomColor: dividerColor,
+    alignItems: multiline ? 'flex-start' : 'center'
+  }]}>
+      <View style={[planBuilderRefStyles.iconContainer, {
+      opacity: isEmpty ? 0.55 : 1
+    }]}>{icon}</View>
       <View style={planBuilderRefStyles.rowContent}>
-        <Text
-          style={[
-            planBuilderRefStyles.rowLabel,
-            {
-              color: mutedColor,
-            },
-          ]}
-        >
+        <Text style={[planBuilderRefStyles.rowLabel, {
+        color: mutedColor
+      }]}>
           {label}
         </Text>
-        <Text
-          style={[
-            planBuilderRefStyles.rowValue,
-            {
-              color: isEmpty ? mutedColor : textColor,
-              fontStyle: isEmpty ? 'italic' : 'normal',
-            },
-          ]}
-          numberOfLines={multiline ? 0 : 1}
-        >
+        <Text style={[planBuilderRefStyles.rowValue, {
+        color: isEmpty ? mutedColor : textColor,
+        fontStyle: isEmpty ? 'italic' : 'normal'
+      }]} numberOfLines={multiline ? 0 : 1}>
           {isEmpty ? placeholder : value}
         </Text>
       </View>
       <MaterialCommunityIcons name="chevron-right" size={16} color={mutedColor} />
-    </View>
-  );
+    </View>;
 }
-
-function PlanBuilderSectionLabel({ children, color }) {
-  return (
-    <Text
-      style={[
-        planBuilderRefStyles.sectionLabel,
-        {
-          color,
-        },
-      ]}
-    >
+function PlanBuilderSectionLabel({
+  children,
+  color
+}) {
+  return <Text style={[planBuilderRefStyles.sectionLabel, {
+    color
+  }]}>
       {children}
-    </Text>
-  );
+    </Text>;
 }
 
 /** Ensure markdown headings (## or #) start on a new line so they render as headings, not raw text. */
+// ===== PLUMBING — skip unless debugging (plan parse / normalize / markdown) =====
+
 function normalizePlanMarkdown(text) {
   if (!text || typeof text !== 'string') return '';
   let out = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
@@ -805,7 +844,8 @@ function normalizePlanMarkdown(text) {
   return out;
 }
 
-const WP = {
+// Preview chrome colors for the on-screen plan viewer (not Design Law nb tokens — print/preview only).
+const WORKOUT_PLAN_PREVIEW_COLORS = {
   sectionLabel: lightColors.nbInk,
   exerciseName: lightColors.white,
   setsReps: '#64D2FF',
@@ -817,18 +857,17 @@ const WP = {
   duration: 'rgba(255,255,255,0.4)',
   restDay: 'rgba(255,255,255,0.35)',
   cardBg: 'rgba(255,255,255,0.04)',
-  cardBorder: 'rgba(255,255,255,0.08)',
+  cardBorder: 'rgba(255,255,255,0.08)'
 };
 
 // Design Law — never green. Day-type accents stay small (orange / cyan), not pink chrome.
 const TYPE_COLORS = {
-  Push: WP.startWeight,
+  Push: WORKOUT_PLAN_PREVIEW_COLORS.startWeight,
   Pull: '#06B6D4',
-  Legs: WP.startWeight,
+  Legs: WORKOUT_PLAN_PREVIEW_COLORS.startWeight,
   'Full Body': '#64D2FF',
-  Rest: '#555',
+  Rest: '#555'
 };
-
 function inferType(label) {
   const lower = (label || '').toLowerCase();
   if (/push/.test(lower)) return 'Push';
@@ -852,10 +891,8 @@ function fillPlanOverviewFromAlternateKeys(plan) {
       return;
     }
     if (typeof planOverview === 'object') {
-      const parts = [planOverview.title, planOverview.description, planOverview.note].filter(
-        (part) => part != null && String(part).trim() !== '',
-      );
-      plan.overview = parts.map((part) => String(part).trim()).join('\n\n');
+      const parts = [planOverview.title, planOverview.description, planOverview.note].filter(part => part != null && String(part).trim() !== '');
+      plan.overview = parts.map(part => String(part).trim()).join('\n\n');
       return;
     }
   }
@@ -879,12 +916,18 @@ function normalizeWeeklyScheduleObjectToRows(plan) {
   const restDays = scheduleObject.restDays || scheduleObject.rest_days || [];
   if (Array.isArray(trainingDays)) {
     for (let index = 0; index < trainingDays.length; index += 1) {
-      rows.push({ day: String(trainingDays[index]).trim(), focus: 'Training' });
+      rows.push({
+        day: String(trainingDays[index]).trim(),
+        focus: 'Training'
+      });
     }
   }
   if (Array.isArray(restDays)) {
     for (let index = 0; index < restDays.length; index += 1) {
-      rows.push({ day: String(restDays[index]).trim(), focus: 'Rest' });
+      rows.push({
+        day: String(restDays[index]).trim(),
+        focus: 'Rest'
+      });
     }
   }
   if (rows.length) {
@@ -892,9 +935,10 @@ function normalizeWeeklyScheduleObjectToRows(plan) {
     return;
   }
   if (scheduleObject.activeRecovery != null && String(scheduleObject.activeRecovery).trim()) {
-    plan.weeklySchedule = [
-      { day: 'Recovery', focus: String(scheduleObject.activeRecovery).trim() },
-    ];
+    plan.weeklySchedule = [{
+      day: 'Recovery',
+      focus: String(scheduleObject.activeRecovery).trim()
+    }];
     return;
   }
   plan.weeklySchedule = [];
@@ -920,38 +964,26 @@ function firstWorkoutSessionArrayFromObject(workoutsObject) {
  * @returns {Array|null}
  */
 function resolveWorkoutsArrayForViewer(plan) {
+  var _optObj4, _optObj5, _optObj6, _optObj7;
   if (Array.isArray(plan.workouts) && plan.workouts.length) return plan.workouts;
-
   if (!plan.detailedWorkouts) {
     if (plan.workouts && typeof plan.workouts === 'object' && !Array.isArray(plan.workouts)) {
       return firstWorkoutSessionArrayFromObject(plan.workouts);
     }
     return null;
   }
-
   if (Array.isArray(plan.detailedWorkouts) && plan.detailedWorkouts.length) {
     return plan.detailedWorkouts;
   }
-
-  if (
-    plan.days == null &&
-    typeof plan.detailedWorkouts === 'object' &&
-    !Array.isArray(plan.detailedWorkouts)
-  ) {
+  if (plan.days == null && typeof plan.detailedWorkouts === 'object' && !Array.isArray(plan.detailedWorkouts)) {
     const derivedDays = normalizeClaudeDetailedWorkoutsToDays(plan.detailedWorkouts);
     if (derivedDays && derivedDays.length) {
       plan.days = derivedDays;
       return null;
     }
   }
-
-  const nested =
-    plan.detailedWorkouts?.workouts ||
-    plan.detailedWorkouts?.sessions ||
-    plan.detailedWorkouts?.days ||
-    plan.detailedWorkouts?.workoutDays;
+  const nested = ((_optObj4 = plan.detailedWorkouts) == null ? void 0 : _optObj4.workouts) || ((_optObj5 = plan.detailedWorkouts) == null ? void 0 : _optObj5.sessions) || ((_optObj6 = plan.detailedWorkouts) == null ? void 0 : _optObj6.days) || ((_optObj7 = plan.detailedWorkouts) == null ? void 0 : _optObj7.workoutDays);
   if (Array.isArray(nested) && nested.length) return nested;
-
   if (plan.workouts && typeof plan.workouts === 'object' && !Array.isArray(plan.workouts)) {
     return firstWorkoutSessionArrayFromObject(plan.workouts);
   }
@@ -966,7 +998,9 @@ function resolveWorkoutsArrayForViewer(plan) {
  */
 function normalizeStructuredPlanForViewer(rawPlan) {
   if (!rawPlan || typeof rawPlan !== 'object') return null;
-  const plan = { ...rawPlan };
+  const plan = {
+    ...rawPlan
+  };
 
   // 1. Overview string from whatever key Claude used.
   fillPlanOverviewFromAlternateKeys(plan);
@@ -978,40 +1012,31 @@ function normalizeStructuredPlanForViewer(rawPlan) {
   const workoutsArray = resolveWorkoutsArrayForViewer(plan);
   const daysMissing = !plan.days || !plan.days.length;
   if (daysMissing && Array.isArray(workoutsArray) && workoutsArray.length) {
-    plan.days = workoutsArray.map((workout, index) =>
-      normalizeAiWorkoutToDay(workout, index),
-    );
+    plan.days = workoutsArray.map((workout, index) => normalizeAiWorkoutToDay(workout, index));
   }
-
   return plan;
 }
-
 function normalizeAiWorkoutToDay(w, index) {
   const label = String(w.label || w.day || w.title || `Day ${index + 1}`).trim();
   const focus = String(w.focus || w.sessionFocus || w.session_type || '').trim();
   const hasExercises = Array.isArray(w.exercises) && w.exercises.length > 0;
-  const restish = w.isRest === true || (/\brest\b/i.test(focus) && !hasExercises) || /\brest\s*day\b/i.test(label);
-
+  const restish = w.isRest === true || /\brest\b/i.test(focus) && !hasExercises || /\brest\s*day\b/i.test(label);
   if (restish) {
     return {
       label,
       type: 'Rest',
       isRest: true,
-      restGuidance: w.restGuidance || w.notes || w.guidance || focus || '',
+      restGuidance: w.restGuidance || w.notes || w.guidance || focus || ''
     };
   }
-
   const type = inferType(focus || label);
   const warmUp = normalizeAiWarmUpBlock(w.warmUp || w.warmup || w.warm_up);
   const exercises = normalizeAiExerciseList(w.exercises || w.mainExercises || w.main_exercises || w.movements || []);
-
   const rawMuscles = w.primaryMuscles || w.muscles || w.muscleGroups;
   let primaryMuscles = [];
-  if (Array.isArray(rawMuscles)) primaryMuscles = rawMuscles.map((x) => String(x));
-  else if (typeof rawMuscles === 'string') {
-    primaryMuscles = rawMuscles.split(/[,·/]/).map((muscle) => muscle.trim()).filter(Boolean);
+  if (Array.isArray(rawMuscles)) primaryMuscles = rawMuscles.map(x => String(x));else if (typeof rawMuscles === 'string') {
+    primaryMuscles = rawMuscles.split(/[,·/]/).map(muscle => muscle.trim()).filter(Boolean);
   }
-
   return {
     label: label || `Session ${index + 1}`,
     type,
@@ -1020,32 +1045,44 @@ function normalizeAiWorkoutToDay(w, index) {
     estimatedTime: w.estimatedTime || w.duration || w.sessionTime || w.timeEstimate,
     warmUp,
     exercises,
-    coolDown: w.coolDown || w.cooldown,
+    coolDown: w.coolDown || w.cooldown
   };
 }
-
 function normalizeAiWarmUpBlock(warmUpRaw) {
   if (warmUpRaw == null) return [];
   if (typeof warmUpRaw === 'string') {
     const warmUpText = warmUpRaw.trim();
-    return warmUpText ? [{ name: warmUpText, duration: '', description: '' }] : [];
+    return warmUpText ? [{
+      name: warmUpText,
+      duration: '',
+      description: ''
+    }] : [];
   }
   if (!Array.isArray(warmUpRaw)) return [];
-  return warmUpRaw.map((item) => {
-    if (typeof item === 'string') return { name: item, duration: '', description: '' };
+  return warmUpRaw.map(item => {
+    if (typeof item === 'string') return {
+      name: item,
+      duration: '',
+      description: ''
+    };
     return {
       name: String(item.name || item.exercise || item.label || '').trim(),
       duration: String(item.duration || item.time || '').trim(),
-      description: String(item.description || item.notes || '').trim(),
+      description: String(item.description || item.notes || '').trim()
     };
   });
 }
-
 function normalizeAiExerciseList(list) {
   if (!Array.isArray(list)) return [];
-  return list.map((ex) => {
+  return list.map(ex => {
     if (typeof ex === 'string') {
-      return { name: ex.trim(), sets: '', reps: '', rest: '', formCues: [] };
+      return {
+        name: ex.trim(),
+        sets: '',
+        reps: '',
+        rest: '',
+        formCues: []
+      };
     }
     const sets = ex.sets != null ? String(ex.sets) : ex.setCount != null ? String(ex.setCount) : '';
     const reps = ex.reps != null ? String(ex.reps) : ex.repRange != null ? String(ex.repRange) : '';
@@ -1059,141 +1096,131 @@ function normalizeAiExerciseList(list) {
       reps,
       rest,
       startingWeight: ex.startingWeight != null ? String(ex.startingWeight) : ex.weight != null ? String(ex.weight) : undefined,
-      formCues: formCues.map((c) => String(c)),
+      formCues: formCues.map(c => String(c))
     };
   });
 }
-
 function parseSetsReps(setsRepsRaw) {
-  if (setsRepsRaw == null) return { sets: '', reps: '' };
+  if (setsRepsRaw == null) return {
+    sets: '',
+    reps: ''
+  };
   const setsRepsText = String(setsRepsRaw).trim();
   // Examples: "4 x 8-10", "4 x 8–10", "3x5"
   const setsRepsMatch = setsRepsText.match(/(\d+)\s*[xX]\s*([\d]+(?:\s*[-–]\s*[\d]+)?)/);
   if (setsRepsMatch) {
-    return { sets: setsRepsMatch[1], reps: setsRepsMatch[2].replace(/\s+/g, '') };
+    return {
+      sets: setsRepsMatch[1],
+      reps: setsRepsMatch[2].replace(/\s+/g, '')
+    };
   }
-  return { sets: '', reps: setsRepsText };
+  return {
+    sets: '',
+    reps: setsRepsText
+  };
 }
-
 function normalizeClaudeWarmupExercises(exercisesRaw) {
   // Viewer expects: [{ name, duration, description }]
   if (!Array.isArray(exercisesRaw)) return [];
-  return exercisesRaw
-    .map((x) => {
-      if (x == null) return null;
-      if (typeof x === 'string') {
-        const warmText = x.trim();
-        if (!warmText) return null;
-        const parts = warmText.split(':');
-        if (parts.length >= 2) {
-          return { name: parts[0].trim(), duration: '', description: parts.slice(1).join(':').trim() };
-        }
-        return { name: warmText, duration: '', description: '' };
+  return exercisesRaw.map(x => {
+    if (x == null) return null;
+    if (typeof x === 'string') {
+      const warmText = x.trim();
+      if (!warmText) return null;
+      const parts = warmText.split(':');
+      if (parts.length >= 2) {
+        return {
+          name: parts[0].trim(),
+          duration: '',
+          description: parts.slice(1).join(':').trim()
+        };
       }
-      const name = String(x?.exerciseName || x?.name || x?.label || '').trim();
-      if (!name) return null;
       return {
-        name,
-        duration: String(x?.duration || x?.time || ''),
-        description: String(x?.notes || x?.description || ''),
+        name: warmText,
+        duration: '',
+        description: ''
       };
-    })
-    .filter(Boolean);
+    }
+    const name = String((x == null ? void 0 : x.exerciseName) || (x == null ? void 0 : x.name) || (x == null ? void 0 : x.label) || '').trim();
+    if (!name) return null;
+    return {
+      name,
+      duration: String((x == null ? void 0 : x.duration) || (x == null ? void 0 : x.time) || ''),
+      description: String((x == null ? void 0 : x.notes) || (x == null ? void 0 : x.description) || '')
+    };
+  }).filter(Boolean);
 }
-
 function normalizeClaudeMainWorkouts(mainWorkoutsRaw) {
   // Viewer expects: [{ name, sets, reps, rest, formCues }]
   if (!Array.isArray(mainWorkoutsRaw)) return [];
-  return mainWorkoutsRaw
-    .map((ex) => {
-      if (!ex || typeof ex !== 'object') return null;
-      const name = String(ex.exerciseName || ex.name || ex.exercise || ex.title || '').trim();
-      if (!name) return null;
-
-      const { sets, reps } = parseSetsReps(ex.setsReps || ex.sets_reps || ex.setsRepsRange || ex.setsAndReps);
-      const restSecondsRaw = ex.restSeconds ?? ex.restSecondsValue ?? ex.rest_seconds ?? ex.rest ?? '';
-      const rest = String(restSecondsRaw).replace(/[^\d]/g, '') || String(restSecondsRaw).trim();
-
-      const notes = String(ex.notes || ex.formCues || ex.cues || '').trim();
-      let formCues = [];
-      if (notes) {
-        formCues = notes
-          .split(/[,;]\s*|\.\s+/)
-          .map((p) => p.trim())
-          .filter((p) => p.length > 2)
-          .slice(0, 6);
-        if (formCues.length === 0) formCues = [notes];
-      }
-
-      return {
-        name,
-        sets: sets || '',
-        reps: reps || '',
-        rest: rest || '',
-        startingWeight: ex.startingWeight != null ? String(ex.startingWeight) : undefined,
-        formCues,
-      };
-    })
-    .filter(Boolean);
+  return mainWorkoutsRaw.map(ex => {
+    if (!ex || typeof ex !== 'object') return null;
+    const name = String(ex.exerciseName || ex.name || ex.exercise || ex.title || '').trim();
+    if (!name) return null;
+    const {
+      sets,
+      reps
+    } = parseSetsReps(ex.setsReps || ex.sets_reps || ex.setsRepsRange || ex.setsAndReps);
+    const restSecondsRaw = ex.restSeconds ?? ex.restSecondsValue ?? ex.rest_seconds ?? ex.rest ?? '';
+    const rest = String(restSecondsRaw).replace(/[^\d]/g, '') || String(restSecondsRaw).trim();
+    const notes = String(ex.notes || ex.formCues || ex.cues || '').trim();
+    let formCues = [];
+    if (notes) {
+      formCues = notes.split(/[,;]\s*|\.\s+/).map(p => p.trim()).filter(p => p.length > 2).slice(0, 6);
+      if (formCues.length === 0) formCues = [notes];
+    }
+    return {
+      name,
+      sets: sets || '',
+      reps: reps || '',
+      rest: rest || '',
+      startingWeight: ex.startingWeight != null ? String(ex.startingWeight) : undefined,
+      formCues
+    };
+  }).filter(Boolean);
 }
-
 function normalizeClaudeDetailedWorkoutsToDays(detailedWorkouts) {
   // Claude schema seen in screenshots:
   // detailedWorkouts: { "day1Monday": { focus, sessionDuration, warmUp{exercises[]}, mainWorkouts[] } }
   if (!detailedWorkouts || typeof detailedWorkouts !== 'object' || Array.isArray(detailedWorkouts)) return [];
-
-  return Object.entries(detailedWorkouts)
-    .map(([dayKey, dayObj], index) => {
-      if (!dayObj || typeof dayObj !== 'object') return null;
-
-      const labelFromKey = String(dayKey || '')
-        .replace(/^day\d+/i, '')
-        .replace(/^_+/, '')
-        .trim();
-      const label = labelFromKey || String(dayObj.day || dayObj.label || dayObj.title || `Day ${index + 1}`).trim();
-
-      const focus = String(dayObj.focus || dayObj.sessionFocus || dayObj.session_type || '').trim();
-      const isRest = dayObj.isRest === true || /rest/i.test(focus) || /rest/i.test(label);
-      if (isRest) {
-        return {
-          label,
-          type: 'Rest',
-          isRest: true,
-          restGuidance: String(dayObj.restGuidance || dayObj.notes || dayObj.guidance || focus || '').trim(),
-        };
-      }
-
-      const warmUp = (() => {
-        const warm = dayObj.warmUp || dayObj.warmup || dayObj.warmupBlock;
-        if (!warm || typeof warm !== 'object') return [];
-        return normalizeClaudeWarmupExercises(warm.exercises || warm.items || []);
-      })();
-
-      const exercises = normalizeClaudeMainWorkouts(
-        dayObj.mainWorkouts || dayObj.mainWorkoutsList || dayObj.main_workouts || dayObj.workouts || [],
-      );
-
-      const coolDown = (() => {
-        const cool = dayObj.coolDown || dayObj.cooldown || dayObj.cooldownBlock;
-        if (!cool || typeof cool !== 'object') return [];
-        return normalizeClaudeWarmupExercises(cool.exercises || cool.items || []);
-      })();
-
-      const type = inferType(focus || label);
+  return Object.entries(detailedWorkouts).map(([dayKey, dayObj], index) => {
+    if (!dayObj || typeof dayObj !== 'object') return null;
+    const labelFromKey = String(dayKey || '').replace(/^day\d+/i, '').replace(/^_+/, '').trim();
+    const label = labelFromKey || String(dayObj.day || dayObj.label || dayObj.title || `Day ${index + 1}`).trim();
+    const focus = String(dayObj.focus || dayObj.sessionFocus || dayObj.session_type || '').trim();
+    const isRest = dayObj.isRest === true || /rest/i.test(focus) || /rest/i.test(label);
+    if (isRest) {
       return {
         label,
-        type,
-        isRest: false,
-        primaryMuscles: [],
-        estimatedTime: dayObj.sessionDuration || dayObj.sessionTime || dayObj.duration || dayObj.timeEstimate,
-        warmUp,
-        exercises,
-        coolDown,
+        type: 'Rest',
+        isRest: true,
+        restGuidance: String(dayObj.restGuidance || dayObj.notes || dayObj.guidance || focus || '').trim()
       };
-    })
-    .filter(Boolean);
+    }
+    const warmUp = (() => {
+      const warm = dayObj.warmUp || dayObj.warmup || dayObj.warmupBlock;
+      if (!warm || typeof warm !== 'object') return [];
+      return normalizeClaudeWarmupExercises(warm.exercises || warm.items || []);
+    })();
+    const exercises = normalizeClaudeMainWorkouts(dayObj.mainWorkouts || dayObj.mainWorkoutsList || dayObj.main_workouts || dayObj.workouts || []);
+    const coolDown = (() => {
+      const cool = dayObj.coolDown || dayObj.cooldown || dayObj.cooldownBlock;
+      if (!cool || typeof cool !== 'object') return [];
+      return normalizeClaudeWarmupExercises(cool.exercises || cool.items || []);
+    })();
+    const type = inferType(focus || label);
+    return {
+      label,
+      type,
+      isRest: false,
+      primaryMuscles: [],
+      estimatedTime: dayObj.sessionDuration || dayObj.sessionTime || dayObj.duration || dayObj.timeEstimate,
+      warmUp,
+      exercises,
+      coolDown
+    };
+  }).filter(Boolean);
 }
-
 function structuredPlanHasViewerContent(structuredPlan) {
   if (!structuredPlan || typeof structuredPlan !== 'object') return false;
   // We consider the plan "renderable" only when the viewer can actually map
@@ -1201,26 +1228,38 @@ function structuredPlanHasViewerContent(structuredPlan) {
   const dayCount = Array.isArray(structuredPlan.days) ? structuredPlan.days.length : 0;
   return dayCount > 0;
 }
-
 const planViewerRefStyles = StyleSheet.create({
-  borderCardContainer: { width: '100%' },
-  borderGradient: { width: '100%' },
-  borderCardInner: { width: '100%' },
+  borderCardContainer: {
+    width: '100%'
+  },
+  borderGradient: {
+    width: '100%'
+  },
+  borderCardInner: {
+    width: '100%'
+  },
   logExerciseContainer: {
     borderRadius: 14,
     borderWidth: 1,
     padding: 14,
-    marginBottom: 12,
+    marginBottom: 12
   },
-  logExerciseName: { fontSize: 16, fontWeight: '700', marginBottom: 10 },
+  logExerciseName: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 10
+  },
   setInputRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     marginBottom: 8,
-    flexWrap: 'wrap',
+    flexWrap: 'wrap'
   },
-  setLabel: { fontSize: 12, width: 48 },
+  setLabel: {
+    fontSize: 12,
+    width: 48
+  },
   setInput: {
     flex: 1,
     minWidth: 80,
@@ -1228,9 +1267,13 @@ const planViewerRefStyles = StyleSheet.create({
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 8,
-    fontSize: 14,
+    fontSize: 14
   },
-  setButtonRow: { flexDirection: 'row', gap: 10, marginTop: 6 },
+  setButtonRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 6
+  },
   setActionButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1238,20 +1281,37 @@ const planViewerRefStyles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 10,
-    borderWidth: 1,
+    borderWidth: 1
   },
-  setActionText: { fontSize: 13, fontWeight: '600' },
+  setActionText: {
+    fontSize: 13,
+    fontWeight: '600'
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 8,
     paddingVertical: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth
   },
-  headerButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { fontSize: 17, fontWeight: '800', flex: 1, textAlign: 'center' },
-  menuContainer: { position: 'relative', width: 44, alignItems: 'flex-end' },
+  headerButton: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  headerTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    flex: 1,
+    textAlign: 'center'
+  },
+  menuContainer: {
+    position: 'relative',
+    width: 44,
+    alignItems: 'flex-end'
+  },
   dropdownMenu: {
     position: 'absolute',
     top: 46,
@@ -1263,49 +1323,122 @@ const planViewerRefStyles = StyleSheet.create({
     zIndex: 50,
     elevation: 8,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
+    shadowOffset: {
+      width: 0,
+      height: 4
+    },
     shadowOpacity: 0.2,
-    shadowRadius: 8,
+    shadowRadius: 8
   },
-  menuItem: { paddingVertical: 12, paddingHorizontal: 14 },
-  menuItemText: { fontSize: 15, fontWeight: '600' },
-  planContent: { paddingHorizontal: 16, paddingBottom: 40, paddingTop: 8 },
-  dayCardContainer: { marginBottom: 14 },
+  menuItem: {
+    paddingVertical: 12,
+    paddingHorizontal: 14
+  },
+  menuItemText: {
+    fontSize: 15,
+    fontWeight: '600'
+  },
+  planContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 40,
+    paddingTop: 8
+  },
+  dayCardContainer: {
+    marginBottom: 14
+  },
   dayHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 14,
-    paddingVertical: 14,
+    paddingVertical: 14
   },
-  dayHeaderContent: { flexDirection: 'row', alignItems: 'center', flex: 1, gap: 12 },
+  dayHeaderContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 12
+  },
   dayShort: {
     fontSize: 13,
     fontFamily: 'SpaceGrotesk_700Bold',
     color: lightColors.white,
     opacity: 0.95,
-    letterSpacing: 0.5,
+    letterSpacing: 0.5
   },
-  dayInfo: { flex: 1 },
-  dayName: { fontSize: 16, fontFamily: 'SpaceGrotesk_700Bold', color: lightColors.white },
-  dayFocus: { fontSize: 13, color: 'rgba(255,255,255,0.88)', marginTop: 2 },
-  dayExpanded: { borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: 14, paddingBottom: 14, paddingTop: 12 },
-  recoveryContainer: { alignItems: 'center', paddingVertical: 12 },
-  recoveryTitle: { fontSize: 16, fontFamily: 'SpaceGrotesk_700Bold', marginTop: 8 },
-  recoveryNote: { fontSize: 14, fontFamily: 'Inter_400Regular', textAlign: 'center', marginTop: 6, lineHeight: 20 },
-  exerciseItem: { marginBottom: 14 },
-  exerciseHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 },
-  exerciseName: { fontSize: 15, fontFamily: 'SpaceGrotesk_700Bold', flex: 1 },
-  exerciseSets: { fontSize: 14, fontFamily: 'SpaceGrotesk_700Bold' },
-  exerciseDetails: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
+  dayInfo: {
+    flex: 1
+  },
+  dayName: {
+    fontSize: 16,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    color: lightColors.white
+  },
+  dayFocus: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.88)',
+    marginTop: 2
+  },
+  dayExpanded: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 14,
+    paddingBottom: 14,
+    paddingTop: 12
+  },
+  recoveryContainer: {
+    alignItems: 'center',
+    paddingVertical: 12
+  },
+  recoveryTitle: {
+    fontSize: 16,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    marginTop: 8
+  },
+  recoveryNote: {
+    fontSize: 14,
+    fontFamily: 'Inter_400Regular',
+    textAlign: 'center',
+    marginTop: 6,
+    lineHeight: 20
+  },
+  exerciseItem: {
+    marginBottom: 14
+  },
+  exerciseHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 10
+  },
+  exerciseName: {
+    fontSize: 15,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    flex: 1
+  },
+  exerciseSets: {
+    fontSize: 14,
+    fontFamily: 'SpaceGrotesk_700Bold'
+  },
+  exerciseDetails: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 8
+  },
   detailBadge: {
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 8,
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: 'rgba(255,255,255,0.06)'
   },
-  detailText: { fontSize: 12 },
-  exerciseNotes: { fontSize: 13, marginTop: 8, lineHeight: 19 },
+  detailText: {
+    fontSize: 12
+  },
+  exerciseNotes: {
+    fontSize: 13,
+    marginTop: 8,
+    lineHeight: 19
+  },
   completeButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1314,22 +1447,31 @@ const planViewerRefStyles = StyleSheet.create({
     marginTop: 8,
     paddingVertical: 12,
     borderRadius: 12,
-    borderWidth: 1,
+    borderWidth: 1
   },
-  completeButtonText: { fontSize: 15, fontWeight: '700' },
-  logLink: { alignItems: 'center', paddingVertical: 12 },
-  logLinkText: { fontSize: 15, fontWeight: '700' },
+  completeButtonText: {
+    fontSize: 15,
+    fontWeight: '700'
+  },
+  logLink: {
+    alignItems: 'center',
+    paddingVertical: 12
+  },
+  logLinkText: {
+    fontSize: 15,
+    fontWeight: '700'
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.45)',
-    justifyContent: 'flex-end',
+    justifyContent: 'flex-end'
   },
   logBottomSheet: {
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     borderWidth: 1,
     maxHeight: '88%',
-    paddingBottom: Platform.OS === 'ios' ? 28 : 16,
+    paddingBottom: Platform.OS === 'ios' ? 28 : 16
   },
   logHeader: {
     flexDirection: 'row',
@@ -1337,64 +1479,152 @@ const planViewerRefStyles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 18,
     paddingTop: 16,
-    paddingBottom: 8,
+    paddingBottom: 8
   },
-  logTitle: { fontSize: 18, fontFamily: 'SpaceGrotesk_700Bold' },
-  logContent: { paddingHorizontal: 16, maxHeight: 420 },
-  saveBtnGradient: { marginHorizontal: 16, marginTop: 8, borderRadius: 14, overflow: 'hidden' },
-  saveButton: { paddingVertical: 16, alignItems: 'center' },
-  saveButtonText: { color: lightColors.white, fontSize: 16, fontFamily: 'SpaceGrotesk_700Bold' },
+  logTitle: {
+    fontSize: 18,
+    fontFamily: 'SpaceGrotesk_700Bold'
+  },
+  logContent: {
+    paddingHorizontal: 16,
+    maxHeight: 420
+  },
+  saveBtnGradient: {
+    marginHorizontal: 16,
+    marginTop: 8,
+    borderRadius: 14,
+    overflow: 'hidden'
+  },
+  saveButton: {
+    paddingVertical: 16,
+    alignItems: 'center'
+  },
+  saveButtonText: {
+    color: lightColors.white,
+    fontSize: 16,
+    fontFamily: 'SpaceGrotesk_700Bold'
+  },
   subSectionLabel: {
     fontSize: 12,
     fontFamily: 'SpaceGrotesk_700Bold',
     letterSpacing: 1.2,
     marginBottom: 8,
-    marginTop: 4,
+    marginTop: 4
   },
-  warmRow: { flexDirection: 'row', paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth, gap: 10 },
-  warmName: { flex: 1, fontSize: 14, fontFamily: 'Inter_500Medium' },
-  warmMeta: { fontSize: 12, fontFamily: 'Inter_400Regular' },
+  warmRow: {
+    flexDirection: 'row',
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    gap: 10
+  },
+  warmName: {
+    flex: 1,
+    fontSize: 14,
+    fontFamily: 'Inter_500Medium'
+  },
+  warmMeta: {
+    fontSize: 12,
+    fontFamily: 'Inter_400Regular'
+  },
   overviewCard: {
     borderRadius: 14,
     padding: 14,
     marginBottom: 16,
-    borderWidth: 1,
+    borderWidth: 1
   },
-  overviewLabel: { fontSize: 12, fontFamily: 'SpaceGrotesk_700Bold', letterSpacing: 1.4, marginBottom: 8 },
-  overviewBody: { fontSize: 14, fontFamily: 'Inter_400Regular', lineHeight: 22 },
-  metaLine: { fontSize: 13, fontFamily: 'Inter_400Regular', marginBottom: 14 },
+  overviewLabel: {
+    fontSize: 12,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    letterSpacing: 1.4,
+    marginBottom: 8
+  },
+  overviewBody: {
+    fontSize: 14,
+    fontFamily: 'Inter_400Regular',
+    lineHeight: 22
+  },
+  metaLine: {
+    fontSize: 13,
+    fontFamily: 'Inter_400Regular',
+    marginBottom: 14
+  },
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 32,
+    paddingHorizontal: 32
   },
-  errorTitle: { fontSize: 24, fontFamily: 'SpaceGrotesk_700Bold', marginTop: 16 },
-  errorMessage: { fontSize: 14, fontFamily: 'Inter_400Regular', marginTop: 8, textAlign: 'center', lineHeight: 20 },
-  errorButton: { marginTop: 24, paddingVertical: 12, paddingHorizontal: 24, borderRadius: 12 },
-  errorButtonText: { color: lightColors.white, fontFamily: 'SpaceGrotesk_700Bold' },
-  loaderContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  loaderText: { marginTop: 16, fontSize: 14, fontFamily: 'Inter_400Regular' },
+  errorTitle: {
+    fontSize: 24,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    marginTop: 16
+  },
+  errorMessage: {
+    fontSize: 14,
+    fontFamily: 'Inter_400Regular',
+    marginTop: 8,
+    textAlign: 'center',
+    lineHeight: 20
+  },
+  errorButton: {
+    marginTop: 24,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12
+  },
+  errorButtonText: {
+    color: lightColors.white,
+    fontFamily: 'SpaceGrotesk_700Bold'
+  },
+  loaderContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  loaderText: {
+    marginTop: 16,
+    fontSize: 14,
+    fontFamily: 'Inter_400Regular'
+  },
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     marginHorizontal: 32,
     borderRadius: 16,
-    padding: 24,
+    padding: 24
   },
-  emptyTitle: { fontSize: 20, fontFamily: 'SpaceGrotesk_700Bold', marginTop: 16 },
-  emptyMessage: { fontSize: 14, fontFamily: 'Inter_400Regular', marginTop: 8, textAlign: 'center' },
-  emptyButton: { marginTop: 24, paddingVertical: 12, paddingHorizontal: 24, borderRadius: 12 },
-  emptyButtonText: { color: lightColors.white, fontFamily: 'SpaceGrotesk_700Bold' },
-  noExerciseText: { fontSize: 14, fontFamily: 'Inter_400Regular', textAlign: 'center', paddingVertical: 16 },
+  emptyTitle: {
+    fontSize: 20,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    marginTop: 16
+  },
+  emptyMessage: {
+    fontSize: 14,
+    fontFamily: 'Inter_400Regular',
+    marginTop: 8,
+    textAlign: 'center'
+  },
+  emptyButton: {
+    marginTop: 24,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12
+  },
+  emptyButtonText: {
+    color: lightColors.white,
+    fontFamily: 'SpaceGrotesk_700Bold'
+  },
+  noExerciseText: {
+    fontSize: 14,
+    fontFamily: 'Inter_400Regular',
+    textAlign: 'center',
+    paddingVertical: 16
+  }
 });
-
 function derivePlanViewerDayShort(label, index, weeklySchedule) {
   const labelStr = String(label || '');
-  const full = labelStr.match(
-    /\b(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b/i,
-  );
+  const full = labelStr.match(/\b(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b/i);
   if (full) {
     const key = full[0].toLowerCase();
     const map = {
@@ -1404,24 +1634,21 @@ function derivePlanViewerDayShort(label, index, weeklySchedule) {
       thursday: 'THU',
       friday: 'FRI',
       saturday: 'SAT',
-      sunday: 'SUN',
+      sunday: 'SUN'
     };
     return map[key] || full[0].substring(0, 3).toUpperCase();
   }
   const abbr = labelStr.match(/\b(Mon|Tue|Wed|Thu|Fri|Sat|Sun)\b/i);
   if (abbr) return abbr[0].length === 3 ? abbr[0].toUpperCase() : abbr[0].substring(0, 3).toUpperCase();
-  const ws = weeklySchedule && weeklySchedule[index];
-  if (ws?.day) {
-    const weekdayMatch = String(ws.day).match(/\b(Mon|Tue|Wed|Thu|Fri|Sat|Sun)\b/i);
+  const scheduleRowForDay = weeklySchedule && weeklySchedule[index];
+  if (scheduleRowForDay == null ? void 0 : scheduleRowForDay.day) {
+    const weekdayMatch = String(scheduleRowForDay.day).match(/\b(Mon|Tue|Wed|Thu|Fri|Sat|Sun)\b/i);
     if (weekdayMatch) {
-      return weekdayMatch[0].length === 3
-        ? weekdayMatch[0].toUpperCase()
-        : weekdayMatch[0].substring(0, 3).toUpperCase();
+      return weekdayMatch[0].length === 3 ? weekdayMatch[0].toUpperCase() : weekdayMatch[0].substring(0, 3).toUpperCase();
     }
   }
   return `D${index + 1}`;
 }
-
 function normalizeRouteWorkoutPlanItem(item, index) {
   if (!item || typeof item !== 'object') return null;
   const validShorts = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
@@ -1431,211 +1658,297 @@ function normalizeRouteWorkoutPlanItem(item, index) {
   const short = validShorts.includes(rawShort) ? rawShort : inferredShort;
   const focus = String(item.focus || item.focusArea || item.sessionFocus || '').trim() || 'Training';
   const rest = !!(item.rest || item.isRest);
-  const focusColor =
-    item.focusColor ||
-    (item.type && TYPE_COLORS[item.type]) ||
-    PLAN_BUILDER_COLORS.pink;
+  const focusColor = item.focusColor || item.type && TYPE_COLORS[item.type] || PLAN_BUILDER_COLORS.pink;
   const rawEx = Array.isArray(item.exercises) ? item.exercises : [];
-  const exercises = rawEx
-    .map((ex) => {
-      if (!ex || typeof ex !== 'object') return null;
-      const name = String(ex.name || ex.exercise || ex.exerciseName || '').trim();
-      if (!name) return null;
-      const sets = ex.sets != null ? String(ex.sets) : ex.setCount != null ? String(ex.setCount) : '1';
-      const reps = ex.reps != null ? String(ex.reps) : ex.repRange != null ? String(ex.repRange) : '—';
-      const restEx = ex.rest != null ? String(ex.rest) : '';
-      const muscle = String(ex.muscle || ex.muscleGroup || item.primaryMuscle || '').trim();
-      let notes = ex.notes != null ? String(ex.notes) : '';
-      if (!notes && Array.isArray(ex.formCues)) notes = ex.formCues.filter(Boolean).join('\n');
-      return { name, sets, reps, rest: restEx, muscle, notes: notes || undefined };
-    })
-    .filter(Boolean);
-
+  const exercises = rawEx.map(ex => {
+    if (!ex || typeof ex !== 'object') return null;
+    const name = String(ex.name || ex.exercise || ex.exerciseName || '').trim();
+    if (!name) return null;
+    const sets = ex.sets != null ? String(ex.sets) : ex.setCount != null ? String(ex.setCount) : '1';
+    const reps = ex.reps != null ? String(ex.reps) : ex.repRange != null ? String(ex.repRange) : '—';
+    const restEx = ex.rest != null ? String(ex.rest) : '';
+    const muscle = String(ex.muscle || ex.muscleGroup || item.primaryMuscle || '').trim();
+    let notes = ex.notes != null ? String(ex.notes) : '';
+    if (!notes && Array.isArray(ex.formCues)) notes = ex.formCues.filter(Boolean).join('\n');
+    return {
+      name,
+      sets,
+      reps,
+      rest: restEx,
+      muscle,
+      notes: notes || undefined
+    };
+  }).filter(Boolean);
   return {
     short,
     day,
     focus,
     focusColor,
     rest,
-    recoveryNote:
-      item.recoveryNote != null
-        ? String(item.recoveryNote)
-        : item.restGuidance != null
-          ? String(item.restGuidance)
-          : undefined,
+    recoveryNote: item.recoveryNote != null ? String(item.recoveryNote) : item.restGuidance != null ? String(item.restGuidance) : undefined,
     recoveryActivities: Array.isArray(item.recoveryActivities) ? item.recoveryActivities : undefined,
     exercises,
     warmUp: Array.isArray(item.warmUp) ? item.warmUp : [],
-    coolDown: Array.isArray(item.coolDown) ? item.coolDown : [],
+    coolDown: Array.isArray(item.coolDown) ? item.coolDown : []
   };
 }
 
-function mapStructuredDaysToPlanViewerRows(structured) {
-  const days = structured?.days;
-  if (!Array.isArray(days) || days.length === 0) return [];
-  const ws = structured?.weeklySchedule || [];
-  return days.map((day, di) => {
-    const short = derivePlanViewerDayShort(day?.label, di, ws);
-    const label = String(day?.label || `Day ${di + 1}`);
-    const focus = day?.isRest
-      ? 'Rest & Recovery'
-      : [day?.type, ...(Array.isArray(day?.primaryMuscles) ? day.primaryMuscles.slice(0, 2) : [])]
-          .filter(Boolean)
-          .join(' · ') || String(day?.type || 'Training');
-    const focusColor = day?.isRest ? undefined : TYPE_COLORS[day?.type] || PLAN_BUILDER_COLORS.pink;
-    const exercises = !day?.isRest && Array.isArray(day?.exercises)
-      ? day.exercises
-          .map((ex) => {
-            const name = String(ex?.name || '').trim();
-            if (!name) return null;
-            const muscle =
-              (Array.isArray(day?.primaryMuscles) && day.primaryMuscles[0]) ||
-              String(day?.type || '') ||
-              '—';
-            const notes = Array.isArray(ex?.formCues) && ex.formCues.length
-              ? ex.formCues.map((c) => String(c)).join('\n')
-              : undefined;
-            return {
-              name,
-              sets: ex?.sets != null ? String(ex.sets) : '1',
-              reps: ex?.reps != null ? String(ex.reps) : '—',
-              rest: ex?.rest != null ? String(ex.rest) : '',
-              muscle: String(muscle),
-              notes,
-            };
-          })
-          .filter(Boolean)
-      : [];
-    return {
-      short,
-      day: label,
-      focus,
-      focusColor,
-      rest: !!day?.isRest,
-      recoveryNote: day?.isRest ? String(day?.restGuidance || '') : undefined,
-      recoveryActivities: Array.isArray(day?.recoveryActivities) ? day.recoveryActivities : undefined,
-      exercises,
-      warmUp: Array.isArray(day?.warmUp) ? day.warmUp : [],
-      coolDown: Array.isArray(day?.coolDown) ? day.coolDown : [],
-    };
-  });
+/**
+ * Focus label for one structured day row (rest vs training muscles).
+ * @param {object} day
+ * @returns {string}
+ */
+function focusLabelForStructuredDay(day) {
+  if (day == null ? void 0 : day.isRest) {
+    return 'Rest & Recovery';
+  }
+  const primaryMuscles = Array.isArray(day == null ? void 0 : day.primaryMuscles) ? day.primaryMuscles.slice(0, 2) : [];
+  const focusParts = [day == null ? void 0 : day.type, ...primaryMuscles].filter(Boolean);
+  const joinedFocus = focusParts.join(' · ');
+  if (joinedFocus) {
+    return joinedFocus;
+  }
+  if (day == null ? void 0 : day.type) {
+    return String(day.type);
+  }
+  return 'Training';
 }
 
-function PlanViewerAnimatedBorderCard({ children, radius = 20, bg, restDay = false }) {
-  const colors = restDay
-    ? ['#374151', '#4B5563', '#6B7280', '#4B5563', '#374151']
-    : ['#C2410C', '#F97316', '#C2410C', '#F97316', '#C2410C'];
-  return (
-    <View style={[planViewerRefStyles.borderCardContainer, { borderRadius: radius }]}>
-      <LinearGradient
-        colors={colors}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={[planViewerRefStyles.borderGradient, { borderRadius: radius, padding: 2 }]}
-      >
-        <View
-          style={[
-            planViewerRefStyles.borderCardInner,
-            {
-              borderRadius: radius - 2,
-              backgroundColor: bg,
-              overflow: 'hidden',
-            },
-          ]}
-        >
+/**
+ * One exercise row for the plan viewer from a structured exercise object.
+ * @param {object} exercise
+ * @param {object} day
+ * @returns {object|null}
+ */
+function planViewerExerciseFromStructured(exercise, day) {
+  const name = String((exercise == null ? void 0 : exercise.name) || '').trim();
+  if (!name) return null;
+  let muscle = '—';
+  if (Array.isArray(day == null ? void 0 : day.primaryMuscles) && day.primaryMuscles[0]) {
+    muscle = day.primaryMuscles[0];
+  } else if (day == null ? void 0 : day.type) {
+    muscle = String(day.type);
+  }
+  let notes;
+  if (Array.isArray(exercise == null ? void 0 : exercise.formCues) && exercise.formCues.length) {
+    notes = exercise.formCues.map(cue => String(cue)).join('\n');
+  }
+  let sets = '1';
+  if ((exercise == null ? void 0 : exercise.sets) != null) {
+    sets = String(exercise.sets);
+  }
+  let reps = '—';
+  if ((exercise == null ? void 0 : exercise.reps) != null) {
+    reps = String(exercise.reps);
+  }
+  let rest = '';
+  if ((exercise == null ? void 0 : exercise.rest) != null) {
+    rest = String(exercise.rest);
+  }
+  return {
+    name,
+    sets,
+    reps,
+    rest,
+    muscle: String(muscle),
+    notes
+  };
+}
+
+/**
+ * Exercise list for one day — empty on rest days.
+ * @param {object} day
+ * @returns {Array}
+ */
+function planViewerExercisesForDay(day) {
+  if (day == null ? void 0 : day.isRest) {
+    return [];
+  }
+  if (!Array.isArray(day == null ? void 0 : day.exercises)) {
+    return [];
+  }
+  const exerciseRows = [];
+  for (const exercise of day.exercises) {
+    const row = planViewerExerciseFromStructured(exercise, day);
+    if (row) {
+      exerciseRows.push(row);
+    }
+  }
+  return exerciseRows;
+}
+
+/**
+ * One plan-viewer day row from a structured AI day object.
+ * @param {object} day
+ * @param {number} dayIndex
+ * @param {Array} weeklyScheduleRows
+ * @returns {object}
+ */
+function planViewerRowFromStructuredDay(day, dayIndex, weeklyScheduleRows) {
+  const short = derivePlanViewerDayShort(day == null ? void 0 : day.label, dayIndex, weeklyScheduleRows);
+  const label = String((day == null ? void 0 : day.label) || `Day ${dayIndex + 1}`);
+  const dayIsRest = Boolean(day == null ? void 0 : day.isRest);
+  const focus = focusLabelForStructuredDay(day);
+  let focusColor;
+  if (!dayIsRest) {
+    focusColor = TYPE_COLORS[day == null ? void 0 : day.type] || PLAN_BUILDER_COLORS.pink;
+  }
+  let recoveryNote;
+  if (dayIsRest) {
+    recoveryNote = String((day == null ? void 0 : day.restGuidance) || '');
+  }
+  let recoveryActivities;
+  if (Array.isArray(day == null ? void 0 : day.recoveryActivities)) {
+    recoveryActivities = day.recoveryActivities;
+  }
+  let warmUp = [];
+  if (Array.isArray(day == null ? void 0 : day.warmUp)) {
+    warmUp = day.warmUp;
+  }
+  let coolDown = [];
+  if (Array.isArray(day == null ? void 0 : day.coolDown)) {
+    coolDown = day.coolDown;
+  }
+  return {
+    short,
+    day: label,
+    focus,
+    focusColor,
+    rest: dayIsRest,
+    recoveryNote,
+    recoveryActivities,
+    exercises: planViewerExercisesForDay(day),
+    warmUp,
+    coolDown
+  };
+}
+function mapStructuredDaysToPlanViewerRows(structured) {
+  const days = structured == null ? void 0 : structured.days;
+  if (!Array.isArray(days) || days.length === 0) return [];
+  const weeklyScheduleRows = (structured == null ? void 0 : structured.weeklySchedule) || [];
+  const viewerRows = [];
+  for (let dayIndex = 0; dayIndex < days.length; dayIndex += 1) {
+    viewerRows.push(planViewerRowFromStructuredDay(days[dayIndex], dayIndex, weeklyScheduleRows));
+  }
+  return viewerRows;
+}
+function PlanViewerAnimatedBorderCard({
+  children,
+  radius = 20,
+  bg,
+  restDay = false
+}) {
+  let colors = ['#C2410C', '#F97316', '#C2410C', '#F97316', '#C2410C'];
+  if (restDay) {
+    colors = ['#374151', '#4B5563', '#6B7280', '#4B5563', '#374151'];
+  }
+  return <View style={[planViewerRefStyles.borderCardContainer, {
+    borderRadius: radius
+  }]}>
+      <LinearGradient colors={colors} start={{
+      x: 0,
+      y: 0
+    }} end={{
+      x: 1,
+      y: 1
+    }} style={[planViewerRefStyles.borderGradient, {
+      borderRadius: radius,
+      padding: 2
+    }]}>
+        <View style={[planViewerRefStyles.borderCardInner, {
+        borderRadius: radius - 2,
+        backgroundColor: bg,
+        overflow: 'hidden'
+      }]}>
           {children}
         </View>
       </LinearGradient>
-    </View>
-  );
+    </View>;
 }
-
-function PlanViewerLogExercise({ ex, text, muted, borderC, glass }) {
-  const setCount = Math.max(1, Math.min(20, parseInt(String(ex.sets || '1'), 10) || 3));
-  const [sets, setSets] = useState(() =>
-    Array.from({ length: setCount }, () => ({ reps: '', weight: '' })),
-  );
-
-  const addSet = () => setSets([...sets, { reps: '', weight: '' }]);
+function PlanViewerLogExercise({
+  exercise,
+  inkColor,
+  mutedColor,
+  borderColor,
+  glassFill
+}) {
+  const setCount = Math.max(1, Math.min(20, parseInt(String(exercise.sets || '1'), 10) || 3));
+  const [sets, setSets] = useState(() => Array.from({
+    length: setCount
+  }, () => ({
+    reps: '',
+    weight: ''
+  })));
+  const addSet = () => setSets([...sets, {
+    reps: '',
+    weight: ''
+  }]);
   const removeSet = () => sets.length > 1 && setSets(sets.slice(0, -1));
-
   const updateSet = (index, field, value) => {
     const newSets = [...sets];
-    newSets[index] = { ...newSets[index], [field]: value };
+    newSets[index] = {
+      ...newSets[index],
+      [field]: value
+    };
     setSets(newSets);
   };
-
-  return (
-    <View
-      style={[
-        planViewerRefStyles.logExerciseContainer,
-        {
-          backgroundColor: glass,
-          borderColor: borderC,
-        },
-      ]}
-    >
-      <Text style={[planViewerRefStyles.logExerciseName, { color: text }]}>{ex.name}</Text>
-      {sets.map((s, i) => (
-        <View key={i} style={planViewerRefStyles.setInputRow}>
-          <Text style={[planViewerRefStyles.setLabel, { color: muted }]}>Set {i + 1}</Text>
-          <TextInput
-            placeholder="Reps"
-            placeholderTextColor={muted}
-            value={s.reps}
-            onChangeText={(v) => updateSet(i, 'reps', v)}
-            style={[planViewerRefStyles.setInput, { borderColor: borderC, color: text }]}
-          />
-          <TextInput
-            placeholder="Weight"
-            placeholderTextColor={muted}
-            value={s.weight}
-            onChangeText={(v) => updateSet(i, 'weight', v)}
-            style={[planViewerRefStyles.setInput, { borderColor: borderC, color: text }]}
-          />
-        </View>
-      ))}
+  return <View style={[planViewerRefStyles.logExerciseContainer, {
+    backgroundColor: glassFill,
+    borderColor: borderColor
+  }]}>
+      <Text style={[planViewerRefStyles.logExerciseName, {
+      color: inkColor
+    }]}>{exercise.name}</Text>
+      {sets.map((setRow, i) => <View key={i} style={planViewerRefStyles.setInputRow}>
+          <Text style={[planViewerRefStyles.setLabel, {
+        color: mutedColor
+      }]}>Set {i + 1}</Text>
+          <TextInput placeholder="Reps" placeholderTextColor={mutedColor} value={setRow.reps} onChangeText={valueText => updateSet(i, 'reps', valueText)} style={[planViewerRefStyles.setInput, {
+        borderColor: borderColor,
+        color: inkColor
+      }]} />
+          <TextInput placeholder="Weight" placeholderTextColor={mutedColor} value={setRow.weight} onChangeText={valueText => updateSet(i, 'weight', valueText)} style={[planViewerRefStyles.setInput, {
+        borderColor: borderColor,
+        color: inkColor
+      }]} />
+        </View>)}
       <View style={planViewerRefStyles.setButtonRow}>
-        <TouchableOpacity
-          onPress={addSet}
-          style={[planViewerRefStyles.setActionButton, { borderColor: borderC }]}
-        >
-          <MaterialCommunityIcons name="plus" size={16} color={text} />
-          <Text style={[planViewerRefStyles.setActionText, { color: text }]}>Add Set</Text>
+        <TouchableOpacity onPress={addSet} style={[planViewerRefStyles.setActionButton, {
+        borderColor: borderColor
+      }]}>
+          <MaterialCommunityIcons name="plus" size={16} color={inkColor} />
+          <Text style={[planViewerRefStyles.setActionText, {
+          color: inkColor
+        }]}>Add Set</Text>
         </TouchableOpacity>
-        <TouchableOpacity
-          onPress={removeSet}
-          style={[planViewerRefStyles.setActionButton, { borderColor: borderC }]}
-        >
-          <MaterialCommunityIcons name="minus" size={16} color={muted} />
-          <Text style={[planViewerRefStyles.setActionText, { color: muted }]}>Remove</Text>
+        <TouchableOpacity onPress={removeSet} style={[planViewerRefStyles.setActionButton, {
+        borderColor: borderColor
+      }]}>
+          <MaterialCommunityIcons name="minus" size={16} color={mutedColor} />
+          <Text style={[planViewerRefStyles.setActionText, {
+          color: mutedColor
+        }]}>Remove</Text>
         </TouchableOpacity>
       </View>
-    </View>
-  );
+    </View>;
 }
-
 function buildWorkoutPlanPayloadFromStructured(structuredRaw) {
   if (!structuredRaw || typeof structuredRaw !== 'object') return null;
 
   // Already in the new shape
   if (Array.isArray(structuredRaw.workoutPlan) && structuredRaw.workoutPlan.length > 0) {
-    const normalized = structuredRaw.workoutPlan
-      .map((item, i) => normalizeRouteWorkoutPlanItem(item, i))
-      .filter(Boolean);
-    const onlyWeekdays = normalized.filter((d) => ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'].includes(String(d.short)));
+    const normalized = structuredRaw.workoutPlan.map((item, i) => normalizeRouteWorkoutPlanItem(item, i)).filter(Boolean);
+    const onlyWeekdays = normalized.filter(d => ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'].includes(String(d.short)));
     const picked = onlyWeekdays.length ? onlyWeekdays : normalized;
     return {
       overview: structuredRaw.overview != null ? String(structuredRaw.overview) : '',
-      workoutPlan: picked,
+      workoutPlan: picked
     };
   }
-
   const structured = normalizeStructuredPlanForViewer(structuredRaw);
-  const overview = structured?.overview != null ? String(structured.overview) : '';
+  const overview = (structured == null ? void 0 : structured.overview) != null ? String(structured.overview) : '';
   const rows = mapStructuredDaysToPlanViewerRows(structured);
   if (!rows.length) return null;
-
   const workoutPlan = rows.map((d, i) => ({
     short: String(d.short || derivePlanViewerDayShort(d.day, i, null)).trim(),
     day: String(d.day || `Day ${i + 1}`),
@@ -1644,12 +1957,12 @@ function buildWorkoutPlanPayloadFromStructured(structuredRaw) {
     rest: !!d.rest,
     recoveryNote: d.recoveryNote != null ? String(d.recoveryNote) : undefined,
     recoveryActivities: Array.isArray(d.recoveryActivities) ? d.recoveryActivities : undefined,
-    exercises: Array.isArray(d.exercises) ? d.exercises : [],
+    exercises: Array.isArray(d.exercises) ? d.exercises : []
   }));
 
   // Try to drop obvious section-cards from old plans (overview/schedule/nutrition/etc.).
   const sectionRe = /(plan\s*overview|weekly\s*schedule|detailed\s*workouts|nutrition|expected\s*timeline|important\s*notes|progress)/i;
-  const filtered = workoutPlan.filter((d) => {
+  const filtered = workoutPlan.filter(d => {
     const day = String(d.day || '');
     const looksLikeWeekday = /\b(mon|tue|wed|thu|fri|sat|sun)\b/i.test(day);
     const hasExercises = Array.isArray(d.exercises) && d.exercises.length > 0;
@@ -1657,14 +1970,25 @@ function buildWorkoutPlanPayloadFromStructured(structuredRaw) {
     if (sectionRe.test(day)) return false;
     return hasExercises;
   });
-  return { overview, workoutPlan: filtered.length ? filtered : workoutPlan };
+  return {
+    overview,
+    workoutPlan: filtered.length ? filtered : workoutPlan
+  };
 }
 
 /** Parse a table row like "| Leg swings | 30 sec | front to back |" into { name, duration, notes }. */
 function parseTableRow(line) {
-  const parts = line.split(/\|/).map((p) => p.trim()).filter(Boolean);
-  if (parts.length >= 2) return { name: cleanText(parts[0]), duration: cleanText(parts[1]), notes: parts[2] ? cleanText(parts[2]) : '' };
-  if (parts.length === 1) return { name: cleanText(parts[0]), duration: '', notes: '' };
+  const parts = line.split(/\|/).map(p => p.trim()).filter(Boolean);
+  if (parts.length >= 2) return {
+    name: cleanText(parts[0]),
+    duration: cleanText(parts[1]),
+    notes: parts[2] ? cleanText(parts[2]) : ''
+  };
+  if (parts.length === 1) return {
+    name: cleanText(parts[0]),
+    duration: '',
+    notes: ''
+  };
   return null;
 }
 
@@ -1688,11 +2012,7 @@ function applyDaySectionHeader(line, sectionFlags) {
     sectionFlags.inExercises = false;
     return true;
   }
-  const looksLikeExerciseHeader =
-    /exercise|main\s*work|workout\s*a|workout\s*b/i.test(lower) &&
-    line.length < SECTION_HEADER_MAX_LENGTH_EX &&
-    !sectionFlags.inWarmUp &&
-    !sectionFlags.inCoolDown;
+  const looksLikeExerciseHeader = /exercise|main\s*work|workout\s*a|workout\s*b/i.test(lower) && line.length < SECTION_HEADER_MAX_LENGTH_EX && !sectionFlags.inWarmUp && !sectionFlags.inCoolDown;
   if (looksLikeExerciseHeader) {
     sectionFlags.inExercises = true;
     return true;
@@ -1709,14 +2029,21 @@ function applyDaySectionHeader(line, sectionFlags) {
  * @returns {boolean} true when the line was a table row we handled
  */
 function tryParseWarmCoolTableLine(line, sectionFlags, warmUp, coolDown) {
-  const looksLikeTable = /^\|/.test(line) || (/\|/.test(line) && line.length < TABLE_LINE_MAX_LENGTH);
+  const looksLikeTable = /^\|/.test(line) || /\|/.test(line) && line.length < TABLE_LINE_MAX_LENGTH;
   if (!looksLikeTable) return false;
   const row = parseTableRow(line);
   if (!row || !row.name || /^[-—|]+$/.test(row.name)) return true;
   if (sectionFlags.inCoolDown) {
-    coolDown.push({ name: row.name, duration: row.duration, notes: row.notes });
+    coolDown.push({
+      name: row.name,
+      duration: row.duration,
+      notes: row.notes
+    });
   } else if (sectionFlags.inWarmUp) {
-    warmUp.push({ name: row.name, duration: row.duration });
+    warmUp.push({
+      name: row.name,
+      duration: row.duration
+    });
   }
   return true;
 }
@@ -1727,13 +2054,13 @@ function tryParseWarmCoolTableLine(line, sectionFlags, warmUp, coolDown) {
  * @returns {{ sets: string, reps: string, rest: string, startingWeight: string }}
  */
 function setsAndRepsFromCrossValue(value) {
-  const crossMatch =
-    value.match(/(\d+)\s*x\s*([\d\-]+)/i) ||
-    value.match(/(\d+)\s*sets?\s*[x×]\s*([\d\-]+)/i);
+  const crossMatch = value.match(/(\d+)\s*x\s*([\d\-]+)/i) || value.match(/(\d+)\s*sets?\s*[x×]\s*([\d\-]+)/i);
   if (!crossMatch) return null;
-  return { sets: crossMatch[1], reps: crossMatch[2] };
+  return {
+    sets: crossMatch[1],
+    reps: crossMatch[2]
+  };
 }
-
 function applyBulletPartKey(key, value, bucket) {
   if (/sets?\s*x\s*reps?|reps?/i.test(key)) {
     const parsed = setsAndRepsFromCrossValue(value);
@@ -1748,9 +2075,13 @@ function applyBulletPartKey(key, value, bucket) {
   }
   if (/starting\s*weight|weight/i.test(key)) bucket.startingWeight = value;
 }
-
 function setsRepsRestFromBulletParts(parts) {
-  const bucket = { sets: '', reps: '', rest: '', startingWeight: '' };
+  const bucket = {
+    sets: '',
+    reps: '',
+    rest: '',
+    startingWeight: ''
+  };
   for (let partIndex = 1; partIndex < parts.length; partIndex += 1) {
     const part = parts[partIndex];
     if (/Form\s*Cues?/i.test(part)) continue;
@@ -1775,9 +2106,7 @@ function fillSetsRepsFromColonFallback(content, current) {
   if (!colonMatch) return;
   current.name = colonMatch[1].replace(/^[A-Z]\d+\s*[—\-]\s*/, '').trim();
   const afterColon = colonMatch[2];
-  const setMatch =
-    afterColon.match(/(\d+)\s*sets?\s*[x×]\s*([\d\-]+)\s*reps?/i) ||
-    afterColon.match(/(\d+)\s*x\s*([\d\-]+)/i);
+  const setMatch = afterColon.match(/(\d+)\s*sets?\s*[x×]\s*([\d\-]+)\s*reps?/i) || afterColon.match(/(\d+)\s*x\s*([\d\-]+)/i);
   if (setMatch) {
     current.sets = setMatch[1];
     current.reps = setMatch[2];
@@ -1798,38 +2127,24 @@ function exerciseFromBulletLine(line) {
   if (!bulletMatch) return null;
   const content = bulletMatch[1].trim();
   if (!content || content.length < MIN_BULLET_CONTENT_LENGTH) return null;
-
   const formCuesMatch = content.match(/Form\s*Cues?:\s*(.+)$/i);
   const parts = content.split(/\s+-\s+/);
   const firstPart = (parts[0] || '').trim();
-  const formCues = formCuesMatch
-    ? formCuesMatch[1]
-        .split(/\s+-\s+/)
-        .map((cuePiece) => cleanText(cuePiece.trim()))
-        .filter(Boolean)
-    : [];
-
+  const formCues = formCuesMatch ? formCuesMatch[1].split(/\s+-\s+/).map(cuePiece => cleanText(cuePiece.trim())).filter(Boolean) : [];
   const current = {
     name: firstPart.replace(/^[A-Z]\d+\s*[—\-]\s*/, '').trim(),
-    ...setsRepsRestFromBulletParts(parts),
+    ...setsRepsRestFromBulletParts(parts)
   };
   fillSetsRepsFromColonFallback(content, current);
-
-  const hasEnough =
-    current.name &&
-    (current.sets ||
-      current.reps ||
-      formCues.length > 0 ||
-      current.name.length > MIN_EXERCISE_NAME_LENGTH);
+  const hasEnough = current.name && (current.sets || current.reps || formCues.length > 0 || current.name.length > MIN_EXERCISE_NAME_LENGTH);
   if (!hasEnough) return null;
-
   return {
     name: cleanText(current.name),
     sets: current.sets || '',
     reps: current.reps || '',
     rest: current.rest || '',
     startingWeight: current.startingWeight || '',
-    formCues,
+    formCues
   };
 }
 
@@ -1842,36 +2157,29 @@ function exerciseFromBulletLine(line) {
  * @returns {void}
  */
 function parseOnePlanSection(block, sectionIndex, result, overviewState) {
-  const lines = block.split(/\n/).map((line) => line.trim()).filter(Boolean);
+  const lines = block.split(/\n/).map(line => line.trim()).filter(Boolean);
   const firstLine = lines[0] || '';
   const lowerFirst = firstLine.toLowerCase();
-
-  const looksLikeOverview =
-    sectionIndex === 0 &&
-    (lowerFirst.includes('overview') ||
-      lowerFirst.includes('personalized') ||
-      /^1\./.test(firstLine) ||
-      block.length > OVERVIEW_BLOCK_MIN_LENGTH);
+  const looksLikeOverview = sectionIndex === 0 && (lowerFirst.includes('overview') || lowerFirst.includes('personalized') || /^1\./.test(firstLine) || block.length > OVERVIEW_BLOCK_MIN_LENGTH);
   if (looksLikeOverview) {
     overviewState.firstOverview = block;
     return;
   }
-
   if (/important\s*notes|notes\s*$/i.test(firstLine) || /^7\./.test(firstLine)) {
     result.notes = lines.slice(1).join('\n').trim() || firstLine;
     return;
   }
-
-  const label =
-    cleanText(firstLine.replace(/^[\d.]+\s*/, '').trim()) ||
-    `Day ${result.days.length + 1}`;
+  const label = cleanText(firstLine.replace(/^[\d.]+\s*/, '').trim()) || `Day ${result.days.length + 1}`;
   const isRest = /\b(rest|off)\b/i.test(label);
   const type = isRest ? 'Rest' : inferType(label);
   const warmUp = [];
   const exercises = [];
   const coolDown = [];
-  const sectionFlags = { inWarmUp: false, inCoolDown: false, inExercises: false };
-
+  const sectionFlags = {
+    inWarmUp: false,
+    inCoolDown: false,
+    inExercises: false
+  };
   for (let lineIndex = 1; lineIndex < lines.length; lineIndex += 1) {
     const line = lines[lineIndex];
     if (applyDaySectionHeader(line, sectionFlags)) continue;
@@ -1879,8 +2187,14 @@ function parseOnePlanSection(block, sectionIndex, result, overviewState) {
     const exercise = exerciseFromBulletLine(line);
     if (exercise) exercises.push(exercise);
   }
-
-  result.days.push({ label, type, isRest, warmUp, exercises, coolDown });
+  result.days.push({
+    label,
+    type,
+    isRest,
+    warmUp,
+    exercises,
+    coolDown
+  });
 }
 
 /**
@@ -1891,33 +2205,37 @@ function parseOnePlanSection(block, sectionIndex, result, overviewState) {
  * @returns {{ overview: string, days: Array, notes: string }}
  */
 function parsePlan(rawText) {
-  const result = { overview: '', days: [], notes: '' };
+  const result = {
+    overview: '',
+    days: [],
+    notes: ''
+  };
   if (!rawText || typeof rawText !== 'string') return result;
 
   // 1. Normalize newlines and force headings onto their own lines.
-  const normalized = rawText
-    .replace(/\r\n/g, '\n')
-    .replace(/\r/g, '\n')
-    .replace(/([^\n])\s*(#{1,6}\s)/g, '$1\n\n$2');
+  const normalized = rawText.replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/([^\n])\s*(#{1,6}\s)/g, '$1\n\n$2');
 
   // 2. Split on ## / ### section headers.
-  const sections = normalized
-    .split(/\n\s*#{2,3}\s*/)
-    .map((section) => section.trim())
-    .filter(Boolean);
+  const sections = normalized.split(/\n\s*#{2,3}\s*/).map(section => section.trim()).filter(Boolean);
 
   // 3. Each section → overview, notes, or a day card.
-  const overviewState = { firstOverview: '' };
+  const overviewState = {
+    firstOverview: ''
+  };
   for (let sectionIndex = 0; sectionIndex < sections.length; sectionIndex += 1) {
     parseOnePlanSection(sections[sectionIndex], sectionIndex, result, overviewState);
   }
-
   result.overview = overviewState.firstOverview || result.overview;
   return result;
 }
 
 /** Trainer-only banner when viewing a client's onboarding on Workout Plans (Design Law — no purple rim). */
-function CoachViewContextBanner({ isDark, clientName, textColor, mutedColor }) {
+function CoachViewContextBanner({
+  isDark,
+  clientName,
+  textColor,
+  mutedColor
+}) {
   // vocab: isDark still passed for callers; colors come from light/dark nb tokens below
   const surface = isDark ? darkColors.nbSurface : lightColors.nbSurface;
   const border = isDark ? darkColors.nbBorder : lightColors.nbBorder;
@@ -1925,708 +2243,418 @@ function CoachViewContextBanner({ isDark, clientName, textColor, mutedColor }) {
   const onFill = isDark ? darkColors.nbOnFill : lightColors.nbOnFill;
   const soft = isDark ? darkColors.nbSoft : lightColors.nbSoft;
   const displayName = String(clientName || '').trim() || 'Your client';
-  const steps = [
-    'Scroll down to review profile cards',
-    'Home → select client → AI Workouts to assign plans',
-  ];
-
-  return (
-    <View style={{ marginHorizontal: 16, marginTop: 4, marginBottom: 10 }}>
-      <View
-        style={{
-          borderRadius: borderRadius.nbCard,
+  const steps = ['Scroll down to review profile cards', 'Home → select client → AI Workouts to assign plans'];
+  return <View style={{
+    marginHorizontal: 16,
+    marginTop: 4,
+    marginBottom: 10
+  }}>
+      <View style={{
+      borderRadius: borderRadius.nbCard,
+      borderWidth: nb.borderWidth,
+      borderColor: border,
+      backgroundColor: surface,
+      padding: 14,
+      shadowColor: isDark ? darkColors.nbShadow : lightColors.nbShadow,
+      shadowOffset: {
+        width: nb.shadowOffsetCard,
+        height: nb.shadowOffsetCard
+      },
+      shadowOpacity: 1,
+      shadowRadius: 0
+    }}>
+        <View style={{
+        flexDirection: 'row',
+        alignItems: 'flex-start'
+      }}>
+          <View style={{
+          width: 44,
+          height: 44,
+          borderRadius: borderRadius.nbIconChip,
           borderWidth: nb.borderWidth,
           borderColor: border,
-          backgroundColor: surface,
-          padding: 14,
-          shadowColor: isDark ? darkColors.nbShadow : lightColors.nbShadow,
-          shadowOffset: { width: nb.shadowOffsetCard, height: nb.shadowOffsetCard },
-          shadowOpacity: 1,
-          shadowRadius: 0,
-        }}
-      >
-        <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
-          <View
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: borderRadius.nbIconChip,
-              borderWidth: nb.borderWidth,
-              borderColor: border,
-              backgroundColor: fill,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
+          backgroundColor: fill,
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}>
             <Ionicons name="eye-outline" size={22} color={onFill} />
           </View>
 
-          <View style={{ flex: 1, marginLeft: 12, minWidth: 0 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
-              <Text
-                style={{
-                  fontSize: 12,
-                  fontWeight: '900',
-                  letterSpacing: 1.1,
-                  textTransform: 'uppercase',
-                  color: mutedColor,
-                }}
-              >
+          <View style={{
+          flex: 1,
+          marginLeft: 12,
+          minWidth: 0
+        }}>
+            <View style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: 6
+          }}>
+              <Text style={{
+              fontSize: 12,
+              fontWeight: '900',
+              letterSpacing: 1.1,
+              textTransform: 'uppercase',
+              color: mutedColor
+            }}>
                 Coach view
               </Text>
-              <View
-                style={{
-                  paddingHorizontal: 8,
-                  paddingVertical: 3,
-                  borderRadius: 999,
-                  backgroundColor: soft,
-                  borderWidth: nb.borderWidthPill,
-                  borderColor: border,
-                }}
-              >
-                <Text style={{ fontSize: 12, fontWeight: '800', color: textColor }}>Read only</Text>
+              <View style={{
+              paddingHorizontal: 8,
+              paddingVertical: 3,
+              borderRadius: 999,
+              backgroundColor: soft,
+              borderWidth: nb.borderWidthPill,
+              borderColor: border
+            }}>
+                <Text style={{
+                fontSize: 12,
+                fontWeight: '800',
+                color: textColor
+              }}>Read only</Text>
               </View>
             </View>
 
-            <Text
-              style={{ fontSize: 17, fontWeight: '900', color: textColor, marginTop: 6, letterSpacing: -0.3 }}
-              numberOfLines={1}
-            >
+            <Text style={{
+            fontSize: 17,
+            fontWeight: '900',
+            color: textColor,
+            marginTop: 6,
+            letterSpacing: -0.3
+          }} numberOfLines={1}>
               {displayName}
             </Text>
 
-            <Text style={{ fontSize: 12, fontWeight: '600', color: mutedColor, lineHeight: 17, marginTop: 6 }}>
+            <Text style={{
+            fontSize: 12,
+            fontWeight: '600',
+            color: mutedColor,
+            lineHeight: 17,
+            marginTop: 6
+          }}>
               Onboarding context for plan building — edits and AI generation here are disabled on this screen.
             </Text>
 
-            <View style={{ marginTop: 10, gap: 7 }}>
-              {steps.map((line) => (
-                <View key={line} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
-                  <View
-                    style={{
-                      width: 18,
-                      height: 18,
-                      borderRadius: 9,
-                      marginTop: 1,
-                      backgroundColor: fill,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
+            <View style={{
+            marginTop: 10,
+            gap: 7
+          }}>
+              {steps.map(line => <View key={line} style={{
+              flexDirection: 'row',
+              alignItems: 'flex-start',
+              gap: 8
+            }}>
+                  <View style={{
+                width: 18,
+                height: 18,
+                borderRadius: 9,
+                marginTop: 1,
+                backgroundColor: fill,
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
                     <Ionicons name="checkmark" size={11} color={onFill} />
                   </View>
-                  <Text style={{ flex: 1, fontSize: 11, fontWeight: '700', color: mutedColor, lineHeight: 15 }}>{line}</Text>
-                </View>
-              ))}
+                  <Text style={{
+                flex: 1,
+                fontSize: 11,
+                fontWeight: '700',
+                color: mutedColor,
+                lineHeight: 15
+              }}>{line}</Text>
+                </View>)}
             </View>
           </View>
         </View>
       </View>
-    </View>
-  );
+    </View>;
 }
-
 
 /**
  * Parse stored plan text → structured plan (JSON first, then legacy markdown).
  * @param {string} rawPlanText
  * @returns {{ structuredPlan: object|null, planParseError: boolean }}
  */
-function structuredPlanFromStoredText(rawPlanText) {
-  try {
-    const rawJson = extractJSON(String(rawPlanText));
-    return { structuredPlan: JSON.parse(rawJson), planParseError: false };
-  } catch (jsonError) {
-    return structuredPlanFromLegacyMarkdown(rawPlanText, jsonError);
-  }
-}
-
-/**
- * @param {string} rawPlanText
- * @param {Error} [jsonError]
- * @returns {{ structuredPlan: object|null, planParseError: boolean }}
- */
-function structuredPlanFromLegacyMarkdown(rawPlanText, jsonError) {
-  try {
-    const legacy = parsePlan(String(rawPlanText));
-    const hasContent = legacy && (legacy.overview || (legacy.days && legacy.days.length));
-    if (!hasContent) return { structuredPlan: null, planParseError: true };
-    return {
-      structuredPlan: {
-        overview: legacy.overview || '',
-        weeklySchedule: (legacy.days || []).map((day) => ({
-          day: day.label || '',
-          focus: day.type || '',
-        })),
-        days: legacy.days || [],
-        nutritionNotes: '',
-        generalNotes: legacy.notes || '',
-      },
-      planParseError: false,
-    };
-  } catch (fallbackError) {
-    console.warn(
-      'Stored plan parse failed (JSON + legacy):',
-      jsonError?.message || jsonError,
-      fallbackError?.message || fallbackError,
-    );
-    return { structuredPlan: null, planParseError: true };
-  }
-}
-
-/**
- * If buildWorkoutPlanPayloadFromStructured yields rows, migrate to that shape.
- * @param {object|null} structuredPlan
- * @returns {{ structuredPlan: object|null, migratedRaw: string|null, didMigrate: boolean }}
- */
-function maybeMigrateStructuredPlanPayload(structuredPlan) {
-  try {
-    const payload = buildWorkoutPlanPayloadFromStructured(structuredPlan);
-    const hasRows =
-      payload && Array.isArray(payload.workoutPlan) && payload.workoutPlan.length > 0;
-    if (!hasRows) {
-      return { structuredPlan, migratedRaw: null, didMigrate: false };
-    }
-    return {
-      structuredPlan: payload,
-      migratedRaw: JSON.stringify(payload),
-      didMigrate: true,
-    };
-  } catch (migrateError) {
-    console.warn('Workout plan migration failed:', migrateError?.message || migrateError);
-    return { structuredPlan, migratedRaw: null, didMigrate: false };
-  }
-}
-
-/**
- * Persist a migrated plan to AsyncStorage (+ optional global key) and Firestore.
- * @param {object} args
- * @returns {Promise<object>} saved plan row for setGeneratedPlan
- */
-async function persistMigratedPlanToCaches({
-  subjectUid,
-  isSelf,
-  loadedData,
-  firestorePlan,
-  structuredPlan,
-  migratedRaw,
+function collectWorkoutPlanRowsForViewer({
+  routeWorkoutPlan,
+  structuredRaw,
+  structured
 }) {
-  const generatedAtMs = firestorePlan.generatedAt?.toMillis?.() ?? Date.now();
-  const saved = {
-    id: `plan_${generatedAtMs}`,
-    generatedAt: generatedAtMs,
-    userData: loadedData,
-    planText: migratedRaw,
-    structuredPlan,
-    planParseError: false,
-  };
-  await AsyncStorage.setItem(`workout_plan_${subjectUid}`, JSON.stringify(saved));
-  if (isSelf) {
-    await AsyncStorage.setItem('@workout_plan', JSON.stringify(saved));
+  if (Array.isArray(routeWorkoutPlan) && routeWorkoutPlan.length > 0) {
+    const normalizedFromRoute = routeWorkoutPlan.map((item, rowIndex) => normalizeRouteWorkoutPlanItem(item, rowIndex)).filter(Boolean);
+    if (normalizedFromRoute.length > 0) return normalizedFromRoute;
   }
-  await setCurrentWorkoutPlan(subjectUid, { rawPlan: migratedRaw });
-  return saved;
+  if (Array.isArray(structuredRaw == null ? void 0 : structuredRaw.workoutPlan) && structuredRaw.workoutPlan.length > 0) {
+    const normalizedFromWorkoutPlan = structuredRaw.workoutPlan.map((item, rowIndex) => normalizeRouteWorkoutPlanItem(item, rowIndex)).filter(Boolean);
+    if (normalizedFromWorkoutPlan.length > 0) return normalizedFromWorkoutPlan;
+  }
+  // Claude schema: { success: true, plan: [...] }
+  if (Array.isArray(structuredRaw == null ? void 0 : structuredRaw.plan) && structuredRaw.plan.length > 0) {
+    const normalizedFromPlanArray = structuredRaw.plan.map((item, rowIndex) => normalizeRouteWorkoutPlanItem(item, rowIndex)).filter(Boolean);
+    if (normalizedFromPlanArray.length > 0) return normalizedFromPlanArray;
+  }
+  return mapStructuredDaysToPlanViewerRows(structured);
 }
 
 /**
- * Load Firestore current plan, parse/migrate, return saved row or null.
- * @param {object} args
- * @returns {Promise<object|null>}
+ * Full-screen generated-plan viewer (read-only or showFullPlan).
+ * Kept outside CreateWorkoutPlanScreen so the main stays nesting ≤1.
  */
-async function loadSavedPlanFromFirestore({ subjectUid, isSelf, loadedData }) {
-  const firestorePlan = await getCurrentWorkoutPlan(subjectUid);
-  if (!firestorePlan?.rawPlan) return null;
-
-  let { structuredPlan, planParseError } = structuredPlanFromStoredText(firestorePlan.rawPlan);
-  const migration = maybeMigrateStructuredPlanPayload(structuredPlan);
-  if (migration.didMigrate) {
-    firestorePlan.rawPlan = migration.migratedRaw;
-    structuredPlan = migration.structuredPlan;
-    planParseError = false;
-    return persistMigratedPlanToCaches({
-      subjectUid,
-      isSelf,
-      loadedData,
-      firestorePlan,
-      structuredPlan,
-      migratedRaw: migration.migratedRaw,
-    });
-  }
-
-  return {
-    id: `plan_${firestorePlan.generatedAt?.toMillis?.() ?? Date.now()}`,
-    generatedAt: firestorePlan.generatedAt?.toMillis?.() ?? Date.now(),
-    userData: loadedData,
-    planText: firestorePlan.rawPlan,
-    structuredPlan,
-    planParseError,
-  };
-}
-
-/**
- * Load plan from AsyncStorage when Firestore has none.
- * @param {object} args
- * @returns {Promise<object|null>}
- */
-async function loadSavedPlanFromAsyncStorage({ subjectUid, isSelf }) {
-  const planJson = isSelf
-    ? (await AsyncStorage.getItem('@workout_plan')) ||
-      (await AsyncStorage.getItem(`workout_plan_${subjectUid}`))
-    : await AsyncStorage.getItem(`workout_plan_${subjectUid}`);
-  if (!planJson) return null;
-
-  const saved = JSON.parse(planJson);
-  if (!saved || !(saved.planText || saved.structuredPlan)) return null;
-
-  if (!saved.structuredPlan && saved.planText) {
-    const parsed = structuredPlanFromStoredText(saved.planText);
-    saved.structuredPlan = parsed.structuredPlan;
-    saved.planParseError = parsed.planParseError;
-  }
-
-  const migration = maybeMigrateStructuredPlanPayload(
-    saved.structuredPlan || tryParseJsonObject(saved.planText),
-  );
-  if (migration.didMigrate) {
-    saved.structuredPlan = migration.structuredPlan;
-    saved.planText = migration.migratedRaw;
-    saved.planParseError = false;
-    await AsyncStorage.setItem(`workout_plan_${subjectUid}`, JSON.stringify(saved));
-    if (isSelf) await AsyncStorage.setItem('@workout_plan', JSON.stringify(saved));
-    await setCurrentWorkoutPlan(subjectUid, { rawPlan: migration.migratedRaw });
-  }
-
-  return saved;
-}
-
-/**
- * Parse edited plan text into structured plan (JSON, then legacy).
- * @param {string} text
- * @returns {{ structuredPlan: object|null, planParseError: boolean }}
- */
-function structuredPlanFromEditedText(text) {
-  try {
-    return { structuredPlan: JSON.parse(text), planParseError: false };
-  } catch (jsonError) {
-    console.warn('Edited plan JSON parse failed:', jsonError);
-    return structuredPlanFromLegacyMarkdown(text, jsonError);
-  }
-}
-
-/**
- * Parse API workout JSON that must contain a 7-day plan array.
- * @param {string} responseText
- * @returns {{ success: boolean, plan: Array }}
- */
-function parseWorkoutPlanJsonText(responseText) {
-  let parsed = null;
-  try {
-    parsed = JSON.parse(responseText);
-  } catch (firstError) {
-    const jsonMatch = String(responseText || '').match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error('No JSON object found in response');
-    try {
-      parsed = JSON.parse(jsonMatch[0]);
-    } catch (secondError) {
-      throw new Error(`Failed to parse workout plan: ${secondError.message}`);
-    }
-  }
-
-  const plan = Array.isArray(parsed?.plan) ? parsed.plan : null;
-  if (!plan) throw new Error('Invalid structure: missing or invalid "plan" array');
-  if (plan.length !== DAYS_IN_WEEK) {
-    throw new Error(`Expected 7 days, got ${plan.length}`);
-  }
-  return { parsed, plan };
-}
-
-
-
-/**
- * AsyncStorage fallback for onboarding when Firestore has no user doc.
- * @param {object} args
- * @returns {Promise<object|null>}
- */
-async function loadOnboardingFromAsyncStorageOrCoachEmpty({
-  storageKey,
-  isCoach,
-  cancelled,
-  setOnboardingData,
-  onBack,
-}) {
-  const data = await AsyncStorage.getItem(storageKey);
-  if (data) {
-    const loadedData = normalizeClientProfileFields(JSON.parse(data));
-    if (!cancelled) setOnboardingData(loadedData);
-    return loadedData;
-  }
-  if (isCoach) {
-    if (!cancelled) setOnboardingData({});
-    return {};
-  }
-  Alert.alert('Error', 'Onboarding data not found');
-  if (onBack) onBack();
-  return null;
-}
-
-/**
- * @param {object} args
- * @returns {void}
- */
-function handleOnboardingLoadError({ isCoach, cancelled, setOnboardingData, onBack }) {
-  if (!isCoach) {
-    Alert.alert('Error', 'Failed to load onboarding data');
-    if (onBack) onBack();
-    return;
-  }
-  if (!cancelled) setOnboardingData({});
-}
-
-
-/**
- * Load onboarding + saved plan into React state for the plan screen.
- * @param {object} args
- * @returns {Promise<void>}
- */
-async function loadOnboardingAndPlanIntoState({
-  subjectUid,
-  isCoach,
-  isSelf,
-  cancelled,
-  setOnboardingData,
-  setGeneratedPlan,
-  onBack,
-}) {
-  const storageKey = `onboarding_data_${subjectUid}`;
-  let loadedData = await loadOnboardingFromFirestoreDoc({
-    subjectUid,
-    storageKey,
-    cancelled,
-    setOnboardingData,
-  });
-
-  if (!loadedData) {
-    loadedData = await loadOnboardingFromAsyncStorageOrCoachEmpty({
-      storageKey,
-      isCoach,
-      cancelled,
-      setOnboardingData,
-      onBack,
-    });
-  }
-
-  if (cancelled || !subjectUid) return;
-
-  const fromFirestore = await loadSavedPlanFromFirestore({
-    subjectUid,
-    isSelf,
-    loadedData,
-  });
-  if (fromFirestore && !cancelled) {
-    setGeneratedPlan(fromFirestore);
-    return;
-  }
-
-  const fromStorage = await loadSavedPlanFromAsyncStorage({ subjectUid, isSelf });
-  if (fromStorage && !cancelled) setGeneratedPlan(fromStorage);
-}
-
-/**
- * @param {object} args
- * @returns {Promise<object|null>}
- */
-async function loadOnboardingFromFirestoreDoc({
-  subjectUid,
-  storageKey,
-  cancelled,
-  setOnboardingData,
-}) {
-  if (!db) return null;
-  const userSnap = await getDoc(doc(db, 'users', subjectUid));
-  if (!userSnap.exists()) return null;
-  const loadedData = normalizeClientProfileFields(userSnap.data());
-  if (cancelled) return loadedData;
-  await AsyncStorage.setItem(storageKey, JSON.stringify(loadedData));
-  setOnboardingData(loadedData);
-  return loadedData;
-}
-
-
-/**
- * Shake the first invalid onboarding card and scroll to top.
- * @param {object} args
- * @returns {void}
- */
-function shakeFirstValidationError({
-  validationErrors,
-  setExpandedCard,
-  triggerShake,
-  scrollViewRef,
-}) {
-  const firstErrorKey = Object.keys(validationErrors)[0];
-  if (!firstErrorKey) return;
-  setExpandedCard(firstErrorKey);
-  triggerShake(firstErrorKey);
-  setTimeout(() => {
-    scrollViewRef.current?.scrollTo({ y: 0, animated: true });
-  }, 100);
-}
-
-/**
- * Ask the API, parse, cache, and mark generation success.
- * @param {object} args
- * @returns {Promise<void>}
- */
-async function runWorkoutPlanGeneration({
-  subjectUid,
-  onboardingData,
-  profileSubjectUid,
-  fetchWorkoutPlanFromServer,
-  parseWorkoutPlan,
-  ui,
-  setOnboardingData,
-  setGeneratedPlan,
-  setGenerationError,
-  setPdfGenerationError,
-  setShowRawPlanFallback,
-  setPdfLocalUri,
-  setPdfDownloadUrl,
-  setPlanTitleForPdf,
-  appInForegroundRef,
-  mountedRef,
-  schedulePlanReadyNotification,
-}) {
-  const profileForGen = await loadProfileForGeneration({
-    subjectUid,
+function buildFullScreenPlanViewerElement(args) {
+  var _optObj8;
+  const {
+    generatedPlan,
+    pdfDownloadUrl,
+    collectionViewingPlan,
+    readOnly,
+    isGenerating,
+    viewerErrorDelayElapsed,
+    isDark,
+    route,
+    onBack,
+    onStartSession,
+    planSubViewBackRef,
+    planSubViewActiveRef,
+    showPdfViewer,
+    setShowPdfViewer,
+    pdfLocalUri,
+    planTitleForPdf,
+    setCollectionViewingPlan,
+    hideBottomNav,
+    onNavigate,
+    shellBottomInset,
+    addedToCollection,
+    savingToCollection,
+    handleAddToCollection,
+    setShowFullPlan,
     onboardingData,
-    ui,
-    setOnboardingData,
+    renderWorkoutChromeHeader
+  } = args;
+  const pdfUrl = (generatedPlan == null ? void 0 : generatedPlan.url) || pdfDownloadUrl || (collectionViewingPlan == null ? void 0 : collectionViewingPlan.url) || null;
+  const structuredRaw = (generatedPlan == null ? void 0 : generatedPlan.structuredPlan) || tryParseJsonObject(generatedPlan == null ? void 0 : generatedPlan.planText);
+  const structured = normalizeStructuredPlanForViewer(structuredRaw);
+  const overviewText = (structured == null ? void 0 : structured.overview) && String(structured.overview).trim() || (structuredRaw == null ? void 0 : structuredRaw.overview) && String(structuredRaw.overview).trim() || (generatedPlan == null ? void 0 : generatedPlan.planOverview) && String(generatedPlan.planOverview).trim() || "";
+  const weeksNumber = Number((structuredRaw == null ? void 0 : structuredRaw.weeksRemaining) ?? (structuredRaw == null ? void 0 : structuredRaw.durationWeeks) ?? (structured == null ? void 0 : structured.weeksRemaining));
+  const weeksNumberIsValid = Number.isFinite(weeksNumber) && weeksNumber > 0;
+  const planViewerWeeks = weeksNumberIsValid ? Math.floor(weeksNumber) : DEFAULT_PLAN_WEEKS;
+  const planViewerFocus = String((structuredRaw == null ? void 0 : structuredRaw.programFocus) ?? (structuredRaw == null ? void 0 : structuredRaw.focus) ?? (structured == null ? void 0 : structured.focus) ?? '').trim() || 'Complete muscle building program';
+  const planHeroTitle = String((structuredRaw == null ? void 0 : structuredRaw.planTitle) ?? (structured == null ? void 0 : structured.planTitle) ?? (generatedPlan == null ? void 0 : generatedPlan.planTitle) ?? '').trim() || 'Your Workout Plan';
+  // Notes tab — same key fallbacks as WorkoutPlanView (no new Firebase fields)
+  const timelineText = String((structuredRaw == null ? void 0 : structuredRaw.timeline) || (structuredRaw == null ? void 0 : structuredRaw.expectedTimeline) || (structured == null ? void 0 : structured.timeline) || '').trim();
+  const importantNotesText = String((structuredRaw == null ? void 0 : structuredRaw.importantNotes) || (structuredRaw == null ? void 0 : structuredRaw.notes) || (structuredRaw == null ? void 0 : structuredRaw.generalNotes) || (structured == null ? void 0 : structured.notes) || '').trim();
+  const nutritionGuidanceText = String((structuredRaw == null ? void 0 : structuredRaw.nutritionGuidance) || (structuredRaw == null ? void 0 : structuredRaw.nutrition) || (structuredRaw == null ? void 0 : structuredRaw.nutritionNotes) || (structured == null ? void 0 : structured.nutrition) || '').trim();
+  const routeWorkoutPlan = (_optObj8 = route == null ? void 0 : route.params) == null ? void 0 : _optObj8.workoutPlan;
+  const hasRouteWorkoutPlanParam = !!((route == null ? void 0 : route.params) && Object.prototype.hasOwnProperty.call(route.params, 'workoutPlan'));
+  const workoutPlanRows = collectWorkoutPlanRowsForViewer({
+    routeWorkoutPlan,
+    structuredRaw,
+    structured
   });
-  const rawText = await fetchWorkoutPlanFromServer(profileForGen, subjectUid);
+  const planTextRaw = generatedPlan == null ? void 0 : generatedPlan.planText;
+  const hasPlanText = !!(planTextRaw && String(planTextRaw).trim());
+  const looksLikeJson = /^\s*[\[{]/.test(String(planTextRaw || ''));
+  const showMarkdownBody = workoutPlanRows.length === 0 && hasPlanText && !structuredPlanHasViewerContent(structured) && !looksLikeJson;
+  const viewerStructureError = hasRouteWorkoutPlanParam && (!Array.isArray(routeWorkoutPlan) || routeWorkoutPlan.length === 0) || workoutPlanRows.length === 0 && (!hasPlanText || looksLikeJson);
+  const viewerEmpty = workoutPlanRows.length === 0 && !showMarkdownBody && !viewerStructureError;
 
-  if (rawText) {
-    console.log(
-      'RAW WORKOUT RESPONSE length:',
-      rawText.length,
-      '| preview:',
-      JSON.stringify(String(rawText).slice(0, 600)),
-    );
+  // Named theme locals for the plan viewer chrome (no one-letter colors).
+  const planViewerBackground = isDark ? lightColors.nbInk : '#F5F5F5';
+  const surface = isDark ? '#13131A' : lightColors.white;
+  const borderColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)';
+  const inkColor = isDark ? lightColors.white : lightColors.nbInk;
+  const mutedColor = isDark ? 'rgba(255,255,255,0.55)' : 'rgba(10,10,15,0.6)';
+  const glassFill = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)';
+  if (isGenerating && readOnly) {
+    return <View style={[styles.container, {
+      flex: 1,
+      backgroundColor: planViewerBackground
+    }]}>
+          {renderWorkoutChromeHeader({
+        onBack: () => onBack == null ? void 0 : onBack()
+      })}
+          <SafeAreaView style={{
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingHorizontal: 24
+      }} edges={SHELL_SAFE_AREA_EDGES}>
+            <ActivityIndicator size="large" color={PLAN_BUILDER_COLORS.pink} />
+            <Text style={[planViewerRefStyles.loaderText, {
+          color: inkColor,
+          textAlign: 'center'
+        }]}>
+              Building your workout plan…
+            </Text>
+            <Text style={[planViewerRefStyles.loaderText, {
+          color: mutedColor,
+          fontSize: 14,
+          marginTop: 10,
+          textAlign: 'center'
+        }]}>
+              You can go back — we will notify you when your plan is ready.
+            </Text>
+          </SafeAreaView>
+        </View>;
   }
-
-  if (!rawText || typeof rawText !== 'string') {
-    throw new Error('Empty response from server. Please try again.');
+  if (viewerStructureError && readOnly && !viewerErrorDelayElapsed) {
+    return <View style={[styles.container, {
+      flex: 1,
+      backgroundColor: planViewerBackground
+    }]}>
+          <SafeAreaView style={{
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center'
+      }} edges={SHELL_SAFE_AREA_EDGES}>
+            <ActivityIndicator size="large" color={PLAN_BUILDER_COLORS.pink} />
+            <Text style={[planViewerRefStyles.loaderText, {
+          color: inkColor
+        }]}>Loading your workout plan...</Text>
+          </SafeAreaView>
+        </View>;
   }
-
-  let planText = extractJSON(rawText);
-  if (!planText || typeof planText !== 'string') {
-    throw new Error('Empty response from Claude. Please try again.');
+  if (viewerStructureError) {
+    return <View style={[styles.container, {
+      flex: 1,
+      backgroundColor: planViewerBackground
+    }]}>
+          <SafeAreaView style={{
+        flex: 1
+      }} edges={SHELL_SAFE_AREA_EDGES}>
+            <View style={planViewerRefStyles.errorContainer}>
+              <MaterialCommunityIcons name="alert-circle" size={48} color={PLAN_BUILDER_COLORS.pink} />
+              <Text style={[planViewerRefStyles.errorTitle, {
+            color: inkColor
+          }]}>Error</Text>
+              <Text style={[planViewerRefStyles.errorMessage, {
+            color: mutedColor
+          }]}>
+                {hasRouteWorkoutPlanParam ? 'Invalid workout plan structure received' : 'No workout plan provided'}
+              </Text>
+              <TouchableOpacity onPress={() => onBack == null ? void 0 : onBack()} style={[planViewerRefStyles.errorButton, {
+            backgroundColor: PLAN_BUILDER_COLORS.pink
+          }]}>
+                <Text style={planViewerRefStyles.errorButtonText}>Go Back</Text>
+              </TouchableOpacity>
+            </View>
+          </SafeAreaView>
+        </View>;
   }
-
-  const structuredPlan = tryParseGeneratedWorkoutPlan({
-    planText,
-    parseWorkoutPlan,
-    subjectUid,
-    onboardingData,
-    ui,
-    setGenerationError,
-    setGeneratedPlan,
-  });
-  if (!structuredPlan) return;
-
-  const authedUid = auth.currentUser?.uid;
-  const targetUid = profileSubjectUid;
-  const planData = {
-    id: `plan_${Date.now()}`,
-    generatedAt: Date.now(),
-    userData: onboardingData,
-    planText,
-    structuredPlan,
-    planParseError: false,
-  };
-
-  await AsyncStorage.setItem(
-    `workout_plan_${targetUid || authedUid || 'unknown'}`,
-    JSON.stringify(planData),
-  );
-  if (targetUid && authedUid && targetUid === authedUid) {
-    await AsyncStorage.setItem('@workout_plan', JSON.stringify(planData));
+  if (viewerEmpty) {
+    return <View style={[styles.container, {
+      flex: 1,
+      backgroundColor: planViewerBackground
+    }]}>
+          <SafeAreaView style={{
+        flex: 1
+      }} edges={SHELL_SAFE_AREA_EDGES}>
+            <View style={[planViewerRefStyles.emptyContainer, {
+          backgroundColor: surface
+        }]}>
+              <Ionicons name="fitness" size={48} color={PLAN_BUILDER_COLORS.cyan} />
+              <Text style={[planViewerRefStyles.emptyTitle, {
+            color: inkColor
+          }]}>No Plan Yet</Text>
+              <Text style={[planViewerRefStyles.emptyMessage, {
+            color: mutedColor
+          }]}>
+                Generate a workout plan from the home screen
+              </Text>
+              <TouchableOpacity onPress={() => onBack == null ? void 0 : onBack()} style={[planViewerRefStyles.emptyButton, {
+            backgroundColor: PLAN_BUILDER_COLORS.cyan
+          }]}>
+                <Text style={planViewerRefStyles.emptyButtonText}>Go Back</Text>
+              </TouchableOpacity>
+            </View>
+          </SafeAreaView>
+        </View>;
   }
-  ui(() => setGeneratedPlan(planData));
-  if (targetUid) {
-    await setCurrentWorkoutPlan(targetUid, {
-      rawPlan: planText,
-      planText,
-      structuredPlan: planData.structuredPlan || null,
-      title: nameWorkoutPlan(planData),
-    });
-  }
-
-  ui(() => setPdfGenerationError(null));
-  ui(() => setShowRawPlanFallback(false));
-  ui(() => setPdfLocalUri(null));
-  ui(() => setPdfDownloadUrl(null));
-  ui(() => setPlanTitleForPdf(''));
-
-  const userAwayFromWorkout = !mountedRef.current || !appInForegroundRef.current;
-  if (targetUid) {
-    await markWorkoutGenerationSucceeded(targetUid, { userAwayFromWorkout });
-  }
-  if (userAwayFromWorkout) {
-    await schedulePlanReadyNotification();
-    return;
-  }
-  if (targetUid) await clearWorkoutPlanReadyBadge(targetUid);
+  return <View style={{
+    flex: 1,
+    backgroundColor: planViewerBackground
+  }}>
+        <SafeAreaView style={{
+      flex: 1
+    }} edges={SHELL_SAFE_AREA_EDGES}>
+          <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
+          <View style={{
+        flex: 1,
+        minHeight: 0
+      }}>
+            <MyWorkoutPlanScreen onBack={() => {
+          var _optCallObj, _optCallFn;
+          if ((_optCallObj = planSubViewBackRef, _optCallFn = _optCallObj.current) == null ? void 0 : _optCallFn.call(_optCallObj)) return;
+          if (readOnly) {
+            onBack == null ? void 0 : onBack();
+          } else {
+            setShowFullPlan(false);
+          }
+        }} onStartSession={day => {
+          if (typeof onStartSession !== 'function' || !day || day.rest) return;
+          const focusBits = String(day.focus || '').split(/\s*·\s*/).filter(Boolean);
+          const workoutName = focusBits[0] || String(day.day || day.short || 'Workout').trim() || 'Workout';
+          onStartSession({
+            workoutName,
+            exercises: Array.isArray(day.exercises) ? day.exercises : []
+          });
+        }} route={{
+          params: {
+            workoutPlan: workoutPlanRows,
+            overview: overviewText,
+            isDarkOverride: isDark,
+            weeksRemaining: planViewerWeeks,
+            focusSummary: planViewerFocus,
+            planHeroTitle: planHeroTitle,
+            timeline: timelineText,
+            importantNotes: importantNotesText,
+            nutritionGuidance: nutritionGuidanceText,
+            onViewPdf: () => setShowPdfViewer(true),
+            onboardingData,
+            reserveShellBottomNav: readOnly || !generatedPlan,
+            subViewBackRef: planSubViewBackRef,
+            onSubViewActiveChange: active => {
+              planSubViewActiveRef.current = !!active;
+            }
+          }
+        }} />
+          </View>
+          <PlanPdfViewer visible={showPdfViewer} pdfLocalUri={pdfLocalUri} pdfDownloadUrl={collectionViewingPlan ? collectionViewingPlan.url : pdfDownloadUrl} planTitle={collectionViewingPlan ? collectionViewingPlan.planTitle : planTitleForPdf} isDark={isDark} onClose={() => {
+        setShowPdfViewer(false);
+        setCollectionViewingPlan(null);
+      }} />
+          {!readOnly && generatedPlan && (() => {
+        let saveToMyPlansButtonLabel = 'Save to My Plans';
+        if (savingToCollection) saveToMyPlansButtonLabel = 'Saving…';else if (addedToCollection) saveToMyPlansButtonLabel = 'Saved to My Plans';
+        return <View style={{
+          paddingHorizontal: 16,
+          paddingTop: 10,
+          paddingBottom: shellBottomInset
+        }}>
+              <NbButton variant="fill" onPress={handleAddToCollection} disabled={addedToCollection || savingToCollection} style={{
+            opacity: addedToCollection ? 0.7 : 1
+          }}>
+                {saveToMyPlansButtonLabel}
+              </NbButton>
+            </View>;
+      })()}
+        </SafeAreaView>
+        {!hideBottomNav && <ShellBottomNavAnchor>
+            <BottomMenuBar onHomePress={() => onNavigate ? onNavigate('home') : onBack == null ? void 0 : onBack()} onProfilePress={() => onNavigate && onNavigate('profile')} onPlusPress={() => onNavigate && onNavigate('create')} onVoicePress={() => onNavigate && onNavigate('voice')} onNutritionPress={() => onNavigate && onNavigate('nutrition')} onWorkoutPress={() => onNavigate && onNavigate('workout')} onMessagesPress={() => onNavigate && onNavigate('messages')} activeTabKey="workout" />
+          </ShellBottomNavAnchor>}
+      </View>;
 }
 
 /**
- * @param {object} args
- * @returns {Promise<object>}
+ * Page header title for the New plan / library chrome.
+ * @param {string} activeTab
+ * @param {Function|undefined} onBack
+ * @returns {string}
  */
-async function loadProfileForGeneration({
-  subjectUid,
-  onboardingData,
-  ui,
-  setOnboardingData,
-}) {
-  let profileForGen = onboardingData;
-  if (!db || !subjectUid) return profileForGen;
-  try {
-    const freshSnap = await getDoc(doc(db, 'users', subjectUid));
-    if (!freshSnap.exists()) return profileForGen;
-    profileForGen = normalizeClientProfileFields(freshSnap.data());
-    ui(() => setOnboardingData(profileForGen));
-    await AsyncStorage.setItem(
-      `onboarding_data_${subjectUid}`,
-      JSON.stringify(profileForGen),
-    );
-  } catch (_) {
-    /* use cached onboarding */
-  }
-  return profileForGen;
-}
-
-/**
- * Parse generated plan text; on failure set error state and return null.
- * @param {object} args
- * @returns {object|null}
- */
-function tryParseGeneratedWorkoutPlan({
-  planText,
-  parseWorkoutPlan,
-  subjectUid,
-  onboardingData,
-  ui,
-  setGenerationError,
-  setGeneratedPlan,
-}) {
-  try {
-    const parsed = parseWorkoutPlan(planText);
-    return {
-      ...parsed,
-      workoutPlan: Array.isArray(parsed?.plan) ? parsed.plan : [],
-    };
-  } catch (parseErr) {
-    console.warn('Workout plan parse failed:', parseErr);
-    const truncated =
-      typeof planText === 'string' && !planText.trimEnd().endsWith('}');
-    const parseMsg = truncated
-      ? 'The response was cut off. Tap Generate again to retry.'
-      : parseErr?.message || 'Failed to parse — please regenerate.';
-    ui(() => setGenerationError(parseMsg));
-    ui(() =>
-      setGeneratedPlan({
-        id: `plan_${Date.now()}`,
-        generatedAt: Date.now(),
-        userData: onboardingData,
-        planText,
-        structuredPlan: null,
-        planParseError: true,
-      }),
-    );
-    if (subjectUid) {
-      markWorkoutGenerationFailed(subjectUid).catch(() => {});
-    }
-    return null;
-  }
-}
-
-/**
- * @param {object} args
- * @returns {Promise<void>}
- */
-async function handleWorkoutPlanGenerationError({
-  error,
-  profileSubjectUid,
-  planGenerationLimit,
-  setWorkoutGenUsage,
-  ui,
-  setGenerationError,
-  mountedRef,
-  generateWorkoutPlan,
-  showNotice,
-}) {
-  console.error('Error generating workout plan:', error);
-  const failUid = profileSubjectUid || auth.currentUser?.uid;
-  if (failUid) await markWorkoutGenerationFailed(failUid);
-
-  if (error?.code === 'monthly_limit_reached') {
-    applyMonthlyLimitError({
-      error,
-      planGenerationLimit,
-      setWorkoutGenUsage,
-      ui,
-      setGenerationError,
-      mountedRef,
-      showNotice,
-    });
-    return;
-  }
-
-  ui(() => setGenerationError(error.message || 'Failed to generate workout plan'));
-  if (!mountedRef.current) return;
-  const failMessage = error.message || "We couldn't generate your workout plan. Please try again.";
-  if (typeof showNotice === 'function') {
-    showNotice('Generation Failed', failMessage, {
-      cancelLabel: 'Cancel',
-      confirmLabel: 'Retry',
-      onConfirm: () => generateWorkoutPlan(),
-    });
-    return;
-  }
-  Alert.alert('Generation Failed', failMessage, [
-    { text: 'Cancel', style: 'cancel' },
-    { text: 'Retry', onPress: () => generateWorkoutPlan() },
-  ]);
-}
-
-/**
- * @param {object} args
- * @returns {void}
- */
-function applyMonthlyLimitError({
-  error,
-  planGenerationLimit,
-  setWorkoutGenUsage,
-  ui,
-  setGenerationError,
-  mountedRef,
-  showNotice,
-}) {
-  if (error.limitPayload) {
-    setWorkoutGenUsage({
-      generations_used: Number(error.limitPayload.used) || planGenerationLimit,
-      generations_limit: Number(error.limitPayload.limit) || planGenerationLimit,
-      resets_at: error.limitPayload.resets_at || nextMonthResetsAtIso(),
-    });
-  }
-  ui(() => setGenerationError(error.message));
-  if (mountedRef.current) {
-    if (typeof showNotice === 'function') {
-      showNotice('Monthly limit reached', error.message);
-    } else {
-      Alert.alert('Monthly limit reached', error.message);
-    }
-  }
+function workoutHeaderTitleForTab(activeTab, onBack) {
+  if (activeTab === 'library') return 'Exercise library';
+  if (typeof onBack === 'function') return 'New plan';
+  return 'Workouts';
 }
 
 // ===== MAIN FUNCTION =====
@@ -2649,39 +2677,44 @@ export default function CreateWorkoutPlanScreen({
   hideBottomNav = false,
   /** When true, trainer can generate/regenerate plans for a linked client (AI Workouts flow). */
   coachCanGeneratePlans = false,
-  route,
+  route
 }) {
+  var _optObj17, _optObj18, _optObj25, _optObj26, _optObj27, _optObj28;
   const theme = useTheme();
-  const { isDark, toggleTheme } = theme;
+  const {
+    isDark,
+    toggleTheme
+  } = theme;
   const insets = useSafeAreaInsets();
   const shellBottomInset = useShellBottomNavInset(12);
   const stickyCtaFooterPad = shellBottomInset;
-  const { aiEnabled, loading: aiPrefLoading } = useAI();
+  const {
+    aiEnabled,
+    loading: aiPrefLoading
+  } = useAI();
   const aiOn = aiEnabled === true;
   const aiPrefReady = !aiPrefLoading && aiEnabled !== null;
-
   const profileSubjectUid = useMemo(() => {
+    var _optObj9;
     if (trainerRosterEmpty) return null;
     const id = userId && String(userId).trim();
     if (id) return id;
-    return auth.currentUser?.uid || null;
+    return ((_optObj9 = auth.currentUser) == null ? void 0 : _optObj9.uid) || null;
   }, [userId, trainerRosterEmpty]);
-
-  const isCoachViewingClientProfile = useMemo(
-    () =>
-      Boolean(
-        auth.currentUser?.uid && profileSubjectUid && profileSubjectUid !== auth.currentUser.uid
-      ),
-    [profileSubjectUid]
-  );
-
+  const isCoachViewingClientProfile = useMemo(() => {
+    var _optObj0;
+    return Boolean(((_optObj0 = auth.currentUser) == null ? void 0 : _optObj0.uid) && profileSubjectUid && profileSubjectUid !== auth.currentUser.uid);
+  }, [profileSubjectUid]);
   const coachPlanGenerationBlocked = isCoachViewingClientProfile && !coachCanGeneratePlans;
 
   // State
   // vocab: notice = NbNoticeSheet payload — Design Law instead of Alert.alert
   const [notice, setNotice] = useState(null);
-  const showNotice = (title, message, extras = {}) => setNotice({ title, message, ...extras });
-
+  const showNotice = (title, message, extras = {}) => setNotice({
+    title,
+    message,
+    ...extras
+  });
   const [onboardingData, setOnboardingData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -2692,8 +2725,10 @@ export default function CreateWorkoutPlanScreen({
   const [generatedPlan, setGeneratedPlan] = useState(propPlan || null);
   const [addedToCollection, setAddedToCollection] = useState(false);
   const [savingToCollection, setSavingToCollection] = useState(false);
-  const generatedPlanId = generatedPlan?.id;
-  useEffect(() => { setAddedToCollection(false); }, [generatedPlanId]);
+  const generatedPlanId = generatedPlan == null ? void 0 : generatedPlan.id;
+  useEffect(() => {
+    setAddedToCollection(false);
+  }, [generatedPlanId]);
   const [showFullPlan, setShowFullPlan] = useState(!!readOnly);
   const [viewerErrorDelayElapsed, setViewerErrorDelayElapsed] = useState(false);
   const [generatingMessageIndex, setGeneratingMessageIndex] = useState(0);
@@ -2724,38 +2759,34 @@ export default function CreateWorkoutPlanScreen({
 
   // Plan generation limit (server-enforced; usage synced from Firestore + API responses)
   const [workoutGenUsage, setWorkoutGenUsage] = useState(null);
-  const plansUsedThisMonth = Math.max(
-    Number(workoutGenUsage?.generations_used) || 0,
-    generatedPlan && (generatedPlan.planText || generatedPlan.structuredPlan) ? 1 : 0,
-  );
-  const planGenerationLimit = Number(workoutGenUsage?.generations_limit) || PLAN_LIMIT_TOTAL;
+  const plansUsedThisMonth = Math.max(Number(workoutGenUsage == null ? void 0 : workoutGenUsage.generations_used) || 0, generatedPlan && (generatedPlan.planText || generatedPlan.structuredPlan) ? 1 : 0);
+  const planGenerationLimit = Number(workoutGenUsage == null ? void 0 : workoutGenUsage.generations_limit) || PLAN_LIMIT_TOTAL;
   const plansRemaining = Math.max(0, planGenerationLimit - plansUsedThisMonth);
   const nextResetDate = useMemo(() => {
-    const raw = workoutGenUsage?.resets_at || nextMonthResetsAtIso();
-    const resetDate = new Date(
-      `${String(raw).slice(0, 10)}T${String(NOON_HOUR_FOR_DATE_PARSE).padStart(2, '0')}:00:00`,
-    );
+    const raw = (workoutGenUsage == null ? void 0 : workoutGenUsage.resets_at) || nextMonthResetsAtIso();
+    const resetDate = new Date(`${String(raw).slice(0, 10)}T${String(NOON_HOUR_FOR_DATE_PARSE).padStart(2, '0')}:00:00`);
     return Number.isNaN(resetDate.getTime()) ? nextMonthResetDate() : resetDate;
-  }, [workoutGenUsage?.resets_at]);
-
+  }, [workoutGenUsage == null ? void 0 : workoutGenUsage.resets_at]);
   useEffect(() => {
     let mounted = true;
-    (async () => {
+    (async _optObj1 => {
       // Plan limits are per authenticated user (not the profile subject when a coach is viewing).
-      const uid = auth.currentUser?.uid;
+      const uid = (_optObj1 = auth.currentUser) == null ? void 0 : _optObj1.uid;
       if (!uid) return;
-      const usage = await resolveWorkoutGenerationUsage(uid, { generatedPlan });
+      const usage = await resolveWorkoutGenerationUsage(uid, {
+        generatedPlan
+      });
       if (mounted) setWorkoutGenUsage(usage);
     })();
     return () => {
       mounted = false;
     };
-  }, [generatedPlan?.generatedAt, generatedPlan?.id]);
+  }, [generatedPlan == null ? void 0 : generatedPlan.generatedAt, generatedPlan == null ? void 0 : generatedPlan.id]);
 
   // When AI preference loads off, land on Ask my trainer (still reachable via segmented)
   useEffect(() => {
     if (!aiPrefReady) return;
-    if (!aiOn) setPlanSourceTab((tab) => (tab === 'ai' ? 'trainer' : tab));
+    if (!aiOn) setPlanSourceTab(tab => tab === 'ai' ? 'trainer' : tab);
   }, [aiPrefReady, aiOn]);
 
   // Trainer-request UI state (AI disabled path)
@@ -2767,7 +2798,7 @@ export default function CreateWorkoutPlanScreen({
     if (!propPlan) return;
     const normalizedPlan = {
       ...propPlan,
-      planText: propPlan?.planText || propPlan?.rawPlan || propPlan?.text || propPlan?.content || '',
+      planText: (propPlan == null ? void 0 : propPlan.planText) || (propPlan == null ? void 0 : propPlan.rawPlan) || (propPlan == null ? void 0 : propPlan.text) || (propPlan == null ? void 0 : propPlan.content) || ''
     };
     setGeneratedPlan(normalizedPlan);
     setLoading(false);
@@ -2784,44 +2815,35 @@ export default function CreateWorkoutPlanScreen({
   useEffect(() => {
     if (!(readOnly && showFullPlan)) return;
     setViewerErrorDelayElapsed(false);
-    const viewerErrorDelayTimer = setTimeout(
-      () => setViewerErrorDelayElapsed(true),
-      VIEWER_ERROR_DELAY_MS,
-    );
+    const viewerErrorDelayTimer = setTimeout(() => setViewerErrorDelayElapsed(true), VIEWER_ERROR_DELAY_MS);
     return () => clearTimeout(viewerErrorDelayTimer);
-  }, [readOnly, showFullPlan, generatedPlan?.id]);
-
-  const togglePlanViewerDay = useCallback((dayShort) => {
-    setPlanViewerExpandedDay((prev) => (prev === dayShort ? null : dayShort));
+  }, [readOnly, showFullPlan, generatedPlan == null ? void 0 : generatedPlan.id]);
+  const togglePlanViewerDay = useCallback(dayShort => {
+    setPlanViewerExpandedDay(prev => prev === dayShort ? null : dayShort);
   }, []);
-
   const scrollViewRef = useRef(null);
   const shakeAnimations = useRef({});
   const auraAnim = useRef(new Animated.Value(0)).current;
   const mountedRef = useRef(true);
   /** False when app is backgrounded — generation should still finish and notify if user left the UI */
   const appInForegroundRef = useRef(AppState.currentState === 'active');
-
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
     };
   }, []);
-
   useEffect(() => {
-    const sub = AppState.addEventListener('change', (next) => {
+    const sub = AppState.addEventListener('change', next => {
       appInForegroundRef.current = next === 'active';
     });
     return () => sub.remove();
   }, []);
-
-  const hydratePlanFromLocalCache = useCallback(async (uid) => {
+  const hydratePlanFromLocalCache = useCallback(async uid => {
     if (!uid) return null;
     try {
-      const raw =
-        (await AsyncStorage.getItem(`workout_plan_${uid}`)) ||
-        (uid === auth.currentUser?.uid ? await AsyncStorage.getItem('@workout_plan') : null);
+      var _optObj10;
+      const raw = (await AsyncStorage.getItem(`workout_plan_${uid}`)) || (uid === ((_optObj10 = auth.currentUser) == null ? void 0 : _optObj10.uid) ? await AsyncStorage.getItem('@workout_plan') : null);
       if (!raw) return null;
       const parsed = JSON.parse(raw);
       if (parsed && typeof parsed === 'object') {
@@ -2829,15 +2851,14 @@ export default function CreateWorkoutPlanScreen({
         return parsed;
       }
     } catch (e) {
-      console.warn('hydratePlanFromLocalCache:', e?.message || e);
+      console.warn('hydratePlanFromLocalCache:', (e == null ? void 0 : e.message) || e);
     }
     return null;
   }, []);
-
   useEffect(() => {
-    const uid = profileSubjectUid || auth.currentUser?.uid;
+    var _optObj11;
+    const uid = profileSubjectUid || ((_optObj11 = auth.currentUser) == null ? void 0 : _optObj11.uid);
     if (!uid || readOnly) return undefined;
-
     let cancelled = false;
     (async () => {
       const session = await readWorkoutGenerationSession(uid);
@@ -2848,8 +2869,7 @@ export default function CreateWorkoutPlanScreen({
         await hydratePlanFromLocalCache(uid);
       }
     })();
-
-    const unsub = subscribeWorkoutGenerationSession((session) => {
+    const unsub = subscribeWorkoutGenerationSession(session => {
       if (session.uid !== uid) return;
       setIsGenerating(!!session.inFlight);
       if (session.pendingReady && !session.inFlight) {
@@ -2859,16 +2879,16 @@ export default function CreateWorkoutPlanScreen({
         setPlanReadyPending(false);
       }
     });
-
     return () => {
       cancelled = true;
       unsub();
     };
   }, [profileSubjectUid, readOnly, hydratePlanFromLocalCache]);
-
   const schedulePlanReadyNotification = async () => {
     try {
-      const { status } = await Notifications.getPermissionsAsync();
+      const {
+        status
+      } = await Notifications.getPermissionsAsync();
       let next = status;
       if (next !== 'granted') {
         const req = await Notifications.requestPermissionsAsync();
@@ -2878,37 +2898,34 @@ export default function CreateWorkoutPlanScreen({
       await Notifications.scheduleNotificationAsync({
         content: {
           title: 'Workout plan ready',
-          body: 'Open Workout to view your new plan.',
+          body: 'Open Workout to view your new plan.'
         },
-        trigger: null,
+        trigger: null
       });
     } catch (e) {
       console.warn('Plan ready notification:', e);
     }
   };
-
-  const GENERATING_MESSAGES = [
-    'Analyzing your goals & profile…',
-    'Structuring your weekly split…',
-    'Balancing volume & recovery…',
-    'Selecting exercises for your equipment…',
-    'Tuning intensity & progression…',
-    'Finalizing your workout plan…',
-  ];
-
+  const GENERATING_MESSAGES = ['Analyzing your goals & profile…', 'Structuring your weekly split…', 'Balancing volume & recovery…', 'Selecting exercises for your equipment…', 'Tuning intensity & progression…', 'Finalizing your workout plan…'];
   useEffect(() => {
     if (!isGenerating) return;
     const generatingMessageTimer = setInterval(() => {
-      setGeneratingMessageIndex((i) => (i + 1) % GENERATING_MESSAGES.length);
+      setGeneratingMessageIndex(i => (i + 1) % GENERATING_MESSAGES.length);
     }, GENERATING_MESSAGE_ROTATE_MS);
     return () => clearInterval(generatingMessageTimer);
   }, [isGenerating]);
-
   const fetchWorkoutPlanFromServer = async (data, subjectUserId) => {
-    const uid = subjectUserId || auth.currentUser?.uid;
-    const { text, usage } = await askForWorkoutPlanFromApi(data, uid);
-    const usageUid = auth.currentUser?.uid || uid;
-    const merged = await resolveWorkoutGenerationUsage(usageUid, { apiUsage: usage, justGenerated: true });
+    var _optObj12, _optObj13;
+    const uid = subjectUserId || ((_optObj12 = auth.currentUser) == null ? void 0 : _optObj12.uid);
+    const {
+      text,
+      usage
+    } = await askForWorkoutPlanFromApi(data, uid);
+    const usageUid = ((_optObj13 = auth.currentUser) == null ? void 0 : _optObj13.uid) || uid;
+    const merged = await resolveWorkoutGenerationUsage(usageUid, {
+      apiUsage: usage,
+      justGenerated: true
+    });
     setWorkoutGenUsage(merged);
     return text;
   };
@@ -2916,8 +2933,8 @@ export default function CreateWorkoutPlanScreen({
   // Load onboarding + cached plan for the profile subject (signed-in user, or `userId` when coach opens a client).
   useEffect(() => {
     let cancelled = false;
-
     const run = async () => {
+      var _optObj14, _optObj15;
       if (propPlan) {
         setLoading(false);
         return;
@@ -2928,19 +2945,16 @@ export default function CreateWorkoutPlanScreen({
         setLoading(false);
         return;
       }
-
-      const subjectUid = (userId && String(userId).trim()) || auth.currentUser?.uid;
+      const subjectUid = userId && String(userId).trim() || ((_optObj14 = auth.currentUser) == null ? void 0 : _optObj14.uid);
       if (!subjectUid) {
         showNotice('Error', 'User not found');
         if (onBack) onBack();
         setLoading(false);
         return;
       }
-
-      const authUid = auth.currentUser?.uid;
+      const authUid = (_optObj15 = auth.currentUser) == null ? void 0 : _optObj15.uid;
       const isCoach = Boolean(authUid && subjectUid !== authUid);
       const isSelf = !isCoach;
-
       try {
         await loadOnboardingAndPlanIntoState({
           subjectUid,
@@ -2949,16 +2963,20 @@ export default function CreateWorkoutPlanScreen({
           cancelled,
           setOnboardingData,
           setGeneratedPlan,
-          onBack,
+          onBack
         });
       } catch (error) {
         console.error('Error loading onboarding data:', error);
-        handleOnboardingLoadError({ isCoach, cancelled, setOnboardingData, onBack });
+        handleOnboardingLoadError({
+          isCoach,
+          cancelled,
+          setOnboardingData,
+          onBack
+        });
       } finally {
         if (!cancelled) setLoading(false);
       }
     };
-
     void run();
     return () => {
       cancelled = true;
@@ -2968,31 +2986,30 @@ export default function CreateWorkoutPlanScreen({
 
   // Keep onboarding pills in sync when the client updates profile in Firestore.
   useEffect(() => {
-    const subjectUid = (userId && String(userId).trim()) || auth.currentUser?.uid;
+    var _optObj16;
+    const subjectUid = userId && String(userId).trim() || ((_optObj16 = auth.currentUser) == null ? void 0 : _optObj16.uid);
     if (!subjectUid || !db || propPlan || readOnly || trainerRosterEmpty) return undefined;
-
     const key = `onboarding_data_${subjectUid}`;
-    const unsub = onSnapshot(
-      doc(db, 'users', subjectUid),
-      (snap) => {
-        if (!snap.exists()) return;
-        const data = normalizeClientProfileFields(snap.data());
-        setOnboardingData(data);
-        AsyncStorage.setItem(key, JSON.stringify(data)).catch(() => {});
-      },
-      () => {},
-    );
+    const unsub = onSnapshot(doc(db, 'users', subjectUid), snap => {
+      if (!snap.exists()) return;
+      const data = normalizeClientProfileFields(snap.data());
+      setOnboardingData(data);
+      AsyncStorage.setItem(key, JSON.stringify(data)).catch(() => {});
+    }, () => {});
     return () => unsub();
   }, [userId, propPlan, readOnly, trainerRosterEmpty]);
 
   // Aura pulse (processing state)
   useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(auraAnim, { toValue: 1, duration: AURA_PULSE_DURATION_MS, useNativeDriver: true }),
-        Animated.timing(auraAnim, { toValue: 0, duration: AURA_PULSE_DURATION_MS, useNativeDriver: true }),
-      ])
-    );
+    const loop = Animated.loop(Animated.sequence([Animated.timing(auraAnim, {
+      toValue: 1,
+      duration: AURA_PULSE_DURATION_MS,
+      useNativeDriver: true
+    }), Animated.timing(auraAnim, {
+      toValue: 0,
+      duration: AURA_PULSE_DURATION_MS,
+      useNativeDriver: true
+    })]));
     loop.start();
     return () => loop.stop();
   }, [auraAnim]);
@@ -3003,37 +3020,25 @@ export default function CreateWorkoutPlanScreen({
     if (aiOn) return;
     if (!onboardingData) return;
     if (requestText) return;
-
-    const exp = onboardingData?.fitnessLevel || onboardingData?.experience || 'your current';
-    const goal = onboardingData?.goal || onboardingData?.primaryGoal || 'fitness';
-    const freq = onboardingData?.frequency || onboardingData?.daysPerWeek || onboardingData?.workoutsPerWeek || '';
-    const sessionLen = onboardingData?.preferredWorkoutTime || onboardingData?.sessionLength || '';
-    const equipment = onboardingData?.equipment || onboardingData?.availableEquipment || '';
-    const limitations = onboardingData?.injuries || onboardingData?.limitations || '';
-
-    const parts = [
-      `I'd like a ${exp} ${goal} plan.`,
-      freq ? `I can train ${freq}.` : null,
-      sessionLen ? `Sessions: ${sessionLen}.` : null,
-      equipment ? `Equipment: ${equipment}.` : null,
-      limitations ? `Limitations: ${limitations}.` : null,
-    ].filter(Boolean);
-
-    setRequestText(parts.join(' '));
+    const experienceLabel = (onboardingData == null ? void 0 : onboardingData.fitnessLevel) || (onboardingData == null ? void 0 : onboardingData.experience) || 'your current';
+    const goalLabel = (onboardingData == null ? void 0 : onboardingData.goal) || (onboardingData == null ? void 0 : onboardingData.primaryGoal) || 'fitness';
+    const frequencyLabel = (onboardingData == null ? void 0 : onboardingData.frequency) || (onboardingData == null ? void 0 : onboardingData.daysPerWeek) || (onboardingData == null ? void 0 : onboardingData.workoutsPerWeek) || '';
+    const sessionLengthLabel = (onboardingData == null ? void 0 : onboardingData.preferredWorkoutTime) || (onboardingData == null ? void 0 : onboardingData.sessionLength) || '';
+    const equipmentLabel = (onboardingData == null ? void 0 : onboardingData.equipment) || (onboardingData == null ? void 0 : onboardingData.availableEquipment) || '';
+    const limitationsLabel = (onboardingData == null ? void 0 : onboardingData.injuries) || (onboardingData == null ? void 0 : onboardingData.limitations) || '';
+    const requestSentenceParts = [`I'd like a ${experienceLabel} ${goalLabel} plan.`, frequencyLabel ? `I can train ${frequencyLabel}.` : null, sessionLengthLabel ? `Sessions: ${sessionLengthLabel}.` : null, equipmentLabel ? `Equipment: ${equipmentLabel}.` : null, limitationsLabel ? `Limitations: ${limitationsLabel}.` : null].filter(Boolean);
+    setRequestText(requestSentenceParts.join(' '));
   }, [aiOn, onboardingData, requestText]);
-
-  const resolvedTrainerId =
-    onboardingData?.trainerId ||
-    onboardingData?.trainer?.id ||
-    onboardingData?.trainer?.uid ||
-    null;
-
+  const resolvedTrainerId = (onboardingData == null ? void 0 : onboardingData.trainerId) || ((_optObj17 = onboardingData == null ? void 0 : onboardingData.trainer) == null ? void 0 : _optObj17.id) || ((_optObj18 = onboardingData == null ? void 0 : onboardingData.trainer) == null ? void 0 : _optObj18.uid) || null;
   const handleSendTrainerRequest = async () => {
+    var _optObj19;
+    // 1. Coaches cannot send client-style plan requests from this screen.
     if (isCoachViewingClientProfile) {
       showNotice('Client app only', 'Clients send plan requests from their account.');
       return;
     }
-    const clientId = auth?.currentUser?.uid;
+    // 2. Need a signed-in client and a linked trainer.
+    const clientId = (_optObj19 = auth == null ? void 0 : auth.currentUser) == null ? void 0 : _optObj19.uid;
     const trainerId = resolvedTrainerId;
     if (!clientId) {
       showNotice('Not logged in', 'Please log in to send a request.');
@@ -3043,75 +3048,71 @@ export default function CreateWorkoutPlanScreen({
       showNotice('No trainer', 'Connect with a trainer first to request a workout plan.');
       return;
     }
-    const text = String(requestText || '').trim();
-    if (!text) {
+    // 3. Message body required.
+    const requestMessageText = String(requestText || '').trim();
+    if (!requestMessageText) {
       showNotice('Message required', 'Tell your trainer what kind of plan you want.');
       return;
     }
 
+    // 4. Open (or reuse) the conversation and post a WORKOUT_PLAN client request — not a chat bubble.
     setSendingRequest(true);
     try {
+      var _optObj20;
       const conversationId = await getOrCreateConversation(clientId, trainerId);
-      const me = await getUserData(clientId);
-      await sendClientRequest(conversationId, clientId, text, {
+      const clientProfile = await getUserData(clientId);
+      await sendClientRequest(conversationId, clientId, requestMessageText, {
         requestType: CLIENT_REQUEST_TYPES.WORKOUT_PLAN,
         allowDefaultIntro: false,
-        clientName: me?.name || me?.firstName || auth?.currentUser?.displayName || 'Client',
-        clientGoals: onboardingData?.goal || onboardingData?.primaryGoal || 'Not specified',
-        clientExperienceLevel: onboardingData?.fitnessLevel || onboardingData?.experience || 'Beginner',
-        clientEquipment: onboardingData?.equipment || onboardingData?.availableEquipment || 'Not specified',
-        clientLimitations: onboardingData?.injuries || onboardingData?.limitations || 'None',
+        clientName: (clientProfile == null ? void 0 : clientProfile.name) || (clientProfile == null ? void 0 : clientProfile.firstName) || ((_optObj20 = auth == null ? void 0 : auth.currentUser) == null ? void 0 : _optObj20.displayName) || 'Client',
+        clientGoals: (onboardingData == null ? void 0 : onboardingData.goal) || (onboardingData == null ? void 0 : onboardingData.primaryGoal) || 'Not specified',
+        clientExperienceLevel: (onboardingData == null ? void 0 : onboardingData.fitnessLevel) || (onboardingData == null ? void 0 : onboardingData.experience) || 'Beginner',
+        clientEquipment: (onboardingData == null ? void 0 : onboardingData.equipment) || (onboardingData == null ? void 0 : onboardingData.availableEquipment) || 'Not specified',
+        clientLimitations: (onboardingData == null ? void 0 : onboardingData.injuries) || (onboardingData == null ? void 0 : onboardingData.limitations) || 'None'
       });
-      showNotice(
-        'Request sent',
-        'Your trainer will see this in Client Requests — not as a chat message. They can acknowledge it from their dashboard.',
-      );
+      showNotice('Request sent', 'Your trainer will see this in Client Requests — not as a chat message. They can acknowledge it from their dashboard.');
     } catch (e) {
       console.error('Send trainer request failed:', e);
-      showNotice('Send failed', e?.message || 'Could not send your request.');
+      showNotice('Send failed', (e == null ? void 0 : e.message) || 'Could not send your request.');
     } finally {
       setSendingRequest(false);
     }
   };
-
-  const saveData = async (updatedData) => {
+  const saveData = async updatedData => {
     if (isCoachViewingClientProfile) {
-      showNotice(
-        'View only',
-        "You're seeing this client's onboarding context. They edit their own profile in the client app."
-      );
+      showNotice('View only', "You're seeing this client's onboarding context. They edit their own profile in the client app.");
       return;
     }
     try {
-      const ownerUid = auth.currentUser?.uid;
+      var _optObj21;
+      const ownerUid = (_optObj21 = auth.currentUser) == null ? void 0 : _optObj21.uid;
       if (!ownerUid) return;
       const key = `onboarding_data_${ownerUid}`;
       await AsyncStorage.setItem(key, JSON.stringify(updatedData));
       setOnboardingData(updatedData);
       if (db) {
-        await setDoc(doc(db, 'users', ownerUid), { ...updatedData, updatedAt: serverTimestamp() }, { merge: true });
+        await setDoc(doc(db, 'users', ownerUid), {
+          ...updatedData,
+          updatedAt: serverTimestamp()
+        }, {
+          merge: true
+        });
       }
     } catch (error) {
       console.error('Error saving data:', error);
     }
   };
 
-  // Validate all required fields
+  // Validate required onboarding fields before Generate.
   const validateData = () => {
     const errors = {};
-    
+
+    // Weight / height / age / gender / fitness / goal / equipment / frequency / situation length.
     if (!onboardingData.weight || onboardingData.weight <= 0) {
       errors.weight = 'Weight is required';
     }
     const heightValue = onboardingData.height;
-    const heightOk =
-      (typeof heightValue === 'number' &&
-        Number.isFinite(heightValue) &&
-        heightValue >= MIN_HEIGHT_INCHES &&
-        heightValue <= MAX_HEIGHT_INCHES) ||
-      (typeof heightValue === 'object' &&
-        heightValue != null &&
-        (Number(heightValue.feet) > 0 || Number(heightValue.inches) > 0));
+    const heightOk = typeof heightValue === 'number' && Number.isFinite(heightValue) && heightValue >= MIN_HEIGHT_INCHES && heightValue <= MAX_HEIGHT_INCHES || typeof heightValue === 'object' && heightValue != null && (Number(heightValue.feet) > 0 || Number(heightValue.inches) > 0);
     if (!heightOk) {
       errors.height = 'Height is required';
     }
@@ -3136,75 +3137,85 @@ export default function CreateWorkoutPlanScreen({
     if (onboardingData.situationDescription && onboardingData.situationDescription.length > MAX_SITUATION_DESCRIPTION_LENGTH) {
       errors.situationDescription = 'Situation description must be 1000 characters or less';
     }
-
     setValidationErrors(errors);
     return Object.keys(errors).length === 0;
   };
 
   // Trigger shake animation
-  const triggerShake = (cardKey) => {
+  const triggerShake = cardKey => {
     if (!shakeAnimations.current[cardKey]) {
       shakeAnimations.current[cardKey] = new Animated.Value(0);
     }
     const anim = shakeAnimations.current[cardKey];
-    
-    Animated.sequence([
-      Animated.timing(anim, { toValue: 10, duration: 50, useNativeDriver: true }),
-      Animated.timing(anim, { toValue: -10, duration: 50, useNativeDriver: true }),
-      Animated.timing(anim, { toValue: 10, duration: 50, useNativeDriver: true }),
-      Animated.timing(anim, { toValue: 0, duration: 50, useNativeDriver: true }),
-    ]).start();
+    Animated.sequence([Animated.timing(anim, {
+      toValue: 10,
+      duration: 50,
+      useNativeDriver: true
+    }), Animated.timing(anim, {
+      toValue: -10,
+      duration: 50,
+      useNativeDriver: true
+    }), Animated.timing(anim, {
+      toValue: 10,
+      duration: 50,
+      useNativeDriver: true
+    }), Animated.timing(anim, {
+      toValue: 0,
+      duration: 50,
+      useNativeDriver: true
+    })]).start();
   };
 
-  // Generate workout plan
+  // Generate workout plan — numbered recipe so a junior can narrate the gate → API → cache path.
   const generateWorkoutPlan = async () => {
+    var _optObj22;
+    // 1. Refuse coach generate from the plain client Workout tab (must use AI Workouts quick action).
     if (coachPlanGenerationBlocked) {
-      showNotice(
-        'Open AI Workouts',
-        'To generate a plan for this client, go to Home, select them on your roster, then use Quick actions → AI Workouts. Plans are saved to their library there.'
-      );
+      showNotice('Open AI Workouts', 'To generate a plan for this client, go to Home, select them on your roster, then use Quick actions → AI Workouts. Plans are saved to their library there.');
       return;
     }
+    // 2. Monthly generation cap (server also enforces).
     if (plansRemaining <= 0) {
-      showNotice(
-        'Monthly limit reached',
-        `You've used all your workout generations for this month. Resets ${formatWorkoutLimitResetLabel(workoutGenUsage?.resets_at)}.`,
-      );
+      showNotice('Monthly limit reached', `You've used all your workout generations for this month. Resets ${formatWorkoutLimitResetLabel(workoutGenUsage == null ? void 0 : workoutGenUsage.resets_at)}.`);
       return;
     }
+    // 3. Required onboarding fields must be filled before we call Claude.
     if (!validateData()) {
       shakeFirstValidationError({
         validationErrors,
         setExpandedCard,
         triggerShake,
-        scrollViewRef,
+        scrollViewRef
       });
       showNotice('Validation Error', 'Please complete all required information');
       return;
     }
 
+    // 4. Flip generating UI + mark session started (survives leaving this screen).
     setIsGenerating(true);
     setGenerationError(null);
     setPlanReadyPending(false);
     workoutPlanGenerationInFlight = true;
-
-    const subjectUid = (userId && String(userId).trim()) || auth.currentUser?.uid;
+    const subjectUid = userId && String(userId).trim() || ((_optObj22 = auth.currentUser) == null ? void 0 : _optObj22.uid);
     if (subjectUid) {
       await markWorkoutGenerationStarted(subjectUid);
     }
 
-    const ui = (fn) => {
-      if (mountedRef.current) fn();
+    // vocab: runIfStillMounted — ignore setState after unmount so we do not warn / leak
+    const runIfStillMounted = stateUpdate => {
+      if (mountedRef.current) {
+        stateUpdate();
+      }
     };
-
     try {
+      // 5. Ask API, parse JSON, cache, notify if user left.
       await runWorkoutPlanGeneration({
         subjectUid,
         onboardingData,
         profileSubjectUid,
         fetchWorkoutPlanFromServer,
         parseWorkoutPlan,
-        ui,
+        runIfStillMounted,
         setOnboardingData,
         setGeneratedPlan,
         setGenerationError,
@@ -3215,7 +3226,7 @@ export default function CreateWorkoutPlanScreen({
         setPlanTitleForPdf,
         appInForegroundRef,
         mountedRef,
-        schedulePlanReadyNotification,
+        schedulePlanReadyNotification
       });
     } catch (error) {
       await handleWorkoutPlanGenerationError({
@@ -3223,20 +3234,20 @@ export default function CreateWorkoutPlanScreen({
         profileSubjectUid,
         planGenerationLimit,
         setWorkoutGenUsage,
-        ui,
+        runIfStillMounted,
         setGenerationError,
         mountedRef,
         generateWorkoutPlan,
-        showNotice,
+        showNotice
       });
     } finally {
       workoutPlanGenerationInFlight = false;
-      ui(() => setIsGenerating(false));
+      runIfStillMounted(() => setIsGenerating(false));
     }
   };
-
   const handleOpenReadyPlan = useCallback(async () => {
-    const uid = profileSubjectUid || auth.currentUser?.uid;
+    var _optObj23;
+    const uid = profileSubjectUid || ((_optObj23 = auth.currentUser) == null ? void 0 : _optObj23.uid);
     if (uid) await clearWorkoutPlanReadyBadge(uid);
     setPlanReadyPending(false);
     if (!generatedPlan && uid) {
@@ -3244,7 +3255,6 @@ export default function CreateWorkoutPlanScreen({
     }
     setShowFullPlan(true);
   }, [profileSubjectUid, generatedPlan, hydratePlanFromLocalCache]);
-
   const handleAddToCollection = async () => {
     const targetUid = profileSubjectUid;
     if (!generatedPlan || !targetUid || addedToCollection || savingToCollection) return;
@@ -3262,59 +3272,59 @@ export default function CreateWorkoutPlanScreen({
       setSavingToCollection(false);
     }
   };
-
   const handleRegeneratePlan = () => {
     if (coachPlanGenerationBlocked) {
-      showNotice(
-        'Open AI Workouts',
-        'Regenerate plans for clients from Home → select client → AI Workouts.'
-      );
+      showNotice('Open AI Workouts', 'Regenerate plans for clients from Home → select client → AI Workouts.');
       return;
     }
     if (plansRemaining <= 0) {
-      showNotice(
-        'Monthly limit reached',
-        `You've used all your workout generations for this month. Resets ${formatWorkoutLimitResetLabel(workoutGenUsage?.resets_at)}.`,
-      );
+      showNotice('Monthly limit reached', `You've used all your workout generations for this month. Resets ${formatWorkoutLimitResetLabel(workoutGenUsage == null ? void 0 : workoutGenUsage.resets_at)}.`);
       return;
     }
-    showNotice(
-      'Regenerate plan?',
-      'This will replace your current plan with a new one based on your profile.',
-      {
-        cancelLabel: 'Cancel',
-        confirmLabel: 'Regenerate',
-        onConfirm: () => generateWorkoutPlan(),
-      },
-    );
+    showNotice('Regenerate plan?', 'This will replace your current plan with a new one based on your profile.', {
+      cancelLabel: 'Cancel',
+      confirmLabel: 'Regenerate',
+      onConfirm: () => generateWorkoutPlan()
+    });
   };
-
   const handleOpenEditPlan = () => {
-    const raw = generatedPlan?.planText || '';
+    const raw = (generatedPlan == null ? void 0 : generatedPlan.planText) || '';
     setEditPlanText(raw);
     setShowEditPlanModal(true);
   };
-
   const handleSaveEditedPlan = async () => {
-    let text = (editPlanText || '').trim();
-    if (!text) return;
-    text = extractJSON(text);
-    const { structuredPlan, planParseError } = structuredPlanFromEditedText(text);
-    const planData = {
-      id: generatedPlan?.id || `plan_${Date.now()}`,
-      generatedAt: generatedPlan?.generatedAt || Date.now(),
-      userData: generatedPlan?.userData || onboardingData,
-      planText: text,
+    var _optObj24;
+    // 1. Need non-empty edited text; strip markdown fences to raw JSON/markdown body.
+    let editedPlanText = (editPlanText || '').trim();
+    if (!editedPlanText) return;
+    editedPlanText = extractJSON(editedPlanText);
+
+    // 2. Best-effort structure parse (may set planParseError).
+    const {
       structuredPlan,
-      planParseError,
+      planParseError
+    } = structuredPlanFromEditedText(editedPlanText);
+    const planData = {
+      id: (generatedPlan == null ? void 0 : generatedPlan.id) || `plan_${Date.now()}`,
+      generatedAt: (generatedPlan == null ? void 0 : generatedPlan.generatedAt) || Date.now(),
+      userData: (generatedPlan == null ? void 0 : generatedPlan.userData) || onboardingData,
+      planText: editedPlanText,
+      structuredPlan,
+      planParseError
     };
+
+    // 3. Update React state + phone cache + current-plan pointer.
     setGeneratedPlan(planData);
-    const uid = auth.currentUser?.uid;
+    const uid = (_optObj24 = auth.currentUser) == null ? void 0 : _optObj24.uid;
     if (uid) {
       await AsyncStorage.setItem(`workout_plan_${uid}`, JSON.stringify(planData));
       await AsyncStorage.setItem('@workout_plan', JSON.stringify(planData));
-      await setCurrentWorkoutPlan(uid, { rawPlan: text });
+      await setCurrentWorkoutPlan(uid, {
+        rawPlan: editedPlanText
+      });
     }
+
+    // 4. Close editor and clear stale PDF paths so the next open rebuilds.
     setShowEditPlanModal(false);
     setPdfGenerationError(null);
     setShowRawPlanFallback(false);
@@ -3324,7 +3334,7 @@ export default function CreateWorkoutPlanScreen({
   };
 
   // Build user prompt from onboarding data
-  const buildUserPrompt = (data) => {
+  const buildUserPrompt = data => {
     return `Create a ${data.daysPerWeek || 5}-day per week personalized workout plan for a client:
 
 CLIENT PROFILE:
@@ -3341,12 +3351,12 @@ CLIENT PROFILE:
 
 Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
   };
-
-  const parseWorkoutPlan = (responseText) => {
-    const { parsed, plan } = parseWorkoutPlanJsonText(responseText);
-
+  const parseWorkoutPlan = responseText => {
+    const {
+      parsed,
+      plan
+    } = parseWorkoutPlanJsonText(responseText);
     const allowedColors = ["pink", "purple", "cyan", "orange", "green", "gray"];
-
     const validatedPlan = plan.map((day, idx) => {
       if (!day.day || !day.short || !day.focus) {
         throw new Error(`Day ${idx}: missing required fields (day, short, focus)`);
@@ -3354,17 +3364,13 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
       if (!allowedColors.includes(day.focusColor)) {
         throw new Error(`Day ${idx}: invalid focusColor "${day.focusColor}"`);
       }
-
       if (day.rest === true) {
         const rawActivities = Array.isArray(day.recoveryActivities) ? day.recoveryActivities : [];
-        const recoveryActivities = rawActivities
-          .filter((a) => a && typeof a === 'object' && typeof a.label === 'string' && a.label.trim())
-          .map((a) => ({
-            label: String(a.label).trim(),
-            detail: typeof a.detail === 'string' ? a.detail.trim() : '',
-          }));
-        const recoveryNote =
-          day.recoveryNote || (recoveryActivities.length > 0 ? recoveryActivities.map((a) => a.label).join(' → ') : 'Active recovery day. Focus on mobility and sleep.');
+        const recoveryActivities = rawActivities.filter(a => a && typeof a === 'object' && typeof a.label === 'string' && a.label.trim()).map(a => ({
+          label: String(a.label).trim(),
+          detail: typeof a.detail === 'string' ? a.detail.trim() : ''
+        }));
+        const recoveryNote = day.recoveryNote || (recoveryActivities.length > 0 ? recoveryActivities.map(a => a.label).join(' → ') : 'Active recovery day. Focus on mobility and sleep.');
         return {
           day: day.day,
           short: day.short,
@@ -3372,14 +3378,12 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
           focusColor: day.focusColor,
           rest: true,
           recoveryNote,
-          recoveryActivities,
+          recoveryActivities
         };
       }
-
       if (!Array.isArray(day.exercises) || day.exercises.length === 0) {
         throw new Error(`Day ${idx} (${day.day}): missing exercises array`);
       }
-
       const exercises = day.exercises.map((ex, exIdx) => {
         if (!ex.name || !ex.sets || !ex.reps || !ex.rest || !ex.muscle) {
           throw new Error(`Day ${idx} Exercise ${exIdx}: missing required fields`);
@@ -3393,10 +3397,9 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
           muscle: String(ex.muscle),
           notes: ex.notes || undefined,
           tips,
-          tempo: ex.tempo || undefined,
+          tempo: ex.tempo || undefined
         };
       });
-
       return {
         day: day.day,
         short: day.short,
@@ -3405,21 +3408,22 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
         rest: false,
         exercises,
         warmup: day.warmup || undefined,
-        estimatedDuration: day.estimatedDuration || undefined,
+        estimatedDuration: day.estimatedDuration || undefined
       };
     });
-
-    return { success: parsed?.success === true, plan: validatedPlan };
+    return {
+      success: (parsed == null ? void 0 : parsed.success) === true,
+      plan: validatedPlan
+    };
   };
 
   // Parse plan response into structured data
-  const parsePlanResponse = (planText) => {
+  const parsePlanResponse = planText => {
     const extractSection = (text, sectionName) => {
       const regex = new RegExp(`${sectionName}[\\s\\S]*?(?=\\d+\\.|$)`, 'i');
       const match = text.match(regex);
       return match ? match[0].replace(sectionName, '').trim() : '';
     };
-
     return {
       overview: extractSection(planText, 'PLAN OVERVIEW') || extractSection(planText, '1\\. PLAN OVERVIEW'),
       schedule: extractSection(planText, 'WEEKLY SCHEDULE') || extractSection(planText, '2\\. WEEKLY SCHEDULE'),
@@ -3428,32 +3432,31 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
       nutrition: extractSection(planText, 'NUTRITION GUIDANCE') || extractSection(planText, '5\\. NUTRITION GUIDANCE'),
       timeline: extractSection(planText, 'EXPECTED TIMELINE') || extractSection(planText, '6\\. EXPECTED TIMELINE'),
       notes: extractSection(planText, 'IMPORTANT NOTES') || extractSection(planText, '7\\. IMPORTANT NOTES'),
-      rawText: planText,
+      rawText: planText
     };
   };
-
-  const cleanSessionName = (name = '') =>
-    name.replace(/^\s*\|\s*/, '').replace(/\s*\|\s*$/, '').trim();
+  const cleanSessionName = (name = '') => name.replace(/^\s*\|\s*/, '').replace(/\s*\|\s*$/, '').trim();
 
   // Extract workouts from text
-  const extractWorkouts = (text) => {
+  const extractWorkouts = text => {
     // Simple extraction - look for workout sections
     const workouts = [];
     const workoutRegex = /(?:Workout|Day)\s*\d+[:\-]?\s*([^\n]+)/gi;
     let match;
-    
     while ((match = workoutRegex.exec(text)) !== null) {
       workouts.push({
         day: match[1] || 'Day',
-        content: text.substring(match.index, match.index + WORKOUT_SNIPPET_CHARS), // First snippet chars
+        content: text.substring(match.index, match.index + WORKOUT_SNIPPET_CHARS) // First snippet chars
       });
     }
-
-    return workouts.length > 0 ? workouts : [{ day: 'Full Body', content: text.substring(0, WORKOUT_FALLBACK_SNIPPET_CHARS) }];
+    return workouts.length > 0 ? workouts : [{
+      day: 'Full Body',
+      content: text.substring(0, WORKOUT_FALLBACK_SNIPPET_CHARS)
+    }];
   };
 
   // Format display value: show "Tap to complete" for empty/placeholder values
-  const humanizeOnboardingToken = (token) => {
+  const humanizeOnboardingToken = token => {
     const key = String(token || '').trim().toLowerCase();
     const labels = {
       full_gym: 'Full Gym',
@@ -3465,473 +3468,215 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
       bodyweight: 'Bodyweight',
       less_than_4: 'Less than 4 cups/day',
       '4_8': '4–8 cups/day',
-      more_than_8: 'More than 8 cups/day',
+      more_than_8: 'More than 8 cups/day'
     };
     if (labels[key]) return labels[key];
-    return key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+    return key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
   };
-
-  const formatDisplayValue = (raw) => {
+  const formatDisplayValue = raw => {
     if (raw == null || raw === undefined || raw === '') return null;
     let displayText = String(raw).trim();
     if (!displayText) return null;
-    if (
-      displayText === 'Not set' ||
-      displayText === 'None selected' ||
-      displayText === 'None reported' ||
-      displayText === 'Not provided'
-    ) {
+    if (displayText === 'Not set' || displayText === 'None selected' || displayText === 'None reported' || displayText === 'Not provided') {
       return null;
     }
     if (displayText === 'undefined' || displayText.toLowerCase() === 'undefined') return null;
     if (/^N\/A,\s*N\/Ayrs,\s*N\/Albs,\s*0'0"$/i.test(displayText)) return null;
     if (/^0\s*days\s*per\s*week$/i.test(displayText)) return null;
     if (displayText.includes('_') && (displayText.includes(',') || /^[a-z0-9_]+$/i.test(displayText))) {
-      displayText = displayText
-        .split(',')
-        .map((part) => humanizeOnboardingToken(part))
-        .join(', ');
+      displayText = displayText.split(',').map(part => humanizeOnboardingToken(part)).join(', ');
     } else if (/^[a-z0-9_]+$/i.test(displayText) && displayText.includes('_')) {
       displayText = humanizeOnboardingToken(displayText);
     }
     return displayText;
   };
-
-  const renderWorkoutChromeHeader = (options = {}) => (
-    <TopHeader
-      title={options.title ?? (hideBottomNav ? '' : 'Workout')}
-      skipTopSafeInset={true}
-      onBack={options.onBack ?? (hideBottomNav ? onBack : undefined)}
-      onProfilePress={onProfilePress}
-      onSettingsPress={onSettingsPress}
-      showHeaderActions={options.showHeaderActions ?? true}
-    />
-  );
-
+  const renderWorkoutChromeHeader = (options = {}) => <TopHeader title={options.title ?? (hideBottomNav ? '' : 'Workout')} skipTopSafeInset={true} onBack={options.onBack ?? (hideBottomNav ? onBack : undefined)} onProfilePress={onProfilePress} onSettingsPress={onSettingsPress} showHeaderActions={options.showHeaderActions ?? true} />;
   if (loading) {
     // Keep the bottom navbar visible so you can see tab highlight transitions.
-    return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? darkColors.nbBackground : lightColors.nbBackground }} edges={SHELL_SAFE_AREA_EDGES}>
+    return <SafeAreaView style={{
+      flex: 1,
+      backgroundColor: isDark ? darkColors.nbBackground : lightColors.nbBackground
+    }} edges={SHELL_SAFE_AREA_EDGES}>
         {renderWorkoutChromeHeader()}
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center'
+      }}>
           <ActivityIndicator size="small" color={lightColors.nbInk} />
         </View>
-        {!hideBottomNav && (
-          <ShellBottomNavAnchor>
-            <BottomMenuBar
-              onHomePress={() => (onNavigate ? onNavigate('home') : onBack?.())}
-              onProfilePress={() => onNavigate && onNavigate('profile')}
-              onPlusPress={() => onNavigate && onNavigate('create')}
-              onVoicePress={() => onNavigate && onNavigate('voice')}
-              onWorkoutPress={() => onNavigate && onNavigate('workout')}
-              onNutritionPress={() => onNavigate && onNavigate('nutrition')}
-              onMessagesPress={() => onNavigate && onNavigate('messages')}
-              activeTabKey="workout"
-            />
-          </ShellBottomNavAnchor>
-        )}
-      </SafeAreaView>
-    );
+        {!hideBottomNav && <ShellBottomNavAnchor>
+            <BottomMenuBar onHomePress={() => onNavigate ? onNavigate('home') : onBack == null ? void 0 : onBack()} onProfilePress={() => onNavigate && onNavigate('profile')} onPlusPress={() => onNavigate && onNavigate('create')} onVoicePress={() => onNavigate && onNavigate('voice')} onWorkoutPress={() => onNavigate && onNavigate('workout')} onNutritionPress={() => onNavigate && onNavigate('nutrition')} onMessagesPress={() => onNavigate && onNavigate('messages')} activeTabKey="workout" />
+          </ShellBottomNavAnchor>}
+      </SafeAreaView>;
   }
-
   if (!onboardingData && !propPlan && trainerRosterEmpty) {
-    return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? darkColors.nbBackground : lightColors.nbBackground }} edges={SHELL_SAFE_AREA_EDGES}>
+    return <SafeAreaView style={{
+      flex: 1,
+      backgroundColor: isDark ? darkColors.nbBackground : lightColors.nbBackground
+    }} edges={SHELL_SAFE_AREA_EDGES}>
         {renderWorkoutChromeHeader()}
-        <View style={{ flex: 1, paddingHorizontal: 22, justifyContent: 'center' }}>
-          <Text style={{ fontSize: 20, fontWeight: '900', color: isDark ? lightColors.white : '#111827', marginBottom: 10 }}>
+        <View style={{
+        flex: 1,
+        paddingHorizontal: 22,
+        justifyContent: 'center'
+      }}>
+          <Text style={{
+          fontSize: 20,
+          fontWeight: '900',
+          color: isDark ? lightColors.white : '#111827',
+          marginBottom: 10
+        }}>
             Add clients first
           </Text>
-          <Text style={{ fontSize: 14, lineHeight: 21, color: isDark ? 'rgba(255,255,255,0.7)' : 'rgba(17,24,39,0.75)', marginBottom: 20 }}>
+          <Text style={{
+          fontSize: 14,
+          lineHeight: 21,
+          color: isDark ? 'rgba(255,255,255,0.7)' : 'rgba(17,24,39,0.75)',
+          marginBottom: 20
+        }}>
             The Workout tab uses a client's onboarding and goals as context. Accept people from Client Requests, then select them on Home — their profile appears here.
           </Text>
-          <NbButton variant="fill" onPress={() => (onNavigate ? onNavigate('home') : onBack?.())}>
+          <NbButton variant="fill" onPress={() => onNavigate ? onNavigate('home') : onBack == null ? void 0 : onBack()}>
             Go to Home
           </NbButton>
         </View>
-        {!hideBottomNav && (
-          <ShellBottomNavAnchor>
-            <BottomMenuBar
-              onHomePress={() => (onNavigate ? onNavigate('home') : onBack?.())}
-              onProfilePress={() => onNavigate && onNavigate('profile')}
-              onPlusPress={() => onNavigate && onNavigate('create')}
-              onVoicePress={() => onNavigate && onNavigate('voice')}
-              onWorkoutPress={() => onNavigate && onNavigate('workout')}
-              onNutritionPress={() => onNavigate && onNavigate('nutrition')}
-              onMessagesPress={() => onNavigate && onNavigate('messages')}
-              activeTabKey="workout"
-            />
-          </ShellBottomNavAnchor>
-        )}
-      </SafeAreaView>
-    );
+        {!hideBottomNav && <ShellBottomNavAnchor>
+            <BottomMenuBar onHomePress={() => onNavigate ? onNavigate('home') : onBack == null ? void 0 : onBack()} onProfilePress={() => onNavigate && onNavigate('profile')} onPlusPress={() => onNavigate && onNavigate('create')} onVoicePress={() => onNavigate && onNavigate('voice')} onWorkoutPress={() => onNavigate && onNavigate('workout')} onNutritionPress={() => onNavigate && onNavigate('nutrition')} onMessagesPress={() => onNavigate && onNavigate('messages')} activeTabKey="workout" />
+          </ShellBottomNavAnchor>}
+      </SafeAreaView>;
   }
-
   if (!onboardingData && !propPlan) {
-    return (
-      <View style={[styles.container, { backgroundColor: isDark ? darkColors.nbBackground : lightColors.nbBackground }]}>
-        <Text style={{ color: isDark ? lightColors.white : '#1F2937' }}>No data found</Text>
-      </View>
-    );
+    return <View style={[styles.container, {
+      backgroundColor: isDark ? darkColors.nbBackground : lightColors.nbBackground
+    }]}>
+        <Text style={{
+        color: isDark ? lightColors.white : '#1F2937'
+      }}>No data found</Text>
+      </View>;
   }
 
   // Design Law ink — no purple/pink sticky chrome
   const textPrimary = isDark ? lightColors.nbOnFill : lightColors.nbInk;
   const textSecondary = isDark ? darkColors.nbMuted : lightColors.nbMuted;
-  const stickyCtaVisible =
-    aiPrefReady && aiOn && activeTab === 'plans' && !(readOnly || showFullPlan) && !isCoachViewingClientProfile;
+  const stickyCtaVisible = aiPrefReady && aiOn && activeTab === 'plans' && !(readOnly || showFullPlan) && !isCoachViewingClientProfile;
 
   // PNG 13 footer: usage HardShadow card + “N left” accent pill + fill/plain NbButtons
   const renderStickyPlanCta = () => {
-    const resetLabel = formatWorkoutLimitResetLabel(workoutGenUsage?.resets_at);
+    const resetLabel = formatWorkoutLimitResetLabel(workoutGenUsage == null ? void 0 : workoutGenUsage.resets_at);
     const leftLabel = plansRemaining <= 0 ? '0 left' : `${plansRemaining} left`;
     const onGeneratePress = () => {
       if (plansRemaining <= 0) {
-        showNotice(
-          'Monthly limit reached',
-          `You've used all your workout generations for this month. Resets ${resetLabel}.`,
-        );
+        showNotice('Monthly limit reached', `You've used all your workout generations for this month. Resets ${resetLabel}.`);
         return;
       }
       generateWorkoutPlan();
     };
-
-    return (
-      <View style={[styles.stickyCtaFooter, { paddingBottom: stickyCtaFooterPad }]}>
-        {!isCoachViewingClientProfile ? (
-          <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetCard} style={{ marginBottom: 12 }}>
-            <View
-              style={[
-                styles.stickyUsageCard,
-                {
-                  borderColor: isDark ? darkColors.nbBorder : lightColors.nbBorder,
-                  backgroundColor: isDark ? darkColors.nbSurface : lightColors.nbSurface,
-                },
-              ]}
-            >
-              <View style={{ flex: 1, minWidth: 0, paddingRight: 10 }}>
-                <Text
-                  style={{
-                    fontSize: 14,
-                    fontWeight: '900',
-                    color: isDark ? darkColors.nbInk : lightColors.nbInk,
-                  }}
-                >
+    return <View style={[styles.stickyCtaFooter, {
+      paddingBottom: stickyCtaFooterPad
+    }]}>
+        {!isCoachViewingClientProfile ? <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetCard} style={{
+        marginBottom: 12
+      }}>
+            <View style={[styles.stickyUsageCard, {
+          borderColor: isDark ? darkColors.nbBorder : lightColors.nbBorder,
+          backgroundColor: isDark ? darkColors.nbSurface : lightColors.nbSurface
+        }]}>
+              <View style={{
+            flex: 1,
+            minWidth: 0,
+            paddingRight: 10
+          }}>
+                <Text style={{
+              fontSize: 14,
+              fontWeight: '900',
+              color: isDark ? darkColors.nbInk : lightColors.nbInk
+            }}>
                   {plansUsedThisMonth} of {planGenerationLimit} plans used this month
                 </Text>
-                <Text style={{ fontSize: 12, fontWeight: '600', color: textSecondary, marginTop: 2 }}>
+                <Text style={{
+              fontSize: 12,
+              fontWeight: '600',
+              color: textSecondary,
+              marginTop: 2
+            }}>
                   Resets on {resetLabel}
                 </Text>
               </View>
               <NbPill variant="brand">{leftLabel}</NbPill>
             </View>
-          </HardShadow>
-        ) : null}
+          </HardShadow> : null}
 
-        {generatedPlan ? (
-          <View style={{ flexDirection: 'row', gap: 10 }}>
-            <NbButton variant="fill" onPress={() => setShowFullPlan(true)} style={{ flex: 1 }}>
+        {generatedPlan ? <View style={{
+        flexDirection: 'row',
+        gap: 10
+      }}>
+            <NbButton variant="fill" onPress={() => setShowFullPlan(true)} style={{
+          flex: 1
+        }}>
               Open Plan
             </NbButton>
-            <NbButton
-              variant="plain"
-              onPress={handleRegeneratePlan}
-              disabled={isGenerating}
-              style={{ flex: 1 }}
-            >
+            <NbButton variant="plain" onPress={handleRegeneratePlan} disabled={isGenerating} style={{
+          flex: 1
+        }}>
               {isGenerating ? 'Generating…' : 'Generate New'}
             </NbButton>
-          </View>
-        ) : (
-          <NbButton variant="fill" onPress={onGeneratePress} disabled={isGenerating}>
+          </View> : <NbButton variant="fill" onPress={onGeneratePress} disabled={isGenerating}>
             {isGenerating ? 'Generating…' : 'Generate plan'}
-          </NbButton>
-        )}
-      </View>
-    );
+          </NbButton>}
+      </View>;
   };
 
   // Full-screen viewer mode (no editor UI).
   if (generatedPlan && (readOnly || showFullPlan)) {
-    return ((() => {
-    const pdfUrl = generatedPlan?.url || pdfDownloadUrl || collectionViewingPlan?.url || null;
-    const structuredRaw = generatedPlan?.structuredPlan || tryParseJsonObject(generatedPlan?.planText);
-    const structured = normalizeStructuredPlanForViewer(structuredRaw);
-    const overviewText =
-      (structured?.overview && String(structured.overview).trim()) ||
-      (structuredRaw?.overview && String(structuredRaw.overview).trim()) ||
-      (generatedPlan?.planOverview && String(generatedPlan.planOverview).trim()) ||
-      "";
-
-    const planViewerWeeks = (() => {
-      const weeksNumber = Number(
-        structuredRaw?.weeksRemaining ?? structuredRaw?.durationWeeks ?? structured?.weeksRemaining,
-      );
-      return Number.isFinite(weeksNumber) && weeksNumber > 0
-        ? Math.floor(weeksNumber)
-        : DEFAULT_PLAN_WEEKS;
-    })();
-    const planViewerFocus =
-      String(structuredRaw?.programFocus ?? structuredRaw?.focus ?? structured?.focus ?? '').trim() ||
-      'Complete muscle building program';
-    const planHeroTitle =
-      String(structuredRaw?.planTitle ?? structured?.planTitle ?? generatedPlan?.planTitle ?? '').trim() ||
-      'Your Workout Plan';
-    // Notes tab — same key fallbacks as WorkoutPlanView (no new Firebase fields)
-    const timelineText =
-      String(structuredRaw?.timeline || structuredRaw?.expectedTimeline || structured?.timeline || '').trim();
-    const importantNotesText =
-      String(
-        structuredRaw?.importantNotes ||
-          structuredRaw?.notes ||
-          structuredRaw?.generalNotes ||
-          structured?.notes ||
-          '',
-      ).trim();
-    const nutritionGuidanceText =
-      String(
-        structuredRaw?.nutritionGuidance ||
-          structuredRaw?.nutrition ||
-          structuredRaw?.nutritionNotes ||
-          structured?.nutrition ||
-          '',
-      ).trim();
-
-    const routeWorkoutPlan = route?.params?.workoutPlan;
-    const hasRouteWorkoutPlanParam = !!(route?.params && Object.prototype.hasOwnProperty.call(route.params, 'workoutPlan'));
-    const workoutPlanRows = (() => {
-      if (Array.isArray(routeWorkoutPlan) && routeWorkoutPlan.length > 0) {
-        const normalized = routeWorkoutPlan
-          .map((item, i) => normalizeRouteWorkoutPlanItem(item, i))
-          .filter(Boolean);
-        if (normalized.length > 0) return normalized;
-      }
-      if (Array.isArray(structuredRaw?.workoutPlan) && structuredRaw.workoutPlan.length > 0) {
-        const normalized = structuredRaw.workoutPlan
-          .map((item, i) => normalizeRouteWorkoutPlanItem(item, i))
-          .filter(Boolean);
-        if (normalized.length > 0) return normalized;
-      }
-      // NEW Claude schema: { success: true, plan: [...] }
-      if (Array.isArray(structuredRaw?.plan) && structuredRaw.plan.length > 0) {
-        const normalized = structuredRaw.plan
-          .map((item, i) => normalizeRouteWorkoutPlanItem(item, i))
-          .filter(Boolean);
-        if (normalized.length > 0) return normalized;
-      }
-      return mapStructuredDaysToPlanViewerRows(structured);
-    })();
-
-    const planTextRaw = generatedPlan?.planText;
-    const hasPlanText = !!(planTextRaw && String(planTextRaw).trim());
-    const looksLikeJson = /^\s*[\[{]/.test(String(planTextRaw || ''));
-    const showMarkdownBody =
-      workoutPlanRows.length === 0 && hasPlanText && !structuredPlanHasViewerContent(structured) && !looksLikeJson;
-    const viewerStructureError =
-      (hasRouteWorkoutPlanParam && (!Array.isArray(routeWorkoutPlan) || routeWorkoutPlan.length === 0)) ||
-      (workoutPlanRows.length === 0 && (!hasPlanText || looksLikeJson));
-    const viewerEmpty = workoutPlanRows.length === 0 && !showMarkdownBody && !viewerStructureError;
-
-    const pvBg = isDark ? lightColors.nbInk : '#F5F5F5';
-    const surface = isDark ? '#13131A' : lightColors.white;
-    const borderC = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)';
-    const text = isDark ? lightColors.white : lightColors.nbInk;
-    const muted = isDark ? 'rgba(255,255,255,0.55)' : 'rgba(10,10,15,0.6)';
-    const glass = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)';
-
-    if (isGenerating && readOnly) {
-      return (
-        <View style={[styles.container, { flex: 1, backgroundColor: pvBg }]}>
-          {renderWorkoutChromeHeader({
-            onBack: () => onBack?.(),
-          })}
-          <SafeAreaView style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 }} edges={SHELL_SAFE_AREA_EDGES}>
-            <ActivityIndicator size="large" color={PLAN_BUILDER_COLORS.pink} />
-            <Text style={[planViewerRefStyles.loaderText, { color: text, textAlign: 'center' }]}>
-              Building your workout plan…
-            </Text>
-            <Text style={[planViewerRefStyles.loaderText, { color: muted, fontSize: 14, marginTop: 10, textAlign: 'center' }]}>
-              You can go back — we will notify you when your plan is ready.
-            </Text>
-          </SafeAreaView>
-        </View>
-      );
-    }
-
-    if (viewerStructureError && readOnly && !viewerErrorDelayElapsed) {
-      return (
-        <View style={[styles.container, { flex: 1, backgroundColor: pvBg }]}>
-          <SafeAreaView style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }} edges={SHELL_SAFE_AREA_EDGES}>
-            <ActivityIndicator size="large" color={PLAN_BUILDER_COLORS.pink} />
-            <Text style={[planViewerRefStyles.loaderText, { color: text }]}>Loading your workout plan...</Text>
-          </SafeAreaView>
-        </View>
-      );
-    }
-
-    if (viewerStructureError) {
-      return (
-        <View style={[styles.container, { flex: 1, backgroundColor: pvBg }]}>
-          <SafeAreaView style={{ flex: 1 }} edges={SHELL_SAFE_AREA_EDGES}>
-            <View style={planViewerRefStyles.errorContainer}>
-              <MaterialCommunityIcons name="alert-circle" size={48} color={PLAN_BUILDER_COLORS.pink} />
-              <Text style={[planViewerRefStyles.errorTitle, { color: text }]}>Error</Text>
-              <Text style={[planViewerRefStyles.errorMessage, { color: muted }]}>
-                {hasRouteWorkoutPlanParam ? 'Invalid workout plan structure received' : 'No workout plan provided'}
-              </Text>
-              <TouchableOpacity
-                onPress={() => onBack?.()}
-                style={[planViewerRefStyles.errorButton, { backgroundColor: PLAN_BUILDER_COLORS.pink }]}
-              >
-                <Text style={planViewerRefStyles.errorButtonText}>Go Back</Text>
-              </TouchableOpacity>
-            </View>
-          </SafeAreaView>
-        </View>
-      );
-    }
-
-    if (viewerEmpty) {
-      return (
-        <View style={[styles.container, { flex: 1, backgroundColor: pvBg }]}>
-          <SafeAreaView style={{ flex: 1 }} edges={SHELL_SAFE_AREA_EDGES}>
-            <View style={[planViewerRefStyles.emptyContainer, { backgroundColor: surface }]}>
-              <Ionicons name="fitness" size={48} color={PLAN_BUILDER_COLORS.cyan} />
-              <Text style={[planViewerRefStyles.emptyTitle, { color: text }]}>No Plan Yet</Text>
-              <Text style={[planViewerRefStyles.emptyMessage, { color: muted }]}>
-                Generate a workout plan from the home screen
-              </Text>
-              <TouchableOpacity
-                onPress={() => onBack?.()}
-                style={[planViewerRefStyles.emptyButton, { backgroundColor: PLAN_BUILDER_COLORS.cyan }]}
-              >
-                <Text style={planViewerRefStyles.emptyButtonText}>Go Back</Text>
-              </TouchableOpacity>
-            </View>
-          </SafeAreaView>
-        </View>
-      );
-    }
-
-    return (
-      <View style={{ flex: 1, backgroundColor: pvBg }}>
-        <SafeAreaView style={{ flex: 1 }} edges={SHELL_SAFE_AREA_EDGES}>
-          <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
-          <View style={{ flex: 1, minHeight: 0 }}>
-            <MyWorkoutPlanScreen
-              onBack={() => {
-                if (planSubViewBackRef.current?.()) return;
-                if (readOnly) {
-                  onBack?.();
-                } else {
-                  setShowFullPlan(false);
-                }
-              }}
-              onStartSession={(day) => {
-                if (typeof onStartSession !== 'function' || !day || day.rest) return;
-                const focusBits = String(day.focus || '').split(/\s*·\s*/).filter(Boolean);
-                const workoutName =
-                  focusBits[0] ||
-                  String(day.day || day.short || 'Workout').trim() ||
-                  'Workout';
-                onStartSession({
-                  workoutName,
-                  exercises: Array.isArray(day.exercises) ? day.exercises : [],
-                });
-              }}
-              route={{
-                params: {
-                  workoutPlan: workoutPlanRows,
-                  overview: overviewText,
-                  isDarkOverride: isDark,
-                  weeksRemaining: planViewerWeeks,
-                  focusSummary: planViewerFocus,
-                  planHeroTitle: planHeroTitle,
-                  timeline: timelineText,
-                  importantNotes: importantNotesText,
-                  nutritionGuidance: nutritionGuidanceText,
-                  onViewPdf: () => setShowPdfViewer(true),
-                  onboardingData,
-                  reserveShellBottomNav: readOnly || !generatedPlan,
-                  subViewBackRef: planSubViewBackRef,
-                  onSubViewActiveChange: (active) => {
-                    planSubViewActiveRef.current = !!active;
-                  },
-                },
-              }}
-            />
-          </View>
-          <PlanPdfViewer
-            visible={showPdfViewer}
-            pdfLocalUri={pdfLocalUri}
-            pdfDownloadUrl={collectionViewingPlan ? collectionViewingPlan.url : pdfDownloadUrl}
-            planTitle={collectionViewingPlan ? collectionViewingPlan.planTitle : planTitleForPdf}
-            isDark={isDark}
-            onClose={() => {
-              setShowPdfViewer(false);
-              setCollectionViewingPlan(null);
-            }}
-          />
-          {!readOnly && generatedPlan && (
-            <View style={{ paddingHorizontal: 16, paddingTop: 10, paddingBottom: shellBottomInset }}>
-              <NbButton
-                variant="fill"
-                onPress={handleAddToCollection}
-                disabled={addedToCollection || savingToCollection}
-                style={{ opacity: addedToCollection ? 0.7 : 1 }}
-              >
-                {savingToCollection
-                  ? 'Saving…'
-                  : addedToCollection
-                    ? 'Saved to My Plans'
-                    : 'Save to My Plans'}
-              </NbButton>
-            </View>
-          )}
-        </SafeAreaView>
-        {!hideBottomNav && (
-          <ShellBottomNavAnchor>
-            <BottomMenuBar
-              onHomePress={() => (onNavigate ? onNavigate('home') : onBack?.())}
-              onProfilePress={() => onNavigate && onNavigate('profile')}
-              onPlusPress={() => onNavigate && onNavigate('create')}
-              onVoicePress={() => onNavigate && onNavigate('voice')}
-              onNutritionPress={() => onNavigate && onNavigate('nutrition')}
-              onWorkoutPress={() => onNavigate && onNavigate('workout')}
-              onMessagesPress={() => onNavigate && onNavigate('messages')}
-              activeTabKey="workout"
-            />
-          </ShellBottomNavAnchor>
-        )}
-      </View>
-    );
-    })());
+    return buildFullScreenPlanViewerElement({
+      generatedPlan,
+      pdfDownloadUrl,
+      collectionViewingPlan,
+      readOnly,
+      isGenerating,
+      viewerErrorDelayElapsed,
+      isDark,
+      route,
+      onBack,
+      onStartSession,
+      planSubViewBackRef,
+      planSubViewActiveRef,
+      showPdfViewer,
+      setShowPdfViewer,
+      pdfLocalUri,
+      planTitleForPdf,
+      setCollectionViewingPlan,
+      hideBottomNav,
+      onNavigate,
+      shellBottomInset,
+      addedToCollection,
+      savingToCollection,
+      handleAddToCollection,
+      setShowFullPlan,
+      onboardingData,
+      renderWorkoutChromeHeader
+    });
   }
-
   if (!onboardingData) {
-    return (
-      <View style={[styles.container, { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: isDark ? darkColors.nbBackground : lightColors.nbBackground }]}>
+    return <View style={[styles.container, {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: isDark ? darkColors.nbBackground : lightColors.nbBackground
+    }]}>
         <ActivityIndicator size="large" color={isDark ? darkColors.nbInk : lightColors.nbInk} />
-      </View>
-    );
+      </View>;
   }
 
   // Design Law screen chrome — black/white/gray only (no purple wash, no pink CTAs)
   const planBuilderBg = isDark ? darkColors.nbBackground : lightColors.nbBackground;
-  const resetLabel = formatWorkoutLimitResetLabel(workoutGenUsage?.resets_at);
-  const trainerDisplayName =
-    onboardingData?.trainerName ||
-    onboardingData?.trainer?.name ||
-    onboardingData?.trainer?.displayName ||
-    'Your trainer';
+  const resetLabel = formatWorkoutLimitResetLabel(workoutGenUsage == null ? void 0 : workoutGenUsage.resets_at);
+  const trainerDisplayName = (onboardingData == null ? void 0 : onboardingData.trainerName) || ((_optObj25 = onboardingData == null ? void 0 : onboardingData.trainer) == null ? void 0 : _optObj25.name) || ((_optObj26 = onboardingData == null ? void 0 : onboardingData.trainer) == null ? void 0 : _optObj26.displayName) || 'Your trainer';
   const hasGeneratedPlanBody = !!(generatedPlan && (generatedPlan.planText || generatedPlan.structuredPlan));
-
   const onGeneratePress = () => {
     if (plansRemaining <= 0) {
-      showNotice(
-        'Monthly limit reached',
-        `You've used all your workout generations for this month. Resets ${resetLabel}.`,
-      );
+      showNotice('Monthly limit reached', `You've used all your workout generations for this month. Resets ${resetLabel}.`);
       return;
     }
     generateWorkoutPlan();
@@ -3939,215 +3684,107 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
 
   // PNG 15 — full building screen while Claude runs (generation continues if user leaves)
   if (isGenerating && !(readOnly || showFullPlan)) {
-    return (
-      <View style={[styles.root, { backgroundColor: planBuilderBg }]}>
+    return <View style={[styles.root, {
+      backgroundColor: planBuilderBg
+    }]}>
         <SafeAreaView style={styles.container} edges={SHELL_SAFE_AREA_EDGES}>
           <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
-          <BuildingYourPlanView
-            onboardingData={onboardingData}
-            messageIndex={generatingMessageIndex}
-            onBackToToday={() => {
-              if (typeof onNavigate === 'function') onNavigate('home');
-              else onBack?.();
-            }}
-            contentContainerStyle={{ paddingBottom: shellBottomInset + 24 }}
-          />
+          <BuildingYourPlanView onboardingData={onboardingData} messageIndex={generatingMessageIndex} onBackToToday={() => {
+          if (typeof onNavigate === 'function') onNavigate('home');else onBack == null ? void 0 : onBack();
+        }} contentContainerStyle={{
+          paddingBottom: shellBottomInset + 24
+        }} />
         </SafeAreaView>
-        {!hideBottomNav && (
-          <ShellBottomNavAnchor>
-            <BottomMenuBar
-              onHomePress={() => (onNavigate ? onNavigate('home') : onBack?.())}
-              onProfilePress={() => onNavigate && onNavigate('profile')}
-              onPlusPress={() => onNavigate && onNavigate('create')}
-              onVoicePress={() => onNavigate && onNavigate('voice')}
-              onWorkoutPress={() => onNavigate && onNavigate('workout')}
-              onNutritionPress={() => onNavigate && onNavigate('nutrition')}
-              onMessagesPress={() => onNavigate && onNavigate('messages')}
-              activeTabKey="workout"
-            />
-          </ShellBottomNavAnchor>
-        )}
-      </View>
-    );
+        {!hideBottomNav && <ShellBottomNavAnchor>
+            <BottomMenuBar onHomePress={() => onNavigate ? onNavigate('home') : onBack == null ? void 0 : onBack()} onProfilePress={() => onNavigate && onNavigate('profile')} onPlusPress={() => onNavigate && onNavigate('create')} onVoicePress={() => onNavigate && onNavigate('voice')} onWorkoutPress={() => onNavigate && onNavigate('workout')} onNutritionPress={() => onNavigate && onNavigate('nutrition')} onMessagesPress={() => onNavigate && onNavigate('messages')} activeTabKey="workout" />
+          </ShellBottomNavAnchor>}
+      </View>;
   }
-
-  const workoutHeaderTitle =
-    activeTab === 'library' ? 'Exercise library' : typeof onBack === 'function' ? 'New plan' : 'Workouts';
-
-  return (
-    <View style={[styles.root, { backgroundColor: planBuilderBg }]}>
+  const workoutHeaderTitle = workoutHeaderTitleForTab(activeTab, onBack);
+  return <View style={[styles.root, {
+    backgroundColor: planBuilderBg
+  }]}>
     <SafeAreaView style={styles.container} edges={SHELL_SAFE_AREA_EDGES}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
       {/* NbPageHeader always clears status bar; back only when pushed as a sub-screen */}
-      <NbPageHeader
-        title={workoutHeaderTitle}
-        onBack={
-          typeof onBack === 'function'
-            ? () => {
-                if (isGenerating) {
-                  console.log(
-                    'Workout plan: leaving screen — generation continues in background; you will get',
-                    'a notification when finished if you are not on this screen or the app is in background.',
-                  );
-                }
-                onBack();
-              }
-            : undefined
+      <NbPageHeader title={workoutHeaderTitle} onBack={typeof onBack === 'function' ? () => {
+        if (isGenerating) {
+          console.log('Workout plan: leaving screen — generation continues in background; you will get', 'a notification when finished if you are not on this screen or the app is in background.');
         }
-      />
+        onBack();
+      } : undefined} />
 
       {/* Workout Plans | Exercise Library — library was dropped in the New plan rewrite; restore it */}
-      <View style={{ paddingHorizontal: spacing.md, marginBottom: 10 }}>
-        <NbSegmented
-          segments={WORKOUT_ROOT_SEGMENTS}
-          selected={activeTab}
-          onSelect={setActiveTab}
-        />
+      <View style={{
+        paddingHorizontal: spacing.md,
+        marginBottom: 10
+      }}>
+        <NbSegmented segments={WORKOUT_ROOT_SEGMENTS} selected={activeTab} onSelect={setActiveTab} />
       </View>
 
-      {planReadyPending && !isGenerating && activeTab === 'plans' ? (
-        <TouchableOpacity
-          activeOpacity={0.9}
-          onPress={handleOpenReadyPlan}
-          style={[
-            styles.generatingInlineBanner,
-            {
-              borderColor: isDark ? darkColors.nbBorder : lightColors.nbBorder,
-              borderWidth: nb.borderWidth,
-              backgroundColor: isDark ? darkColors.nbSurface : lightColors.nbSurface,
-            },
-          ]}
-        >
+      {planReadyPending && !isGenerating && activeTab === 'plans' ? <TouchableOpacity activeOpacity={0.9} onPress={handleOpenReadyPlan} style={[styles.generatingInlineBanner, {
+        borderColor: isDark ? darkColors.nbBorder : lightColors.nbBorder,
+        borderWidth: nb.borderWidth,
+        backgroundColor: isDark ? darkColors.nbSurface : lightColors.nbSurface
+      }]}>
           <Ionicons name="checkmark-circle" size={22} color={textPrimary} />
           <View style={styles.generatingInlineBannerTextCol}>
-            <Text style={[styles.generatingInlineBannerTitle, { color: textPrimary }]}>Your plan is ready</Text>
-            <Text style={[styles.generatingInlineBannerSub, { color: textSecondary }]} numberOfLines={2}>
+            <Text style={[styles.generatingInlineBannerTitle, {
+            color: textPrimary
+          }]}>Your plan is ready</Text>
+            <Text style={[styles.generatingInlineBannerSub, {
+            color: textSecondary
+          }]} numberOfLines={2}>
               Tap to open your new workout plan.
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color={textSecondary} />
-        </TouchableOpacity>
-      ) : null}
+        </TouchableOpacity> : null}
 
-      {isCoachViewingClientProfile && activeTab === 'plans' ? (
-        <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
-          <CoachViewContextBanner
-            isDark={isDark}
-            clientName={viewingClientName}
-            textColor={textPrimary}
-            mutedColor={textSecondary}
-          />
-        </View>
-      ) : null}
+      {isCoachViewingClientProfile && activeTab === 'plans' ? <View style={{
+        paddingHorizontal: 16,
+        paddingBottom: 8
+      }}>
+          <CoachViewContextBanner isDark={isDark} clientName={viewingClientName} textColor={textPrimary} mutedColor={textSecondary} />
+        </View> : null}
 
-      <View style={{ flex: 1, minHeight: 0 }}>
-        {activeTab === 'library' ? (
-          <ExerciseVideosTab
-            isDark={isDark}
-            onThemeToggle={() => toggleTheme(isDark ? 'light' : 'dark')}
-            onboardingData={onboardingData}
-            onExercisesDislikeChange={(next) =>
-              setOnboardingData((prev) => ({ ...prev, exercisesDislike: next }))
-            }
-          />
-        ) : (
-          <NewPlanPanel
-            sourceTab={planSourceTab}
-            onSourceTabChange={setPlanSourceTab}
-            onboardingData={onboardingData}
-            readOnly={readOnly}
-            isCoachViewingClientProfile={isCoachViewingClientProfile}
-            trainerDisplayName={trainerDisplayName}
-            requestText={requestText}
-            onChangeRequestText={setRequestText}
-            sendingRequest={sendingRequest}
-            hasTrainer={!!resolvedTrainerId}
-            onSendTrainerRequest={handleSendTrainerRequest}
-            onEnableAi={() => onNavigate?.('settings')}
-            onGoHome={() => (onNavigate ? onNavigate('home') : onBack?.())}
-            aiOn={aiOn}
-            aiPrefReady={aiPrefReady}
-            onEditField={(editKey) => setEditingPillKey(editKey)}
-            plansUsedThisMonth={plansUsedThisMonth}
-            planGenerationLimit={planGenerationLimit}
-            plansRemaining={plansRemaining}
-            resetLabel={resetLabel}
-            isGenerating={isGenerating}
-            hasGeneratedPlan={hasGeneratedPlanBody}
-            onGenerate={onGeneratePress}
-            onOpenPlan={() => setShowFullPlan(true)}
-            onRegenerate={handleRegeneratePlan}
-            generationError={generationError}
-            onRetryGenerate={() => {
-              setGenerationError(null);
-              generateWorkoutPlan();
-            }}
-            contentContainerStyle={{ paddingBottom: shellBottomInset + 28 }}
-          />
-        )}
+      <View style={{
+        flex: 1,
+        minHeight: 0
+      }}>
+        {activeTab === 'library' ? <ExerciseVideosTab isDark={isDark} onThemeToggle={() => toggleTheme(isDark ? 'light' : 'dark')} onboardingData={onboardingData} onExercisesDislikeChange={next => setOnboardingData(prev => ({
+          ...prev,
+          exercisesDislike: next
+        }))} /> : <NewPlanPanel sourceTab={planSourceTab} onSourceTabChange={setPlanSourceTab} onboardingData={onboardingData} readOnly={readOnly} isCoachViewingClientProfile={isCoachViewingClientProfile} trainerDisplayName={trainerDisplayName} requestText={requestText} onChangeRequestText={setRequestText} sendingRequest={sendingRequest} hasTrainer={!!resolvedTrainerId} onSendTrainerRequest={handleSendTrainerRequest} onEnableAi={() => onNavigate == null ? void 0 : onNavigate('settings')} onGoHome={() => onNavigate ? onNavigate('home') : onBack == null ? void 0 : onBack()} aiOn={aiOn} aiPrefReady={aiPrefReady} onEditField={editKey => setEditingPillKey(editKey)} plansUsedThisMonth={plansUsedThisMonth} planGenerationLimit={planGenerationLimit} plansRemaining={plansRemaining} resetLabel={resetLabel} isGenerating={isGenerating} hasGeneratedPlan={hasGeneratedPlanBody} onGenerate={onGeneratePress} onOpenPlan={() => setShowFullPlan(true)} onRegenerate={handleRegeneratePlan} generationError={generationError} onRetryGenerate={() => {
+          setGenerationError(null);
+          generateWorkoutPlan();
+        }} contentContainerStyle={{
+          paddingBottom: shellBottomInset + 28
+        }} />}
       </View>
 
-      <PlanPdfViewer
-        visible={showPdfViewer}
-        pdfLocalUri={collectionViewingPlan ? null : pdfLocalUri}
-        pdfDownloadUrl={collectionViewingPlan ? collectionViewingPlan.url : pdfDownloadUrl}
-        planTitle={collectionViewingPlan ? collectionViewingPlan.planTitle : (planTitleForPdf || 'Workout Plan')}
-        clientName={onboardingData?.name || onboardingData?.firstName || auth.currentUser?.displayName}
-        isDark={isDark}
-        onClose={() => {
-          setShowPdfViewer(false);
-          setCollectionViewingPlan(null);
-        }}
-      />
+      <PlanPdfViewer visible={showPdfViewer} pdfLocalUri={collectionViewingPlan ? null : pdfLocalUri} pdfDownloadUrl={collectionViewingPlan ? collectionViewingPlan.url : pdfDownloadUrl} planTitle={collectionViewingPlan ? collectionViewingPlan.planTitle : planTitleForPdf || 'Workout Plan'} clientName={(onboardingData == null ? void 0 : onboardingData.name) || (onboardingData == null ? void 0 : onboardingData.firstName) || ((_optObj27 = auth.currentUser) == null ? void 0 : _optObj27.displayName)} isDark={isDark} onClose={() => {
+        setShowPdfViewer(false);
+        setCollectionViewingPlan(null);
+      }} />
 
-      <EditModalForm
-        visible={!!editingPillKey}
-        fieldKey={editingPillKey}
-        title={WORKOUT_BUILDER_ROW_META?.[editingPillKey]?.label}
-        // Respect theme toggle
-        cardBg={isDark ? darkColors.nbSurface : lightColors.nbSurface}
-        textColor={isDark ? darkColors.nbInk : lightColors.nbInk}
-        mutedColor={isDark ? darkColors.nbMuted : lightColors.nbMuted}
-        borderColor={isDark ? darkColors.nbBorder : lightColors.nbBorder}
-        doneGradient={[isDark ? darkColors.nbFill : lightColors.nbFill, isDark ? darkColors.nbMuted : lightColors.nbMuted]}
-        isDark={isDark}
-        onClose={() => setEditingPillKey(null)}
-        onDone={() => {
-          setEditingPillKey(null);
-          saveData(onboardingData);
-        }}
-      >
-        {editingPillKey ? (
-          <WorkoutPlanBuilderFieldEditBody
-            fieldKey={editingPillKey}
-            onboardingData={onboardingData}
-            setOnboardingData={setOnboardingData}
-            validationErrors={validationErrors}
-            setValidationErrors={setValidationErrors}
-            isDark={isDark}
-            styles={styles}
-          />
-        ) : null}
+      <EditModalForm visible={!!editingPillKey} fieldKey={editingPillKey} title={(_optObj28 = WORKOUT_BUILDER_ROW_META == null ? void 0 : WORKOUT_BUILDER_ROW_META[editingPillKey]) == null ? void 0 : _optObj28.label}
+      // Respect theme toggle
+      cardBg={isDark ? darkColors.nbSurface : lightColors.nbSurface} textColor={isDark ? darkColors.nbInk : lightColors.nbInk} mutedColor={isDark ? darkColors.nbMuted : lightColors.nbMuted} borderColor={isDark ? darkColors.nbBorder : lightColors.nbBorder} doneGradient={[isDark ? darkColors.nbFill : lightColors.nbFill, isDark ? darkColors.nbMuted : lightColors.nbMuted]} isDark={isDark} onClose={() => setEditingPillKey(null)} onDone={() => {
+        setEditingPillKey(null);
+        saveData(onboardingData);
+      }}>
+        {editingPillKey ? <WorkoutPlanBuilderFieldEditBody fieldKey={editingPillKey} onboardingData={onboardingData} setOnboardingData={setOnboardingData} validationErrors={validationErrors} setValidationErrors={setValidationErrors} isDark={isDark} styles={styles} /> : null}
       </EditModalForm>
 
       {/* Edit Plan Modal */}
       <Modal visible={showEditPlanModal} animationType="slide" transparent>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={styles.editPlanModalOverlay}
-        >
-          <TouchableOpacity
-            activeOpacity={1}
-            style={styles.editPlanModalBackdrop}
-            onPress={() => setShowEditPlanModal(false)}
-          />
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.editPlanModalOverlay}>
+          <TouchableOpacity activeOpacity={1} style={styles.editPlanModalBackdrop} onPress={() => setShowEditPlanModal(false)} />
           <View style={styles.editPlanModalContent}>
             <View style={styles.editPlanModalHeader}>
               <Text style={styles.editPlanModalTitle}>Edit plan</Text>
-              <TouchableOpacity
-                onPress={() => setShowEditPlanModal(false)}
-                style={styles.editPlanModalClose}
-              >
+              <TouchableOpacity onPress={() => setShowEditPlanModal(false)} style={styles.editPlanModalClose}>
                 <Ionicons name="close" size={24} color="#fff" />
               </TouchableOpacity>
             </View>
@@ -4155,34 +3792,28 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
             {/* Markdown preview */}
             <View style={styles.markdownPreviewCard}>
               <Text style={styles.markdownPreviewLabel}>Preview</Text>
-              <ScrollView
-                style={styles.markdownPreviewScroll}
-                contentContainerStyle={styles.markdownPreviewContent}
-                showsVerticalScrollIndicator={false}
-              >
+              <ScrollView style={styles.markdownPreviewScroll} contentContainerStyle={styles.markdownPreviewContent} showsVerticalScrollIndicator={false}>
                 <Markdown style={MARKDOWN_STYLES}>
-                  {normalizePlanMarkdown(stripEmojis(editPlanText || generatedPlan?.planText || ''))}
+                  {normalizePlanMarkdown(stripEmojis(editPlanText || (generatedPlan == null ? void 0 : generatedPlan.planText) || ''))}
                 </Markdown>
               </ScrollView>
             </View>
 
             {/* Raw markdown editor */}
             <Text style={styles.rawEditorLabel}>Raw markdown</Text>
-            <TextInput
-              style={styles.editPlanModalInput}
-              value={editPlanText}
-              onChangeText={setEditPlanText}
-              placeholder="Paste or edit your workout plan text..."
-              placeholderTextColor="rgba(255,255,255,0.4)"
-              multiline
-              textAlignVertical="top"
-            />
+            <TextInput style={styles.editPlanModalInput} value={editPlanText} onChangeText={setEditPlanText} placeholder="Paste or edit your workout plan text..." placeholderTextColor="rgba(255,255,255,0.4)" multiline textAlignVertical="top" />
 
-            <View style={[styles.editPlanModalActions, { gap: 10 }]}>
-              <NbButton variant="plain" onPress={() => setShowEditPlanModal(false)} style={{ flex: 1 }}>
+            <View style={[styles.editPlanModalActions, {
+              gap: 10
+            }]}>
+              <NbButton variant="plain" onPress={() => setShowEditPlanModal(false)} style={{
+                flex: 1
+              }}>
                 Cancel
               </NbButton>
-              <NbButton variant="fill" onPress={handleSaveEditedPlan} style={{ flex: 1 }}>
+              <NbButton variant="fill" onPress={handleSaveEditedPlan} style={{
+                flex: 1
+              }}>
                 Save
               </NbButton>
             </View>
@@ -4190,60 +3821,671 @@ Generate the complete 7-day JSON plan NOW. Return ONLY JSON.`;
         </KeyboardAvoidingView>
       </Modal>
 
-      <NbNoticeSheet
-        visible={!!notice}
-        onClose={() => setNotice(null)}
-        title={notice?.title || ''}
-        message={notice?.message}
-        confirmLabel={notice?.confirmLabel || 'OK'}
-        cancelLabel={notice?.cancelLabel}
-        onConfirm={notice?.onConfirm}
-      />
+      <NbNoticeSheet visible={!!notice} onClose={() => setNotice(null)} title={(notice == null ? void 0 : notice.title) || ''} message={notice == null ? void 0 : notice.message} confirmLabel={(notice == null ? void 0 : notice.confirmLabel) || 'OK'} cancelLabel={notice == null ? void 0 : notice.cancelLabel} onConfirm={notice == null ? void 0 : notice.onConfirm} />
 
     </SafeAreaView>
 
-      {!hideBottomNav && (
-        <ShellBottomNavAnchor>
-          <BottomMenuBar
-            onHomePress={() => (onNavigate ? onNavigate('home') : onBack?.())}
-            onProfilePress={() => onNavigate && onNavigate('profile')}
-            onPlusPress={() => onNavigate && onNavigate('create')}
-            onVoicePress={() => onNavigate && onNavigate('voice')}
-            onWorkoutPress={() => onNavigate && onNavigate('workout')}
-            onNutritionPress={() => onNavigate && onNavigate('nutrition')}
-            onMessagesPress={() => onNavigate && onNavigate('messages')}
-            activeTabKey="workout"
-          />
-        </ShellBottomNavAnchor>
-      )}
-    </View>
-  );
+      {!hideBottomNav && <ShellBottomNavAnchor>
+          <BottomMenuBar onHomePress={() => onNavigate ? onNavigate('home') : onBack == null ? void 0 : onBack()} onProfilePress={() => onNavigate && onNavigate('profile')} onPlusPress={() => onNavigate && onNavigate('create')} onVoicePress={() => onNavigate && onNavigate('voice')} onWorkoutPress={() => onNavigate && onNavigate('workout')} onNutritionPress={() => onNavigate && onNavigate('nutrition')} onMessagesPress={() => onNavigate && onNavigate('messages')} activeTabKey="workout" />
+        </ShellBottomNavAnchor>}
+    </View>;
 }
+
+// ===== PLUMBING — skip unless debugging =====
+// Load / migrate / generate helpers used by CreateWorkoutPlanScreen above.
+// Function declarations are hoisted in the module so the main can call them.
+
+function structuredPlanFromStoredText(rawPlanText) {
+  try {
+    const rawJson = extractJSON(String(rawPlanText));
+    return {
+      structuredPlan: JSON.parse(rawJson),
+      planParseError: false
+    };
+  } catch (jsonError) {
+    return structuredPlanFromLegacyMarkdown(rawPlanText, jsonError);
+  }
+}
+
+/**
+ * @param {string} rawPlanText
+ * @param {Error} [jsonError]
+ * @returns {{ structuredPlan: object|null, planParseError: boolean }}
+ */
+function structuredPlanFromLegacyMarkdown(rawPlanText, jsonError) {
+  try {
+    const legacy = parsePlan(String(rawPlanText));
+    const hasContent = legacy && (legacy.overview || legacy.days && legacy.days.length);
+    if (!hasContent) return {
+      structuredPlan: null,
+      planParseError: true
+    };
+    return {
+      structuredPlan: {
+        overview: legacy.overview || '',
+        weeklySchedule: (legacy.days || []).map(day => ({
+          day: day.label || '',
+          focus: day.type || ''
+        })),
+        days: legacy.days || [],
+        nutritionNotes: '',
+        generalNotes: legacy.notes || ''
+      },
+      planParseError: false
+    };
+  } catch (fallbackError) {
+    console.warn('Stored plan parse failed (JSON + legacy):', (jsonError == null ? void 0 : jsonError.message) || jsonError, (fallbackError == null ? void 0 : fallbackError.message) || fallbackError);
+    return {
+      structuredPlan: null,
+      planParseError: true
+    };
+  }
+}
+
+/**
+ * If buildWorkoutPlanPayloadFromStructured yields rows, migrate to that shape.
+ * @param {object|null} structuredPlan
+ * @returns {{ structuredPlan: object|null, migratedRaw: string|null, didMigrate: boolean }}
+ */
+function maybeMigrateStructuredPlanPayload(structuredPlan) {
+  try {
+    const payload = buildWorkoutPlanPayloadFromStructured(structuredPlan);
+    const hasRows = payload && Array.isArray(payload.workoutPlan) && payload.workoutPlan.length > 0;
+    if (!hasRows) {
+      return {
+        structuredPlan,
+        migratedRaw: null,
+        didMigrate: false
+      };
+    }
+    return {
+      structuredPlan: payload,
+      migratedRaw: JSON.stringify(payload),
+      didMigrate: true
+    };
+  } catch (migrateError) {
+    console.warn('Workout plan migration failed:', (migrateError == null ? void 0 : migrateError.message) || migrateError);
+    return {
+      structuredPlan,
+      migratedRaw: null,
+      didMigrate: false
+    };
+  }
+}
+
+/**
+ * Persist a migrated plan to AsyncStorage (+ optional global key) and Firestore.
+ * @param {object} args
+ * @returns {Promise<object>} saved plan row for setGeneratedPlan
+ */
+async function persistMigratedPlanToCaches({
+  subjectUid,
+  isSelf,
+  loadedData,
+  firestorePlan,
+  structuredPlan,
+  migratedRaw
+}) {
+  var _optFn2, _optObj29;
+  const generatedAtMs = ((_optFn2 = (_optObj29 = firestorePlan.generatedAt) == null ? void 0 : _optObj29.toMillis) == null ? void 0 : _optFn2()) ?? Date.now();
+  const saved = {
+    id: `plan_${generatedAtMs}`,
+    generatedAt: generatedAtMs,
+    userData: loadedData,
+    planText: migratedRaw,
+    structuredPlan,
+    planParseError: false
+  };
+  await AsyncStorage.setItem(`workout_plan_${subjectUid}`, JSON.stringify(saved));
+  if (isSelf) {
+    await AsyncStorage.setItem('@workout_plan', JSON.stringify(saved));
+  }
+  await setCurrentWorkoutPlan(subjectUid, {
+    rawPlan: migratedRaw
+  });
+  return saved;
+}
+
+/**
+ * Load Firestore current plan, parse/migrate, return saved row or null.
+ * @param {object} args
+ * @returns {Promise<object|null>}
+ */
+async function loadSavedPlanFromFirestore({
+  subjectUid,
+  isSelf,
+  loadedData
+}) {
+  var _optFn3, _optObj30, _optFn4, _optObj31;
+  const firestorePlan = await getCurrentWorkoutPlan(subjectUid);
+  if (!(firestorePlan == null ? void 0 : firestorePlan.rawPlan)) return null;
+  let {
+    structuredPlan,
+    planParseError
+  } = structuredPlanFromStoredText(firestorePlan.rawPlan);
+  const migration = maybeMigrateStructuredPlanPayload(structuredPlan);
+  if (migration.didMigrate) {
+    firestorePlan.rawPlan = migration.migratedRaw;
+    structuredPlan = migration.structuredPlan;
+    planParseError = false;
+    return persistMigratedPlanToCaches({
+      subjectUid,
+      isSelf,
+      loadedData,
+      firestorePlan,
+      structuredPlan,
+      migratedRaw: migration.migratedRaw
+    });
+  }
+  return {
+    id: `plan_${((_optFn3 = (_optObj30 = firestorePlan.generatedAt) == null ? void 0 : _optObj30.toMillis) == null ? void 0 : _optFn3()) ?? Date.now()}`,
+    generatedAt: ((_optFn4 = (_optObj31 = firestorePlan.generatedAt) == null ? void 0 : _optObj31.toMillis) == null ? void 0 : _optFn4()) ?? Date.now(),
+    userData: loadedData,
+    planText: firestorePlan.rawPlan,
+    structuredPlan,
+    planParseError
+  };
+}
+
+/**
+ * Load plan from AsyncStorage when Firestore has none.
+ * @param {object} args
+ * @returns {Promise<object|null>}
+ */
+async function loadSavedPlanFromAsyncStorage({
+  subjectUid,
+  isSelf
+}) {
+  const planJson = isSelf ? (await AsyncStorage.getItem('@workout_plan')) || (await AsyncStorage.getItem(`workout_plan_${subjectUid}`)) : await AsyncStorage.getItem(`workout_plan_${subjectUid}`);
+  if (!planJson) return null;
+  const saved = JSON.parse(planJson);
+  if (!saved || !(saved.planText || saved.structuredPlan)) return null;
+  if (!saved.structuredPlan && saved.planText) {
+    const parsed = structuredPlanFromStoredText(saved.planText);
+    saved.structuredPlan = parsed.structuredPlan;
+    saved.planParseError = parsed.planParseError;
+  }
+  const migration = maybeMigrateStructuredPlanPayload(saved.structuredPlan || tryParseJsonObject(saved.planText));
+  if (migration.didMigrate) {
+    saved.structuredPlan = migration.structuredPlan;
+    saved.planText = migration.migratedRaw;
+    saved.planParseError = false;
+    await AsyncStorage.setItem(`workout_plan_${subjectUid}`, JSON.stringify(saved));
+    if (isSelf) await AsyncStorage.setItem('@workout_plan', JSON.stringify(saved));
+    await setCurrentWorkoutPlan(subjectUid, {
+      rawPlan: migration.migratedRaw
+    });
+  }
+  return saved;
+}
+
+/**
+ * Parse edited plan text into structured plan (JSON, then legacy).
+ * @param {string} text
+ * @returns {{ structuredPlan: object|null, planParseError: boolean }}
+ */
+function structuredPlanFromEditedText(text) {
+  try {
+    return {
+      structuredPlan: JSON.parse(text),
+      planParseError: false
+    };
+  } catch (jsonError) {
+    console.warn('Edited plan JSON parse failed:', jsonError);
+    return structuredPlanFromLegacyMarkdown(text, jsonError);
+  }
+}
+
+/**
+ * Parse API workout JSON that must contain a 7-day plan array.
+ * @param {string} responseText
+ * @returns {{ success: boolean, plan: Array }}
+ */
+function parseWorkoutPlanJsonText(responseText) {
+  let parsed = null;
+  try {
+    parsed = JSON.parse(responseText);
+  } catch (firstError) {
+    const jsonMatch = String(responseText || '').match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error('No JSON object found in response');
+    try {
+      parsed = JSON.parse(jsonMatch[0]);
+    } catch (secondError) {
+      throw new Error(`Failed to parse workout plan: ${secondError.message}`);
+    }
+  }
+  const plan = Array.isArray(parsed == null ? void 0 : parsed.plan) ? parsed.plan : null;
+  if (!plan) throw new Error('Invalid structure: missing or invalid "plan" array');
+  if (plan.length !== DAYS_IN_WEEK) {
+    throw new Error(`Expected 7 days, got ${plan.length}`);
+  }
+  return {
+    parsed,
+    plan
+  };
+}
+
+/**
+ * AsyncStorage fallback for onboarding when Firestore has no user doc.
+ * @param {object} args
+ * @returns {Promise<object|null>}
+ */
+async function loadOnboardingFromAsyncStorageOrCoachEmpty({
+  storageKey,
+  isCoach,
+  cancelled,
+  setOnboardingData,
+  onBack
+}) {
+  const data = await AsyncStorage.getItem(storageKey);
+  if (data) {
+    const loadedData = normalizeClientProfileFields(JSON.parse(data));
+    if (!cancelled) setOnboardingData(loadedData);
+    return loadedData;
+  }
+  if (isCoach) {
+    if (!cancelled) setOnboardingData({});
+    return {};
+  }
+  Alert.alert('Error', 'Onboarding data not found');
+  if (onBack) onBack();
+  return null;
+}
+
+/**
+ * @param {object} args
+ * @returns {void}
+ */
+function handleOnboardingLoadError({
+  isCoach,
+  cancelled,
+  setOnboardingData,
+  onBack
+}) {
+  if (!isCoach) {
+    Alert.alert('Error', 'Failed to load onboarding data');
+    if (onBack) onBack();
+    return;
+  }
+  if (!cancelled) setOnboardingData({});
+}
+
+/**
+ * Load onboarding + saved plan into React state for the plan screen.
+ * @param {object} args
+ * @returns {Promise<void>}
+ */
+async function loadOnboardingAndPlanIntoState({
+  subjectUid,
+  isCoach,
+  isSelf,
+  cancelled,
+  setOnboardingData,
+  setGeneratedPlan,
+  onBack
+}) {
+  const storageKey = `onboarding_data_${subjectUid}`;
+  let loadedData = await loadOnboardingFromFirestoreDoc({
+    subjectUid,
+    storageKey,
+    cancelled,
+    setOnboardingData
+  });
+  if (!loadedData) {
+    loadedData = await loadOnboardingFromAsyncStorageOrCoachEmpty({
+      storageKey,
+      isCoach,
+      cancelled,
+      setOnboardingData,
+      onBack
+    });
+  }
+  if (cancelled || !subjectUid) return;
+  const fromFirestore = await loadSavedPlanFromFirestore({
+    subjectUid,
+    isSelf,
+    loadedData
+  });
+  if (fromFirestore && !cancelled) {
+    setGeneratedPlan(fromFirestore);
+    return;
+  }
+  const fromStorage = await loadSavedPlanFromAsyncStorage({
+    subjectUid,
+    isSelf
+  });
+  if (fromStorage && !cancelled) setGeneratedPlan(fromStorage);
+}
+
+/**
+ * @param {object} args
+ * @returns {Promise<object|null>}
+ */
+async function loadOnboardingFromFirestoreDoc({
+  subjectUid,
+  storageKey,
+  cancelled,
+  setOnboardingData
+}) {
+  if (!db) return null;
+  const userSnap = await getDoc(doc(db, 'users', subjectUid));
+  if (!userSnap.exists()) return null;
+  const loadedData = normalizeClientProfileFields(userSnap.data());
+  if (cancelled) return loadedData;
+  await AsyncStorage.setItem(storageKey, JSON.stringify(loadedData));
+  setOnboardingData(loadedData);
+  return loadedData;
+}
+
+/**
+ * Shake the first invalid onboarding card and scroll to top.
+ * @param {object} args
+ * @returns {void}
+ */
+function shakeFirstValidationError({
+  validationErrors,
+  setExpandedCard,
+  triggerShake,
+  scrollViewRef
+}) {
+  const firstErrorKey = Object.keys(validationErrors)[0];
+  if (!firstErrorKey) return;
+  setExpandedCard(firstErrorKey);
+  triggerShake(firstErrorKey);
+  setTimeout(() => {
+    var _optFn5, _optObj32;
+    (_optFn5 = (_optObj32 = scrollViewRef.current) == null ? void 0 : _optObj32.scrollTo) == null ? void 0 : _optFn5({
+      y: 0,
+      animated: true
+    });
+  }, 100);
+}
+
+/**
+ * Ask the API, parse, cache, and mark generation success.
+ * @param {object} args
+ * @returns {Promise<void>}
+ */
+async function runWorkoutPlanGeneration({
+  subjectUid,
+  onboardingData,
+  profileSubjectUid,
+  fetchWorkoutPlanFromServer,
+  parseWorkoutPlan,
+  runIfStillMounted,
+  setOnboardingData,
+  setGeneratedPlan,
+  setGenerationError,
+  setPdfGenerationError,
+  setShowRawPlanFallback,
+  setPdfLocalUri,
+  setPdfDownloadUrl,
+  setPlanTitleForPdf,
+  appInForegroundRef,
+  mountedRef,
+  schedulePlanReadyNotification
+}) {
+  var _optObj33;
+  // 1. Fresh profile from Firestore when possible (falls back to onboardingData).
+  const profileForGen = await loadProfileForGeneration({
+    subjectUid,
+    onboardingData,
+    runIfStillMounted,
+    setOnboardingData
+  });
+
+  // 2. Ask the API / Claude for plan text.
+  const rawText = await fetchWorkoutPlanFromServer(profileForGen, subjectUid);
+  if (rawText) {
+    console.log('RAW WORKOUT RESPONSE length:', rawText.length, '| preview:', JSON.stringify(String(rawText).slice(0, 600)));
+  }
+  if (!rawText || typeof rawText !== 'string') {
+    throw new Error('Empty response from server. Please try again.');
+  }
+
+  // 3. Strip fences / keep outermost JSON braces.
+  let planText = extractJSON(rawText);
+  if (!planText || typeof planText !== 'string') {
+    throw new Error('Empty response from Claude. Please try again.');
+  }
+
+  // 4. Parse into structured plan; on failure helper sets error state and returns null.
+  const structuredPlan = tryParseGeneratedWorkoutPlan({
+    planText,
+    parseWorkoutPlan,
+    subjectUid,
+    onboardingData,
+    runIfStillMounted,
+    setGenerationError,
+    setGeneratedPlan
+  });
+  if (!structuredPlan) {
+    return;
+  }
+
+  // 5. Cache on phone + set current plan for this subject.
+  const authedUid = (_optObj33 = auth.currentUser) == null ? void 0 : _optObj33.uid;
+  const targetUid = profileSubjectUid;
+  const planData = {
+    id: `plan_${Date.now()}`,
+    generatedAt: Date.now(),
+    userData: onboardingData,
+    planText,
+    structuredPlan,
+    planParseError: false
+  };
+  await AsyncStorage.setItem(`workout_plan_${targetUid || authedUid || 'unknown'}`, JSON.stringify(planData));
+  if (targetUid && authedUid && targetUid === authedUid) {
+    await AsyncStorage.setItem('@workout_plan', JSON.stringify(planData));
+  }
+  runIfStillMounted(() => setGeneratedPlan(planData));
+  if (targetUid) {
+    await setCurrentWorkoutPlan(targetUid, {
+      rawPlan: planText,
+      planText,
+      structuredPlan: planData.structuredPlan || null,
+      title: nameWorkoutPlan(planData)
+    });
+  }
+
+  // 6. Clear stale PDF bits; notify or clear ready badge depending on whether user left.
+  runIfStillMounted(() => setPdfGenerationError(null));
+  runIfStillMounted(() => setShowRawPlanFallback(false));
+  runIfStillMounted(() => setPdfLocalUri(null));
+  runIfStillMounted(() => setPdfDownloadUrl(null));
+  runIfStillMounted(() => setPlanTitleForPdf(''));
+  const userAwayFromWorkout = !mountedRef.current || !appInForegroundRef.current;
+  if (targetUid) {
+    await markWorkoutGenerationSucceeded(targetUid, {
+      userAwayFromWorkout
+    });
+  }
+  if (userAwayFromWorkout) {
+    await schedulePlanReadyNotification();
+    return;
+  }
+  if (targetUid) await clearWorkoutPlanReadyBadge(targetUid);
+}
+
+/**
+ * @param {object} args
+ * @returns {Promise<object>}
+ */
+async function loadProfileForGeneration({
+  subjectUid,
+  onboardingData,
+  runIfStillMounted,
+  setOnboardingData
+}) {
+  let profileForGen = onboardingData;
+  if (!db || !subjectUid) {
+    return profileForGen;
+  }
+  try {
+    const freshSnap = await getDoc(doc(db, 'users', subjectUid));
+    if (!freshSnap.exists()) {
+      return profileForGen;
+    }
+    profileForGen = normalizeClientProfileFields(freshSnap.data());
+    runIfStillMounted(() => setOnboardingData(profileForGen));
+    await AsyncStorage.setItem(`onboarding_data_${subjectUid}`, JSON.stringify(profileForGen));
+  } catch (_) {
+    /* use cached onboarding */
+  }
+  return profileForGen;
+}
+
+/**
+ * Parse generated plan text; on failure set error state and return null.
+ * @param {object} args
+ * @returns {object|null}
+ */
+function tryParseGeneratedWorkoutPlan({
+  planText,
+  parseWorkoutPlan,
+  subjectUid,
+  onboardingData,
+  runIfStillMounted,
+  setGenerationError,
+  setGeneratedPlan
+}) {
+  try {
+    const parsed = parseWorkoutPlan(planText);
+    return {
+      ...parsed,
+      workoutPlan: Array.isArray(parsed == null ? void 0 : parsed.plan) ? parsed.plan : []
+    };
+  } catch (parseErr) {
+    console.warn('Workout plan parse failed:', parseErr);
+    const truncated = typeof planText === 'string' && !planText.trimEnd().endsWith('}');
+    const parseMsg = truncated ? 'The response was cut off. Tap Generate again to retry.' : (parseErr == null ? void 0 : parseErr.message) || 'Failed to parse — please regenerate.';
+    runIfStillMounted(() => setGenerationError(parseMsg));
+    runIfStillMounted(() => setGeneratedPlan({
+      id: `plan_${Date.now()}`,
+      generatedAt: Date.now(),
+      userData: onboardingData,
+      planText,
+      structuredPlan: null,
+      planParseError: true
+    }));
+    if (subjectUid) {
+      markWorkoutGenerationFailed(subjectUid).catch(() => {});
+    }
+    return null;
+  }
+}
+
+/**
+ * @param {object} args
+ * @returns {Promise<void>}
+ */
+async function handleWorkoutPlanGenerationError({
+  error,
+  profileSubjectUid,
+  planGenerationLimit,
+  setWorkoutGenUsage,
+  runIfStillMounted,
+  setGenerationError,
+  mountedRef,
+  generateWorkoutPlan,
+  showNotice
+}) {
+  var _optObj34;
+  console.error('Error generating workout plan:', error);
+  const failUid = profileSubjectUid || ((_optObj34 = auth.currentUser) == null ? void 0 : _optObj34.uid);
+  if (failUid) await markWorkoutGenerationFailed(failUid);
+  if ((error == null ? void 0 : error.code) === 'monthly_limit_reached') {
+    applyMonthlyLimitError({
+      error,
+      planGenerationLimit,
+      setWorkoutGenUsage,
+      runIfStillMounted,
+      setGenerationError,
+      mountedRef,
+      showNotice
+    });
+    return;
+  }
+  runIfStillMounted(() => setGenerationError(error.message || 'Failed to generate workout plan'));
+  if (!mountedRef.current) return;
+  const failMessage = error.message || "We couldn't generate your workout plan. Please try again.";
+  if (typeof showNotice === 'function') {
+    showNotice('Generation Failed', failMessage, {
+      cancelLabel: 'Cancel',
+      confirmLabel: 'Retry',
+      onConfirm: () => generateWorkoutPlan()
+    });
+    return;
+  }
+  Alert.alert('Generation Failed', failMessage, [{
+    text: 'Cancel',
+    style: 'cancel'
+  }, {
+    text: 'Retry',
+    onPress: () => generateWorkoutPlan()
+  }]);
+}
+
+/**
+ * @param {object} args
+ * @returns {void}
+ */
+function applyMonthlyLimitError({
+  error,
+  planGenerationLimit,
+  setWorkoutGenUsage,
+  runIfStillMounted,
+  setGenerationError,
+  mountedRef,
+  showNotice
+}) {
+  if (error.limitPayload) {
+    setWorkoutGenUsage({
+      generations_used: Number(error.limitPayload.used) || planGenerationLimit,
+      generations_limit: Number(error.limitPayload.limit) || planGenerationLimit,
+      resets_at: error.limitPayload.resets_at || nextMonthResetsAtIso()
+    });
+  }
+  runIfStillMounted(() => setGenerationError(error.message));
+  if (mountedRef.current) {
+    if (typeof showNotice === 'function') {
+      showNotice('Monthly limit reached', error.message);
+    } else {
+      Alert.alert('Monthly limit reached', error.message);
+    }
+  }
+}
+
+/**
+ * Pick workout-day rows for MyWorkoutPlanScreen: route param → structured.workoutPlan → Claude plan[] → mapped days.
+ * @param {{ routeWorkoutPlan: unknown, structuredRaw: object | null, structured: object | null }} args
+ * @returns {Array}
+ */
 
 const styles = StyleSheet.create({
   root: {
-    flex: 1,
+    flex: 1
   },
   container: {
-    flex: 1,
+    flex: 1
   },
   stickyCtaFooter: {
     paddingHorizontal: 16,
     paddingTop: 8,
-    flexShrink: 0,
+    flexShrink: 0
   },
   stickyCtaCard: {
     borderRadius: 18,
     borderWidth: 1,
     backgroundColor: 'rgba(10,10,18,0.65)',
-    padding: 10,
+    padding: 10
   },
   tabBar: {
     flexDirection: 'row',
     alignItems: 'stretch',
     paddingHorizontal: 8,
     minHeight: 58,
-    borderBottomWidth: 1,
+    borderBottomWidth: 1
   },
   tabButton: {
     flex: 1,
@@ -4251,40 +4493,40 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     alignItems: 'center',
     justifyContent: 'center',
-    position: 'relative',
+    position: 'relative'
   },
   tabText: {
     fontSize: 19,
     fontWeight: '700',
     textAlign: 'center',
-    letterSpacing: 0.2,
+    letterSpacing: 0.2
   },
   tabTextActive: {
-    fontWeight: '800',
+    fontWeight: '800'
   },
   tabIndicator: {
     marginTop: 10,
     width: '72%',
     maxWidth: 200,
     height: 3.5,
-    borderRadius: 2,
+    borderRadius: 2
   },
   headerWrap: {
     paddingHorizontal: spacing.md,
     paddingTop: 6,
-    paddingBottom: 10,
+    paddingBottom: 10
   },
   pageTitle: {
     marginTop: 12,
     fontSize: 26,
     fontWeight: '800',
     color: lightColors.white,
-    fontFamily: 'System',
+    fontFamily: 'System'
   },
   pageSeparator: {
     marginTop: 10,
     height: 1,
-    width: '100%',
+    width: '100%'
   },
   headerCard: {},
   headerCardInner: {
@@ -4292,78 +4534,78 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'space-between'
   },
   backButton: {
     width: 40,
     height: 40,
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'center'
   },
   headerTitle: {
     fontSize: 18,
     fontWeight: '800',
     letterSpacing: 0.2,
     color: lightColors.nbInk,
-    fontFamily: 'System',
+    fontFamily: 'System'
   },
   headerRight: {
-    width: 40,
+    width: 40
   },
   chevronText: {
     fontSize: 18,
     fontWeight: '800',
-    marginLeft: 10,
+    marginLeft: 10
   },
   backArrow: {
     fontSize: 22,
     color: lightColors.nbInk,
-    fontWeight: '800',
+    fontWeight: '800'
   },
   forwardArrow: {
     fontSize: 18,
     color: lightColors.white,
-    fontWeight: '800',
+    fontWeight: '800'
   },
   openChevron: {
     fontSize: 18,
     color: lightColors.info,
     fontWeight: '800',
-    marginLeft: 6,
+    marginLeft: 6
   },
   scrollView: {
-    flex: 1,
+    flex: 1
   },
   scrollContent: {
     paddingHorizontal: spacing.md,
-    paddingBottom: 24,
+    paddingBottom: 24
   },
   content: {
     flex: 1,
     paddingHorizontal: spacing.md,
-    paddingTop: 10,
+    paddingTop: 10
   },
   sectionHeader: {
-    marginBottom: 20,
+    marginBottom: 20
   },
   sectionTitle: {
     fontSize: 24,
     fontWeight: '800',
     color: lightColors.white,
     marginBottom: 6,
-    fontFamily: 'System',
+    fontFamily: 'System'
   },
   sectionSubtitle: {
     fontSize: 14,
     color: 'rgba(255,255,255,0.5)',
-    fontFamily: 'System',
+    fontFamily: 'System'
   },
   profileReviewGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
     rowGap: 12,
-    marginBottom: 12,
+    marginBottom: 12
   },
   profileReviewCard: {
     width: '47%',
@@ -4374,17 +4616,17 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.08)',
     padding: 14,
     justifyContent: 'flex-start',
-    overflow: 'hidden',
+    overflow: 'hidden'
   },
   profileReviewCardTouch: {
     flex: 1,
     justifyContent: 'flex-start',
-    minHeight: 82,
+    minHeight: 82
   },
   profileReviewCardIcon: {
     width: 28,
     height: 28,
-    marginBottom: 8,
+    marginBottom: 8
   },
   profileReviewCategoryLabel: {
     fontSize: 11,
@@ -4392,16 +4634,16 @@ const styles = StyleSheet.create({
     letterSpacing: 0.6,
     color: 'rgba(255,255,255,0.45)',
     textTransform: 'uppercase',
-    marginBottom: 6,
+    marginBottom: 6
   },
   profileReviewValueText: {
     fontSize: 20,
     fontWeight: '800',
-    lineHeight: 26,
+    lineHeight: 26
   },
   profileGridCardExpanded: {
     width: '100%',
-    marginBottom: 16,
+    marginBottom: 16
   },
   card: {
     backgroundColor: 'rgba(255,255,255,0.05)',
@@ -4417,25 +4659,28 @@ const styles = StyleSheet.create({
       shadowColor: lightColors.nbInk,
       shadowRadius: 12,
       shadowOpacity: 0.25,
-      shadowOffset: { width: 0, height: 4 },
+      shadowOffset: {
+        width: 0,
+        height: 4
+      }
     } : {
-      backgroundColor: 'rgba(255,255,255,0.05)',
-    }),
+      backgroundColor: 'rgba(255,255,255,0.05)'
+    })
   },
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
-    minHeight: 52,
+    minHeight: 52
   },
   cardTextWrap: {
     flex: 1,
     justifyContent: 'center',
-    minWidth: 0,
+    minWidth: 0
   },
   cardIconImage: {
     width: 44,
-    height: 44,
+    height: 44
   },
   cardTitle: {
     fontSize: 17,
@@ -4443,46 +4688,46 @@ const styles = StyleSheet.create({
     color: lightColors.white,
     textAlign: 'left',
     marginBottom: 2,
-    fontFamily: 'System',
+    fontFamily: 'System'
   },
   cardValue: {
     fontSize: 13,
     color: 'rgba(255,255,255,0.5)',
     textAlign: 'left',
-    fontFamily: 'System',
+    fontFamily: 'System'
   },
   cardValuePlaceholder: {
     color: 'rgba(255,255,255,0.45)',
-    fontStyle: 'italic',
+    fontStyle: 'italic'
   },
   cardEditContent: {
     marginTop: 16,
     paddingTop: 16,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.1)',
+    borderTopColor: 'rgba(255,255,255,0.1)'
   },
   editFields: {
-    gap: 16,
+    gap: 16
   },
   editField: {
-    marginBottom: 16,
+    marginBottom: 16
   },
   editFieldRow: {
     flexDirection: 'row',
-    gap: 8,
+    gap: 8
   },
   editLabel: {
     fontSize: 14,
     fontWeight: '500',
     marginBottom: 8,
-    fontFamily: 'System',
+    fontFamily: 'System'
   },
   editInput: {
     borderWidth: 1,
     borderRadius: 12,
     padding: 12,
     fontSize: 16,
-    fontFamily: 'System',
+    fontFamily: 'System'
   },
   editTextArea: {
     borderWidth: 1,
@@ -4491,18 +4736,18 @@ const styles = StyleSheet.create({
     fontSize: 16,
     minHeight: 200,
     fontFamily: 'System',
-    textAlignVertical: 'top',
+    textAlignVertical: 'top'
   },
   charCount: {
     fontSize: 12,
     marginTop: 8,
     textAlign: 'right',
-    fontFamily: 'System',
+    fontFamily: 'System'
   },
   optionRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: 8
   },
   optionButton: {
     paddingHorizontal: 16,
@@ -4510,57 +4755,57 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginRight: 8,
     marginBottom: 8,
-    borderWidth: 1,
+    borderWidth: 1
   },
   optionButtonText: {
     fontSize: 14,
     fontWeight: '500',
-    fontFamily: 'System',
+    fontFamily: 'System'
   },
   optionCard: {
     paddingVertical: 18,
     paddingHorizontal: 18,
     borderRadius: 22,
     marginBottom: 12,
-    borderWidth: 1,
+    borderWidth: 1
   },
   optionCardText: {
     fontSize: 16,
     fontWeight: '800',
-    fontFamily: 'System',
+    fontFamily: 'System'
   },
   frequencySelector: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: 8
   },
   frequencyButton: {
     width: 50,
     height: 50,
     borderRadius: 12,
     justifyContent: 'center',
-    alignItems: 'center',
+    alignItems: 'center'
   },
   frequencyButtonText: {
     fontSize: 18,
     fontWeight: '600',
-    fontFamily: 'System',
+    fontFamily: 'System'
   },
   doneButton: {
     padding: 16,
     borderRadius: 12,
     alignItems: 'center',
-    marginTop: 16,
+    marginTop: 16
   },
   doneButtonText: {
     color: lightColors.white,
     fontSize: 16,
     fontWeight: '600',
-    fontFamily: 'System',
+    fontFamily: 'System'
   },
   generationSection: {
     marginTop: 32,
-    alignItems: 'stretch',
+    alignItems: 'stretch'
   },
   generationErrorBanner: {
     flexDirection: 'row',
@@ -4571,24 +4816,24 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(245,158,11,0.4)',
     padding: 12,
     marginBottom: 12,
-    gap: 10,
+    gap: 10
   },
   generationErrorText: {
     flex: 1,
     color: 'rgba(255,255,255,0.9)',
     fontSize: 14,
-    lineHeight: 20,
+    lineHeight: 20
   },
   generationErrorRetry: {
     paddingHorizontal: 14,
     paddingVertical: 8,
     backgroundColor: 'rgba(245,158,11,0.35)',
-    borderRadius: 10,
+    borderRadius: 10
   },
   generationErrorRetryText: {
     color: '#FFF',
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '700'
   },
   generationCard: {
     backgroundColor: 'rgba(255,255,255,0.05)',
@@ -4600,21 +4845,24 @@ const styles = StyleSheet.create({
       shadowColor: '#64D2FF',
       shadowRadius: 12,
       shadowOpacity: 0.25,
-      shadowOffset: { width: 0, height: 4 },
-    } : {}),
+      shadowOffset: {
+        width: 0,
+        height: 4
+      }
+    } : {})
   },
   generationTitle: {
     fontSize: 20,
     fontWeight: '800',
     color: lightColors.white,
     marginBottom: 8,
-    fontFamily: 'System',
+    fontFamily: 'System'
   },
   generationSubtitle: {
     fontSize: 14,
     marginBottom: 16,
     color: 'rgba(255,255,255,0.6)',
-    fontFamily: 'System',
+    fontFamily: 'System'
   },
   generateBtnTouch: {
     width: '100%',
@@ -4624,33 +4872,36 @@ const styles = StyleSheet.create({
       shadowColor: lightColors.nbInk,
       shadowRadius: 20,
       shadowOpacity: 0.45,
-      shadowOffset: { width: 0, height: 8 },
-    } : {}),
+      shadowOffset: {
+        width: 0,
+        height: 8
+      }
+    } : {})
   },
   generateBtnGrad: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 16,
-    gap: 8,
+    gap: 8
   },
   generateBtnText: {
     color: lightColors.white,
     fontSize: 16,
     fontWeight: '700',
     letterSpacing: 0.5,
-    fontFamily: 'System',
+    fontFamily: 'System'
   },
   planResultWrap: {
     marginTop: 0,
     marginBottom: 24,
     position: 'relative',
     borderRadius: 24,
-    overflow: 'hidden',
+    overflow: 'hidden'
   },
   planResultGradient: {
     ...StyleSheet.absoluteFillObject,
-    borderRadius: 24,
+    borderRadius: 24
   },
   rawPlanFallbackWrap: {
     marginBottom: 24,
@@ -4659,37 +4910,37 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.03)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.10)',
-    padding: 16,
+    padding: 16
   },
   rawPlanFallbackTitle: {
     fontSize: 16,
     fontWeight: '700',
-    marginBottom: 12,
+    marginBottom: 12
   },
   rawPlanFallbackScroll: {
     maxHeight: 320,
-    borderRadius: 8,
+    borderRadius: 8
   },
   rawPlanFallbackContent: {
     paddingRight: 8,
-    paddingVertical: 12,
+    paddingVertical: 12
   },
   rawPlanMarkdownWrap: {
-    backgroundColor: 'transparent',
+    backgroundColor: 'transparent'
   },
   rawPlanFallbackText: {
     fontSize: 14,
     lineHeight: 22,
-    opacity: 0.9,
+    opacity: 0.9
   },
   rawPlanEditBtn: {
     marginTop: 12,
     paddingVertical: 10,
-    alignItems: 'center',
+    alignItems: 'center'
   },
   rawPlanEditBtnText: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '600'
   },
   parsedOverviewCard: {
     backgroundColor: 'rgba(255,255,255,0.04)',
@@ -4697,23 +4948,23 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.08)',
     borderRadius: 16,
     padding: 16,
-    marginBottom: 12,
+    marginBottom: 12
   },
   parsedOverviewTitle: {
     fontSize: 13,
     color: '#8A8A8A',
     textTransform: 'uppercase',
-    marginBottom: 8,
+    marginBottom: 8
   },
   parsedOverviewBody: {
     fontSize: 13,
     color: 'rgba(255,255,255,0.7)',
-    lineHeight: 20.8,
+    lineHeight: 20.8
   },
   parsedReadMore: {
     fontSize: 13,
     color: '#64D2FF',
-    marginTop: 8,
+    marginTop: 8
   },
   parsedRestCard: {
     flexDirection: 'row',
@@ -4724,22 +4975,22 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.05)',
     borderRadius: 16,
     padding: 16,
-    marginBottom: 12,
+    marginBottom: 12
   },
   parsedRestLabel: {
     fontSize: 14,
     fontWeight: '800',
-    color: '#ffffff',
+    color: '#ffffff'
   },
   parsedRestPill: {
     backgroundColor: 'rgba(255,255,255,0.06)',
     borderRadius: 20,
     paddingVertical: 4,
-    paddingHorizontal: 12,
+    paddingHorizontal: 12
   },
   parsedRestPillText: {
     fontSize: 11,
-    color: '#555',
+    color: '#555'
   },
   parsedWorkoutCard: {
     backgroundColor: 'rgba(255,255,255,0.05)',
@@ -4747,71 +4998,71 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.09)',
     borderRadius: 16,
     marginBottom: 12,
-    overflow: 'hidden',
+    overflow: 'hidden'
   },
   parsedWorkoutHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
+    padding: 16
   },
   parsedWorkoutDayLabel: {
     fontSize: 15,
     fontWeight: '800',
-    color: '#ffffff',
+    color: '#ffffff'
   },
   parsedWorkoutTypeLabel: {
     fontSize: 12,
     color: '#8A8A8A',
-    marginTop: 2,
+    marginTop: 2
   },
   parsedTypePill: {
     borderRadius: 20,
     paddingVertical: 4,
     paddingHorizontal: 12,
-    marginRight: 8,
+    marginRight: 8
   },
   parsedTypePillText: {
     fontSize: 11,
-    fontWeight: '600',
+    fontWeight: '600'
   },
   parsedExerciseList: {
     paddingHorizontal: 16,
-    paddingBottom: 16,
+    paddingBottom: 16
   },
   parsedExerciseRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 10,
+    paddingVertical: 10
   },
   parsedExerciseRowBorder: {
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.04)',
+    borderTopColor: 'rgba(255,255,255,0.04)'
   },
   parsedExerciseDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    marginRight: 12,
+    marginRight: 12
   },
   parsedExerciseName: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#ffffff',
+    color: '#ffffff'
   },
   parsedExerciseMeta: {
     fontSize: 12,
     color: '#8A8A8A',
-    marginTop: 2,
+    marginTop: 2
   },
   parsedNotesPill: {
     backgroundColor: 'rgba(255,255,255,0.06)',
     borderRadius: 12,
     paddingVertical: 4,
-    paddingHorizontal: 8,
+    paddingHorizontal: 8
   },
   parsedNotesPillText: {
     fontSize: 11,
-    color: 'rgba(255,255,255,0.6)',
+    color: 'rgba(255,255,255,0.6)'
   },
   planResultBadgePlain: {
     flexDirection: 'row',
@@ -4821,12 +5072,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 999,
-    marginBottom: 8,
+    marginBottom: 8
   },
   planResultBadgeTextPlain: {
     fontSize: 13,
     fontWeight: '700',
-    letterSpacing: 0.3,
+    letterSpacing: 0.3
   },
   planResultCard: {
     backgroundColor: 'rgba(255,255,255,0.06)',
@@ -4838,11 +5089,14 @@ const styles = StyleSheet.create({
       shadowColor: lightColors.nbInk,
       shadowRadius: 20,
       shadowOpacity: 0.35,
-      shadowOffset: { width: 0, height: 8 },
-    } : {}),
+      shadowOffset: {
+        width: 0,
+        height: 8
+      }
+    } : {})
   },
   planResultHeader: {
-    marginBottom: 14,
+    marginBottom: 14
   },
   planResultBadge: {
     flexDirection: 'row',
@@ -4852,19 +5106,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 999,
-    marginBottom: 8,
+    marginBottom: 8
   },
   planResultBadgeText: {
     color: '#fff',
     fontSize: 13,
     fontWeight: '700',
-    letterSpacing: 0.3,
+    letterSpacing: 0.3
   },
   planResultTitle: {
     color: lightColors.nbInk,
     fontSize: 20,
     fontWeight: '800',
-    letterSpacing: 0.2,
+    letterSpacing: 0.2
   },
   planOverviewBox: {
     backgroundColor: 'rgba(255,255,255,0.05)',
@@ -4874,46 +5128,46 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
     borderTopWidth: 3,
-    borderTopColor: lightColors.nbInk,
+    borderTopColor: lightColors.nbInk
   },
   planOverviewLabel: {
     color: '#ffffff',
     fontSize: 13,
     fontWeight: '700',
     marginBottom: 8,
-    letterSpacing: 0.5,
+    letterSpacing: 0.5
   },
   planOverviewText: {
     color: 'rgba(255,255,255,0.8)',
     fontSize: 14,
-    lineHeight: 22,
+    lineHeight: 22
   },
   planExpandBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    marginTop: 8,
+    marginTop: 8
   },
   planExpandText: {
     color: '#64D2FF',
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '600'
   },
   planResultSubtitle: {
     color: lightColors.nbMuted,
     fontSize: 14,
     marginBottom: 12,
-    lineHeight: 20,
+    lineHeight: 20
   },
   planSessionsWrap: {
-    marginBottom: 16,
+    marginBottom: 16
   },
   planSessionsLabel: {
     color: '#ffffff',
     fontSize: 13,
     fontWeight: '700',
     marginTop: 20,
-    marginBottom: 10,
+    marginBottom: 10
   },
   planSessionRow: {
     flexDirection: 'row',
@@ -4925,30 +5179,30 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.08)',
     paddingVertical: 12,
     paddingHorizontal: 14,
-    marginBottom: 8,
+    marginBottom: 8
   },
   planSessionIconWrap: {
     width: 32,
     height: 32,
     borderRadius: 16,
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'center'
   },
   planSessionText: {
     color: '#ffffff',
     fontSize: 14,
     fontWeight: '600',
-    flex: 1,
+    flex: 1
   },
   planSessionMore: {
     color: 'rgba(156,163,175,0.9)',
     fontSize: 12,
-    marginTop: 4,
+    marginTop: 4
   },
   planResultRowActions: {
     flexDirection: 'row',
     gap: 8,
-    marginTop: 10,
+    marginTop: 10
   },
   planResultRowBtn: {
     flex: 1,
@@ -4961,24 +5215,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
-    paddingHorizontal: 4,
+    paddingHorizontal: 4
   },
   planResultRowBtnDisabled: {
-    opacity: 0.9,
+    opacity: 0.9
   },
   planResultRowBtnText: {
     fontSize: 12,
     fontWeight: '600',
     color: 'rgba(255,255,255,0.7)',
-    textAlign: 'center',
+    textAlign: 'center'
   },
   editPlanModalOverlay: {
     flex: 1,
-    justifyContent: 'flex-end',
+    justifyContent: 'flex-end'
   },
   editPlanModalBackdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: 'rgba(0,0,0,0.6)'
   },
   editPlanModalContent: {
     backgroundColor: '#1a1520',
@@ -4986,21 +5240,21 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 24,
     padding: 20,
     paddingBottom: 40,
-    maxHeight: '90%',
+    maxHeight: '90%'
   },
   editPlanModalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 16
   },
   editPlanModalTitle: {
     color: '#fff',
     fontSize: 20,
-    fontWeight: '800',
+    fontWeight: '800'
   },
   editPlanModalClose: {
-    padding: 8,
+    padding: 8
   },
   editPlanModalInput: {
     backgroundColor: 'rgba(255,255,255,0.08)',
@@ -5013,34 +5267,34 @@ const styles = StyleSheet.create({
     minHeight: 280,
     maxHeight: 400,
     textAlignVertical: 'top',
-    marginBottom: 16,
+    marginBottom: 16
   },
   editPlanModalActions: {
     flexDirection: 'row',
     gap: 12,
-    justifyContent: 'flex-end',
+    justifyContent: 'flex-end'
   },
   editPlanModalCancelBtn: {
     paddingVertical: 12,
-    paddingHorizontal: 20,
+    paddingHorizontal: 20
   },
   editPlanModalCancelText: {
     color: 'rgba(255,255,255,0.7)',
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '600'
   },
   editPlanModalSaveBtn: {
     borderRadius: 12,
-    overflow: 'hidden',
+    overflow: 'hidden'
   },
   editPlanModalSaveGrad: {
     paddingVertical: 12,
-    paddingHorizontal: 24,
+    paddingHorizontal: 24
   },
   editPlanModalSaveText: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '700'
   },
   markdownPreviewCard: {
     backgroundColor: 'rgba(15,23,42,0.95)',
@@ -5051,20 +5305,20 @@ const styles = StyleSheet.create({
     maxHeight: 220,
     paddingHorizontal: 10,
     paddingTop: 10,
-    paddingBottom: 8,
+    paddingBottom: 8
   },
   markdownPreviewLabel: {
     color: 'rgba(148,163,184,0.95)',
     fontSize: 12,
     fontWeight: '700',
     letterSpacing: 0.5,
-    marginBottom: 6,
+    marginBottom: 6
   },
   markdownPreviewScroll: {
-    flex: 1,
+    flex: 1
   },
   markdownPreviewContent: {
-    paddingRight: 6,
+    paddingRight: 6
   },
   rawEditorLabel: {
     color: 'rgba(148,163,184,0.95)',
@@ -5072,69 +5326,69 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 0.5,
     marginBottom: 6,
-    marginTop: 4,
+    marginTop: 4
   },
   resultCard: {
-    marginTop: 6,
+    marginTop: 6
   },
   resultInner: {
-    padding: 14,
+    padding: 14
   },
   resultTitle: {
     color: lightColors.nbInk,
     fontWeight: '800',
-    fontSize: 16,
+    fontSize: 16
   },
   resultSubtitle: {
     color: lightColors.nbMuted,
     marginTop: 6,
     fontSize: 13,
-    lineHeight: 18,
+    lineHeight: 18
   },
   resultRow: {
     marginTop: 10,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'space-between'
   },
   resultMeta: {
     color: lightColors.nbMuted,
     fontSize: 12,
-    letterSpacing: 0.2,
+    letterSpacing: 0.2
   },
   resultLink: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     minHeight: 44,
-    paddingHorizontal: 10,
+    paddingHorizontal: 10
   },
   resultLinkText: {
     color: lightColors.info,
-    fontWeight: '800',
+    fontWeight: '800'
   },
   generateButton: {
     width: '100%',
     height: 56,
     borderRadius: 28,
     overflow: 'hidden',
-    marginBottom: 12,
+    marginBottom: 12
   },
   generateButtonGradient: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: 8
   },
   generateButtonIcon: {
-    fontSize: 20,
+    fontSize: 20
   },
   generateButtonText: {
     color: lightColors.white,
     fontSize: 18,
     fontWeight: '600',
-    fontFamily: 'System',
+    fontFamily: 'System'
   },
   infoBanner: {
     flexDirection: 'row',
@@ -5142,15 +5396,15 @@ const styles = StyleSheet.create({
     gap: 8,
     padding: 12,
     borderRadius: 12,
-    width: '100%',
+    width: '100%'
   },
   infoIcon: {
-    fontSize: 20,
+    fontSize: 20
   },
   infoText: {
     fontSize: 14,
     flex: 1,
-    fontFamily: 'System',
+    fontFamily: 'System'
   },
   generatingInlineBanner: {
     flexDirection: 'row',
@@ -5161,7 +5415,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: 16,
     borderWidth: 1,
-    gap: 12,
+    gap: 12
   },
   generatingBannerStripe: {
     position: 'absolute',
@@ -5170,33 +5424,33 @@ const styles = StyleSheet.create({
     bottom: 0,
     width: 4,
     borderTopLeftRadius: 16,
-    borderBottomLeftRadius: 16,
+    borderBottomLeftRadius: 16
   },
   generatingBannerIconWrap: {
     width: 28,
     alignItems: 'center',
-    paddingTop: 2,
+    paddingTop: 2
   },
   generatingInlineBannerTextCol: {
     flex: 1,
-    minWidth: 0,
+    minWidth: 0
   },
   generatingInlineBannerTitle: {
     fontSize: 16,
     fontWeight: '800',
     marginBottom: 4,
-    fontFamily: 'System',
+    fontFamily: 'System'
   },
   generatingInlineBannerSub: {
     fontSize: 13,
     lineHeight: 19,
-    fontFamily: 'System',
+    fontFamily: 'System'
   },
   generatingInlineBannerHint: {
     fontSize: 12,
     lineHeight: 17,
     marginTop: 6,
-    fontFamily: 'System',
+    fontFamily: 'System'
   },
   loadingOverlay: {
     position: 'absolute',
@@ -5208,51 +5462,51 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 1000,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing.md
   },
   aura: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFillObject
   },
   processingCard: {
     width: '100%',
-    maxWidth: 420,
+    maxWidth: 420
   },
   processingInner: {
     padding: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
+    gap: 10
   },
   processingTitle: {
     color: lightColors.nbInk,
     fontSize: 16,
     fontWeight: '800',
     letterSpacing: 0.2,
-    marginTop: 2,
+    marginTop: 2
   },
   processingSubtitle: {
     color: lightColors.nbMuted,
     fontSize: 13,
     textAlign: 'center',
-    lineHeight: 18,
+    lineHeight: 18
   },
   loadingContent: {
     padding: 32,
     borderRadius: 20,
     alignItems: 'center',
-    minWidth: 280,
+    minWidth: 280
   },
   loadingTitle: {
     fontSize: 20,
     fontWeight: '600',
     marginTop: 16,
     textAlign: 'center',
-    fontFamily: 'System',
+    fontFamily: 'System'
   },
   loadingSubtitle: {
     fontSize: 16,
     marginTop: 8,
     textAlign: 'center',
-    fontFamily: 'System',
-  },
+    fontFamily: 'System'
+  }
 });

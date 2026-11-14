@@ -12,97 +12,71 @@ const SENTRY_NOT_INSTALLED_MESSAGE =
   '[WARN] Monitoring: DSN set but @sentry/react-native not installed';
 const CAPTURE_EXCEPTION_LOG_PREFIX = '[ERROR] captureException';
 
-// Module state: the capture function is filled in after a successful Sentry.init.
-let captureWithSentry = null;
-let isMonitoringInitialized = false;
+// Filled in after a successful Sentry.init. Null means “fall back to console only.”
+let reportErrorThroughSentry = null;
+let startupMonitoringFinished = false;
 
 // ===== HELPER FUNCTIONS =====
 
-/**
- * Read the Sentry DSN from Expo public env, then the generic SENTRY_DSN fallback.
- * A missing `process` (some test runners) must not crash startup.
- * @returns {string}
- */
-function getClientDsn() {
+function readSentryDsnFromEnvironment() {
+  // vocab: process.env.EXPO_PUBLIC_* = values Expo inlines at build time for the client bundle.
+  // A missing `process` (some test runners) must not crash startup.
   try {
-    return (
-      (typeof process !== 'undefined' && process.env?.EXPO_PUBLIC_SENTRY_DSN) ||
-      (typeof process !== 'undefined' && process.env?.SENTRY_DSN) ||
-      ''
-    ).trim();
+    const processExists = typeof process !== 'undefined';
+    const fromExpoPublic = processExists && process.env?.EXPO_PUBLIC_SENTRY_DSN;
+    const fromGenericEnv = processExists && process.env?.SENTRY_DSN;
+    return String(fromExpoPublic || fromGenericEnv || '').trim();
   } catch (_readError) {
     return '';
   }
 }
 
-/**
- * @returns {boolean}
- */
-function isProductionNodeEnv() {
-  return typeof process !== 'undefined' && process.env?.NODE_ENV === PRODUCTION_NODE_ENV;
+function buildIsProductionNodeEnv() {
+  if (typeof process === 'undefined') {
+    return false;
+  }
+  return process.env?.NODE_ENV === PRODUCTION_NODE_ENV;
 }
 
-/**
- * Attach caller-supplied extras onto the Sentry scope so the event is searchable.
- * @param {object} scope
- * @param {object} extraContext
- */
-function attachSentryExtras(scope, extraContext) {
-  if (!extraContext || typeof extraContext !== 'object') return;
-  Object.entries(extraContext).forEach(([key, value]) => {
-    scope.setExtra(key, value);
-  });
+function decideWhetherToSkipSentryInstall(sentryDsn, runningProductionBuild) {
+  if (!sentryDsn && runningProductionBuild && !__DEV__) {
+    // eslint-disable-next-line no-console
+    console.error(MISSING_DSN_PRODUCTION_MESSAGE);
+    // Same as before: log, then still attempt install (do not return true here).
+    return false;
+  }
+  if (!sentryDsn) {
+    return true;
+  }
+  return false;
 }
 
-/**
- * Build the function that reports one error to Sentry after init succeeds.
- * @param {object} Sentry
- * @returns {Function}
- */
-function makeSentryCapture(Sentry) {
+function copyExtraFieldsOntoSentryScope(scope, extraContext) {
+  if (!extraContext) {
+    return;
+  }
+  if (typeof extraContext !== 'object') {
+    return;
+  }
+  const fieldEntries = Object.entries(extraContext);
+  for (let entryIndex = 0; entryIndex < fieldEntries.length; entryIndex += 1) {
+    const fieldName = fieldEntries[entryIndex][0];
+    const fieldValue = fieldEntries[entryIndex][1];
+    scope.setExtra(fieldName, fieldValue);
+  }
+}
+
+function buildSentryReporter(Sentry) {
+  // vocab: withScope = Sentry API that lets us attach extras for one event only
   return (error, extraContext) => {
     Sentry.withScope((scope) => {
-      attachSentryExtras(scope, extraContext);
+      copyExtraFieldsOntoSentryScope(scope, extraContext);
       Sentry.captureException(error);
     });
   };
 }
 
-/**
- * Always-on console fallback when Sentry is missing or itself threw.
- * @param {*} error
- * @param {object} extraContext
- */
-function logCapturedException(error, extraContext) {
-  // eslint-disable-next-line no-console
-  console.error(CAPTURE_EXCEPTION_LOG_PREFIX, {
-    message: error?.message,
-    stack: error?.stack,
-    ...extraContext,
-  });
-}
-
-// ===== MAIN FUNCTION =====
-
-/**
- * Call once at app startup (App.js). Safe if Sentry is not installed.
- * Marked initialized immediately so a second call is a no-op even when the DSN is missing.
- * @returns {void}
- */
-export function initMonitoring() {
-  if (isMonitoringInitialized) return;
-  isMonitoringInitialized = true;
-
-  const sentryDsn = getClientDsn();
-  const isProduction = isProductionNodeEnv();
-
-  if (!sentryDsn && isProduction && !__DEV__) {
-    // eslint-disable-next-line no-console
-    console.error(MISSING_DSN_PRODUCTION_MESSAGE);
-  } else if (!sentryDsn) {
-    return;
-  }
-
+function tryToInstallSentryReporter(sentryDsn) {
   try {
     // eslint-disable-next-line global-require
     const Sentry = require('@sentry/react-native');
@@ -111,7 +85,7 @@ export function initMonitoring() {
       enableInExpoDevelopment: false,
       debug: __DEV__,
     });
-    captureWithSentry = makeSentryCapture(Sentry);
+    reportErrorThroughSentry = buildSentryReporter(Sentry);
     if (__DEV__) {
       // eslint-disable-next-line no-console
       console.log(SENTRY_INITIALIZED_MESSAGE);
@@ -124,22 +98,73 @@ export function initMonitoring() {
   }
 }
 
+function tryReportErrorThroughSentry(error, context) {
+  if (!reportErrorThroughSentry) {
+    return false;
+  }
+  try {
+    reportErrorThroughSentry(error, context);
+    return true;
+  } catch (_sentryFailure) {
+    // Sentry itself failed — caller falls back to the console sink.
+    return false;
+  }
+}
+
+function printCapturedExceptionToConsole(error, extraContext) {
+  // eslint-disable-next-line no-console
+  console.error(CAPTURE_EXCEPTION_LOG_PREFIX, {
+    message: error?.message,
+    stack: error?.stack,
+    ...extraContext,
+  });
+}
+
+// ===== MAIN FUNCTION =====
+
 /**
- * Report an error to Sentry when configured; always logs via console in production paths.
+ * Run once at app launch (App.js). Safe when Sentry is not installed.
+ * A second call is a no-op even when the DSN is missing.
+ */
+export function initMonitoring() {
+  // 1. Only the first call does work — later calls bail immediately.
+  if (startupMonitoringFinished) {
+    return;
+  }
+  startupMonitoringFinished = true;
+
+  // 2. Read DSN + whether this is a production Node env.
+  const sentryDsn = readSentryDsnFromEnvironment();
+  const runningProductionBuild = buildIsProductionNodeEnv();
+
+  // 3. Production without a DSN logs an error but still continues into install
+  //    (same branch shape as before). Any other missing DSN is a quiet no-op.
+  const shouldSkipInstallForMissingDsn = decideWhetherToSkipSentryInstall(
+    sentryDsn,
+    runningProductionBuild,
+  );
+  if (shouldSkipInstallForMissingDsn) {
+    return;
+  }
+
+  // 4. Require Sentry, init it, and store a reporter for captureException.
+  tryToInstallSentryReporter(sentryDsn);
+}
+
+/**
+ * Report one error to Sentry when configured; always can fall back to console logging.
  * @param {*} error
  * @param {object} [context]
- * @returns {void}
  */
 export function captureException(error, context = {}) {
-  if (captureWithSentry) {
-    try {
-      captureWithSentry(error, context);
-      return;
-    } catch (_sentryError) {
-      // fall through to logger
-    }
+  // 1. Prefer the live Sentry reporter when initMonitoring installed one.
+  const sentThroughSentry = tryReportErrorThroughSentry(error, context);
+  if (sentThroughSentry) {
+    return;
   }
-  logCapturedException(error, context);
+
+  // 2. Sentry missing or failed → print to console so the crash is not silent.
+  printCapturedExceptionToConsole(error, context);
 }
 
 export default { initMonitoring, captureException };

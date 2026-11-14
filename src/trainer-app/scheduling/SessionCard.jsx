@@ -1,6 +1,7 @@
-// Design Law session row: time column | avatar + name + type + status/where chips + notes.
+// Design Law session row: time rail | avatar + name + type + status/where chips + notes.
 // Flow: map status → Confirmed fill / Pending dashed / Declined strike → show where chip + notes.
 // Used by trainer BookSession calendar/list and client My sessions agenda.
+// Read order: constants → pure layout → main (derive labels) → PLUMBING (label helpers).
 //
 // vocab: HardShadow = solid offset shadow (no blur); NbChip dashed = Pending outline
 // Manipulate here: left column width (78), avatar size (40), chip labels
@@ -24,50 +25,166 @@ const STATUS_PENDING = 'pending';
 const AVATAR_SIZE = 40;
 // Manipulate here: left time rail width (matches PNG time | divider | body)
 const TIME_COL_WIDTH = 78;
+const FALLBACK_TIME_LABEL = '—';
 
-// ===== HELPERS =====
+// ===== PURE LAYOUT (no hooks) =====
 
-function initialsFromName(name) {
-  const parts = String(name || '')
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-  if (parts.length === 0) return '?';
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return `${parts[0][0] || ''}${parts[1][0] || ''}`.toUpperCase();
-}
+function SessionTimeRail({
+  clockText,
+  meridiemText,
+  durationLabel,
+  showDate,
+  dateSlice,
+  inkColor,
+  mutedColor,
+  borderColor,
+}) {
+  const shouldShowMeridiem = Boolean(meridiemText);
+  const shouldShowDateHint = showDate && Boolean(dateSlice);
 
-function statusLabel(status) {
-  if (status === STATUS_ACCEPTED) return 'Confirmed';
-  if (status === STATUS_DECLINED) return 'Declined';
-  return 'Pending';
-}
-
-function sessionTypeLabel(session) {
   return (
-    session?.title ||
-    session?.focus ||
-    session?.type ||
-    session?.sessionType ||
-    'Training'
+    <View style={[styles.timeCol, { borderRightColor: borderColor }]}>
+      <Text style={[styles.clock, { color: inkColor }]} numberOfLines={1}>
+        {clockText}
+      </Text>
+      {shouldShowMeridiem ? (
+        <Text style={[styles.meridiem, { color: inkColor }]}>{meridiemText}</Text>
+      ) : null}
+      <Text style={[styles.duration, { color: mutedColor }]}>{durationLabel}</Text>
+      {shouldShowDateHint ? (
+        <Text style={[styles.dateHint, { color: mutedColor }]} numberOfLines={1}>
+          {dateSlice}
+        </Text>
+      ) : null}
+    </View>
   );
 }
 
-function whereLabel(session) {
-  if (session?.zoomLink) return 'Video link attached';
-  return 'In person';
+function SessionCardBody({
+  displayName,
+  avatarInitials,
+  typeLabel,
+  statusChipVariant,
+  statusText,
+  whereText,
+  isConfirmed,
+  isDeclined,
+  notes,
+  footerActions,
+  inkColor,
+  mutedColor,
+}) {
+  const hasNotes = Boolean(notes);
+
+  return (
+    <View style={styles.body}>
+      <View style={styles.nameRow}>
+        <NbAvatar initials={avatarInitials} size={AVATAR_SIZE} />
+        <View style={styles.nameStack}>
+          <Text style={[styles.name, { color: inkColor }]} numberOfLines={1}>
+            {displayName}
+          </Text>
+          <Text style={[styles.type, { color: mutedColor }]} numberOfLines={1}>
+            {typeLabel}
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.chipRow}>
+        <NbChip
+          selected={isConfirmed}
+          variant={statusChipVariant}
+          strike={isDeclined}
+          contentStyle={styles.statusChip}
+        >
+          {statusText}
+        </NbChip>
+        <NbChip variant="outline" contentStyle={styles.statusChip}>
+          {whereText}
+        </NbChip>
+      </View>
+
+      {hasNotes ? (
+        <Text style={[styles.notes, { color: mutedColor }]} numberOfLines={2}>
+          {notes}
+        </Text>
+      ) : null}
+
+      {footerActions}
+    </View>
+  );
 }
 
-function formatDurationMin(durationMin) {
-  const minutes = Number(durationMin) || DEFAULT_DURATION_MIN;
-  return `${minutes} min`;
+function SessionCardLayout({
+  colors,
+  clockText,
+  meridiemText,
+  durationLabel,
+  showDate,
+  dateSlice,
+  displayName,
+  avatarInitials,
+  typeLabel,
+  statusChipVariant,
+  statusText,
+  whereText,
+  isConfirmed,
+  isDeclined,
+  notes,
+  footerActions,
+}) {
+  const cardSurfaceColor = colors.nbSurface;
+  const cardBorderColor = colors.nbBorder;
+  const inkColor = colors.nbInk;
+  const mutedColor = colors.nbMuted;
+
+  return (
+    <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard}>
+      <View
+        style={[
+          styles.card,
+          {
+            backgroundColor: cardSurfaceColor,
+            borderColor: cardBorderColor,
+          },
+        ]}
+      >
+        <View style={styles.row}>
+          <SessionTimeRail
+            clockText={clockText}
+            meridiemText={meridiemText}
+            durationLabel={durationLabel}
+            showDate={showDate}
+            dateSlice={dateSlice}
+            inkColor={inkColor}
+            mutedColor={mutedColor}
+            borderColor={cardBorderColor}
+          />
+          <SessionCardBody
+            displayName={displayName}
+            avatarInitials={avatarInitials}
+            typeLabel={typeLabel}
+            statusChipVariant={statusChipVariant}
+            statusText={statusText}
+            whereText={whereText}
+            isConfirmed={isConfirmed}
+            isDeclined={isDeclined}
+            notes={notes}
+            footerActions={footerActions}
+            inkColor={inkColor}
+            mutedColor={mutedColor}
+          />
+        </View>
+      </View>
+    </HardShadow>
+  );
 }
 
 // ===== MAIN =====
 
 /**
- * Design Law session card (PNG calendar/list agenda).
- * @param {{ session: object, theme?: string, showDate?: boolean, nameOverride?: string, subtitleOverride?: string, footerActions?: import('react').ReactNode }} props
+ * One session row for calendar/list: time rail + client + status chips.
+ * theme prop is accepted for call-site compat but colors come from useTheme().
  */
 export const SessionCard = ({
   session,
@@ -79,93 +196,129 @@ export const SessionCard = ({
 }) => {
   const { colors } = useTheme();
 
-  const timeLabel = useMemo(() => formatTime12(session?.time) || '—', [session?.time]);
+  // 1. Clock label from stored 24h time string (e.g. "18:30" → "6:30 PM").
+  // vocab: useMemo = recompute only when session.time changes
+  const timeLabel = useMemo(() => {
+    const formatted = formatTime12(session?.time);
+    return formatted || FALLBACK_TIME_LABEL;
+  }, [session?.time]);
+
+  // 2. Status and display fields for chips and avatar.
   const durationMin = session?.durationMin || session?.duration || DEFAULT_DURATION_MIN;
   const status = session?.status || STATUS_PENDING;
   const isConfirmed = status === STATUS_ACCEPTED;
   const isDeclined = status === STATUS_DECLINED;
   const displayName = nameOverride || session?.clientName || CLIENT_NAME_DEFAULT;
   const typeLabel = subtitleOverride || sessionTypeLabel(session);
-  const notes = session?.notes ? String(session.notes) : '';
+  const notesText = session?.notes ? String(session.notes) : '';
 
-  // Split "6:30 PM" so the rail can stack clock + meridiem like the PNG when space is tight
-  const timeParts = String(timeLabel).split(' ');
-  const clock = timeParts[0] || timeLabel;
-  const meridiem = timeParts[1] || '';
+  // 3. Split "6:30 PM" so the rail stacks clock + meridiem like the PNG.
+  const { clockText, meridiemText } = splitTimeLabelForRail(timeLabel);
+  const durationLabel = formatDurationMin(durationMin);
+  const statusChipVariant = pickStatusChipVariant(isConfirmed, isDeclined);
+  const statusText = statusLabel(status);
+  const whereText = whereLabel(session);
+  const avatarInitials = initialsFromName(displayName);
+  const dateSlice = session?.date ? String(session.date).slice(5) : '';
 
   return (
-    <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard}>
-      <View
-        style={[
-          styles.card,
-          {
-            backgroundColor: colors.nbSurface,
-            borderColor: colors.nbBorder,
-          },
-        ]}
-      >
-        <View style={styles.row}>
-          {/* Left rail: start time + duration */}
-          <View style={[styles.timeCol, { borderRightColor: colors.nbBorder }]}>
-            <Text style={[styles.clock, { color: colors.nbInk }]} numberOfLines={1}>
-              {clock}
-            </Text>
-            {meridiem ? (
-              <Text style={[styles.meridiem, { color: colors.nbInk }]}>{meridiem}</Text>
-            ) : null}
-            <Text style={[styles.duration, { color: colors.nbMuted }]}>
-              {formatDurationMin(durationMin)}
-            </Text>
-            {showDate && session?.date ? (
-              <Text style={[styles.dateHint, { color: colors.nbMuted }]} numberOfLines={1}>
-                {String(session.date).slice(5)}
-              </Text>
-            ) : null}
-          </View>
-
-          {/* Body: avatar, name, type, chips, notes */}
-          <View style={styles.body}>
-            <View style={styles.nameRow}>
-              <NbAvatar initials={initialsFromName(displayName)} size={AVATAR_SIZE} />
-              <View style={styles.nameStack}>
-                <Text style={[styles.name, { color: colors.nbInk }]} numberOfLines={1}>
-                  {displayName}
-                </Text>
-                <Text style={[styles.type, { color: colors.nbMuted }]} numberOfLines={1}>
-                  {typeLabel}
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.chipRow}>
-              <NbChip
-                selected={isConfirmed}
-                variant={isConfirmed ? 'default' : isDeclined ? 'outline' : 'dashed'}
-                strike={isDeclined}
-                contentStyle={styles.statusChip}
-              >
-                {statusLabel(status)}
-              </NbChip>
-              <NbChip variant="outline" contentStyle={styles.statusChip}>
-                {whereLabel(session)}
-              </NbChip>
-            </View>
-
-            {notes ? (
-              <Text style={[styles.notes, { color: colors.nbMuted }]} numberOfLines={2}>
-                {notes}
-              </Text>
-            ) : null}
-
-            {footerActions}
-          </View>
-        </View>
-      </View>
-    </HardShadow>
+    <SessionCardLayout
+      colors={colors}
+      clockText={clockText}
+      meridiemText={meridiemText}
+      durationLabel={durationLabel}
+      showDate={showDate}
+      dateSlice={dateSlice}
+      displayName={displayName}
+      avatarInitials={avatarInitials}
+      typeLabel={typeLabel}
+      statusChipVariant={statusChipVariant}
+      statusText={statusText}
+      whereText={whereText}
+      isConfirmed={isConfirmed}
+      isDeclined={isDeclined}
+      notes={notesText}
+      footerActions={footerActions}
+    />
   );
 };
 
 export default SessionCard;
+
+// ===== PLUMBING — skip unless debugging =====
+
+function initialsFromName(fullName) {
+  const nameParts = String(fullName || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (nameParts.length === 0) {
+    return '?';
+  }
+  if (nameParts.length === 1) {
+    return nameParts[0].slice(0, 2).toUpperCase();
+  }
+
+  const firstInitial = nameParts[0][0] || '';
+  const secondInitial = nameParts[1][0] || '';
+  return `${firstInitial}${secondInitial}`.toUpperCase();
+}
+
+function statusLabel(status) {
+  if (status === STATUS_ACCEPTED) {
+    return 'Confirmed';
+  }
+  if (status === STATUS_DECLINED) {
+    return 'Declined';
+  }
+  return 'Pending';
+}
+
+function sessionTypeLabel(session) {
+  if (session?.title) {
+    return session.title;
+  }
+  if (session?.focus) {
+    return session.focus;
+  }
+  if (session?.type) {
+    return session.type;
+  }
+  if (session?.sessionType) {
+    return session.sessionType;
+  }
+  return 'Training';
+}
+
+function whereLabel(session) {
+  if (session?.zoomLink) {
+    return 'Video link attached';
+  }
+  return 'In person';
+}
+
+function formatDurationMin(durationMin) {
+  const minutes = Number(durationMin) || DEFAULT_DURATION_MIN;
+  return `${minutes} min`;
+}
+
+function pickStatusChipVariant(isConfirmed, isDeclined) {
+  if (isConfirmed) {
+    return 'default';
+  }
+  if (isDeclined) {
+    return 'outline';
+  }
+  return 'dashed';
+}
+
+function splitTimeLabelForRail(timeLabel) {
+  const pieces = String(timeLabel).split(' ');
+  const clockText = pieces[0] || timeLabel;
+  const meridiemText = pieces[1] || '';
+  return { clockText, meridiemText };
+}
 
 const styles = StyleSheet.create({
   card: {

@@ -1,0 +1,30 @@
+{
+  "at": "2026-11-14T22:34:14.970332+00:00",
+  "inventory": 486,
+  "goldUntouched": [
+    "src/for-both/weekly-report/WeeklyReportBody.jsx",
+    "src/for-both/weekly-report/WeeklyReportScreen.jsx",
+    "src/trainer-app/scheduling/BookSessionScreen.jsx"
+  ],
+  "passedDoneNonGold": 483,
+  "rejectedOpen": [],
+  "rejectedCount": 0,
+  "stillHeavyHeuristic": [],
+  "wave2SampleVerdict": {
+    "pass_readable": [
+      "src/settings/emailSupport.js",
+      "src/for-both/cloud-database/loadInPages.js",
+      "src/ai-coach/past-chats/chatHistoryList.js",
+      "src/client-app/navigation/ClientBottomMenu.jsx",
+      "src/ai-coach/coachColors.js",
+      "src/app-start/LoginGate.js"
+    ],
+    "failed_then_fixed": [
+      "src/client-app/workout-plans/MyWorkoutPlanScreen.jsx",
+      "src/settings/SettingsScreen.js",
+      "src/nutrition/barcode/BarcodeScannerScreen.js"
+    ],
+    "note": "Junior spot-check found dense ?. on giant screens; those + 32 heavies were rewritten (optional chaining expanded to plain null checks). Mechanical nest/cryptic gate was already 483/483 before that."
+  },
+  "honestBottomLine": "483/483 non-gold clear dense-?. heuristic after final pass; 0 rejected. Not claiming every line is WeeklyReportBody gold \u2014 claiming queue finished + junior fails addressed."
+}

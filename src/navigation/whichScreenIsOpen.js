@@ -1,6 +1,7 @@
 // Hands shared header and bottom-nav buttons the handlers for whichever app shell is open.
 // Flow: the shell publishes handlers → chrome reads them → a prop passed on the component still wins.
 // Used by ClientAppStart, TrainerAppStart, TopHeader, and BottomMenuBar.
+// Key exports: AppNavigationProvider, useAppNavigation, useMergedNavigation.
 
 import React, { createContext, useContext } from 'react';
 
@@ -11,18 +12,86 @@ import React, { createContext, useContext } from 'react';
 const navigationHandlersContext = createContext(null);
 
 // A missing handler is a silent no-op so a tap on an icon this shell does not implement does not throw.
-const doNothing = () => {};
+function doNothing() {}
+
+// Every chrome button name the provider normalizes.
+// Manipulate here: add a key here AND fill it in the shell that publishes AppNavigationProvider.
+const HANDLER_KEYS = [
+  'onProfilePress',
+  'onSettingsPress',
+  'onHomePress',
+  'onPlusPress',
+  'onVoicePress',
+  'onNutritionPress',
+  'onWorkoutPress',
+  'onMessagesPress',
+];
 
 // ===== HELPER FUNCTIONS =====
 
-// vocab/symbol: ?? = use the right side only when the left is null or undefined.
-function publishedHandler(handler) {
-  return handler ?? doNothing;
+/**
+ * Use the shell handler when present; otherwise doNothing.
+ * vocab/symbol: ?? = use the right side only when the left is null or undefined.
+ * @param {function|null|undefined} handlerFromShell
+ * @returns {function}
+ */
+function handlerOrDoNothing(handlerFromShell) {
+  if (handlerFromShell == null) {
+    return doNothing;
+  }
+  return handlerFromShell;
 }
 
-// Left to right: an explicit prop wins, then the shell's context value, then doNothing.
-function pickHandler(explicitHandler, contextHandler) {
-  return explicitHandler ?? contextHandler ?? doNothing;
+/**
+ * Left to right: an explicit prop wins, then the shell's context value, then doNothing.
+ * @param {function|null|undefined} explicitHandler
+ * @param {function|null|undefined} contextHandler
+ * @returns {function}
+ */
+function pickBestHandler(explicitHandler, contextHandler) {
+  if (explicitHandler != null) {
+    return explicitHandler;
+  }
+  if (contextHandler != null) {
+    return contextHandler;
+  }
+  return doNothing;
+}
+
+/**
+ * Turn raw props from the shell into a full handler map with doNothing for anything omitted.
+ * @param {object} handlersFromShell
+ * @returns {object}
+ */
+function fillMissingHandlersWithDoNothing(handlersFromShell) {
+  const filledHandlers = {};
+  let keyIndex = 0;
+  while (keyIndex < HANDLER_KEYS.length) {
+    const handlerKey = HANDLER_KEYS[keyIndex];
+    filledHandlers[handlerKey] = handlerOrDoNothing(handlersFromShell[handlerKey]);
+    keyIndex += 1;
+  }
+  return filledHandlers;
+}
+
+/**
+ * Merge props on the chrome component with the shell's published handlers.
+ * @param {object} explicitProps
+ * @param {object} handlersFromShell
+ * @returns {object}
+ */
+function mergePropsOverShellHandlers(explicitProps, handlersFromShell) {
+  const mergedHandlers = {};
+  let keyIndex = 0;
+  while (keyIndex < HANDLER_KEYS.length) {
+    const handlerKey = HANDLER_KEYS[keyIndex];
+    mergedHandlers[handlerKey] = pickBestHandler(
+      explicitProps[handlerKey],
+      handlersFromShell[handlerKey],
+    );
+    keyIndex += 1;
+  }
+  return mergedHandlers;
 }
 
 // ===== MAIN FUNCTION =====
@@ -32,19 +101,11 @@ function pickHandler(explicitHandler, contextHandler) {
  * @param {{ children?: import('react').ReactNode, onProfilePress?: function, onSettingsPress?: function, onHomePress?: function, onPlusPress?: function, onVoicePress?: function, onNutritionPress?: function, onWorkoutPress?: function, onMessagesPress?: function }} props
  * @returns {import('react').ReactElement}
  */
-export function AppNavigationProvider({ children, ...handlers }) {
-  // Manipulate here: a new chrome button needs its key here and again in useMergedNavigation.
-  const navigationHandlers = {
-    onProfilePress: publishedHandler(handlers.onProfilePress),
-    onSettingsPress: publishedHandler(handlers.onSettingsPress),
-    onHomePress: publishedHandler(handlers.onHomePress),
-    onPlusPress: publishedHandler(handlers.onPlusPress),
-    onVoicePress: publishedHandler(handlers.onVoicePress),
-    onNutritionPress: publishedHandler(handlers.onNutritionPress),
-    onWorkoutPress: publishedHandler(handlers.onWorkoutPress),
-    onMessagesPress: publishedHandler(handlers.onMessagesPress),
-  };
+export function AppNavigationProvider({ children, ...handlersFromShell }) {
+  // 1. Normalize every supported handler so chrome never calls undefined.
+  const navigationHandlers = fillMissingHandlersWithDoNothing(handlersFromShell);
 
+  // 2. Publish down the tree for TopHeader and BottomMenuBar.
   return (
     <navigationHandlersContext.Provider value={navigationHandlers}>
       {children}
@@ -54,6 +115,7 @@ export function AppNavigationProvider({ children, ...handlers }) {
 
 /**
  * The raw context value, or null when no AppNavigationProvider is above this component.
+ * vocab: useContext = read the nearest matching Provider above this component.
  * @returns {object|null}
  */
 export function useAppNavigation() {
@@ -66,17 +128,10 @@ export function useAppNavigation() {
  * @returns {{ onProfilePress: function, onSettingsPress: function, onHomePress: function, onPlusPress: function, onVoicePress: function, onNutritionPress: function, onWorkoutPress: function, onMessagesPress: function }}
  */
 export function useMergedNavigation(props = {}) {
-  const context = useAppNavigation();
-  const fromShell = context || {};
-  return {
-    // vocab/symbol: context?.onProfilePress reads the field only when a provider exists.
-    onProfilePress: pickHandler(props.onProfilePress, fromShell.onProfilePress),
-    onSettingsPress: pickHandler(props.onSettingsPress, fromShell.onSettingsPress),
-    onHomePress: pickHandler(props.onHomePress, fromShell.onHomePress),
-    onPlusPress: pickHandler(props.onPlusPress, fromShell.onPlusPress),
-    onVoicePress: pickHandler(props.onVoicePress, fromShell.onVoicePress),
-    onNutritionPress: pickHandler(props.onNutritionPress, fromShell.onNutritionPress),
-    onWorkoutPress: pickHandler(props.onWorkoutPress, fromShell.onWorkoutPress),
-    onMessagesPress: pickHandler(props.onMessagesPress, fromShell.onMessagesPress),
-  };
+  // 1. Read whatever the shell published (or nothing).
+  const contextValue = useAppNavigation();
+  const handlersFromShell = contextValue || {};
+
+  // 2. Let an explicit prop on the chrome component win over the shell.
+  return mergePropsOverShellHandlers(props, handlersFromShell);
 }

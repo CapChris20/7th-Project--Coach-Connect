@@ -1,6 +1,10 @@
 // Design Law Progress charts — Weight / Body fat / Lifts (screens/progress PNG 01–04).
 // Flow: load dailyLogs series → range filter → line chart + stats → Log weight / empty shells.
 // Used by client Go to → Progress. Photos stay on PhotoGallery; this is charts only.
+//
+// vocab: filterPointsByRange = trims history to 4W / 12W / 6M / All
+// vocab: summarizeMetricSeries = start, change, goal progress for the stat row
+// Manipulate here: DEFAULT_WEIGHT_GOAL_LB, RECENT_LOG_COUNT, chart padding
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -47,8 +51,19 @@ const CHART_PAD_X = 8;
 const CHART_PAD_Y = 16;
 const USERS_COLLECTION = 'users';
 const DAILY_LOGS_COLLECTION = 'dailyLogs';
+const RECENT_LOG_COUNT = 8;
+const SCROLL_BOTTOM_PADDING = 40;
+const DELTA_PILL_TEXT_COLOR = '#0A0A0A';
 // Manipulate here: default goal when profile has none — matches Progress PNG sample
 const DEFAULT_WEIGHT_GOAL_LB = 165;
+const Y_AXIS_PAD_FRACTION = 0.12;
+const EMPTY_METRIC_PLACEHOLDER = '—';
+const TAB_WEIGHT = 'weight';
+const TAB_BODY_FAT = 'bodyfat';
+const TAB_LIFTS = 'lifts';
+const DEFAULT_RANGE_ID = '12W';
+const UNIT_POUNDS = 'lb';
+const UNIT_PERCENT = '%';
 
 // ===== HELPER FUNCTIONS =====
 
@@ -59,58 +74,91 @@ function formatShortDate(date) {
 
 function formatWeekdayDate(date) {
   if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
-  return date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+  return date.toLocaleDateString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  });
 }
 
 function formatMetric(value, decimals = 1) {
-  if (value == null || !Number.isFinite(value)) return '—';
+  if (value == null || !Number.isFinite(value)) return EMPTY_METRIC_PLACEHOLDER;
   return Number(value).toFixed(decimals);
 }
 
 function formatSigned(value, unit, decimals = 1) {
-  if (value == null || !Number.isFinite(value)) return '—';
+  if (value == null || !Number.isFinite(value)) return EMPTY_METRIC_PLACEHOLDER;
   const sign = value > 0 ? '+' : '';
   return `${sign}${value.toFixed(decimals)} ${unit}`;
 }
 
 function localDateKey(date = new Date()) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
+  const year = date.getFullYear();
+  const monthPart = String(date.getMonth() + 1).padStart(2, '0');
+  const dayPart = String(date.getDate()).padStart(2, '0');
+  return `${year}-${monthPart}-${dayPart}`;
 }
 
-function buildLinePoints(points, width, height) {
-  if (!points?.length || width <= 0) return { poly: '', dots: [], yMin: 0, yMax: 1, labels: [] };
-  const values = points.map((p) => p.value);
-  let yMin = Math.min(...values);
-  let yMax = Math.max(...values);
-  if (yMin === yMax) {
-    yMin -= 1;
-    yMax += 1;
+function emptyStateCopyForTab(tabId) {
+  if (tabId === TAB_LIFTS) {
+    return {
+      title: 'No lifts logged yet',
+      body: 'When you save workout sets with weight, personal records show up here.',
+    };
   }
-  const pad = (yMax - yMin) * 0.12;
-  yMin -= pad;
-  yMax += pad;
-  const plotW = Math.max(1, width - CHART_PAD_X * 2);
-  const plotH = Math.max(1, height - CHART_PAD_Y * 2);
-  const dots = points.map((p, i) => {
-    const x =
-      points.length === 1
-        ? CHART_PAD_X + plotW / 2
-        : CHART_PAD_X + (i / (points.length - 1)) * plotW;
-    const y = CHART_PAD_Y + plotH - ((p.value - yMin) / (yMax - yMin)) * plotH;
-    return { x, y, ...p };
-  });
-  const poly = dots.map((d) => `${d.x},${d.y}`).join(' ');
-  const labelIdx = [0, Math.floor((points.length - 1) / 2), points.length - 1].filter(
-    (v, i, arr) => arr.indexOf(v) === i,
-  );
-  const labels = labelIdx.map((i) => ({
-    x: dots[i].x,
-    text: formatShortDate(points[i].date),
-  }));
-  return { poly, dots, yMin, yMax, labels };
+  if (tabId === TAB_BODY_FAT) {
+    return {
+      title: 'No body fat logs yet',
+      body: 'Log a body fat reading and the trend chart fills in.',
+    };
+  }
+  return {
+    title: 'No weigh-ins yet',
+    body: 'Log your weight and the chart, change, and recent list show up here.',
+  };
+}
+
+function logButtonLabel(tabId) {
+  if (tabId === TAB_BODY_FAT) return 'Log body fat';
+  return 'Log weight';
+}
+
+function metricUnitForTab(tabId) {
+  if (tabId === TAB_BODY_FAT) return UNIT_PERCENT;
+  return UNIT_POUNDS;
+}
+
+function dailyLogFieldForTab(tabId) {
+  if (tabId === TAB_BODY_FAT) return BODY_FAT_FIELD;
+  return WEIGHT_FIELD;
+}
+
+function buildDeltaBadgeText(summary, unit) {
+  if (summary.change == null || !summary.weeksSpan) return null;
+  return `${formatSigned(summary.change, unit)} in ${summary.weeksSpan} wk`;
+}
+
+function buildStatCards(summary, unit) {
+  const goalValue =
+    summary.goal != null ? formatMetric(summary.goal) : EMPTY_METRIC_PLACEHOLDER;
+  return [
+    { label: 'Start', value: formatMetric(summary.start) },
+    { label: 'Change', value: formatSigned(summary.change, unit) },
+    { label: 'Goal', value: goalValue },
+  ];
+}
+
+function uniqueLabelIndexes(pointCount) {
+  if (pointCount <= 0) return [];
+  const firstIndex = 0;
+  const middleIndex = Math.floor((pointCount - 1) / 2);
+  const lastIndex = pointCount - 1;
+  const indexes = [firstIndex, middleIndex, lastIndex];
+  const unique = [];
+  for (const index of indexes) {
+    if (!unique.includes(index)) unique.push(index);
+  }
+  return unique;
 }
 
 // ===== SMALL UI =====
@@ -119,7 +167,10 @@ function SegmentTabs({ tabId, onChange, colors }) {
   return (
     <View style={[styles.segRow, { borderColor: colors.nbBorder, backgroundColor: colors.nbSoft }]}>
       {TABS.map((tab) => {
-        const on = tab.id === tabId;
+        const isSelected = tab.id === tabId;
+        const chipBackground = isSelected ? colors.nbFill : 'transparent';
+        const chipBorder = isSelected ? colors.nbBorder : 'transparent';
+        const labelColor = isSelected ? colors.nbOnFill : colors.nbInk;
         return (
           <TouchableOpacity
             key={tab.id}
@@ -127,14 +178,14 @@ function SegmentTabs({ tabId, onChange, colors }) {
             style={[
               styles.segChip,
               {
-                backgroundColor: on ? colors.nbFill : 'transparent',
-                borderColor: on ? colors.nbBorder : 'transparent',
+                backgroundColor: chipBackground,
+                borderColor: chipBorder,
               },
             ]}
             accessibilityRole="button"
-            accessibilityState={{ selected: on }}
+            accessibilityState={{ selected: isSelected }}
           >
-            <Text style={{ fontSize: 13, fontWeight: '900', color: on ? colors.nbOnFill : colors.nbInk }}>
+            <Text style={{ fontSize: 13, fontWeight: '900', color: labelColor }}>
               {tab.label}
             </Text>
           </TouchableOpacity>
@@ -144,51 +195,79 @@ function SegmentTabs({ tabId, onChange, colors }) {
   );
 }
 
+function RangeChipButton({ rangeId, isSelected, onChange, colors }) {
+  const chipBackground = isSelected ? colors.nbFill : colors.nbSurface;
+  const labelColor = isSelected ? colors.nbOnFill : colors.nbInk;
+
+  const chip = (
+    <TouchableOpacity
+      onPress={() => onChange(rangeId)}
+      style={[
+        styles.rangeChip,
+        {
+          backgroundColor: chipBackground,
+          borderColor: colors.nbBorder,
+        },
+      ]}
+    >
+      <Text style={{ fontSize: 13, fontWeight: '900', color: labelColor }}>{rangeId}</Text>
+    </TouchableOpacity>
+  );
+
+  if (isSelected) {
+    return (
+      <HardShadow offset={nb.shadowOffsetSmall} radius={999}>
+        {chip}
+      </HardShadow>
+    );
+  }
+  return <View>{chip}</View>;
+}
+
 function RangeChips({ rangeId, onChange, colors }) {
   return (
     <View style={styles.rangeRow}>
-      {RANGES.map((id) => {
-        const on = id === rangeId;
-        const chip = (
-          <TouchableOpacity
-            onPress={() => onChange(id)}
-            style={[
-              styles.rangeChip,
-              {
-                backgroundColor: on ? colors.nbFill : colors.nbSurface,
-                borderColor: colors.nbBorder,
-              },
-            ]}
-          >
-            <Text style={{ fontSize: 13, fontWeight: '900', color: on ? colors.nbOnFill : colors.nbInk }}>
-              {id}
-            </Text>
-          </TouchableOpacity>
-        );
-        return on ? (
-          <HardShadow key={id} offset={nb.shadowOffsetSmall} radius={999}>
-            {chip}
-          </HardShadow>
-        ) : (
-          <View key={id}>{chip}</View>
-        );
-      })}
+      {RANGES.map((id) => (
+        <RangeChipButton
+          key={id}
+          rangeId={id}
+          isSelected={id === rangeId}
+          onChange={onChange}
+          colors={colors}
+        />
+      ))}
     </View>
   );
 }
 
+function dashedGuideYForLastValue(lastValue, yMin, yMax) {
+  const rangeSpan = yMax - yMin;
+  let valueRatio = 0;
+  if (rangeSpan !== 0) {
+    valueRatio = (lastValue - yMin) / rangeSpan;
+  }
+  const plotHeight = CHART_HEIGHT - CHART_PAD_Y * 2;
+  const distanceFromTop = plotHeight * (1 - valueRatio);
+  return CHART_PAD_Y + distanceFromTop;
+}
+
 function MetricLineChart({ points, colors, width }) {
-  const { poly, dots, labels, yMin, yMax } = useMemo(
+  const chartGeometry = useMemo(
     () => buildLinePoints(points, width, CHART_HEIGHT),
     [points, width],
   );
-  if (!points?.length || width <= 0) {
+
+  const hasNoPoints = !points?.length || width <= 0;
+  if (hasNoPoints) {
     return <View style={{ height: CHART_HEIGHT }} />;
   }
-  const midY =
-    CHART_PAD_Y +
-    (CHART_HEIGHT - CHART_PAD_Y * 2) *
-      (1 - ((points[points.length - 1].value - yMin) / (yMax - yMin) || 0));
+
+  const { polylinePointsText, dots, dateLabels, yMin, yMax } = chartGeometry;
+  const lastValue = points[points.length - 1].value;
+  const guideLineY = dashedGuideYForLastValue(lastValue, yMin, yMax);
+  const lastDot = dots.length ? dots[dots.length - 1] : null;
+  const showPolyline = Boolean(polylinePointsText);
+  const showLastDot = Boolean(lastDot);
 
   return (
     <View>
@@ -196,16 +275,16 @@ function MetricLineChart({ points, colors, width }) {
         <Line
           x1={CHART_PAD_X}
           x2={width - CHART_PAD_X}
-          y1={midY}
-          y2={midY}
+          y1={guideLineY}
+          y2={guideLineY}
           stroke={colors.nbBorder}
           strokeWidth={1.5}
           strokeDasharray="5 5"
           opacity={0.55}
         />
-        {poly ? (
+        {showPolyline ? (
           <Polyline
-            points={poly}
+            points={polylinePointsText}
             fill="none"
             stroke={colors.nbInk}
             strokeWidth={3}
@@ -213,10 +292,10 @@ function MetricLineChart({ points, colors, width }) {
             strokeLinecap="round"
           />
         ) : null}
-        {dots.length ? (
+        {showLastDot ? (
           <Circle
-            cx={dots[dots.length - 1].x}
-            cy={dots[dots.length - 1].y}
+            cx={lastDot.x}
+            cy={lastDot.y}
             r={6}
             fill={colors.nbInk}
             stroke={colors.nbSurface}
@@ -225,13 +304,186 @@ function MetricLineChart({ points, colors, width }) {
         ) : null}
       </Svg>
       <View style={styles.xLabels}>
-        {labels.map((lab) => (
-          <Text key={`${lab.text}-${lab.x}`} style={[styles.xLabel, { color: colors.nbMuted, left: lab.x - 28 }]}>
-            {lab.text}
+        {dateLabels.map((dateLabel) => (
+          <Text
+            key={`${dateLabel.text}-${dateLabel.x}`}
+            style={[styles.xLabel, { color: colors.nbMuted, left: dateLabel.x - 28 }]}
+          >
+            {dateLabel.text}
           </Text>
         ))}
       </View>
     </View>
+  );
+}
+
+function EmptyProgressCard({ title, body, colors, dashed, actionLabel, onAction }) {
+  const cardStyle = [
+    styles.emptyCard,
+    {
+      backgroundColor: colors.nbSurface,
+      borderColor: colors.nbBorder,
+    },
+  ];
+  if (dashed) {
+    cardStyle.push({ borderStyle: 'dashed' });
+  }
+
+  return (
+    <HardShadow offset={nb.shadowOffsetCard} radius={10}>
+      <View style={cardStyle}>
+        <Text style={[styles.emptyTitle, { color: colors.nbInk }]}>{title}</Text>
+        {body ? (
+          <Text style={[styles.emptyBody, { color: colors.nbMuted }]}>{body}</Text>
+        ) : null}
+        {actionLabel && onAction ? (
+          <NbButton variant="fill" onPress={onAction}>
+            {actionLabel}
+          </NbButton>
+        ) : null}
+      </View>
+    </HardShadow>
+  );
+}
+
+function CurrentValueHeader({ currentValueText, deltaBadge, colors }) {
+  return (
+    <View style={styles.currentRow}>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={[styles.currentEyebrow, { color: colors.nbMuted }]}>Current</Text>
+        <Text style={[styles.currentValue, { color: colors.nbInk }]}>{currentValueText}</Text>
+      </View>
+      {deltaBadge ? (
+        <LinearGradient
+          colors={accentGradients[0]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={[styles.deltaPill, { borderColor: colors.nbBorder }]}
+        >
+          <Text style={styles.deltaText}>{deltaBadge}</Text>
+        </LinearGradient>
+      ) : null}
+    </View>
+  );
+}
+
+function StatRowCards({ stats, colors }) {
+  return (
+    <View style={styles.statRow}>
+      {stats.map((stat) => (
+        <HardShadow key={stat.label} offset={nb.shadowOffsetSmall} radius={10} style={{ flex: 1 }}>
+          <View style={[styles.statCard, { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder }]}>
+            <Text style={[styles.statValue, { color: colors.nbInk }]} numberOfLines={1}>
+              {stat.value}
+            </Text>
+            <Text style={[styles.statLabel, { color: colors.nbMuted }]}>{stat.label}</Text>
+          </View>
+        </HardShadow>
+      ))}
+    </View>
+  );
+}
+
+function GoalProgressCard({ summary, unit, colors }) {
+  const goalTitle = `Toward ${formatMetric(summary.goal)} ${unit}`;
+  const progressPercentLabel = `${Math.round(summary.progressPct * 100)}%`;
+  let caption = 'Keep logging to track the goal';
+  if (summary.remaining != null) {
+    caption = `${formatMetric(Math.abs(summary.remaining))} ${unit} to go`;
+  }
+
+  return (
+    <HardShadow offset={nb.shadowOffsetCard} radius={10}>
+      <View style={[styles.goalCard, { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder }]}>
+        <View style={styles.goalHead}>
+          <Text style={[styles.goalTitle, { color: colors.nbInk }]}>{goalTitle}</Text>
+          <Text style={[styles.goalPct, { color: colors.nbMuted }]}>{progressPercentLabel}</Text>
+        </View>
+        <NbProgressBar progress={summary.progressPct} index={0} />
+        <Text style={[styles.goalCaption, { color: colors.nbMuted }]}>{caption}</Text>
+      </View>
+    </HardShadow>
+  );
+}
+
+function RecentLogsList({ recent, unit, sectionTitle, colors }) {
+  return (
+    <>
+      <Text style={[styles.sectionEyebrow, { color: colors.nbMuted }]}>{sectionTitle}</Text>
+      <HardShadow offset={nb.shadowOffsetCard} radius={10}>
+        <View style={[styles.listCard, { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder }]}>
+          {recent.map((row, rowIndex) => {
+            const isLastRow = rowIndex >= recent.length - 1;
+            const rowBorderStyle = isLastRow
+              ? null
+              : {
+                  borderBottomWidth: StyleSheet.hairlineWidth,
+                  borderBottomColor: colors.nbBorder,
+                };
+            return (
+              <View key={row.dateKey} style={[styles.listRow, rowBorderStyle]}>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={[styles.listTitle, { color: colors.nbInk }]}>
+                    {formatWeekdayDate(row.date)}
+                  </Text>
+                  <Text style={[styles.listSub, { color: colors.nbMuted }]}>Logged</Text>
+                </View>
+                <Text style={[styles.listValue, { color: colors.nbInk }]}>
+                  {`${formatMetric(row.value)} ${unit}`}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
+      </HardShadow>
+    </>
+  );
+}
+
+function LogMetricSheet({
+  visible,
+  onClose,
+  tabId,
+  logDraft,
+  onChangeDraft,
+  onSave,
+  saving,
+  colors,
+}) {
+  const sheetTitle = logButtonLabel(tabId);
+  const fieldLabel = tabId === TAB_BODY_FAT ? 'Body fat %' : 'Weight (lb)';
+  const placeholder = tabId === TAB_BODY_FAT ? '18.5' : '172.0';
+  const saveLabel = saving ? 'Saving…' : 'Save';
+
+  return (
+    <NbSheet visible={visible} onClose={onClose} title={sheetTitle}>
+      <Text style={{ color: colors.nbMuted, marginBottom: 10, fontWeight: '600' }}>
+        {fieldLabel}
+      </Text>
+      <TextInput
+        value={logDraft}
+        onChangeText={onChangeDraft}
+        keyboardType="decimal-pad"
+        placeholder={placeholder}
+        placeholderTextColor={colors.nbMuted}
+        style={[
+          styles.logInput,
+          {
+            borderColor: colors.nbBorder,
+            backgroundColor: colors.nbSoft,
+            color: colors.nbInk,
+          },
+        ]}
+      />
+      <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
+        <NbButton variant="ghost" onPress={onClose} style={{ flex: 1 }}>
+          Cancel
+        </NbButton>
+        <NbButton variant="fill" onPress={onSave} disabled={saving} style={{ flex: 1 }}>
+          {saveLabel}
+        </NbButton>
+      </View>
+    </NbSheet>
   );
 }
 
@@ -241,12 +493,17 @@ function MetricLineChart({ points, colors, width }) {
  * Client Progress charts screen (Design Law).
  * @param {{ navigation?: { goBack?: Function }, onBack?: Function, userId?: string, weightGoal?: number|null }} props
  */
-export default function ProgressChartsScreen({ navigation, onBack, userId: userIdProp, weightGoal = null }) {
+export default function ProgressChartsScreen({
+  navigation,
+  onBack,
+  userId: userIdProp,
+  weightGoal = null,
+}) {
   const { colors } = useTheme();
-  const { width: winW } = useWindowDimensions();
+  const { width: windowWidth } = useWindowDimensions();
   const userId = userIdProp || auth.currentUser?.uid;
-  const [tabId, setTabId] = useState('weight');
-  const [rangeId, setRangeId] = useState('12W');
+  const [tabId, setTabId] = useState(TAB_WEIGHT);
+  const [rangeId, setRangeId] = useState(DEFAULT_RANGE_ID);
   const [weightPoints, setWeightPoints] = useState([]);
   const [bodyFatPoints, setBodyFatPoints] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -255,9 +512,10 @@ export default function ProgressChartsScreen({ navigation, onBack, userId: userI
   const [logDraft, setLogDraft] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const chartWidth = Math.max(0, winW - nb.screenGutter * 2 - 28);
+  const chartWidth = Math.max(0, windowWidth - nb.screenGutter * 2 - 28);
 
-  const reload = useCallback(async () => {
+  // 1. Load weight + body-fat series from dailyLogs (same fields as home progress).
+  const reloadMetricHistory = useCallback(async () => {
     if (!userId) {
       setWeightPoints([]);
       setBodyFatPoints([]);
@@ -267,14 +525,12 @@ export default function ProgressChartsScreen({ navigation, onBack, userId: userI
     setLoading(true);
     setError(null);
     try {
-      const [w, bf] = await Promise.all([
-        fetchMetricHistory(userId, WEIGHT_FIELD),
-        fetchMetricHistory(userId, BODY_FAT_FIELD),
-      ]);
-      setWeightPoints(w);
-      setBodyFatPoints(bf);
-    } catch (caught) {
-      setError(caught?.message || 'Could not load progress');
+      const weightSeries = await fetchMetricHistory(userId, WEIGHT_FIELD);
+      const bodyFatSeries = await fetchMetricHistory(userId, BODY_FAT_FIELD);
+      setWeightPoints(weightSeries);
+      setBodyFatPoints(bodyFatSeries);
+    } catch (loadError) {
+      setError(loadError?.message || 'Could not load progress');
       setWeightPoints([]);
       setBodyFatPoints([]);
     } finally {
@@ -283,72 +539,108 @@ export default function ProgressChartsScreen({ navigation, onBack, userId: userI
   }, [userId]);
 
   useEffect(() => {
-    reload();
-  }, [reload]);
+    reloadMetricHistory();
+  }, [reloadMetricHistory]);
 
   const handleBack = () => {
-    if (typeof onBack === 'function') onBack();
-    else navigation?.goBack?.();
+    if (typeof onBack === 'function') {
+      onBack();
+      return;
+    }
+    navigation?.goBack?.();
   };
 
-  const activePoints = tabId === 'bodyfat' ? bodyFatPoints : weightPoints;
-  const ranged = useMemo(() => filterPointsByRange(activePoints, rangeId), [activePoints, rangeId]);
-  const goal = tabId === 'weight' ? weightGoal ?? DEFAULT_WEIGHT_GOAL_LB : null;
+  const activePoints = tabId === TAB_BODY_FAT ? bodyFatPoints : weightPoints;
+  const ranged = useMemo(
+    () => filterPointsByRange(activePoints, rangeId),
+    [activePoints, rangeId],
+  );
+  const goal = tabId === TAB_WEIGHT ? weightGoal ?? DEFAULT_WEIGHT_GOAL_LB : null;
   const summary = useMemo(() => summarizeMetricSeries(ranged, goal), [ranged, goal]);
-  const unit = tabId === 'bodyfat' ? '%' : 'lb';
-  const recent = useMemo(() => [...ranged].reverse().slice(0, 8), [ranged]);
+  const unit = metricUnitForTab(tabId);
+  const recent = useMemo(
+    () => [...ranged].reverse().slice(0, RECENT_LOG_COUNT),
+    [ranged],
+  );
 
-  const deltaBadge =
-    summary.change != null && summary.weeksSpan
-      ? `${formatSigned(summary.change, unit)} in ${summary.weeksSpan} wk`
-      : null;
+  const deltaBadge = buildDeltaBadgeText(summary, unit);
+  const emptyCopy = emptyStateCopyForTab(tabId);
+  const statCards = buildStatCards(summary, unit);
 
-  const saveLog = async () => {
-    const n = Number(String(logDraft).replace(/,/g, ''));
-    if (!userId || !Number.isFinite(n)) return;
+  // 2. Write today’s dailyLogs field, then refresh the chart series.
+  const saveLogEntry = async () => {
+    const typedText = String(logDraft).replace(/,/g, '');
+    const parsedNumber = Number(typedText);
+    const cannotSave = !userId || !Number.isFinite(parsedNumber);
+    if (cannotSave) return;
+
     setSaving(true);
     try {
-      const key = localDateKey();
-      const field = tabId === 'bodyfat' ? BODY_FAT_FIELD : WEIGHT_FIELD;
+      const logDateKey = localDateKey();
+      const dailyLogField = dailyLogFieldForTab(tabId);
       await setDoc(
-        doc(db, USERS_COLLECTION, userId, DAILY_LOGS_COLLECTION, key),
-        { [field]: n, updatedAt: serverTimestamp() },
+        doc(db, USERS_COLLECTION, userId, DAILY_LOGS_COLLECTION, logDateKey),
+        { [dailyLogField]: parsedNumber, updatedAt: serverTimestamp() },
         { merge: true },
       );
       setLogOpen(false);
       setLogDraft('');
-      await reload();
-    } catch (caught) {
-      setError(caught?.message || 'Could not save');
+      await reloadMetricHistory();
+    } catch (saveError) {
+      setError(saveError?.message || 'Could not save');
     } finally {
       setSaving(false);
     }
   };
 
-  const emptyCopy =
-    tabId === 'lifts'
-      ? {
-          title: 'No lifts logged yet',
-          body: 'When you save workout sets with weight, personal records show up here.',
-        }
-      : tabId === 'bodyfat'
-        ? {
-            title: 'No body fat logs yet',
-            body: 'Log a body fat reading and the trend chart fills in.',
-          }
-        : {
-            title: 'No weigh-ins yet',
-            body: 'Log your weight and the chart, change, and recent list show up here.',
-          };
+  const openLogSheet = () => {
+    let draftFromCurrent = '';
+    if (summary.current != null) {
+      draftFromCurrent = String(summary.current);
+    }
+    setLogDraft(draftFromCurrent);
+    setLogOpen(true);
+  };
+
+  const closeLogSheet = () => {
+    setLogOpen(false);
+  };
+
+  // Name every screen branch before JSX (no nested ternary tree).
+  const finishedLoading = !loading;
+  const noError = !error;
+  const isLiftsTab = tabId === TAB_LIFTS;
+  const isBodyFatTab = tabId === TAB_BODY_FAT;
+  const hasRangedPoints = ranged.length > 0;
+  const showLiftsPlaceholder = finishedLoading && noError && isLiftsTab;
+  const showMetricEmpty =
+    finishedLoading && noError && !isLiftsTab && !hasRangedPoints;
+  const showMetricChart =
+    finishedLoading && noError && !isLiftsTab && hasRangedPoints;
+  const showErrorCard = Boolean(error) && finishedLoading;
+  const showGoalCard = summary.goal != null && summary.progressPct != null;
+  let recentSectionTitle = 'Recent weigh-ins';
+  if (isBodyFatTab) {
+    recentSectionTitle = 'Recent logs';
+  }
+  const currentValueText = `${formatMetric(summary.current)} ${unit}`;
+  const logCtaLabel = logButtonLabel(tabId);
 
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: colors.nbBackground }]} edges={SHELL_SAFE_AREA_EDGES}>
-      <NbPageHeader title="Progress" subtitle="Weight, body fat and lifts" onBack={handleBack} />
+    <SafeAreaView
+      style={[styles.safe, { backgroundColor: colors.nbBackground }]}
+      edges={SHELL_SAFE_AREA_EDGES}
+    >
+      <NbPageHeader
+        title="Progress"
+        subtitle="Weight, body fat and lifts"
+        onBack={handleBack}
+      />
 
       <ScrollView
         contentContainerStyle={{
           paddingHorizontal: nb.screenGutter,
-          paddingBottom: 40,
+          paddingBottom: SCROLL_BOTTOM_PADDING,
           gap: 14,
         }}
         showsVerticalScrollIndicator={false}
@@ -361,200 +653,147 @@ export default function ProgressChartsScreen({ navigation, onBack, userId: userI
           </View>
         ) : null}
 
-        {error && !loading ? (
-          <HardShadow offset={nb.shadowOffsetCard} radius={10}>
-            <View style={[styles.emptyCard, { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder }]}>
-              <Text style={[styles.emptyTitle, { color: colors.nbInk }]}>{error}</Text>
-              <NbButton variant="fill" onPress={reload}>
-                Retry
-              </NbButton>
-            </View>
-          </HardShadow>
+        {showErrorCard ? (
+          <EmptyProgressCard
+            title={error}
+            colors={colors}
+            actionLabel="Retry"
+            onAction={reloadMetricHistory}
+          />
         ) : null}
 
-        {!loading && !error && tabId === 'lifts' ? (
-          <HardShadow offset={nb.shadowOffsetCard} radius={10}>
-            <View style={[styles.emptyCard, { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder }]}>
-              <Text style={[styles.emptyTitle, { color: colors.nbInk }]}>{emptyCopy.title}</Text>
-              <Text style={[styles.emptyBody, { color: colors.nbMuted }]}>{emptyCopy.body}</Text>
-            </View>
-          </HardShadow>
+        {showLiftsPlaceholder ? (
+          <EmptyProgressCard
+            title={emptyCopy.title}
+            body={emptyCopy.body}
+            colors={colors}
+          />
         ) : null}
 
-        {!loading && !error && tabId !== 'lifts' && ranged.length === 0 ? (
-          <HardShadow offset={nb.shadowOffsetCard} radius={10}>
-            <View
-              style={[
-                styles.emptyCard,
-                {
-                  backgroundColor: colors.nbSurface,
-                  borderColor: colors.nbBorder,
-                  borderStyle: 'dashed',
-                },
-              ]}
-            >
-              <Text style={[styles.emptyTitle, { color: colors.nbInk }]}>{emptyCopy.title}</Text>
-              <Text style={[styles.emptyBody, { color: colors.nbMuted }]}>{emptyCopy.body}</Text>
-              <NbButton
-                variant="fill"
-                onPress={() => {
-                  setLogDraft(summary.current != null ? String(summary.current) : '');
-                  setLogOpen(true);
-                }}
-              >
-                {tabId === 'bodyfat' ? 'Log body fat' : 'Log weight'}
-              </NbButton>
-            </View>
-          </HardShadow>
+        {showMetricEmpty ? (
+          <EmptyProgressCard
+            title={emptyCopy.title}
+            body={emptyCopy.body}
+            colors={colors}
+            dashed
+            actionLabel={logCtaLabel}
+            onAction={openLogSheet}
+          />
         ) : null}
 
-        {!loading && !error && tabId !== 'lifts' && ranged.length > 0 ? (
+        {showMetricChart ? (
           <>
             <HardShadow offset={nb.shadowOffsetCard} radius={10}>
-              <View style={[styles.chartCard, { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder }]}>
-                <View style={styles.currentRow}>
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={[styles.currentEyebrow, { color: colors.nbMuted }]}>Current</Text>
-                    <Text style={[styles.currentValue, { color: colors.nbInk }]}>
-                      {`${formatMetric(summary.current)} ${unit}`}
-                    </Text>
-                  </View>
-                  {deltaBadge ? (
-                    <LinearGradient
-                      colors={accentGradients[0]}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={[styles.deltaPill, { borderColor: colors.nbBorder }]}
-                    >
-                      <Text style={styles.deltaText}>{deltaBadge}</Text>
-                    </LinearGradient>
-                  ) : null}
-                </View>
+              <View
+                style={[
+                  styles.chartCard,
+                  { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder },
+                ]}
+              >
+                <CurrentValueHeader
+                  currentValueText={currentValueText}
+                  deltaBadge={deltaBadge}
+                  colors={colors}
+                />
                 <MetricLineChart points={ranged} colors={colors} width={chartWidth} />
                 <RangeChips rangeId={rangeId} onChange={setRangeId} colors={colors} />
               </View>
             </HardShadow>
 
-            <View style={styles.statRow}>
-              {[
-                { label: 'Start', value: formatMetric(summary.start) },
-                { label: 'Change', value: formatSigned(summary.change, unit) },
-                {
-                  label: 'Goal',
-                  value: summary.goal != null ? formatMetric(summary.goal) : '—',
-                },
-              ].map((stat) => (
-                <HardShadow key={stat.label} offset={nb.shadowOffsetSmall} radius={10} style={{ flex: 1 }}>
-                  <View style={[styles.statCard, { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder }]}>
-                    <Text style={[styles.statValue, { color: colors.nbInk }]} numberOfLines={1}>
-                      {stat.value}
-                    </Text>
-                    <Text style={[styles.statLabel, { color: colors.nbMuted }]}>{stat.label}</Text>
-                  </View>
-                </HardShadow>
-              ))}
-            </View>
+            <StatRowCards stats={statCards} colors={colors} />
 
-            {summary.goal != null && summary.progressPct != null ? (
-              <HardShadow offset={nb.shadowOffsetCard} radius={10}>
-                <View style={[styles.goalCard, { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder }]}>
-                  <View style={styles.goalHead}>
-                    <Text style={[styles.goalTitle, { color: colors.nbInk }]}>
-                      {`Toward ${formatMetric(summary.goal)} ${unit}`}
-                    </Text>
-                    <Text style={[styles.goalPct, { color: colors.nbMuted }]}>
-                      {`${Math.round(summary.progressPct * 100)}%`}
-                    </Text>
-                  </View>
-                  <NbProgressBar progress={summary.progressPct} index={0} />
-                  <Text style={[styles.goalCaption, { color: colors.nbMuted }]}>
-                    {summary.remaining != null
-                      ? `${formatMetric(Math.abs(summary.remaining))} ${unit} to go`
-                      : 'Keep logging to track the goal'}
-                  </Text>
-                </View>
-              </HardShadow>
+            {showGoalCard ? (
+              <GoalProgressCard summary={summary} unit={unit} colors={colors} />
             ) : null}
 
-            <Text style={[styles.sectionEyebrow, { color: colors.nbMuted }]}>
-              {tabId === 'bodyfat' ? 'Recent logs' : 'Recent weigh-ins'}
-            </Text>
-            <HardShadow offset={nb.shadowOffsetCard} radius={10}>
-              <View style={[styles.listCard, { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder }]}>
-                {recent.map((row, idx) => (
-                  <View
-                    key={row.dateKey}
-                    style={[
-                      styles.listRow,
-                      idx < recent.length - 1 && {
-                        borderBottomWidth: StyleSheet.hairlineWidth,
-                        borderBottomColor: colors.nbBorder,
-                      },
-                    ]}
-                  >
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={[styles.listTitle, { color: colors.nbInk }]}>
-                        {formatWeekdayDate(row.date)}
-                      </Text>
-                      <Text style={[styles.listSub, { color: colors.nbMuted }]}>Logged</Text>
-                    </View>
-                    <Text style={[styles.listValue, { color: colors.nbInk }]}>
-                      {`${formatMetric(row.value)} ${unit}`}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-            </HardShadow>
+            <RecentLogsList
+              recent={recent}
+              unit={unit}
+              sectionTitle={recentSectionTitle}
+              colors={colors}
+            />
 
             <HardShadow offset={nb.shadowOffsetCard} radius={10}>
-              <NbButton
-                variant="fill"
-                onPress={() => {
-                  setLogDraft(summary.current != null ? String(summary.current) : '');
-                  setLogOpen(true);
-                }}
-              >
-                {tabId === 'bodyfat' ? 'Log body fat' : 'Log weight'}
+              <NbButton variant="fill" onPress={openLogSheet}>
+                {logCtaLabel}
               </NbButton>
             </HardShadow>
           </>
         ) : null}
       </ScrollView>
 
-      <NbSheet
+      <LogMetricSheet
         visible={logOpen}
-        onClose={() => setLogOpen(false)}
-        title={tabId === 'bodyfat' ? 'Log body fat' : 'Log weight'}
-      >
-        <Text style={{ color: colors.nbMuted, marginBottom: 10, fontWeight: '600' }}>
-          {tabId === 'bodyfat' ? 'Body fat %' : 'Weight (lb)'}
-        </Text>
-        <TextInput
-          value={logDraft}
-          onChangeText={setLogDraft}
-          keyboardType="decimal-pad"
-          placeholder={tabId === 'bodyfat' ? '18.5' : '172.0'}
-          placeholderTextColor={colors.nbMuted}
-          style={[
-            styles.logInput,
-            {
-              borderColor: colors.nbBorder,
-              backgroundColor: colors.nbSoft,
-              color: colors.nbInk,
-            },
-          ]}
-        />
-        <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
-          <NbButton variant="ghost" onPress={() => setLogOpen(false)} style={{ flex: 1 }}>
-            Cancel
-          </NbButton>
-          <NbButton variant="fill" onPress={saveLog} disabled={saving} style={{ flex: 1 }}>
-            {saving ? 'Saving…' : 'Save'}
-          </NbButton>
-        </View>
-      </NbSheet>
+        onClose={closeLogSheet}
+        tabId={tabId}
+        logDraft={logDraft}
+        onChangeDraft={setLogDraft}
+        onSave={saveLogEntry}
+        saving={saving}
+        colors={colors}
+      />
     </SafeAreaView>
   );
+}
+
+// ===== PLUMBING — skip unless debugging =====
+
+/**
+ * Map log points into SVG polyline / dots / x-axis date labels.
+ * Why pad yMin/yMax: a flat series would collapse to one horizontal line.
+ */
+function emptyLineGeometry() {
+  return { polylinePointsText: '', dots: [], yMin: 0, yMax: 1, dateLabels: [] };
+}
+
+function paddedYRangeFromValues(values) {
+  let yMin = Math.min(...values);
+  let yMax = Math.max(...values);
+  if (yMin === yMax) {
+    yMin -= 1;
+    yMax += 1;
+  }
+  const verticalPad = (yMax - yMin) * Y_AXIS_PAD_FRACTION;
+  yMin -= verticalPad;
+  yMax += verticalPad;
+  return { yMin, yMax };
+}
+
+function chartDotForPoint(point, index, pointCount, plotWidth, plotHeight, yMin, yMax) {
+  let xPosition = CHART_PAD_X + plotWidth / 2;
+  if (pointCount > 1) {
+    xPosition = CHART_PAD_X + (index / (pointCount - 1)) * plotWidth;
+  }
+  const valueSpan = yMax - yMin;
+  const valueRatio = (point.value - yMin) / valueSpan;
+  const yPosition = CHART_PAD_Y + plotHeight - valueRatio * plotHeight;
+  return { x: xPosition, y: yPosition, ...point };
+}
+
+function buildLinePoints(points, width, height) {
+  if (!points?.length || width <= 0) {
+    return emptyLineGeometry();
+  }
+
+  const values = points.map((point) => point.value);
+  const { yMin, yMax } = paddedYRangeFromValues(values);
+
+  const plotWidth = Math.max(1, width - CHART_PAD_X * 2);
+  const plotHeight = Math.max(1, height - CHART_PAD_Y * 2);
+  const pointCount = points.length;
+
+  const dots = points.map((point, index) =>
+    chartDotForPoint(point, index, pointCount, plotWidth, plotHeight, yMin, yMax),
+  );
+
+  const polylinePointsText = dots.map((dot) => `${dot.x},${dot.y}`).join(' ');
+  const labelIndexes = uniqueLabelIndexes(pointCount);
+  const dateLabels = labelIndexes.map((index) => ({
+    x: dots[index].x,
+    text: formatShortDate(points[index].date),
+  }));
+
+  return { polylinePointsText, dots, yMin, yMax, dateLabels };
 }
 
 const styles = StyleSheet.create({
@@ -605,7 +844,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     maxWidth: 148,
   },
-  deltaText: { fontSize: 11, fontWeight: '900', color: '#0A0A0A' },
+  deltaText: { fontSize: 11, fontWeight: '900', color: DELTA_PILL_TEXT_COLOR },
   rangeRow: { flexDirection: 'row', gap: 8, marginTop: 4 },
   rangeChip: {
     minWidth: 52,

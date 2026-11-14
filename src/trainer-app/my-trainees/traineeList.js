@@ -1,10 +1,11 @@
-// Re-export surface for the trainer's client CRM helpers (clients, notes, tasks, progress).
-// Flow: a caller hits one of these names → we load the trainer app module at call time → that function runs.
-// Used by inbox, chat, document sharing, and the trainer listing. The real functions live in TrainerAppStart.
+// Thin CRM re-export: every client / note / task / progress name used elsewhere in the app.
+// Flow: frozen name list → one lazy forwarder per name → require TrainerAppStart only when called.
+// Used by inbox, chat, document sharing, and trainer listings. Export letters must match TrainerAppStart.
+// Why require (not import): a static import would cycle while TrainerAppStart is still loading this file.
 
 // ===== NAMED CONSTANTS =====
 
-// Every CRM name we forward. Letters must match TrainerAppStart exports exactly.
+// Every CRM name we forward. Letters must match TrainerAppStart exports exactly — do not rename.
 const TRAINEE_CRM_FUNCTION_NAMES = [
   'getClient',
   'createOrUpdateClient',
@@ -33,204 +34,86 @@ const TRAINEE_CRM_FUNCTION_NAMES = [
 // ===== HELPER FUNCTIONS =====
 
 /**
- * vocab: require() = a CommonJS import that runs the moment it is called. A static import would
- * run while TrainerAppStart is still loading this file, and that cycle surfaces as a missing component.
- * @returns {object}
+ * Build one exported forwarder for a CRM function name.
+ * @param {string} crmFunctionName
+ * @returns {(...args: any[]) => *}
  */
-function loadTrainerAppModule() {
-  // eslint-disable-next-line global-require
-  return require('../../app-start/TrainerAppStart');
+function makeLazyCrmForwarder(crmFunctionName) {
+  return (...forwardedArguments) => {
+    return callNamedCrmFunction(crmFunctionName, forwardedArguments);
+  };
 }
 
 /**
- * Forward every argument to the named CRM function.
- * apply keeps `this` as the trainer module, the same as calling trainerAppModule.getClient(...).
- * @param {string} functionName
+ * Forward every argument to the named CRM function on TrainerAppStart.
+ * vocab: Function.apply = call with an explicit `this` + argument list (same as module.getClient(...)).
+ * @param {string} crmFunctionName
  * @param {Array} forwardedArguments
  * @returns {*}
  */
-function callTrainerClientFunction(functionName, forwardedArguments) {
-  const trainerAppModule = loadTrainerAppModule();
-  const clientFunction = trainerAppModule[functionName];
+function callNamedCrmFunction(crmFunctionName, forwardedArguments) {
+  const trainerAppModule = loadTrainerAppModuleOnceCalled();
+  const clientFunction = trainerAppModule[crmFunctionName];
   return clientFunction.apply(trainerAppModule, forwardedArguments);
 }
 
 /**
- * Build one exported forwarder for a CRM function name.
- * @param {string} functionName
- * @returns {(...args: any[]) => *}
+ * Lazy-load TrainerAppStart only when a CRM call actually happens.
+ * vocab: require() = CommonJS import that runs the moment it is called (breaks the import cycle).
+ * @returns {object}
  */
-function makeTraineeCrmForwarder(functionName) {
-  return (...forwardedArguments) => callTrainerClientFunction(functionName, forwardedArguments);
-}
-
-/**
- * Build the whole export bag from the frozen name list.
- * @returns {Record<string, Function>}
- */
-function buildTraineeCrmExports() {
-  const exportsBag = {};
-  for (let index = 0; index < TRAINEE_CRM_FUNCTION_NAMES.length; index += 1) {
-    const functionName = TRAINEE_CRM_FUNCTION_NAMES[index];
-    exportsBag[functionName] = makeTraineeCrmForwarder(functionName);
-  }
-  return exportsBag;
+function loadTrainerAppModuleOnceCalled() {
+  // eslint-disable-next-line global-require
+  return require('../../app-start/TrainerAppStart');
 }
 
 // ===== MAIN FUNCTION =====
 
-const traineeCrmExports = buildTraineeCrmExports();
-
 /**
- * Load one client record. Arguments are forwarded to the trainer CRM.
- * @param {...any} forwardedArguments
- * @returns {*}
+ * Walk the frozen CRM name list and attach one lazy forwarder per name.
+ * Flow: 1. empty bag  2. one forwarder per name  3. return the bag for named exports below
+ * @returns {Record<string, Function>}
  */
-export const getClient = traineeCrmExports.getClient;
+function buildEveryTraineeCrmForwarder() {
+  // 1. Start with an empty bag of exports.
+  const forwardersByName = {};
 
-/**
- * Create or update a client record. Arguments are forwarded to the trainer CRM.
- * @param {...any} forwardedArguments
- * @returns {*}
- */
-export const createOrUpdateClient = traineeCrmExports.createOrUpdateClient;
+  // 2. One forwarder per frozen CRM name.
+  for (let nameIndex = 0; nameIndex < TRAINEE_CRM_FUNCTION_NAMES.length; nameIndex += 1) {
+    const crmFunctionName = TRAINEE_CRM_FUNCTION_NAMES[nameIndex];
+    forwardersByName[crmFunctionName] = makeLazyCrmForwarder(crmFunctionName);
+  }
 
-/**
- * Copy client fields off the users collection. Arguments are forwarded to the trainer CRM.
- * @param {...any} forwardedArguments
- * @returns {*}
- */
-export const syncClientDataFromUsers = traineeCrmExports.syncClientDataFromUsers;
+  // 3. Hand the bag to the named export lines below.
+  return forwardersByName;
+}
 
-/**
- * Remove a client record. Arguments are forwarded to the trainer CRM.
- * @param {...any} forwardedArguments
- * @returns {*}
- */
-export const removeClient = traineeCrmExports.removeClient;
+const traineeCrmForwarders = buildEveryTraineeCrmForwarder();
 
-/**
- * Load the trainer's clients. Arguments are forwarded to the trainer CRM.
- * @param {...any} forwardedArguments
- * @returns {*}
- */
-export const getTrainerClients = traineeCrmExports.getTrainerClients;
+// ===== PUBLIC EXPORTS — same letters callers already import =====
 
-/**
- * Update a client record. Arguments are forwarded to the trainer CRM.
- * @param {...any} forwardedArguments
- * @returns {*}
- */
-export const updateClient = traineeCrmExports.updateClient;
+export const getClient = traineeCrmForwarders.getClient;
+export const createOrUpdateClient = traineeCrmForwarders.createOrUpdateClient;
+export const syncClientDataFromUsers = traineeCrmForwarders.syncClientDataFromUsers;
+export const removeClient = traineeCrmForwarders.removeClient;
+export const getTrainerClients = traineeCrmForwarders.getTrainerClients;
+export const updateClient = traineeCrmForwarders.updateClient;
+export const addProgress = traineeCrmForwarders.addProgress;
+export const getProgressHistory = traineeCrmForwarders.getProgressHistory;
+export const deleteProgress = traineeCrmForwarders.deleteProgress;
+export const createTask = traineeCrmForwarders.createTask;
+export const getTasks = traineeCrmForwarders.getTasks;
+export const updateTask = traineeCrmForwarders.updateTask;
+export const toggleTaskComplete = traineeCrmForwarders.toggleTaskComplete;
+export const deleteTask = traineeCrmForwarders.deleteTask;
+export const createNote = traineeCrmForwarders.createNote;
+export const getNotes = traineeCrmForwarders.getNotes;
+export const updateNote = traineeCrmForwarders.updateNote;
+export const deleteNote = traineeCrmForwarders.deleteNote;
+export const getWeightTrend = traineeCrmForwarders.getWeightTrend;
+export const getTaskStats = traineeCrmForwarders.getTaskStats;
+export const getClientAnalytics = traineeCrmForwarders.getClientAnalytics;
+export const checkWeeklyDataAvailability = traineeCrmForwarders.checkWeeklyDataAvailability;
 
-/**
- * Add a progress entry. Arguments are forwarded to the trainer CRM.
- * @param {...any} forwardedArguments
- * @returns {*}
- */
-export const addProgress = traineeCrmExports.addProgress;
-
-/**
- * Load progress history. Arguments are forwarded to the trainer CRM.
- * @param {...any} forwardedArguments
- * @returns {*}
- */
-export const getProgressHistory = traineeCrmExports.getProgressHistory;
-
-/**
- * Delete a progress entry. Arguments are forwarded to the trainer CRM.
- * @param {...any} forwardedArguments
- * @returns {*}
- */
-export const deleteProgress = traineeCrmExports.deleteProgress;
-
-/**
- * Create a client task. Arguments are forwarded to the trainer CRM.
- * @param {...any} forwardedArguments
- * @returns {*}
- */
-export const createTask = traineeCrmExports.createTask;
-
-/**
- * Load client tasks. Arguments are forwarded to the trainer CRM.
- * @param {...any} forwardedArguments
- * @returns {*}
- */
-export const getTasks = traineeCrmExports.getTasks;
-
-/**
- * Update a client task. Arguments are forwarded to the trainer CRM.
- * @param {...any} forwardedArguments
- * @returns {*}
- */
-export const updateTask = traineeCrmExports.updateTask;
-
-/**
- * Toggle a task between open and complete. Arguments are forwarded to the trainer CRM.
- * @param {...any} forwardedArguments
- * @returns {*}
- */
-export const toggleTaskComplete = traineeCrmExports.toggleTaskComplete;
-
-/**
- * Delete a client task. Arguments are forwarded to the trainer CRM.
- * @param {...any} forwardedArguments
- * @returns {*}
- */
-export const deleteTask = traineeCrmExports.deleteTask;
-
-/**
- * Create a client note. Arguments are forwarded to the trainer CRM.
- * @param {...any} forwardedArguments
- * @returns {*}
- */
-export const createNote = traineeCrmExports.createNote;
-
-/**
- * Load client notes. Arguments are forwarded to the trainer CRM.
- * @param {...any} forwardedArguments
- * @returns {*}
- */
-export const getNotes = traineeCrmExports.getNotes;
-
-/**
- * Update a client note. Arguments are forwarded to the trainer CRM.
- * @param {...any} forwardedArguments
- * @returns {*}
- */
-export const updateNote = traineeCrmExports.updateNote;
-
-/**
- * Delete a client note. Arguments are forwarded to the trainer CRM.
- * @param {...any} forwardedArguments
- * @returns {*}
- */
-export const deleteNote = traineeCrmExports.deleteNote;
-
-/**
- * Load the weight trend. Arguments are forwarded to the trainer CRM.
- * @param {...any} forwardedArguments
- * @returns {*}
- */
-export const getWeightTrend = traineeCrmExports.getWeightTrend;
-
-/**
- * Load task counts. Arguments are forwarded to the trainer CRM.
- * @param {...any} forwardedArguments
- * @returns {*}
- */
-export const getTaskStats = traineeCrmExports.getTaskStats;
-
-/**
- * Load client analytics. Arguments are forwarded to the trainer CRM.
- * @param {...any} forwardedArguments
- * @returns {*}
- */
-export const getClientAnalytics = traineeCrmExports.getClientAnalytics;
-
-/**
- * Check whether a week has enough data to report. Arguments are forwarded to the trainer CRM.
- * @param {...any} forwardedArguments
- * @returns {*}
- */
-export const checkWeeklyDataAvailability = traineeCrmExports.checkWeeklyDataAvailability;
+// ===== PLUMBING — skip unless debugging circular import / forwarder wiring =====
+// Helpers live above the main bag so story order is constants → helpers → main → exports.

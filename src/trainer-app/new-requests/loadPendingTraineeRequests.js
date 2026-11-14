@@ -1,10 +1,10 @@
-// Fetches the "a client wants to work with you" requests waiting on a trainer.
-// Flow: find every conversation the trainer is in → newest pending message from the other person → one card per client.
-// Used by the pending-requests hook that feeds the trainer inbox and its badge count.
+// One-shot read of every “client wants to work with you” card still waiting on this trainer.
+// Flow: conversations the trainer is in → pending client messages per thread → newest card each.
+// Used by pendingRequestCount and trainer home badges. Firebase projectId stays anatrox-auth (cloudConnection).
+// Returns [] on any top-level failure so home/inbox never white-screens.
 
 import { db } from '../../app-start/cloudConnection';
-// vocab: Firestore query building — collection() points at a set of docs, query()+where() filter
-// it, getDocs() runs it once (a one-shot read, as opposed to onSnapshot's live listener).
+// vocab: getDocs = one-shot Firestore read (onSnapshot elsewhere would keep listening).
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { clientRequestTypeLabel } from '../../ai-coach/coach-actions/alertTrainer';
 
@@ -16,67 +16,72 @@ const REQUEST_STATUS_PENDING = 'pending';
 const CLIENT_NAME_DEFAULT = 'Client';
 const REQUEST_TYPE_DEFAULT = 'connection';
 
-// ===== HELPER FUNCTIONS =====
+// ===== MAIN FUNCTION =====
 
 /**
- * vocab: toMillis() turns a Firestore Timestamp into a number. Missing timestamps sort last.
- * @param {object|undefined} timestamp
- * @returns {number}
- */
-function messageTimeMillis(timestamp) {
-  return timestamp?.toMillis?.() ?? 0;
-}
-
-/**
- * Newest first. Sorted in memory so this query does not need a composite Firestore index.
- * @param {Array<{ timestamp?: object }>} pendingMessages
- */
-function sortNewestFirst(pendingMessages) {
-  pendingMessages.sort((leftMessage, rightMessage) => {
-    return messageTimeMillis(rightMessage.timestamp) - messageTimeMillis(leftMessage.timestamp);
-  });
-}
-
-/**
- * The client is whichever participant is not the trainer. Group chats are not supported here.
- * @param {object} conversation
+ * Load every pending client request for one trainer uid.
+ * Flow: 1. guard  2. walk conversations  3. return cards (or [] on failure)
  * @param {string} trainerUid
- * @returns {string|undefined}
+ * @returns {Promise<Array>}
  */
-function findClientUid(conversation, trainerUid) {
-  return conversation.participants?.find((id) => id !== trainerUid);
+export async function getTrainerPendingRequests(trainerUid) {
+  // 1. Bail when there is no signed-in trainer or Firestore is not wired yet.
+  if (!trainerUid || !db) return [];
+
+  // 2. Walk conversations and build one card per client with a pending ask.
+  try {
+    const requestCards = await gatherPendingCardsForTrainer(trainerUid);
+    return requestCards;
+  } catch (loadError) {
+    console.error('Error fetching trainer pending requests:', loadError);
+    return [];
+  }
 }
 
-/**
- * @param {{ id: string, data: object }} newestMessage
- * @param {string} clientUid
- * @returns {object}
- */
-function requestCardFromMessage(newestMessage, clientUid) {
-  const { id, data } = newestMessage;
-  return {
-    id,
-    messageId: id,
-    clientUid,
-    clientName: data.clientName || CLIENT_NAME_DEFAULT,
-    clientGoals: data.clientGoals,
-    clientExperienceLevel: data.clientExperienceLevel,
-    clientEquipment: data.clientEquipment,
-    clientLimitations: data.clientLimitations,
-    requestType: data.requestType || REQUEST_TYPE_DEFAULT,
-    requestTitle: data.requestTitle || clientRequestTypeLabel(data.requestType),
-    message: data.text || '',
-    timestamp: data.timestamp,
-  };
+// ===== PLUMBING — skip unless debugging Firestore query / card shape =====
+
+async function gatherPendingCardsForTrainer(trainerUid) {
+  const conversationDocs = await loadConversationDocsForTrainer(trainerUid);
+  const requestCards = [];
+
+  for (let i = 0; i < conversationDocs.length; i += 1) {
+    const conversationDoc = conversationDocs[i];
+    const requestCard = await newestPendingCardInConversation(conversationDoc, trainerUid);
+    if (requestCard) requestCards.push(requestCard);
+  }
+
+  return requestCards;
 }
 
-/**
- * Pending messages in one conversation, sent by the client.
- * @param {string} conversationId
- * @param {string} clientUid
- * @returns {Promise<Array<{ id: string, data: object, timestamp: object }>>}
- */
-async function loadPendingMessages(conversationId, clientUid) {
+async function loadConversationDocsForTrainer(trainerUid) {
+  const conversationsRef = collection(db, CONVERSATIONS_COLLECTION);
+  // vocab: array-contains = Firestore filter “this array field includes this value”.
+  const conversationQuery = query(
+    conversationsRef,
+    where('participants', 'array-contains', trainerUid),
+  );
+  const conversationSnapshot = await getDocs(conversationQuery);
+  return conversationSnapshot.docs;
+}
+
+async function newestPendingCardInConversation(conversationDoc, trainerUid) {
+  const conversation = conversationDoc.data();
+  const clientUid = findClientUidAmongParticipants(conversation, trainerUid);
+  if (!clientUid) return null;
+
+  try {
+    const pendingMessages = await loadPendingMessagesForConversation(conversationDoc.id, clientUid);
+    sortMessagesNewestFirstInPlace(pendingMessages);
+    if (pendingMessages.length === 0) return null;
+    const newestMessage = pendingMessages[0];
+    return buildInboxCardFromPendingMessage(newestMessage, clientUid);
+  } catch (conversationError) {
+    console.warn('Could not query messages for', clientUid, conversationError.message);
+    return null;
+  }
+}
+
+async function loadPendingMessagesForConversation(conversationId, clientUid) {
   const messagesRef = collection(db, MESSAGES_COLLECTION);
   const pendingQuery = query(
     messagesRef,
@@ -86,69 +91,58 @@ async function loadPendingMessages(conversationId, clientUid) {
   );
   const messageSnapshot = await getDocs(pendingQuery);
   const pendingMessages = [];
+
   messageSnapshot.forEach((messageDoc) => {
-    const data = messageDoc.data();
-    pendingMessages.push({ id: messageDoc.id, data, timestamp: data.timestamp });
+    const messageData = messageDoc.data();
+    pendingMessages.push({
+      id: messageDoc.id,
+      data: messageData,
+      timestamp: messageData.timestamp,
+    });
   });
+
   return pendingMessages;
 }
 
-/**
- * One conversation. A permissions or index error here is skipped so the other clients still show.
- * @param {object} conversationDoc
- * @param {string} trainerUid
- * @returns {Promise<object|null>}
- */
-async function newestRequestInConversation(conversationDoc, trainerUid) {
-  const conversation = conversationDoc.data();
-  const clientUid = findClientUid(conversation, trainerUid);
-  if (!clientUid) return null;
-
-  try {
-    const pendingMessages = await loadPendingMessages(conversationDoc.id, clientUid);
-    sortNewestFirst(pendingMessages);
-    if (pendingMessages.length === 0) return null;
-    return requestCardFromMessage(pendingMessages[0], clientUid);
-  } catch (error) {
-    console.warn('Could not query messages for', clientUid, error.message);
-    return null;
-  }
+function buildInboxCardFromPendingMessage(newestMessage, clientUid) {
+  const messageId = newestMessage.id;
+  const messageData = newestMessage.data;
+  // Field letters stay frozen — NewTraineeRequestsScreen and badges read these keys.
+  return {
+    id: messageId,
+    messageId,
+    clientUid,
+    clientName: messageData.clientName || CLIENT_NAME_DEFAULT,
+    clientGoals: messageData.clientGoals,
+    clientExperienceLevel: messageData.clientExperienceLevel,
+    clientEquipment: messageData.clientEquipment,
+    clientLimitations: messageData.clientLimitations,
+    requestType: messageData.requestType || REQUEST_TYPE_DEFAULT,
+    requestTitle: messageData.requestTitle || clientRequestTypeLabel(messageData.requestType),
+    message: messageData.text || '',
+    timestamp: messageData.timestamp,
+  };
 }
 
-// ===== MAIN FUNCTION =====
-
-async function collectPendingRequestCards(trainerUid) {
-  const conversationsRef = collection(db, CONVERSATIONS_COLLECTION);
-  // vocab: 'array-contains' means this array field includes this value.
-  const conversationQuery = query(
-    conversationsRef,
-    where('participants', 'array-contains', trainerUid),
-  );
-  const conversationSnapshot = await getDocs(conversationQuery);
-  const requests = [];
-
-  for (const conversationDoc of conversationSnapshot.docs) {
-    const requestCard = await newestRequestInConversation(conversationDoc, trainerUid);
-    if (requestCard) requests.push(requestCard);
-  }
-
-  return requests;
+function findClientUidAmongParticipants(conversation, trainerUid) {
+  // The client is whichever participant is not the trainer (no group threads here).
+  const participants = conversation.participants;
+  if (!participants) return undefined;
+  return participants.find((participantId) => participantId !== trainerUid);
 }
 
-/**
- * Fetch all pending client requests for a trainer.
- * Flow: 1. conversations this trainer is in  2. newest pending message per client  3. the card list
- * A failure returns [] so a dashboard badge cannot crash the trainer home screen.
- * @param {string} trainerUid
- * @returns {Promise<Array>}
- */
-export async function getTrainerPendingRequests(trainerUid) {
-  if (!trainerUid || !db) return [];
+function sortMessagesNewestFirstInPlace(pendingMessages) {
+  // Sorted in memory so we avoid a composite Firestore index on messages.
+  pendingMessages.sort((olderMessage, newerMessage) => {
+    const newerMillis = firestoreTimestampToMillis(newerMessage.timestamp);
+    const olderMillis = firestoreTimestampToMillis(olderMessage.timestamp);
+    return newerMillis - olderMillis;
+  });
+}
 
-  try {
-    return await collectPendingRequestCards(trainerUid);
-  } catch (error) {
-    console.error('Error fetching trainer pending requests:', error);
-    return [];
-  }
+function firestoreTimestampToMillis(timestamp) {
+  // vocab: toMillis() turns a Firestore Timestamp into a number; missing sorts as zero (oldest).
+  // vocab/symbol: ?? = if left side is null/undefined, use the right side instead.
+  if (!timestamp || typeof timestamp.toMillis !== 'function') return 0;
+  return timestamp.toMillis() ?? 0;
 }

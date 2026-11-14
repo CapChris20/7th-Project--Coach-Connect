@@ -1,8 +1,7 @@
 // Find-a-Trainer marketplace: page trainers from Firestore, filter them, then request a connection.
 // Flow: load a page → enrich photos/names from users → browse / profile → confirm → optional intro → send.
 // Used by the client shell. Filters and paging stay here; BrowseTrainersScreen paints the list chrome.
-//
-// vocab: SHELL_SAFE_AREA_EDGES = left/right only — Browse/Profile headers own the status-bar inset
+// Read order: helpers → layout (no data hooks) → screen main (hooks + handlers) → PLUMBING Firestore helpers.
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { View, StyleSheet } from 'react-native';
@@ -38,166 +37,191 @@ import {
 
 // ===== NAMED CONSTANTS =====
 
+// Manipulate here: how many filtered rows we show before “load more” expands the slice.
 const MARKETPLACE_PAGE_SIZE = 30;
+// Manipulate here: how many trainer docs one Firestore page asks for.
 const FIRESTORE_TRAINER_PAGE_SIZE = 20;
+// Manipulate here: Firestore `in` query max — keep at 30 (server hard cap).
 const FIRESTORE_IN_CHUNK = 30;
 const SHELL_NAV_INSET_FALLBACK = 24;
 const LIST_PAD_WHEN_NO_NAV = 24;
 const LIST_PAD_NO_NAV_EXTRA = 32;
+
+// Firestore path / field letters stay frozen.
 const USERS_COLLECTION = 'users';
 const TRAINERS_COLLECTION = 'trainers';
 const ROLE_FIELD = 'role';
 const ROLE_TRAINER = 'trainer';
+
 const DEFAULT_QUICK_SPECIALTY = 'All';
 const DEFAULT_TRAINER_NAME = 'Trainer';
+const OUTCOME_VARIANT_SENT = 'sent';
+const OUTCOME_VARIANT_ERROR = 'error';
+const SESSION_TYPE_REMOTE = 'Remote';
 
 // ===== HELPER FUNCTIONS =====
 
-function photoFromUserDoc(userData) {
-  return userData.photoURL || userData.photoUrl || userData.profilePhoto || userData.avatarUrl || userData.photo || null;
-}
-
-function mergeUserFieldsIntoTrainer(trainer, userData) {
-  const fromUser = photoFromUserDoc(userData);
-  const picked =
-    trainerPhotoUri(trainer) ||
-    (fromUser ? String(fromUser).trim() : null) ||
-    trainer.photoURL ||
-    trainer.photoUrl ||
-    null;
-  return {
-    ...trainer,
-    photoURL: picked || null,
-    displayName: trainer.displayName || userData.displayName || userData.name || trainer.name || null,
-    name: trainer.name || userData.name || userData.displayName || trainer.displayName || null,
-  };
-}
-
-async function fillMissingNameFromUserDoc(trainer) {
-  try {
-    const userSnap = await getDoc(doc(db, USERS_COLLECTION, trainer.id));
-    if (!userSnap.exists()) return trainer;
-    const fallback = userSnap.data() || {};
-    return {
-      ...trainer,
-      name: trainer.name || fallback.name || fallback.displayName || trainer.displayName,
-      displayName: trainer.displayName || fallback.displayName || fallback.name,
-    };
-  } catch {
-    return trainer;
+function firestoreTrainerDoc(uiTrainer) {
+  if (!uiTrainer) {
+    return uiTrainer;
   }
-}
-
-async function enrichOneTrainer(trainer, userMap) {
-  let merged = { ...trainer };
-  const userData = userMap.get(trainer.id);
-  if (userData) {
-    merged = mergeUserFieldsIntoTrainer(merged, userData);
-  } else {
-    merged = await fillMissingNameFromUserDoc(merged);
+  if (uiTrainer._firebase) {
+    return uiTrainer._firebase;
   }
-  const normalizedUrl = trainerPhotoUri(merged);
-  if (normalizedUrl && !merged.photoURL) merged = { ...merged, photoURL: normalizedUrl };
-  return resolveTrainerPhotoWithStorageFallback(merged, storage);
-}
-
-async function loadUserDocsByIds(ids) {
-  const userMap = new Map();
-  for (let i = 0; i < ids.length; i += FIRESTORE_IN_CHUNK) {
-    const chunk = ids.slice(i, i + FIRESTORE_IN_CHUNK);
-    try {
-      // vocab: documentId() + 'in' reads many user docs in one query. Firestore caps `in` at 30.
-      const snap = await getDocs(
-        query(collection(db, USERS_COLLECTION), where(documentId(), 'in', chunk)),
-      );
-      snap.docs.forEach((userDoc) => userMap.set(userDoc.id, userDoc.data() || {}));
-    } catch {
-      // fallback per-trainer below
-    }
-  }
-  return userMap;
-}
-
-async function enrichEachTrainerWithUserPhoto(trainersList, userMap) {
-  return Promise.all(trainersList.map((trainer) => enrichOneTrainer(trainer, userMap)));
-}
-
-async function enrichTrainersFromUsers(trainersList) {
-  const ids = trainersList.map((trainer) => trainer.id).filter(Boolean);
-  const userMap = await loadUserDocsByIds(ids);
-  return enrichEachTrainerWithUserPhoto(trainersList, userMap);
-}
-
-/**
- * vocab: startAfter = next page after the last doc we already have. orderBy(documentId()) is a stable cursor.
- */
-function trainerPageQuery(collectionRef, lastDoc, reset, withRoleFilter, pageSize) {
-  if (withRoleFilter) {
-    if (reset || !lastDoc) {
-      return query(collectionRef, where(ROLE_FIELD, '==', ROLE_TRAINER), orderBy(documentId()), limit(pageSize));
-    }
-    return query(
-      collectionRef,
-      where(ROLE_FIELD, '==', ROLE_TRAINER),
-      orderBy(documentId()),
-      startAfter(lastDoc),
-      limit(pageSize),
-    );
-  }
-  if (!reset && lastDoc) {
-    return query(collectionRef, orderBy(documentId()), startAfter(lastDoc), limit(pageSize));
-  }
-  return query(collectionRef, orderBy(documentId()), limit(pageSize));
-}
-
-async function loadTrainerRowsFromCollection(collName, withRoleFilter, lastDoc, reset, pageSize) {
-  const base = collection(db, collName);
-  const trainerQuery = trainerPageQuery(base, lastDoc, reset, withRoleFilter, pageSize);
-  const snap = await getDocs(trainerQuery);
-  const rows = [];
-  snap.docs.forEach((trainerDoc) => rows.push({ id: trainerDoc.id, ...trainerDoc.data() }));
-  return {
-    rows,
-    lastDoc: snap.empty ? lastDoc : snap.docs[snap.docs.length - 1],
-    isShortPage: snap.size < pageSize,
-  };
-}
-
-/**
- * Prefer the `trainers` collection. If that query fails, switch to `users` with role=trainer.
- */
-async function loadTrainerPagePreferringTrainersCollection({
-  useTrainersCollection,
-  lastDoc,
-  reset,
-  pageSize,
-}) {
-  if (!useTrainersCollection) {
-    return loadTrainerRowsFromCollection(USERS_COLLECTION, true, lastDoc, reset, pageSize);
-  }
-  try {
-    return await loadTrainerRowsFromCollection(TRAINERS_COLLECTION, false, lastDoc, reset, pageSize);
-  } catch {
-    const usersPage = await loadTrainerRowsFromCollection(USERS_COLLECTION, true, null, reset, pageSize);
-    return { ...usersPage, switchedToUsers: true };
-  }
-}
-
-function mergeNewTrainerPage(previous, nextPage) {
-  const seen = new Set(previous.map((trainer) => trainer.id));
-  const merged = [...previous];
-  nextPage.forEach((trainer) => {
-    if (!seen.has(trainer.id)) merged.push(trainer);
-  });
-  return merged;
-}
-
-function firebaseTrainer(uiTrainer) {
-  return uiTrainer?._firebase || uiTrainer;
+  return uiTrainer;
 }
 
 function trainerDisplayName(trainer) {
-  return trainer?.name || trainer?.displayName || DEFAULT_TRAINER_NAME;
+  if (!trainer) {
+    return DEFAULT_TRAINER_NAME;
+  }
+  if (trainer.name) {
+    return trainer.name;
+  }
+  if (trainer.displayName) {
+    return trainer.displayName;
+  }
+  return DEFAULT_TRAINER_NAME;
+}
+
+function normalizeTrainerList(trainersList) {
+  const normalizedRows = [];
+  for (let index = 0; index < trainersList.length; index += 1) {
+    normalizedRows.push(normalizeTrainer(trainersList[index], index));
+  }
+  return normalizedRows;
+}
+
+function sliceVisibleTrainers(filteredList, visibleCount) {
+  return filteredList.slice(0, visibleCount);
+}
+
+function listBottomPadForShell(parentShowsBottomNav, shellNavInset) {
+  if (parentShowsBottomNav) {
+    return shellNavInset;
+  }
+  return Math.max(LIST_PAD_WHEN_NO_NAV, LIST_PAD_NO_NAV_EXTRA);
+}
+
+function resolveIsDark(isDarkProp, appIsDark) {
+  if (typeof isDarkProp === 'boolean') {
+    return isDarkProp;
+  }
+  return appIsDark;
+}
+
+function raiseVisibleCountWithinFiltered(currentCount, filteredLength) {
+  return Math.min(currentCount + MARKETPLACE_PAGE_SIZE, filteredLength);
+}
+
+function customIntroFromDraft(requestIntroDraft) {
+  const customIntro = String(requestIntroDraft || '').trim();
+  if (customIntro) {
+    return customIntro;
+  }
+  return undefined;
+}
+
+function ignoreUnusedProp(unusedValue) {
+  void unusedValue;
+}
+
+// ===== LAYOUT (theme hook only — no screen data hooks) =====
+
+function MarketplaceBrowseOrProfile({
+  showProfileSheet,
+  profileTrainer,
+  closeProfile,
+  openMessageFlow,
+  openConnectFlow,
+  isDark,
+  requesting,
+  profileShellInset,
+  visibleTrainers,
+  loading,
+  loadingMore,
+  listHasMore,
+  loadMoreTrainers,
+  filters,
+  search,
+  setSearch,
+  quickSpecialty,
+  setQuickSpecialty,
+  openProfile,
+  setFiltersOpen,
+  clearFilters,
+  showRemoteTrainers,
+  browseBackHandler,
+  listBottomPad,
+}) {
+  if (showProfileSheet) {
+    return (
+      <TrainerProfileSheet
+        embedded
+        trainer={profileTrainer}
+        visible
+        onClose={closeProfile}
+        onMessage={(trainer) => openMessageFlow(trainer)}
+        onConnect={(trainer) => openConnectFlow(trainer)}
+        isDark={isDark}
+        requesting={requesting}
+        shellBottomInset={profileShellInset}
+      />
+    );
+  }
+
+  return (
+    <BrowseTrainersScreen
+      trainers={visibleTrainers}
+      loading={loading}
+      loadingMore={loadingMore}
+      hasMore={listHasMore}
+      onLoadMore={loadMoreTrainers}
+      isDark={isDark}
+      filters={filters}
+      search={search}
+      onSearchChange={setSearch}
+      quickSpecialty={quickSpecialty}
+      onQuickSpecialtyChange={setQuickSpecialty}
+      onViewProfile={openProfile}
+      onMessage={openMessageFlow}
+      onConnect={openConnectFlow}
+      onOpenFilters={() => setFiltersOpen(true)}
+      onClearFilters={clearFilters}
+      onShowRemote={showRemoteTrainers}
+      onBack={browseBackHandler}
+      listBottomPad={listBottomPad}
+    />
+  );
+}
+
+function MarketplaceShellBottomNav({
+  showShellBottomNav,
+  onHomePress,
+  onPlusPress,
+  onVoicePress,
+  onNutritionPress,
+  onWorkoutPress,
+  onMessagesPress,
+  onProfilePress,
+}) {
+  if (!showShellBottomNav) {
+    return null;
+  }
+
+  return (
+    <ShellBottomNavAnchor>
+      <BottomMenuBar
+        onHomePress={onHomePress}
+        onPlusPress={onPlusPress}
+        onVoicePress={onVoicePress}
+        onNutritionPress={onNutritionPress}
+        onWorkoutPress={onWorkoutPress}
+        onMessagesPress={onMessagesPress}
+        onProfilePress={onProfilePress}
+      />
+    </ShellBottomNavAnchor>
+  );
 }
 
 function SearchTrainersScreenLayout({
@@ -253,44 +277,70 @@ function SearchTrainersScreenLayout({
 }) {
   const { colors } = useTheme();
 
+  const showProfileSheet = profileOpen && profileTrainer;
+  const introSheetVisible = Boolean(requestIntroTrainer);
+  const confirmSheetVisible = Boolean(requestConfirmTrainer);
+  const outcomeSheetVisible = Boolean(outcomeTrainer) && Boolean(outcomeVariant);
+  const listHasMore = visibleCount < filtered.length;
+  const showShellBottomNav = showBottomNav !== false;
+  const showBrowseBack = showHeader !== false;
+
+  let browseBackHandler = undefined;
+  if (showBrowseBack) {
+    browseBackHandler = headerBackHandler;
+  }
+
+  const introTrainerName = trainerDisplayName(requestIntroTrainer);
+  const firestoreOutcomeTrainer = firestoreTrainerDoc(outcomeTrainer);
+  const firestoreConfirmTrainer = firestoreTrainerDoc(requestConfirmTrainer);
+
+  let outcomePopupVariant = OUTCOME_VARIANT_SENT;
+  if (outcomeVariant) {
+    outcomePopupVariant = outcomeVariant;
+  }
+
+  const shellBackgroundColor = colors.nbBackground;
+
+  function openMessageFromOutcome() {
+    const trainerForMessage = outcomeTrainer;
+    closeOutcomeSheet();
+    if (trainerForMessage) {
+      openMessageFlow(trainerForMessage);
+    }
+  }
+
   return (
-    <SafeAreaView style={[styles.shell, { backgroundColor: colors.nbBackground }]} edges={SHELL_SAFE_AREA_EDGES}>
+    <SafeAreaView
+      style={[styles.shell, { backgroundColor: shellBackgroundColor }]}
+      edges={SHELL_SAFE_AREA_EDGES}
+    >
       <View style={styles.body}>
-        {profileOpen && profileTrainer ? (
-          <TrainerProfileSheet
-            embedded
-            trainer={profileTrainer}
-            visible
-            onClose={closeProfile}
-            onMessage={(trainer) => openMessageFlow(trainer)}
-            onConnect={(trainer) => openConnectFlow(trainer)}
-            isDark={isDark}
-            requesting={requesting}
-            shellBottomInset={profileShellInset}
-          />
-        ) : (
-          <BrowseTrainersScreen
-            trainers={visibleTrainers}
-            loading={loading}
-            loadingMore={loadingMore}
-            hasMore={visibleCount < filtered.length}
-            onLoadMore={loadMoreTrainers}
-            isDark={isDark}
-            filters={filters}
-            search={search}
-            onSearchChange={setSearch}
-            quickSpecialty={quickSpecialty}
-            onQuickSpecialtyChange={setQuickSpecialty}
-            onViewProfile={openProfile}
-            onMessage={openMessageFlow}
-            onConnect={openConnectFlow}
-            onOpenFilters={() => setFiltersOpen(true)}
-            onClearFilters={clearFilters}
-            onShowRemote={showRemoteTrainers}
-            onBack={showHeader !== false ? headerBackHandler : undefined}
-            listBottomPad={listBottomPad}
-          />
-        )}
+        <MarketplaceBrowseOrProfile
+          showProfileSheet={showProfileSheet}
+          profileTrainer={profileTrainer}
+          closeProfile={closeProfile}
+          openMessageFlow={openMessageFlow}
+          openConnectFlow={openConnectFlow}
+          isDark={isDark}
+          requesting={requesting}
+          profileShellInset={profileShellInset}
+          visibleTrainers={visibleTrainers}
+          loading={loading}
+          loadingMore={loadingMore}
+          listHasMore={listHasMore}
+          loadMoreTrainers={loadMoreTrainers}
+          filters={filters}
+          search={search}
+          setSearch={setSearch}
+          quickSpecialty={quickSpecialty}
+          setQuickSpecialty={setQuickSpecialty}
+          openProfile={openProfile}
+          setFiltersOpen={setFiltersOpen}
+          clearFilters={clearFilters}
+          showRemoteTrainers={showRemoteTrainers}
+          browseBackHandler={browseBackHandler}
+          listBottomPad={listBottomPad}
+        />
 
         <FilterPopup
           visible={filtersOpen}
@@ -303,8 +353,8 @@ function SearchTrainersScreenLayout({
         />
 
         <RequestIntroPopup
-          visible={!!requestIntroTrainer}
-          trainerName={trainerDisplayName(requestIntroTrainer)}
+          visible={introSheetVisible}
+          trainerName={introTrainerName}
           messageDraft={requestIntroDraft}
           onChangeMessage={setRequestIntroDraft}
           onSkip={completeFromIntro}
@@ -314,43 +364,35 @@ function SearchTrainersScreenLayout({
         />
 
         <ConfirmRequestPopup
-          visible={!!requestConfirmTrainer}
-          trainer={firebaseTrainer(requestConfirmTrainer)}
+          visible={confirmSheetVisible}
+          trainer={firestoreConfirmTrainer}
           onCancel={closeRequestConfirm}
           onConfirm={confirmSendRequest}
           busy={requesting}
           variant="confirm"
         />
 
-        {/* Design Law sent / error sheets (PNG 19–22) — replaces Alert chrome */}
         <ConfirmRequestPopup
-          visible={!!outcomeTrainer && !!outcomeVariant}
-          trainer={firebaseTrainer(outcomeTrainer)}
-          variant={outcomeVariant || 'sent'}
+          visible={outcomeSheetVisible}
+          trainer={firestoreOutcomeTrainer}
+          variant={outcomePopupVariant}
           onCancel={closeOutcomeSheet}
           onGotIt={closeOutcomeSheet}
           onRetry={retryFailedRequest}
-          onMessage={() => {
-            const trainer = outcomeTrainer;
-            closeOutcomeSheet();
-            if (trainer) openMessageFlow(trainer);
-          }}
+          onMessage={openMessageFromOutcome}
         />
       </View>
 
-      {showBottomNav !== false ? (
-        <ShellBottomNavAnchor>
-          <BottomMenuBar
-            onHomePress={onHomePress}
-            onPlusPress={onPlusPress}
-            onVoicePress={onVoicePress}
-            onNutritionPress={onNutritionPress}
-            onWorkoutPress={onWorkoutPress}
-            onMessagesPress={onMessagesPress}
-            onProfilePress={onProfilePress}
-          />
-        </ShellBottomNavAnchor>
-      ) : null}
+      <MarketplaceShellBottomNav
+        showShellBottomNav={showShellBottomNav}
+        onHomePress={onHomePress}
+        onPlusPress={onPlusPress}
+        onVoicePress={onVoicePress}
+        onNutritionPress={onNutritionPress}
+        onWorkoutPress={onWorkoutPress}
+        onMessagesPress={onMessagesPress}
+        onProfilePress={onProfilePress}
+      />
     </SafeAreaView>
   );
 }
@@ -358,17 +400,15 @@ function SearchTrainersScreenLayout({
 // ===== MAIN FUNCTION =====
 
 /**
- * Find-a-Trainer screen: load pages, filter, open a profile, then send a connection request.
- * vocab: useRef holds the Firestore cursor and whether we are still on the trainers collection.
+ * Find-a-Trainer marketplace screen — pages trainers, filters locally, runs connect flow.
  * @param {object} props
  */
-const SearchTrainersScreen = ({
+function SearchTrainersScreen({
   onClose,
   onBack,
   title: _title = 'Find a Trainer',
   showHeader = true,
   showBottomNav = true,
-  /** When false, this screen skips its own nav but parent shell still shows BottomMenuBar. */
   reserveShellBottomNav = false,
   onViewProfile,
   onRequestTrainer,
@@ -382,19 +422,20 @@ const SearchTrainersScreen = ({
   onNutritionPress,
   onWorkoutPress,
   onMessagesPress,
-  /** Client onboarding + userData — drives Best match sort. */
   clientProfile = null,
-}) => {
+}) {
+  // Hook order is frozen — do not reorder these calls.
+  ignoreUnusedProp(_title);
+  ignoreUnusedProp(_onSettingsPress);
+
   const headerBack = onBack ?? onClose;
   const { isDark: appIsDark } = useTheme();
-  const isDark = typeof isDarkProp === 'boolean' ? isDarkProp : appIsDark;
+  const isDark = resolveIsDark(isDarkProp, appIsDark);
   const shellNavInset = useShellBottomNavInset(SHELL_NAV_INSET_FALLBACK);
-  const profileShellInset =
-    showBottomNav !== false || reserveShellBottomNav ? shellNavInset : 0;
-  const listBottomPad =
-    showBottomNav !== false || reserveShellBottomNav
-      ? shellNavInset
-      : Math.max(LIST_PAD_WHEN_NO_NAV, LIST_PAD_NO_NAV_EXTRA);
+  const parentShowsBottomNav = showBottomNav !== false || reserveShellBottomNav;
+  const profileShellInset = parentShowsBottomNav ? shellNavInset : 0;
+  const listBottomPad = listBottomPadForShell(parentShowsBottomNav, shellNavInset);
+
   const [trainers, setTrainers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
@@ -407,7 +448,6 @@ const SearchTrainersScreen = ({
   const [requestConfirmTrainer, setRequestConfirmTrainer] = useState(null);
   const [requestIntroTrainer, setRequestIntroTrainer] = useState(null);
   const [requestIntroDraft, setRequestIntroDraft] = useState('');
-  // Design Law outcome sheet: 'sent' | 'error' | null
   const [outcomeVariant, setOutcomeVariant] = useState(null);
   const [outcomeTrainer, setOutcomeTrainer] = useState(null);
   const [visibleCount, setVisibleCount] = useState(MARKETPLACE_PAGE_SIZE);
@@ -433,30 +473,34 @@ const SearchTrainersScreen = ({
       useTrainersCollectionRef.current = false;
     }
     lastTrainerDocRef.current = page.lastDoc;
-    if (page.isShortPage) setHasMoreFromFirestore(false);
+    if (page.isShortPage) {
+      setHasMoreFromFirestore(false);
+    }
 
     // 2. Fill photos and names from the matching users docs.
     return enrichTrainersFromUsers(page.rows);
   }, []);
 
   useEffect(() => {
-    const load = async () => {
+    const loadFirstPage = async () => {
       setLoading(true);
       try {
         const data = await fetchTrainerPage(true);
         setTrainers(data);
         setVisibleCount(MARKETPLACE_PAGE_SIZE);
       } catch (error) {
-        if (__DEV__) console.error('SearchTrainersScreen load error:', error);
+        if (__DEV__) {
+          console.error('SearchTrainersScreen load error:', error);
+        }
       } finally {
         setLoading(false);
       }
     };
-    load();
+    loadFirstPage();
   }, [fetchTrainerPage]);
 
   const normalized = useMemo(
-    () => trainers.map((trainer, index) => normalizeTrainer(trainer, index)),
+    () => normalizeTrainerList(trainers),
     [trainers],
   );
 
@@ -476,21 +520,27 @@ const SearchTrainersScreen = ({
   );
 
   const visibleTrainers = useMemo(
-    () => filtered.slice(0, visibleCount),
+    () => sliceVisibleTrainers(filtered, visibleCount),
     [filtered, visibleCount],
   );
 
-  const loadMoreTrainers = async () => {
-    if (loadingMore) return;
+  async function loadMoreTrainers() {
+    if (loadingMore) {
+      return;
+    }
 
     // 1. Still have filtered rows we have not shown — just raise the slice.
     if (visibleCount < filtered.length) {
       setLoadingMore(true);
-      setVisibleCount((currentCount) => Math.min(currentCount + MARKETPLACE_PAGE_SIZE, filtered.length));
+      setVisibleCount((currentCount) =>
+        raiseVisibleCountWithinFiltered(currentCount, filtered.length),
+      );
       setLoadingMore(false);
       return;
     }
-    if (!hasMoreFromFirestore) return;
+    if (!hasMoreFromFirestore) {
+      return;
+    }
 
     // 2. Ask Firestore for the next page and append trainers we have not seen.
     setLoadingMore(true);
@@ -501,86 +551,103 @@ const SearchTrainersScreen = ({
         setVisibleCount((currentCount) => currentCount + MARKETPLACE_PAGE_SIZE);
       }
     } catch (error) {
-      if (__DEV__) console.error('SearchTrainersScreen loadMore error:', error);
+      if (__DEV__) {
+        console.error('SearchTrainersScreen loadMore error:', error);
+      }
     } finally {
       setLoadingMore(false);
     }
-  };
+  }
 
+  // Filters / search / specialty change → snap the visible window back to page one.
   useEffect(() => {
     setVisibleCount(MARKETPLACE_PAGE_SIZE);
   }, [filters, search, quickSpecialty]);
 
-  const openProfile = (trainer) => {
+  function openProfile(trainer) {
     setProfileTrainer(trainer);
     setProfileOpen(true);
-  };
+  }
 
-  const closeProfile = () => {
+  function closeProfile() {
     setProfileOpen(false);
     setProfileTrainer(null);
-  };
+  }
 
-  const openConnectFlow = (trainer) => {
-    if (!trainer) return;
+  function openConnectFlow(trainer) {
+    if (!trainer) {
+      return;
+    }
     setRequestConfirmTrainer(trainer);
     setRequestIntroDraft('');
-  };
+  }
 
-  const openMessageFlow = (trainer) => {
-    if (!trainer) return;
+  function openMessageFlow(trainer) {
+    if (!trainer) {
+      return;
+    }
     setRequestIntroTrainer(trainer);
     setRequestIntroDraft('');
-  };
+  }
 
-  const closeRequestIntro = () => {
-    if (!requesting) {
-      setRequestIntroTrainer(null);
-      setRequestIntroDraft('');
+  function closeRequestIntro() {
+    if (requesting) {
+      return;
     }
-  };
+    setRequestIntroTrainer(null);
+    setRequestIntroDraft('');
+  }
 
-  const closeRequestConfirm = () => {
-    if (!requesting) {
-      setRequestConfirmTrainer(null);
+  function closeRequestConfirm() {
+    if (requesting) {
+      return;
     }
-  };
+    setRequestConfirmTrainer(null);
+  }
 
-  const proceedFromConfirmToMessage = () => {
-    if (!requestConfirmTrainer) return;
+  function proceedFromConfirmToMessage() {
+    if (!requestConfirmTrainer) {
+      return;
+    }
     setRequestIntroTrainer(requestConfirmTrainer);
     setRequestConfirmTrainer(null);
-  };
+  }
 
-  const closeOutcomeSheet = () => {
-    const wasSent = outcomeVariant === 'sent';
+  function closeOutcomeSheet() {
+    const requestSucceeded = outcomeVariant === OUTCOME_VARIANT_SENT;
     setOutcomeVariant(null);
     setOutcomeTrainer(null);
-    if (wasSent) closeProfile();
-  };
+    if (requestSucceeded) {
+      closeProfile();
+    }
+  }
 
-  const runRequest = async (trainer) => {
-    const raw = firebaseTrainer(trainer);
-    if (!raw) return;
+  async function runRequest(trainer) {
+    const trainerFromFirestore = firestoreTrainerDoc(trainer);
+    if (!trainerFromFirestore) {
+      return;
+    }
 
     // 1. Parent-owned request: send the optional intro, then clear the popups.
     if (onRequestTrainer) {
       setRequesting(true);
       try {
-        const customIntro = String(requestIntroDraft || '').trim();
+        const customIntro = customIntroFromDraft(requestIntroDraft);
         // Firebase request payload key stays `clientIntro` — do not rename for branding.
-        await onRequestTrainer(raw, { clientIntro: customIntro || undefined });
+        await onRequestTrainer(trainerFromFirestore, {
+          clientIntro: customIntro,
+        });
         setRequestConfirmTrainer(null);
         setRequestIntroTrainer(null);
         setRequestIntroDraft('');
         setOutcomeTrainer(trainer);
-        setOutcomeVariant('sent');
+        setOutcomeVariant(OUTCOME_VARIANT_SENT);
       } catch (error) {
         console.error('Trainer request failed:', error);
         setRequestConfirmTrainer(null);
         setRequestIntroTrainer(null);
         setOutcomeTrainer(trainer);
-        setOutcomeVariant('error');
+        setOutcomeVariant(OUTCOME_VARIANT_ERROR);
       } finally {
         setRequesting(false);
       }
@@ -591,39 +658,51 @@ const SearchTrainersScreen = ({
     setRequestConfirmTrainer(null);
     setRequestIntroTrainer(null);
     setOutcomeTrainer(trainer);
-    setOutcomeVariant('error');
-    if (onSelectTrainer) onSelectTrainer(raw);
-    else if (onViewProfile) onViewProfile(raw);
-  };
+    setOutcomeVariant(OUTCOME_VARIANT_ERROR);
+    if (onSelectTrainer) {
+      onSelectTrainer(trainerFromFirestore);
+      return;
+    }
+    if (onViewProfile) {
+      onViewProfile(trainerFromFirestore);
+    }
+  }
 
-  const confirmSendRequest = () => {
+  function confirmSendRequest() {
     proceedFromConfirmToMessage();
-  };
+  }
 
-  const completeFromIntro = () => {
+  function completeFromIntro() {
     const introTrainer = requestIntroTrainer || requestConfirmTrainer;
-    if (introTrainer) runRequest(introTrainer);
-  };
+    if (introTrainer) {
+      runRequest(introTrainer);
+    }
+  }
 
-  const retryFailedRequest = () => {
-    const trainer = outcomeTrainer;
+  function retryFailedRequest() {
+    const trainerToRetry = outcomeTrainer;
     setOutcomeVariant(null);
     setOutcomeTrainer(null);
-    if (trainer) runRequest(trainer);
-  };
+    if (trainerToRetry) {
+      runRequest(trainerToRetry);
+    }
+  }
 
-  const clearFilters = () => {
+  function clearFilters() {
     setFilters({ ...DEFAULT_FILTERS });
     setQuickSpecialty(DEFAULT_QUICK_SPECIALTY);
     setSearch('');
-  };
+  }
 
-  const showRemoteTrainers = () => {
-    setFilters({ ...DEFAULT_FILTERS, sessionType: 'Remote' });
+  function showRemoteTrainers() {
+    setFilters({ ...DEFAULT_FILTERS, sessionType: SESSION_TYPE_REMOTE });
     setQuickSpecialty(DEFAULT_QUICK_SPECIALTY);
-  };
+  }
 
-  const headerBackHandler = profileOpen ? closeProfile : headerBack;
+  let headerBackHandler = headerBack;
+  if (profileOpen) {
+    headerBackHandler = closeProfile;
+  }
 
   const screenLayout = {
     clearFilters,
@@ -676,8 +755,9 @@ const SearchTrainersScreen = ({
     visibleCount,
     visibleTrainers,
   };
+
   return <SearchTrainersScreenLayout {...screenLayout} />;
-};
+}
 
 const styles = StyleSheet.create({
   shell: { flex: 1 },
@@ -686,3 +766,284 @@ const styles = StyleSheet.create({
 
 export { TrainerProfileSheet };
 export default SearchTrainersScreen;
+
+// ===== PLUMBING — skip unless debugging Firestore paging / photo enrich =====
+
+const USER_PHOTO_FIELD_KEYS = [
+  'photoURL',
+  'photoUrl',
+  'profilePhoto',
+  'avatarUrl',
+  'photo',
+];
+
+function photoFromUserDoc(userData) {
+  for (let index = 0; index < USER_PHOTO_FIELD_KEYS.length; index += 1) {
+    const fieldKey = USER_PHOTO_FIELD_KEYS[index];
+    const value = userData[fieldKey];
+    if (value) {
+      return value;
+    }
+  }
+  return null;
+}
+
+function mergeUserFieldsIntoTrainer(trainer, userData) {
+  const fromUser = photoFromUserDoc(userData);
+  let photoFromUserString = null;
+  if (fromUser) {
+    photoFromUserString = String(fromUser).trim();
+  }
+
+  let bestPhotoUrl = trainerPhotoUri(trainer);
+  if (!bestPhotoUrl) {
+    bestPhotoUrl = photoFromUserString;
+  }
+  if (!bestPhotoUrl) {
+    bestPhotoUrl = trainer.photoURL;
+  }
+  if (!bestPhotoUrl) {
+    bestPhotoUrl = trainer.photoUrl;
+  }
+
+  let displayName = trainer.displayName;
+  if (!displayName) {
+    displayName = userData.displayName;
+  }
+  if (!displayName) {
+    displayName = userData.name;
+  }
+  if (!displayName) {
+    displayName = trainer.name;
+  }
+
+  let name = trainer.name;
+  if (!name) {
+    name = userData.name;
+  }
+  if (!name) {
+    name = userData.displayName;
+  }
+  if (!name) {
+    name = trainer.displayName;
+  }
+
+  return {
+    ...trainer,
+    photoURL: bestPhotoUrl || null,
+    displayName: displayName || null,
+    name: name || null,
+  };
+}
+
+async function fillMissingNameFromUserDoc(trainer) {
+  try {
+    const userSnap = await getDoc(doc(db, USERS_COLLECTION, trainer.id));
+    if (!userSnap.exists()) {
+      return trainer;
+    }
+    const fallback = userSnap.data() || {};
+    let name = trainer.name;
+    if (!name) {
+      name = fallback.name;
+    }
+    if (!name) {
+      name = fallback.displayName;
+    }
+    if (!name) {
+      name = trainer.displayName;
+    }
+
+    let displayName = trainer.displayName;
+    if (!displayName) {
+      displayName = fallback.displayName;
+    }
+    if (!displayName) {
+      displayName = fallback.name;
+    }
+
+    return {
+      ...trainer,
+      name,
+      displayName,
+    };
+  } catch {
+    return trainer;
+  }
+}
+
+async function enrichOneTrainer(trainer, userMap) {
+  let trainerWithUserFields = { ...trainer };
+  const userData = userMap.get(trainer.id);
+
+  if (userData) {
+    trainerWithUserFields = mergeUserFieldsIntoTrainer(trainerWithUserFields, userData);
+  } else {
+    trainerWithUserFields = await fillMissingNameFromUserDoc(trainerWithUserFields);
+  }
+
+  const normalizedUrl = trainerPhotoUri(trainerWithUserFields);
+  const needsPhotoUrlCopy = normalizedUrl && !trainerWithUserFields.photoURL;
+  if (needsPhotoUrlCopy) {
+    trainerWithUserFields = { ...trainerWithUserFields, photoURL: normalizedUrl };
+  }
+
+  return resolveTrainerPhotoWithStorageFallback(trainerWithUserFields, storage);
+}
+
+function putUserDocsIntoMap(userMap, snap) {
+  for (let docIndex = 0; docIndex < snap.docs.length; docIndex += 1) {
+    const userDoc = snap.docs[docIndex];
+    userMap.set(userDoc.id, userDoc.data() || {});
+  }
+}
+
+async function loadOneUserDocChunk(chunk) {
+  return getDocs(
+    query(collection(db, USERS_COLLECTION), where(documentId(), 'in', chunk)),
+  );
+}
+
+async function loadUserDocsByIds(ids) {
+  const userMap = new Map();
+  for (let startIndex = 0; startIndex < ids.length; startIndex += FIRESTORE_IN_CHUNK) {
+    const chunk = ids.slice(startIndex, startIndex + FIRESTORE_IN_CHUNK);
+    try {
+      const snap = await loadOneUserDocChunk(chunk);
+      putUserDocsIntoMap(userMap, snap);
+    } catch {
+      // Per-trainer getDoc fallback lives in enrichOneTrainer → fillMissingNameFromUserDoc.
+    }
+  }
+  return userMap;
+}
+
+async function enrichEachTrainerWithUserPhoto(trainersList, userMap) {
+  // Promise.all keeps photo storage lookups concurrent (same as before — behavior freeze).
+  const enrichJobs = [];
+  for (let index = 0; index < trainersList.length; index += 1) {
+    enrichJobs.push(enrichOneTrainer(trainersList[index], userMap));
+  }
+  return Promise.all(enrichJobs);
+}
+
+async function enrichTrainersFromUsers(trainersList) {
+  const ids = [];
+  for (let index = 0; index < trainersList.length; index += 1) {
+    const trainerId = trainersList[index].id;
+    if (trainerId) {
+      ids.push(trainerId);
+    }
+  }
+  const userMap = await loadUserDocsByIds(ids);
+  return enrichEachTrainerWithUserPhoto(trainersList, userMap);
+}
+
+function trainerPageQuery(collectionRef, lastDoc, reset, withRoleFilter, pageSize) {
+  if (withRoleFilter) {
+    return trainerPageQueryWithRole(collectionRef, lastDoc, reset, pageSize);
+  }
+  return trainerPageQueryWithoutRole(collectionRef, lastDoc, reset, pageSize);
+}
+
+function trainerPageQueryWithRole(collectionRef, lastDoc, reset, pageSize) {
+  if (reset || !lastDoc) {
+    return query(
+      collectionRef,
+      where(ROLE_FIELD, '==', ROLE_TRAINER),
+      orderBy(documentId()),
+      limit(pageSize),
+    );
+  }
+  return query(
+    collectionRef,
+    where(ROLE_FIELD, '==', ROLE_TRAINER),
+    orderBy(documentId()),
+    startAfter(lastDoc),
+    limit(pageSize),
+  );
+}
+
+function trainerPageQueryWithoutRole(collectionRef, lastDoc, reset, pageSize) {
+  if (!reset && lastDoc) {
+    return query(
+      collectionRef,
+      orderBy(documentId()),
+      startAfter(lastDoc),
+      limit(pageSize),
+    );
+  }
+  return query(collectionRef, orderBy(documentId()), limit(pageSize));
+}
+
+async function loadTrainerRowsFromCollection(collName, withRoleFilter, lastDoc, reset, pageSize) {
+  const base = collection(db, collName);
+  const trainerQuery = trainerPageQuery(base, lastDoc, reset, withRoleFilter, pageSize);
+  const snap = await getDocs(trainerQuery);
+  const rows = [];
+  for (let index = 0; index < snap.docs.length; index += 1) {
+    const trainerDoc = snap.docs[index];
+    rows.push({ id: trainerDoc.id, ...trainerDoc.data() });
+  }
+
+  let pageLastDoc = lastDoc;
+  if (!snap.empty) {
+    pageLastDoc = snap.docs[snap.docs.length - 1];
+  }
+
+  return {
+    rows,
+    lastDoc: pageLastDoc,
+    isShortPage: snap.size < pageSize,
+  };
+}
+
+async function loadTrainerPagePreferringTrainersCollection({
+  useTrainersCollection,
+  lastDoc,
+  reset,
+  pageSize,
+}) {
+  if (!useTrainersCollection) {
+    return loadTrainerRowsFromCollection(
+      USERS_COLLECTION,
+      true,
+      lastDoc,
+      reset,
+      pageSize,
+    );
+  }
+  try {
+    return await loadTrainerRowsFromCollection(
+      TRAINERS_COLLECTION,
+      false,
+      lastDoc,
+      reset,
+      pageSize,
+    );
+  } catch {
+    const usersPage = await loadTrainerRowsFromCollection(
+      USERS_COLLECTION,
+      true,
+      null,
+      reset,
+      pageSize,
+    );
+    return { ...usersPage, switchedToUsers: true };
+  }
+}
+
+function mergeNewTrainerPage(previous, nextPage) {
+  const seen = new Set();
+  for (let index = 0; index < previous.length; index += 1) {
+    seen.add(previous[index].id);
+  }
+  const merged = [...previous];
+  for (let index = 0; index < nextPage.length; index += 1) {
+    const trainer = nextPage[index];
+    if (!seen.has(trainer.id)) {
+      merged.push(trainer);
+    }
+  }
+  return merged;
+}

@@ -1,6 +1,7 @@
-// How far the coach composer and the message list sit above the keyboard and the bottom nav.
-// Flow: listen for show and hide → measure the keyboard → pad the composer and leave the list a small gap.
-// Used by CoachConversationScreen and CoachHomeScreen. KeyboardAvoidingView double-pads on iOS, so we do this by hand.
+// Coach chat keyboard padding — the typing field rides the keyboard; the thread only gets a small gap.
+// Flow: subscribe to keyboard show/hide → measure inset → publish pad numbers for composer + list.
+// Used by: CoachConversationScreen and CoachHomeScreen.
+// Why not KeyboardAvoidingView? On iOS it double-pads with our bottom nav, so we pad by hand.
 
 import { useEffect, useState } from 'react';
 import { Dimensions, Keyboard, Platform } from 'react-native';
@@ -9,151 +10,172 @@ import { BOTTOM_NAV_BAR_HEIGHT } from '../../navigation/bottomMenuSpacing';
 
 // ===== NAMED CONSTANTS =====
 
-const PLATFORM_IOS = 'ios';
-const PLATFORM_ANDROID = 'android';
+const OPERATING_SYSTEM_IOS = 'ios';
+const OPERATING_SYSTEM_ANDROID = 'android';
 
-// iOS moves the field with the keyboard animation. Android only tells us after the keyboard is up.
-const KEYBOARD_EVENTS_BY_PLATFORM = {
+// vocab: iOS "will" events fire during the keyboard animation so padding can track it.
+//        Android only fires "did" after the keyboard is already up.
+const KEYBOARD_LISTENER_NAMES_BY_OS = {
   ios: { show: 'keyboardWillShow', hide: 'keyboardWillHide' },
   default: { show: 'keyboardDidShow', hide: 'keyboardDidHide' },
 };
 
-// Manipulate here: these are the breathing gaps, not a second copy of the nav bar height.
-const COMPOSER_GAP_WHEN_KEYBOARD_OPEN = 8;
-const COMPOSER_GAP_ABOVE_NAV = 10;
-const LIST_GAP_WHEN_KEYBOARD_OPEN = 12;
-const LIST_GAP_WHEN_KEYBOARD_CLOSED = 20;
+// Manipulate here: breathing room only — these are NOT a second copy of bottom-nav height.
+const GAP_COMPOSER_WHEN_KEYBOARD_UP_PX = 8;
+const GAP_COMPOSER_ABOVE_BOTTOM_NAV_PX = 10;
+const GAP_MESSAGE_LIST_WHEN_KEYBOARD_UP_PX = 12;
+const GAP_MESSAGE_LIST_WHEN_KEYBOARD_DOWN_PX = 20;
 
-function extraAutofillPropsForPlatform() {
-  if (Platform.OS === PLATFORM_ANDROID) {
-    return { importantForAutofill: 'no' };
+// ===== COMPOSER TEXT INPUT — exported props for the coach typing field =====
+
+function androidPropsThatBlockAutofillBar() {
+  const runningOnAndroid = Platform.OS === OPERATING_SYSTEM_ANDROID;
+  if (!runningOnAndroid) {
+    return {};
   }
-  return {};
+  // vocab: importantForAutofill = Android View prop; 'no' tells autofill to skip this field.
+  return { importantForAutofill: 'no' };
 }
 
-// Android's password bar ignores autoComplete: 'off'. This extra flag is what actually blocks it.
+// Android ignores autoComplete: 'off' alone — the Android prop above is what quiets the bar.
 export const COACH_COMPOSER_TEXT_INPUT_PROPS = {
   autoComplete: 'off',
   textContentType: 'none',
   autoCorrect: true,
   spellCheck: true,
-  ...extraAutofillPropsForPlatform(),
+  ...androidPropsThatBlockAutofillBar(),
 };
-
-// ===== HELPER FUNCTIONS =====
-
-function keyboardEventNamesForPlatform() {
-  if (Platform.OS === PLATFORM_IOS) return KEYBOARD_EVENTS_BY_PLATFORM.ios;
-  return KEYBOARD_EVENTS_BY_PLATFORM.default;
-}
-
-// iOS reports the keyboard's top in screen coordinates. The inset is the window height minus that top.
-function iosKeyboardInsetFromCoordinates(endCoordinates) {
-  const windowHeight = Dimensions.get('window').height;
-  const keyboardTopY = endCoordinates.screenY;
-  return Math.max(0, Math.round(windowHeight - keyboardTopY));
-}
-
-/**
- * vocab: ?? keeps a reported height of 0. Do not switch it to ||.
- * @param {object} keyboardEvent
- * @returns {number}
- */
-function readKeyboardInsetFromEvent(keyboardEvent) {
-  if (!keyboardEvent || !keyboardEvent.endCoordinates) return 0;
-  const endCoordinates = keyboardEvent.endCoordinates;
-  if (Platform.OS === PLATFORM_IOS) return iosKeyboardInsetFromCoordinates(endCoordinates);
-  const androidHeight = endCoordinates.height ?? 0;
-  return Math.max(0, androidHeight);
-}
-
-/**
- * @param {boolean} isKeyboardVisible
- * @param {number} shellNavPad
- * @returns {number}
- */
-function composerBottomPaddingWhenClosedOrOpen(isKeyboardVisible, shellNavPad) {
-  if (isKeyboardVisible) return COMPOSER_GAP_WHEN_KEYBOARD_OPEN;
-  return COMPOSER_GAP_ABOVE_NAV + shellNavPad;
-}
-
-/**
- * @param {boolean} isKeyboardVisible
- * @returns {number}
- */
-function listBottomPaddingForKeyboard(isKeyboardVisible) {
-  if (isKeyboardVisible) return LIST_GAP_WHEN_KEYBOARD_OPEN;
-  return LIST_GAP_WHEN_KEYBOARD_CLOSED;
-}
-
-/**
- * @param {boolean} isKeyboardVisible
- * @param {number} keyboardInset
- * @param {number} closedComposerPad
- * @returns {number}
- */
-function composerKeyboardPaddingPixels(isKeyboardVisible, keyboardInset, closedComposerPad) {
-  if (isKeyboardVisible) return keyboardInset + COMPOSER_GAP_WHEN_KEYBOARD_OPEN;
-  return closedComposerPad;
-}
-
-/**
- * @param {boolean} isKeyboardVisible
- * @param {number} keyboardInset
- * @param {number} shellNavPad
- * @returns {{ composerBottomPad: number, listBottomPad: number, composerKeyboardPad: number }}
- */
-function buildCoachPaddingBundle(isKeyboardVisible, keyboardInset, shellNavPad) {
-  const composerBottomPad = composerBottomPaddingWhenClosedOrOpen(isKeyboardVisible, shellNavPad);
-  const listBottomPad = listBottomPaddingForKeyboard(isKeyboardVisible);
-  const composerKeyboardPad = composerKeyboardPaddingPixels(
-    isKeyboardVisible,
-    keyboardInset,
-    composerBottomPad,
-  );
-  return { composerBottomPad, listBottomPad, composerKeyboardPad };
-}
 
 // ===== MAIN FUNCTION =====
 
 /**
- * Keyboard inset for the coach composer. The list only gets a small gap, not another nav-height pad.
- * hideBottomNav is still accepted because both screens pass it. This hook does not read it.
+ * Padding numbers so the coach composer and message list respect the keyboard and shell nav.
+ * hideBottomNav is accepted because both screens still pass it; this hook does not read it.
+ * Hook order is frozen: useSafeAreaInsets → useState → useEffect.
  * @param {{ hideBottomNav?: boolean }} [options]
- * @returns {{ keyboardVisible: boolean, keyboardInset: number, composerBottomPad: number, composerKeyboardPad: number, listBottomPad: number, shellNavPad: number }}
+ * @returns {{
+ *   keyboardVisible: boolean,
+ *   keyboardInset: number,
+ *   composerBottomPad: number,
+ *   composerKeyboardPad: number,
+ *   listBottomPad: number,
+ *   shellNavPad: number,
+ * }}
  */
-export function keyboardBehavior({ hideBottomNav: _hideBottomNav = false } = {}) {
-  // vocab: useSafeAreaInsets = the home-indicator (or notch) inset from the operating system.
-  const insets = useSafeAreaInsets();
-  const shellNavPad = BOTTOM_NAV_BAR_HEIGHT + Math.max(insets.bottom, 0);
-  const [keyboardInset, setKeyboardInset] = useState(0);
+export function keyboardBehavior({ hideBottomNav: _unusedHideBottomNav = false } = {}) {
+  // vocab: useSafeAreaInsets = home-indicator / notch inset from the OS safe-area context.
+  const safeArea = useSafeAreaInsets();
+  const bottomSafeInsetPixels = Math.max(safeArea.bottom, 0);
+  const shellNavPadPixels = BOTTOM_NAV_BAR_HEIGHT + bottomSafeInsetPixels;
 
-  // vocab: useEffect cleanup removes the listeners so a closed chat does not keep moving padding.
+  // vocab: keyboardInsetPixels = how many px the keyboard covers from the bottom.
+  const [keyboardInsetPixels, setKeyboardInsetPixels] = useState(0);
+
+  // 1. Listen for keyboard show/hide for as long as this screen is mounted.
   useEffect(() => {
-    const eventNames = keyboardEventNamesForPlatform();
-    const onKeyboardShow = (keyboardEvent) => {
-      setKeyboardInset(readKeyboardInsetFromEvent(keyboardEvent));
-    };
-    const onKeyboardHide = () => {
-      setKeyboardInset(0);
-    };
-    const showSubscription = Keyboard.addListener(eventNames.show, onKeyboardShow);
-    const hideSubscription = Keyboard.addListener(eventNames.hide, onKeyboardHide);
+    const listenerNames = pickKeyboardListenerNamesForThisOs();
+
+    const showSubscription = Keyboard.addListener(listenerNames.show, (keyboardEvent) => {
+      const measuredInsetPixels = measureKeyboardInsetFromEvent(keyboardEvent);
+      setKeyboardInsetPixels(measuredInsetPixels);
+    });
+
+    const hideSubscription = Keyboard.addListener(listenerNames.hide, () => {
+      setKeyboardInsetPixels(0);
+    });
+
+    // 2. Tear listeners down when the user leaves chat so nothing keeps nudging padding.
     return () => {
       showSubscription.remove();
       hideSubscription.remove();
     };
   }, []);
 
-  const isKeyboardVisible = keyboardInset > 0;
-  const paddingBundle = buildCoachPaddingBundle(isKeyboardVisible, keyboardInset, shellNavPad);
+  // 3. Turn “keyboard open or closed” into the three pad values screens actually apply.
+  const keyboardIsOpen = keyboardInsetPixels > 0;
+  const composerBottomPad = bottomPadForComposer(keyboardIsOpen, shellNavPadPixels);
+  const listBottomPad = bottomPadForMessageList(keyboardIsOpen);
+  const composerKeyboardPad = keyboardLiftPadForComposer(
+    keyboardIsOpen,
+    keyboardInsetPixels,
+    composerBottomPad,
+  );
 
   return {
-    keyboardVisible: isKeyboardVisible,
-    keyboardInset,
-    composerBottomPad: paddingBundle.composerBottomPad,
-    composerKeyboardPad: paddingBundle.composerKeyboardPad,
-    listBottomPad: paddingBundle.listBottomPad,
-    shellNavPad,
+    keyboardVisible: keyboardIsOpen,
+    keyboardInset: keyboardInsetPixels,
+    composerBottomPad,
+    composerKeyboardPad,
+    listBottomPad,
+    shellNavPad: shellNavPadPixels,
   };
+}
+
+// ===== PLUMBING — skip unless debugging =====
+
+function pickKeyboardListenerNamesForThisOs() {
+  const runningOnIos = Platform.OS === OPERATING_SYSTEM_IOS;
+  if (runningOnIos) {
+    return KEYBOARD_LISTENER_NAMES_BY_OS.ios;
+  }
+  return KEYBOARD_LISTENER_NAMES_BY_OS.default;
+}
+
+function measureIosKeyboardInsetFromEndCoordinates(endCoordinates) {
+  const windowHeightPixels = Dimensions.get('window').height;
+  const keyboardTopOnScreenPixels = endCoordinates.screenY;
+  const rawInsetPixels = windowHeightPixels - keyboardTopOnScreenPixels;
+  return Math.max(0, Math.round(rawInsetPixels));
+}
+
+/**
+ * Read keyboard height from a Keyboard show event.
+ * Keep a reported height of 0 — do not treat 0 as missing.
+ * @param {object} keyboardEvent
+ * @returns {number}
+ */
+function measureKeyboardInsetFromEvent(keyboardEvent) {
+  if (!keyboardEvent) {
+    return 0;
+  }
+  if (!keyboardEvent.endCoordinates) {
+    return 0;
+  }
+
+  const endCoordinates = keyboardEvent.endCoordinates;
+  const runningOnIos = Platform.OS === OPERATING_SYSTEM_IOS;
+  if (runningOnIos) {
+    return measureIosKeyboardInsetFromEndCoordinates(endCoordinates);
+  }
+
+  let androidReportedHeightPixels = endCoordinates.height;
+  if (androidReportedHeightPixels === null || androidReportedHeightPixels === undefined) {
+    androidReportedHeightPixels = 0;
+  }
+  return Math.max(0, androidReportedHeightPixels);
+}
+
+function bottomPadForComposer(keyboardIsOpen, shellNavPadPixels) {
+  if (keyboardIsOpen) {
+    return GAP_COMPOSER_WHEN_KEYBOARD_UP_PX;
+  }
+  return GAP_COMPOSER_ABOVE_BOTTOM_NAV_PX + shellNavPadPixels;
+}
+
+function bottomPadForMessageList(keyboardIsOpen) {
+  if (keyboardIsOpen) {
+    return GAP_MESSAGE_LIST_WHEN_KEYBOARD_UP_PX;
+  }
+  return GAP_MESSAGE_LIST_WHEN_KEYBOARD_DOWN_PX;
+}
+
+function keyboardLiftPadForComposer(
+  keyboardIsOpen,
+  keyboardInsetPixels,
+  composerBottomPadWhenClosed,
+) {
+  if (keyboardIsOpen) {
+    return keyboardInsetPixels + GAP_COMPOSER_WHEN_KEYBOARD_UP_PX;
+  }
+  return composerBottomPadWhenClosed;
 }

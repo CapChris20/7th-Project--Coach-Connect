@@ -1,10 +1,6 @@
-// Nutrition shell: loads goals and logs, then routes to search / scan / settings overlays.
-// Flow: listen to nutrition_logs → decide onboarding vs Today → open child screens for add/edit.
-// Mounted from the client home tab (and trainer client nutrition views).
-
-// DailyLogContent — owns nutrition day state and swaps between log / search / barcode / settings screens.
-// Flow: listen to nutrition_logs for viewDate → load goals → render DailyFoodLogScreen or a child overlay.
-// Used by the client nutrition tab. Persistence helpers live in saveLoggedFood.js.
+// Nutrition tab shell: live logs, goals, and overlay screens (search / scan / settings / facts).
+// Flow: listen nutrition_logs for viewDate → load goals → onboarding or DailyFoodLogScreen → child overlays.
+// Used by the client nutrition tab. Firestore writes live in saveLoggedFood.js.
 
 import React, { useState, useEffect, useRef } from 'react';
 import { View, ActivityIndicator, TouchableOpacity } from 'react-native';
@@ -12,7 +8,7 @@ import { auth, db } from '../../app-start/cloudConnection';
 import { getClientDateKey } from '../../helpers/dateStrings';
 import { doc, getDoc, setDoc, deleteDoc, onSnapshot, collection, query, where } from 'firebase/firestore';
 import { useTheme } from '../../look-and-feel/lightDarkMode';
-import { accentGradients } from '../../look-and-feel/colorPalette';
+import { accentGradients, lightColors, darkColors } from '../../look-and-feel/colorPalette';
 import BottomMenuBar from '../../navigation/BottomMenuBar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { SHELL_SAFE_AREA_EDGES, ShellBottomNavAnchor } from '../../navigation/bottomMenuSpacing';
@@ -39,7 +35,6 @@ import NutritionSettingsScreen from '../targets/NutritionSettingsScreen';
 import NutritionFactsScreen from '../food-details/NutritionFactsScreen';
 import EditServingPopup from '../food-details/EditServingPopup';
 
-
 // ===== NAMED CONSTANTS =====
 
 const DEDUP_CLEAR_MS = 3000;
@@ -49,30 +44,44 @@ const FALLBACK_CALORIE_GOAL = 2200;
 const DEFAULT_PROTEIN_GOAL = 150;
 const DEFAULT_CARBS_GOAL = 220;
 const DEFAULT_FAT_GOAL = 70;
+// Settings overlay uses slightly different carb/fat fallbacks — keep those letters frozen.
+const SETTINGS_FALLBACK_PROTEIN = 150;
+const SETTINGS_FALLBACK_CARBS = 200;
+const SETTINGS_FALLBACK_FAT = 65;
 // Manipulate here: how many frequent-food names to preload for search suggestions.
 const TOP_FOOD_NAMES_LIMIT = 3;
 const DEFAULT_SERVING_GRAMS = 100;
 const MACRO_ROUND_TENTHS = 10;
+const OZ_TO_GRAMS = 28.3495;
+const GRAMS_TO_OZ = 1 / OZ_TO_GRAMS;
+const ML_TO_FL_OZ = 1 / 29.5735;
+const MAX_EDIT_RATIO = 10;
+const MIN_EDIT_RATIO = 0.01;
+const MEAL_TYPE_NAMES = ['breakfast', 'lunch', 'dinner', 'snacks'];
 const flexScrollHost = { flex: 1, minHeight: 0 };
 
 // ===== HELPER FUNCTIONS =====
 
 function numberOrZero(value) {
   const parsed = Number(value);
-  if (typeof parsed === 'number' && !Number.isNaN(parsed)) return parsed;
+  const parsedIsRealNumber = typeof parsed === 'number' && !Number.isNaN(parsed);
+  if (parsedIsRealNumber) return parsed;
   return 0;
 }
 
 function roundTenths(value) {
-  return Math.round(numberOrZero(value) * MACRO_ROUND_TENTHS) / MACRO_ROUND_TENTHS;
+  const scaled = numberOrZero(value) * MACRO_ROUND_TENTHS;
+  return Math.round(scaled) / MACRO_ROUND_TENTHS;
 }
 
 // Blank text in an edit field means "not entered" (null), not zero.
 // Used by the edit-amount save so untouched fields keep the old serving.
 function parseOptionalNumber(text) {
-  if (text == null || String(text).trim() === '') return null;
+  const textIsBlank = text == null || String(text).trim() === '';
+  if (textIsBlank) return null;
   const parsed = Number(text);
-  return Number.isNaN(parsed) ? null : parsed;
+  if (Number.isNaN(parsed)) return null;
+  return parsed;
 }
 
 function mapLogDocToRow(logDoc) {
@@ -87,37 +96,216 @@ function mapLogDocToRow(logDoc) {
   };
 }
 
+function stampToDate(stamp) {
+  if (!stamp) return new Date(0);
+  if (typeof stamp.toDate === 'function') return stamp.toDate();
+  return new Date(stamp || 0);
+}
+
 function sortLogsByCreatedAt(rows) {
   return rows.slice().sort((left, right) => {
-    const leftTime = left.created_at?.toDate?.() || new Date(left.created_at || 0);
-    const rightTime = right.created_at?.toDate?.() || new Date(right.created_at || 0);
+    const leftTime = stampToDate(left.created_at);
+    const rightTime = stampToDate(right.created_at);
     return leftTime - rightTime;
   });
 }
 
+function safeEntryObject(entry) {
+  if (entry) return entry;
+  return {};
+}
+
 function foodFromQuickAddEntry(entry) {
+  const safeEntry = safeEntryObject(entry);
+  let foodName = 'Food Item';
+  if (safeEntry.name) foodName = safeEntry.name;
+  let servingUnit = 'g';
+  if (safeEntry.servingUnit) servingUnit = String(safeEntry.servingUnit).trim() || 'g';
   return {
-    name: entry?.name || 'Food Item',
-    calories: numberOrZero(entry?.calories),
-    protein: roundTenths(entry?.protein),
-    carbs: roundTenths(entry?.carbs),
-    fat: roundTenths(entry?.fat),
-    fiber: roundTenths(entry?.fiber),
-    sugar: roundTenths(entry?.sugar),
-    sodium: numberOrZero(entry?.sodium),
-    servingGrams: Math.round(numberOrZero(entry?.servingSize)) || DEFAULT_SERVING_GRAMS,
-    servingSize: numberOrZero(entry?.quantity) || 1,
-    servingUnit: (entry?.servingUnit || 'g').trim() || 'g',
+    name: foodName,
+    calories: numberOrZero(safeEntry.calories),
+    protein: roundTenths(safeEntry.protein),
+    carbs: roundTenths(safeEntry.carbs),
+    fat: roundTenths(safeEntry.fat),
+    fiber: roundTenths(safeEntry.fiber),
+    sugar: roundTenths(safeEntry.sugar),
+    sodium: numberOrZero(safeEntry.sodium),
+    servingGrams: Math.round(numberOrZero(safeEntry.servingSize)) || DEFAULT_SERVING_GRAMS,
+    servingSize: numberOrZero(safeEntry.quantity) || 1,
+    servingUnit,
     source: 'manual',
   };
 }
 
-// ===== MAIN FUNCTION =====
+/**
+ * Macro lane cards for DailyFoodLogScreen — Design Law accentGradients only.
+ * @param {object} totals from calculateMacroTotals
+ * @param {object|null} goals
+ * @returns {Array}
+ */
+function buildMacroLanes(totals, goals) {
+  const proteinEaten = Math.round(totals.protein || 0);
+  const carbsEaten = Math.round(totals.carbs || 0);
+  const fatEaten = Math.round(totals.fat || 0);
+
+  let proteinGoal = DEFAULT_PROTEIN_GOAL;
+  let carbsGoal = DEFAULT_CARBS_GOAL;
+  let fatGoal = DEFAULT_FAT_GOAL;
+  let proteinPercent = 0;
+  let carbsPercent = 0;
+  let fatPercent = 0;
+  if (goals) {
+    if (goals.proteinTarget) {
+      proteinGoal = goals.proteinTarget;
+      proteinPercent = Math.round(((totals.protein || 0) / goals.proteinTarget) * 100);
+    }
+    if (goals.carbsTarget) {
+      carbsGoal = goals.carbsTarget;
+      carbsPercent = Math.round(((totals.carbs || 0) / goals.carbsTarget) * 100);
+    }
+    if (goals.fatTarget) {
+      fatGoal = goals.fatTarget;
+      fatPercent = Math.round(((totals.fat || 0) / goals.fatTarget) * 100);
+    }
+  }
+
+  return [
+    {
+      label: 'Protein',
+      val: proteinEaten,
+      goal: proteinGoal,
+      color: accentGradients[2],
+      pct: proteinPercent,
+    },
+    {
+      label: 'Carbs',
+      val: carbsEaten,
+      goal: carbsGoal,
+      color: accentGradients[1],
+      pct: carbsPercent,
+    },
+    {
+      label: 'Fat',
+      val: fatEaten,
+      goal: fatGoal,
+      color: accentGradients[4],
+      pct: fatPercent,
+    },
+  ];
+}
 
 /**
- * Nutrition day container: live logs, goals, and overlay screens.
- * @param {object} [props]
+ * Breakfast / lunch / dinner / snacks rows with calorie sums for the day list.
+ * @param {object} mealSplit from splitLogsByMeal
+ * @returns {Array}
  */
+function buildMealSummaries(mealSplit) {
+  const mealRows = [];
+  for (let index = 0; index < MEAL_TYPE_NAMES.length; index += 1) {
+    const mealType = MEAL_TYPE_NAMES[index];
+    const foods = mealSplit[mealType] || [];
+    let mealCalories = 0;
+    for (let foodIndex = 0; foodIndex < foods.length; foodIndex += 1) {
+      mealCalories += foods[foodIndex].calories || 0;
+    }
+    const displayName = mealType.charAt(0).toUpperCase() + mealType.slice(1);
+    mealRows.push({ name: displayName, cals: mealCalories, foods });
+  }
+  return mealRows;
+}
+
+function servingUnitIsMilliliters(logRow) {
+  let unitText = '';
+  if (logRow && logRow.metadata && logRow.metadata.servingUnit) {
+    unitText = String(logRow.metadata.servingUnit).toLowerCase();
+  }
+  return unitText === 'ml';
+}
+
+function gramsOrMlToDisplayOz(gramsOrMl, unitIsMilliliters) {
+  const conversion = unitIsMilliliters ? ML_TO_FL_OZ : GRAMS_TO_OZ;
+  return (gramsOrMl * conversion).toFixed(1);
+}
+
+function amountLabelForEditingLog(editingLog) {
+  if (servingUnitIsMilliliters(editingLog)) return 'Amount (fl oz)';
+  return 'Amount (oz)';
+}
+
+function quantityPlaceholderForEditingLog(editingLog) {
+  if (!editingLog) return '';
+  const quantity = Number(editingLog.serving_size) || 1;
+  return String(Math.round(quantity * 100) / 100);
+}
+
+function amountPlaceholderForEditingLog(editingLog) {
+  if (!editingLog) return '';
+  const gramsOrMl = Number(editingLog.serving_grams) || 0;
+  return gramsOrMlToDisplayOz(gramsOrMl, servingUnitIsMilliliters(editingLog));
+}
+
+/**
+ * After onboarding saves goals, reload goals + today's logs together.
+ * Kept out of the handler so the recipe stays a numbered list (no Promise.all inline).
+ */
+async function loadGoalsAndLogsForToday(userId, dateKey) {
+  const goalsData = await getDailyGoals(userId);
+  const logsData = await getFoodLogsForDate(userId, dateKey);
+  return { goalsData, logsData };
+}
+
+function pickFavoriteFoodList(userData) {
+  // Prefer nutrition* keys; fall back to older favoriteFoods field names.
+  const loved = userData.nutritionFavoriteFoods || userData.favoriteFoods || [];
+  if (!Array.isArray(loved)) return [];
+  return loved.filter(Boolean);
+}
+
+function pickLeastFavoriteFoodList(userData) {
+  const skipped =
+    userData.nutritionLeastFavoriteFoods || userData.leastFavoriteFoods || [];
+  if (!Array.isArray(skipped)) return [];
+  return skipped.filter(Boolean);
+}
+
+function NutritionShellBottomNav({
+  hideBottomNav,
+  onHomePress,
+  onPlusPress,
+  onVoicePress,
+  onNutritionPress,
+  onWorkoutPress,
+  onMessagesPress,
+}) {
+  if (hideBottomNav) return null;
+  return (
+    <ShellBottomNavAnchor>
+      <BottomMenuBar
+        onHomePress={onHomePress}
+        onPlusPress={onPlusPress}
+        onVoicePress={onVoicePress}
+        onNutritionPress={onNutritionPress}
+        onWorkoutPress={onWorkoutPress}
+        onMessagesPress={onMessagesPress}
+        activeTabKey="nutrition"
+      />
+    </ShellBottomNavAnchor>
+  );
+}
+
+function LoadingNutritionShell({ screenBg, inkColor, bottomNav }) {
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: screenBg }} edges={SHELL_SAFE_AREA_EDGES}>
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator color={inkColor} size="small" />
+      </View>
+      {bottomNav}
+    </SafeAreaView>
+  );
+}
+
+// ===== MAIN FUNCTION =====
+
 export const DailyLogContent = ({
   onBack,
   onProfilePress,
@@ -137,6 +325,7 @@ export const DailyLogContent = ({
   /** Design Law Weekly Momentum (missing-screens 11/12). */
   onOpenWeeklyMomentum,
 } = {}) => {
+  // ----- state (order frozen — do not reorder hooks) -----
   const [loading, setLoading] = useState(true);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const [goals, setGoals] = useState(null);
@@ -154,7 +343,7 @@ export const DailyLogContent = ({
   const [showDailyFacts, setShowDailyFacts] = useState(false);
   const [recordError, setLogError] = useState(null);
   const [topFoodNames, setTopFoodNames] = useState([]);
-  // PNG 21 hub pills — from users/{uid} onboarding prefs (nutritionFavoriteFoods / nutritionLeastFavoriteFoods)
+  // PNG 21 hub pills — from users/{uid} onboarding prefs
   const [favoriteFoods, setFavoriteFoods] = useState([]);
   const [leastFavoriteFoods, setLeastFavoriteFoods] = useState([]);
   const [viewDate, setViewDate] = useState(getClientDateKey());
@@ -162,12 +351,14 @@ export const DailyLogContent = ({
   const pendingLogs = useRef(new Set());
   const { isDark } = useTheme();
 
+  // Tell parent when nutrition onboarding is covering the tab bar.
   useEffect(() => {
     if (typeof onOnboardingActiveChange !== 'function') return undefined;
     onOnboardingActiveChange(needsOnboarding);
     return () => onOnboardingActiveChange(false);
   }, [needsOnboarding, onOnboardingActiveChange]);
 
+  // Tell parent when settings overlay should hide the tab bar.
   useEffect(() => {
     if (typeof onSettingsOverlayChange !== 'function') return undefined;
     onSettingsOverlayChange(showNutritionSettings);
@@ -175,46 +366,57 @@ export const DailyLogContent = ({
   }, [showNutritionSettings, onSettingsOverlayChange]);
 
   const today = getClientDateKey();
-  const uid = auth.currentUser?.uid;
+  let uid = null;
+  if (auth.currentUser) {
+    uid = auth.currentUser.uid;
+  }
 
+  // Live nutrition_logs for the day the user is viewing.
   useEffect(() => {
     if (!uid || !db) return undefined;
 
     const logsRef = collection(db, 'nutrition_logs');
-    const logsQuery = query(logsRef, where('user_id', '==', uid), where('date', '==', viewDate));
+    const logsQuery = query(
+      logsRef,
+      where('user_id', '==', uid),
+      where('date', '==', viewDate),
+    );
 
-    const unsub = onSnapshot(
+    // vocab: onSnapshot = live Firestore listener; returns unsubscribe
+    const unsubscribe = onSnapshot(
       logsQuery,
       (querySnapshot) => {
-        const next = [];
+        const logRows = [];
         querySnapshot.forEach((logDoc) => {
-          next.push(mapLogDocToRow(logDoc));
+          logRows.push(mapLogDocToRow(logDoc));
         });
-        setLogs(sortLogsByCreatedAt(next));
+        setLogs(sortLogsByCreatedAt(logRows));
         setLoading(false);
       },
       (err) => {
         console.error('Nutrition logs listener:', err);
-      }
+      },
     );
 
     return () => {
       try {
-        unsub();
+        unsubscribe();
       } catch (_) {
         /* ignore */
       }
     };
   }, [uid, viewDate, db]);
 
+  // Calendar dots — which dates already have food logged.
   useEffect(() => {
     if (!uid) return;
     getDatesWithFoodLogs(uid).then(setDatesWithLogs).catch(() => setDatesWithLogs([]));
   }, [uid, logs.length]);
 
+  // First load: do they have nutrition_goals? If not → onboarding.
   useEffect(() => {
     if (!uid) return;
-    const loadData = async () => {
+    const loadGoalsOrOnboarding = async () => {
       setLoading(true);
       try {
         let goalDocExists = false;
@@ -235,9 +437,10 @@ export const DailyLogContent = ({
         setLoading(false);
       }
     };
-    loadData();
+    loadGoalsOrOnboarding();
   }, [uid]);
 
+  // Keep goals in sync when nutrition_goals doc changes (skip during onboarding).
   useEffect(() => {
     if (!uid || !db || needsOnboarding) return undefined;
     const goalRef = doc(db, 'nutrition_goals', uid);
@@ -248,21 +451,22 @@ export const DailyLogContent = ({
           const goalsData = await getDailyGoals(uid);
           setGoals(goalsData);
         } catch (err) {
-          if (__DEV__) console.warn('Nutrition goals listener:', err?.message);
+          if (__DEV__) console.warn('Nutrition goals listener:', (err && err.message));
         }
       },
       (err) => {
-        if (__DEV__) console.warn('nutrition_goals listener error:', err?.message);
-      }
+        if (__DEV__) console.warn('nutrition_goals listener error:', (err && err.message));
+      },
     );
   }, [uid, needsOnboarding]);
 
+  // Frequent food names for search suggestions.
   useEffect(() => {
     if (!uid) return;
     getTopLoggedFoodNames(uid, TOP_FOOD_NAMES_LIMIT).then(setTopFoodNames).catch(() => {});
   }, [uid]);
 
-  // Load love/skip foods for Nutrition settings hub (PNG 21)
+  // Love / skip foods for Nutrition settings hub (PNG 21).
   useEffect(() => {
     if (!uid || !db) return undefined;
     const userRef = doc(db, 'users', uid);
@@ -274,21 +478,26 @@ export const DailyLogContent = ({
           setLeastFavoriteFoods([]);
           return;
         }
-        const data = snap.data() || {};
-        const loved = data.nutritionFavoriteFoods || data.favoriteFoods || [];
-        const skipped = data.nutritionLeastFavoriteFoods || data.leastFavoriteFoods || [];
-        setFavoriteFoods(Array.isArray(loved) ? loved.filter(Boolean) : []);
-        setLeastFavoriteFoods(Array.isArray(skipped) ? skipped.filter(Boolean) : []);
+        const userData = snap.data() || {};
+        setFavoriteFoods(pickFavoriteFoodList(userData));
+        setLeastFavoriteFoods(pickLeastFavoriteFoodList(userData));
       },
       (err) => {
-        if (__DEV__) console.warn('Nutrition food prefs listener:', err?.message);
+        if (__DEV__) console.warn('Nutrition food prefs listener:', (err && err.message));
       },
     );
   }, [uid]);
 
+  /**
+   * After nutrition onboarding wizard finishes: save goals, prefs, reload day.
+   * Flow: 1. leave onboarding  2. upsert goals  3. prefs  4. reload goals+logs
+   */
   const handleOnboardingComplete = async ({ calories, macros, favorites, leastFavorites }) => {
+    // 1. Leave the onboarding screen immediately.
     setNeedsOnboarding(false);
     if (!uid) return;
+
+    // 2. Persist calorie + macro targets.
     setLoading(true);
     try {
       await upsertDailyGoals(uid, {
@@ -299,13 +508,12 @@ export const DailyLogContent = ({
         macroSplit: { protein: macros.protein, carbs: macros.carbs, fat: macros.fat },
       });
 
+      // 3. Mirror love/skip lists into local state when the wizard sent them.
       if (Array.isArray(favorites)) setFavoriteFoods(favorites.filter(Boolean));
       if (Array.isArray(leastFavorites)) setLeastFavoriteFoods(leastFavorites.filter(Boolean));
 
-      const [goalsData, logsData] = await Promise.all([
-        getDailyGoals(uid),
-        getFoodLogsForDate(uid, today),
-      ]);
+      // 4. Reload goals + today's logs so the day screen has real data.
+      const { goalsData, logsData } = await loadGoalsAndLogsForToday(uid, today);
       setGoals(goalsData);
       setLogs(logsData);
     } finally {
@@ -316,67 +524,60 @@ export const DailyLogContent = ({
   const totals = calculateMacroTotals(logs);
   const mealSplit = splitLogsByMeal(logs);
 
-  const consumed = totals.calories || 0;
-  const goal = goals?.calories || FALLBACK_CALORIE_GOAL;
-  const burned = 0;
+  const caloriesConsumed = totals.calories || 0;
+  let calorieGoal = FALLBACK_CALORIE_GOAL;
+  if (goals && goals.calories) {
+    calorieGoal = goals.calories;
+  }
+  const caloriesBurned = 0;
 
-  // Macro lane accents = Design Law accentGradients only (never solid purple/pink hex chrome)
-  const macros = [
-    {
-      label: 'Protein',
-      val: Math.round(totals.protein || 0),
-      goal: goals?.proteinTarget || DEFAULT_PROTEIN_GOAL,
-      color: accentGradients[2],
-      pct: goals?.proteinTarget ? Math.round(((totals.protein || 0) / goals.proteinTarget) * 100) : 0,
-    },
-    {
-      label: 'Carbs',
-      val: Math.round(totals.carbs || 0),
-      goal: goals?.carbsTarget || DEFAULT_CARBS_GOAL,
-      color: accentGradients[1],
-      pct: goals?.carbsTarget ? Math.round(((totals.carbs || 0) / goals.carbsTarget) * 100) : 0,
-    },
-    {
-      label: 'Fat',
-      val: Math.round(totals.fat || 0),
-      goal: goals?.fatTarget || DEFAULT_FAT_GOAL,
-      color: accentGradients[4],
-      pct: goals?.fatTarget ? Math.round(((totals.fat || 0) / goals.fatTarget) * 100) : 0,
-    },
-  ];
+  const macros = buildMacroLanes(totals, goals);
+  const meals = buildMealSummaries(mealSplit);
 
-  const MEAL_TYPES = ['breakfast', 'lunch', 'dinner', 'snacks'];
-  const meals = MEAL_TYPES.map((type) => {
-    const foods = mealSplit[type] || [];
-    const cals = foods.reduce((s, f) => s + (f.calories || 0), 0);
-    return { name: type.charAt(0).toUpperCase() + type.slice(1), cals, foods };
-  });
-
+  /** Open food search for a meal row. */
   const handleLog = (mealType) => {
+    // 1. Remember which meal the food belongs to.
     setActiveMealType(mealType.toLowerCase());
+    // 2. Clear any leftover pill-search text.
     setInitialSearchQuery('');
+    // 3. Show the search overlay.
     setShowFoodSearch(true);
   };
 
+  /** Hub pill → search snacks for that food name. */
   const handlePillSearch = (term) => {
+    // 1. Pills always land in snacks.
     setActiveMealType('snacks');
+    // 2. Prefill the search box.
     setInitialSearchQuery(term);
+    // 3. Open search.
     setShowFoodSearch(true);
   };
 
+  /** Open barcode scanner for a meal. */
   const handleScan = (mealType) => {
+    // 1. Bind the upcoming scan to this meal.
     setActiveMealType(mealType.toLowerCase());
+    // 2. Show the scanner.
     setShowBarcodeScanner(true);
   };
 
+  /** Open quick-add sheet for a meal (defaults to snacks). */
   const handleOpenQuickAdd = (mealType) => {
-    setActiveMealType(typeof mealType === 'string' ? mealType.toLowerCase() : 'snacks');
+    // 1. Normalize meal name; fall back to snacks if missing.
+    const mealName =
+      typeof mealType === 'string' ? mealType.toLowerCase() : 'snacks';
+    setActiveMealType(mealName);
+    // 2. Show quick-add.
     setShowQuickAdd(true);
   };
 
+  /** Settings screen saved new calorie/macro targets. */
   const handleGoalsUpdated = async (newGoals) => {
+    // 1. Need a signed-in user.
     if (!uid) return;
     try {
+      // 2. Write goals, then re-read so the day screen matches Firestore.
       await upsertDailyGoals(uid, newGoals);
       const goalsData = await getDailyGoals(uid);
       setGoals(goalsData);
@@ -385,9 +586,12 @@ export const DailyLogContent = ({
     }
   };
 
+  /** Wipe nutrition_goals so the onboarding wizard runs again. */
   const handleResetOnboarding = async () => {
+    // 1. Need user + Firestore.
     if (!uid || !db) return;
     try {
+      // 2. Delete goals doc and flip back into onboarding.
       await deleteDoc(doc(db, 'nutrition_goals', uid));
       setGoals(null);
       setNeedsOnboarding(true);
@@ -396,32 +600,43 @@ export const DailyLogContent = ({
     }
   };
 
+  /**
+   * Write one food row, refresh today's list, close overlays.
+   * Flow: 1. dedupe  2. addFoodLog  3. refresh  4. clear pending after delay
+   */
   const handleFoodAdded = async (food, mealType) => {
     if (!uid) return;
 
-    // Build a dedup key from food name + meal type + date
-    const name = food?.food_name || food?.name || 'item';
-    const keyMeal = (mealType || activeMealType || '').toLowerCase();
-    const dedupKey = `${name}:${keyMeal}:${today}`;
+    let foodName = 'item';
+    if (food && food.food_name) foodName = food.food_name;
+    else if (food && food.name) foodName = food.name;
+    const mealForKey = (mealType || activeMealType || '').toLowerCase();
+    const dedupKey = `${foodName}:${mealForKey}:${today}`;
 
+    // 1. Skip double-tap while the same food+meal is already saving.
     if (pendingLogs.current.has(dedupKey)) {
       console.log('Duplicate log prevented:', dedupKey);
       return;
     }
-
     pendingLogs.current.add(dedupKey);
 
     try {
-      await addFoodLog(uid, { food, mealType: mealType || activeMealType, date: today });
-      const updated = await getFoodLogsForDate(uid, today);
-      setLogs(updated);
+      // 2. Write nutrition_logs row, then refresh the day list.
+      await addFoodLog(uid, {
+        food,
+        mealType: mealType || activeMealType,
+        date: today,
+      });
+      const updatedLogs = await getFoodLogsForDate(uid, today);
+      setLogs(updatedLogs);
       setLogError(null);
       if (typeof onNutritionDataChanged === 'function') onNutritionDataChanged();
     } catch (err) {
       console.error('Add food error:', err);
       setLogError('Failed to log food. Check your connection and try again.');
     } finally {
-      // Remove from pending after short delay to avoid long-term lockout
+      // 3. Clear dedupe after a short window; close every add overlay.
+      // Manipulate here: DEDUP_CLEAR_MS — raise if slow networks still double-log
       setTimeout(() => pendingLogs.current.delete(dedupKey), DEDUP_CLEAR_MS);
       setShowFoodSearch(false);
       setShowBarcodeScanner(false);
@@ -429,9 +644,12 @@ export const DailyLogContent = ({
     }
   };
 
+  /** Delete one nutrition_logs row and refresh today. */
   const handleRemoveLog = async (logId) => {
+    // 1. Need user + row id.
     if (!uid || !logId) return;
     try {
+      // 2. Delete, then re-read today's logs.
       await deleteFoodLog(logId);
       const updated = await getFoodLogsForDate(uid, today);
       setLogs(updated);
@@ -441,47 +659,70 @@ export const DailyLogContent = ({
     }
   };
 
-  const OZ_TO_G = 28.3495;
-  const G_TO_OZ = 1 / OZ_TO_G;
-  const ML_TO_FL_OZ = 1 / 29.5735;
-
+  /** Open edit-serving popup with oz + quantity prefilled from the log row. */
   const handleEditLog = (log) => {
+    // 1. Remember which row we are editing.
     setEditingLog(log);
+
+    // 2. Prefill amount in oz (or fl oz when the unit was ml).
     const gramsOrMl = Number(log.serving_grams) || 0;
-    const isMl = (log.metadata?.servingUnit || '').toLowerCase() === 'ml';
-    const displayOz = (gramsOrMl * (isMl ? ML_TO_FL_OZ : G_TO_OZ)).toFixed(1);
+    const unitIsMilliliters = servingUnitIsMilliliters(log);
+    const displayOz = gramsOrMlToDisplayOz(gramsOrMl, unitIsMilliliters);
     setEditAmountValue(displayOz);
-    const qty = Number(log.serving_size) || 1;
-    setEditQuantityValue(String(Math.round(qty * 100) / 100));
+
+    // 3. Prefill quantity (servings).
+    const quantity = Number(log.serving_size) || 1;
+    setEditQuantityValue(String(Math.round(quantity * 100) / 100));
   };
 
+  /** When quantity changes, keep the oz amount in sync with grams-per-serving. */
   const handleQuantityChange = (val) => {
+    // 1. Always update the text field.
     setEditQuantityValue(val);
     if (!editingLog) return;
-    const newQty = parseFloat(val);
-    if (isNaN(newQty) || newQty <= 0) return;
-    const oldQty = Number(editingLog.serving_size) || 1;
+
+    // 2. Ignore empty / invalid / non-positive quantity while typing.
+    const newQuantity = parseFloat(val);
+    if (isNaN(newQuantity) || newQuantity <= 0) return;
+
+    // 3. Scale grams from old qty → new qty, then show oz.
+    const oldQuantity = Number(editingLog.serving_size) || 1;
     const oldGrams = Number(editingLog.serving_grams) || 100;
-    const gramsPerServing = oldGrams / oldQty;
-    const newGrams = newQty * gramsPerServing;
-    setEditAmountValue((newGrams * G_TO_OZ).toFixed(1));
+    const gramsPerServing = oldGrams / oldQuantity;
+    const newGrams = newQuantity * gramsPerServing;
+    setEditAmountValue((newGrams * GRAMS_TO_OZ).toFixed(1));
   };
 
+  /**
+   * Save edited serving: oz → grams, scale macros by ratio, refresh day.
+   * Flow: 1. parse oz  2. resolve qty  3. clamp ratio  4. updateFoodLog  5. refresh
+   */
   const handleSaveEditAmount = async () => {
-    if (!editingLog?.id) return;
+    // 1. Need a row + a positive oz amount.
+    if (!editingLog || !editingLog.id) return;
     const currentGrams = Number(editingLog.serving_grams) || 1;
     const ozEntered = parseOptionalNumber(editAmountValue);
     if (ozEntered == null || Number.isNaN(ozEntered) || ozEntered <= 0) return;
-    const newAmount = Math.round(ozEntered * OZ_TO_G);
-    const newQty = parseOptionalNumber(editQuantityValue);
-    const finalQty = (newQty != null && !Number.isNaN(newQty) && newQty > 0)
-      ? newQty
-      : (Number(editingLog.serving_size) || 1);
-    const ratio = Math.min(10, Math.max(0.01, newAmount / currentGrams));
+
+    // 2. Resolve quantity — typed value if valid, else keep the old serving size.
+    const typedQuantity = parseOptionalNumber(editQuantityValue);
+    const typedQuantityIsValid =
+      typedQuantity != null && !Number.isNaN(typedQuantity) && typedQuantity > 0;
+    let finalQuantity = Number(editingLog.serving_size) || 1;
+    if (typedQuantityIsValid) {
+      finalQuantity = typedQuantity;
+    }
+
+    // 3. Convert oz → grams and clamp the scale ratio so macros cannot explode.
+    const newAmountGrams = Math.round(ozEntered * OZ_TO_GRAMS);
+    const rawRatio = newAmountGrams / currentGrams;
+    const ratio = Math.min(MAX_EDIT_RATIO, Math.max(MIN_EDIT_RATIO, rawRatio));
+
     try {
+      // 4. Patch the log row macros by the same ratio.
       await updateFoodLog(editingLog.id, {
-        serving_grams: newAmount,
-        serving_size: roundTenths(finalQty),
+        serving_grams: newAmountGrams,
+        serving_size: roundTenths(finalQuantity),
         calories: roundTenths((Number(editingLog.calories) || 0) * ratio),
         protein: roundTenths((Number(editingLog.protein) || 0) * ratio),
         carbs: roundTenths((Number(editingLog.carbs) || 0) * ratio),
@@ -490,6 +731,8 @@ export const DailyLogContent = ({
         sugar: roundTenths((Number(editingLog.sugar) || 0) * ratio),
         sodium: roundTenths((Number(editingLog.sodium) || 0) * ratio),
       });
+
+      // 5. Refresh today's list and close the popup.
       const updated = await getFoodLogsForDate(uid, today);
       setLogs(updated);
       if (typeof onNutritionDataChanged === 'function') onNutritionDataChanged();
@@ -499,38 +742,114 @@ export const DailyLogContent = ({
     }
   };
 
-  const { lightColors, darkColors } = require('../../look-and-feel/colorPalette');
+  /** Scanner closed — maybe open quick-add or search with a query. */
+  const handleBarcodeClose = (payload) => {
+    // 1. Always hide the scanner first.
+    setShowBarcodeScanner(false);
+
+    // 2. Route to the overlay the scanner asked for (if any).
+    if (!payload) return;
+    if (payload.openQuickAdd) {
+      setShowQuickAdd(true);
+      return;
+    }
+    if (payload.openFoodSearch) {
+      setInitialSearchQuery('');
+      setShowFoodSearch(true);
+      return;
+    }
+    if (payload.searchQuery != null) {
+      setInitialSearchQuery(payload.searchQuery || '');
+      setShowFoodSearch(true);
+    }
+  };
+
+  const handleCloseFoodSearch = () => {
+    setShowFoodSearch(false);
+    setInitialSearchQuery('');
+  };
+
+  const handleOpenBarcodeFromSearch = () => {
+    setShowFoodSearch(false);
+    setShowBarcodeScanner(true);
+  };
+
+  const handleOpenQuickAddFromSearch = () => {
+    setShowFoodSearch(false);
+    setShowQuickAdd(true);
+  };
+
+  const handleQuickAddLogFood = (entry) => {
+    // QuickAddNutrition UI already collects macros in grams.
+    const foodCard = foodFromQuickAddEntry(entry);
+    let mealForLog = activeMealType;
+    if (entry && entry.mealType) mealForLog = entry.mealType;
+    handleFoodAdded(foodCard, mealForLog);
+  };
+
+  const handleOpenSearchFromDay = () => {
+    setInitialSearchQuery('');
+    setShowFoodSearch(true);
+  };
+
+  // ----- theme + bottom nav (named before any early return) -----
   const colors = isDark ? darkColors : lightColors;
   const screenBg = colors.nbBackground;
-  const bottomNavEl = hideBottomNav ? null : (
-    <ShellBottomNavAnchor>
-      <BottomMenuBar
-        onHomePress={onHomePress}
-        onPlusPress={onPlusPress}
-        onVoicePress={onVoicePress}
-        onNutritionPress={onNutritionPress}
-        onWorkoutPress={onWorkoutPress}
-        onMessagesPress={onMessagesPress}
-        activeTabKey="nutrition"
-      />
-    </ShellBottomNavAnchor>
+  const bottomNavEl = (
+    <NutritionShellBottomNav
+      hideBottomNav={hideBottomNav}
+      onHomePress={onHomePress}
+      onPlusPress={onPlusPress}
+      onVoicePress={onVoicePress}
+      onNutritionPress={onNutritionPress}
+      onWorkoutPress={onWorkoutPress}
+      onMessagesPress={onMessagesPress}
+    />
   );
+
+  // Parent owns the tab bar during onboarding only when it listens for active-change.
+  const parentOwnsOnboardingTabBar =
+    hideBottomNav && typeof onOnboardingActiveChange !== 'function';
+  let onboardingBottomInset = 0;
+  if (parentOwnsOnboardingTabBar) {
+    onboardingBottomInset = NUTRITION_ONBOARDING_TAB_BAR_CLEARANCE;
+  }
+
+  let settingsCalories = DEFAULT_CALORIE_GOAL;
+  let settingsProtein = SETTINGS_FALLBACK_PROTEIN;
+  let settingsCarbs = SETTINGS_FALLBACK_CARBS;
+  let settingsFat = SETTINGS_FALLBACK_FAT;
+  if (goals) {
+    if (goals.calories != null) settingsCalories = goals.calories;
+    if (goals.proteinTarget != null) settingsProtein = goals.proteinTarget;
+    if (goals.carbsTarget != null) settingsCarbs = goals.carbsTarget;
+    if (goals.fatTarget != null) settingsFat = goals.fatTarget;
+  }
+  const settingsCurrentGoals = {
+    calories: settingsCalories,
+    proteinTarget: settingsProtein,
+    carbsTarget: settingsCarbs,
+    fatTarget: settingsFat,
+  };
+
+  const editPopupIsVisible = !!editingLog;
+  let editPopupFoodName = '';
+  if (editingLog && editingLog.food_name != null) {
+    editPopupFoodName = editingLog.food_name;
+  }
+  const editPopupAmountLabel = amountLabelForEditingLog(editingLog);
+  const editPopupQuantityPlaceholder = quantityPlaceholderForEditingLog(editingLog);
+  const editPopupAmountPlaceholder = amountPlaceholderForEditingLog(editingLog);
+
+  // ----- early overlays (one job each) -----
 
   if (loading) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: screenBg }} edges={SHELL_SAFE_AREA_EDGES}>
-        <View
-          style={{
-            flex: 1,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <ActivityIndicator color={colors.nbInk} size="small" />
-        </View>
-
-        {bottomNavEl}
-      </SafeAreaView>
+      <LoadingNutritionShell
+        screenBg={screenBg}
+        inkColor={colors.nbInk}
+        bottomNav={bottomNavEl}
+      />
     );
   }
 
@@ -540,11 +859,7 @@ export const DailyLogContent = ({
         <View style={{ flex: 1, minHeight: 0 }}>
           <NutritionNewUserSetupScreen
             onComplete={handleOnboardingComplete}
-            reservedBottomInset={
-              hideBottomNav && typeof onOnboardingActiveChange !== 'function'
-                ? NUTRITION_ONBOARDING_TAB_BAR_CLEARANCE
-                : 0
-            }
+            reservedBottomInset={onboardingBottomInset}
           />
         </View>
       </SafeAreaView>
@@ -561,9 +876,9 @@ export const DailyLogContent = ({
             reserveShellBottomNav
             mealType={activeMealType}
             onFoodSelected={handleFoodAdded}
-            onClose={() => { setShowFoodSearch(false); setInitialSearchQuery(''); }}
-            onOpenBarcode={() => { setShowFoodSearch(false); setShowBarcodeScanner(true); }}
-            onOpenQuickAdd={() => { setShowFoodSearch(false); setShowQuickAdd(true); }}
+            onClose={handleCloseFoodSearch}
+            onOpenBarcode={handleOpenBarcodeFromSearch}
+            onOpenQuickAdd={handleOpenQuickAddFromSearch}
             userId={uid}
             initialQuery={initialSearchQuery}
           />
@@ -578,18 +893,7 @@ export const DailyLogContent = ({
       <BarcodeScannerScreen
         mealType={activeMealType}
         onScanSuccess={handleFoodAdded}
-        onClose={(payload) => {
-          setShowBarcodeScanner(false);
-          if (payload?.openQuickAdd) {
-            setShowQuickAdd(true);
-          } else if (payload?.openFoodSearch) {
-            setInitialSearchQuery('');
-            setShowFoodSearch(true);
-          } else if (payload?.searchQuery != null) {
-            setInitialSearchQuery(payload.searchQuery || '');
-            setShowFoodSearch(true);
-          }
-        }}
+        onClose={handleBarcodeClose}
       />
     );
   }
@@ -598,16 +902,13 @@ export const DailyLogContent = ({
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: screenBg }} edges={SHELL_SAFE_AREA_EDGES}>
         <View style={flexScrollHost}>
-        <QuickAddNutrition
-          reserveShellBottomNav
-          mealType={activeMealType}
-          onBack={() => setShowQuickAdd(false)}
-          userId={uid}
-          onLogFood={(entry) => {
-            // QuickAddNutrition UI already collects macros in grams.
-            handleFoodAdded(foodFromQuickAddEntry(entry), entry?.mealType || activeMealType);
-          }}
-        />
+          <QuickAddNutrition
+            reserveShellBottomNav
+            mealType={activeMealType}
+            onBack={() => setShowQuickAdd(false)}
+            userId={uid}
+            onLogFood={handleQuickAddLogFood}
+          />
         </View>
         {bottomNavEl}
       </SafeAreaView>
@@ -621,12 +922,7 @@ export const DailyLogContent = ({
           <NutritionSettingsScreen
             embedded
             reserveShellBottomNav
-            currentGoals={{
-              calories: goals?.calories ?? DEFAULT_CALORIE_GOAL,
-              proteinTarget: goals?.proteinTarget ?? 150,
-              carbsTarget: goals?.carbsTarget ?? 200,
-              fatTarget: goals?.fatTarget ?? 65,
-            }}
+            currentGoals={settingsCurrentGoals}
             favoriteFoods={favoriteFoods}
             leastFavoriteFoods={leastFavoriteFoods}
             onGoalsUpdated={handleGoalsUpdated}
@@ -661,55 +957,40 @@ export const DailyLogContent = ({
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: screenBg }} edges={SHELL_SAFE_AREA_EDGES}>
       <View style={flexScrollHost}>
-      <DailyFoodLogScreen
-        reserveShellBottomNav
-        consumed={consumed}
-        goal={goal}
-        burned={burned}
-        macros={macros}
-        meals={meals}
-        onLog={handleLog}
-        onScan={handleScan}
-        onManualSave={handleFoodAdded}
-        onRemoveLog={handleRemoveLog}
-        onEditLog={handleEditLog}
-        onSearch={() => { setInitialSearchQuery(''); setShowFoodSearch(true); }}
-        onPillSearch={handlePillSearch}
-        onOpenSettings={() => setShowNutritionSettings(true)}
-        onOpenDailyFacts={() => setShowDailyFacts(true)}
-        onOpenWeeklyMomentum={onOpenWeeklyMomentum}
-        viewDate={viewDate}
-        onSelectViewDate={setViewDate}
-        datesWithLogs={datesWithLogs}
-        topFoodNames={topFoodNames}
-        onQuickAdd={handleOpenQuickAdd}
-      />
+        <DailyFoodLogScreen
+          reserveShellBottomNav
+          consumed={caloriesConsumed}
+          goal={calorieGoal}
+          burned={caloriesBurned}
+          macros={macros}
+          meals={meals}
+          onLog={handleLog}
+          onScan={handleScan}
+          onManualSave={handleFoodAdded}
+          onRemoveLog={handleRemoveLog}
+          onEditLog={handleEditLog}
+          onSearch={handleOpenSearchFromDay}
+          onPillSearch={handlePillSearch}
+          onOpenSettings={() => setShowNutritionSettings(true)}
+          onOpenDailyFacts={() => setShowDailyFacts(true)}
+          onOpenWeeklyMomentum={onOpenWeeklyMomentum}
+          viewDate={viewDate}
+          onSelectViewDate={setViewDate}
+          datesWithLogs={datesWithLogs}
+          topFoodNames={topFoodNames}
+          onQuickAdd={handleOpenQuickAdd}
+        />
       </View>
       <EditServingPopup
-        visible={!!editingLog}
-        foodName={editingLog?.food_name ?? ''}
-        amountLabel={
-          (editingLog?.metadata?.servingUnit || '').toLowerCase() === 'ml'
-            ? 'Amount (fl oz)'
-            : 'Amount (oz)'
-        }
+        visible={editPopupIsVisible}
+        foodName={editPopupFoodName}
+        amountLabel={editPopupAmountLabel}
         quantityValue={editQuantityValue}
         amountValue={editAmountValue}
         onQuantityChange={handleQuantityChange}
         onAmountChange={setEditAmountValue}
-        quantityPlaceholder={
-          editingLog
-            ? String(Math.round((Number(editingLog.serving_size) || 1) * 100) / 100)
-            : ''
-        }
-        amountPlaceholder={
-          editingLog
-            ? (
-                (Number(editingLog.serving_grams) || 0)
-                * ((editingLog.metadata?.servingUnit || '').toLowerCase() === 'ml' ? ML_TO_FL_OZ : G_TO_OZ)
-              ).toFixed(1)
-            : ''
-        }
+        quantityPlaceholder={editPopupQuantityPlaceholder}
+        amountPlaceholder={editPopupAmountPlaceholder}
         onCancel={() => setEditingLog(null)}
         onSave={handleSaveEditAmount}
         isDark={isDark}
@@ -720,4 +1001,3 @@ export const DailyLogContent = ({
 };
 
 export default DailyLogContent;
-

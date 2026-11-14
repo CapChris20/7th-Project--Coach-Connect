@@ -1,52 +1,74 @@
 // Live set of user ids the signed-in person has blocked.
-// Flow: subscribe to their block list → keep it in state → message lists can hide those people.
-// Used by: InboxScreen and marketplace gates.
+// Flow: subscribe to their block list → keep it in React state → message lists hide those people.
+// Used by InboxScreen and marketplace gates.
 
 import { useEffect, useState } from 'react';
 import { subscribeMyBlocks } from './blockUser';
 
 // ===== NAMED CONSTANTS =====
 
-const EMPTY_BLOCKED_SET = () => new Set();
-
-// ===== HELPER FUNCTIONS =====
-
-/**
- * @param {string|null|undefined} uid
- * @returns {string}
- */
-function normalizedSignedInUid(uid) {
-  return String(uid || '').trim();
+function makeEmptyBlockedIdSet() {
+  return new Set();
 }
 
 // ===== MAIN FUNCTION =====
 
 /**
- * Hooks stay in this function, in this order: state, then the subscription effect.
+ * Hooks stay in this function, in this order: blockedIds state, loading state, then the subscription effect.
  * The returned key is `loading` because callers already read that name.
  * @param {string|null|undefined} uid
  * @returns {{ blockedIds: Set<string>, loading: boolean }}
  */
 export function blockedList(uid) {
-  const [blockedIds, setBlockedIds] = useState(EMPTY_BLOCKED_SET);
+  const [blockedIds, setBlockedIds] = useState(makeEmptyBlockedIdSet);
   const [isLoadingBlocks, setIsLoadingBlocks] = useState(Boolean(uid));
 
   useEffect(() => {
-    const signedInUid = normalizedSignedInUid(uid);
-    if (!signedInUid) {
-      setBlockedIds(EMPTY_BLOCKED_SET());
-      setIsLoadingBlocks(false);
-      return undefined;
-    }
-
-    setIsLoadingBlocks(true);
-    const unsubscribe = subscribeMyBlocks(signedInUid, (idsFromFirestore) => {
-      setBlockedIds(idsFromFirestore);
-      setIsLoadingBlocks(false);
-    });
-
-    return unsubscribe;
+    // 1. Start (or clear) the live block list for this uid.
+    const stopListening = startBlockedListSubscription(
+      uid,
+      setBlockedIds,
+      setIsLoadingBlocks,
+    );
+    // 2. Cleanup when uid changes or the screen leaves.
+    return stopListening;
   }, [uid]);
 
   return { blockedIds, loading: isLoadingBlocks };
+}
+
+// ===== PLUMBING — skip unless debugging uid normalization / subscription wiring =====
+
+function normalizedSignedInUid(uid) {
+  return String(uid || '').trim();
+}
+
+function clearBlockedListState(setBlockedIds, setIsLoadingBlocks) {
+  setBlockedIds(makeEmptyBlockedIdSet());
+  setIsLoadingBlocks(false);
+}
+
+function applyBlockedIdsFromFirestore(idsFromFirestore, setBlockedIds, setIsLoadingBlocks) {
+  setBlockedIds(idsFromFirestore);
+  setIsLoadingBlocks(false);
+}
+
+/**
+ * Wire the Firestore listener (or clear state when signed out).
+ * Returns the unsubscribe function (or undefined when there is nothing to clean up).
+ */
+function startBlockedListSubscription(uid, setBlockedIds, setIsLoadingBlocks) {
+  const signedInUid = normalizedSignedInUid(uid);
+
+  if (!signedInUid) {
+    clearBlockedListState(setBlockedIds, setIsLoadingBlocks);
+    return undefined;
+  }
+
+  setIsLoadingBlocks(true);
+  const stopListening = subscribeMyBlocks(signedInUid, (idsFromFirestore) => {
+    applyBlockedIdsFromFirestore(idsFromFirestore, setBlockedIds, setIsLoadingBlocks);
+  });
+
+  return stopListening;
 }

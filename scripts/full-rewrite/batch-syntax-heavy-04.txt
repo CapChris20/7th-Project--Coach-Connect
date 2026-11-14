@@ -1,0 +1,5 @@
+src/nutrition/food-search/trustRestaurantResult.js
+src/trainer-app/documents/DocumentEditor.js
+src/for-both/photo-gallery/MyProgressPhotosScreen.jsx
+src/navigation/goToScreenByKeyword.js
+src/notifications/manageAlerts.js

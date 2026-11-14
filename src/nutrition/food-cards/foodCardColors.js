@@ -1,32 +1,197 @@
-// Premium food-card design tokens — Coach Connect macro palette, radii, fonts, and panel colors.
-// Flow: pick brand gradients → map macros → tint pills → dark vs light palettes for FoodCard / nutrition facts.
-// Used by FoodCard, NutritionFactsPanel, FoodListScreen, and the food-search screens.
-//
-// vocab: radii now match neobrutalist roles (chip 12 / card 14) from docs/design/DESIGN.md.
+// Design tokens for food cards — macro gradient stops, radii, fonts, and light/dark palettes.
+// Flow: brand accent pairs → macro bar colors → pill tints → palette pickers for card vs nutrition panel.
+// Used by FoodCard, NutritionFactsPanel, food search lists. Radii stay aligned with nb tokens in colorPalette.
+// Read order: exported tokens → main palette pickers → PLUMBING builders.
+
+import { lightColors } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
-import { lightColors } from '../../look-and-feel/colorPalette';
 const HEX_PREFIX = '#';
 const MIN_HEX_LENGTH = 6;
 const HEX_RADIX = 16;
 const FALLBACK_WHITE_RGB = '255,255,255';
+// Manipulate here: alpha pair for macro pills — strong = DV badges, soft = default pills
 const STRONG_PILL_START_ALPHA = 0.2;
 const STRONG_PILL_END_ALPHA = 0.14;
 const SOFT_PILL_START_ALPHA = 0.1;
 const SOFT_PILL_END_ALPHA = 0.06;
 const DEFAULT_ACCENT_ALPHA = 0.14;
+const PANEL_RULE_ALPHA = 0.28;
+
+// Design Law accent pairs — no green, no solid purple borders.
+// Manipulate here: DESIGN-SYSTEM §2 stride-of-3.
+export const brandColors = {
+  orangePink: ['#FF6B9D', '#FB923C'],
+  orangePurple: ['#FB923C', '#FB7185'],
+  goldPink: ['#FDA4AF', '#FB7185'],
+  cyanPurple: ['#7DD3FC', '#60A5FA'],
+};
+
+// Macro bar fills on daily log (protein blue, carbs coral, fat red). Keys frozen for FoodCard / MacroBar.
+export const gradients = {
+  protein: ['#60A5FA', '#818CF8'],
+  carbs: ['#FDA4AF', '#FB923C'],
+  fat: ['#FB7185', '#EF4444'],
+  calories: brandColors.orangePurple,
+};
+
+export const gradientsSoft = {
+  protein: ['#3B82F6', '#6366F1'],
+  carbs: ['#FB7185', '#F97316'],
+  fat: ['#F43F5E', '#DC2626'],
+  calories: ['#EA580C', '#E11D48'],
+};
+
+export const colors = {
+  background: '#1A1B20',
+  surface: '#23252C',
+  surfaceElevated: '#2B2D35',
+  border: 'rgba(255,255,255,0.08)',
+  borderStrong: 'rgba(255,255,255,0.14)',
+  foreground: '#FAFAFB',
+  mutedForeground: '#A8ACB8',
+  subtle: '#6F7480',
+};
+
+// vocab: nbCard 14 / nbChip 12 — keep in sync with look-and-feel/colorPalette.js
+export const radii = {
+  card: 14,
+  pill: 12,
+  chip: 12,
+};
+
+export const fonts = {
+  regular: 'Inter_400Regular',
+  medium: 'Inter_500Medium',
+  semiBold: 'Inter_600SemiBold',
+  bold: 'Inter_700Bold',
+};
+
+const PANEL_TITLE_GRADIENT = brandColors.orangePink;
+const PANEL_RULE_COLOR = hexToRgba(brandColors.orangePurple[1], PANEL_RULE_ALPHA);
 
 // ===== HELPER FUNCTIONS =====
+// Palette builders sit under PLUMBING. Exported pickers follow.
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Turn a hex color + alpha into an rgba() string for React Native styles.
+ * @param {string} hex
+ * @param {number} alpha
+ * @returns {string}
+ */
+export function hexToRgba(hex, alpha) {
+  // 1. Strip the leading # and refuse short / missing values.
+  const hexDigits = String(hex || '').replace(HEX_PREFIX, '');
+  if (hexDigits.length < MIN_HEX_LENGTH) {
+    return `rgba(${FALLBACK_WHITE_RGB},${alpha})`;
+  }
+
+  // 2. Read red / green / blue as 0–255 integers.
+  const red = parseHexChannel(hexDigits, 0);
+  const green = parseHexChannel(hexDigits, 2);
+  const blue = parseHexChannel(hexDigits, 4);
+
+  // 3. Return the rgba string the style system expects.
+  return `rgba(${red},${green},${blue},${alpha})`;
+}
+
+/**
+ * Soft two-stop background for macro pills.
+ * @param {string[]} stops
+ * @param {{ strong?: boolean }} [options]
+ * @returns {string[]}
+ */
+export function pillBackgroundGradient(stops, { strong = false } = {}) {
+  // 1. Pick soft vs strong alpha pair for the two gradient stops.
+  let startAlpha = SOFT_PILL_START_ALPHA;
+  let endAlpha = SOFT_PILL_END_ALPHA;
+  if (strong) {
+    startAlpha = STRONG_PILL_START_ALPHA;
+    endAlpha = STRONG_PILL_END_ALPHA;
+  }
+
+  // 2. Tint each stop and return the pair FoodCard / panel pills paint with.
+  const startColor = hexToRgba(stops[0], startAlpha);
+  const endColor = hexToRgba(stops[1], endAlpha);
+  return [startColor, endColor];
+}
+
+/**
+ * Single-color accent tint (default alpha for soft washes).
+ * @param {string} hex
+ * @param {number} [alpha]
+ * @returns {string}
+ */
+export function accentTint(hex, alpha = DEFAULT_ACCENT_ALPHA) {
+  return hexToRgba(hex, alpha);
+}
+
+/**
+ * Palette for the nutrition facts panel (embedded on a meal card, or standalone).
+ * @param {boolean} isDark
+ * @param {{ embedded?: boolean }} [options]
+ * @returns {object}
+ */
+export function getNutritionPanelPalette(isDark, { embedded = false } = {}) {
+  // 1. Shared title gradient + rule color for every panel variant.
+  const sharedAccents = buildNutritionSharedAccents(PANEL_TITLE_GRADIENT, PANEL_RULE_COLOR);
+
+  // 2. Embedded on a meal section — light tiles vs dark tiles.
+  if (embedded && !isDark) {
+    return buildEmbeddedLightNutritionPalette(sharedAccents);
+  }
+  if (embedded && isDark) {
+    return buildEmbeddedDarkNutritionPalette(sharedAccents);
+  }
+
+  // 3. Standalone search / dark premium card shell.
+  return buildStandaloneNutritionPalette(sharedAccents);
+}
+
+/**
+ * Palette for the food card chrome (embedded translucent vs standalone dark shell).
+ * @param {boolean} isDark
+ * @param {{ embedded?: boolean }} [options]
+ * @returns {object}
+ */
+export function getFoodCardPalette(isDark, { embedded = false } = {}) {
+  // 1. Embedded cards sit on a meal section — transparent shell + contrast borders.
+  if (embedded) {
+    if (isDark) return buildEmbeddedDarkFoodCardPalette();
+    return buildEmbeddedLightFoodCardPalette();
+  }
+
+  // 2. Standalone dark premium card (not embedded on a meal section).
+  return buildStandaloneDarkFoodCardPalette();
+}
+
+/**
+ * Standalone (non-embedded) dark food-card chrome.
+ * @returns {object}
+ */
+function buildStandaloneDarkFoodCardPalette() {
+  return {
+    ...colors,
+    expandedSurface: colors.surface,
+    innerHighlight: 'rgba(255,255,255,0.06)',
+    microDivider: 'rgba(255,255,255,0.05)',
+    iconPressBg: 'rgba(255,255,255,0.06)',
+  };
+}
+
+// ===== PLUMBING — skip unless debugging =====
 
 function parseHexChannel(hexDigits, startIndex) {
   return parseInt(hexDigits.slice(startIndex, startIndex + 2), HEX_RADIX);
 }
 
-function nutritionSharedAccents(titleGradient, ruleColor) {
+function buildNutritionSharedAccents(gradientForTitle, dividerColor) {
   return {
-    titleGradient,
-    ruleColor,
+    titleGradient: gradientForTitle,
+    ruleColor: dividerColor,
     breakdownGradient: brandColors.orangePink,
     microGradients: [
       brandColors.goldPink,
@@ -37,7 +202,7 @@ function nutritionSharedAccents(titleGradient, ruleColor) {
   };
 }
 
-function embeddedLightNutritionPalette(sharedAccents) {
+function buildEmbeddedLightNutritionPalette(sharedAccents) {
   return {
     ...sharedAccents,
     panelBg: '#FFFBF5',
@@ -54,7 +219,7 @@ function embeddedLightNutritionPalette(sharedAccents) {
   };
 }
 
-function embeddedDarkNutritionPalette(sharedAccents) {
+function buildEmbeddedDarkNutritionPalette(sharedAccents) {
   return {
     ...sharedAccents,
     panelBg: '#14110F',
@@ -71,7 +236,7 @@ function embeddedDarkNutritionPalette(sharedAccents) {
   };
 }
 
-function standaloneNutritionPalette(sharedAccents) {
+function buildStandaloneNutritionPalette(sharedAccents) {
   return {
     ...sharedAccents,
     panelBg: '#181410',
@@ -88,7 +253,7 @@ function standaloneNutritionPalette(sharedAccents) {
   };
 }
 
-function embeddedDarkFoodCardPalette() {
+function buildEmbeddedDarkFoodCardPalette() {
   return {
     background: 'transparent',
     surface: 'transparent',
@@ -105,7 +270,7 @@ function embeddedDarkFoodCardPalette() {
   };
 }
 
-function embeddedLightFoodCardPalette() {
+function buildEmbeddedLightFoodCardPalette() {
   return {
     background: 'transparent',
     surface: 'transparent',
@@ -119,140 +284,5 @@ function embeddedLightFoodCardPalette() {
     innerHighlight: 'rgba(0,0,0,0.05)',
     microDivider: 'rgba(0,0,0,0.07)',
     iconPressBg: 'rgba(0,0,0,0.05)',
-  };
-}
-
-// ===== MAIN FUNCTION =====
-
-// Design Law accent pairs for food cards — never green, never solid purple borders.
-// Manipulate here: rotate neighbors with stride-of-3 from DESIGN-SYSTEM §2.
-export const brandColors = {
-  /** pink→orange (protein / primary action) */
-  orangePink: ['#FF6B9D', '#FB923C'],
-  /** orange→coral (calories) */
-  orangePurple: ['#FB923C', '#FB7185'],
-  /** coral→pink (carbs accent) */
-  goldPink: ['#FDA4AF', '#FB7185'],
-  /** cyan→blue (sodium / water) — no purple border chrome */
-  cyanPurple: ['#7DD3FC', '#60A5FA'],
-};
-
-/** Macro mapping — PNG daily-log bar fills (protein blue, carbs coral, fats red) */
-export const gradients = {
-  protein: ['#60A5FA', '#818CF8'],
-  carbs: ['#FDA4AF', '#FB923C'],
-  fat: ['#FB7185', '#EF4444'],
-  calories: brandColors.orangePurple,
-};
-
-/** Same hues, pulled back for large surfaces (less neon on dark UI) */
-export const gradientsSoft = {
-  protein: ['#3B82F6', '#6366F1'],
-  carbs: ['#FB7185', '#F97316'],
-  fat: ['#F43F5E', '#DC2626'],
-  calories: ['#EA580C', '#E11D48'],
-};
-export const colors = {
-  background: '#1A1B20',
-  surface: '#23252C',
-  surfaceElevated: '#2B2D35',
-  border: 'rgba(255,255,255,0.08)',
-  borderStrong: 'rgba(255,255,255,0.14)',
-  foreground: '#FAFAFB',
-  mutedForeground: '#A8ACB8',
-  subtle: '#6F7480',
-};
-
-// vocab: radii match nb tokens (nbCard: 14, nbChip: 12) from colorPalette.js
-// These are kept here for backward compatibility but should stay synchronized with nb tokens.
-export const radii = {
-  card: 14,  // matches borderRadius.nbCard
-  pill: 12,  // matches borderRadius.nbChip
-  chip: 12,  // matches borderRadius.nbChip
-};
-
-export const fonts = {
-  regular: 'Inter_400Regular',
-  medium: 'Inter_500Medium',
-  semiBold: 'Inter_600SemiBold',
-  bold: 'Inter_700Bold',
-};
-
-/**
- * Turn #RRGGBB plus an alpha into an rgba() string. Short/invalid hex falls back to white.
- * @param {string} hex
- * @param {number} alpha
- * @returns {string}
- */
-export function hexToRgba(hex, alpha) {
-  const hexDigits = String(hex || '').replace(HEX_PREFIX, '');
-  if (hexDigits.length < MIN_HEX_LENGTH) return `rgba(${FALLBACK_WHITE_RGB},${alpha})`;
-  const red = parseHexChannel(hexDigits, 0);
-  const green = parseHexChannel(hexDigits, 2);
-  const blue = parseHexChannel(hexDigits, 4);
-  return `rgba(${red},${green},${blue},${alpha})`;
-}
-
-/**
- * Pill background: 135° gradient at 14% → 10% opacity — never full saturation.
- * @param {string[]} stops
- * @param {{ strong?: boolean }} [options]
- * @returns {string[]}
- */
-export function pillBackgroundGradient(stops, { strong = false } = {}) {
-  const startAlpha = strong ? STRONG_PILL_START_ALPHA : SOFT_PILL_START_ALPHA;
-  const endAlpha = strong ? STRONG_PILL_END_ALPHA : SOFT_PILL_END_ALPHA;
-  return [hexToRgba(stops[0], startAlpha), hexToRgba(stops[1], endAlpha)];
-}
-
-/**
- * Single accent at low alpha — icon wells, badges.
- * @param {string} hex
- * @param {number} [alpha]
- * @returns {string}
- */
-export function accentTint(hex, alpha = DEFAULT_ACCENT_ALPHA) {
-  return hexToRgba(hex, alpha);
-}
-
-const titleGradient = brandColors.orangePink;
-const ruleColor = hexToRgba(brandColors.orangePurple[1], 0.28);
-
-/**
- * Opaque, high-contrast palette for the expanded nutrition facts panel.
- * @param {boolean} isDark
- * @param {{ embedded?: boolean }} [options]
- * @returns {object}
- */
-export function getNutritionPanelPalette(isDark, { embedded = false } = {}) {
-  const sharedAccents = nutritionSharedAccents(titleGradient, ruleColor);
-
-  if (embedded && !isDark) {
-    return embeddedLightNutritionPalette(sharedAccents);
-  }
-
-  if (embedded && isDark) {
-    return embeddedDarkNutritionPalette(sharedAccents);
-  }
-
-  return standaloneNutritionPalette(sharedAccents);
-}
-
-/**
- * Palette for FoodCard — standalone (dark premium) vs embedded in meal sections.
- * @param {boolean} isDark
- * @param {{ embedded?: boolean }} [options]
- */
-export function getFoodCardPalette(isDark, { embedded = false } = {}) {
-  if (embedded) {
-    return isDark ? embeddedDarkFoodCardPalette() : embeddedLightFoodCardPalette();
-  }
-
-  return {
-    ...colors,
-    expandedSurface: colors.surface,
-    innerHighlight: 'rgba(255,255,255,0.06)',
-    microDivider: 'rgba(255,255,255,0.05)',
-    iconPressBg: 'rgba(255,255,255,0.06)',
   };
 }

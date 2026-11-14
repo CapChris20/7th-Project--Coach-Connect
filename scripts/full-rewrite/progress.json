@@ -1,19 +1,33 @@
 {
   "batchSize": 40,
-  "totalFiles": 432,
-  "totalBatches": 11,
-  "completedBatches": [
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    7,
-    8,
-    9,
-    10,
-    11
+  "totalFiles": 486,
+  "totalBatches": 13,
+  "completedBatches": [],
+  "variation3Passed": {},
+  "fullyRewritten": {
+    "src/for-both/weekly-report/WeeklyReportBody.jsx": {
+      "at": "2026-11-14T02:49:23.345Z",
+      "note": "GOLD — Variation 3 reference; left untouched (redo campaign)"
+    },
+    "src/trainer-app/scheduling/BookSessionScreen.jsx": {
+      "at": "2026-11-14T02:49:23.345Z",
+      "note": "GOLD — Variation 3 reference; left untouched (redo campaign)"
+    },
+    "src/for-both/weekly-report/WeeklyReportScreen.jsx": {
+      "at": "2026-11-14T02:49:23.345Z",
+      "note": "GOLD — Variation 3 reference; left untouched (redo campaign)"
+    }
+  },
+  "notes": [
+    "HONEST Variation 3 campaign. Batch/file is done ONLY after a full-file junior-recipe syntax rewrite (same behavior).",
+    "Mechanical classify + strip are a floor, not proof. Micro-edits / banner renames / tiny helper extracts do NOT count.",
+    "Prior batch-1 mark-complete was wiped as a gate-cheat lie."
   ],
-  "notes": "After Metro passes, append batch number to completedBatches. Re-run fullRewriteInventory.mjs if inventory script changes."
+  "redoCampaign": "variation3-full-redo",
+  "redoQueues": {
+    "p0": 28,
+    "p1": 251,
+    "p2": 204
+  },
+  "note": "Reset for Variation 3 Full Redo. Do not trust prior fullyRewritten claims."
 }

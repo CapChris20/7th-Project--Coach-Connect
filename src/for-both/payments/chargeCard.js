@@ -12,57 +12,128 @@ const CHARGES_PATH = '/api/charges';
 const CHARGE_TIMEOUT_MS = 20000;
 const CLIENT_ERROR_MIN = 400;
 const CLIENT_ERROR_MAX = 500;
+const NETWORK_ERROR_CODE = 'network_error';
+const NETWORK_ERROR_FALLBACK_MESSAGE = 'Network error, try again';
+const NOT_SIGNED_IN_MESSAGE = 'Please log in first.';
+const JSON_CONTENT_TYPE = 'application/json';
 
 // ===== HELPER FUNCTIONS =====
+// PLUMBING — skip unless debugging charge retries or AbortController timeouts
 
-async function getIdToken() {
-  const currentUser = auth?.currentUser;
-  if (!currentUser) throw new Error('Please log in first.');
-  return currentUser.getIdToken(true);
+function buildChargeRequestBody(trainerId, amount, token, idempotencyKey) {
+  const chargeBody = { trainerId, amount, token };
+  if (idempotencyKey) {
+    chargeBody.idempotencyKey = idempotencyKey;
+  }
+  return chargeBody;
 }
 
-function isClientErrorStatus(statusCode) {
-  return statusCode >= CLIENT_ERROR_MIN && statusCode < CLIENT_ERROR_MAX;
+function buildNetworkFailureError(lastRetryableError) {
+  let errorMessage = NETWORK_ERROR_FALLBACK_MESSAGE;
+  if (lastRetryableError && lastRetryableError.message) {
+    errorMessage = lastRetryableError.message;
+  }
+
+  const networkError = new Error(errorMessage);
+  networkError.code = NETWORK_ERROR_CODE;
+  return networkError;
+}
+
+async function getFirebaseIdTokenForCurrentUser() {
+  let currentUser = null;
+  if (auth) {
+    currentUser = auth.currentUser;
+  }
+  if (!currentUser) {
+    throw new Error(NOT_SIGNED_IN_MESSAGE);
+  }
+  // vocab: getIdToken(true) = force-refresh so the Bearer token is not stale
+  const idToken = await currentUser.getIdToken(true);
+  return idToken;
+}
+
+function httpStatusIsClientError(statusCode) {
+  if (typeof statusCode !== 'number') {
+    return false;
+  }
+  if (statusCode < CLIENT_ERROR_MIN) {
+    return false;
+  }
+  if (statusCode >= CLIENT_ERROR_MAX) {
+    return false;
+  }
+  return true;
+}
+
+function paymentErrorFromFailedResponse(responseBody, statusCode) {
+  let errorMessage = `Payment failed (${statusCode})`;
+  if (responseBody && responseBody.error) {
+    errorMessage = responseBody.error;
+  }
+
+  const paymentError = new Error(errorMessage);
+  paymentError.status = statusCode;
+  return paymentError;
 }
 
 // vocab: AbortController = cancel this fetch when CHARGE_TIMEOUT_MS fires. RN fetch has no timeout option.
-async function postChargeToBase(apiBase, idToken, chargeBody) {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), CHARGE_TIMEOUT_MS);
+async function postChargeJsonToApiBase(apiBase, idToken, chargeBody) {
+  const abortController = new AbortController();
+  const timeoutId = setTimeout(function abortThisChargeAttempt() {
+    abortController.abort();
+  }, CHARGE_TIMEOUT_MS);
+
   try {
-    const response = await fetch(`${apiBase}${CHARGES_PATH}`, {
+    const chargeUrl = `${apiBase}${CHARGES_PATH}`;
+    const response = await fetch(chargeUrl, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
+        'Content-Type': JSON_CONTENT_TYPE,
+        Accept: JSON_CONTENT_TYPE,
         Authorization: `Bearer ${idToken}`,
       },
       body: JSON.stringify(chargeBody),
-      signal: controller.signal,
+      signal: abortController.signal,
     });
-    const responseBody = await response.json().catch(() => ({}));
-    return { response, responseBody };
+
+    let responseBody = {};
+    try {
+      responseBody = await response.json();
+    } catch (parseError) {
+      responseBody = {};
+    }
+
+    return { response: response, responseBody: responseBody };
   } finally {
     clearTimeout(timeoutId);
   }
 }
 
-/**
- * One API base. A declined card throws later and is not tried on the next base.
- * @returns {Promise<{ responseBody?: object, clientError?: Error, retryableError?: Error }>}
- */
-async function tryChargeOnOneBase(apiBase, idToken, chargeBody) {
+// One API base. A declined card is returned as clientError and is not tried on the next base.
+async function tryChargeOnOneApiBase(apiBase, idToken, chargeBody) {
   try {
-    const { response, responseBody } = await postChargeToBase(apiBase, idToken, chargeBody);
-    if (response.ok) return { responseBody };
+    const postResult = await postChargeJsonToApiBase(apiBase, idToken, chargeBody);
+    const response = postResult.response;
+    const responseBody = postResult.responseBody;
 
-    const paymentError = new Error(responseBody?.error || `Payment failed (${response.status})`);
-    paymentError.status = response.status;
-    if (isClientErrorStatus(response.status)) return { clientError: paymentError };
+    if (response.ok) {
+      return { responseBody: responseBody };
+    }
+
+    const paymentError = paymentErrorFromFailedResponse(responseBody, response.status);
+    if (httpStatusIsClientError(response.status)) {
+      return { clientError: paymentError };
+    }
     return { retryableError: paymentError };
-  } catch (error) {
-    if (isClientErrorStatus(error?.status)) return { clientError: error };
-    return { retryableError: error };
+  } catch (networkOrParseError) {
+    let errorStatus = null;
+    if (networkOrParseError) {
+      errorStatus = networkOrParseError.status;
+    }
+    if (httpStatusIsClientError(errorStatus)) {
+      return { clientError: networkOrParseError };
+    }
+    return { retryableError: networkOrParseError };
   }
 }
 
@@ -72,28 +143,32 @@ async function tryChargeOnOneBase(apiBase, idToken, chargeBody) {
  * Charge the signed-in client and pay the given trainer.
  * A 4xx (declined, not verified, bad amount) is not retried on another base.
  * @param {{ trainerId: string, amount: number, token: string, idempotencyKey?: string }} charge
- * @returns {Promise<{ success: boolean, charge_id: string, trainer_gets: number }>}
+ * @returns {Promise<object>}
  */
 export async function postCoachingCharge({ trainerId, amount, token, idempotencyKey }) {
   // 1. Fresh login token — the charges route rejects a stale one.
-  const idToken = await getIdToken();
+  const idToken = await getFirebaseIdTokenForCurrentUser();
   const apiBases = getResilientApiBases();
 
   // 2. Body keeps the Stripe token, not the card number. Keys stay trainerId / amount / token.
-  const chargeBody = { trainerId, amount, token };
-  if (idempotencyKey) chargeBody.idempotencyKey = idempotencyKey;
-  let lastError = null;
+  const chargeBody = buildChargeRequestBody(trainerId, amount, token, idempotencyKey);
 
   // 3. Try each API base. A 4xx (decline, not verified, bad amount) stops the loop.
-  for (const apiBase of apiBases) {
-    const attempt = await tryChargeOnOneBase(apiBase, idToken, chargeBody);
-    if (attempt.responseBody) return attempt.responseBody;
-    if (attempt.clientError) throw attempt.clientError;
-    lastError = attempt.retryableError;
+  let lastRetryableError = null;
+  for (let index = 0; index < apiBases.length; index += 1) {
+    const apiBase = apiBases[index];
+    const attemptResult = await tryChargeOnOneApiBase(apiBase, idToken, chargeBody);
+
+    if (attemptResult.responseBody) {
+      return attemptResult.responseBody;
+    }
+    if (attemptResult.clientError) {
+      throw attemptResult.clientError;
+    }
+
+    lastRetryableError = attemptResult.retryableError;
   }
 
   // 4. Every base dropped or timed out → one network error the popup can map.
-  const networkError = new Error(lastError?.message || 'Network error, try again');
-  networkError.code = 'network_error';
-  throw networkError;
+  throw buildNetworkFailureError(lastRetryableError);
 }

@@ -1,6 +1,6 @@
-// Sends an Apple purchase to the server so Pro access is not decided on the phone alone.
-// Flow: take the login token → try each API base → stop on a real rejection, retry on a network miss.
-// Used by the trainer paywall after StoreKit returns a purchase or a restore.
+// Asks the Coach Connect API to verify an Apple purchase so the phone alone never grants Pro.
+// Flow: refresh Firebase id token → POST each API base → stop on hard reject → else network error.
+// Used by ProPlanPurchases after StoreKit purchase or restore. Path letters: /api/subscription/apple/.
 
 import { auth } from '../app-start/cloudConnection';
 import { getResilientApiBases, isCloudHostedApiBase } from '../for-both/online-connection/whereToConnect';
@@ -9,6 +9,7 @@ import { getResilientApiBases, isCloudHostedApiBase } from '../for-both/online-c
 
 const VERIFY_ACTION = 'verify';
 const RESTORE_ACTION = 'restore';
+// Manipulate here: must match the Express route under server subscription/apple
 const SUBSCRIPTION_PATH = '/api/subscription/apple/';
 const BEARER_PREFIX = 'Bearer ';
 const JSON_CONTENT_TYPE = 'application/json';
@@ -17,86 +18,125 @@ const VERIFICATION_FAILED_CODE = 'verification_failed';
 const REQUEST_FAILED_CODE = 'request_failed';
 const NETWORK_ERROR_CODE = 'network_error';
 
-// ===== HELPER FUNCTIONS =====
+// ===== MAIN FUNCTIONS =====
 
 /**
- * @returns {Promise<string>}
+ * Verify one StoreKit purchase with the server.
+ * @param {object} purchase — react-native-iap purchase row
+ * @returns {Promise<object>} server JSON on success
  */
-async function getIdToken() {
-  const currentUser = auth?.currentUser;
-  if (!currentUser) throw new Error('Not signed in');
-  return currentUser.getIdToken(true);
+export async function verifyAppleSubscriptionOnServer(purchase) {
+  // 1. Shape the body the Apple verify route expects (field letters frozen).
+  const requestBody = buildApplePurchaseBody(purchase);
+
+  // 2. Walk API bases until one accepts or the server hard-refuses.
+  return postSubscriptionWithRetries(VERIFY_ACTION, requestBody);
 }
 
 /**
- * Prefer a hosted API. If none is configured, keep the first base so local dev still has a target.
- * @returns {string[]}
+ * Restore one or more StoreKit purchases with the server.
+ * @param {object[]} [purchases]
+ * @returns {Promise<object>}
  */
-function verifyProPurchaseBases() {
-  const hostedBases = getResilientApiBases().filter(isCloudHostedApiBase);
-  if (hostedBases.length) return hostedBases;
-  return getResilientApiBases().slice(0, 1);
+export async function restoreAppleSubscriptionOnServer(purchases = []) {
+  // 1. Turn each StoreKit row into the same body shape verify uses.
+  const purchaseBodies = buildApplePurchaseBodyList(purchases);
+
+  // 2. Walk API bases with the restore action.
+  return postSubscriptionWithRetries(RESTORE_ACTION, { purchases: purchaseBodies });
 }
 
 /**
- * A failed verification or a 403 is the server's answer. Other errors can try the next base.
- * @param {Error} caughtError
- * @returns {boolean}
- */
-function shouldStopRetrying(caughtError) {
-  if (caughtError?.code === VERIFICATION_FAILED_CODE) return true;
-  return caughtError?.status === HTTP_FORBIDDEN;
-}
-
-/**
- * @param {string} base
- * @param {string} action
- * @param {string} token
+ * Walk API bases until one accepts the subscription call or the server refuses verification.
+ * @param {'verify'|'restore'} action
  * @param {object} body
  * @returns {Promise<object>}
  */
-async function postToOneBase(base, action, token, body) {
-  const response = await fetch(`${base}${SUBSCRIPTION_PATH}${action}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': JSON_CONTENT_TYPE,
-      Authorization: `${BEARER_PREFIX}${token}`,
-    },
-    body: JSON.stringify(body),
-  });
-  const json = await response.json().catch(() => ({}));
-  if (response.ok) return json;
-  const requestError = new Error(json?.error || `Request failed (${response.status})`);
-  requestError.code = json?.code || REQUEST_FAILED_CODE;
-  requestError.status = response.status;
-  throw requestError;
-}
+async function postSubscriptionWithRetries(action, body) {
+  // 1. Require a signed-in trainer — the route checks this Firebase token.
+  const idToken = await fetchFreshFirebaseIdToken();
 
-/**
- * @param {string} base
- * @param {string} action
- * @param {string} token
- * @param {object} body
- * @returns {Promise<{ didSucceed: boolean, json?: object, error?: Error }>}
- */
-async function attemptPost(base, action, token, body) {
-  try {
-    const json = await postToOneBase(base, action, token, body);
-    return { didSucceed: true, json };
-  } catch (caughtError) {
-    return { didSucceed: false, error: caughtError };
+  // 2. Prefer cloud-hosted bases; local dev still gets one fallback target.
+  const basesToTry = orderedApiBasesForVerification();
+
+  let lastCaughtError = null;
+
+  // 3. Try each base until success or a non-retryable rejection.
+  for (let baseIndex = 0; baseIndex < basesToTry.length; baseIndex += 1) {
+    const apiBase = basesToTry[baseIndex];
+    const attemptResult = await tryPostSubscriptionOnce(apiBase, action, idToken, body);
+
+    if (attemptResult.didSucceed) {
+      return attemptResult.json;
+    }
+
+    lastCaughtError = attemptResult.error;
+    const serverSaidStopRetrying = errorMeansDoNotRetryOtherBases(attemptResult.error);
+    if (serverSaidStopRetrying) {
+      throw attemptResult.error;
+    }
   }
+
+  // 4. Every base failed with a retryable error — one network-style failure for the UI.
+  const networkError = new Error(lastCaughtError?.message || 'Network request failed');
+  networkError.code = NETWORK_ERROR_CODE;
+  throw networkError;
+}
+
+// ===== PLUMBING — skip unless debugging =====
+
+/**
+ * Fresh Firebase JWT so the backend does not see a stale token.
+ * @returns {Promise<string>}
+ */
+async function fetchFreshFirebaseIdToken() {
+  const signedInUser = auth?.currentUser;
+  if (!signedInUser) throw new Error('Not signed in');
+  // vocab: getIdToken(true) = force refresh (true), not the cached JWT
+  return signedInUser.getIdToken(true);
 }
 
 /**
+ * Hosted Cloud Run bases first; if none, keep a single local/dev base.
+ * @returns {string[]}
+ */
+function orderedApiBasesForVerification() {
+  // vocab: getResilientApiBases = ordered API hosts the app can reach
+  // vocab: isCloudHostedApiBase = true for production Cloud Run URLs
+  const allBases = getResilientApiBases();
+  const hostedOnly = [];
+  for (let index = 0; index < allBases.length; index += 1) {
+    if (isCloudHostedApiBase(allBases[index])) {
+      hostedOnly.push(allBases[index]);
+    }
+  }
+  if (hostedOnly.length > 0) return hostedOnly;
+  return allBases.slice(0, 1);
+}
+
+/**
+ * verification_failed or HTTP 403 = server's final no; do not try the next base.
+ * @param {Error} caughtError
+ * @returns {boolean}
+ */
+function errorMeansDoNotRetryOtherBases(caughtError) {
+  if (caughtError?.code === VERIFICATION_FAILED_CODE) return true;
+  if (caughtError?.status === HTTP_FORBIDDEN) return true;
+  return false;
+}
+
+/**
+ * Map one StoreKit purchase into the JSON body the Apple routes expect.
  * @param {object} purchase
  * @returns {object}
  */
-function applePurchaseRequestBody(purchase) {
+function buildApplePurchaseBody(purchase) {
+  // vocab/symbol: ?? = keep null when the field is missing (do not swap to ||)
+  const receiptOrToken = purchase?.purchaseToken || purchase?.transactionReceipt;
   return {
     productId: purchase?.productId,
     transactionId: purchase?.transactionId,
-    purchaseToken: purchase?.purchaseToken || purchase?.transactionReceipt,
+    purchaseToken: receiptOrToken,
     expirationDateIOS: purchase?.expirationDateIOS ?? null,
     environmentIOS: purchase?.environmentIOS ?? null,
     transactionDate: purchase?.transactionDate ?? null,
@@ -104,43 +144,60 @@ function applePurchaseRequestBody(purchase) {
 }
 
 /**
- * @param {'verify'|'restore'} action
+ * Build a list of Apple purchase bodies without using .map in a recipe.
+ * @param {object[]} purchases
+ * @returns {object[]}
+ */
+function buildApplePurchaseBodyList(purchases) {
+  const bodies = [];
+  for (let index = 0; index < purchases.length; index += 1) {
+    bodies.push(buildApplePurchaseBody(purchases[index]));
+  }
+  return bodies;
+}
+
+/**
+ * POST JSON to one base. Throws an Error with .code and .status on failure.
+ * @param {string} base
+ * @param {string} action
+ * @param {string} token
  * @param {object} body
  * @returns {Promise<object>}
  */
-async function postSubscription(action, body) {
-  const token = await getIdToken();
-  const bases = verifyProPurchaseBases();
-  let lastError = null;
-
-  for (const base of bases) {
-    const attempt = await attemptPost(base, action, token, body);
-    if (attempt.didSucceed) return attempt.json;
-    lastError = attempt.error;
-    if (shouldStopRetrying(attempt.error)) throw attempt.error;
-  }
-
-  const networkError = new Error(lastError?.message || 'Network request failed');
-  networkError.code = NETWORK_ERROR_CODE;
-  throw networkError;
-}
-
-// ===== MAIN FUNCTION =====
-
-/**
- * @param {object} purchase
- * @returns {Promise<object>}
- */
-export async function verifyAppleSubscriptionOnServer(purchase) {
-  return postSubscription(VERIFY_ACTION, applePurchaseRequestBody(purchase));
-}
-
-/**
- * @param {object[]} [purchases]
- * @returns {Promise<object>}
- */
-export async function restoreAppleSubscriptionOnServer(purchases = []) {
-  return postSubscription(RESTORE_ACTION, {
-    purchases: purchases.map((purchase) => applePurchaseRequestBody(purchase)),
+async function postJsonToOneApiBase(base, action, token, body) {
+  const url = `${base}${SUBSCRIPTION_PATH}${action}`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': JSON_CONTENT_TYPE,
+      Authorization: `${BEARER_PREFIX}${token}`,
+    },
+    body: JSON.stringify(body),
   });
+
+  const responseJson = await response.json().catch(() => ({}));
+  if (response.ok) return responseJson;
+
+  const messageFromServer = responseJson?.error || `Request failed (${response.status})`;
+  const requestError = new Error(messageFromServer);
+  requestError.code = responseJson?.code || REQUEST_FAILED_CODE;
+  requestError.status = response.status;
+  throw requestError;
+}
+
+/**
+ * One try against one base — never throws; callers decide retry vs stop.
+ * @param {string} base
+ * @param {string} action
+ * @param {string} token
+ * @param {object} body
+ * @returns {Promise<{ didSucceed: boolean, json?: object, error?: Error }>}
+ */
+async function tryPostSubscriptionOnce(base, action, token, body) {
+  try {
+    const json = await postJsonToOneApiBase(base, action, token, body);
+    return { didSucceed: true, json };
+  } catch (caughtError) {
+    return { didSucceed: false, error: caughtError };
+  }
 }

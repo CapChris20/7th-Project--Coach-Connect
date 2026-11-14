@@ -1,9 +1,6 @@
-// Design Law home / My-sessions invite card: time rail + trainer info + Decline / Confirm.
-// Flow: read the session → paint when column + title → invite buttons or reminder workout CTA.
+// Home / My-sessions invite card: left time rail, trainer row, Decline / Confirm (or reminder CTA).
+// Flow: read session fields → paint when column + title → invite buttons or View / Log Workout.
 // Used by the client home when a coach sends or confirms a session (extra invites beyond Up next).
-//
-// vocab: HardShadow via NbCard; status chips match SessionCard Confirmed/Pending language
-// Manipulate here: button labels (Decline / Confirm per PNG 17), Pass/I'm in retired
 
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
@@ -17,93 +14,272 @@ import { nb } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
+// Firestore / API status letters — do not rename these string values.
 const SESSION_STATUS_DECLINED = 'declined';
 const SESSION_STATUS_ACCEPTED = 'accepted';
+const SESSION_STATUS_PENDING_FALLBACK = 'pending';
+
+// Manipulate here: fallback length when the session record omits durationMin / duration.
 const DEFAULT_DURATION_MINUTES = 60;
+
 const INVITE_MODE = 'invite';
 const REMINDER_MODE = 'reminder';
+
+// Manipulate here: left rail width (matches Design Law invite card).
 const TIME_COL_WIDTH = 78;
+// Manipulate here: coach avatar diameter in the name row.
 const AVATAR_SIZE = 40;
 
-// ===== HELPERS =====
+const FALLBACK_COACH_NAME = 'Your coach';
+const FALLBACK_TRAINING_TITLE = 'Training';
+const FALLBACK_CLOCK = '—';
+const FALLBACK_DATE = '—';
+const FALLBACK_INITIALS = '?';
 
-function coachFirstName(coachName) {
-  const coachNameText = String(coachName || 'Your coach').trim();
-  return coachNameText.split(/\s+/)[0] || coachNameText;
+const CHIP_WORDS_CONFIRMED = 'Confirmed';
+const CHIP_WORDS_PENDING = 'Pending';
+const CHIP_WORDS_DECLINED = 'Declined';
+const CHIP_WORDS_VIDEO = 'Video link attached';
+const CHIP_WORDS_IN_PERSON = 'In person';
+
+const HEADLINE_REMINDER = 'Your trainer';
+const BUTTON_DECLINE = 'Decline';
+const BUTTON_CONFIRM = 'Confirm';
+const BUTTON_VIEW_LOG_WORKOUT = 'View / Log Workout';
+
+const CHIP_VARIANT_DEFAULT = 'default';
+const CHIP_VARIANT_DASHED = 'dashed';
+const CHIP_VARIANT_OUTLINE = 'outline';
+
+// ===== HELPER FUNCTIONS =====
+
+// First word of the coach’s display name for “Alex invited you”.
+function coachFirstNameFromFullName(coachName) {
+  const fullName = String(coachName || FALLBACK_COACH_NAME).trim();
+  const nameParts = fullName.split(/\s+/);
+  const firstWord = nameParts[0] || fullName;
+  return firstWord;
 }
 
-function initialsFromName(name) {
-  const parts = String(name || '')
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-  if (parts.length === 0) return '?';
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return `${parts[0][0] || ''}${parts[1][0] || ''}`.toUpperCase();
+// Two-letter avatar initials from a full name (or “?” when empty).
+function avatarInitialsFromName(name) {
+  const trimmedName = String(name || '').trim();
+  const nameParts = trimmedName.split(/\s+/).filter(Boolean);
+
+  if (nameParts.length === 0) {
+    return FALLBACK_INITIALS;
+  }
+
+  if (nameParts.length === 1) {
+    return nameParts[0].slice(0, 2).toUpperCase();
+  }
+
+  const firstInitial = nameParts[0][0] || '';
+  const secondInitial = nameParts[1][0] || '';
+  return `${firstInitial}${secondInitial}`.toUpperCase();
 }
 
-function sessionDurationMinutes(session) {
-  return session.durationMin || session.duration || DEFAULT_DURATION_MINUTES;
+// Prefer durationMin (Design Law field); fall back to duration, then 60.
+function durationMinutesFromSession(session) {
+  const fromDurationMin = session.durationMin;
+  if (fromDurationMin) {
+    return fromDurationMin;
+  }
+
+  const fromDuration = session.duration;
+  if (fromDuration) {
+    return fromDuration;
+  }
+
+  return DEFAULT_DURATION_MINUTES;
 }
 
-function sessionDateLabel(session) {
-  const dateKey = (session.date || '').slice(0, 10);
-  if (!dateKey) return '—';
+// Long human date from session.date (YYYY-MM-DD slice).
+function humanDateFromSession(session) {
+  const rawDate = session.date || '';
+  const dateKey = rawDate.slice(0, 10);
+  if (!dateKey) {
+    return FALLBACK_DATE;
+  }
   return formatDateLong(dateKey);
 }
 
-function sessionTimeLabel(session) {
-  return formatTime12(session.time) || '—';
+// 12-hour clock label from session.time, or em dash.
+function clockLabelFromSession(session) {
+  const formatted = formatTime12(session.time);
+  if (formatted) {
+    return formatted;
+  }
+  return FALLBACK_CLOCK;
 }
 
-function sessionTypeLabel(session) {
-  return session?.title || session?.focus || session?.type || session?.workoutName || 'Training';
+// Title preference: title → focus → type → workoutName → “Training”.
+// Field letters stay frozen for callers that store any of these keys.
+function trainingTitleFromSession(session) {
+  if (session.title) {
+    return session.title;
+  }
+  if (session.focus) {
+    return session.focus;
+  }
+  if (session.type) {
+    return session.type;
+  }
+  if (session.workoutName) {
+    return session.workoutName;
+  }
+  return FALLBACK_TRAINING_TITLE;
 }
 
-function whereLabel(session) {
-  if (session?.zoomLink) return 'Video link attached';
-  return 'In person';
+// Location chip copy: zoom link means remote; otherwise in person.
+function locationChipWords(session) {
+  if (session.zoomLink) {
+    return CHIP_WORDS_VIDEO;
+  }
+  return CHIP_WORDS_IN_PERSON;
 }
 
-function passOnThisInvite(onRespond, sessionId) {
-  if (!onRespond) return;
+// Split “3:30 PM” into clock digits + AM/PM for the time rail.
+function splitClockAndMeridiem(timeLabel) {
+  const timeParts = String(timeLabel).split(' ');
+  const clockDigits = timeParts[0] || FALLBACK_CLOCK;
+  const meridiem = timeParts[1] || '';
+  return { clockDigits, meridiem };
+}
+
+// Status chip label matching SessionCard Confirmed / Pending / Declined language.
+function inviteStatusChipWords(inviteWasAccepted, inviteStillPending) {
+  if (inviteWasAccepted) {
+    return CHIP_WORDS_CONFIRMED;
+  }
+  if (inviteStillPending) {
+    return CHIP_WORDS_PENDING;
+  }
+  return CHIP_WORDS_DECLINED;
+}
+
+function inviteHeadlineText(isReminderCard, coachFirstName) {
+  if (isReminderCard) {
+    return HEADLINE_REMINDER;
+  }
+  return `${coachFirstName} invited you`;
+}
+
+function statusChipVariantName(inviteWasAccepted) {
+  if (inviteWasAccepted) {
+    return CHIP_VARIANT_DEFAULT;
+  }
+  return CHIP_VARIANT_DASHED;
+}
+
+// Tell the parent the client declined this invite (status letter frozen).
+function passOnInvite(onRespond, sessionId) {
+  if (!onRespond) {
+    return;
+  }
   onRespond({ sessionId, status: SESSION_STATUS_DECLINED });
 }
 
-function acceptThisInvite(onRespond, sessionId) {
-  if (!onRespond) return;
+// Tell the parent the client confirmed this invite (status letter frozen).
+function confirmInvite(onRespond, sessionId) {
+  if (!onRespond) {
+    return;
+  }
   onRespond({ sessionId, status: SESSION_STATUS_ACCEPTED });
 }
 
-function InviteActionButtons({ sessionId, onRespond }) {
+// Left column: clock digits, optional AM/PM, duration under.
+function SessionTimeRail({
+  clockDigits,
+  meridiem,
+  durationMinutes,
+  borderColor,
+  inkColor,
+  mutedColor,
+}) {
+  const durationLabel = `${durationMinutes} min`;
+  const whenStyle = [styles.when, { borderRightColor: borderColor }];
+  const clockStyle = [styles.whenNum, { color: inkColor }];
+  const meridiemStyle = [styles.whenMeridiem, { color: inkColor }];
+  const durationStyle = [styles.whenSub, { color: mutedColor }];
+
+  let meridiemLine = null;
+  if (meridiem) {
+    meridiemLine = <Text style={meridiemStyle}>{meridiem}</Text>;
+  }
+
+  return (
+    <View style={whenStyle}>
+      <Text style={clockStyle}>{clockDigits}</Text>
+      {meridiemLine}
+      <Text style={durationStyle}>{durationLabel}</Text>
+    </View>
+  );
+}
+
+// Invite mode only: Decline (ghost) + Confirm (fill), half width each.
+function InviteDeclineConfirmRow({ sessionId, onRespond }) {
+  const pressDecline = () => {
+    passOnInvite(onRespond, sessionId);
+  };
+  const pressConfirm = () => {
+    confirmInvite(onRespond, sessionId);
+  };
+
   return (
     <View style={styles.actions}>
       <View style={styles.actionHalf}>
-        <NbButton variant="ghost" sm onPress={() => passOnThisInvite(onRespond, sessionId)}>
-          Decline
+        <NbButton variant="ghost" sm onPress={pressDecline}>
+          {BUTTON_DECLINE}
         </NbButton>
       </View>
       <View style={styles.actionHalf}>
-        <NbButton variant="fill" sm onPress={() => acceptThisInvite(onRespond, sessionId)}>
-          Confirm
+        <NbButton variant="fill" sm onPress={pressConfirm}>
+          {BUTTON_CONFIRM}
         </NbButton>
       </View>
     </View>
   );
 }
 
-function ReminderWorkoutButton({ onPressViewWorkout }) {
-  if (!onPressViewWorkout) return null;
+// Reminder mode: optional View / Log Workout fill button.
+function ReminderViewWorkoutRow({ onPressViewWorkout }) {
+  if (!onPressViewWorkout) {
+    return null;
+  }
+
   return (
-    <View style={{ marginTop: 4 }}>
+    <View style={styles.reminderActionPad}>
       <NbButton variant="fill" onPress={onPressViewWorkout}>
-        View / Log Workout
+        {BUTTON_VIEW_LOG_WORKOUT}
       </NbButton>
     </View>
   );
 }
 
-// ===== MAIN =====
+// Notes block only when the session carries notes text.
+function SessionNotesLine({ notes, mutedColor }) {
+  if (!notes) {
+    return null;
+  }
+  const notesStyle = [styles.notes, { color: mutedColor }];
+  return (
+    <Text style={notesStyle} numberOfLines={2}>
+      {notes}
+    </Text>
+  );
+}
+
+// Bottom actions: invite Decline/Confirm vs reminder workout CTA.
+function SessionCardActions({ mode, sessionId, onRespond, onPressViewWorkout }) {
+  const isInviteMode = mode === INVITE_MODE;
+  if (isInviteMode) {
+    return <InviteDeclineConfirmRow sessionId={sessionId} onRespond={onRespond} />;
+  }
+  return <ReminderViewWorkoutRow onPressViewWorkout={onPressViewWorkout} />;
+}
+
+// ===== MAIN FUNCTION =====
 
 /**
  * Session card. mode "invite" shows Decline and Confirm. mode "reminder" can show View / Log Workout.
@@ -123,82 +299,103 @@ export function UpcomingSessionCard({
   onRespond,
   onPressViewWorkout,
 }) {
+  // vocab: useTheme = Design Law light/dark token bag (nbInk, nbMuted, nbBorder, …).
   const { colors } = useTheme();
-  const coachFirst = useMemo(() => coachFirstName(coachName), [coachName]);
 
-  if (!session) return null;
+  // vocab: useMemo = recompute first name only when coachName changes.
+  const coachFirstName = useMemo(
+    () => coachFirstNameFromFullName(coachName),
+    [coachName],
+  );
 
-  const durationMinutes = sessionDurationMinutes(session);
-  const dateHuman = sessionDateLabel(session);
-  const timeLabel = sessionTimeLabel(session);
-  const isReminder = mode === REMINDER_MODE;
-  const timeParts = String(timeLabel).split(' ');
-  const clock = timeParts[0] || '—';
-  const meridiem = timeParts[1] || '';
-  const typeLabel = sessionTypeLabel(session);
-  const status = session.status || 'pending';
-  const isConfirmed = status === SESSION_STATUS_ACCEPTED;
-  const isPending = !isConfirmed && status !== SESSION_STATUS_DECLINED;
+  // No session row yet → paint nothing (parent still mounts the slot).
+  if (!session) {
+    return null;
+  }
 
+  // 1. Pull human-readable when / what / where from the session record.
+  const durationMinutes = durationMinutesFromSession(session);
+  const dateHuman = humanDateFromSession(session);
+  const timeLabel = clockLabelFromSession(session);
+  const clockParts = splitClockAndMeridiem(timeLabel);
+  const trainingTitle = trainingTitleFromSession(session);
+  const locationWords = locationChipWords(session);
+  const avatarInitials = avatarInitialsFromName(coachName);
+
+  // 2. Decide invite vs reminder chrome and status chip wording.
+  const isReminderCard = mode === REMINDER_MODE;
+  const sessionStatus = session.status || SESSION_STATUS_PENDING_FALLBACK;
+  const inviteWasAccepted = sessionStatus === SESSION_STATUS_ACCEPTED;
+  const inviteWasDeclined = sessionStatus === SESSION_STATUS_DECLINED;
+  const inviteStillPending = !inviteWasAccepted && !inviteWasDeclined;
+  const statusChipWords = inviteStatusChipWords(inviteWasAccepted, inviteStillPending);
+  const statusChipVariant = statusChipVariantName(inviteWasAccepted);
+  const headlineText = inviteHeadlineText(isReminderCard, coachFirstName);
+
+  // Named style locals so JSX stays a short recipe (no inline ternaries).
+  const titleStyle = [styles.title, { color: colors.nbInk }];
+  const subtitleStyle = [styles.subtitle, { color: colors.nbMuted }];
+  const metaStyle = [styles.meta, { color: colors.nbMuted }];
+
+  // 3. NbCard row: time rail + body (avatar, chips, meta, actions).
+  // vocab: HardShadow comes from NbCard; chips match SessionCard Confirmed/Pending language.
   return (
     <NbCard style={styles.card}>
       <View style={styles.row}>
-        <View style={[styles.when, { borderRightColor: colors.nbBorder }]}>
-          <Text style={[styles.whenNum, { color: colors.nbInk }]}>{clock}</Text>
-          {meridiem ? (
-            <Text style={[styles.whenMeridiem, { color: colors.nbInk }]}>{meridiem}</Text>
-          ) : null}
-          <Text style={[styles.whenSub, { color: colors.nbMuted }]}>
-            {`${durationMinutes} min`}
-          </Text>
-        </View>
+        <SessionTimeRail
+          clockDigits={clockParts.clockDigits}
+          meridiem={clockParts.meridiem}
+          durationMinutes={durationMinutes}
+          borderColor={colors.nbBorder}
+          inkColor={colors.nbInk}
+          mutedColor={colors.nbMuted}
+        />
 
         <View style={styles.body}>
           <View style={styles.nameRow}>
-            <NbAvatar initials={initialsFromName(coachName)} size={AVATAR_SIZE} />
+            <NbAvatar initials={avatarInitials} size={AVATAR_SIZE} />
             <View style={styles.nameStack}>
-              <Text style={[styles.title, { color: colors.nbInk }]} numberOfLines={1}>
-                {isReminder ? 'Your trainer' : `${coachFirst} invited you`}
+              <Text style={titleStyle} numberOfLines={1}>
+                {headlineText}
               </Text>
-              <Text style={[styles.subtitle, { color: colors.nbMuted }]} numberOfLines={1}>
-                {typeLabel}
+              <Text style={subtitleStyle} numberOfLines={1}>
+                {trainingTitle}
               </Text>
             </View>
           </View>
 
           <View style={styles.chipRow}>
             <NbChip
-              selected={isConfirmed}
-              variant={isConfirmed ? 'default' : 'dashed'}
+              selected={inviteWasAccepted}
+              variant={statusChipVariant}
               contentStyle={styles.statusChip}
             >
-              {isConfirmed ? 'Confirmed' : isPending ? 'Pending' : 'Declined'}
+              {statusChipWords}
             </NbChip>
-            <NbChip variant="outline" contentStyle={styles.statusChip}>
-              {whereLabel(session)}
+            <NbChip variant={CHIP_VARIANT_OUTLINE} contentStyle={styles.statusChip}>
+              {locationWords}
             </NbChip>
           </View>
 
-          <Text style={[styles.meta, { color: colors.nbMuted }]} numberOfLines={1}>
+          <Text style={metaStyle} numberOfLines={1}>
             {dateHuman}
           </Text>
 
-          {session.notes ? (
-            <Text style={[styles.notes, { color: colors.nbMuted }]} numberOfLines={2}>
-              {session.notes}
-            </Text>
-          ) : null}
+          <SessionNotesLine notes={session.notes} mutedColor={colors.nbMuted} />
 
-          {mode === INVITE_MODE ? (
-            <InviteActionButtons sessionId={session.id} onRespond={onRespond} />
-          ) : (
-            <ReminderWorkoutButton onPressViewWorkout={onPressViewWorkout} />
-          )}
+          <SessionCardActions
+            mode={mode}
+            sessionId={session.id}
+            onRespond={onRespond}
+            onPressViewWorkout={onPressViewWorkout}
+          />
         </View>
       </View>
     </NbCard>
   );
 }
+
+// ===== PLUMBING — skip unless debugging =====
 
 const styles = StyleSheet.create({
   card: {
@@ -279,4 +476,6 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   actionHalf: { flex: 1 },
+  // Manipulate here: top pad above the reminder CTA (was inline marginTop: 4).
+  reminderActionPad: { marginTop: 4 },
 });

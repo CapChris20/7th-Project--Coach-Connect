@@ -1,6 +1,6 @@
 // Design Law “Create something” sheet — trainer home Tools launcher (document maker only).
-// Flow: Document maker tile → sheet → parent opens DocumentEditor.
-// Used by TrainerHomeContent only. In-app SpreadsheetEditor is retired (use Google Sheets / upload).
+// Flow: sheet opens → trainer picks a row → sheet closes → parent opens DocumentEditor.
+// Used by TrainerHomeContent only. SpreadsheetEditor retired (Google Sheets / upload).
 
 import React from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
@@ -14,12 +14,16 @@ import { trainerHomeThemeColors } from './TrainerHomeBlocks';
 
 const ICON_CHECKIN = require('../../assets/icons/handoff/checkin.png');
 
-// Manipulate here: delay after sheet dismiss before opening full-screen editor (ms)
+// Manipulate here: ms to wait after NbSheet dismiss before opening the full-screen editor
+// (stacking two modals flickers / traps focus on some phones)
 const EDITOR_OPEN_DELAY_MS = 120;
 
+const DOCUMENT_ROW_ID_RICH_TEXT = 'richText';
+
+// Manipulate here: titles / subtitles shown in the Document maker block
 const DOCUMENT_ROWS = [
   {
-    id: 'richText',
+    id: DOCUMENT_ROW_ID_RICH_TEXT,
     title: 'Rich-text editor',
     subtitle: 'Meal guides, intake forms, handouts',
     icon: ICON_CHECKIN,
@@ -27,41 +31,29 @@ const DOCUMENT_ROWS = [
   },
 ];
 
-// ===== MAIN FUNCTION =====
+const SHEET_TITLE = 'Create something';
+const BLOCK_EYEBROW = 'Document maker';
+
+// ===== HELPER FUNCTIONS =====
 
 /**
- * @param {{
- *   visible: boolean,
- *   onClose: Function,
- *   isDark: boolean,
- *   onRichText?: Function,
- * }} props
+ * One tappable document-maker row inside the sheet list.
+ * Why a separate piece: keeps the main sheet free of pressed-style math.
  */
-export default function TrainerCreateSheet({
-  visible,
-  onClose,
-  isDark,
-  onRichText,
-}) {
-  const themeColors = trainerHomeThemeColors(isDark);
+function CreateSheetDocumentRow({ row, isLastInBlock, themeColors, onRowPress }) {
+  // Decide border + pressed look before JSX (no nested ternaries in the tree).
+  const bottomBorderWidth = isLastInBlock ? 0 : 2;
+  const bottomBorderColor = themeColors.cardBorder;
 
-  // Close sheet first, then run parent navigation so two modals never stack.
-  const run = (id) => {
-    onClose?.();
-    setTimeout(() => {
-      if (id === 'richText') onRichText?.();
-    }, EDITOR_OPEN_DELAY_MS);
-  };
-
-  const renderRow = (row, isLastInBlock) => (
+  return (
     <Pressable
-      key={row.id}
-      onPress={() => run(row.id)}
+      onPress={() => onRowPress(row.id)}
       style={({ pressed }) => [
         styles.row,
         {
-          borderBottomWidth: isLastInBlock ? 0 : 2,
-          borderBottomColor: themeColors.cardBorder,
+          borderBottomWidth: bottomBorderWidth,
+          borderBottomColor: bottomBorderColor,
+          // Manipulate here: pressed opacity for the row feedback
           opacity: pressed ? 0.88 : 1,
         },
       ]}
@@ -76,20 +68,87 @@ export default function TrainerCreateSheet({
       <Ionicons name="chevron-forward" size={18} color={themeColors.textMuted} />
     </Pressable>
   );
+}
+
+/**
+ * Map DOCUMENT_ROWS into CreateSheetDocumentRow elements.
+ * Kept as a helper so the main return stays a short checklist.
+ */
+function buildDocumentRowElements(themeColors, onRowPress) {
+  const lastIndex = DOCUMENT_ROWS.length - 1;
+  const rowElements = [];
+
+  for (let index = 0; index < DOCUMENT_ROWS.length; index += 1) {
+    const row = DOCUMENT_ROWS[index];
+    const isLastInBlock = index === lastIndex;
+    rowElements.push(
+      <CreateSheetDocumentRow
+        key={row.id}
+        row={row}
+        isLastInBlock={isLastInBlock}
+        themeColors={themeColors}
+        onRowPress={onRowPress}
+      />,
+    );
+  }
+
+  return rowElements;
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Bottom sheet that lists document-maker tools for the trainer home Tools grid.
+ * Flow: 1. theme colors  2. dismiss then open tool  3. paint sheet
+ *
+ * @param {{
+ *   visible: boolean,
+ *   onClose: Function,
+ *   isDark: boolean,
+ *   onRichText?: Function,
+ * }} props
+ */
+export default function TrainerCreateSheet({
+  visible,
+  onClose,
+  isDark,
+  onRichText,
+}) {
+  // vocab: trainerHomeThemeColors = B/W/gray token map shared with TrainerHomeBlocks
+  const themeColors = trainerHomeThemeColors(isDark);
+
+  /**
+   * Close the sheet first, then open the chosen tool after a short delay.
+   * Why delay: NbSheet must unmount before the parent pushes a full-screen editor.
+   */
+  const openToolAfterSheetCloses = (rowId) => {
+    // 1. Dismiss sheet so we never stack two full-screen modals.
+    onClose?.();
+
+    // 2. Wait for NbSheet to finish unmounting, then call the parent navigation callback.
+    setTimeout(() => {
+      // 3. Only rich-text is live today; other ids are ignored on purpose.
+      if (rowId === DOCUMENT_ROW_ID_RICH_TEXT) {
+        onRichText?.();
+      }
+    }, EDITOR_OPEN_DELAY_MS);
+  };
+
+  // Named locals for JSX — name the decision before the tree.
+  const documentRowElements = buildDocumentRowElements(themeColors, openToolAfterSheetCloses);
+  const eyebrowStyle = [styles.eyebrow, { color: themeColors.textMuted }];
 
   return (
-    <NbSheet visible={visible} onClose={onClose} title="Create something">
+    <NbSheet visible={visible} onClose={onClose} title={SHEET_TITLE}>
       <View style={styles.block}>
-        <Text style={[styles.eyebrow, { color: themeColors.textMuted }]}>Document maker</Text>
-        <View style={styles.list}>
-          {DOCUMENT_ROWS.map((row, index) =>
-            renderRow(row, index === DOCUMENT_ROWS.length - 1),
-          )}
-        </View>
+        <Text style={eyebrowStyle}>{BLOCK_EYEBROW}</Text>
+        <View style={styles.list}>{documentRowElements}</View>
       </View>
     </NbSheet>
   );
 }
+
+// ===== PLUMBING — skip unless debugging =====
 
 const styles = StyleSheet.create({
   block: {

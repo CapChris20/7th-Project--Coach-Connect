@@ -1,130 +1,62 @@
 // Translates between the two daily-metric document shapes.
 // Flow: dailyLogs uses flat dashboard_* keys. The old daily_tracking doc uses camelCase. dailyLogs wins when both have a value.
 // No Firestore calls here. CommonJS so Node tests can require() it. Keep in sync with saveDailyStats.js.
+// Read order: constants → small helpers → main recipes → PLUMBING shape helpers at the bottom.
 
 // ===== NAMED CONSTANTS =====
 
 // Field names below are the contract between dailyLogs and daily_tracking. The letters stay.
+const EMPTY_WORKOUT_NAME = '';
 
 // ===== HELPER FUNCTIONS =====
 
-// PLUMBING — skip unless a dashboard card shows the legacy number instead of the dailyLogs number.
-
+/**
+ * True when a value is present and not an empty string.
+ * @param {*} value
+ * @returns {boolean}
+ */
 function hasTextValue(value) {
-  return value != null && value !== '';
+  if (value == null) {
+    return false;
+  }
+  if (value === '') {
+    return false;
+  }
+  return true;
 }
 
+/**
+ * @param {*} value
+ * @returns {number|null}
+ */
 function finiteNumberOrNull(value) {
   const numericValue = Number(value);
-  if (!Number.isFinite(numericValue)) return null;
+  if (!Number.isFinite(numericValue)) {
+    return null;
+  }
   return numericValue;
 }
 
-function copyFiniteNumber(tracking, trackingKey, dashboardValue) {
-  if (!hasTextValue(dashboardValue)) return;
-  const numericValue = finiteNumberOrNull(dashboardValue);
-  if (numericValue != null) tracking[trackingKey] = numericValue;
-}
-
-function copyRatingString(tracking, trackingKey, dashboardValue) {
-  if (!hasTextValue(dashboardValue)) return;
-  tracking[trackingKey] = String(dashboardValue);
-}
-
-function workoutLogToLegacyExercises(workoutLog) {
-  return workoutLog.map((exercise) => ({
-    name: exercise.exerciseName || exercise.name || '',
-    sets: Array.isArray(exercise.sets) ? exercise.sets : [],
-  }));
-}
-
-function preferLogNumber(logValue, trackingValue) {
-  const numberFromLogs = hasTextValue(logValue) ? Number(logValue) : null;
-  if (Number.isFinite(numberFromLogs)) return numberFromLogs;
-  if (typeof trackingValue === 'number') return trackingValue;
-  return null;
-}
-
-function preferRatingText(logValue, trackingValue) {
-  if (hasTextValue(logValue)) return String(logValue);
-  if (hasTextValue(trackingValue)) return String(trackingValue);
-  return null;
-}
-
-function exercisesFromDailyLogs(logs) {
-  if (!Array.isArray(logs.workoutLog) || logs.workoutLog.length === 0) return null;
-  return logs.workoutLog.map((exercise) => ({
-    name: exercise.exerciseName || exercise.name || '',
-    sets: exercise.sets || [],
-  }));
-}
-
-function setRowWithZeroDefaults(setRow) {
-  return {
-    reps: setRow.reps ?? 0,
-    weight: setRow.weight ?? 0,
-  };
-}
-
-function dailyLogFromLegacyWorkout(trackingData, dailyLog) {
-  const hasLegacyExercises =
-    Array.isArray(trackingData.workoutExercises) && trackingData.workoutExercises.length;
-  let workoutLog = dailyLog.workoutLog;
-  if (hasLegacyExercises) {
-    workoutLog = trackingData.workoutExercises.map((exercise) => ({
-      exerciseName: exercise.name || exercise.exerciseName || exercise.label || '',
-      sets: Array.isArray(exercise.sets) ? exercise.sets.map(setRowWithZeroDefaults) : [],
-    }));
+/**
+ * Snapshot → plain data object. Missing / non-existent docs become {}.
+ * @param {object|null|undefined} snapshot
+ * @returns {object}
+ */
+function snapshotDataFromFirestore(snapshot) {
+  if (!snapshot) {
+    return {};
   }
-  return {
-    ...dailyLog,
-    dashboard_workout_name: trackingData.workoutName || dailyLog.dashboard_workout_name || '',
-    workoutLog,
-  };
-}
-
-function firstLineOfSummary(workoutSummary) {
-  return String(workoutSummary).split('\n')[0].trim();
-}
-
-function dailyLogFromLegacySummary(trackingData, dailyLog) {
-  const titleLine = firstLineOfSummary(trackingData.workoutSummary);
-  return {
-    ...dailyLog,
-    dashboard_workout_name: titleLine || dailyLog.dashboard_workout_name,
-    dashboard_workouts: trackingData.workoutSummary,
-  };
-}
-
-function workoutSignalFromDailyLog(dailyLog) {
-  if (Array.isArray(dailyLog.workoutLog) && dailyLog.workoutLog.length > 0) return true;
-  const namedExercises = dailyLog.dashboard_workout_exercises;
-  if (Array.isArray(namedExercises) && namedExercises.length > 0) return true;
-  const workoutName = dailyLog.dashboard_workout_name;
-  if (workoutName && String(workoutName).trim()) return String(workoutName).trim();
-  return false;
-}
-
-function hasLegacyStructuredWorkout(trackingData) {
-  if (trackingData.workoutName) return true;
-  return Array.isArray(trackingData.workoutExercises) && trackingData.workoutExercises.length;
-}
-
-function snapshotData(snapshot) {
-  if (!snapshot || !snapshot.exists || !snapshot.exists()) return {};
-  return snapshot.data() || {};
-}
-
-function exercisesForTodayCard(logs, trackingData) {
-  const exercisesFromLogs = exercisesFromDailyLogs(logs);
-  if (exercisesFromLogs) return exercisesFromLogs;
-  if (Array.isArray(trackingData.workoutExercises)) return trackingData.workoutExercises;
-  return [];
-}
-
-function finiteOrNull(value) {
-  if (Number.isFinite(value)) return value;
-  return null;
+  if (!snapshot.exists) {
+    return {};
+  }
+  if (!snapshot.exists()) {
+    return {};
+  }
+  const dataFromSnapshot = snapshot.data();
+  if (!dataFromSnapshot) {
+    return {};
+  }
+  return dataFromSnapshot;
 }
 
 // ===== MAIN FUNCTION =====
@@ -136,22 +68,19 @@ function finiteOrNull(value) {
  * @returns {object}
  */
 function trackingMirrorFromLogs(logsPatch = {}) {
-  const tracking = {};
-  copyFiniteNumber(tracking, 'waterIntake', logsPatch.dashboard_water);
-  copyFiniteNumber(tracking, 'sleepHours', logsPatch.dashboard_sleep);
-  copyRatingString(tracking, 'soreness', logsPatch.dashboard_soreness);
-  copyRatingString(tracking, 'energyLevel', logsPatch.dashboard_energy);
-  copyRatingString(tracking, 'stressLevel', logsPatch.dashboard_stress);
-  if (logsPatch.dashboard_workout_name != null) {
-    tracking.workoutName = logsPatch.dashboard_workout_name;
-  }
-  if (logsPatch.dashboard_workouts != null) {
-    tracking.workoutSummary = logsPatch.dashboard_workouts;
-  }
-  if (Array.isArray(logsPatch.workoutLog) && logsPatch.workoutLog.length > 0) {
-    tracking.workoutExercises = workoutLogToLegacyExercises(logsPatch.workoutLog);
-  }
-  return tracking;
+  const trackingPatch = {};
+
+  // 1. Copy numeric dashboard fields into camelCase tracking keys when the log value is present.
+  copyFiniteNumberOntoTracking(trackingPatch, 'waterIntake', logsPatch.dashboard_water);
+  copyFiniteNumberOntoTracking(trackingPatch, 'sleepHours', logsPatch.dashboard_sleep);
+  copyRatingStringOntoTracking(trackingPatch, 'soreness', logsPatch.dashboard_soreness);
+  copyRatingStringOntoTracking(trackingPatch, 'energyLevel', logsPatch.dashboard_energy);
+  copyRatingStringOntoTracking(trackingPatch, 'stressLevel', logsPatch.dashboard_stress);
+
+  // 2. Workout text fields and structured log rows mirror separately.
+  copyWorkoutFieldsOntoTracking(trackingPatch, logsPatch);
+
+  return trackingPatch;
 }
 
 /**
@@ -161,29 +90,30 @@ function trackingMirrorFromLogs(logsPatch = {}) {
  * @returns {object}
  */
 function parseDailyMetricsFromSnapshots(logsSnap, trackingSnap) {
-  const logs = snapshotData(logsSnap);
-  const trackingData = snapshotData(trackingSnap);
+  const dailyLogData = snapshotDataFromFirestore(logsSnap);
+  const trackingData = snapshotDataFromFirestore(trackingSnap);
 
-  const waterIntake = preferLogNumber(logs.dashboard_water, trackingData.waterIntake);
-  const sleepHours = preferLogNumber(logs.dashboard_sleep, trackingData.sleepHours);
-  const soreness = preferRatingText(logs.dashboard_soreness, trackingData.soreness);
-  const energyLevel = preferRatingText(logs.dashboard_energy, trackingData.energyLevel);
-  const stressLevel = preferRatingText(logs.dashboard_stress, trackingData.stressLevel);
+  // 1. Merge scalar metrics — prefer dashboard_* strings/numbers, fall back to tracking.
+  const waterIntake = preferLogNumber(dailyLogData.dashboard_water, trackingData.waterIntake);
+  const sleepHours = preferLogNumber(dailyLogData.dashboard_sleep, trackingData.sleepHours);
+  const soreness = preferRatingText(dailyLogData.dashboard_soreness, trackingData.soreness);
+  const energyLevel = preferRatingText(dailyLogData.dashboard_energy, trackingData.energyLevel);
+  const stressLevel = preferRatingText(dailyLogData.dashboard_stress, trackingData.stressLevel);
 
-  let todayWorkout = null;
-  const workoutName = logs.dashboard_workout_name || trackingData.workoutName;
-  if (workoutName) {
-    todayWorkout = {
-      name: workoutName,
-      exercises: exercisesForTodayCard(logs, trackingData),
-    };
+  // 2. Build today's workout card when we have a name on either doc.
+  const todayWorkout = todayWorkoutCardFromBothDocs(dailyLogData, trackingData);
+
+  // 3. Free-text workout summary for the dashboard strip.
+  let dashboardWorkoutSummary = null;
+  if (dailyLogData.dashboard_workouts) {
+    dashboardWorkoutSummary = dailyLogData.dashboard_workouts;
+  } else if (trackingData.workoutSummary) {
+    dashboardWorkoutSummary = trackingData.workoutSummary;
   }
 
-  const dashboardWorkoutSummary = logs.dashboard_workouts || trackingData.workoutSummary || null;
-
   return {
-    waterIntake: finiteOrNull(waterIntake),
-    sleepHours: finiteOrNull(sleepHours),
+    waterIntake: keepFiniteNumberOrNull(waterIntake),
+    sleepHours: keepFiniteNumberOrNull(sleepHours),
     soreness,
     energyLevel,
     stressLevel,
@@ -194,25 +124,38 @@ function parseDailyMetricsFromSnapshots(logsSnap, trackingSnap) {
 
 /**
  * Workout logger form in dailyLogs shape. `d` is the hydrated doc. `fromLogs` is false when there is nothing to edit.
+ * Freeze: return shape keys stay `d` and `fromLogs` — callers read those letters.
  * @param {object} logsSnap
  * @param {object} trackingSnap
  * @returns {{ d: object, fromLogs: boolean }}
  */
 function buildWorkoutLogHydration(logsSnap, trackingSnap) {
-  const dailyLog = snapshotData(logsSnap);
-  const trackingData = snapshotData(trackingSnap);
-  const fromDailyLogs = workoutSignalFromDailyLog(dailyLog);
+  const dailyLogData = snapshotDataFromFirestore(logsSnap);
+  const trackingData = snapshotDataFromFirestore(trackingSnap);
 
-  if (fromDailyLogs) {
-    return { d: dailyLog, fromLogs: fromDailyLogs };
+  // 1. When dailyLogs already has workout signal, use that doc as-is.
+  const alreadyOnDailyLogs = workoutSignalFromDailyLog(dailyLogData);
+  if (alreadyOnDailyLogs) {
+    return { d: dailyLogData, fromLogs: alreadyOnDailyLogs };
   }
+
+  // 2. Legacy structured exercises → synthetic dailyLogs rows the logger can edit.
   if (hasLegacyStructuredWorkout(trackingData)) {
-    return { d: dailyLogFromLegacyWorkout(trackingData, dailyLog), fromLogs: true };
+    const hydratedDailyLog = dailyLogFromLegacyWorkout(trackingData, dailyLogData);
+    return { d: hydratedDailyLog, fromLogs: true };
   }
-  if (trackingData.workoutSummary && String(trackingData.workoutSummary).trim()) {
-    return { d: dailyLogFromLegacySummary(trackingData, dailyLog), fromLogs: true };
+
+  // 3. Legacy free-text summary only → copy title from first line into dashboard_workout_name.
+  let legacySummaryText = null;
+  if (trackingData.workoutSummary) {
+    legacySummaryText = String(trackingData.workoutSummary).trim();
   }
-  return { d: dailyLog, fromLogs: fromDailyLogs };
+  if (legacySummaryText) {
+    const hydratedDailyLog = dailyLogFromLegacySummary(trackingData, dailyLogData);
+    return { d: hydratedDailyLog, fromLogs: true };
+  }
+
+  return { d: dailyLogData, fromLogs: alreadyOnDailyLogs };
 }
 
 module.exports = {
@@ -220,3 +163,291 @@ module.exports = {
   parseDailyMetricsFromSnapshots,
   buildWorkoutLogHydration,
 };
+
+// ===== PLUMBING — skip unless a dashboard card shows the legacy number instead of the dailyLogs number =====
+
+function copyFiniteNumberOntoTracking(trackingPatch, trackingKey, dashboardValue) {
+  if (!hasTextValue(dashboardValue)) {
+    return;
+  }
+  const numericValue = finiteNumberOrNull(dashboardValue);
+  if (numericValue != null) {
+    trackingPatch[trackingKey] = numericValue;
+  }
+}
+
+function copyRatingStringOntoTracking(trackingPatch, trackingKey, dashboardValue) {
+  if (!hasTextValue(dashboardValue)) {
+    return;
+  }
+  trackingPatch[trackingKey] = String(dashboardValue);
+}
+
+function copyWorkoutFieldsOntoTracking(trackingPatch, logsPatch) {
+  if (logsPatch.dashboard_workout_name != null) {
+    trackingPatch.workoutName = logsPatch.dashboard_workout_name;
+  }
+  if (logsPatch.dashboard_workouts != null) {
+    trackingPatch.workoutSummary = logsPatch.dashboard_workouts;
+  }
+  if (!Array.isArray(logsPatch.workoutLog)) {
+    return;
+  }
+  if (logsPatch.workoutLog.length === 0) {
+    return;
+  }
+  trackingPatch.workoutExercises = workoutLogToLegacyExercises(logsPatch.workoutLog);
+}
+
+// Prefer exerciseName; fall back to name. Empty string when neither is set.
+function exerciseNameFromLogRow(exerciseRow) {
+  if (exerciseRow.exerciseName) {
+    return exerciseRow.exerciseName;
+  }
+  if (exerciseRow.name) {
+    return exerciseRow.name;
+  }
+  return EMPTY_WORKOUT_NAME;
+}
+
+// Only array sets survive the mirror — non-arrays become [].
+function arraySetsFromLogRow(exerciseRow) {
+  if (!Array.isArray(exerciseRow.sets)) {
+    return [];
+  }
+  return exerciseRow.sets;
+}
+
+function legacyExerciseFromLogRow(exerciseRow) {
+  return {
+    name: exerciseNameFromLogRow(exerciseRow),
+    sets: arraySetsFromLogRow(exerciseRow),
+  };
+}
+
+function workoutLogToLegacyExercises(workoutLog) {
+  const legacyExercises = [];
+  for (let index = 0; index < workoutLog.length; index += 1) {
+    legacyExercises.push(legacyExerciseFromLogRow(workoutLog[index]));
+  }
+  return legacyExercises;
+}
+
+function preferLogNumber(logValue, trackingValue) {
+  let numberFromLogs = null;
+  if (hasTextValue(logValue)) {
+    numberFromLogs = Number(logValue);
+  }
+  if (Number.isFinite(numberFromLogs)) {
+    return numberFromLogs;
+  }
+  if (typeof trackingValue === 'number') {
+    return trackingValue;
+  }
+  return null;
+}
+
+function preferRatingText(logValue, trackingValue) {
+  if (hasTextValue(logValue)) {
+    return String(logValue);
+  }
+  if (hasTextValue(trackingValue)) {
+    return String(trackingValue);
+  }
+  return null;
+}
+
+function keepFiniteNumberOrNull(value) {
+  if (Number.isFinite(value)) {
+    return value;
+  }
+  return null;
+}
+
+function todayWorkoutCardFromBothDocs(dailyLogData, trackingData) {
+  let workoutName = dailyLogData.dashboard_workout_name;
+  if (!workoutName) {
+    workoutName = trackingData.workoutName;
+  }
+  if (!workoutName) {
+    return null;
+  }
+  return {
+    name: workoutName,
+    exercises: exercisesForTodayCard(dailyLogData, trackingData),
+  };
+}
+
+// Truthy sets only (not Array.isArray) — matches the old today-card path.
+function truthySetsFromLogRow(exerciseRow) {
+  if (!exerciseRow.sets) {
+    return [];
+  }
+  return exerciseRow.sets;
+}
+
+function todayCardExerciseFromLogRow(exerciseRow) {
+  return {
+    name: exerciseNameFromLogRow(exerciseRow),
+    sets: truthySetsFromLogRow(exerciseRow),
+  };
+}
+
+function exercisesFromDailyLogs(dailyLogData) {
+  if (!Array.isArray(dailyLogData.workoutLog)) {
+    return null;
+  }
+  if (dailyLogData.workoutLog.length === 0) {
+    return null;
+  }
+  const exercises = [];
+  for (let index = 0; index < dailyLogData.workoutLog.length; index += 1) {
+    exercises.push(todayCardExerciseFromLogRow(dailyLogData.workoutLog[index]));
+  }
+  return exercises;
+}
+
+function exercisesForTodayCard(dailyLogData, trackingData) {
+  const exercisesFromLogs = exercisesFromDailyLogs(dailyLogData);
+  if (exercisesFromLogs) {
+    return exercisesFromLogs;
+  }
+  if (Array.isArray(trackingData.workoutExercises)) {
+    return trackingData.workoutExercises;
+  }
+  return [];
+}
+
+function setRowWithZeroDefaults(setRow) {
+  // vocab/symbol: ?? = keep 0 when reps/weight are null/undefined (0 must survive)
+  let repsValue = setRow.reps;
+  if (repsValue === null || repsValue === undefined) {
+    repsValue = 0;
+  }
+  let weightValue = setRow.weight;
+  if (weightValue === null || weightValue === undefined) {
+    weightValue = 0;
+  }
+  return {
+    reps: repsValue,
+    weight: weightValue,
+  };
+}
+
+function mapLegacySetsWithDefaults(setsArray) {
+  const mappedSets = [];
+  for (let index = 0; index < setsArray.length; index += 1) {
+    mappedSets.push(setRowWithZeroDefaults(setsArray[index]));
+  }
+  return mappedSets;
+}
+
+// Legacy rows prefer name, then exerciseName, then label.
+function exerciseNameFromLegacyRow(exerciseRow) {
+  if (exerciseRow.name) {
+    return exerciseRow.name;
+  }
+  if (exerciseRow.exerciseName) {
+    return exerciseRow.exerciseName;
+  }
+  if (exerciseRow.label) {
+    return exerciseRow.label;
+  }
+  return EMPTY_WORKOUT_NAME;
+}
+
+function setsFromLegacyRow(exerciseRow) {
+  if (!Array.isArray(exerciseRow.sets)) {
+    return [];
+  }
+  return mapLegacySetsWithDefaults(exerciseRow.sets);
+}
+
+function workoutLogRowFromLegacyExercise(exerciseRow) {
+  return {
+    exerciseName: exerciseNameFromLegacyRow(exerciseRow),
+    sets: setsFromLegacyRow(exerciseRow),
+  };
+}
+
+function workoutLogRowsFromLegacyExercises(workoutExercises) {
+  const workoutLogRows = [];
+  for (let index = 0; index < workoutExercises.length; index += 1) {
+    workoutLogRows.push(workoutLogRowFromLegacyExercise(workoutExercises[index]));
+  }
+  return workoutLogRows;
+}
+
+function workoutNameFromLegacyOrLog(trackingData, dailyLogData) {
+  if (trackingData.workoutName) {
+    return trackingData.workoutName;
+  }
+  if (dailyLogData.dashboard_workout_name) {
+    return dailyLogData.dashboard_workout_name;
+  }
+  return EMPTY_WORKOUT_NAME;
+}
+
+function dailyLogFromLegacyWorkout(trackingData, dailyLogData) {
+  const hasLegacyExercises =
+    Array.isArray(trackingData.workoutExercises) && trackingData.workoutExercises.length > 0;
+  let workoutLogRows = dailyLogData.workoutLog;
+  if (hasLegacyExercises) {
+    workoutLogRows = workoutLogRowsFromLegacyExercises(trackingData.workoutExercises);
+  }
+  const workoutNameOnLog = workoutNameFromLegacyOrLog(trackingData, dailyLogData);
+  return Object.assign({}, dailyLogData, {
+    dashboard_workout_name: workoutNameOnLog,
+    workoutLog: workoutLogRows,
+  });
+}
+
+function firstLineOfSummary(workoutSummary) {
+  const summaryAsString = String(workoutSummary);
+  const lines = summaryAsString.split('\n');
+  return lines[0].trim();
+}
+
+function dailyLogFromLegacySummary(trackingData, dailyLogData) {
+  const titleLine = firstLineOfSummary(trackingData.workoutSummary);
+  let workoutNameOnLog = dailyLogData.dashboard_workout_name;
+  if (titleLine) {
+    workoutNameOnLog = titleLine;
+  }
+  return Object.assign({}, dailyLogData, {
+    dashboard_workout_name: workoutNameOnLog,
+    dashboard_workouts: trackingData.workoutSummary,
+  });
+}
+
+function workoutSignalFromDailyLog(dailyLogData) {
+  if (Array.isArray(dailyLogData.workoutLog) && dailyLogData.workoutLog.length > 0) {
+    return true;
+  }
+  const namedExercises = dailyLogData.dashboard_workout_exercises;
+  if (Array.isArray(namedExercises) && namedExercises.length > 0) {
+    return true;
+  }
+  const workoutName = dailyLogData.dashboard_workout_name;
+  if (!workoutName) {
+    return false;
+  }
+  const trimmedName = String(workoutName).trim();
+  if (trimmedName) {
+    return trimmedName;
+  }
+  return false;
+}
+
+function hasLegacyStructuredWorkout(trackingData) {
+  if (trackingData.workoutName) {
+    return true;
+  }
+  if (!Array.isArray(trackingData.workoutExercises)) {
+    return false;
+  }
+  if (trackingData.workoutExercises.length > 0) {
+    return true;
+  }
+  return false;
+}

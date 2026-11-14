@@ -1,8 +1,6 @@
 // Design Law page chrome: hard-shadow back square + title (+ optional subtitle / forward).
-// Flow: safe-area top inset → back chip → title stack → optional forward chip.
-// Used by Settings and every settings subpage; PDF viewer uses onForward for next page.
-// vocab: backSq = 44×44 outlined chip with offset hard shadow (not the home TopHeader icon chips)
-// vocab: SHELL_SAFE_AREA_EDGES = left/right only — THIS header always owns the status-bar inset
+// Flow: safe-area top pad → back chip → title stack → forward chip or matching spacer.
+// Used by: Settings and settings subpages; PDF viewer uses onForward for next page.
 
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
@@ -11,44 +9,110 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from './lightDarkMode';
 import { nb, spacing } from './colorPalette';
 
-// ===== HELPERS =====
+// ===== NAMED CONSTANTS =====
+
+// Manipulate here: chip 44×44, radius 12; disabled opacity when forward is locked
+const HEADER_CHIP_SIZE = 44;
+const HEADER_CHIP_RADIUS = 12;
+const HEADER_CHIP_ICON_SIZE = 22;
+const HEADER_CHIP_DISABLED_OPACITY = 0.4;
+const HEADER_CHIP_ACTIVE_OPACITY = 0.85;
+const BACK_ICON_NAME = 'chevron-back';
+const FORWARD_ICON_NAME = 'chevron-forward';
+
+// ===== HELPER FUNCTIONS =====
+
+function pressHandlerIsCallable(onPress) {
+  return typeof onPress === 'function';
+}
 
 /**
- * Hard-shadow square chip shared by back / forward.
- * @param {{ onPress?: Function, icon: string, label: string, disabled?: boolean, colors: object }} props
+ * Hard-shadow square chip for back / forward.
+ * No handler → empty spacer so the title stays centered.
  */
-function HeaderSquareChip({ onPress, icon, label, disabled = false, colors }) {
-  if (typeof onPress !== 'function') {
+function PageHeaderSquareChip({
+  onPress,
+  icon,
+  label,
+  disabled = false,
+  themeColors,
+}) {
+  const canPress = pressHandlerIsCallable(onPress);
+
+  if (!canPress) {
     return <View style={styles.backSqSpacer} />;
   }
+
+  const chipOpacity = disabled ? HEADER_CHIP_DISABLED_OPACITY : 1;
+  const chipChrome = {
+    borderColor: themeColors.nbBorder,
+    backgroundColor: themeColors.nbSurface,
+    shadowColor: themeColors.nbShadow,
+    opacity: chipOpacity,
+  };
+
   return (
     <TouchableOpacity
       onPress={onPress}
       disabled={disabled}
-      style={[
-        styles.backSq,
-        {
-          borderColor: colors.nbBorder,
-          backgroundColor: colors.nbSurface,
-          shadowColor: colors.nbShadow,
-          opacity: disabled ? 0.4 : 1,
-        },
-      ]}
+      style={[styles.backSq, chipChrome]}
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ disabled }}
-      activeOpacity={0.85}
+      activeOpacity={HEADER_CHIP_ACTIVE_OPACITY}
     >
-      <Ionicons name={icon} size={22} color={colors.nbInk} />
+      <Ionicons name={icon} size={HEADER_CHIP_ICON_SIZE} color={themeColors.nbInk} />
     </TouchableOpacity>
+  );
+}
+
+function PageHeaderTitleStack({ title, subtitle, inkColor, mutedColor }) {
+  let subtitleNode = null;
+  if (subtitle) {
+    subtitleNode = (
+      <Text style={[styles.pageSubtitle, { color: mutedColor }]} numberOfLines={2}>
+        {subtitle}
+      </Text>
+    );
+  }
+
+  return (
+    <View style={styles.pageHeaderText}>
+      <Text style={[styles.pageTitle, { color: inkColor }]} numberOfLines={1}>
+        {title}
+      </Text>
+      {subtitleNode}
+    </View>
+  );
+}
+
+/**
+ * Forward chip when onForward is a function; otherwise a matching spacer.
+ */
+function PageHeaderForwardSlot({ onForward, forwardDisabled, themeColors }) {
+  const showForwardChip = pressHandlerIsCallable(onForward);
+
+  if (!showForwardChip) {
+    return <View style={styles.backSqSpacer} />;
+  }
+
+  return (
+    <PageHeaderSquareChip
+      onPress={onForward}
+      icon={FORWARD_ICON_NAME}
+      label="Next page"
+      disabled={forwardDisabled}
+      themeColors={themeColors}
+    />
   );
 }
 
 // ===== MAIN FUNCTION =====
 
 /**
- * Always pads `insets.top` so titles never sit under the Dynamic Island / status bar.
- * `skipTopSafeInset` is kept for call-site compat but ignored — shell SafeAreas do not own top.
+ * Always pads below the status bar / Dynamic Island.
+ * skipTopSafeInset is kept for call-site compat but ignored — this header owns top inset.
+ *
  * @param {{
  *   title: string,
  *   subtitle?: string|null,
@@ -66,45 +130,39 @@ export default function NbPageHeader({
   forwardDisabled = false,
   skipTopSafeInset: _skipTopSafeInset = false,
 }) {
-  const { colors } = useTheme();
+  // vocab: useTheme = Design Law tokens; useSafeAreaInsets = notch / status-bar padding
+  const { colors: themeColors } = useTheme();
   const insets = useSafeAreaInsets();
-  // Manipulate here: gap under status bar after the safe inset
+
+  // 1. Always pad below status bar — skipTopSafeInset ignored on purpose.
+  // Manipulate here: spacing.sm is the gap under the safe inset
   const topPad = Math.max(insets.top, 0) + spacing.sm;
 
+  // 2. Three-column row: back | title | forward (or matching spacer).
   return (
     <View style={[styles.pageHeader, { paddingTop: topPad }]}>
-      <HeaderSquareChip
+      <PageHeaderSquareChip
         onPress={onBack}
-        icon="chevron-back"
+        icon={BACK_ICON_NAME}
         label="Go back"
-        colors={colors}
+        themeColors={themeColors}
       />
-      <View style={styles.pageHeaderText}>
-        <Text style={[styles.pageTitle, { color: colors.nbInk }]} numberOfLines={1}>
-          {title}
-        </Text>
-        {subtitle ? (
-          <Text style={[styles.pageSubtitle, { color: colors.nbMuted }]} numberOfLines={2}>
-            {subtitle}
-          </Text>
-        ) : null}
-      </View>
-      {/* Design Law PDF/media: optional forward chip (next page). Spacer keeps title centered when absent. */}
-      {typeof onForward === 'function' ? (
-        <HeaderSquareChip
-          onPress={onForward}
-          icon="chevron-forward"
-          label="Next page"
-          disabled={forwardDisabled}
-          colors={colors}
-        />
-      ) : (
-        <View style={styles.backSqSpacer} />
-      )}
+      <PageHeaderTitleStack
+        title={title}
+        subtitle={subtitle}
+        inkColor={themeColors.nbInk}
+        mutedColor={themeColors.nbMuted}
+      />
+      <PageHeaderForwardSlot
+        onForward={onForward}
+        forwardDisabled={forwardDisabled}
+        themeColors={themeColors}
+      />
     </View>
   );
 }
 
+// PLUMBING — skip unless debugging chip shadow / title type
 const styles = StyleSheet.create({
   pageHeader: {
     flexDirection: 'row',
@@ -113,11 +171,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.sm,
   },
-  // Manipulate here: back chip size / radius / hard shadow offset
   backSq: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
+    width: HEADER_CHIP_SIZE,
+    height: HEADER_CHIP_SIZE,
+    borderRadius: HEADER_CHIP_RADIUS,
     borderWidth: nb.borderWidth,
     alignItems: 'center',
     justifyContent: 'center',
@@ -126,7 +183,7 @@ const styles = StyleSheet.create({
     shadowRadius: 0,
     elevation: 3,
   },
-  backSqSpacer: { width: 44, height: 44 },
+  backSqSpacer: { width: HEADER_CHIP_SIZE, height: HEADER_CHIP_SIZE },
   pageHeaderText: { flex: 1, minWidth: 0 },
   pageTitle: {
     fontFamily: 'SpaceGrotesk_700Bold',

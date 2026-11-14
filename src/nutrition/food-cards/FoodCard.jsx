@@ -1,97 +1,238 @@
-// Design Law food row card: HardShadow shell → compact macros → optional expand → actions.
-// Flow: press → expand NutritionFactsPanel / add / favorite. Used by search + food lists.
-// vocab: HardShadow = solid offset shadow (no blur)
+// Premium food row — compact macros, optional expand into NutritionFactsPanel, action icons.
+// Flow: tap → chevron expand / edit / delete / favorite / add-to-log FAB → haptics on key actions.
+// Used by food search results and LoggedFoodRow (embedded).
 
 import React, { useMemo } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  Pressable,
-  Platform,
-} from 'react-native';
+import { View, Text, StyleSheet, Pressable, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import Animated, {
-  FadeIn,
-  Layout,
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-} from 'react-native-reanimated';
+import Animated, { FadeIn, Layout, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
-import {
-  Pencil,
-  Trash2,
-  ChevronDown,
-  Bookmark,
-  Plus,
-  Heart,
-} from 'lucide-react-native';
+import { Pencil, Trash2, ChevronDown, Bookmark, Plus, Heart } from 'lucide-react-native';
 import ColorText from './ColorText';
 import NutritionFactsPanel from './NutritionFactsPanel';
 import { gradients, fonts, pillBackgroundGradient, getFoodCardPalette } from './foodCardColors';
 import HardShadow from '../../look-and-feel/HardShadow';
-import {
-  nb,
-  borderRadius,
-  gradients as nbGradients,
-  lightColors,
-  darkColors,
-} from '../../look-and-feel/colorPalette';
+import { nb, borderRadius, gradients as nbGradients, lightColors, darkColors } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
-// ===== HELPER FUNCTIONS =====
-
+// Manipulate here: how far the card squeezes on press (1 = none)
+const CARD_PRESS_SCALE = 0.985;
+// Manipulate here: press-in / press-out timing in ms
+const CARD_PRESS_MS = 120;
+// Manipulate here: expand panel fade / layout duration
+const EXPAND_FADE_MS = 220;
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
-function IconAction({ onPress, children, accessibilityLabel, palette }) {
-  return (
-    <Pressable
-      onPress={onPress}
-      hitSlop={6}
-      accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel}
-      style={({ pressed }) => [
-        styles.iconAction,
-        pressed && { backgroundColor: palette.iconPressBg },
-      ]}
-    >
-      {({ pressed }) =>
-        typeof children === 'function' ? children(pressed) : children
-      }
-    </Pressable>
-  );
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * Subtitle under the food name: brand · serving · weight.
+ * Prefers an explicit subtitle when the card already has one.
+ * @param {object|undefined} food
+ * @returns {string}
+ */
+function subtitleLineFromFood(food) {
+  if (food?.subtitle) return food.subtitle;
+  const weightLabel = food?.weightG ? `${food.weightG}g` : null;
+  const subtitleParts = [food?.brand, food?.serving, weightLabel].filter(Boolean);
+  return subtitleParts.join(' · ');
 }
 
-function MacroPill({ label, grams, gradientStops, palette }) {
-  const pillBackground = pillBackgroundGradient(gradientStops);
-  const display = Math.round(Number(grams) || 0);
+/**
+ * Shell fill + border for light / dark / embedded meal rows.
+ * Manipulate here: embedded light cards use soft wash; dark/standalone use nbSurface.
+ * @param {boolean} isDark
+ * @param {boolean} embedded
+ * @returns {{ fill: string, border: string }}
+ */
+function foodCardShellColors(isDark, embedded) {
+  let shellFill = lightColors.nbSurface;
+  if (isDark) {
+    shellFill = darkColors.nbSurface;
+  } else if (embedded) {
+    shellFill = nbGradients.soft.colors[0];
+  }
+  let shellBorder;
+  if (isDark) {
+    shellBorder = darkColors.nbBorder;
+  } else {
+    shellBorder = lightColors.nbBorder;
+  }
+  return {
+    fill: shellFill,
+    border: shellBorder
+  };
+}
 
-  return (
-    <View style={[styles.macroPillOuter, { borderColor: palette.borderStrong }]}>
-      <LinearGradient colors={pillBackground} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.macroPillBg}>
-        <ColorText
-          colors={gradientStops}
-          style={styles.macroPillLabel}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-        >
+/**
+ * Tiny icon button used for favorite / edit / delete / chevron.
+ * Children may be a render function that receives the pressed flag.
+ */
+function FoodCardIconButton({
+  onPress,
+  children,
+  accessibilityLabel,
+  palette
+}) {
+  return <Pressable onPress={onPress} hitSlop={6} accessibilityRole="button" accessibilityLabel={accessibilityLabel} style={({
+    pressed
+  }) => [styles.iconAction, pressed && {
+    backgroundColor: palette.iconPressBg
+  }]}>
+      {({
+      pressed
+    }) => typeof children === 'function' ? children(pressed) : children}
+    </Pressable>;
+}
+
+/**
+ * One macro pill (CARBS / PROTEIN / FAT) with gradient label + gram value.
+ */
+function MacroPill({
+  label,
+  grams,
+  gradientStops,
+  palette
+}) {
+  const pillBackground = pillBackgroundGradient(gradientStops);
+  const roundedGrams = Math.round(Number(grams) || 0);
+  return <View style={[styles.macroPillOuter, {
+    borderColor: palette.borderStrong
+  }]}>
+      <LinearGradient colors={pillBackground} start={{
+      x: 0,
+      y: 0
+    }} end={{
+      x: 1,
+      y: 1
+    }} style={styles.macroPillBg}>
+        <ColorText colors={gradientStops} style={styles.macroPillLabel} start={{
+        x: 0,
+        y: 0
+      }} end={{
+        x: 1,
+        y: 0
+      }}>
           {label}
         </ColorText>
         <View style={styles.macroPillValueRow}>
-          <Text style={[styles.macroPillValue, { color: palette.foreground }]}>{display}</Text>
-          <Text style={[styles.macroPillUnit, { color: palette.mutedForeground }]}>g</Text>
+          <Text style={[styles.macroPillValue, {
+          color: palette.foreground
+        }]}>
+            {roundedGrams}
+          </Text>
+          <Text style={[styles.macroPillUnit, {
+          color: palette.mutedForeground
+        }]}>g</Text>
         </View>
       </LinearGradient>
-    </View>
-  );
+    </View>;
+}
+
+/**
+ * Heart / pencil / trash / chevron cluster on the top-right of the card.
+ */
+function FoodCardActionIcons({
+  onFavorite,
+  onEdit,
+  onDelete,
+  onToggle,
+  permanentlyExpanded,
+  isFavorite,
+  isExpanded,
+  palette,
+  brandAccentColor,
+  onToggleExpand,
+  favoriteAccessibilityLabel,
+  chevronAccessibilityLabel
+}) {
+  let chevronRotation;
+  if (isExpanded) {
+    chevronRotation = '180deg';
+  } else {
+    chevronRotation = '0deg';
+  }
+  return <View style={styles.iconRow}>
+      {onFavorite ? <FoodCardIconButton onPress={onFavorite} accessibilityLabel={favoriteAccessibilityLabel} palette={palette}>
+          {pressed => <Heart size={15} color={isFavorite || pressed ? brandAccentColor : palette.subtle} fill={isFavorite ? brandAccentColor : 'transparent'} strokeWidth={2} />}
+        </FoodCardIconButton> : null}
+
+      {onEdit ? <FoodCardIconButton onPress={onEdit} accessibilityLabel="Edit food" palette={palette}>
+          {pressed => <Pencil size={15} color={pressed ? palette.foreground : palette.subtle} strokeWidth={2} />}
+        </FoodCardIconButton> : null}
+
+      {onDelete ? <FoodCardIconButton onPress={onDelete} accessibilityLabel="Delete food" palette={palette}>
+          {pressed => <Trash2 size={15} color={pressed ? palette.foreground : palette.subtle} strokeWidth={2} />}
+        </FoodCardIconButton> : null}
+
+      {!permanentlyExpanded && onToggle ? <FoodCardIconButton onPress={onToggleExpand} accessibilityLabel={chevronAccessibilityLabel} palette={palette}>
+          {pressed => <View style={{
+        transform: [{
+          rotate: chevronRotation
+        }]
+      }}>
+              <ChevronDown size={16} color={pressed ? palette.foreground : palette.subtle} strokeWidth={2} />
+            </View>}
+        </FoodCardIconButton> : null}
+    </View>;
+}
+
+/**
+ * Expanded nutrition facts + source line + bookmark.
+ */
+function FoodCardExpandedSection({
+  food,
+  macroPercentBreakdown,
+  micronutrientMap,
+  isDark,
+  embedded,
+  palette,
+  skipExpandAnimation,
+  onBookmark
+}) {
+  const sourceLabel = food?.source || 'CoachConnect';
+  return <Animated.View entering={skipExpandAnimation ? undefined : FadeIn.duration(EXPAND_FADE_MS)} layout={skipExpandAnimation ? undefined : Layout.duration(EXPAND_FADE_MS)} style={[styles.expandedSection, {
+    borderTopColor: palette.border
+  }]}>
+      <NutritionFactsPanel carbs={food?.carbs} protein={food?.protein} fat={food?.fat} macroPercents={macroPercentBreakdown} micronutrients={micronutrientMap} serving={food?.serving} isDark={isDark} embedded={embedded} />
+
+      <View style={styles.footer}>
+        <View style={styles.sourceRow}>
+          <View style={styles.sourceDotWrap}>
+            <LinearGradient colors={gradients.protein} start={{
+            x: 0,
+            y: 0
+          }} end={{
+            x: 1,
+            y: 1
+          }} style={styles.sourceDot} />
+          </View>
+          <Text style={[styles.sourceText, {
+          color: palette.mutedForeground
+        }]} numberOfLines={2}>
+            {sourceLabel}
+          </Text>
+        </View>
+        <Pressable onPress={onBookmark} style={({
+        pressed
+      }) => [styles.bookmarkBtn, {
+        backgroundColor: palette.surfaceElevated,
+        borderColor: palette.border
+      }, pressed && {
+        opacity: 0.85
+      }]} accessibilityRole="button" accessibilityLabel="Bookmark food">
+          <Bookmark size={14} color={palette.foreground} strokeWidth={2} />
+        </Pressable>
+      </View>
+    </Animated.View>;
 }
 
 // ===== MAIN FUNCTION =====
 
 /**
- * Premium expandable food logging card.
+ * Search / meal food card. Same food key letters (name, calories, carbs, protein, fat, …).
+ * Hook order frozen: useMemo → useSharedValue → useAnimatedStyle.
  */
 export default function FoodCard({
   food,
@@ -100,255 +241,177 @@ export default function FoodCard({
   onEdit,
   onDelete,
   onBookmark,
-  /** Search / add-to-log — shows a plus in the action row. */
   onAdd,
-  /** Optional favorite toggle for search results. */
   onFavorite,
   isFavorite = false,
   isDark = true,
   embedded = false,
   palette: paletteProp,
-  /** When true, card stays expanded and the chevron toggle is hidden (confirm/verify screens). */
-  permanentlyExpanded = false,
+  permanentlyExpanded = false
 }) {
-  const isExpanded = permanentlyExpanded ? true : expanded;
-  const palette = useMemo(
-    () => paletteProp ?? getFoodCardPalette(isDark, { embedded }),
-    [paletteProp, isDark, embedded],
-  );
+  // 1. Expand state — confirm screens force open and hide the chevron.
+  let isExpanded;
+  if (permanentlyExpanded) {
+    isExpanded = true;
+  } else {
+    isExpanded = expanded;
+  } // 2. Theme palette (memoized so embedded meal rows do not re-tint every parent render).
+  // vocab: useMemo = cache until paletteProp / isDark / embedded change
+  const palette = useMemo(() => paletteProp ?? getFoodCardPalette(isDark, {
+    embedded
+  }), [paletteProp, isDark, embedded]);
 
-  const scale = useSharedValue(1);
+  // 3. vocab: Reanimated shared value — quick squeeze on press in/out.
+  // vocab: useSharedValue / useAnimatedStyle / withTiming = Reanimated press scale
+  const pressScale = useSharedValue(1);
   const animatedCardStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
+    transform: [{
+      scale: pressScale.value
+    }]
   }));
 
-  const subtitle = food?.subtitle || [food?.brand, food?.serving, food?.weightG ? `${food.weightG}g` : null]
-    .filter(Boolean)
-    .join(' · ');
+  // 4. Name display decisions before JSX (food key letters stay frozen).
+  const subtitle = subtitleLineFromFood(food);
+  const micronutrientMap = food?.micronutrients || {};
+  const macroPercentBreakdown = food?.macroPercents || {
+    carbs: 0,
+    protein: 0,
+    fat: 0
+  };
+  const roundedCalories = Math.round(Number(food?.calories) || 0);
+  const foodDisplayName = food?.name || 'Food';
+  const shellColors = foodCardShellColors(isDark, embedded);
+  const cardOverflowVisible = Boolean(onAdd || embedded);
+  const pillsRowNeedsFabGap = Boolean(onAdd);
+  const skipExpandAnimation = permanentlyExpanded;
+  let favoriteAccessibilityLabel;
+  if (isFavorite) {
+    favoriteAccessibilityLabel = 'Remove from favorites';
+  } else {
+    favoriteAccessibilityLabel = 'Add to favorites';
+  }
+  let chevronAccessibilityLabel;
+  if (isExpanded) {
+    chevronAccessibilityLabel = 'Collapse';
+  } else {
+    chevronAccessibilityLabel = 'Expand';
+  }
+  const brandAccentColor = nbGradients.brand.colors[0];
+  let shadowOffset;
+  if (embedded) {
+    shadowOffset = 0;
+  } else {
+    shadowOffset = nb.shadowOffsetCard;
+  }
+  const innerFrameStyle = {
+    backgroundColor: shellColors.fill,
+    borderWidth: nb.borderWidth,
+    borderColor: shellColors.border,
+    borderRadius: borderRadius.nbCard,
+    overflow: cardOverflowVisible ? 'visible' : 'hidden'
+  };
 
-  const micros = food?.micronutrients || {};
-  const pct = food?.macroPercents || { carbs: 0, protein: 0, fat: 0 };
-
-  const handleToggle = () => {
+  // 5. Handlers — haptics on expand-open and add-to-log; press scale for the card shell.
+  const handleToggleExpand = () => {
     if (permanentlyExpanded) return;
     if (!isExpanded) {
       Haptics.selectionAsync().catch(() => {});
     }
     onToggle?.();
   };
-
-  const handleAdd = () => {
+  const handleAddToLog = () => {
     Haptics.selectionAsync().catch(() => {});
     onAdd?.();
   };
+  const handlePressIn = () => {
+    pressScale.value = withTiming(CARD_PRESS_SCALE, {
+      duration: CARD_PRESS_MS
+    });
+  };
+  const handlePressOut = () => {
+    pressScale.value = withTiming(1, {
+      duration: CARD_PRESS_MS
+    });
+  };
 
-  // Manipulate here: soft wash in light embedded cards; flat nbSurface otherwise
-  const frameFill = isDark
-    ? darkColors.nbSurface
-    : (embedded ? nbGradients.soft.colors[0] : lightColors.nbSurface);
-  const frameBorder = isDark ? darkColors.nbBorder : lightColors.nbBorder;
+  // 6. Render: HardShadow shell → compact macros → optional FAB → optional expanded panel.
+  // vocab: HardShadow = solid offset shadow (no blur)
+  return <AnimatedPressable onPressIn={handlePressIn} onPressOut={handlePressOut} style={[styles.cardPressable, animatedCardStyle]}>
+      <HardShadow radius={borderRadius.nbCard} offset={shadowOffset} style={styles.cardFrame}>
+        <View style={innerFrameStyle}>
+          <View style={[styles.innerHighlight, {
+          backgroundColor: palette.innerHighlight
+        }]} pointerEvents="none" />
 
-  return (
-    <AnimatedPressable
-      onPressIn={() => {
-        scale.value = withTiming(0.985, { duration: 120 });
-      }}
-      onPressOut={() => {
-        scale.value = withTiming(1, { duration: 120 });
-      }}
-      style={[styles.cardPressable, animatedCardStyle]}
-    >
-      <HardShadow
-        radius={borderRadius.nbCard}
-        offset={embedded ? 0 : nb.shadowOffsetCard}
-        style={styles.cardFrame}
-      >
-        <View
-          style={{
-            backgroundColor: frameFill,
-            borderWidth: nb.borderWidth,
-            borderColor: frameBorder,
-            borderRadius: borderRadius.nbCard,
-            overflow: onAdd || embedded ? 'visible' : 'hidden',
-          }}
-        >
-
-      <View
-        style={[styles.innerHighlight, { backgroundColor: palette.innerHighlight }]}
-        pointerEvents="none"
-      />
-
-      <View style={styles.compactBody}>
-        <View style={styles.topRow}>
-          <View style={styles.topLeft}>
-            <View style={styles.titleRow}>
-              <Text
-                style={[styles.foodName, { color: palette.foreground }]}
-                numberOfLines={3}
-              >
-                {food?.name || 'Food'}
-              </Text>
-            </View>
-            {subtitle ? (
-              <Text
-                style={[styles.subtitle, { color: palette.mutedForeground }]}
-                numberOfLines={2}
-              >
-                {subtitle}
-              </Text>
-            ) : null}
-          </View>
-
-          <View style={styles.topRight}>
-            <View style={styles.iconRow}>
-              {onFavorite ? (
-                <IconAction
-                  onPress={onFavorite}
-                  accessibilityLabel={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
-                  palette={palette}
-                >
-                  {(pressed) => (
-                    <Heart
-                      size={15}
-                      color={isFavorite || pressed ? nbGradients.brand.colors[0] : palette.subtle}
-                      fill={isFavorite ? nbGradients.brand.colors[0] : 'transparent'}
-                      strokeWidth={2}
-                    />
-                  )}
-                </IconAction>
-              ) : null}
-              {onEdit ? (
-                <IconAction onPress={onEdit} accessibilityLabel="Edit food" palette={palette}>
-                  {(pressed) => (
-                    <Pencil
-                      size={15}
-                      color={pressed ? palette.foreground : palette.subtle}
-                      strokeWidth={2}
-                    />
-                  )}
-                </IconAction>
-              ) : null}
-              {onDelete ? (
-                <IconAction onPress={onDelete} accessibilityLabel="Delete food" palette={palette}>
-                  {(pressed) => (
-                    <Trash2
-                      size={15}
-                      color={pressed ? palette.foreground : palette.subtle}
-                      strokeWidth={2}
-                    />
-                  )}
-                </IconAction>
-              ) : null}
-              {!permanentlyExpanded && onToggle ? (
-                <IconAction onPress={handleToggle} accessibilityLabel={isExpanded ? 'Collapse' : 'Expand'} palette={palette}>
-                  {(pressed) => (
-                    <View style={{ transform: [{ rotate: isExpanded ? '180deg' : '0deg' }] }}>
-                      <ChevronDown
-                        size={16}
-                        color={pressed ? palette.foreground : palette.subtle}
-                        strokeWidth={2}
-                      />
-                    </View>
-                  )}
-                </IconAction>
-              ) : null}
-            </View>
-            <View style={styles.calRow}>
-              <ColorText colors={gradients.calories} style={styles.calValue}>
-                {Math.round(Number(food?.calories) || 0)}
-              </ColorText>
-              <Text style={[styles.calSuffix, { color: palette.subtle }]}> kcal</Text>
-            </View>
-          </View>
-        </View>
-
-        <View style={[styles.pillsRow, onAdd ? styles.pillsRowWithAdd : null]}>
-          <MacroPill label="CARBS" grams={food?.carbs} gradientStops={gradients.carbs} palette={palette} />
-          <MacroPill label="PROTEIN" grams={food?.protein} gradientStops={gradients.protein} palette={palette} />
-          <MacroPill label="FAT" grams={food?.fat} gradientStops={gradients.fat} palette={palette} />
-        </View>
-      </View>
-
-      {onAdd ? (
-        <Pressable
-          onPress={handleAdd}
-          accessibilityRole="button"
-          accessibilityLabel="Add food to log"
-          style={({ pressed }) => [styles.addFab, pressed && { opacity: 0.9, transform: [{ scale: 0.96 }] }]}
-          hitSlop={4}
-        >
-          <LinearGradient
-            colors={nbGradients.brand.colors}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.addFabInner}
-          >
-            <Plus size={26} color="#FFFFFF" strokeWidth={2.75} />
-          </LinearGradient>
-        </Pressable>
-      ) : null}
-
-      {isExpanded ? (
-        <Animated.View
-          entering={permanentlyExpanded ? undefined : FadeIn.duration(220)}
-          layout={permanentlyExpanded ? undefined : Layout.duration(220)}
-          style={[styles.expandedSection, { borderTopColor: palette.border }]}
-        >
-          <NutritionFactsPanel
-            carbs={food?.carbs}
-            protein={food?.protein}
-            fat={food?.fat}
-            macroPercents={pct}
-            micronutrients={micros}
-            serving={food?.serving}
-            isDark={isDark}
-            embedded={embedded}
-          />
-
-          <View style={styles.footer}>
-            <View style={styles.sourceRow}>
-              <View style={styles.sourceDotWrap}>
-                <LinearGradient
-                  colors={gradients.protein}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.sourceDot}
-                />
+          <View style={styles.compactBody}>
+            <View style={styles.topRow}>
+              <View style={styles.topLeft}>
+                <View style={styles.titleRow}>
+                  <Text style={[styles.foodName, {
+                  color: palette.foreground
+                }]} numberOfLines={3}>
+                    {foodDisplayName}
+                  </Text>
+                </View>
+                {subtitle ? <Text style={[styles.subtitle, {
+                color: palette.mutedForeground
+              }]} numberOfLines={2}>
+                    {subtitle}
+                  </Text> : null}
               </View>
-              <Text style={[styles.sourceText, { color: palette.mutedForeground }]} numberOfLines={2}>
-                {food?.source || 'CoachConnect'}
-              </Text>
+
+              <View style={styles.topRight}>
+                <FoodCardActionIcons onFavorite={onFavorite} onEdit={onEdit} onDelete={onDelete} onToggle={onToggle} permanentlyExpanded={permanentlyExpanded} isFavorite={isFavorite} isExpanded={isExpanded} palette={palette} brandAccentColor={brandAccentColor} onToggleExpand={handleToggleExpand} favoriteAccessibilityLabel={favoriteAccessibilityLabel} chevronAccessibilityLabel={chevronAccessibilityLabel} />
+                <View style={styles.calRow}>
+                  <ColorText colors={gradients.calories} style={styles.calValue}>
+                    {roundedCalories}
+                  </ColorText>
+                  <Text style={[styles.calSuffix, {
+                  color: palette.subtle
+                }]}> kcal</Text>
+                </View>
+              </View>
             </View>
-            <Pressable
-              onPress={onBookmark}
-              style={({ pressed }) => [
-                styles.bookmarkBtn,
-                {
-                  backgroundColor: palette.surfaceElevated,
-                  borderColor: palette.border,
-                },
-                pressed && { opacity: 0.85 },
-              ]}
-              accessibilityRole="button"
-              accessibilityLabel="Bookmark food"
-            >
-              <Bookmark size={14} color={palette.foreground} strokeWidth={2} />
-            </Pressable>
+
+            <View style={[styles.pillsRow, pillsRowNeedsFabGap ? styles.pillsRowWithAdd : null]}>
+              <MacroPill label="CARBS" grams={food?.carbs} gradientStops={gradients.carbs} palette={palette} />
+              <MacroPill label="PROTEIN" grams={food?.protein} gradientStops={gradients.protein} palette={palette} />
+              <MacroPill label="FAT" grams={food?.fat} gradientStops={gradients.fat} palette={palette} />
+            </View>
           </View>
-        </Animated.View>
-      ) : null}
-            </View>
-    </HardShadow>
-    </AnimatedPressable>
-  );
+
+          {onAdd ? <Pressable onPress={handleAddToLog} accessibilityRole="button" accessibilityLabel="Add food to log" style={({
+          pressed
+        }) => [styles.addFab, pressed && {
+          opacity: 0.9,
+          transform: [{
+            scale: 0.96
+          }]
+        }]} hitSlop={4}>
+              <LinearGradient colors={nbGradients.brand.colors} start={{
+            x: 0,
+            y: 0
+          }} end={{
+            x: 1,
+            y: 0
+          }} style={styles.addFabInner}>
+                <Plus size={26} color="#FFFFFF" strokeWidth={2.75} />
+              </LinearGradient>
+            </Pressable> : null}
+
+          {isExpanded ? <FoodCardExpandedSection food={food} macroPercentBreakdown={macroPercentBreakdown} micronutrientMap={micronutrientMap} isDark={isDark} embedded={embedded} palette={palette} skipExpandAnimation={skipExpandAnimation} onBookmark={onBookmark} /> : null}
+        </View>
+      </HardShadow>
+    </AnimatedPressable>;
 }
 
+// PLUMBING — layout only
 const styles = StyleSheet.create({
   cardPressable: {
-    position: 'relative',
+    position: 'relative'
   },
   cardFrame: {
-    position: 'relative',
+    position: 'relative'
   },
   innerHighlight: {
     position: 'absolute',
@@ -356,81 +419,81 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 0,
-    zIndex: 2,
+    zIndex: 2
   },
   compactBody: {
-    padding: 16,
+    padding: 16
   },
   topRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 12,
+    gap: 12
   },
   topLeft: {
     flex: 1,
     minWidth: 0,
-    paddingRight: 4,
+    paddingRight: 4
   },
   titleRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 6,
+    gap: 6
   },
   foodName: {
     flex: 1,
     fontSize: 17,
     fontFamily: fonts.semiBold,
-    lineHeight: 22,
+    lineHeight: 22
   },
   subtitle: {
     marginTop: 4,
     fontSize: 12.5,
     fontFamily: fonts.regular,
-    lineHeight: 17,
+    lineHeight: 17
   },
   topRight: {
     alignItems: 'flex-end',
     flexShrink: 0,
     minWidth: 88,
-    maxWidth: 108,
+    maxWidth: 108
   },
   iconRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 2,
+    gap: 2
   },
   iconAction: {
     width: 28,
     height: 28,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 8,
+    borderRadius: 8
   },
   calRow: {
     flexDirection: 'row',
     alignItems: 'baseline',
     marginTop: 6,
     flexWrap: 'wrap',
-    justifyContent: 'flex-end',
+    justifyContent: 'flex-end'
   },
   calValue: {
     fontSize: 26,
     fontFamily: fonts.bold,
-    fontVariant: ['tabular-nums'],
+    fontVariant: ['tabular-nums']
   },
   calSuffix: {
     fontSize: 11,
     fontFamily: fonts.semiBold,
     textTransform: 'uppercase',
-    letterSpacing: 1,
+    letterSpacing: 1
   },
   pillsRow: {
     flexDirection: 'row',
     gap: 8,
-    marginTop: 14,
+    marginTop: 14
   },
   pillsRowWithAdd: {
-    paddingRight: 52,
+    paddingRight: 52
   },
   addFab: {
     position: 'absolute',
@@ -438,88 +501,92 @@ const styles = StyleSheet.create({
     bottom: 14,
     borderRadius: 22,
     zIndex: 4,
-    // Neobrutalist hard shadow for FAB
     ...Platform.select({
       ios: {
         shadowColor: nbGradients.brand.colors[0],
         shadowOpacity: 1,
         shadowRadius: 0,
-        shadowOffset: { width: nb.shadowOffset, height: nb.shadowOffset },
+        shadowOffset: {
+          width: nb.shadowOffset,
+          height: nb.shadowOffset
+        }
       },
-      android: { elevation: 0 },
-      default: {},
-    }),
+      android: {
+        elevation: 0
+      },
+      default: {}
+    })
   },
   addFabInner: {
     width: 44,
     height: 44,
     borderRadius: 22,
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'center'
   },
   macroPillOuter: {
     flex: 1,
     borderRadius: borderRadius.nbChip,
     borderWidth: nb.borderWidth,
-    overflow: 'hidden',
+    overflow: 'hidden'
   },
   macroPillBg: {
     paddingVertical: 12,
-    paddingHorizontal: 10,
+    paddingHorizontal: 10
   },
   macroPillLabel: {
     fontSize: 9,
     fontFamily: fonts.bold,
     letterSpacing: 1.4,
-    textTransform: 'uppercase',
+    textTransform: 'uppercase'
   },
   macroPillValueRow: {
     flexDirection: 'row',
     alignItems: 'baseline',
-    marginTop: 6,
+    marginTop: 6
   },
   macroPillValue: {
     fontSize: 18,
     fontFamily: fonts.bold,
-    fontVariant: ['tabular-nums'],
+    fontVariant: ['tabular-nums']
   },
   macroPillUnit: {
     fontSize: 11,
     fontFamily: fonts.semiBold,
-    marginLeft: 1,
+    marginLeft: 1
   },
   expandedSection: {
     borderTopWidth: nb.borderWidth,
     paddingTop: 16,
     paddingHorizontal: 16,
-    paddingBottom: 20,
+    paddingBottom: 20
   },
   footer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 16,
+    marginTop: 16
   },
   sourceRow: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
     marginRight: 12,
-    minWidth: 0,
+    minWidth: 0
   },
   sourceDotWrap: {
     marginRight: 8,
-    flexShrink: 0,
+    flexShrink: 0
   },
   sourceDot: {
     width: 6,
     height: 6,
-    borderRadius: 3,
+    borderRadius: 3
   },
   sourceText: {
     flex: 1,
     fontSize: 10,
-    fontFamily: fonts.regular,
+    fontFamily: fonts.regular
   },
   bookmarkBtn: {
     width: 32,
@@ -528,6 +595,6 @@ const styles = StyleSheet.create({
     borderWidth: nb.borderWidth,
     alignItems: 'center',
     justifyContent: 'center',
-    flexShrink: 0,
-  },
+    flexShrink: 0
+  }
 });

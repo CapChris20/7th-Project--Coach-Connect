@@ -1,6 +1,6 @@
-// Asks the workout-generation API for a plan, and loads the onboarding answers that go into that request.
-// Flow: auth headers → try each API base → treat 429 as a monthly cap → return plan text (or a clear error).
-// Used by the create-plan screens. Keep this out of the UI so trainer and client share one request path.
+// Asks the workout-generation API for a plan, and loads onboarding answers for that request.
+// Flow: auth headers → try each API base → 429 = monthly cap → return plan text (or a clear error).
+// Used by create-plan screens and workoutPlanCreation. Shared by trainer and client — no UI here.
 
 import { auth, db } from '../../app-start/cloudConnection';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -15,8 +15,10 @@ import { normalizeClientProfileFields } from '../../helpers/fillTraineeProfile';
 
 // ===== NAMED CONSTANTS =====
 
+// Manipulate here: how long we wait for Claude on Cloud Run before timing out (ms)
 const WORKOUT_GENERATE_FETCH_TIMEOUT_MS = 180000;
 const JSON_CONTENT_TYPE = 'application/json';
+// Manipulate here: must match the Express route that builds the plan
 const WORKOUT_GENERATE_PATH = '/api/workout/generate';
 const WORKOUT_GENERATE_API_LOG_LABEL = 'workout/generate';
 const USERS_COLLECTION = 'users';
@@ -38,115 +40,7 @@ const SIGN_IN_REQUIRED_MESSAGE = 'Sign in to generate a workout plan.';
 const EMPTY_GENERATOR_MESSAGE = 'Empty response from workout generator';
 const USER_NOT_FOUND_MESSAGE = 'User not found';
 
-// ===== HELPER FUNCTIONS =====
-
-function isMonthlyLimitResponse(httpStatus, payload) {
-  return httpStatus === HTTP_STATUS_TOO_MANY_REQUESTS && payload?.error === MONTHLY_LIMIT_ERROR_CODE;
-}
-
-function buildMonthlyLimitError(payload) {
-  const limitError = new Error(
-    payload.message ||
-      `You've used all your workout generations for this month. Resets ${formatWorkoutLimitResetLabel(payload.resets_at)}.`,
-  );
-  limitError.code = MONTHLY_LIMIT_ERROR_CODE;
-  limitError.limitPayload = payload;
-  return limitError;
-}
-
-function isRetryableHttpStatus(httpStatus) {
-  return RETRYABLE_HTTP_STATUSES.includes(httpStatus);
-}
-
-function buildHttpFailureError(payload, httpStatus) {
-  const httpError = new Error(payload?.message || payload?.error || `Request failed (${httpStatus})`);
-  httpError.httpStatus = httpStatus;
-  return httpError;
-}
-
-async function tryOneWorkoutApiBase(url, requestBody, headers) {
-  try {
-    const res = await postJsonWithTimeout(url, requestBody, headers, WORKOUT_GENERATE_FETCH_TIMEOUT_MS);
-    const payload = await res.json().catch(() => ({}));
-    const outcome = interpretWorkoutApiResponse(res, payload);
-    if (outcome.shouldRetry) {
-      logApiAttempt(WORKOUT_GENERATE_API_LOG_LABEL, url, outcome.error);
-      return { didSucceed: false, error: outcome.error };
-    }
-    if (__DEV__) {
-      console.log('[workout] generate plan OK via', url);
-    }
-    return { didSucceed: true, plan: outcome.plan };
-  } catch (caughtError) {
-    logApiAttempt(WORKOUT_GENERATE_API_LOG_LABEL, url, caughtError);
-    if (shouldRethrowWorkoutError(caughtError)) throw caughtError;
-    return { didSucceed: false, error: caughtError };
-  }
-}
-
-function interpretWorkoutApiResponse(res, payload) {
-  if (isMonthlyLimitResponse(res.status, payload)) {
-    throw buildMonthlyLimitError(payload);
-  }
-  if (!res.ok) {
-    const httpError = buildHttpFailureError(payload, res.status);
-    if (isRetryableHttpStatus(res.status)) {
-      return { shouldRetry: true, error: httpError };
-    }
-    httpError.fromHttpResponse = true;
-    throw httpError;
-  }
-  if (!payload?.text) {
-    throw new Error(EMPTY_GENERATOR_MESSAGE);
-  }
-  return {
-    shouldRetry: false,
-    plan: {
-      text: String(payload.text),
-      usage: payload.usage ?? null,
-    },
-  };
-}
-
-function shouldRethrowWorkoutError(caughtError) {
-  if (caughtError?.code === MONTHLY_LIMIT_ERROR_CODE) return true;
-  if (caughtError?.code === TIMEOUT_ERROR_CODE) return true;
-  if (caughtError?.fromHttpResponse) return true;
-  return false;
-}
-
-function workoutApiGiveUpHint(lastError) {
-  const errorMessage = String(lastError?.message || '');
-  if (errorMessage.includes('timed out')) {
-    return 'The server took too long. Try again on Wi-Fi.';
-  }
-  if (errorMessage.includes('404') || lastError?.httpStatus === HTTP_STATUS_NOT_FOUND) {
-    return 'Workout API missing on Cloud Run (stale deploy). Run: npm run server — or redeploy with ./server/deploy.sh';
-  }
-  if (errorMessage.includes('AI provider unavailable')) {
-    return 'Workout generation needs ANTHROPIC_API_KEY on Cloud Run. Add it to .env, then run: ./scripts/syncCloudRunEnv.sh';
-  }
-  return 'Could not reach the workout API. Check internet, then reload with: npm start (dev build).';
-}
-
-function onboardingCacheKey(subjectUid) {
-  return `onboarding_data_${subjectUid}`;
-}
-
-async function loadOnboardingFromUserDoc(subjectUid) {
-  if (!db) return null;
-  const userSnapshot = await getDoc(doc(db, USERS_COLLECTION, subjectUid));
-  if (!userSnapshot.exists()) return null;
-  return normalizeClientProfileFields(userSnapshot.data());
-}
-
-async function loadOnboardingFromCache(subjectUid) {
-  const cached = await AsyncStorage.getItem(onboardingCacheKey(subjectUid));
-  if (!cached) return null;
-  return normalizeClientProfileFields(JSON.parse(cached));
-}
-
-// ===== MAIN FUNCTION =====
+// ===== MAIN RECIPES =====
 
 /**
  * POST onboarding answers to /api/workout/generate, trying each configured API base.
@@ -156,11 +50,13 @@ async function loadOnboardingFromCache(subjectUid) {
  * @returns {Promise<{ text: string, usage: * }>}
  */
 export async function askForWorkoutPlanFromApi(onboardingData, subjectUserId) {
+  // 1. Require a logged-in caller so Cloud Run can attach Firebase proof.
   const headers = await getApiAuthHeaders({ 'Content-Type': JSON_CONTENT_TYPE });
   if (!headers.Authorization) {
     throw new Error(SIGN_IN_REQUIRED_MESSAGE);
   }
 
+  // 2. Build the body the generate route expects (payload shape is frozen).
   const apiBases = getWorkoutGenerationApiBases();
   const requestBody = {
     onboardingData: buildWorkoutOnboardingPayload(onboardingData),
@@ -168,40 +64,60 @@ export async function askForWorkoutPlanFromApi(onboardingData, subjectUserId) {
   };
 
   if (__DEV__) {
-    console.log('[workout] generate plan - trying API bases:', apiBases.slice(0, MAX_LOGGED_API_BASES).join(' -> '));
+    console.log(
+      '[workout] generate plan - trying API bases:',
+      apiBases.slice(0, MAX_LOGGED_API_BASES).join(' -> '),
+    );
   }
 
+  // 3. Walk bases until one returns plan text or we run out.
   let lastError = null;
-  for (const apiBase of apiBases) {
-    const url = `${String(apiBase).replace(/\/$/, '')}${WORKOUT_GENERATE_PATH}`;
-    const attempt = await tryOneWorkoutApiBase(url, requestBody, headers);
-    if (attempt.didSucceed) return attempt.plan;
+  for (let baseIndex = 0; baseIndex < apiBases.length; baseIndex += 1) {
+    const apiBase = apiBases[baseIndex];
+    const urlWithoutTrailingSlash = String(apiBase).replace(/\/$/, '');
+    const url = `${urlWithoutTrailingSlash}${WORKOUT_GENERATE_PATH}`;
+    const attempt = await tryOneWorkoutGenerateBase(url, requestBody, headers);
+    if (attempt.didSucceed) {
+      return attempt.plan;
+    }
     lastError = attempt.error;
   }
 
+  // 4. Nothing worked — surface the best hint we have for the UI / console.
   const triedBases = apiBases.slice(0, MAX_LOGGED_API_BASES).join(', ');
   const hint = workoutApiGiveUpHint(lastError);
-  throw lastError || new Error(`${hint}${triedBases ? ` Tried: ${triedBases}` : ''}`);
+  let triedSuffix = '';
+  if (triedBases) {
+    triedSuffix = ` Tried: ${triedBases}`;
+  }
+  throw lastError || new Error(`${hint}${triedSuffix}`);
 }
 
 /**
- * Load onboarding answers (Firestore, then local cache) and the current workout plan.
+ * Load onboarding answers (Firestore, then phone cache) and the current workout plan.
  * @param {{ userId?: string, propPlan?: object }} [options]
  * @returns {Promise<{ onboardingData: object|null, plan: object|null }>}
  */
 export async function loadOnboardingAndPlanArtifacts({ userId, propPlan } = {}) {
-  const subjectUid = (userId && String(userId).trim()) || auth.currentUser?.uid;
+  // 1. Decide whose data we are loading (prop userId wins over signed-in uid).
+  const trimmedUserId = userId && String(userId).trim();
+  const subjectUid = trimmedUserId || auth.currentUser?.uid;
   if (!subjectUid) {
     throw new Error(USER_NOT_FOUND_MESSAGE);
   }
+
+  // 2. Onboarding: Firestore user doc first, then AsyncStorage cache.
   let onboardingData = await loadOnboardingFromUserDoc(subjectUid);
   if (!onboardingData) {
-    onboardingData = await loadOnboardingFromCache(subjectUid);
+    onboardingData = await loadOnboardingFromPhoneCache(subjectUid);
   }
+
+  // 3. Plan: caller may already have one in memory from a parent screen.
   let plan = propPlan || null;
   if (!plan) {
     plan = await getCurrentWorkoutPlan(subjectUid);
   }
+
   return { onboardingData, plan };
 }
 
@@ -211,12 +127,208 @@ export async function loadOnboardingAndPlanArtifacts({ userId, propPlan } = {}) 
  * @returns {Promise<{ planText: string, generatedAt: number, userData: object, usage: * }>}
  */
 export async function generateWorkoutPlanWithClaude({ onboardingData, userId }) {
-  const subjectUid = (userId && String(userId).trim()) || auth.currentUser?.uid;
+  // 1. Resolve the subject uid the same way the load recipe does.
+  const trimmedUserId = userId && String(userId).trim();
+  const subjectUid = trimmedUserId || auth.currentUser?.uid;
+
+  // 2. Ask the API for plan text + usage.
   const { text, usage } = await askForWorkoutPlanFromApi(onboardingData, subjectUid);
+
+  // 3. Stamp created-at for screens that show "generated just now."
   return {
     planText: text,
     generatedAt: Date.now(),
     userData: onboardingData,
     usage,
   };
+}
+
+// ===== PLUMBING — skip unless debugging =====
+
+/**
+ * True when the server answered 429 with the monthly-cap error code.
+ * @param {number} httpStatus
+ * @param {object} payload
+ * @returns {boolean}
+ */
+function responseIsMonthlyLimit(httpStatus, payload) {
+  return httpStatus === HTTP_STATUS_TOO_MANY_REQUESTS && payload?.error === MONTHLY_LIMIT_ERROR_CODE;
+}
+
+/**
+ * Build the Error the UI shows for a monthly generation cap.
+ * @param {object} payload
+ * @returns {Error}
+ */
+function buildMonthlyLimitError(payload) {
+  const resetLabel = formatWorkoutLimitResetLabel(payload.resets_at);
+  const defaultMessage = `You've used all your workout generations for this month. Resets ${resetLabel}.`;
+  const limitError = new Error(payload.message || defaultMessage);
+  limitError.code = MONTHLY_LIMIT_ERROR_CODE;
+  limitError.limitPayload = payload;
+  return limitError;
+}
+
+/**
+ * True for statuses where we should try the next API base.
+ * @param {number} httpStatus
+ * @returns {boolean}
+ */
+function httpStatusIsRetryableOnNextBase(httpStatus) {
+  return RETRYABLE_HTTP_STATUSES.includes(httpStatus);
+}
+
+/**
+ * Generic HTTP failure Error with .httpStatus attached.
+ * @param {object} payload
+ * @param {number} httpStatus
+ * @returns {Error}
+ */
+function buildHttpFailureError(payload, httpStatus) {
+  const message = payload?.message || payload?.error || `Request failed (${httpStatus})`;
+  const httpError = new Error(message);
+  httpError.httpStatus = httpStatus;
+  return httpError;
+}
+
+/**
+ * Turn one HTTP response into plan text, a retry signal, or a thrown Error.
+ * @param {{ status: number, ok: boolean }} response
+ * @param {object} payload
+ * @returns {{ shouldRetry: boolean, plan?: object, error?: Error }}
+ */
+function interpretWorkoutGenerateResponse(response, payload) {
+  if (responseIsMonthlyLimit(response.status, payload)) {
+    throw buildMonthlyLimitError(payload);
+  }
+
+  if (!response.ok) {
+    const httpError = buildHttpFailureError(payload, response.status);
+    if (httpStatusIsRetryableOnNextBase(response.status)) {
+      return { shouldRetry: true, error: httpError };
+    }
+    httpError.fromHttpResponse = true;
+    throw httpError;
+  }
+
+  if (!payload?.text) {
+    throw new Error(EMPTY_GENERATOR_MESSAGE);
+  }
+
+  // vocab/symbol: ?? = keep null usage when the server omitted it (do not use ||)
+  return {
+    shouldRetry: false,
+    plan: {
+      text: String(payload.text),
+      usage: payload.usage ?? null,
+    },
+  };
+}
+
+/**
+ * Errors that must bubble immediately (do not try the next base).
+ * @param {Error} caughtError
+ * @returns {boolean}
+ */
+function shouldRethrowWithoutTryingNextBase(caughtError) {
+  if (caughtError?.code === MONTHLY_LIMIT_ERROR_CODE) return true;
+  if (caughtError?.code === TIMEOUT_ERROR_CODE) return true;
+  if (caughtError?.fromHttpResponse) return true;
+  return false;
+}
+
+/**
+ * One POST to one generate URL. Never throws soft network misses — only hard rethrows.
+ * @param {string} url
+ * @param {object} requestBody
+ * @param {object} headers
+ * @returns {Promise<{ didSucceed: boolean, plan?: object, error?: Error }>}
+ */
+async function tryOneWorkoutGenerateBase(url, requestBody, headers) {
+  try {
+    // vocab: postJsonWithTimeout = fetch POST that aborts after WORKOUT_GENERATE_FETCH_TIMEOUT_MS
+    const response = await postJsonWithTimeout(
+      url,
+      requestBody,
+      headers,
+      WORKOUT_GENERATE_FETCH_TIMEOUT_MS,
+    );
+    const payload = await response.json().catch(() => ({}));
+    const outcome = interpretWorkoutGenerateResponse(response, payload);
+
+    if (outcome.shouldRetry) {
+      logApiAttempt(WORKOUT_GENERATE_API_LOG_LABEL, url, outcome.error);
+      return { didSucceed: false, error: outcome.error };
+    }
+
+    if (__DEV__) {
+      console.log('[workout] generate plan OK via', url);
+    }
+    return { didSucceed: true, plan: outcome.plan };
+  } catch (caughtError) {
+    logApiAttempt(WORKOUT_GENERATE_API_LOG_LABEL, url, caughtError);
+    if (shouldRethrowWithoutTryingNextBase(caughtError)) {
+      throw caughtError;
+    }
+    return { didSucceed: false, error: caughtError };
+  }
+}
+
+/**
+ * Human hint when every API base failed with a retryable error.
+ * @param {Error} lastError
+ * @returns {string}
+ */
+function workoutApiGiveUpHint(lastError) {
+  const errorMessage = String(lastError?.message || '');
+
+  if (errorMessage.includes('timed out')) {
+    return 'The server took too long. Try again on Wi-Fi.';
+  }
+
+  const looksLikeMissingRoute =
+    errorMessage.includes('404') || lastError?.httpStatus === HTTP_STATUS_NOT_FOUND;
+  if (looksLikeMissingRoute) {
+    return 'Workout API missing on Cloud Run (stale deploy). Run: npm run server — or redeploy with ./server/deploy.sh';
+  }
+
+  if (errorMessage.includes('AI provider unavailable')) {
+    return 'Workout generation needs ANTHROPIC_API_KEY on Cloud Run. Add it to .env, then run: ./scripts/syncCloudRunEnv.sh';
+  }
+
+  return 'Could not reach the workout API. Check internet, then reload with: npm start (dev build).';
+}
+
+/**
+ * AsyncStorage key for cached onboarding answers for one user.
+ * @param {string} subjectUid
+ * @returns {string}
+ */
+function onboardingCacheStorageKey(subjectUid) {
+  // Manipulate here: key letters must stay — other screens read the same cache
+  return `onboarding_data_${subjectUid}`;
+}
+
+/**
+ * Read onboarding from users/{uid}. Returns null when db is missing or the doc is gone.
+ * @param {string} subjectUid
+ * @returns {Promise<object|null>}
+ */
+async function loadOnboardingFromUserDoc(subjectUid) {
+  if (!db) return null;
+  // vocab: getDoc = one-shot Firestore read (not a live listener)
+  const userSnapshot = await getDoc(doc(db, USERS_COLLECTION, subjectUid));
+  if (!userSnapshot.exists()) return null;
+  return normalizeClientProfileFields(userSnapshot.data());
+}
+
+/**
+ * Read onboarding from the phone cache when Firestore has nothing.
+ * @param {string} subjectUid
+ * @returns {Promise<object|null>}
+ */
+async function loadOnboardingFromPhoneCache(subjectUid) {
+  const cachedJson = await AsyncStorage.getItem(onboardingCacheStorageKey(subjectUid));
+  if (!cachedJson) return null;
+  return normalizeClientProfileFields(JSON.parse(cachedJson));
 }

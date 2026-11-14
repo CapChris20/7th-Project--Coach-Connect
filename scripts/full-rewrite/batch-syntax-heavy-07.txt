@@ -1,0 +1,2 @@
+src/client-app/files-and-notes/NotesFromTrainerSection.jsx
+src/workouts/create-plan/editPlanFieldForms.js

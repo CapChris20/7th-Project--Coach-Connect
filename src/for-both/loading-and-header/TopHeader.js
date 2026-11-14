@@ -2,7 +2,7 @@
 // Flow: safe-area inset → optional left slot → profile chip → settings chip.
 // Used by client/trainer shells. Parent shells should use SHELL_SAFE_AREA_EDGES (left/right only).
 //
-// vocab: flush = same bg as the screen so the bar doesn’t read as a second “frosted” header
+// vocab: flush = same bg as the screen so the bar does not read as a second frosted header
 // vocab: outline chip = surface + 3px border + hard offset shadow (same language as NbPageHeader backSq)
 
 import React from 'react';
@@ -19,28 +19,17 @@ import {
 
 // ===== NAMED CONSTANTS =====
 
-// Manipulate here: keep this tight so .hi (avatar/greeting) still owns the first viewport
+// Manipulate here: keep this tight so .hi (avatar/greeting) still owns the first viewport.
 const HEADER_TOP_GAP = 4;
-// Manipulate here: 44 matches Design Law min touch + NbPageHeader backSq
+// Manipulate here: 44 matches Design Law min touch + NbPageHeader backSq.
 const CHIP_SIZE = nb.minTouchTarget;
 const ICON_SIZE = 22;
 const PROFILE_ICON = 'person-outline';
 const SETTINGS_ICON = 'settings-outline';
+const PROFILE_A11Y_LABEL = 'Open profile';
+const SETTINGS_A11Y_LABEL = 'Open settings';
 
-// ===== HELPERS =====
-
-function isAppearanceDark(appearanceIsDark, theme) {
-  if (appearanceIsDark !== undefined) return appearanceIsDark;
-  return Boolean(theme?.isDark);
-}
-
-function headerPaddingTop(safeAreaTop) {
-  return safeAreaTop + HEADER_TOP_GAP;
-}
-
-function shouldShowHeaderSideActions(showHeaderActions) {
-  return showHeaderActions !== false;
-}
+// ===== HELPER FUNCTIONS =====
 
 /**
  * Black/white (ink on surface) square chip — no gradient fill, no sticker PNGs.
@@ -63,6 +52,45 @@ function HeaderOutlineChip({ icon, borderColor, surfaceColor, shadowColor, inkCo
   );
 }
 
+function HeaderActionButton({ onPress, accessibilityLabel, icon, palette }) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      style={styles.hit}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      activeOpacity={0.85}
+    >
+      <HeaderOutlineChip
+        icon={icon}
+        borderColor={palette.border}
+        surfaceColor={palette.chipSurface}
+        shadowColor={palette.shadow}
+        inkColor={palette.ink}
+      />
+    </TouchableOpacity>
+  );
+}
+
+function HeaderActionsRow({ onProfilePress, onSettingsPress, palette }) {
+  return (
+    <View style={styles.headerActions}>
+      <HeaderActionButton
+        onPress={onProfilePress}
+        accessibilityLabel={PROFILE_A11Y_LABEL}
+        icon={PROFILE_ICON}
+        palette={palette}
+      />
+      <HeaderActionButton
+        onPress={onSettingsPress}
+        accessibilityLabel={SETTINGS_A11Y_LABEL}
+        icon={SETTINGS_ICON}
+        palette={palette}
+      />
+    </View>
+  );
+}
+
 // ===== MAIN FUNCTION =====
 
 /**
@@ -79,72 +107,83 @@ export default function TopHeader({
   showHeaderActions,
   appearanceIsDark,
 }) {
+  // vocab: useSafeAreaInsets = notches / status-bar padding from the device
   const insets = useSafeAreaInsets();
+  // vocab: useTheme = live light/dark tokens from the app theme provider
   const theme = useTheme();
-  const isDark = isAppearanceDark(appearanceIsDark, theme);
-  // Same as screen bg so the strip doesn’t look like a separate frosted plate
-  const surface = isDark ? darkColors.nbBackground : lightColors.nbBackground;
-  const chipSurface = isDark ? darkColors.nbSurface : lightColors.nbSurface;
-  const border = isDark ? darkColors.nbBorder : lightColors.nbBorder;
-  const shadow = isDark ? darkColors.nbShadow : lightColors.nbShadow;
-  const ink = isDark ? darkColors.nbInk : lightColors.nbInk;
+  const isDark = decideHeaderUsesDarkAppearance(appearanceIsDark, theme);
+  const palette = buildHeaderPaletteForDarkMode(isDark);
 
+  // vocab: useMergedNavigation = fill missing profile/settings handlers from the shell navigator
   const { onProfilePress, onSettingsPress } = useMergedNavigation({
     onProfilePress: onProfilePressProp,
     onSettingsPress: onSettingsPressProp,
   });
 
-  const shouldShowSideActions = shouldShowHeaderSideActions(showHeaderActions);
-  const surfaceStyle = {
-    paddingTop: headerPaddingTop(insets.top),
-    borderBottomColor: border,
-    backgroundColor: surface,
+  const actionsEnabled = decideHeaderActionsAreEnabled(showHeaderActions);
+  const stripStyle = {
+    paddingTop: paddingTopBelowSafeArea(insets.top),
+    borderBottomColor: palette.border,
+    backgroundColor: palette.pageSurface,
   };
 
-  if (!shouldShowSideActions) {
-    return <View style={[styles.header, surfaceStyle, { paddingBottom: 2, borderBottomWidth: 0 }]} />;
+  // 1. When actions are off, keep a flush strip with no chips (still owns safe-area padding).
+  if (!actionsEnabled) {
+    const emptyStripStyle = { paddingBottom: 2, borderBottomWidth: 0 };
+    return <View style={[styles.header, stripStyle, emptyStripStyle]} />;
   }
 
+  // 2. Flush strip colors from theme tokens (or parent appearance override).
+  // 3. Optional left slot, then profile + settings chips on the right.
+  const leftSlotContent = headerLeft ?? null;
   return (
-    <View style={[styles.header, surfaceStyle]}>
+    <View style={[styles.header, stripStyle]}>
       <View style={styles.headerRow}>
-        <View style={styles.headerLeftSlot}>{headerLeft ?? null}</View>
-        <View style={styles.headerActions}>
-          <TouchableOpacity
-            onPress={onProfilePress}
-            style={styles.hit}
-            accessibilityRole="button"
-            accessibilityLabel="Open profile"
-            activeOpacity={0.85}
-          >
-            <HeaderOutlineChip
-              icon={PROFILE_ICON}
-              borderColor={border}
-              surfaceColor={chipSurface}
-              shadowColor={shadow}
-              inkColor={ink}
-            />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={onSettingsPress}
-            style={styles.hit}
-            accessibilityRole="button"
-            accessibilityLabel="Open settings"
-            activeOpacity={0.85}
-          >
-            <HeaderOutlineChip
-              icon={SETTINGS_ICON}
-              borderColor={border}
-              surfaceColor={chipSurface}
-              shadowColor={shadow}
-              inkColor={ink}
-            />
-          </TouchableOpacity>
-        </View>
+        <View style={styles.headerLeftSlot}>{leftSlotContent}</View>
+        <HeaderActionsRow
+          onProfilePress={onProfilePress}
+          onSettingsPress={onSettingsPress}
+          palette={palette}
+        />
       </View>
     </View>
   );
+}
+
+// ===== PLUMBING — skip unless debugging =====
+
+function decideHeaderUsesDarkAppearance(appearanceIsDark, theme) {
+  if (appearanceIsDark !== undefined) {
+    return appearanceIsDark;
+  }
+  return Boolean(theme?.isDark);
+}
+
+function paddingTopBelowSafeArea(safeAreaTop) {
+  return safeAreaTop + HEADER_TOP_GAP;
+}
+
+function decideHeaderActionsAreEnabled(showHeaderActions) {
+  return showHeaderActions !== false;
+}
+
+function buildHeaderPaletteForDarkMode(isDark) {
+  if (isDark) {
+    return {
+      pageSurface: darkColors.nbBackground,
+      chipSurface: darkColors.nbSurface,
+      border: darkColors.nbBorder,
+      shadow: darkColors.nbShadow,
+      ink: darkColors.nbInk,
+    };
+  }
+  return {
+    pageSurface: lightColors.nbBackground,
+    chipSurface: lightColors.nbSurface,
+    border: lightColors.nbBorder,
+    shadow: lightColors.nbShadow,
+    ink: lightColors.nbInk,
+  };
 }
 
 const styles = StyleSheet.create({
@@ -177,7 +216,7 @@ const styles = StyleSheet.create({
     width: CHIP_SIZE,
     height: CHIP_SIZE,
   },
-  // Manipulate here: chip radius / hard-shadow offset (keep in lockstep with NbPageHeader backSq)
+  // Manipulate here: chip radius / hard-shadow offset (keep in lockstep with NbPageHeader backSq).
   chip: {
     width: CHIP_SIZE,
     height: CHIP_SIZE,

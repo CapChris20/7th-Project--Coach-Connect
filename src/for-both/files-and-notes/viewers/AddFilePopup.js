@@ -1,6 +1,7 @@
 // Design Law “Add files” sheet (files-and-notes PNG 05/06) + PNG 07 attach composer.
 // Flow: pick Photo/Video/Doc → upload; note step → optional attachments → addNote + files.
 // Used by Notes & Files + button on client and trainer screens.
+// Read order: constants → UI pieces → AddFilePopup → styles → PLUMBING pickers at bottom.
 //
 // vocab: NbSheet = Design Law bottom sheet; HardShadow = solid offset shadow (no blur)
 // KEEP upload/import handlers + Firebase keys. No LinearGradient option cards. Never green.
@@ -120,7 +121,7 @@ const CLIENT_ROWS = [
 ];
 
 // Trainer-only create/import — rendered as HardShadow rows below the primary list
-// In-app SpreadsheetEditor is retired — trainers upload .xlsx/CSV (CLIENT_EXTRA style) or use Google Sheets.
+// In-app SpreadsheetEditor is retired — trainers upload .xlsx/CSV or use Google Sheets.
 const TRAINER_EXTRA_ROWS = [
   {
     key: OPTION_NEW_DOC,
@@ -156,160 +157,112 @@ const CLIENT_EXTRA_ROWS = [
   },
 ];
 
-// ===== HELPER FUNCTIONS =====
+// ===== HELPER FUNCTIONS (story-side) =====
 
-function isPdfOrWordFile(file) {
-  const fileName = String(file.name || '').toLowerCase();
-  const mimeType = String(file.mimeType || '');
-  if (mimeType.includes('pdf')) return true;
-  if (mimeType.includes('msword')) return true;
-  if (mimeType.includes('wordprocessingml')) return true;
-  if (fileName.endsWith('.pdf')) return true;
-  if (fileName.endsWith('.doc')) return true;
-  if (fileName.endsWith('.docx')) return true;
-  return false;
-}
-
-function notesTypeForDocument(file) {
-  const fileName = String(file.name || '').toLowerCase();
-  const mimeType = String(file.mimeType || '');
-  if (mimeType.includes('pdf') || fileName.endsWith('.pdf')) return 'pdf';
-  return 'doc';
-}
-
-function optionalFileSize(size) {
-  return typeof size === 'number' ? size : undefined;
-}
-
-async function requestLibraryPermission() {
-  const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-  return status === 'granted';
-}
-
-async function requestCameraPermission() {
-  const { status } = await ImagePicker.requestCameraPermissionsAsync();
-  return status === 'granted';
-}
-
-function formatBytes(size) {
-  const n = Number(size);
-  if (!Number.isFinite(n) || n <= 0) return '';
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
-  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function pendingAttachmentMeta(asset, kind) {
-  const uri = asset?.uri;
-  if (!uri) return null;
-  const name =
-    asset.fileName ||
-    asset.name ||
-    uri.split('/').pop() ||
-    (kind === 'video' ? `video_${Date.now()}.mp4` : `photo_${Date.now()}.jpg`);
-  return {
-    id: `${kind}_${uri}_${Date.now()}`,
-    uri,
-    name,
-    kind,
-    mimeType:
-      asset.mimeType ||
-      (kind === 'video' ? 'video/mp4' : kind === 'doc' ? asset.mimeType || DEFAULT_OCTET_STREAM : 'image/jpeg'),
-    size: optionalFileSize(asset.fileSize ?? asset.size),
-    type: kind === 'doc' ? notesTypeForDocument(asset) : kind,
-  };
-}
-
-async function pickLibraryAsset(mediaTypes, extraOptions = {}) {
-  const result = await ImagePicker.launchImageLibraryAsync({
-    mediaTypes,
-    allowsEditing: false,
-    ...extraOptions,
-  });
-  if (result.canceled || !result.assets?.[0]?.uri) return null;
-  return result.assets[0];
-}
-
-async function pickCameraPhoto() {
-  const result = await ImagePicker.launchCameraAsync({
-    mediaTypes: ['images'],
-    allowsEditing: false,
-    quality: PHOTO_PICKER_QUALITY,
-  });
-  if (result.canceled || !result.assets?.[0]?.uri) return null;
-  return result.assets[0];
-}
-
-async function pickPdfOrWordDocument() {
-  const result = await DocumentPicker.getDocumentAsync({
-    type: PDF_AND_WORD_TYPES,
-    copyToCacheDirectory: true,
-  });
-  if (result.canceled) return null;
-  const file = result.assets[0];
-  if (!isPdfOrWordFile(file)) {
-    return { unsupported: true };
+function sheetTitleForStep(step) {
+  if (step === STEP_NOTE) {
+    return 'Add note or file';
   }
-  return file;
+  if (step === STEP_IMPORT_RESULT) {
+    return 'Import';
+  }
+  return 'Add files';
 }
 
-function sleepMs(milliseconds) {
-  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+function attachmentIconForKind(kind) {
+  if (kind === 'video') {
+    return WORKOUT_ICON;
+  }
+  if (kind === 'doc') {
+    return MUSCLE_ICON;
+  }
+  return PICTURE_ICON;
 }
 
-async function waitForImportParse(trainerId, importId) {
-  let attempts = 0;
-  let imported = null;
-  while (attempts < IMPORT_POLL_ATTEMPTS) {
-    await sleepMs(IMPORT_POLL_WAIT_MS);
-    imported = await getTrainerImportedData(trainerId, importId);
-    if (imported?.status === IMPORT_STATUS_COMPLETE || imported?.status === IMPORT_STATUS_ERROR) {
-      return imported;
+function attachmentAccentIndexForKind(kind) {
+  if (kind === 'video') {
+    return 3;
+  }
+  return 0;
+}
+
+function attachmentFallbackLabel(kind) {
+  if (kind === 'video') {
+    return 'Video';
+  }
+  return 'Attachment';
+}
+
+function primaryRowsForAudience(isTrainer) {
+  const rows = [];
+  let index = 0;
+  while (index < CLIENT_ROWS.length) {
+    const row = CLIENT_ROWS[index];
+    if (row.key === OPTION_NOTE && isTrainer) {
+      rows.push({ ...row, subtitle: row.subtitleTrainer || row.subtitle });
+    } else {
+      rows.push(row);
     }
-    attempts += 1;
+    index += 1;
   }
-  return imported;
+  return rows;
 }
 
-async function askServerToParseImport(trainerId, importId, storagePath) {
-  if (!functions) return;
-  const parseImportedDocument = httpsCallable(functions, 'parseTrainerDocumentImport');
-  await parseImportedDocument({ trainerId, importId, storagePath });
+function extraRowsForAudience(isTrainer) {
+  if (isTrainer) {
+    return TRAINER_EXTRA_ROWS;
+  }
+  return CLIENT_EXTRA_ROWS;
 }
 
-async function runTrainerImportParse({ trainerId, uid, file, onProgress, onParsingStarted }) {
-  // Also keep a copy in notes_and_files so the client sees the uploaded PDF/doc.
-  if (uid) {
-    await addFile(
-      uid,
-      {
-        localUri: file.uri,
-        filename: file.name || 'document',
-        mimeType: file.mimeType || DEFAULT_OCTET_STREAM,
-        type: notesTypeForDocument(file),
-        size: optionalFileSize(file.size),
-      },
-      ADDED_BY_TRAINER,
-    );
+function extraSectionLabel(isTrainer) {
+  if (isTrainer) {
+    return 'CREATE & IMPORT';
   }
-  const { importId, storagePath } = await uploadTrainerDocumentImport(
-    trainerId,
-    {
-      localUri: file.uri,
-      filename: file.name || 'document',
-      mimeType: file.mimeType || DEFAULT_OCTET_STREAM,
-    },
-    onProgress,
+  return 'MORE';
+}
+
+function notePlaceholderForAudience(isTrainer) {
+  if (isTrainer) {
+    return 'Write a note for your client…';
+  }
+  return 'Knee felt tight on the second set. Video attached.';
+}
+
+function keyboardAvoidBehavior() {
+  if (Platform.OS === 'ios') {
+    return 'padding';
+  }
+  return undefined;
+}
+
+// ===== IN-FILE UI PIECES (no hooks) =====
+
+function AddFileUploadingBlock({ colors, importStatus, uploadProgress }) {
+  const statusLabel = uploadingStatusLabel(importStatus, uploadProgress);
+  const showProgressBar = uploadProgress > 0;
+
+  return (
+    <View style={styles.loadingBlock}>
+      <ActivityIndicator size="large" color={colors.nbInk} />
+      <Text style={[styles.loadingText, { color: colors.nbMuted }]}>{statusLabel}</Text>
+      {showProgressBar ? (
+        <View
+          style={[
+            styles.progressTrack,
+            { backgroundColor: colors.nbSoft, borderColor: colors.nbBorder },
+          ]}
+        >
+          <View
+            style={[
+              styles.progressFill,
+              { width: `${uploadProgress}%`, backgroundColor: colors.nbFill },
+            ]}
+          />
+        </View>
+      ) : null}
+    </View>
   );
-  onParsingStarted?.();
-  await askServerToParseImport(trainerId, importId, storagePath);
-  return waitForImportParse(trainerId, importId);
-}
-
-function uploadingStatusLabel(importStatus, uploadProgress) {
-  if (importStatus === IMPORT_STATUS_PARSING) return 'Parsing document…';
-  const percentSuffix = uploadProgress > 0 ? `${uploadProgress}%` : '';
-  return `Uploading… ${percentSuffix}`;
 }
 
 /**
@@ -317,30 +270,33 @@ function uploadingStatusLabel(importStatus, uploadProgress) {
  * vocab: accentIndex picks which accentGradients ramp fills the chip (small accent only).
  */
 function AddFileRow({ label, subtitle, icon, accentIndex, onPress, colors, showDivider, hardShadow }) {
+  const chipColors = accentGradients[accentIndex % accentGradients.length];
+  const rowStyle = [
+    styles.row,
+    hardShadow && styles.rowHard,
+    hardShadow && {
+      backgroundColor: colors.nbSurface,
+      borderColor: colors.nbBorder,
+    },
+    !hardShadow && showDivider && {
+      borderBottomWidth: nb.borderWidthDivider,
+      borderBottomColor: colors.nbBorder,
+    },
+  ];
+
   const rowInner = (
     <TouchableOpacity
       onPress={onPress}
       activeOpacity={0.85}
       accessibilityRole="button"
       accessibilityLabel={label}
-      style={[
-        styles.row,
-        hardShadow && styles.rowHard,
-        hardShadow && {
-          backgroundColor: colors.nbSurface,
-          borderColor: colors.nbBorder,
-        },
-        !hardShadow && showDivider && {
-          borderBottomWidth: nb.borderWidthDivider,
-          borderBottomColor: colors.nbBorder,
-        },
-      ]}
+      style={rowStyle}
     >
       <NbIconChip
         source={icon}
         size={44}
         index={accentIndex}
-        colors={accentGradients[accentIndex % accentGradients.length]}
+        colors={chipColors}
       />
       <View style={styles.rowText}>
         <Text style={[styles.rowLabel, { color: colors.nbInk }]}>{label}</Text>
@@ -352,7 +308,7 @@ function AddFileRow({ label, subtitle, icon, accentIndex, onPress, colors, showD
     </TouchableOpacity>
   );
 
-  // Trainer extras: each option is its own HardShadow card (PNG law + user brief)
+  // Trainer extras: each option is its own HardShadow card (PNG law)
   if (hardShadow) {
     return (
       <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetSmall} style={styles.extraRowWrap}>
@@ -363,10 +319,312 @@ function AddFileRow({ label, subtitle, icon, accentIndex, onPress, colors, showD
   return rowInner;
 }
 
+function ImportResultStep({
+  colors,
+  importStatus,
+  importError,
+  extractedText,
+  onBack,
+  onDone,
+}) {
+  const importFailed = importStatus === IMPORT_STATUS_ERROR;
+  const headingLabel = importFailed ? 'Import failed' : 'Imported text';
+
+  return (
+    <View style={{ paddingBottom: spacing.md }}>
+      <Text style={[styles.importLabel, { color: colors.nbMuted }]}>{headingLabel}</Text>
+      {importFailed ? (
+        <Text style={[styles.importBody, { color: colors.nbInk }]}>{importError}</Text>
+      ) : (
+        <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetCard}>
+          <View
+            style={[
+              styles.importCard,
+              { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder },
+            ]}
+          >
+            <Text style={[styles.importBody, { color: colors.nbInk }]}>{extractedText}</Text>
+          </View>
+        </HardShadow>
+      )}
+      <View style={styles.importActions}>
+        <NbButton variant="plain" onPress={onBack} style={{ flex: 1 }}>
+          Back
+        </NbButton>
+        <NbButton variant="fill" onPress={onDone} style={{ flex: 1 }}>
+          Done
+        </NbButton>
+      </View>
+    </View>
+  );
+}
+
+function PendingAttachmentRow({
+  file,
+  colors,
+  showDivider,
+  onRemove,
+}) {
+  const iconSource = attachmentIconForKind(file.kind);
+  const accentIndex = attachmentAccentIndexForKind(file.kind);
+  const sizeLabel = formatBytes(file.size) || attachmentFallbackLabel(file.kind);
+
+  return (
+    <View
+      style={[
+        styles.attachRow,
+        showDivider && {
+          borderBottomWidth: nb.borderWidthDivider,
+          borderBottomColor: colors.nbBorder,
+        },
+      ]}
+    >
+      <NbIconChip source={iconSource} size={44} index={accentIndex} />
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={[styles.rowLabel, { color: colors.nbInk }]} numberOfLines={1}>
+          {file.name}
+        </Text>
+        <Text style={[styles.rowSub, { color: colors.nbMuted }]} numberOfLines={1}>
+          {sizeLabel}
+        </Text>
+      </View>
+      <HardShadow offset={nb.shadowOffsetSmall} radius={10}>
+        <TouchableOpacity
+          onPress={onRemove}
+          style={[
+            styles.removeAttach,
+            { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface },
+          ]}
+          accessibilityLabel={`Remove ${file.name}`}
+        >
+          <Ionicons name="close" size={18} color={colors.nbInk} />
+        </TouchableOpacity>
+      </HardShadow>
+    </View>
+  );
+}
+
+function NoteComposerStep({
+  colors,
+  isTrainer,
+  noteText,
+  onChangeNoteText,
+  pendingAttachments,
+  onRemoveAttachment,
+  onAddAnotherFile,
+  onSaveNote,
+  onBack,
+}) {
+  const placeholder = notePlaceholderForAudience(isTrainer);
+  const hasAttachments = pendingAttachments.length > 0;
+  const avoidBehavior = keyboardAvoidBehavior();
+
+  return (
+    <KeyboardAvoidingView
+      behavior={avoidBehavior}
+      style={{ paddingBottom: spacing.md }}
+    >
+      <Text style={[styles.importLabel, { color: colors.nbMuted }]}>YOUR NOTE</Text>
+      <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetCard}>
+        <TextInput
+          value={noteText}
+          onChangeText={onChangeNoteText}
+          placeholder={placeholder}
+          placeholderTextColor={colors.nbMuted}
+          multiline
+          textAlignVertical="top"
+          style={[
+            styles.noteInput,
+            {
+              color: colors.nbInk,
+              backgroundColor: colors.nbSurface,
+              borderColor: colors.nbBorder,
+            },
+          ]}
+        />
+      </HardShadow>
+
+      {hasAttachments ? (
+        <HardShadow
+          radius={borderRadius.nbCard}
+          offset={nb.shadowOffsetCard}
+          style={{ marginTop: 14 }}
+        >
+          <View
+            style={[
+              styles.attachList,
+              { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder },
+            ]}
+          >
+            {pendingAttachments.map((file, index) => (
+              <PendingAttachmentRow
+                key={file.id}
+                file={file}
+                colors={colors}
+                showDivider={index < pendingAttachments.length - 1}
+                onRemove={() => onRemoveAttachment(file.id)}
+              />
+            ))}
+          </View>
+        </HardShadow>
+      ) : null}
+
+      <HardShadow offset={nb.shadowOffsetSmall} radius={borderRadius.nbCard} style={{ marginTop: 14 }}>
+        <TouchableOpacity
+          onPress={onAddAnotherFile}
+          style={[
+            styles.addAnother,
+            { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface },
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel="Add another file"
+        >
+          <Ionicons name="add" size={20} color={colors.nbInk} />
+          <Text style={{ fontSize: 15, fontWeight: '800', color: colors.nbInk }}>
+            Add another file
+          </Text>
+        </TouchableOpacity>
+      </HardShadow>
+
+      <NbButton variant="fill" onPress={onSaveNote} style={{ marginTop: 16 }}>
+        Add to Notes & Files
+      </NbButton>
+      <NbButton variant="plain" onPress={onBack} style={{ marginTop: 10 }}>
+        Back
+      </NbButton>
+    </KeyboardAvoidingView>
+  );
+}
+
+function PickerListStep({
+  colors,
+  primaryRows,
+  extraRows,
+  extraLabel,
+  onOptionPress,
+  onCancel,
+}) {
+  return (
+    <View style={{ paddingBottom: spacing.md }}>
+      {/* PNG 05: flat list on the sheet — no GradientFrame / option tiles */}
+      <View style={styles.list}>
+        {primaryRows.map((row, index) => (
+          <AddFileRow
+            key={row.key}
+            label={row.label}
+            subtitle={row.subtitle}
+            icon={row.icon}
+            accentIndex={row.accentIndex}
+            onPress={() => onOptionPress(row.key)}
+            colors={colors}
+            showDivider={index < primaryRows.length - 1}
+          />
+        ))}
+      </View>
+
+      {extraRows.length > 0 ? (
+        <>
+          <Text style={[styles.sectionLabel, { color: colors.nbMuted }]}>{extraLabel}</Text>
+          {extraRows.map((row) => (
+            <AddFileRow
+              key={row.key}
+              label={row.label}
+              subtitle={row.subtitle}
+              icon={row.icon}
+              accentIndex={row.accentIndex}
+              onPress={() => onOptionPress(row.key)}
+              colors={colors}
+              hardShadow
+            />
+          ))}
+        </>
+      ) : null}
+
+      <NbButton variant="plain" onPress={onCancel} style={{ marginTop: 16 }}>
+        Cancel
+      </NbButton>
+    </View>
+  );
+}
+
+function AddFileSheetBody({
+  uploading,
+  step,
+  colors,
+  importStatus,
+  uploadProgress,
+  importError,
+  extractedText,
+  isTrainer,
+  noteText,
+  pendingAttachments,
+  primaryRows,
+  extraRows,
+  extraLabel,
+  onBackToPicker,
+  onClose,
+  onChangeNoteText,
+  onRemoveAttachment,
+  onAddAnotherFile,
+  onSaveNote,
+  onOptionPress,
+}) {
+  if (uploading) {
+    return (
+      <AddFileUploadingBlock
+        colors={colors}
+        importStatus={importStatus}
+        uploadProgress={uploadProgress}
+      />
+    );
+  }
+
+  if (step === STEP_IMPORT_RESULT) {
+    return (
+      <ImportResultStep
+        colors={colors}
+        importStatus={importStatus}
+        importError={importError}
+        extractedText={extractedText}
+        onBack={onBackToPicker}
+        onDone={onClose}
+      />
+    );
+  }
+
+  if (step === STEP_NOTE) {
+    return (
+      <NoteComposerStep
+        colors={colors}
+        isTrainer={isTrainer}
+        noteText={noteText}
+        onChangeNoteText={onChangeNoteText}
+        pendingAttachments={pendingAttachments}
+        onRemoveAttachment={onRemoveAttachment}
+        onAddAnotherFile={onAddAnotherFile}
+        onSaveNote={onSaveNote}
+        onBack={onBackToPicker}
+      />
+    );
+  }
+
+  return (
+    <PickerListStep
+      colors={colors}
+      primaryRows={primaryRows}
+      extraRows={extraRows}
+      extraLabel={extraLabel}
+      onOptionPress={onOptionPress}
+      onCancel={onClose}
+    />
+  );
+}
+
 // ===== MAIN FUNCTION =====
 
 /**
  * Design Law Add files sheet (PNG 05/06).
+ * Hook order frozen.
  * @param {object} props
  */
 export default function AddFilePopup({
@@ -393,14 +651,15 @@ export default function AddFilePopup({
   const [photoSourceOpen, setPhotoSourceOpen] = useState(false);
   const [photoForComposer, setPhotoForComposer] = useState(false);
   const [attachMoreOpen, setAttachMoreOpen] = useState(false);
-  const uid = clientIdProp ?? auth?.currentUser?.uid;
+
+  const uid = uidFromPropOrAuth(clientIdProp);
   const addedBy = addedByProp;
-  const trainerId = auth?.currentUser?.uid;
+  const trainerId = signedInUidFromAuth();
   const isTrainer = addedBy === ADDED_BY_TRAINER;
 
   const showNotice = (title, message) => setNotice({ title, message });
 
-  const handleClose = () => {
+  const resetSheetState = () => {
     setStep(STEP_PICKER);
     setUploading(false);
     setUploadProgress(0);
@@ -412,12 +671,16 @@ export default function AddFilePopup({
     setPhotoSourceOpen(false);
     setPhotoForComposer(false);
     setAttachMoreOpen(false);
+  };
+
+  const handleClose = () => {
+    resetSheetState();
     onClose();
   };
 
   // Upload a still photo asset (camera or library) as type:photo.
   const uploadPhotoAsset = async (asset) => {
-    if (!uid || !asset?.uri) return;
+    if (!uid || !(asset && asset.uri)) return;
     setUploading(true);
     try {
       const { uri, fileSize } = asset;
@@ -433,20 +696,25 @@ export default function AddFilePopup({
         },
         addedBy,
       );
-      onAdded?.();
+      callIfPresent(onAdded);
       handleClose();
     } catch (error) {
       console.warn('Add photo error:', error);
-      showNotice('Upload failed', error?.message || 'Could not add photo.');
+      showNotice('Upload failed', errorMessageOrFallback(error, 'Could not add photo.'));
     } finally {
       setUploading(false);
     }
   };
 
   const stageOrUploadPhoto = async (asset) => {
-    if (photoForComposer || step === STEP_NOTE) {
+    const shouldStageOnNote = photoForComposer || step === STEP_NOTE;
+    if (shouldStageOnNote) {
       const meta = pendingAttachmentMeta(asset, 'photo');
-      if (meta) setPendingAttachments((prev) => [...prev, meta]);
+      if (meta) {
+        setPendingAttachments(function appendPhoto(previousAttachments) {
+          return previousAttachments.concat([meta]);
+        });
+      }
       setPhotoForComposer(false);
       return;
     }
@@ -491,11 +759,18 @@ export default function AddFilePopup({
     }
     const asset = await pickLibraryAsset(['videos']);
     if (!asset) return;
-    if (forComposer || step === STEP_NOTE) {
+
+    const shouldStageOnNote = forComposer || step === STEP_NOTE;
+    if (shouldStageOnNote) {
       const meta = pendingAttachmentMeta(asset, 'video');
-      if (meta) setPendingAttachments((prev) => [...prev, meta]);
+      if (meta) {
+        setPendingAttachments(function appendVideo(previousAttachments) {
+          return previousAttachments.concat([meta]);
+        });
+      }
       return;
     }
+
     setUploading(true);
     try {
       const { uri, fileSize } = asset;
@@ -511,11 +786,11 @@ export default function AddFilePopup({
         },
         addedBy,
       );
-      onAdded?.();
+      callIfPresent(onAdded);
       handleClose();
     } catch (error) {
       console.warn('Add video error:', error);
-      showNotice('Upload failed', error?.message || 'Could not add video.');
+      showNotice('Upload failed', errorMessageOrFallback(error, 'Could not add video.'));
     } finally {
       setUploading(false);
     }
@@ -528,7 +803,7 @@ export default function AddFilePopup({
       file = await pickPdfOrWordDocument();
     } catch (error) {
       console.warn('Document picker error:', error);
-      showNotice('Picker failed', error?.message || 'Could not open the document picker.');
+      showNotice('Picker failed', errorMessageOrFallback(error, 'Could not open the document picker.'));
       return;
     }
     if (!file) return;
@@ -536,11 +811,18 @@ export default function AddFilePopup({
       showNotice('Unsupported file', 'Please choose a PDF or Word document (.pdf, .doc, .docx).');
       return;
     }
-    if (forComposer || step === STEP_NOTE) {
+
+    const shouldStageOnNote = forComposer || step === STEP_NOTE;
+    if (shouldStageOnNote) {
       const meta = pendingAttachmentMeta(file, 'doc');
-      if (meta) setPendingAttachments((prev) => [...prev, meta]);
+      if (meta) {
+        setPendingAttachments(function appendDoc(previousAttachments) {
+          return previousAttachments.concat([meta]);
+        });
+      }
       return;
     }
+
     setUploading(true);
     try {
       await addFile(
@@ -554,11 +836,11 @@ export default function AddFilePopup({
         },
         addedBy,
       );
-      onAdded?.();
+      callIfPresent(onAdded);
       handleClose();
     } catch (error) {
       console.warn('Add doc error:', error);
-      showNotice('Upload failed', error?.message || 'Could not add file. The file may be corrupted.');
+      showNotice('Upload failed', errorMessageOrFallback(error, 'Could not add file. The file may be corrupted.'));
     } finally {
       setUploading(false);
     }
@@ -595,11 +877,11 @@ export default function AddFilePopup({
         addedBy,
         (percent) => setUploadProgress(percent),
       );
-      onAdded?.();
+      callIfPresent(onAdded);
       handleClose();
     } catch (error) {
       console.warn('Add spreadsheet error:', error);
-      showNotice('Upload failed', error?.message || 'Could not add spreadsheet.');
+      showNotice('Upload failed', errorMessageOrFallback(error, 'Could not add spreadsheet.'));
     } finally {
       setUploading(false);
       setUploadProgress(0);
@@ -607,7 +889,7 @@ export default function AddFilePopup({
   };
 
   const handleImportParse = async () => {
-    // Trainers only — client role never sees this row.
+    // 1. Trainers only — client role never sees this row.
     if (!trainerId || addedBy !== ADDED_BY_TRAINER) {
       showNotice('Trainers only', 'Import & parse is available on the trainer Notes & Files flow.');
       return;
@@ -617,7 +899,7 @@ export default function AddFilePopup({
       file = await pickPdfOrWordDocument();
     } catch (error) {
       console.warn('Document picker error:', error);
-      showNotice('Picker failed', error?.message || 'Could not open the document picker.');
+      showNotice('Picker failed', errorMessageOrFallback(error, 'Could not open the document picker.'));
       return;
     }
     if (!file) return;
@@ -629,6 +911,7 @@ export default function AddFilePopup({
     setImportStatus(IMPORT_STATUS_UPLOADING);
     setImportError('');
     setExtractedText('');
+    // 2. Upload to trainers/imports, call parse cloud fn, poll importedData.
     try {
       const imported = await runTrainerImportParse({
         trainerId,
@@ -637,20 +920,23 @@ export default function AddFilePopup({
         onProgress: (percent) => setUploadProgress(percent),
         onParsingStarted: () => setImportStatus(IMPORT_STATUS_PARSING),
       });
-      if (imported?.status === IMPORT_STATUS_ERROR) {
+      const importedStatus = imported && imported.status;
+      if (importedStatus === IMPORT_STATUS_ERROR) {
         setImportStatus(IMPORT_STATUS_ERROR);
-        setImportError(imported.error || 'Parsing failed. The file may be corrupted or unsupported.');
+        const parseErrorText = (imported && imported.error) || 'Parsing failed. The file may be corrupted or unsupported.';
+        setImportError(parseErrorText);
         setStep(STEP_IMPORT_RESULT);
         return;
       }
       setImportStatus(IMPORT_STATUS_COMPLETE);
-      setExtractedText(imported?.extractedText || '(No text extracted)');
+      const extracted = (imported && imported.extractedText) || '(No text extracted)';
+      setExtractedText(extracted);
       setStep(STEP_IMPORT_RESULT);
-      onAdded?.();
+      callIfPresent(onAdded);
     } catch (error) {
       console.warn('Import parse error:', error);
       setImportStatus(IMPORT_STATUS_ERROR);
-      setImportError(error?.message || 'Import failed. Check the file type and try again.');
+      setImportError(errorMessageOrFallback(error, 'Import failed. Check the file type and try again.'));
       setStep(STEP_IMPORT_RESULT);
     } finally {
       setUploading(false);
@@ -660,12 +946,14 @@ export default function AddFilePopup({
 
   // PNG 07 path: write note + upload any staged attachments into notes_and_files.
   const handleSaveNote = async () => {
+    // 1. Need text or at least one staged attachment.
     const content = String(noteText || '').trim();
     if (!content && pendingAttachments.length === 0) {
       showNotice('Empty note', 'Write something or attach a file first.');
       return;
     }
     if (!uid) return;
+    // 2. Upload staged files, then the note row, then close.
     setUploading(true);
     try {
       for (const file of pendingAttachments) {
@@ -684,11 +972,11 @@ export default function AddFilePopup({
       if (content) {
         await addNote(uid, content, addedBy);
       }
-      onAdded?.();
+      callIfPresent(onAdded);
       handleClose();
     } catch (error) {
       console.warn('Add note error:', error);
-      showNotice('Could not save note', error?.message || 'Please try again.');
+      showNotice('Could not save note', errorMessageOrFallback(error, 'Please try again.'));
     } finally {
       setUploading(false);
     }
@@ -713,308 +1001,125 @@ export default function AddFilePopup({
     if (key === OPTION_NOTE) return openNoteStep();
     if (key === OPTION_NEW_DOC) {
       handleClose();
-      setTimeout(() => onNewDocument?.(), ACTION_OPEN_DELAY_MS);
+      setTimeout(() => callIfPresent(onNewDocument), ACTION_OPEN_DELAY_MS);
     }
   };
 
-  const primaryRows = CLIENT_ROWS.map((row) =>
-    row.key === OPTION_NOTE && isTrainer
-      ? { ...row, subtitle: row.subtitleTrainer || row.subtitle }
-      : row,
-  );
-  const extraRows = isTrainer ? TRAINER_EXTRA_ROWS : CLIENT_EXTRA_ROWS;
-  const sheetTitle =
-    step === STEP_NOTE ? 'Add note or file' : step === STEP_IMPORT_RESULT ? 'Import' : 'Add files';
+  const removePendingAttachment = (attachmentId) => {
+    setPendingAttachments(function dropAttachment(previousAttachments) {
+      const kept = [];
+      let index = 0;
+      while (index < previousAttachments.length) {
+        const item = previousAttachments[index];
+        if (item.id !== attachmentId) {
+          kept.push(item);
+        }
+        index += 1;
+      }
+      return kept;
+    });
+  };
 
+  const primaryRows = primaryRowsForAudience(isTrainer);
+  const extraRows = extraRowsForAudience(isTrainer);
+  const extraLabel = extraSectionLabel(isTrainer);
+  const sheetTitle = sheetTitleForStep(step);
+
+  const closePhotoSourceSheet = () => {
+    setPhotoSourceOpen(false);
+    setPhotoForComposer(false);
+  };
+
+  const openPhotoForComposer = () => {
+    setAttachMoreOpen(false);
+    setPhotoForComposer(true);
+    setPhotoSourceOpen(true);
+  };
+
+  const openVideoForComposer = () => {
+    setAttachMoreOpen(false);
+    handleVideo(true);
+  };
+
+  const openDocForComposer = () => {
+    setAttachMoreOpen(false);
+    handleDoc(true);
+  };
+
+  // 3. Paint main sheet + notice + photo-source + “add another” sheets.
   return (
     <>
-    <NbSheet visible={visible} onClose={handleClose} title={sheetTitle}>
-      {uploading ? (
-        <View style={styles.loadingBlock}>
-          <ActivityIndicator size="large" color={colors.nbInk} />
-          <Text style={[styles.loadingText, { color: colors.nbMuted }]}>
-            {uploadingStatusLabel(importStatus, uploadProgress)}
+      <NbSheet visible={visible} onClose={handleClose} title={sheetTitle}>
+        <AddFileSheetBody
+          uploading={uploading}
+          step={step}
+          colors={colors}
+          importStatus={importStatus}
+          uploadProgress={uploadProgress}
+          importError={importError}
+          extractedText={extractedText}
+          isTrainer={isTrainer}
+          noteText={noteText}
+          pendingAttachments={pendingAttachments}
+          primaryRows={primaryRows}
+          extraRows={extraRows}
+          extraLabel={extraLabel}
+          onBackToPicker={() => setStep(STEP_PICKER)}
+          onClose={handleClose}
+          onChangeNoteText={setNoteText}
+          onRemoveAttachment={removePendingAttachment}
+          onAddAnotherFile={handleAddAnotherFile}
+          onSaveNote={handleSaveNote}
+          onOptionPress={handleOptionPress}
+        />
+      </NbSheet>
+
+      <NbNoticeSheet
+        visible={!!notice}
+        onClose={() => setNotice(null)}
+        title={noticeTitle(notice)}
+        message={noticeMessage(notice)}
+        confirmLabel="OK"
+      />
+
+      {/* Camera vs library — Design Law sheet instead of Alert.alert action sheet */}
+      <NbSheet
+        visible={photoSourceOpen}
+        onClose={closePhotoSourceSheet}
+        title="Add photo"
+      >
+        <View style={{ gap: 10, paddingBottom: spacing.md }}>
+          <Text style={{ fontSize: 14, fontWeight: '600', color: colors.nbMuted, marginBottom: 4 }}>
+            Choose a source
           </Text>
-          {uploadProgress > 0 ? (
-            <View
-              style={[
-                styles.progressTrack,
-                { backgroundColor: colors.nbSoft, borderColor: colors.nbBorder },
-              ]}
-            >
-              <View
-                style={[
-                  styles.progressFill,
-                  { width: `${uploadProgress}%`, backgroundColor: colors.nbFill },
-                ]}
-              />
-            </View>
-          ) : null}
-        </View>
-      ) : step === STEP_IMPORT_RESULT ? (
-        <View style={{ paddingBottom: spacing.md }}>
-          <Text style={[styles.importLabel, { color: colors.nbMuted }]}>
-            {importStatus === IMPORT_STATUS_ERROR ? 'Import failed' : 'Imported text'}
-          </Text>
-          {importStatus === IMPORT_STATUS_ERROR ? (
-            <Text style={[styles.importBody, { color: colors.nbInk }]}>{importError}</Text>
-          ) : (
-            <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetCard}>
-              <View
-                style={[
-                  styles.importCard,
-                  { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder },
-                ]}
-              >
-                <Text style={[styles.importBody, { color: colors.nbInk }]}>{extractedText}</Text>
-              </View>
-            </HardShadow>
-          )}
-          <View style={styles.importActions}>
-            <NbButton variant="plain" onPress={() => setStep(STEP_PICKER)} style={{ flex: 1 }}>
-              Back
-            </NbButton>
-            <NbButton variant="fill" onPress={handleClose} style={{ flex: 1 }}>
-              Done
-            </NbButton>
-          </View>
-        </View>
-      ) : step === STEP_NOTE ? (
-        // PNG 07 attach-files composer: note field + attachment rows + Add another file + primary CTA.
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={{ paddingBottom: spacing.md }}
-        >
-          <Text style={[styles.importLabel, { color: colors.nbMuted }]}>YOUR NOTE</Text>
-          <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetCard}>
-            <TextInput
-              value={noteText}
-              onChangeText={setNoteText}
-              placeholder={
-                isTrainer
-                  ? 'Write a note for your client…'
-                  : 'Knee felt tight on the second set. Video attached.'
-              }
-              placeholderTextColor={colors.nbMuted}
-              multiline
-              textAlignVertical="top"
-              style={[
-                styles.noteInput,
-                {
-                  color: colors.nbInk,
-                  backgroundColor: colors.nbSurface,
-                  borderColor: colors.nbBorder,
-                },
-              ]}
-            />
-          </HardShadow>
-
-          {pendingAttachments.length > 0 ? (
-            <HardShadow
-              radius={borderRadius.nbCard}
-              offset={nb.shadowOffsetCard}
-              style={{ marginTop: 14 }}
-            >
-              <View
-                style={[
-                  styles.attachList,
-                  { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder },
-                ]}
-              >
-                {pendingAttachments.map((file, index) => (
-                  <View
-                    key={file.id}
-                    style={[
-                      styles.attachRow,
-                      index < pendingAttachments.length - 1 && {
-                        borderBottomWidth: nb.borderWidthDivider,
-                        borderBottomColor: colors.nbBorder,
-                      },
-                    ]}
-                  >
-                    <NbIconChip
-                      source={
-                        file.kind === 'video'
-                          ? WORKOUT_ICON
-                          : file.kind === 'doc'
-                            ? MUSCLE_ICON
-                            : PICTURE_ICON
-                      }
-                      size={44}
-                      index={file.kind === 'video' ? 3 : 0}
-                    />
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={[styles.rowLabel, { color: colors.nbInk }]} numberOfLines={1}>
-                        {file.name}
-                      </Text>
-                      <Text style={[styles.rowSub, { color: colors.nbMuted }]} numberOfLines={1}>
-                        {formatBytes(file.size) || (file.kind === 'video' ? 'Video' : 'Attachment')}
-                      </Text>
-                    </View>
-                    <HardShadow offset={nb.shadowOffsetSmall} radius={10}>
-                      <TouchableOpacity
-                        onPress={() =>
-                          setPendingAttachments((prev) => prev.filter((item) => item.id !== file.id))
-                        }
-                        style={[
-                          styles.removeAttach,
-                          { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface },
-                        ]}
-                        accessibilityLabel={`Remove ${file.name}`}
-                      >
-                        <Ionicons name="close" size={18} color={colors.nbInk} />
-                      </TouchableOpacity>
-                    </HardShadow>
-                  </View>
-                ))}
-              </View>
-            </HardShadow>
-          ) : null}
-
-          <HardShadow offset={nb.shadowOffsetSmall} radius={borderRadius.nbCard} style={{ marginTop: 14 }}>
-            <TouchableOpacity
-              onPress={handleAddAnotherFile}
-              style={[
-                styles.addAnother,
-                { borderColor: colors.nbBorder, backgroundColor: colors.nbSurface },
-              ]}
-              accessibilityRole="button"
-              accessibilityLabel="Add another file"
-            >
-              <Ionicons name="add" size={20} color={colors.nbInk} />
-              <Text style={{ fontSize: 15, fontWeight: '800', color: colors.nbInk }}>
-                Add another file
-              </Text>
-            </TouchableOpacity>
-          </HardShadow>
-
-          <NbButton variant="fill" onPress={handleSaveNote} style={{ marginTop: 16 }}>
-            Add to Notes & Files
+          <NbButton variant="fill" onPress={pickPhotoFromCamera}>
+            Camera
           </NbButton>
-          <NbButton variant="plain" onPress={() => setStep(STEP_PICKER)} style={{ marginTop: 10 }}>
-            Back
+          <NbButton variant="ghost" onPress={pickPhotoFromLibrary}>
+            Library
           </NbButton>
-        </KeyboardAvoidingView>
-      ) : (
-        <View style={{ paddingBottom: spacing.md }}>
-          {/* PNG 05: flat list on the sheet — no GradientFrame / option tiles */}
-          <View style={styles.list}>
-            {primaryRows.map((row, index) => (
-              <AddFileRow
-                key={row.key}
-                label={row.label}
-                subtitle={row.subtitle}
-                icon={row.icon}
-                accentIndex={row.accentIndex}
-                onPress={() => handleOptionPress(row.key)}
-                colors={colors}
-                showDivider={index < primaryRows.length - 1}
-              />
-            ))}
-          </View>
-
-          {extraRows.length > 0 ? (
-            <>
-              <Text style={[styles.sectionLabel, { color: colors.nbMuted }]}>
-                {isTrainer ? 'CREATE & IMPORT' : 'MORE'}
-              </Text>
-              {extraRows.map((row) => (
-                <AddFileRow
-                  key={row.key}
-                  label={row.label}
-                  subtitle={row.subtitle}
-                  icon={row.icon}
-                  accentIndex={row.accentIndex}
-                  onPress={() => handleOptionPress(row.key)}
-                  colors={colors}
-                  hardShadow
-                />
-              ))}
-            </>
-          ) : null}
-
-          {/* Cancel = plain NbButton (HardShadow built into NbButton) */}
-          <NbButton variant="plain" onPress={handleClose} style={{ marginTop: 16 }}>
+          <NbButton variant="ghost" onPress={closePhotoSourceSheet}>
             Cancel
           </NbButton>
         </View>
-      )}
-    </NbSheet>
+      </NbSheet>
 
-    <NbNoticeSheet
-      visible={!!notice}
-      onClose={() => setNotice(null)}
-      title={notice?.title || ''}
-      message={notice?.message}
-      confirmLabel="OK"
-    />
-
-    {/* Camera vs library — Design Law sheet instead of Alert.alert action sheet */}
-    <NbSheet
-      visible={photoSourceOpen}
-      onClose={() => {
-        setPhotoSourceOpen(false);
-        setPhotoForComposer(false);
-      }}
-      title="Add photo"
-    >
-      <View style={{ gap: 10, paddingBottom: spacing.md }}>
-        <Text style={{ fontSize: 14, fontWeight: '600', color: colors.nbMuted, marginBottom: 4 }}>
-          Choose a source
-        </Text>
-        <NbButton variant="fill" onPress={pickPhotoFromCamera}>
-          Camera
-        </NbButton>
-        <NbButton variant="ghost" onPress={pickPhotoFromLibrary}>
-          Library
-        </NbButton>
-        <NbButton
-          variant="ghost"
-          onPress={() => {
-            setPhotoSourceOpen(false);
-            setPhotoForComposer(false);
-          }}
-        >
-          Cancel
-        </NbButton>
-      </View>
-    </NbSheet>
-
-    <NbSheet visible={attachMoreOpen} onClose={() => setAttachMoreOpen(false)} title="Add another file">
-      <View style={{ gap: 10, paddingBottom: spacing.md }}>
-        <NbButton
-          variant="fill"
-          onPress={() => {
-            setAttachMoreOpen(false);
-            setPhotoForComposer(true);
-            setPhotoSourceOpen(true);
-          }}
-        >
-          Photo
-        </NbButton>
-        <NbButton
-          variant="ghost"
-          onPress={() => {
-            setAttachMoreOpen(false);
-            handleVideo(true);
-          }}
-        >
-          Video
-        </NbButton>
-        <NbButton
-          variant="ghost"
-          onPress={() => {
-            setAttachMoreOpen(false);
-            handleDoc(true);
-          }}
-        >
-          PDF / Doc
-        </NbButton>
-        <NbButton variant="ghost" onPress={() => setAttachMoreOpen(false)}>
-          Cancel
-        </NbButton>
-      </View>
-    </NbSheet>
+      <NbSheet visible={attachMoreOpen} onClose={() => setAttachMoreOpen(false)} title="Add another file">
+        <View style={{ gap: 10, paddingBottom: spacing.md }}>
+          <NbButton variant="fill" onPress={openPhotoForComposer}>
+            Photo
+          </NbButton>
+          <NbButton variant="ghost" onPress={openVideoForComposer}>
+            Video
+          </NbButton>
+          <NbButton variant="ghost" onPress={openDocForComposer}>
+            PDF / Doc
+          </NbButton>
+          <NbButton variant="ghost" onPress={() => setAttachMoreOpen(false)}>
+            Cancel
+          </NbButton>
+        </View>
+      </NbSheet>
     </>
   );
 }
@@ -1140,3 +1245,226 @@ const styles = StyleSheet.create({
     gap: 8,
   },
 });
+
+
+function signedInUidFromAuth() {
+  if (!auth) return undefined;
+  if (!auth.currentUser) return undefined;
+  return auth.currentUser.uid;
+}
+
+function uidFromPropOrAuth(clientIdProp) {
+  if (clientIdProp !== null && clientIdProp !== undefined) {
+    return clientIdProp;
+  }
+  return signedInUidFromAuth();
+}
+
+function callIfPresent(maybeFn) {
+  if (typeof maybeFn === 'function') {
+    maybeFn();
+  }
+}
+
+function errorMessageOrFallback(error, fallbackMessage) {
+  if (error && error.message) {
+    return error.message;
+  }
+  return fallbackMessage;
+}
+
+function firstPickerAsset(result) {
+  if (!result || result.canceled) return null;
+  if (!result.assets || !result.assets.length) return null;
+  const asset = result.assets[0];
+  if (!asset || !asset.uri) return null;
+  return asset;
+}
+
+function noticeTitle(notice) {
+  if (notice && notice.title) return notice.title;
+  return '';
+}
+
+function noticeMessage(notice) {
+  if (notice) return notice.message;
+  return undefined;
+}
+
+// ===== PLUMBING — skip unless debugging =====
+// Pickers, import polling, and attachment meta (hoisted function declarations).
+
+function isPdfOrWordFile(file) {
+  const fileName = String(file.name || '').toLowerCase();
+  const mimeType = String(file.mimeType || '');
+  if (mimeType.includes('pdf')) return true;
+  if (mimeType.includes('msword')) return true;
+  if (mimeType.includes('wordprocessingml')) return true;
+  if (fileName.endsWith('.pdf')) return true;
+  if (fileName.endsWith('.doc')) return true;
+  if (fileName.endsWith('.docx')) return true;
+  return false;
+}
+
+function notesTypeForDocument(file) {
+  const fileName = String(file.name || '').toLowerCase();
+  const mimeType = String(file.mimeType || '');
+  if (mimeType.includes('pdf') || fileName.endsWith('.pdf')) return 'pdf';
+  return 'doc';
+}
+
+function optionalFileSize(size) {
+  return typeof size === 'number' ? size : undefined;
+}
+
+async function requestLibraryPermission() {
+  const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+  return status === 'granted';
+}
+
+async function requestCameraPermission() {
+  const { status } = await ImagePicker.requestCameraPermissionsAsync();
+  return status === 'granted';
+}
+
+function formatBytes(size) {
+  const byteCount = Number(size);
+  if (!Number.isFinite(byteCount) || byteCount <= 0) return '';
+  if (byteCount < 1024) return `${byteCount} B`;
+  if (byteCount < 1024 * 1024) return `${Math.round(byteCount / 1024)} KB`;
+  return `${(byteCount / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function mimeTypeForPendingKind(asset, kind) {
+  if (kind === 'video') {
+    return 'video/mp4';
+  }
+  if (kind === 'doc') {
+    return asset.mimeType || DEFAULT_OCTET_STREAM;
+  }
+  return 'image/jpeg';
+}
+
+function defaultNameForPendingKind(kind, uri) {
+  const fromUri = uri.split('/').pop();
+  if (fromUri) {
+    return fromUri;
+  }
+  if (kind === 'video') {
+    return `video_${Date.now()}.mp4`;
+  }
+  return `photo_${Date.now()}.jpg`;
+}
+
+function pendingAttachmentMeta(asset, kind) {
+  const uri = asset && asset.uri;
+  if (!uri) return null;
+  const name =
+    asset.fileName ||
+    asset.name ||
+    defaultNameForPendingKind(kind, uri);
+  const attachmentType = kind === 'doc' ? notesTypeForDocument(asset) : kind;
+  return {
+    id: `${kind}_${uri}_${Date.now()}`,
+    uri,
+    name,
+    kind,
+    mimeType: asset.mimeType || mimeTypeForPendingKind(asset, kind),
+    size: optionalFileSize(
+      asset.fileSize !== null && asset.fileSize !== undefined ? asset.fileSize : asset.size,
+    ),
+    type: attachmentType,
+  };
+}
+
+async function pickLibraryAsset(mediaTypes, extraOptions = {}) {
+  const result = await ImagePicker.launchImageLibraryAsync({
+    mediaTypes,
+    allowsEditing: false,
+    ...extraOptions,
+  });
+  return firstPickerAsset(result);
+}
+
+async function pickCameraPhoto() {
+  const result = await ImagePicker.launchCameraAsync({
+    mediaTypes: ['images'],
+    allowsEditing: false,
+    quality: PHOTO_PICKER_QUALITY,
+  });
+  return firstPickerAsset(result);
+}
+
+async function pickPdfOrWordDocument() {
+  const result = await DocumentPicker.getDocumentAsync({
+    type: PDF_AND_WORD_TYPES,
+    copyToCacheDirectory: true,
+  });
+  if (result.canceled) return null;
+  const file = result.assets[0];
+  if (!isPdfOrWordFile(file)) {
+    return { unsupported: true };
+  }
+  return file;
+}
+
+function sleepMs(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+async function waitForImportParse(trainerId, importId) {
+  let attempts = 0;
+  let imported = null;
+  while (attempts < IMPORT_POLL_ATTEMPTS) {
+    await sleepMs(IMPORT_POLL_WAIT_MS);
+    imported = await getTrainerImportedData(trainerId, importId);
+    const importedStatus = imported && imported.status;
+    if (importedStatus === IMPORT_STATUS_COMPLETE || importedStatus === IMPORT_STATUS_ERROR) {
+      return imported;
+    }
+    attempts += 1;
+  }
+  return imported;
+}
+
+async function askServerToParseImport(trainerId, importId, storagePath) {
+  if (!functions) return;
+  // vocab: httpsCallable = Firebase callable cloud function bridge
+  const parseImportedDocument = httpsCallable(functions, 'parseTrainerDocumentImport');
+  await parseImportedDocument({ trainerId, importId, storagePath });
+}
+
+async function runTrainerImportParse({ trainerId, uid, file, onProgress, onParsingStarted }) {
+  // Also keep a copy in notes_and_files so the client sees the uploaded PDF/doc.
+  if (uid) {
+    await addFile(
+      uid,
+      {
+        localUri: file.uri,
+        filename: file.name || 'document',
+        mimeType: file.mimeType || DEFAULT_OCTET_STREAM,
+        type: notesTypeForDocument(file),
+        size: optionalFileSize(file.size),
+      },
+      ADDED_BY_TRAINER,
+    );
+  }
+  const { importId, storagePath } = await uploadTrainerDocumentImport(
+    trainerId,
+    {
+      localUri: file.uri,
+      filename: file.name || 'document',
+      mimeType: file.mimeType || DEFAULT_OCTET_STREAM,
+    },
+    onProgress,
+  );
+  callIfPresent(onParsingStarted);
+  await askServerToParseImport(trainerId, importId, storagePath);
+  return waitForImportParse(trainerId, importId);
+}
+
+function uploadingStatusLabel(importStatus, uploadProgress) {
+  if (importStatus === IMPORT_STATUS_PARSING) return 'Parsing document…';
+  const percentSuffix = uploadProgress > 0 ? `${uploadProgress}%` : '';
+  return `Uploading… ${percentSuffix}`;
+}
