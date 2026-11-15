@@ -23,7 +23,7 @@ const INITIAL_LOCK_COUNT = 1;
 // Manipulate here: bar width on the boot splash.
 const LOADING_BAR_WIDTH = 280;
 const STATUS_BAR_STYLE_LIGHT = 'light-content';
-const LOADING_COPY = 'Loading your plan and logs';
+const LOADING_COPY = 'Loading App Now!';
 const BRAND_LINE_1 = 'COACH';
 const BRAND_LINE_2 = 'CONNECT';
 const BRAND_TAGLINE = 'One Day or Day One!';
@@ -40,8 +40,8 @@ const DOT_THREE_EXTRA_LIFT_PX = 4;
 
 // vocab: createContext = shared acquire/release/visible bag for every screen under the provider
 const StartupLoadingCoverContext = createContext({
-  acquire: () => {},
-  release: () => {},
+  acquire: () => { },
+  release: () => { },
   visible: true,
 });
 
