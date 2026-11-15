@@ -1,5 +1,3 @@
-# Still partial vs full-file bar — re-run dedicated full rewrite before calling these "done"
-src/nutrition/food-search/searchFoods.js
-src/client-app/home/homeScreenPieces.jsx
-src/client-app/meals/LogTodaysMealsScreen.jsx
-src/client-app/workout-plans/MyWorkoutPlanScreen.jsx
+# Cleared in Variation 3 campaign Wave 1 — re-audit with node scripts/auditVariation3.mjs
+# Former partials (searchFoods, homeScreenPieces, LogTodaysMeals, MyWorkoutPlan) passed
+# classifyReadable + stripBatchGate CODE-MOVED. Keep empty until a new partial appears.

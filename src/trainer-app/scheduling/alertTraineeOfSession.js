@@ -39,17 +39,29 @@ const EXPO_TOKEN_PREFIX_B = 'ExpoPushToken[';
  * @returns {string}
  */
 function formatTime12(hourMinuteText) {
-  if (!hourMinuteText || typeof hourMinuteText !== 'string') return '';
+  if (!hourMinuteText || typeof hourMinuteText !== 'string') {
+    return '';
+  }
 
-  const [hourText, minuteText] = hourMinuteText.split(':');
+  const parts = hourMinuteText.split(':');
+  const hourText = parts[0];
+  const minuteText = parts[1] || '0';
   const hour24 = parseInt(hourText, 10);
-  const minuteValue = parseInt(minuteText || '0', 10);
-  if (Number.isNaN(hour24)) return hourMinuteText;
+  const minuteValue = parseInt(minuteText, 10);
+  if (Number.isNaN(hour24)) {
+    return hourMinuteText;
+  }
 
-  const meridiem = hour24 >= NOON_HOUR ? 'PM' : 'AM';
+  let meridiem = 'AM';
+  if (hour24 >= NOON_HOUR) {
+    meridiem = 'PM';
+  }
   // ((hour + 11) % 12) + 1 maps 0→12, 13→1, 12→12. Plain hour % 12 would turn noon into 0.
   const hour12 = ((hour24 + 11) % HOURS_PER_HALF_DAY) + 1;
-  const safeMinute = Number.isNaN(minuteValue) ? 0 : minuteValue;
+  let safeMinute = 0;
+  if (!Number.isNaN(minuteValue)) {
+    safeMinute = minuteValue;
+  }
   const minutePadded = String(safeMinute).padStart(MINUTE_PAD_LENGTH, '0');
   return `${hour12}:${minutePadded} ${meridiem}`;
 }
@@ -61,10 +73,15 @@ function formatTime12(hourMinuteText) {
  * @returns {string}
  */
 function formatDateShort(isoDate) {
-  if (!isoDate || typeof isoDate !== 'string') return '';
+  if (!isoDate || typeof isoDate !== 'string') {
+    return '';
+  }
 
-  const dateAtNoon = new Date(`${isoDate.slice(0, 10)}${NOON_ANCHOR}`);
-  if (Number.isNaN(dateAtNoon.getTime())) return isoDate;
+  const dayKey = isoDate.slice(0, 10);
+  const dateAtNoon = new Date(`${dayKey}${NOON_ANCHOR}`);
+  if (Number.isNaN(dateAtNoon.getTime())) {
+    return isoDate;
+  }
   return dateAtNoon.toLocaleDateString('en-US', DATE_FORMAT);
 }
 
@@ -75,15 +92,28 @@ function formatDateShort(isoDate) {
  * @returns {Promise<string>}
  */
 async function resolveTrainerDisplayName(trainerNameArg, trainerUid) {
-  if (trainerNameArg) return trainerNameArg;
+  if (trainerNameArg) {
+    return trainerNameArg;
+  }
 
   try {
     // vocab: getDoc = one-shot Firestore read (not a live listener).
     const trainerSnap = await getDoc(doc(db, USERS_COLLECTION, trainerUid));
     const trainerData = trainerSnap.data();
-    const nameFromProfile =
-      trainerData?.displayName || trainerData?.name || trainerData?.firstName;
-    if (nameFromProfile) return nameFromProfile;
+    if (trainerData == null) {
+      return FALLBACK_TRAINER_NAME;
+    }
+
+    let nameFromProfile = trainerData.displayName;
+    if (!nameFromProfile) {
+      nameFromProfile = trainerData.name;
+    }
+    if (!nameFromProfile) {
+      nameFromProfile = trainerData.firstName;
+    }
+    if (nameFromProfile) {
+      return nameFromProfile;
+    }
     return FALLBACK_TRAINER_NAME;
   } catch {
     return FALLBACK_TRAINER_NAME;
@@ -99,7 +129,13 @@ async function resolveTrainerDisplayName(trainerNameArg, trainerUid) {
 function sessionDetailLine(date, time) {
   const dateLabel = formatDateShort(String(date || ''));
   const timeLabel = formatTime12(String(time || ''));
-  const labelParts = [dateLabel, timeLabel].filter(Boolean);
+  const labelParts = [];
+  if (dateLabel) {
+    labelParts.push(dateLabel);
+  }
+  if (timeLabel) {
+    labelParts.push(timeLabel);
+  }
   if (labelParts.length > 0) {
     return `Session scheduled: ${labelParts.join(' at ')}`;
   }
@@ -120,10 +156,23 @@ async function tryServerNotify({
 }) {
   try {
     const apiBaseUrl = String(getApiBase() || '').replace(/\/$/, '');
-    if (!apiBaseUrl) return false;
+    if (!apiBaseUrl) {
+      return false;
+    }
 
     const headers = await getApiAuthHeaders({ 'Content-Type': 'application/json' });
-    if (!headers.Authorization) return false;
+    if (!headers.Authorization) {
+      return false;
+    }
+
+    let typeToSend = NOTIFICATION_TYPE_SESSION;
+    if (notificationType) {
+      typeToSend = notificationType;
+    }
+    let senderIdToSend = '';
+    if (senderId) {
+      senderIdToSend = senderId;
+    }
 
     const response = await fetch(`${apiBaseUrl}/api/notifications/send`, {
       method: 'POST',
@@ -132,12 +181,21 @@ async function tryServerNotify({
         recipientId,
         senderName,
         messageText,
-        senderId: senderId || '',
-        notificationType: notificationType || NOTIFICATION_TYPE_SESSION,
+        senderId: senderIdToSend,
+        notificationType: typeToSend,
       }),
     });
-    const responseJson = await response.json().catch(() => ({}));
-    if (responseJson?.success === true) return true;
+
+    let responseJson = {};
+    try {
+      responseJson = await response.json();
+    } catch {
+      responseJson = {};
+    }
+
+    if (responseJson != null && responseJson.success === true) {
+      return true;
+    }
   } catch {
     // Fall through — caller will treat false as “try the other channel / give up”.
   }
@@ -150,10 +208,15 @@ async function tryServerNotify({
  * @returns {boolean}
  */
 function isSupportedExpoToken(expoPushToken) {
-  const startsWithKnownPrefix =
-    expoPushToken.startsWith(EXPO_TOKEN_PREFIX_A) ||
-    expoPushToken.startsWith(EXPO_TOKEN_PREFIX_B);
-  return startsWithKnownPrefix;
+  const startsWithPrefixA = expoPushToken.startsWith(EXPO_TOKEN_PREFIX_A);
+  const startsWithPrefixB = expoPushToken.startsWith(EXPO_TOKEN_PREFIX_B);
+  if (startsWithPrefixA) {
+    return true;
+  }
+  if (startsWithPrefixB) {
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -162,8 +225,17 @@ function isSupportedExpoToken(expoPushToken) {
  * @returns {string|null}
  */
 function pushTokenFromUserData(userData) {
-  const tokenCandidate = userData?.expoPushToken || userData?.pushToken;
-  if (!tokenCandidate || typeof tokenCandidate !== 'string') return null;
+  if (userData == null) {
+    return null;
+  }
+
+  let tokenCandidate = userData.expoPushToken;
+  if (!tokenCandidate) {
+    tokenCandidate = userData.pushToken;
+  }
+  if (!tokenCandidate || typeof tokenCandidate !== 'string') {
+    return null;
+  }
   return tokenCandidate;
 }
 
@@ -181,6 +253,15 @@ function buildExpoPushPayload({
   trainerUid,
   sessionId,
 }) {
+  let trainerIdForData = '';
+  if (trainerUid) {
+    trainerIdForData = trainerUid;
+  }
+  let sessionIdForData = '';
+  if (sessionId) {
+    sessionIdForData = sessionId;
+  }
+
   return {
     to: expoPushToken,
     title,
@@ -192,8 +273,8 @@ function buildExpoPushPayload({
     data: {
       type: NOTIFICATION_TYPE_SESSION,
       clientId,
-      trainerId: trainerUid || '',
-      sessionId: sessionId || '',
+      trainerId: trainerIdForData,
+      sessionId: sessionIdForData,
     },
   };
 }
@@ -243,17 +324,40 @@ async function sendExpoDirect({ clientId, trainerUid, sessionId, title, body }) 
       ),
     });
 
-    const responseJson = await response.json().catch(() => ({}));
+    let responseJson = {};
+    try {
+      responseJson = await response.json();
+    } catch {
+      responseJson = {};
+    }
+
     // vocab: ticket = Expo’s per-message receipt. status 'ok' means Expo ACCEPTED it, not that the phone showed it.
-    const expoTicket = responseJson?.data?.[0];
-    if (expoTicket?.status === 'ok') {
+    let expoTicket = null;
+    if (responseJson != null && responseJson.data != null) {
+      expoTicket = responseJson.data[0];
+    }
+
+    let ticketStatus = null;
+    if (expoTicket != null) {
+      ticketStatus = expoTicket.status;
+    }
+    if (ticketStatus === 'ok') {
       console.log('[session push] Expo delivered');
       return { ok: true, channel: 'expo_direct' };
     }
+
     console.warn('[session push] Expo ticket', expoTicket);
-    return { ok: false, reason: expoTicket?.message || 'expo_error' };
+    let failReason = 'expo_error';
+    if (expoTicket != null && expoTicket.message) {
+      failReason = expoTicket.message;
+    }
+    return { ok: false, reason: failReason };
   } catch (error) {
-    console.warn('[session push] failed', error?.message || error);
+    let errorMessage = error;
+    if (error != null && error.message) {
+      errorMessage = error.message;
+    }
+    console.warn('[session push] failed', errorMessage);
     return { ok: false, reason: 'exception' };
   }
 }
@@ -264,7 +368,13 @@ async function sendExpoDirect({ clientId, trainerUid, sessionId, title, body }) 
  * @returns {boolean}
  */
 function isTerminalPushFailure(reason) {
-  return reason === 'no_push_token' || reason === 'no_user_doc';
+  if (reason === 'no_push_token') {
+    return true;
+  }
+  if (reason === 'no_user_doc') {
+    return true;
+  }
+  return false;
 }
 
 // ===== MAIN FUNCTION =====
@@ -302,8 +412,12 @@ export async function sendSessionScheduledPushToClient({
     title,
     body,
   });
-  if (directResult.ok) return directResult;
-  if (isTerminalPushFailure(directResult.reason)) return directResult;
+  if (directResult.ok) {
+    return directResult;
+  }
+  if (isTerminalPushFailure(directResult.reason)) {
+    return directResult;
+  }
 
   // 4. Fall back to our API relay when direct failed for a recoverable reason.
   const serverSucceeded = await tryServerNotify({

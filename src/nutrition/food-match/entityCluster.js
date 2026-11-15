@@ -1,9 +1,68 @@
 // Group Candidates that are the same real-world food entity.
 // Flow: key by GTIN or brand+name → split incompatible macros → list clusters.
-// Used by consensus (server) and decide margin helpers. Consensus never crosses clusters.
+// Used by server consensus and decide margin calculation. Consensus never crosses clusters.
+// Pure CommonJS.
 
 const { CLUSTER_MACRO_TOLERANCE } = require('./config/weights');
 const { entityKey } = require('./decide');
+
+// ===== NAMED CONSTANTS =====
+
+const GTIN_PAD_LENGTH = 14;
+const DEFAULT_SOURCE_TIER = 3;
+const MIN_MEMBERS_FOR_CONSENSUS = 2;
+
+// ===== HELPER FUNCTIONS =====
+
+function normalizeText(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function representativeKcal(candidate) {
+  if (candidate?.per100?.kcal != null && Number.isFinite(Number(candidate.per100.kcal))) {
+    return Number(candidate.per100.kcal);
+  }
+  const servings = Array.isArray(candidate?.servings) ? candidate.servings : [];
+  for (const row of servings) {
+    if (row?.kcal != null && Number.isFinite(Number(row.kcal))) {
+      return Number(row.kcal);
+    }
+  }
+  return null;
+}
+
+function findCompatibleGroup(groups, member) {
+  for (const group of groups) {
+    if (macrosCompatible(group[0], member)) {
+      return group;
+    }
+  }
+  return null;
+}
+
+function splitByCompatibleMacros(members) {
+  const groups = [];
+  for (const member of members) {
+    const existingGroup = findCompatibleGroup(groups, member);
+    if (existingGroup) {
+      existingGroup.push(member);
+    } else {
+      groups.push([member]);
+    }
+  }
+  return groups;
+}
+
+function tierSum(members) {
+  let sum = 0;
+  for (const member of members) {
+    sum += Number(member.sourceTier) || DEFAULT_SOURCE_TIER;
+  }
+  return sum;
+}
 
 /**
  * Stable cluster key for one candidate (GTIN preferred, else brand|name).
@@ -14,7 +73,9 @@ const { entityKey } = require('./decide');
 function clusterKey(candidate) {
   if (candidate?.gtin) {
     const digits = String(candidate.gtin).replace(/\D/g, '');
-    if (digits) return `gtin:${digits.padStart(14, '0').slice(-14)}`;
+    if (digits) {
+      return `gtin:${digits.padStart(GTIN_PAD_LENGTH, '0').slice(-GTIN_PAD_LENGTH)}`;
+    }
   }
 
   const brand = normalizeText(candidate?.brand);
@@ -39,9 +100,10 @@ function macrosCompatible(left, right) {
   if (!(leftKcal > 0) || !(rightKcal > 0)) return leftKcal === rightKcal;
 
   const gap = Math.abs(leftKcal - rightKcal) / Math.max(leftKcal, rightKcal);
-  // Manipulate here: CLUSTER_MACRO_TOLERANCE in config/weights.js
   return gap <= CLUSTER_MACRO_TOLERANCE;
 }
+
+// ===== MAIN FUNCTION =====
 
 /**
  * Bucket candidates into entity clusters. Never merges different brand+name keys.
@@ -82,7 +144,7 @@ function clusterCandidates(candidates) {
  */
 function pickBestConsensusCluster(clusters) {
   const usable = (Array.isArray(clusters) ? clusters : []).filter(
-    (cluster) => cluster.members && cluster.members.length >= 2,
+    (cluster) => cluster.members && cluster.members.length >= MIN_MEMBERS_FOR_CONSENSUS,
   );
   if (usable.length === 0) return null;
 
@@ -100,50 +162,5 @@ module.exports = {
   macrosCompatible,
   clusterCandidates,
   pickBestConsensusCluster,
-  // Re-export decide's entityKey so callers share one identity helper.
   entityKey,
 };
-
-// ===== PLUMBING — skip unless debugging =====
-
-function normalizeText(value) {
-  return String(value || '')
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function representativeKcal(candidate) {
-  if (candidate?.per100?.kcal != null && Number.isFinite(Number(candidate.per100.kcal))) {
-    return Number(candidate.per100.kcal);
-  }
-  const servings = Array.isArray(candidate?.servings) ? candidate.servings : [];
-  for (const row of servings) {
-    if (row?.kcal != null && Number.isFinite(Number(row.kcal))) return Number(row.kcal);
-  }
-  return null;
-}
-
-function splitByCompatibleMacros(members) {
-  const groups = [];
-  for (const member of members) {
-    let placed = false;
-    for (const group of groups) {
-      if (macrosCompatible(group[0], member)) {
-        group.push(member);
-        placed = true;
-        break;
-      }
-    }
-    if (!placed) groups.push([member]);
-  }
-  return groups;
-}
-
-function tierSum(members) {
-  let sum = 0;
-  for (const member of members) {
-    sum += Number(member.sourceTier) || 3;
-  }
-  return sum;
-}

@@ -45,16 +45,11 @@ const LIGHT_DEFAULT_TEXT_COLOR = lightColors.nbInk;
 const PAGE_STYLE_CLEAN = 'clean';
 const PAGE_STYLE_BOLD = 'bold';
 const PAGE_STYLE_HANDOUT = 'handout';
-const PAGE_STYLE_CHIPS = [{
-  id: PAGE_STYLE_CLEAN,
-  label: 'Clean'
-}, {
-  id: PAGE_STYLE_BOLD,
-  label: 'Bold'
-}, {
-  id: PAGE_STYLE_HANDOUT,
-  label: 'Handout'
-}];
+const PAGE_STYLE_CHIPS = [
+  { id: PAGE_STYLE_CLEAN, label: 'Clean' },
+  { id: PAGE_STYLE_BOLD, label: 'Bold' },
+  { id: PAGE_STYLE_HANDOUT, label: 'Handout' },
+];
 
 // ===== HELPER FUNCTIONS =====
 
@@ -65,61 +60,72 @@ const PAGE_STYLE_CHIPS = [{
  * Design Law fill-selected toolbar chip (HardShadow + 3px border).
  * Active = nbFill / nbOnFill; idle = surface + ink.
  */
-function ToolButton({
-  icon,
-  active,
-  disabled,
-  onPress,
-  theme,
-  wide
-}) {
+function ToolButton({ icon, active, disabled, onPress, theme, wide }) {
   const fillBackground = active ? theme.accent : theme.pageBg;
   const inkColor = active ? theme.textOnAccent : theme.text;
   const buttonOpacity = disabled ? 0.35 : 1;
-  return <HardShadow offset={nb.shadowOffsetSmall} radius={borderRadius.nbButton} style={{
-    opacity: buttonOpacity
-  }}>
-      <TouchableOpacity onPress={onPress} disabled={disabled} activeOpacity={0.85} style={[styles.toolBtn, wide ? styles.toolBtnWide : null, {
-      backgroundColor: fillBackground,
-      borderColor: theme.chromeBorder
-    }]}>
+
+  return (
+    <HardShadow offset={nb.shadowOffsetSmall} radius={borderRadius.nbButton} style={{ opacity: buttonOpacity }}>
+      <TouchableOpacity
+        onPress={onPress}
+        disabled={disabled}
+        activeOpacity={0.85}
+        style={[
+          styles.toolBtn,
+          wide ? styles.toolBtnWide : null,
+          {
+            backgroundColor: fillBackground,
+            borderColor: theme.chromeBorder,
+          },
+        ]}
+      >
         {typeof icon === 'function' ? icon(inkColor) : icon}
       </TouchableOpacity>
-    </HardShadow>;
+    </HardShadow>
+  );
 }
-function GlyphButton({
-  label,
-  active,
-  disabled,
-  onPress,
-  theme,
-  textStyle,
-  wide
-}) {
-  return <ToolButton theme={theme} active={active} disabled={disabled} onPress={onPress} wide={wide} icon={inkColor => <Text style={[styles.toolGlyph, {
-    color: inkColor
-  }, textStyle]}>{label}</Text>} />;
+
+function GlyphButton({ label, active, disabled, onPress, theme, textStyle, wide }) {
+  return (
+    <ToolButton
+      theme={theme}
+      active={active}
+      disabled={disabled}
+      onPress={onPress}
+      wide={wide}
+      icon={(inkColor) => (
+        <Text style={[styles.toolGlyph, { color: inkColor }, textStyle]}>{label}</Text>
+      )}
+    />
+  );
 }
 
 /** One Design Law menu row inside Document NbSheets. */
-function DocMenuRow({
-  theme,
-  label,
-  onPress,
-  destructive = false
-}) {
-  return <TouchableOpacity onPress={onPress} activeOpacity={0.88} style={[styles.docMenuRow, {
-    borderBottomColor: theme.chromeBorder || theme.border
-  }]} accessibilityRole="button" accessibilityLabel={label}>
-      <Text style={[styles.docMenuRowText, {
-      color: theme.text
-    }, destructive ? {
-      fontWeight: '900'
-    } : null]}>
+function DocMenuRow({ theme, label, onPress, destructive = false }) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.88}
+      style={[
+        styles.docMenuRow,
+        { borderBottomColor: theme.chromeBorder || theme.border },
+      ]}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+    >
+      <Text
+        style={[
+          styles.docMenuRowText,
+          { color: theme.text },
+          destructive ? { fontWeight: '900' } : null,
+        ]}
+      >
         {label}
       </Text>
       <Ionicons name="chevron-forward" size={18} color={theme.textMuted} />
-    </TouchableOpacity>;
+    </TouchableOpacity>
+  );
 }
 
 // Small pure helpers the screen handlers call (save title, WebView bridge, load path).
@@ -133,7 +139,20 @@ function keepNumberInRange(value, min, max) {
  * @returns {string}
  */
 function htmlToPlainText(html) {
-  const plainText = String(html || '').replace(/<style[\s\S]*?<\/style>/gi, '').replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<\/(p|div|li|h1|h2|h3|blockquote|pre)>/gi, '\n').replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/\n{3,}/g, '\n\n').trim();
+  const plainText = String(html || '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<\/(p|div|li|h1|h2|h3|blockquote|pre)>/gi, '\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
   return plainText;
 }
 
@@ -160,9 +179,17 @@ function titleForSave(raw) {
  * @returns {{ words: number, chars: number }}
  */
 function countsFromWebPayload(payload) {
+  let wordCount = 0;
+  let charCount = 0;
+  if (payload && payload.words != null) {
+    wordCount = Number(payload.words) || 0;
+  }
+  if (payload && payload.chars != null) {
+    charCount = Number(payload.chars) || 0;
+  }
   return {
-    words: keepNumberInRange(Number((payload == null ? void 0 : payload.words) || 0), 0, MAX_WORD_COUNT_CLAMP),
-    chars: keepNumberInRange(Number((payload == null ? void 0 : payload.chars) || 0), 0, MAX_CHAR_COUNT_CLAMP)
+    words: keepNumberInRange(wordCount, 0, MAX_WORD_COUNT_CLAMP),
+    chars: keepNumberInRange(charCount, 0, MAX_CHAR_COUNT_CLAMP),
   };
 }
 
@@ -193,7 +220,7 @@ function toolStateFromWebPayload(previous, statePayload) {
     code: !!statePayload.code,
     link: !!statePayload.link,
     canUndo: statePayload.canUndo !== false,
-    canRedo: statePayload.canRedo !== false
+    canRedo: statePayload.canRedo !== false,
   };
 }
 
@@ -203,11 +230,12 @@ function toolStateFromWebPayload(previous, statePayload) {
  * @param {object} handlers
  */
 function applyWebViewMessage(msg, handlers) {
-  if ((msg == null ? void 0 : msg.type) === 'UPDATE') {
+  if (!msg) return;
+  if (msg.type === 'UPDATE') {
     handlers.onContentUpdate(msg.payload || {});
     return;
   }
-  if ((msg == null ? void 0 : msg.type) === 'STATE') {
+  if (msg.type === 'STATE') {
     handlers.onToolbarState(msg.payload || {});
   }
 }
@@ -219,13 +247,11 @@ function applyWebViewMessage(msg, handlers) {
  */
 function sendHtmlToWebView(webRef, html) {
   try {
-    var _optFn, _optObj;
-    (_optFn = (_optObj = webRef.current) == null ? void 0 : _optObj.postMessage) == null ? void 0 : _optFn(JSON.stringify({
-      type: 'SET_HTML',
-      payload: {
-        html
-      }
-    }));
+    const webView = webRef.current;
+    if (!webView) return;
+    webView.postMessage(
+      JSON.stringify({ type: 'SET_HTML', payload: { html } }),
+    );
   } catch (_error) {
     // WebView may be unmounted mid-send — ignore.
   }
@@ -268,7 +294,7 @@ function htmlFromLoadedDocument(loadedDoc) {
  * @returns {string}
  */
 function titleFromLoadedDocument(loadedDoc) {
-  if (!(loadedDoc == null ? void 0 : loadedDoc.title)) return '';
+  if (!loadedDoc || !loadedDoc.title) return '';
   if (loadedDoc.title === DEFAULT_SAVE_TITLE_DOCUMENT) return '';
   return loadedDoc.title;
 }
@@ -286,7 +312,9 @@ function fillEditorFromLoadedDocument(loadedDoc, setters, sendHtml) {
   }
   setters.setTitle(titleFromLoadedDocument(loadedDoc));
   setters.setFavorite(!!loadedDoc.isFavorite);
-  setters.setSharedWith(Array.isArray(loadedDoc.sharedWith) ? loadedDoc.sharedWith : []);
+  setters.setSharedWith(
+    Array.isArray(loadedDoc.sharedWith) ? loadedDoc.sharedWith : [],
+  );
   sendHtml(htmlFromLoadedDocument(loadedDoc));
 }
 
@@ -312,25 +340,19 @@ function loadDocumentWhenVisible({
   mountedRef,
   lastUpdateHtmlRef,
   webRef,
-  setters
+  setters,
 }) {
   // 1. Reset header / counters for a fresh open.
   setters.setDocId(documentId || null);
   setters.setStatus('saved');
   setters.setLastSaved(nowAsDate());
-  setters.setCounts({
-    words: 0,
-    chars: 0
-  });
+  setters.setCounts({ words: 0, chars: 0 });
   setters.setFontSize(DEFAULT_FONT_SIZE_PX);
   setters.setPicker(null);
-  setters.setPrompt({
-    visible: false,
-    kind: null,
-    value: ''
-  });
+  setters.setPrompt({ visible: false, kind: null, value: '' });
   setters.setShowShare(false);
-  const sendHtml = html => {
+
+  const sendHtml = (html) => {
     rememberAndPushHtml(lastUpdateHtmlRef, webRef, html, LOAD_HTML_DELAY_MS);
   };
 
@@ -339,13 +361,114 @@ function loadDocumentWhenVisible({
     clearEditorContent(setters, sendHtml);
     return;
   }
+
   setters.setLoading(true);
-  getTrainerDocument(trainerId, documentId).then(loadedDoc => {
-    if (!mountedRef.current) return;
-    fillEditorFromLoadedDocument(loadedDoc, setters, sendHtml);
-  }).catch(() => {}).finally(() => {
-    if (mountedRef.current) setters.setLoading(false);
-  });
+  getTrainerDocument(trainerId, documentId)
+    .then((loadedDoc) => {
+      if (!mountedRef.current) return;
+      fillEditorFromLoadedDocument(loadedDoc, setters, sendHtml);
+    })
+    .catch(() => {})
+    .finally(() => {
+      if (mountedRef.current) setters.setLoading(false);
+    });
+}
+
+
+function buildPageStyleChipElements(pageStyle, theme, setPageStyle) {
+  const chipElements = [];
+  for (let index = 0; index < PAGE_STYLE_CHIPS.length; index += 1) {
+    const chip = PAGE_STYLE_CHIPS[index];
+    const selected = pageStyle === chip.id;
+    let chipBackground = theme.pageBg;
+    let chipTextColor = theme.text;
+    if (selected) {
+      chipBackground = theme.accent;
+      chipTextColor = theme.textOnAccent;
+    }
+    chipElements.push(
+      <HardShadow key={chip.id} offset={nb.shadowOffsetSmall} radius={999}>
+        <TouchableOpacity
+          onPress={() => setPageStyle(chip.id)}
+          activeOpacity={0.85}
+          style={[
+            styles.pageStyleChip,
+            {
+              backgroundColor: chipBackground,
+              borderColor: theme.chromeBorder,
+            },
+          ]}
+        >
+          <Text style={[styles.pageStyleChipText, { color: chipTextColor }]}>
+            {chip.label}
+          </Text>
+        </TouchableOpacity>
+      </HardShadow>,
+    );
+  }
+  return chipElements;
+}
+
+function buildTextColorSwatchElements(textColor, theme, setTextColor, postCmd, setPicker) {
+  const swatchElements = [];
+  for (let index = 0; index < EDITOR_TEXT_COLORS.length; index += 1) {
+    const color = EDITOR_TEXT_COLORS[index];
+    let borderColor = theme.border;
+    if (textColor === color) {
+      borderColor = theme.selectionBorder;
+    }
+    swatchElements.push(
+      <TouchableOpacity
+        key={color}
+        onPress={() => {
+          setTextColor(color);
+          postCmd('foreColor', color);
+          setPicker(null);
+        }}
+        style={[
+          styles.colorSwatch,
+          {
+            backgroundColor: color,
+            borderColor,
+          },
+        ]}
+      />,
+    );
+  }
+  return swatchElements;
+}
+
+function buildHighlightSwatchElements(theme, setHighlightColor, postCmd, setPicker) {
+  const swatchElements = [];
+  for (let index = 0; index < EDITOR_HIGHLIGHT_COLORS.length; index += 1) {
+    const color = EDITOR_HIGHLIGHT_COLORS[index];
+    let swatchBackground = color;
+    if (color === 'transparent') {
+      swatchBackground = theme.inputBg;
+    }
+    swatchElements.push(
+      <TouchableOpacity
+        key={color}
+        onPress={() => {
+          setHighlightColor(color);
+          let hiliteValue = color;
+          if (color === 'transparent') {
+            hiliteValue = 'transparent';
+          }
+          postCmd('hiliteColor', hiliteValue);
+          setPicker(null);
+        }}
+        style={[
+          styles.colorSwatch,
+          {
+            backgroundColor: swatchBackground,
+            borderColor: theme.border,
+          },
+        ]}
+      />,
+    );
+  }
+  return swatchElements;
 }
 
 // ===== MAIN FUNCTION =====
@@ -429,7 +552,7 @@ export default function DocumentEditor({
   const editorHtml = useMemo(() => buildRichTextEditorHtml({
     theme,
     initialHtml: EMPTY_HTML,
-    pageStyle
+    pageStyle,
   }), [theme, pageStyle]);
 
   // Reading-level card (PNG): Grade N + ease copy from live plain text
@@ -438,15 +561,17 @@ export default function DocumentEditor({
     const schoolGrade = schoolGradeFromStats(stats);
     return {
       schoolGrade,
-      easeCopy: readingEaseCopy(schoolGrade)
+      easeCopy: readingEaseCopy(schoolGrade),
     };
   }, [plainPreview]);
+
   const savedSubtitle = useMemo(() => {
     if (status === 'saving') return 'Saving…';
     if (status === 'unsaved') return 'Unsaved changes';
     const ago = formatEditorSavedAgo(lastSaved);
     return ago === 'just now' ? 'Saved just now' : `Saved ${ago}`;
   }, [status, lastSaved]);
+
   const displayTitle = String(title || '').trim() || DEFAULT_SAVE_TITLE_DOCUMENT;
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -480,6 +605,7 @@ export default function DocumentEditor({
       sendHtmlToWebView(webRef, html);
     }, THEME_HTML_REAPPLY_MS);
   }, [isEditorDark, pageStyle, visible, loading]);
+
   useEffect(() => {
     if (!visible) return;
     loadDocumentWhenVisible({
@@ -500,8 +626,8 @@ export default function DocumentEditor({
         setLoading,
         setTitle,
         setFavorite,
-        setSharedWith
-      }
+        setSharedWith,
+      },
     });
   }, [visible, documentId, trainerId]);
   const postCmd = useCallback((name, value) => {
@@ -512,13 +638,16 @@ export default function DocumentEditor({
         value
       }
     });
+    const webView = webRef.current;
     try {
-      var _optFn2, _optObj2;
-      (_optFn2 = (_optObj2 = webRef.current) == null ? void 0 : _optObj2.postMessage) == null ? void 0 : _optFn2(msg);
+      if (webView) {
+        webView.postMessage(msg);
+      }
     } catch (_ignored) {}
     try {
-      var _optFn3, _optObj3;
-      (_optFn3 = (_optObj3 = webRef.current) == null ? void 0 : _optObj3.injectJavaScript) == null ? void 0 : _optFn3(`window.dispatchEvent(new MessageEvent('message', { data: ${JSON.stringify(msg)} })); true;`);
+      if (webView && webView.injectJavaScript) {
+        webView.injectJavaScript(`window.dispatchEvent(new MessageEvent('message', { data: ${JSON.stringify(msg)} })); true;`);
+      }
     } catch (_ignored) {}
   }, []);
   const queueSave = useCallback((html, plainText) => {
@@ -539,49 +668,54 @@ export default function DocumentEditor({
           bodyHtml: String(html || '')
         });
         if (!mounted.current) return;
-        if (!docId && (res == null ? void 0 : res.id)) setDocId(res.id);
+        if (!docId && res && res.id) setDocId(res.id);
         setTimeout(() => {
           if (!mounted.current) return;
           setStatus('saved');
           setLastSaved(nowAsDate());
-          onSaved == null ? void 0 : onSaved();
+          if (onSaved) {
+            onSaved();
+          }
         }, SAVED_STATUS_FLASH_MS);
       } catch (editorError) {
         if (mounted.current) setStatus('unsaved');
       }
     }, AUTOSAVE_DEBOUNCE_MS);
   }, [trainerId, docId, title, onSaved]);
-  const handleWebMessage = useCallback(event => {
+  const handleWebMessage = useCallback((event) => {
     try {
-      var _optObj4;
-      const msg = JSON.parse(((_optObj4 = event == null ? void 0 : event.nativeEvent) == null ? void 0 : _optObj4.data) || '{}');
+      let rawData = '{}';
+      if (event && event.nativeEvent && event.nativeEvent.data) {
+        rawData = event.nativeEvent.data;
+      }
+      const msg = JSON.parse(rawData);
       applyWebViewMessage(msg, {
-        onContentUpdate: payload => {
-          const html = String((payload == null ? void 0 : payload.html) || '');
-          const text = String((payload == null ? void 0 : payload.text) || '');
+        onContentUpdate: (payload) => {
+          let html = '';
+          let text = '';
+          if (payload && payload.html) html = String(payload.html);
+          if (payload && payload.text) text = String(payload.text);
           setCounts(countsFromWebPayload(payload));
           setPlainPreview(text);
           lastUpdateHtml.current = html;
           queueSave(html, text);
         },
-        onToolbarState: statePayload => {
-          setToolState(previous => toolStateFromWebPayload(previous, statePayload));
+        onToolbarState: (statePayload) => {
+          setToolState((previous) => toolStateFromWebPayload(previous, statePayload));
           const hasWordCount = typeof statePayload.words === 'number';
           const hasCharCount = typeof statePayload.chars === 'number';
           if (!hasWordCount && !hasCharCount) return;
           setCounts(countsFromWebPayload(statePayload));
-        }
+        },
       });
     } catch (_error) {
       // Malformed WebView JSON is ignored — keep editing.
     }
   }, [queueSave]);
   const showNotice = useCallback((title, message) => {
-    setNotice({
-      title,
-      message
-    });
+    setNotice({ title, message });
   }, []);
+
   const handleBackPress = () => {
     // 1. Dirty doc → confirm leave; clean doc → close modal.
     const hasUnsavedWork = status === 'unsaved' || status === 'saving';
@@ -592,8 +726,10 @@ export default function DocumentEditor({
     onClose();
   };
   const handleRename = () => {
-    var _optFn4, _optObj5;
-    (_optFn4 = (_optObj5 = titleInputRef.current) == null ? void 0 : _optObj5.focus) == null ? void 0 : _optFn4();
+    const titleInput = titleInputRef.current;
+    if (titleInput && titleInput.focus) {
+      titleInput.focus();
+    }
   };
   const handleExportPdf = async () => {
     // 1. Wrap current HTML → 2. write cache file → 3. system share sheet.
@@ -616,7 +752,11 @@ export default function DocumentEditor({
         });
       }
     } catch (editorError) {
-      showNotice('Export failed', (e == null ? void 0 : e.message) || 'Could not export document.');
+      let exportMessage = 'Could not export document.';
+      if (editorError && editorError.message) {
+        exportMessage = editorError.message;
+      }
+      showNotice('Export failed', exportMessage);
     }
   };
   const handleDuplicate = async () => {
@@ -629,13 +769,19 @@ export default function DocumentEditor({
         bodyHtml: lastUpdateHtml.current || EMPTY_HTML
       });
       showNotice('Duplicated', 'A copy was saved to your documents.');
-      if (res == null ? void 0 : res.id) setDocId(res.id);
+      if (res && res.id) setDocId(res.id);
       setStatus('saved');
       setLastSaved(nowAsDate());
-      onSaved == null ? void 0 : onSaved();
+      if (onSaved) {
+        onSaved();
+      }
     } catch (editorError) {
       setStatus('unsaved');
-      showNotice('Duplicate failed', (e == null ? void 0 : e.message) || 'Could not duplicate document.');
+      let duplicateMessage = 'Could not duplicate document.';
+      if (editorError && editorError.message) {
+        duplicateMessage = editorError.message;
+      }
+      showNotice('Duplicate failed', duplicateMessage);
     }
   };
   const handleDelete = () => {
@@ -649,9 +795,15 @@ export default function DocumentEditor({
     try {
       await deleteDoc(doc(db, 'users', String(trainerId), 'documents', String(docId)));
       onClose();
-      onSaved == null ? void 0 : onSaved();
+      if (onSaved) {
+        onSaved();
+      }
     } catch (editorError) {
-      showNotice('Delete failed', (e == null ? void 0 : e.message) || 'Could not delete document.');
+      let deleteMessage = 'Could not delete document.';
+      if (editorError && editorError.message) {
+        deleteMessage = editorError.message;
+      }
+      showNotice('Delete failed', deleteMessage);
     }
   };
   const handleSharePress = () => {
@@ -666,122 +818,146 @@ export default function DocumentEditor({
   const openInsertMenu = () => setMenuSheet('insert');
 
   // Run a menu row action after closing the sheet so two modals never stack.
-  const runMenuAction = action => {
+  const runMenuAction = (action) => {
     setMenuSheet(null);
-    setTimeout(() => action == null ? void 0 : action(), 80);
+    setTimeout(() => {
+      if (action) {
+        action();
+      }
+    }, 80);
   };
   const nav = trainerNavChrome;
 
   // Design Law format row (PNG): B I U H1 H2 • List — fill-selected chips
-  const renderFormatToolbar = () => <View style={styles.formatDock}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.toolbarScroll} contentContainerStyle={styles.toolbarRow} keyboardShouldPersistTaps="handled">
-        <GlyphButton theme={theme} label="B" active={toolState.bold} onPress={() => postCmd('bold')} textStyle={{
-        fontWeight: '900'
-      }} />
-        <GlyphButton theme={theme} label="I" active={toolState.italic} onPress={() => postCmd('italic')} textStyle={{
-        fontStyle: 'italic',
-        fontWeight: '700'
-      }} />
-        <GlyphButton theme={theme} label="U" active={toolState.underline} onPress={() => postCmd('underline')} textStyle={{
-        textDecorationLine: 'underline',
-        fontWeight: '700'
-      }} />
-        <GlyphButton theme={theme} label="H1" active={toolState.h1} onPress={() => postCmd('heading', toolState.h1 ? 0 : 1)} textStyle={{
-        fontWeight: '800',
-        fontSize: 12
-      }} />
-        <GlyphButton theme={theme} label="H2" active={toolState.h2} onPress={() => postCmd('heading', toolState.h2 ? 0 : 2)} textStyle={{
-        fontWeight: '800',
-        fontSize: 12
-      }} />
-        <GlyphButton theme={theme} label="• List" active={toolState.ul} onPress={() => postCmd('ul')} wide textStyle={{
-        fontWeight: '700',
-        fontSize: 12
-      }} />
-        <ToolButton theme={theme} active={false} onPress={openMoreMenu} icon={ink => <Ionicons name="ellipsis-horizontal" size={18} color={ink} />} />
+  const renderFormatToolbar = () => (
+    <View style={styles.formatDock}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.toolbarScroll}
+        contentContainerStyle={styles.toolbarRow}
+        keyboardShouldPersistTaps="handled"
+      >
+        <GlyphButton
+          theme={theme}
+          label="B"
+          active={toolState.bold}
+          onPress={() => postCmd('bold')}
+          textStyle={{ fontWeight: '900' }}
+        />
+        <GlyphButton
+          theme={theme}
+          label="I"
+          active={toolState.italic}
+          onPress={() => postCmd('italic')}
+          textStyle={{ fontStyle: 'italic', fontWeight: '700' }}
+        />
+        <GlyphButton
+          theme={theme}
+          label="U"
+          active={toolState.underline}
+          onPress={() => postCmd('underline')}
+          textStyle={{ textDecorationLine: 'underline', fontWeight: '700' }}
+        />
+        <GlyphButton
+          theme={theme}
+          label="H1"
+          active={toolState.h1}
+          onPress={() => postCmd('heading', toolState.h1 ? 0 : 1)}
+          textStyle={{ fontWeight: '800', fontSize: 12 }}
+        />
+        <GlyphButton
+          theme={theme}
+          label="H2"
+          active={toolState.h2}
+          onPress={() => postCmd('heading', toolState.h2 ? 0 : 2)}
+          textStyle={{ fontWeight: '800', fontSize: 12 }}
+        />
+        <GlyphButton
+          theme={theme}
+          label="• List"
+          active={toolState.ul}
+          onPress={() => postCmd('ul')}
+          wide
+          textStyle={{ fontWeight: '700', fontSize: 12 }}
+        />
+        <ToolButton
+          theme={theme}
+          active={false}
+          onPress={openMoreMenu}
+          icon={(inkColor) => <Ionicons name="ellipsis-horizontal" size={18} color={inkColor} />}
+        />
       </ScrollView>
 
       {/* Page style chips — Clean / Bold / Handout (single-select, fill when on) */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pageStyleRow} keyboardShouldPersistTaps="handled">
-        {PAGE_STYLE_CHIPS.map(chip => {
-        const selected = pageStyle === chip.id;
-        return <HardShadow key={chip.id} offset={nb.shadowOffsetSmall} radius={999}>
-              <TouchableOpacity onPress={() => setPageStyle(chip.id)} activeOpacity={0.85} style={[styles.pageStyleChip, {
-            backgroundColor: selected ? theme.accent : theme.pageBg,
-            borderColor: theme.chromeBorder
-          }]}>
-                <Text style={[styles.pageStyleChipText, {
-              color: selected ? theme.textOnAccent : theme.text
-            }]}>
-                  {chip.label}
-                </Text>
-              </TouchableOpacity>
-            </HardShadow>;
-      })}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.pageStyleRow}
+        keyboardShouldPersistTaps="handled"
+      >
+        {buildPageStyleChipElements(pageStyle, theme, setPageStyle)}
       </ScrollView>
 
-      {picker === 'textColor' ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pickerRow}>
-          {EDITOR_TEXT_COLORS.map(color => <TouchableOpacity key={color} onPress={() => {
-        setTextColor(color);
-        postCmd('foreColor', color);
-        setPicker(null);
-      }} style={[styles.colorSwatch, {
-        backgroundColor: color,
-        borderColor: textColor === color ? theme.selectionBorder : theme.border
-      }]} />)}
-        </ScrollView> : null}
-      {picker === 'highlight' ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pickerRow}>
-          {EDITOR_HIGHLIGHT_COLORS.map(color => <TouchableOpacity key={color} onPress={() => {
-        setHighlightColor(color);
-        postCmd('hiliteColor', color === 'transparent' ? 'transparent' : color);
-        setPicker(null);
-      }} style={[styles.colorSwatch, {
-        backgroundColor: color === 'transparent' ? theme.inputBg : color,
-        borderColor: theme.border
-      }]} />)}
-        </ScrollView> : null}
-    </View>;
-  return <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={handleBackPress}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{
-      flex: 1,
-      backgroundColor: theme.bg
-    }}>
-        <SafeAreaView style={{
-        flex: 1,
-        backgroundColor: theme.bg
-      }} edges={SHELL_SAFE_AREA_EDGES}>
+      {picker === 'textColor' ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pickerRow}>
+          {buildTextColorSwatchElements(textColor, theme, setTextColor, postCmd, setPicker)}
+        </ScrollView>
+      ) : null}
+      {picker === 'highlight' ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pickerRow}>
+          {buildHighlightSwatchElements(theme, setHighlightColor, postCmd, setPicker)}
+        </ScrollView>
+      ) : null}
+    </View>
+  );
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={handleBackPress}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1, backgroundColor: theme.bg }}
+      >
+        <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }} edges={SHELL_SAFE_AREA_EDGES}>
           {/* Header: HardShadow back + editable title + save subtitle + share square */}
-          <View style={[styles.topBar, {
-          paddingTop: insets.top + spacing.sm
-        }]}>
+          <View style={[styles.topBar, { paddingTop: insets.top + spacing.sm }]}>
             <HardShadow offset={nb.shadowOffsetSmall} radius={borderRadius.nbIconChip}>
-              <TouchableOpacity onPress={handleBackPress} style={[styles.headerSq, {
-              backgroundColor: theme.pageBg,
-              borderColor: theme.chromeBorder
-            }]} hitSlop={8} accessibilityLabel="Back">
+              <TouchableOpacity
+                onPress={handleBackPress}
+                style={[styles.headerSq, { backgroundColor: theme.pageBg, borderColor: theme.chromeBorder }]}
+                hitSlop={8}
+                accessibilityLabel="Back"
+              >
                 <Ionicons name="chevron-back" size={22} color={theme.text} />
               </TouchableOpacity>
             </HardShadow>
 
             <View style={styles.titleWrap}>
-              <EditorInlineTitle inputRef={titleInputRef} value={title} onChangeText={nextTitle => {
-              setTitle(nextTitle);
-              setStatus('unsaved');
-              if (saveTimer.current) clearTimeout(saveTimer.current);
-              saveTimer.current = setTimeout(() => {
-                queueSave(lastUpdateHtml.current, htmlToPlainText(lastUpdateHtml.current));
-              }, TITLE_SAVE_DEBOUNCE_MS);
-            }} onFocus={() => setTitleFocused(true)} onBlur={() => setTitleFocused(false)} focused={titleFocused} theme={theme} />
-              <Text style={[styles.savedLabel, {
-              color: theme.textMuted
-            }]}>{savedSubtitle}</Text>
+              <EditorInlineTitle
+                inputRef={titleInputRef}
+                value={title}
+                onChangeText={(nextTitle) => {
+                  setTitle(nextTitle);
+                  setStatus('unsaved');
+                  if (saveTimer.current) clearTimeout(saveTimer.current);
+                  saveTimer.current = setTimeout(() => {
+                    queueSave(lastUpdateHtml.current, htmlToPlainText(lastUpdateHtml.current));
+                  }, TITLE_SAVE_DEBOUNCE_MS);
+                }}
+                onFocus={() => setTitleFocused(true)}
+                onBlur={() => setTitleFocused(false)}
+                focused={titleFocused}
+                theme={theme}
+              />
+              <Text style={[styles.savedLabel, { color: theme.textMuted }]}>{savedSubtitle}</Text>
             </View>
 
             <HardShadow offset={nb.shadowOffsetSmall} radius={borderRadius.nbIconChip}>
-              <TouchableOpacity onPress={handleSharePress} style={[styles.headerSq, {
-              backgroundColor: theme.pageBg,
-              borderColor: theme.chromeBorder
-            }]} accessibilityLabel="Share">
+              <TouchableOpacity
+                onPress={handleSharePress}
+                style={[styles.headerSq, { backgroundColor: theme.pageBg, borderColor: theme.chromeBorder }]}
+                accessibilityLabel="Share"
+              >
                 <Ionicons name="paper-plane-outline" size={20} color={theme.text} />
               </TouchableOpacity>
             </HardShadow>
@@ -789,56 +965,63 @@ export default function DocumentEditor({
 
           {renderFormatToolbar()}
 
-          <View style={[styles.editorDesk, {
-          backgroundColor: theme.printCanvasBg
-        }]}>
-            {loading ? <View style={styles.loadingBlock}>
+          <View style={[styles.editorDesk, { backgroundColor: theme.printCanvasBg }]}>
+            {loading ? (
+              <View style={styles.loadingBlock}>
                 <ActivityIndicator size="large" color={theme.text} />
-              </View> : <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard} style={styles.editorShadow}>
-                <View style={[styles.editorCard, {
-              backgroundColor: theme.printPageBg,
-              borderColor: theme.chromeBorder
-            }]}>
-                  <WebView key={`${isEditorDark ? 'dark' : 'light'}-${pageStyle}`} ref={webRef} originWhitelist={['*']} style={styles.webview} source={{
-                html: editorHtml
-              }} onMessage={handleWebMessage} javaScriptEnabled domStorageEnabled keyboardDisplayRequiresUserAction={false} hideKeyboardAccessoryView nestedScrollEnabled scrollEnabled />
+              </View>
+            ) : (
+              <HardShadow offset={nb.shadowOffsetCard} radius={borderRadius.nbCard} style={styles.editorShadow}>
+                <View
+                  style={[
+                    styles.editorCard,
+                    { backgroundColor: theme.printPageBg, borderColor: theme.chromeBorder },
+                  ]}
+                >
+                  <WebView
+                    key={`${isEditorDark ? 'dark' : 'light'}-${pageStyle}`}
+                    ref={webRef}
+                    originWhitelist={['*']}
+                    style={styles.webview}
+                    source={{ html: editorHtml }}
+                    onMessage={handleWebMessage}
+                    javaScriptEnabled
+                    domStorageEnabled
+                    keyboardDisplayRequiresUserAction={false}
+                    hideKeyboardAccessoryView
+                    nestedScrollEnabled
+                    scrollEnabled
+                  />
                 </View>
-              </HardShadow>}
+              </HardShadow>
+            )}
           </View>
 
           {/* Reading level card + Clear formatting */}
-          <View style={[styles.readingCard, {
-          backgroundColor: theme.pageBg,
-          borderColor: theme.chromeBorder
-        }]}>
-            <View style={{
-            flex: 1,
-            minWidth: 0
-          }}>
-              <Text style={[styles.readingTitle, {
-              color: theme.text
-            }]}>
+          <View
+            style={[
+              styles.readingCard,
+              { backgroundColor: theme.pageBg, borderColor: theme.chromeBorder },
+            ]}
+          >
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={[styles.readingTitle, { color: theme.text }]}>
                 Reading level: Grade {readingCard.schoolGrade}
               </Text>
-              <Text style={[styles.readingSub, {
-              color: theme.textMuted
-            }]}>{readingCard.easeCopy}</Text>
+              <Text style={[styles.readingSub, { color: theme.textMuted }]}>{readingCard.easeCopy}</Text>
             </View>
             <HardShadow offset={nb.shadowOffsetSmall} radius={999}>
-              <TouchableOpacity onPress={() => postCmd('clear')} style={[styles.clearPill, {
-              borderColor: theme.chromeBorder,
-              backgroundColor: theme.pageBg
-            }]} accessibilityLabel="Clear formatting">
-                <Text style={[styles.clearPillText, {
-                color: theme.text
-              }]}>Clear</Text>
+              <TouchableOpacity
+                onPress={() => postCmd('clear')}
+                style={[styles.clearPill, { borderColor: theme.chromeBorder, backgroundColor: theme.pageBg }]}
+                accessibilityLabel="Clear formatting"
+              >
+                <Text style={[styles.clearPillText, { color: theme.text }]}>Clear</Text>
               </TouchableOpacity>
             </HardShadow>
           </View>
 
-          <View style={[styles.bottomActions, {
-          paddingBottom: Math.max(insets.bottom, spacing.sm)
-        }]}>
+          <View style={[styles.bottomActions, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
             <NbButton variant="plain" onPress={handleExportPdf} style={styles.halfBtn}>
               Export
             </NbButton>
@@ -847,125 +1030,208 @@ export default function DocumentEditor({
             </NbButton>
           </View>
 
-          {nav && !keyboardVisible ? <BottomMenuBar appearanceIsDark={isEditorDark} activeTabKey={nav.activeTabKey || 'files'} onHomePress={nav.onHomePress} onPlusPress={nav.onPlusPress} onVoicePress={nav.onVoicePress} onNutritionPress={nav.onNutritionPress} onWorkoutPress={nav.onWorkoutPress} onMessagesPress={nav.onMessagesPress} /> : null}
+          {nav && !keyboardVisible ? (
+            <BottomMenuBar
+              appearanceIsDark={isEditorDark}
+              activeTabKey={nav.activeTabKey || 'files'}
+              onHomePress={nav.onHomePress}
+              onPlusPress={nav.onPlusPress}
+              onVoicePress={nav.onVoicePress}
+              onNutritionPress={nav.onNutritionPress}
+              onWorkoutPress={nav.onWorkoutPress}
+              onMessagesPress={nav.onMessagesPress}
+            />
+          ) : null}
 
-          {prompt.visible ? <Pressable style={styles.promptOverlay} onPress={() => setPrompt({
-          visible: false,
-          kind: null,
-          value: ''
-        })}>
-              <Pressable style={[styles.promptSheet, {
-            backgroundColor: theme.pageBg,
-            borderColor: theme.border
-          }]} onStartShouldSetResponder={() => true}>
-                <Text style={[styles.promptTitle, {
-              color: theme.text
-            }]}>
+          {prompt.visible ? (
+            <Pressable
+              style={styles.promptOverlay}
+              onPress={() => setPrompt({ visible: false, kind: null, value: '' })}
+            >
+              <Pressable
+                style={[styles.promptSheet, { backgroundColor: theme.pageBg, borderColor: theme.border }]}
+                onStartShouldSetResponder={() => true}
+              >
+                <Text style={[styles.promptTitle, { color: theme.text }]}>
                   {prompt.kind === 'link' ? 'Add link' : 'Insert image'}
                 </Text>
-                <TextInput value={prompt.value} onChangeText={value => setPrompt(previous => ({
-              ...previous,
-              value
-            }))} placeholder={prompt.kind === 'link' ? 'https://example.com' : 'https://image-url'} placeholderTextColor={theme.textMuted} autoCapitalize="none" autoCorrect={false} style={[styles.promptInput, {
-              color: theme.text,
-              borderColor: theme.border
-            }]} />
+                <TextInput
+                  value={prompt.value}
+                  onChangeText={(value) => setPrompt((previous) => ({ ...previous, value }))}
+                  placeholder={prompt.kind === 'link' ? 'https://example.com' : 'https://image-url'}
+                  placeholderTextColor={theme.textMuted}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  style={[styles.promptInput, { color: theme.text, borderColor: theme.border }]}
+                />
                 <View style={styles.promptRow}>
-                  <NbButton variant="plain" onPress={() => setPrompt({
-                visible: false,
-                kind: null,
-                value: ''
-              })} style={styles.halfBtn}>
+                  <NbButton
+                    variant="plain"
+                    onPress={() => setPrompt({ visible: false, kind: null, value: '' })}
+                    style={styles.halfBtn}
+                  >
                     Cancel
                   </NbButton>
-                  <NbButton variant="fill" onPress={() => {
-                const promptValue = String(prompt.value || '').trim();
-                const kind = prompt.kind;
-                setPrompt({
-                  visible: false,
-                  kind: null,
-                  value: ''
-                });
-                if (!promptValue) return;
-                if (kind === 'link') postCmd('link', promptValue);
-                if (kind === 'image') postCmd('image', promptValue);
-              }} style={styles.halfBtn}>
+                  <NbButton
+                    variant="fill"
+                    onPress={() => {
+                      const promptValue = String(prompt.value || '').trim();
+                      const kind = prompt.kind;
+                      setPrompt({ visible: false, kind: null, value: '' });
+                      if (!promptValue) return;
+                      if (kind === 'link') postCmd('link', promptValue);
+                      if (kind === 'image') postCmd('image', promptValue);
+                    }}
+                    style={styles.halfBtn}
+                  >
                     Insert
                   </NbButton>
                 </View>
               </Pressable>
-            </Pressable> : null}
+            </Pressable>
+          ) : null}
 
-          <ShareDocumentPopup visible={showShare} onClose={() => setShowShare(false)} trainerId={trainerId} documentId={docId} documentTitle={displayTitle} initialSharedWith={sharedWith} isDark={isEditorDark} onSaved={() => {
-          if (trainerId && docId) {
-            getTrainerDocument(trainerId, docId).then(documentRecord => {
-              if (documentRecord && mounted.current) {
-                setSharedWith(Array.isArray(documentRecord.sharedWith) ? documentRecord.sharedWith : []);
+          <ShareDocumentPopup
+            visible={showShare}
+            onClose={() => setShowShare(false)}
+            trainerId={trainerId}
+            documentId={docId}
+            documentTitle={displayTitle}
+            initialSharedWith={sharedWith}
+            isDark={isEditorDark}
+            onSaved={() => {
+              if (trainerId && docId) {
+                getTrainerDocument(trainerId, docId).then((documentRecord) => {
+                  if (documentRecord && mounted.current) {
+                    setSharedWith(
+                      Array.isArray(documentRecord.sharedWith) ? documentRecord.sharedWith : [],
+                    );
+                  }
+                });
               }
-            });
-          }
-        }} />
+            }}
+          />
 
           {/* Design Law document menus — replace Alert.alert action sheets */}
-          <NbSheet visible={menuSheet === 'more'} onClose={() => setMenuSheet(null)} title="Document">
+          <NbSheet
+            visible={menuSheet === 'more'}
+            onClose={() => setMenuSheet(null)}
+            title="Document"
+          >
             <DocMenuRow theme={theme} label="Rename" onPress={() => runMenuAction(handleRename)} />
             <DocMenuRow theme={theme} label="Text style" onPress={() => runMenuAction(openStyleMenu)} />
             <DocMenuRow theme={theme} label="Insert…" onPress={() => runMenuAction(openInsertMenu)} />
-            <DocMenuRow theme={theme} label={favorite ? 'Remove favorite' : 'Add favorite'} onPress={() => runMenuAction(() => setFavorite(wasFavorite => !wasFavorite))} />
-            <DocMenuRow theme={theme} label={isEditorDark ? 'Light mode' : 'Dark mode'} onPress={() => runMenuAction(() => setEditorThemeMode(mode => mode === 'dark' ? 'light' : 'dark'))} />
-            <DocMenuRow theme={theme} label={`Word count (${counts.words} words)`} onPress={() => runMenuAction(() => showNotice('Word count', `${counts.words} words · ${counts.chars} characters`))} />
+            <DocMenuRow
+              theme={theme}
+              label={favorite ? 'Remove favorite' : 'Add favorite'}
+              onPress={() => runMenuAction(() => setFavorite((wasFavorite) => !wasFavorite))}
+            />
+            <DocMenuRow
+              theme={theme}
+              label={isEditorDark ? 'Light mode' : 'Dark mode'}
+              onPress={() =>
+                runMenuAction(() =>
+                  setEditorThemeMode((mode) => (mode === 'dark' ? 'light' : 'dark')),
+                )
+              }
+            />
+            <DocMenuRow
+              theme={theme}
+              label={`Word count (${counts.words} words)`}
+              onPress={() =>
+                runMenuAction(() =>
+                  showNotice('Word count', `${counts.words} words · ${counts.chars} characters`),
+                )
+              }
+            />
             <DocMenuRow theme={theme} label="Export" onPress={() => runMenuAction(handleExportPdf)} />
             <DocMenuRow theme={theme} label="Duplicate" onPress={() => runMenuAction(handleDuplicate)} />
-            <DocMenuRow theme={theme} label="Delete" destructive onPress={() => runMenuAction(handleDelete)} />
-            <View style={{
-            height: 8
-          }} />
+            <DocMenuRow
+              theme={theme}
+              label="Delete"
+              destructive
+              onPress={() => runMenuAction(handleDelete)}
+            />
+            <View style={{ height: 8 }} />
             <NbButton variant="ghost" onPress={() => setMenuSheet(null)}>
               Cancel
             </NbButton>
           </NbSheet>
 
-          <NbSheet visible={menuSheet === 'style'} onClose={() => setMenuSheet(null)} title="Text style">
+          <NbSheet
+            visible={menuSheet === 'style'}
+            onClose={() => setMenuSheet(null)}
+            title="Text style"
+          >
             <DocMenuRow theme={theme} label="Normal" onPress={() => runMenuAction(() => postCmd('heading', 0))} />
             <DocMenuRow theme={theme} label="Title" onPress={() => runMenuAction(() => postCmd('heading', 1))} />
             <DocMenuRow theme={theme} label="Subtitle" onPress={() => runMenuAction(() => postCmd('heading', 2))} />
             <DocMenuRow theme={theme} label="Heading" onPress={() => runMenuAction(() => postCmd('heading', 3))} />
-            <View style={{
-            height: 8
-          }} />
+            <View style={{ height: 8 }} />
             <NbButton variant="ghost" onPress={() => setMenuSheet(null)}>
               Cancel
             </NbButton>
           </NbSheet>
 
-          <NbSheet visible={menuSheet === 'insert'} onClose={() => setMenuSheet(null)} title="Insert">
-            <DocMenuRow theme={theme} label="Link" onPress={() => runMenuAction(() => setPrompt({
-            visible: true,
-            kind: 'link',
-            value: 'https://'
-          }))} />
-            <DocMenuRow theme={theme} label="Image" onPress={() => runMenuAction(() => setPrompt({
-            visible: true,
-            kind: 'image',
-            value: ''
-          }))} />
+          <NbSheet
+            visible={menuSheet === 'insert'}
+            onClose={() => setMenuSheet(null)}
+            title="Insert"
+          >
+            <DocMenuRow
+              theme={theme}
+              label="Link"
+              onPress={() =>
+                runMenuAction(() => setPrompt({ visible: true, kind: 'link', value: 'https://' }))
+              }
+            />
+            <DocMenuRow
+              theme={theme}
+              label="Image"
+              onPress={() =>
+                runMenuAction(() => setPrompt({ visible: true, kind: 'image', value: '' }))
+              }
+            />
             <DocMenuRow theme={theme} label="Bulleted list" onPress={() => runMenuAction(() => postCmd('ul'))} />
             <DocMenuRow theme={theme} label="Numbered list" onPress={() => runMenuAction(() => postCmd('ol'))} />
             <DocMenuRow theme={theme} label="Quote" onPress={() => runMenuAction(() => postCmd('blockquote'))} />
-            <View style={{
-            height: 8
-          }} />
+            <View style={{ height: 8 }} />
             <NbButton variant="ghost" onPress={() => setMenuSheet(null)}>
               Cancel
             </NbButton>
           </NbSheet>
 
-          <NbNoticeSheet visible={!!notice} onClose={() => setNotice(null)} title={(notice == null ? void 0 : notice.title) || ''} message={notice == null ? void 0 : notice.message} confirmLabel="OK" />
-          <NbNoticeSheet visible={confirmLeave} onClose={() => setConfirmLeave(false)} title="Unsaved changes" message="Leave without saving?" confirmLabel="Leave" cancelLabel="Cancel" onConfirm={onClose} destructive />
-          <NbNoticeSheet visible={confirmDelete} onClose={() => setConfirmDelete(false)} title="Delete document?" message="This cannot be undone." confirmLabel="Delete" cancelLabel="Cancel" onConfirm={runDeleteDocument} destructive />
+          <NbNoticeSheet
+            visible={!!notice}
+            onClose={() => setNotice(null)}
+            title={notice && notice.title ? notice.title : ''}
+            message={notice ? notice.message : undefined}
+            confirmLabel="OK"
+          />
+          <NbNoticeSheet
+            visible={confirmLeave}
+            onClose={() => setConfirmLeave(false)}
+            title="Unsaved changes"
+            message="Leave without saving?"
+            confirmLabel="Leave"
+            cancelLabel="Cancel"
+            onConfirm={onClose}
+            destructive
+          />
+          <NbNoticeSheet
+            visible={confirmDelete}
+            onClose={() => setConfirmDelete(false)}
+            title="Delete document?"
+            message="This cannot be undone."
+            confirmLabel="Delete"
+            cancelLabel="Cancel"
+            onConfirm={runDeleteDocument}
+            destructive
+          />
         </SafeAreaView>
       </KeyboardAvoidingView>
-    </Modal>;
+    </Modal>
+  );
 }
 
 // PLUMBING — skip unless debugging WebView HTML shell, page-style CSS, or theme remount.
@@ -991,11 +1257,8 @@ function pageStyleCss(pageStyle) {
   }
   return '';
 }
-function buildRichTextEditorHtml({
-  theme,
-  initialHtml,
-  pageStyle = PAGE_STYLE_CLEAN
-}) {
+
+function buildRichTextEditorHtml({ theme, initialHtml, pageStyle = PAGE_STYLE_CLEAN }) {
   // Design Law paper: surface card, 3px border, hard offset shadow (no Google-docs soft blur)
   const pageBg = theme.printPageBg || lightColors.nbSurface;
   const canvasBg = theme.printCanvasBg || lightColors.nbSoft;
@@ -1005,7 +1268,9 @@ function buildRichTextEditorHtml({
   const accent = theme.selectionBorder || border;
   const linkColor = fg;
   const codeBg = theme.accentSoft || lightColors.nbSoft;
-  const pageShadow = theme.printCanvasBg && String(theme.printCanvasBg).startsWith('#0') ? '4px 4px 0 rgba(138,138,138,0.9)' : '5px 5px 0 #0A0A0A';
+  const pageShadow = theme.printCanvasBg && String(theme.printCanvasBg).startsWith('#0')
+    ? '4px 4px 0 rgba(138,138,138,0.9)'
+    : '5px 5px 0 #0A0A0A';
   const pageMuted = theme.printPageMuted || lightColors.nbMuted;
   const styleExtra = pageStyleCss(pageStyle);
   return `<!doctype html>
@@ -1225,6 +1490,7 @@ function buildRichTextEditorHtml({
   </body>
 </html>`;
 }
+
 const styles = StyleSheet.create({
   docMenuRow: {
     flexDirection: 'row',
@@ -1232,20 +1498,20 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     minHeight: 48,
     paddingVertical: 12,
-    borderBottomWidth: 2
+    borderBottomWidth: 2,
   },
   docMenuRowText: {
     fontSize: 15,
     fontWeight: '800',
     flex: 1,
-    paddingRight: 8
+    paddingRight: 8,
   },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.sm,
-    gap: spacing.sm
+    gap: spacing.sm,
   },
   headerSq: {
     width: nb.minTouchTarget,
@@ -1253,32 +1519,32 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.nbIconChip,
     borderWidth: nb.borderWidth,
     alignItems: 'center',
-    justifyContent: 'center'
+    justifyContent: 'center',
   },
   titleWrap: {
     flex: 1,
     minWidth: 0,
-    justifyContent: 'center'
+    justifyContent: 'center',
   },
   savedLabel: {
     fontSize: 13,
     fontWeight: '600',
-    marginTop: 2
+    marginTop: 2,
   },
   formatDock: {
     flexGrow: 0,
     flexShrink: 0,
-    paddingBottom: 4
+    paddingBottom: 4,
   },
   toolbarScroll: {
-    flexGrow: 0
+    flexGrow: 0,
   },
   toolbarRow: {
     paddingHorizontal: spacing.md,
     paddingVertical: 6,
     alignItems: 'center',
     gap: 8,
-    minHeight: nb.minTouchTarget
+    minHeight: nb.minTouchTarget,
   },
   toolBtn: {
     minWidth: nb.minTouchTarget,
@@ -1287,20 +1553,20 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.nbButton,
     borderWidth: nb.borderWidth,
     alignItems: 'center',
-    justifyContent: 'center'
+    justifyContent: 'center',
   },
   toolBtnWide: {
-    paddingHorizontal: 12
+    paddingHorizontal: 12,
   },
   toolGlyph: {
     fontSize: 14,
-    fontWeight: '800'
+    fontWeight: '800',
   },
   pageStyleRow: {
     paddingHorizontal: spacing.md,
     paddingBottom: 8,
     gap: 8,
-    alignItems: 'center'
+    alignItems: 'center',
   },
   pageStyleChip: {
     height: 36,
@@ -1308,35 +1574,35 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     borderWidth: nb.borderWidth,
     alignItems: 'center',
-    justifyContent: 'center'
+    justifyContent: 'center',
   },
   pageStyleChipText: {
     fontSize: 14,
-    fontWeight: '800'
+    fontWeight: '800',
   },
   editorDesk: {
     flex: 1,
     minHeight: 0,
     paddingHorizontal: spacing.md,
-    paddingTop: 4
+    paddingTop: 4,
   },
   editorShadow: {
-    flex: 1
+    flex: 1,
   },
   editorCard: {
     flex: 1,
     borderRadius: borderRadius.nbCard,
     borderWidth: nb.borderWidth,
-    overflow: 'hidden'
+    overflow: 'hidden',
   },
   webview: {
     flex: 1,
-    backgroundColor: 'transparent'
+    backgroundColor: 'transparent',
   },
   loadingBlock: {
     flex: 1,
     alignItems: 'center',
-    justifyContent: 'center'
+    justifyContent: 'center',
   },
   readingCard: {
     marginHorizontal: spacing.md,
@@ -1348,17 +1614,17 @@ const styles = StyleSheet.create({
     borderWidth: nb.borderWidth,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12
+    gap: 12,
   },
   readingTitle: {
     fontSize: 14,
-    fontWeight: '800'
+    fontWeight: '800',
   },
   readingSub: {
     fontSize: 12,
     fontWeight: '600',
     marginTop: 2,
-    lineHeight: 16
+    lineHeight: 16,
   },
   clearPill: {
     minHeight: 36,
@@ -1366,48 +1632,48 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     borderWidth: nb.borderWidth,
     alignItems: 'center',
-    justifyContent: 'center'
+    justifyContent: 'center',
   },
   clearPillText: {
     fontSize: 13,
-    fontWeight: '800'
+    fontWeight: '800',
   },
   bottomActions: {
     flexDirection: 'row',
     gap: 10,
     paddingHorizontal: spacing.md,
-    paddingTop: 4
+    paddingTop: 4,
   },
   halfBtn: {
-    flex: 1
+    flex: 1,
   },
   colorSwatch: {
     width: 28,
     height: 28,
     borderRadius: 999,
-    borderWidth: nb.borderWidth
+    borderWidth: nb.borderWidth,
   },
   pickerRow: {
     paddingHorizontal: spacing.md,
     paddingBottom: 8,
     gap: 8,
-    alignItems: 'center'
+    alignItems: 'center',
   },
   promptOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.55)',
-    justifyContent: 'flex-end'
+    justifyContent: 'flex-end',
   },
   promptSheet: {
     borderTopLeftRadius: borderRadius.nbSheet,
     borderTopRightRadius: borderRadius.nbSheet,
     borderWidth: nb.borderWidth,
     padding: 16,
-    paddingBottom: Platform.OS === 'ios' ? 28 : 16
+    paddingBottom: Platform.OS === 'ios' ? 28 : 16,
   },
   promptTitle: {
     fontSize: 16,
-    fontWeight: '800'
+    fontWeight: '800',
   },
   promptInput: {
     marginTop: 12,
@@ -1415,11 +1681,11 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.nbInput,
     paddingHorizontal: 12,
     paddingVertical: 12,
-    fontSize: 14
+    fontSize: 14,
   },
   promptRow: {
     flexDirection: 'row',
     gap: 10,
-    marginTop: 12
-  }
+    marginTop: 12,
+  },
 });

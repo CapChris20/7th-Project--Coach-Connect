@@ -99,99 +99,82 @@ const COACH_ACTION_CATEGORY_MAP = {
   data: 'data',
 };
 
-// ===== MAIN FUNCTIONS =====
+// Copy pools frozen; edit only with product approval
+const TRAIN_PROMPTS = [
+  'Dial in my training plan for this week',
+  'If I only have 3 sessions this week, how should I use them?',
+  'Am I doing too much volume right now — what should I cut or keep?',
+  'Help me choose between full-body and upper/lower for my schedule',
+  'What should my main lifts look like this week if recovery has been rough?',
+  'How do I break a bench plateau without wrecking my shoulders?',
+  'Build me a 4-day split with clear progression for the next 2 weeks',
+  'Spot the biggest mistake in how I am currently training',
+  'What is a smart deload week for me right now?',
+  'How should I progress my squat if sleep has been bad?',
+];
 
-/**
- * Whole hours since the Unix epoch. Two calls in the same hour return the same slot.
- * vocab: Date.now() is milliseconds; dividing by MS_PER_HOUR floors to the current hour index.
- * @param {number} [now]
- * @returns {number}
- */
-export function getCoachHourSlot(now = Date.now()) {
-  return Math.floor(now / MS_PER_HOUR);
-}
+const FUEL_PROMPTS = [
+  'Help me line up meals that match my goal',
+  "What's one nutrition habit that would move the needle most for me?",
+  'Am I eating enough protein for my training load?',
+  'How should I adjust carbs on rest days vs training days?',
+  'Give me a simple high-protein day of eating',
+  'What should I eat before and after my workout today?',
+  'Help me fix my weekend nutrition without being miserable',
+  'How many calories should I aim for if I want steady fat loss?',
+  'What is a realistic macro split for muscle gain at my size?',
+  'How do I hit my protein target when I am busy all day?',
+];
 
-/**
- * One starter question for a home-screen category this hour.
- * Flow: 1. topics from recent chats  2. pick that category's pool  3. one line from the hour slot
- * @param {string} categoryId
- * @param {{ userData?: object, sessions?: Array, now?: number }} [options]
- * @returns {string}
- */
-export function pickCategoryPrompt(categoryId, { userData, sessions, now = Date.now() } = {}) {
-  // 1. Recent chat topics (protein, squat, sleep) so the pool can add a matching line.
-  const categoryContext = buildCategoryHourContext({ userData, sessions });
-  const hourSlot = getCoachHourSlot(now);
+const RECOVER_PROMPTS = [
+  'Tighten up my recovery so I actually adapt',
+  'My sleep has been inconsistent — what should I change first?',
+  'How much rest do I need between hard leg days?',
+  'What recovery habits give the best ROI for lifters?',
+  'I feel run down — train lighter or take a rest day?',
+  'Help me build a wind-down routine that actually works',
+  'How do I know if I am under-recovered vs just lazy?',
+  'What should mobility look like if I only have 10 minutes?',
+];
 
-  // 2. Category pool, plus any extra lines those topics unlocked.
-  const promptPool = starterPoolForCategory(categoryId, categoryContext);
+const WEB_PROMPTS = [
+  'Search the web: best evidence-based approach for body recomposition',
+  'What does the research say about creatine loading vs maintenance?',
+  'Search the web: how much protein do lifters really need per day?',
+  'What do studies say about ashwagandha and stress or sleep?',
+  'Search the web: is 10k steps per day actually meaningful for fat loss?',
+  'Compare full-body vs PPL for busy schedules — what does evidence favor?',
+  'Search the web: safest way to increase training volume over time',
+  'What does research say about meal timing around workouts?',
+];
 
-  // 3. Offset so "train" and "fuel" do not land on the same index this hour.
-  // vocab/symbol: || = missing category id gets offset 0
-  const categoryOffset = CATEGORY_OFFSET[categoryId] || 0;
-  return pickOnePromptByHourSlot(promptPool, hourSlot + categoryOffset, categoryId);
-}
+const LOG_PROMPTS = [
+  'Can you log data for me?',
+  'Log my steps for today',
+  'Can you log that I slept 8 hours last night?',
+  'Track my water intake for today',
+  'Can you log my mood for today?',
+  'Log my weight for this morning',
+  'Can you record my protein intake for today?',
+];
 
-/**
- * Spotlight chips under the composer. Personalized lines first, then the hourly category picks.
- * Flow: 1. logs → personal lines  2. one pick per category  3. merge and rotate
- * @param {{ userData?: object, sessions?: Array, dailyMetrics?: object, nutritionToday?: object, now?: number }} [options]
- * @returns {string[]}
- */
-export function buildHourlySpotlightSuggestions({
-  userData,
-  sessions,
-  dailyMetrics,
-  nutritionToday,
-  now = Date.now(),
-} = {}) {
-  const hourSlot = getCoachHourSlot(now);
-  const daySeed = calendarDayIndexFromNow(now);
+const DATA_PROMPTS = [
+  'Can you show me my data and context?',
+  'Review my macros and workouts from this week',
+  'How am I tracking against my goals right now?',
+  'Show me my training and nutrition trends',
+  'What patterns do you see in my recent logs?',
+  'Summarize my week — sleep, food, and workouts',
+];
 
-  // 1. Sleep, water, calories, and trainer lines built from this user's logs.
-  const spotlightContext = buildSpotlightContextFromUserLogs({
-    userData,
-    sessions,
-    dailyMetrics,
-    nutritionToday,
-  });
-  const personalizedLines = personalizedLinesFromContext(spotlightContext);
+const PHOTO_PROMPTS = [
+  'Can you analyze a photo for me?',
+  'Check my form in this photo and give coaching cues',
+  'Give me physique feedback from this progress photo',
+  'What should I improve based on this gym photo?',
+];
 
-  // 2. One hourly pick each from train / fuel / recover / web.
-  const hourlyCategoryPicks = onePickPerCoreCategory(userData, sessions, now);
-
-  // 3. Personal lines win when they collide with a generic pick; then rotate for this hour.
-  const combinedLines = mergeUniquePromptLines(personalizedLines, hourlyCategoryPicks);
-  return rotatePromptListForHour(combinedLines, hourSlot, daySeed, SPOTLIGHT_LIMIT);
-}
-
-/**
- * "Can help with" cards, rotated so a different card leads each hour.
- * @param {{ userData?: object, sessions?: Array, now?: number }} [options]
- * @returns {Array}
- */
-export function buildHourlyCanHelpWith({ userData, sessions, now = Date.now() } = {}) {
-  const hourSlot = getCoachHourSlot(now);
-  const cardsForHour = canHelpCardsForThisHour({ userData, sessions, now });
-  return rotateCardListFromHourSlot(cardsForHour, hourSlot);
-}
-
-/**
- * Hourly-rotating starters for the "What do you need?" action orbs.
- * Photo opens the camera — its starter is unused.
- * @param {Array} [actions]
- * @param {{ userData?: object, sessions?: Array, now?: number }} [options]
- * @returns {Array}
- */
-export function buildHourlyCoachActions(
-  actions = [],
-  { userData, sessions, now = Date.now() } = {},
-) {
-  return coachActionsWithHourlyStarters(actions, { userData, sessions, now });
-}
-
-// ===== PLUMBING — skip unless debugging =====
-// Hour slots, dedupe, personalized prompt builders, and frozen copy pools live here.
+// ===== HELPER FUNCTIONS =====
 
 function calendarDayIndexFromNow(now = Date.now()) {
   return Math.floor(now / MS_PER_DAY);
@@ -777,78 +760,93 @@ function coachActionsWithHourlyStarters(actions, { userData, sessions, now }) {
   return readyActions;
 }
 
-// ===== PROMPT POOLS — copy frozen; edit only with product approval =====
+// ===== MAIN FUNCTION =====
 
-const TRAIN_PROMPTS = [
-  'Dial in my training plan for this week',
-  'If I only have 3 sessions this week, how should I use them?',
-  'Am I doing too much volume right now — what should I cut or keep?',
-  'Help me choose between full-body and upper/lower for my schedule',
-  'What should my main lifts look like this week if recovery has been rough?',
-  'How do I break a bench plateau without wrecking my shoulders?',
-  'Build me a 4-day split with clear progression for the next 2 weeks',
-  'Spot the biggest mistake in how I am currently training',
-  'What is a smart deload week for me right now?',
-  'How should I progress my squat if sleep has been bad?',
-];
+/**
+ * Whole hours since the Unix epoch. Two calls in the same hour return the same slot.
+ * vocab: Date.now() is milliseconds; dividing by MS_PER_HOUR floors to the current hour index.
+ * @param {number} [now]
+ * @returns {number}
+ */
+export function getCoachHourSlot(now = Date.now()) {
+  return Math.floor(now / MS_PER_HOUR);
+}
 
-const FUEL_PROMPTS = [
-  'Help me line up meals that match my goal',
-  "What's one nutrition habit that would move the needle most for me?",
-  'Am I eating enough protein for my training load?',
-  'How should I adjust carbs on rest days vs training days?',
-  'Give me a simple high-protein day of eating',
-  'What should I eat before and after my workout today?',
-  'Help me fix my weekend nutrition without being miserable',
-  'How many calories should I aim for if I want steady fat loss?',
-  'What is a realistic macro split for muscle gain at my size?',
-  'How do I hit my protein target when I am busy all day?',
-];
+/**
+ * One starter question for a home-screen category this hour.
+ * Flow: 1. topics from recent chats  2. pick that category's pool  3. one line from the hour slot
+ * @param {string} categoryId
+ * @param {{ userData?: object, sessions?: Array, now?: number }} [options]
+ * @returns {string}
+ */
+export function pickCategoryPrompt(categoryId, { userData, sessions, now = Date.now() } = {}) {
+  // 1. Recent chat topics (protein, squat, sleep) so the pool can add a matching line.
+  const categoryContext = buildCategoryHourContext({ userData, sessions });
+  const hourSlot = getCoachHourSlot(now);
 
-const RECOVER_PROMPTS = [
-  'Tighten up my recovery so I actually adapt',
-  'My sleep has been inconsistent — what should I change first?',
-  'How much rest do I need between hard leg days?',
-  'What recovery habits give the best ROI for lifters?',
-  'I feel run down — train lighter or take a rest day?',
-  'Help me build a wind-down routine that actually works',
-  'How do I know if I am under-recovered vs just lazy?',
-  'What should mobility look like if I only have 10 minutes?',
-];
+  // 2. Category pool, plus any extra lines those topics unlocked.
+  const promptPool = starterPoolForCategory(categoryId, categoryContext);
 
-const WEB_PROMPTS = [
-  'Search the web: best evidence-based approach for body recomposition',
-  'What does the research say about creatine loading vs maintenance?',
-  'Search the web: how much protein do lifters really need per day?',
-  'What do studies say about ashwagandha and stress or sleep?',
-  'Search the web: is 10k steps per day actually meaningful for fat loss?',
-  'Compare full-body vs PPL for busy schedules — what does evidence favor?',
-  'Search the web: safest way to increase training volume over time',
-  'What does research say about meal timing around workouts?',
-];
+  // 3. Offset so "train" and "fuel" do not land on the same index this hour.
+  // vocab/symbol: || = missing category id gets offset 0
+  const categoryOffset = CATEGORY_OFFSET[categoryId] || 0;
+  return pickOnePromptByHourSlot(promptPool, hourSlot + categoryOffset, categoryId);
+}
 
-const LOG_PROMPTS = [
-  'Can you log data for me?',
-  'Log my steps for today',
-  'Can you log that I slept 8 hours last night?',
-  'Track my water intake for today',
-  'Can you log my mood for today?',
-  'Log my weight for this morning',
-  'Can you record my protein intake for today?',
-];
+/**
+ * Spotlight chips under the composer. Personalized lines first, then the hourly category picks.
+ * Flow: 1. logs → personal lines  2. one pick per category  3. merge and rotate
+ * @param {{ userData?: object, sessions?: Array, dailyMetrics?: object, nutritionToday?: object, now?: number }} [options]
+ * @returns {string[]}
+ */
+export function buildHourlySpotlightSuggestions({
+  userData,
+  sessions,
+  dailyMetrics,
+  nutritionToday,
+  now = Date.now(),
+} = {}) {
+  const hourSlot = getCoachHourSlot(now);
+  const daySeed = calendarDayIndexFromNow(now);
 
-const DATA_PROMPTS = [
-  'Can you show me my data and context?',
-  'Review my macros and workouts from this week',
-  'How am I tracking against my goals right now?',
-  'Show me my training and nutrition trends',
-  'What patterns do you see in my recent logs?',
-  'Summarize my week — sleep, food, and workouts',
-];
+  // 1. Sleep, water, calories, and trainer lines built from this user's logs.
+  const spotlightContext = buildSpotlightContextFromUserLogs({
+    userData,
+    sessions,
+    dailyMetrics,
+    nutritionToday,
+  });
+  const personalizedLines = personalizedLinesFromContext(spotlightContext);
 
-const PHOTO_PROMPTS = [
-  'Can you analyze a photo for me?',
-  'Check my form in this photo and give coaching cues',
-  'Give me physique feedback from this progress photo',
-  'What should I improve based on this gym photo?',
-];
+  // 2. One hourly pick each from train / fuel / recover / web.
+  const hourlyCategoryPicks = onePickPerCoreCategory(userData, sessions, now);
+
+  // 3. Personal lines win when they collide with a generic pick; then rotate for this hour.
+  const combinedLines = mergeUniquePromptLines(personalizedLines, hourlyCategoryPicks);
+  return rotatePromptListForHour(combinedLines, hourSlot, daySeed, SPOTLIGHT_LIMIT);
+}
+
+/**
+ * "Can help with" cards, rotated so a different card leads each hour.
+ * @param {{ userData?: object, sessions?: Array, now?: number }} [options]
+ * @returns {Array}
+ */
+export function buildHourlyCanHelpWith({ userData, sessions, now = Date.now() } = {}) {
+  const hourSlot = getCoachHourSlot(now);
+  const cardsForHour = canHelpCardsForThisHour({ userData, sessions, now });
+  return rotateCardListFromHourSlot(cardsForHour, hourSlot);
+}
+
+/**
+ * Hourly-rotating starters for the "What do you need?" action orbs.
+ * Photo opens the camera — its starter is unused.
+ * @param {Array} [actions]
+ * @param {{ userData?: object, sessions?: Array, now?: number }} [options]
+ * @returns {Array}
+ */
+export function buildHourlyCoachActions(
+  actions = [],
+  { userData, sessions, now = Date.now() } = {},
+) {
+  return coachActionsWithHourlyStarters(actions, { userData, sessions, now });
+}

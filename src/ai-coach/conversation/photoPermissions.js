@@ -24,7 +24,70 @@ const ALERT_BODY_PHOTO_ACCESS = 'To pick images, allow Photos access for CoachCo
 const ERROR_MESSAGE_PROCESS_FAILED =
   'Failed to process image. Please try selecting the image again.';
 
-// ===== MAIN FUNCTIONS =====
+// ===== HELPER FUNCTIONS =====
+
+function buildPhotoDeniedAlertButtons(userCanBeAskedAgain) {
+  if (userCanBeAskedAgain) {
+    return [{ text: 'OK' }];
+  }
+  return [
+    { text: 'Not now', style: 'cancel' },
+    {
+      text: 'Open Settings',
+      onPress: () => {
+        // vocab: Linking.openSettings = jump to this app's page in OS Settings.
+        Linking.openSettings().catch(() => {});
+      },
+    },
+  ];
+}
+
+function userSelectedAnImageAsset(pickerResult) {
+  if (pickerResult.canceled) {
+    return false;
+  }
+  const assets = pickerResult.assets;
+  if (!assets) {
+    return false;
+  }
+  if (assets.length === 0) {
+    return false;
+  }
+  return true;
+}
+
+function stringAlreadyLooksLikeImageDataUrl(imageUri) {
+  return imageUri.startsWith(PREFIX_DATA_IMAGE);
+}
+
+function stringLooksLikeRawBase64WithoutPrefix(imageUri) {
+  if (imageUri.startsWith(PREFIX_FILE_URI)) {
+    return false;
+  }
+  if (imageUri.startsWith(PREFIX_HTTP)) {
+    return false;
+  }
+  if (imageUri.startsWith(PREFIX_ABSOLUTE_UNIX_PATH)) {
+    return false;
+  }
+  return true;
+}
+
+async function readLocalFileUriAsDataUrl(fileUri) {
+  const fileResponse = await fetch(fileUri);
+  const imageBlob = await fileResponse.blob();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    // vocab: FileReader.readAsDataURL = yields data:image/…;base64,…
+    reader.onloadend = () => {
+      resolve(reader.result);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(imageBlob);
+  });
+}
+
+// ===== MAIN FUNCTION =====
 
 /**
  * Ask the OS for Photos library access. Shows an Alert when denied.
@@ -120,67 +183,4 @@ export async function prepareImageForOpenAI(imageUri) {
     console.error('Error converting image to base64:', conversionError);
     throw new Error(ERROR_MESSAGE_PROCESS_FAILED);
   }
-}
-
-// ===== PLUMBING — skip unless debugging =====
-
-function buildPhotoDeniedAlertButtons(userCanBeAskedAgain) {
-  if (userCanBeAskedAgain) {
-    return [{ text: 'OK' }];
-  }
-  return [
-    { text: 'Not now', style: 'cancel' },
-    {
-      text: 'Open Settings',
-      onPress: () => {
-        // vocab: Linking.openSettings = jump to this app's page in OS Settings.
-        Linking.openSettings().catch(() => {});
-      },
-    },
-  ];
-}
-
-function userSelectedAnImageAsset(pickerResult) {
-  if (pickerResult.canceled) {
-    return false;
-  }
-  const assets = pickerResult.assets;
-  if (!assets) {
-    return false;
-  }
-  if (assets.length === 0) {
-    return false;
-  }
-  return true;
-}
-
-function stringAlreadyLooksLikeImageDataUrl(imageUri) {
-  return imageUri.startsWith(PREFIX_DATA_IMAGE);
-}
-
-function stringLooksLikeRawBase64WithoutPrefix(imageUri) {
-  if (imageUri.startsWith(PREFIX_FILE_URI)) {
-    return false;
-  }
-  if (imageUri.startsWith(PREFIX_HTTP)) {
-    return false;
-  }
-  if (imageUri.startsWith(PREFIX_ABSOLUTE_UNIX_PATH)) {
-    return false;
-  }
-  return true;
-}
-
-async function readLocalFileUriAsDataUrl(fileUri) {
-  const fileResponse = await fetch(fileUri);
-  const imageBlob = await fileResponse.blob();
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    // vocab: FileReader.readAsDataURL = yields data:image/…;base64,…
-    reader.onloadend = () => {
-      resolve(reader.result);
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(imageBlob);
-  });
 }

@@ -88,7 +88,7 @@ function assetsFromPickerResult(pickerResult) {
   if (!Array.isArray(pickerResult.assets)) return [];
   return pickerResult.assets;
 }
-
+   
 function userCanceledPicker(pickerResult) {
   if (!pickerResult) return false;
   if (pickerResult.canceled) return true;

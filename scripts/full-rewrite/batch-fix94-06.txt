@@ -1,0 +1,5 @@
+src/nutrition/food-search/rankFoodResults.js
+src/nutrition/food-search/searchFoods.js
+src/nutrition/food-search/trustRestaurantResult.js
+src/nutrition/targets/recalculateFoodTargets.js
+src/settings/CoachingPaymentScreen.jsx

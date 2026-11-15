@@ -1,7 +1,6 @@
 // Split a web-search coach reply into sections without dropping any characters.
 // Flow: normalize whitespace → detect ## or ** headings → pull summary lead → bucket line types.
 // Used by InternetAnswerReply, replyTextStyles (preprocess), and unit tests on title regexes.
-// Read order: exported title patterns → main recipes → PLUMBING at the bottom.
 
 // ===== NAMED CONSTANTS =====
 
@@ -54,103 +53,7 @@ const AUTO_LAYOUT_WHAT_IT_IS_HEADING = '## What it is\n';
 const AUTO_LAYOUT_KEY_FINDINGS_HEADING = '## Key findings\n';
 const AUTO_LAYOUT_BULLET_PREFIX = '- **Point:** ';
 
-// ===== MAIN FUNCTIONS =====
-
-/**
- * Normalize a web-search reply; invent ## blocks only when the model sent a dense paragraph.
- * Flow: 1. trim + newlines  2. keep existing structure  3. else auto-layout sentences
- * @param {string} markdown
- * @returns {string}
- */
-export function preprocessWebSearchLayout(markdown) {
-  // 1. Trim and normalize newlines (Windows → Unix, collapse huge gaps).
-  const cleaned = normalizeWebSearchMarkdown(markdown);
-  if (!cleaned) {
-    return cleaned;
-  }
-
-  // 2. Respect existing structure — never stomp model headings or lists.
-  if (replyAlreadyHasStructure(cleaned)) {
-    return cleaned.trim();
-  }
-
-  // 3. Dense paragraph only: invent ## blocks from sentences.
-  const sentences = sentencesFromPlainText(cleaned);
-  return autoLayoutPlainSentences(sentences);
-}
-
-/**
- * Split a web answer into summary lead + titled sections (or a fallback blob).
- * Flow: 1. empty guard  2. parse headings  3. peel summary into summaryLead
- * @param {string} raw
- * @returns {{ summary: null, summaryLead: string|null, sections: Array, fallbackMarkdown: string, fullText: string }}
- */
-export function splitInternetAnswer(raw) {
-  const fullText = textOrEmpty(raw).trim();
-  if (!fullText) {
-    return emptySplitResult('');
-  }
-
-  // 1. Parse heading-delimited sections when present.
-  const parsedSections = tryParseMarkdownSections(fullText);
-  if (!parsedSections.length) {
-    return emptySplitResult(fullText);
-  }
-
-  // 2. Summary body lives on summaryLead — `summary` stays null for callers.
-  const peeled = peelSummarySection(parsedSections);
-
-  // 3. Hand back the split shape callers already expect.
-  return {
-    summary: null,
-    summaryLead: peeled.summaryLead,
-    sections: peeled.bodySections,
-    fallbackMarkdown: '',
-    fullText,
-  };
-}
-
-/**
- * Bucket one section body into paragraphs, bullets, and numbered lines.
- * Flow: 1. empty guard  2. trim lines  3. classify into buckets
- * @param {string} body
- * @returns {{ paragraphs: string[], bullets: string[], numbered: string[] }}
- */
-export function parseSectionBlocks(body) {
-  const trimmedBody = textOrEmpty(body).trim();
-  if (!trimmedBody) {
-    return { paragraphs: [], bullets: [], numbered: [] };
-  }
-
-  // 1. One non-empty trimmed line per row.
-  const lines = nonEmptyTrimmedLines(trimmedBody);
-
-  // 2. Sort each line into bullets / numbered / paragraphs.
-  return bucketLinesByKind(lines);
-}
-
-/**
- * Peel a dense paragraph into a short lead plus leftover sentences as bullets.
- * @param {string} text
- * @param {number} [leadCount]
- * @returns {{ lead: string, bullets: string[] }}
- */
-export function splitDenseParagraph(text, leadCount = DEFAULT_LEAD_SENTENCE_COUNT) {
-  const trimmed = textOrEmpty(text).trim();
-  if (!trimmed) {
-    return { lead: '', bullets: [] };
-  }
-
-  const sentences = sentencesFromPlainText(trimmed);
-  if (sentences.length <= leadCount) {
-    return { lead: sentences.join(' '), bullets: [] };
-  }
-
-  return leadAndLeftoverBullets(sentences, leadCount);
-}
-
 // ===== HELPER FUNCTIONS =====
-// PLUMBING — skip unless web-search section split / auto-layout looks wrong.
 
 function textOrEmpty(value) {
   if (value == null) {
@@ -410,4 +313,99 @@ function nonEmptyTrimmedLines(text) {
     }
   }
   return lines;
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Normalize a web-search reply; invent ## blocks only when the model sent a dense paragraph.
+ * Flow: 1. trim + newlines  2. keep existing structure  3. else auto-layout sentences
+ * @param {string} markdown
+ * @returns {string}
+ */
+export function preprocessWebSearchLayout(markdown) {
+  // 1. Trim and normalize newlines (Windows → Unix, collapse huge gaps).
+  const cleaned = normalizeWebSearchMarkdown(markdown);
+  if (!cleaned) {
+    return cleaned;
+  }
+
+  // 2. Respect existing structure — never stomp model headings or lists.
+  if (replyAlreadyHasStructure(cleaned)) {
+    return cleaned.trim();
+  }
+
+  // 3. Dense paragraph only: invent ## blocks from sentences.
+  const sentences = sentencesFromPlainText(cleaned);
+  return autoLayoutPlainSentences(sentences);
+}
+
+/**
+ * Split a web answer into summary lead + titled sections (or a fallback blob).
+ * Flow: 1. empty guard  2. parse headings  3. peel summary into summaryLead
+ * @param {string} raw
+ * @returns {{ summary: null, summaryLead: string|null, sections: Array, fallbackMarkdown: string, fullText: string }}
+ */
+export function splitInternetAnswer(raw) {
+  const fullText = textOrEmpty(raw).trim();
+  if (!fullText) {
+    return emptySplitResult('');
+  }
+
+  // 1. Parse heading-delimited sections when present.
+  const parsedSections = tryParseMarkdownSections(fullText);
+  if (!parsedSections.length) {
+    return emptySplitResult(fullText);
+  }
+
+  // 2. Summary body lives on summaryLead — `summary` stays null for callers.
+  const peeled = peelSummarySection(parsedSections);
+
+  // 3. Hand back the split shape callers already expect.
+  return {
+    summary: null,
+    summaryLead: peeled.summaryLead,
+    sections: peeled.bodySections,
+    fallbackMarkdown: '',
+    fullText,
+  };
+}
+
+/**
+ * Bucket one section body into paragraphs, bullets, and numbered lines.
+ * Flow: 1. empty guard  2. trim lines  3. classify into buckets
+ * @param {string} body
+ * @returns {{ paragraphs: string[], bullets: string[], numbered: string[] }}
+ */
+export function parseSectionBlocks(body) {
+  const trimmedBody = textOrEmpty(body).trim();
+  if (!trimmedBody) {
+    return { paragraphs: [], bullets: [], numbered: [] };
+  }
+
+  // 1. One non-empty trimmed line per row.
+  const lines = nonEmptyTrimmedLines(trimmedBody);
+
+  // 2. Sort each line into bullets / numbered / paragraphs.
+  return bucketLinesByKind(lines);
+}
+
+/**
+ * Peel a dense paragraph into a short lead plus leftover sentences as bullets.
+ * @param {string} text
+ * @param {number} [leadCount]
+ * @returns {{ lead: string, bullets: string[] }}
+ */
+export function splitDenseParagraph(text, leadCount = DEFAULT_LEAD_SENTENCE_COUNT) {
+  const trimmed = textOrEmpty(text).trim();
+  if (!trimmed) {
+    return { lead: '', bullets: [] };
+  }
+
+  const sentences = sentencesFromPlainText(trimmed);
+  if (sentences.length <= leadCount) {
+    return { lead: sentences.join(' '), bullets: [] };
+  }
+
+  return leadAndLeftoverBullets(sentences, leadCount);
 }

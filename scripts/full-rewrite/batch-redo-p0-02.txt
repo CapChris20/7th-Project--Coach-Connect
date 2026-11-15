@@ -1,0 +1,8 @@
+src/trainer-app/new-requests/NewTraineeRequestsScreen.jsx
+src/trainer-app/scheduling/SharedSessionList.jsx
+src/trainer-app/scheduling/alertTraineeOfSession.js
+src/workouts/session/WorkoutSessionScreen.jsx
+src/ai-coach/conversation/CoachConversationScreen.jsx
+src/login-and-signup/LoginScreen.js
+src/client-app/home/TrainingHomeScreen.jsx
+src/messaging/ChatScreen.jsx

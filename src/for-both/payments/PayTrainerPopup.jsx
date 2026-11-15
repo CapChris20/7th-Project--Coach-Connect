@@ -45,14 +45,42 @@ const READY_SHIELD_ICON = 'shield-checkmark';
 const READY_SHIELD_SIZE = 14;
 const PLATFORM_FEE_PERCENT_DISPLAY = Math.round(PLATFORM_FEE_RATE * 100);
 
-// Prefer CardField — CardForm on iOS ignores text colors and looks broken in dark mode.
 const stripeModule = getStripeNativeModule();
-const CardField = stripeModule?.CardField || null;
-const useStripeHook =
-  typeof stripeModule?.useStripe === 'function' ? stripeModule.useStripe : () => null;
+const CardField = readStripeCardFieldComponent(stripeModule);
+const useStripeHook = readStripeUseStripeHook(stripeModule);
 const cardPaymentBlock = getStripeCardPaymentBlockReason();
 
 // ===== HELPER FUNCTIONS =====
+
+/**
+ * CardField export from the Stripe native module, or null when missing.
+ * @param {object|null} module
+ * @returns {Function|null}
+ */
+function readStripeCardFieldComponent(module) {
+  if (!module) {
+    return null;
+  }
+  if (!module.CardField) {
+    return null;
+  }
+  return module.CardField;
+}
+
+/**
+ * useStripe hook from the module, or a stub that returns null.
+ * @param {object|null} module
+ * @returns {Function}
+ */
+function readStripeUseStripeHook(module) {
+  if (!module) {
+    return () => null;
+  }
+  if (typeof module.useStripe !== 'function') {
+    return () => null;
+  }
+  return module.useStripe;
+}
 
 /**
  * Pay button caption: loading / retry / dollar amount / default.
@@ -87,8 +115,9 @@ function keepDigitsAndDecimalOnly(typedAmount) {
  * @returns {string}
  */
 function newChargeIdempotencyKey() {
-  if (typeof globalThis.crypto?.randomUUID === 'function') {
-    return globalThis.crypto.randomUUID();
+  const cryptoApi = globalThis.crypto;
+  if (cryptoApi && typeof cryptoApi.randomUUID === 'function') {
+    return cryptoApi.randomUUID();
   }
   return `cc_${Date.now()}_${Math.random().toString(36).slice(2, 12)}`;
 }
@@ -99,10 +128,10 @@ function newChargeIdempotencyKey() {
  */
 function readCardUnavailableDetail() {
   const block = cardPaymentBlock || getStripeCardPaymentBlockReason();
-  return (
-    block?.detail ||
-    'Payments are unavailable on this build. Please update the app.'
-  );
+  if (block && block.detail) {
+    return block.detail;
+  }
+  return 'Payments are unavailable on this build. Please update the app.';
 }
 
 /**
@@ -174,10 +203,18 @@ function buildStripeCardFieldStyle() {
  * @returns {string}
  */
 function humanMessageForChargeError(chargeError) {
-  const errorMessage = chargeError?.message || '';
+  let errorMessage = '';
+  if (chargeError && chargeError.message) {
+    errorMessage = chargeError.message;
+  }
+
+  let errorCode = '';
+  if (chargeError && chargeError.code) {
+    errorCode = chargeError.code;
+  }
+
   const looksLikeNetwork =
-    chargeError?.code === 'network_error' ||
-    /network|timeout|aborted/i.test(errorMessage);
+    errorCode === 'network_error' || /network|timeout|aborted/i.test(errorMessage);
   if (looksLikeNetwork) return 'Network error, try again';
 
   const looksLikeDecline = /declin/i.test(errorMessage);
@@ -191,6 +228,41 @@ function humanMessageForChargeError(chargeError) {
 
   if (errorMessage) return errorMessage;
   return 'Payment failed, try again';
+}
+
+/**
+ * Call an optional callback when it exists.
+ * @param {Function|undefined|null} callback
+ * @param {...any} args
+ */
+function callIfPresent(callback, ...args) {
+  if (typeof callback !== 'function') {
+    return;
+  }
+  callback(...args);
+}
+
+/**
+ * Build the three quick-amount chips (keeps .map out of the main render).
+ * @param {{ amountText: string, onPick: Function, loading: boolean, styles: object }} args
+ * @returns {React.ReactNode[]}
+ */
+function buildQuickAmountChips({ amountText, onPick, loading, styles }) {
+  const chips = [];
+  for (let index = 0; index < QUICK_AMOUNTS.length; index += 1) {
+    const value = QUICK_AMOUNTS[index];
+    chips.push(
+      <QuickAmountChip
+        key={value}
+        value={value}
+        isSelected={amountText === String(value)}
+        onPick={onPick}
+        loading={loading}
+        styles={styles}
+      />,
+    );
+  }
+  return chips;
 }
 
 // ===== LAYOUT PIECES (no hooks) =====
@@ -260,9 +332,15 @@ function StripeCardEntryPanel({
     );
   }
 
-  const fallbackTitle = blockReason?.title || 'Card payments unavailable';
-  const fallbackDetail =
-    blockReason?.detail || 'Rebuild the app with npm run ios:run, then try again.';
+  let fallbackTitle = 'Card payments unavailable';
+  if (blockReason && blockReason.title) {
+    fallbackTitle = blockReason.title;
+  }
+
+  let fallbackDetail = 'Rebuild the app with npm run ios:run, then try again.';
+  if (blockReason && blockReason.detail) {
+    fallbackDetail = blockReason.detail;
+  }
 
   return (
     <View style={styles.cardFallback}>
@@ -275,8 +353,16 @@ function StripeCardEntryPanel({
 }
 
 function CardReadyHint({ cardReady, cardMeta, styles }) {
-  if (cardReady && cardMeta?.last4) {
-    const brandPrefix = cardMeta.brand ? `${String(cardMeta.brand)} ` : '';
+  let lastFourDigits = null;
+  if (cardMeta && cardMeta.last4) {
+    lastFourDigits = cardMeta.last4;
+  }
+
+  if (cardReady && lastFourDigits) {
+    let brandPrefix = '';
+    if (cardMeta.brand) {
+      brandPrefix = `${String(cardMeta.brand)} `;
+    }
     return (
       <View style={styles.readyRow}>
         <Ionicons
@@ -285,7 +371,7 @@ function CardReadyHint({ cardReady, cardMeta, styles }) {
           color={SUCCESS_ICON_COLOR}
         />
         <Text style={styles.readyText}>
-          {brandPrefix}···· {cardMeta.last4}
+          {brandPrefix}···· {lastFourDigits}
         </Text>
       </View>
     );
@@ -342,7 +428,8 @@ function PayTrainerPopup({ trainerId, trainerName, onClose, onSuccess }) {
   const handleCancel = useCallback(() => {
     // 1. Wipe the form, then close. Closing first would leave stale amount/error on reopen.
     resetForm();
-    onClose?.();
+    // 2. Tell the parent the sheet should go away.
+    callIfPresent(onClose);
   }, [resetForm, onClose]);
 
   const mapChargeErrorToMessage = useCallback((chargeError) => {
@@ -350,13 +437,20 @@ function PayTrainerPopup({ trainerId, trainerName, onClose, onSuccess }) {
   }, []);
 
   const onCardChange = useCallback((details) => {
-    setCardReady(!!details?.complete);
-    if (details?.complete && (details.brand || details.last4)) {
+    let cardIsComplete = false;
+    if (details && details.complete) {
+      cardIsComplete = true;
+    }
+    setCardReady(cardIsComplete);
+
+    if (cardIsComplete && details && (details.brand || details.last4)) {
       setCardMeta({
         brand: details.brand || null,
         last4: details.last4 || null,
       });
-    } else if (!details?.complete) {
+      return;
+    }
+    if (!cardIsComplete) {
       setCardMeta(null);
     }
   }, []);
@@ -412,10 +506,10 @@ function PayTrainerPopup({ trainerId, trainerName, onClose, onSuccess }) {
         trainerGets: outcome.trainerGets,
         chargeId: outcome.chargeId,
       });
-      onSuccess?.(outcome.result);
+      callIfPresent(onSuccess, outcome.result);
       setTimeout(() => {
         resetForm();
-        onClose?.();
+        callIfPresent(onClose);
       }, SUCCESS_CLOSE_MS);
     } catch (chargeError) {
       setError(mapChargeErrorToMessage(chargeError));
@@ -448,6 +542,12 @@ function PayTrainerPopup({ trainerId, trainerName, onClose, onSuccess }) {
   const amountPlaceholderColor = isDark ? '#636366' : '#8E8E93';
   const showFeeOneLiner = amountOk;
   const feeOneLinerText = `Coach gets ${formatPaymentDollars(trainerShare)} · ${PLATFORM_FEE_PERCENT_DISPLAY}% platform fee (${formatPaymentDollars(platformShare)})`;
+  const quickAmountChips = buildQuickAmountChips({
+    amountText: amount,
+    onPick: selectQuickAmount,
+    loading,
+    styles,
+  });
 
   return (
     <NbSheet>
@@ -479,18 +579,7 @@ function PayTrainerPopup({ trainerId, trainerName, onClose, onSuccess }) {
           />
         </View>
 
-        <View style={styles.quickRow}>
-          {QUICK_AMOUNTS.map((value) => (
-            <QuickAmountChip
-              key={value}
-              value={value}
-              isSelected={amount === String(value)}
-              onPick={selectQuickAmount}
-              loading={loading}
-              styles={styles}
-            />
-          ))}
-        </View>
+        <View style={styles.quickRow}>{quickAmountChips}</View>
 
         {showFeeOneLiner ? (
           <Text style={styles.feeOneLiner}>{feeOneLinerText}</Text>

@@ -66,6 +66,9 @@ const IMPORT_POLL_WAIT_MS = 800;
 const PHOTO_PICKER_QUALITY = 0.8;
 // Manipulate here: delay after sheet dismiss before ImagePicker / document editor opens (ms)
 const ACTION_OPEN_DELAY_MS = 120;
+const SPREADSHEET_ACCENT_INDEX = 7;
+const BYTES_PER_KB = 1024;
+const BYTES_PER_MB = 1048576;
 
 const PDF_AND_WORD_TYPES = [
   'application/pdf',
@@ -142,7 +145,7 @@ const TRAINER_EXTRA_ROWS = [
     label: 'Spreadsheet file',
     subtitle: 'Upload .xlsx or CSV (view only)',
     icon: PROGRESS_ICON,
-    accentIndex: 7,
+    accentIndex: SPREADSHEET_ACCENT_INDEX,
   },
 ];
 
@@ -157,7 +160,7 @@ const CLIENT_EXTRA_ROWS = [
   },
 ];
 
-// ===== HELPER FUNCTIONS (story-side) =====
+// ===== HELPER FUNCTIONS =====
 
 function sheetTitleForStep(step) {
   if (step === STEP_NOTE) {
@@ -1330,9 +1333,9 @@ async function requestCameraPermission() {
 function formatBytes(size) {
   const byteCount = Number(size);
   if (!Number.isFinite(byteCount) || byteCount <= 0) return '';
-  if (byteCount < 1024) return `${byteCount} B`;
-  if (byteCount < 1024 * 1024) return `${Math.round(byteCount / 1024)} KB`;
-  return `${(byteCount / (1024 * 1024)).toFixed(1)} MB`;
+  if (byteCount < BYTES_PER_KB) return `${byteCount} B`;
+  if (byteCount < BYTES_PER_MB) return `${Math.round(byteCount / BYTES_PER_KB)} KB`;
+  return `${(byteCount / BYTES_PER_MB).toFixed(1)} MB`;
 }
 
 function mimeTypeForPendingKind(asset, kind) {

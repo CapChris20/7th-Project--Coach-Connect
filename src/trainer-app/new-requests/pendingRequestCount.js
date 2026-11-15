@@ -16,6 +16,34 @@ const CONVERSATIONS_COLLECTION = 'conversations';
 // Manipulate here: higher = fewer reads; lower = snappier badge.
 const REFRESH_DEBOUNCE_MS = 400;
 
+// ===== HELPER FUNCTIONS =====
+
+function buildTrainerConversationsQuery(trainerUid) {
+  return query(
+    collection(db, CONVERSATIONS_COLLECTION),
+    where('participants', 'array-contains', trainerUid),
+  );
+}
+
+function scheduleRefreshAfterDebounce(refreshTimerRef, refresh) {
+  if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+  refreshTimerRef.current = setTimeout(() => {
+    refresh();
+  }, REFRESH_DEBOUNCE_MS);
+}
+
+function clearPendingRefreshTimer(refreshTimerRef) {
+  if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+}
+
+function safelyStopListener(unsubscribe) {
+  try {
+    unsubscribe();
+  } catch (_) {
+    /* ignore */
+  }
+}
+
 // ===== MAIN FUNCTION =====
 
 /**
@@ -96,30 +124,4 @@ export function pendingRequestCount(trainerUid) {
   return { requests, loading: isLoading, error, refresh };
 }
 
-// ===== PLUMBING — skip unless debugging listener / debounce =====
 
-function buildTrainerConversationsQuery(trainerUid) {
-  return query(
-    collection(db, CONVERSATIONS_COLLECTION),
-    where('participants', 'array-contains', trainerUid),
-  );
-}
-
-function scheduleRefreshAfterDebounce(refreshTimerRef, refresh) {
-  if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
-  refreshTimerRef.current = setTimeout(() => {
-    refresh();
-  }, REFRESH_DEBOUNCE_MS);
-}
-
-function clearPendingRefreshTimer(refreshTimerRef) {
-  if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
-}
-
-function safelyStopListener(unsubscribe) {
-  try {
-    unsubscribe();
-  } catch (_) {
-    /* ignore */
-  }
-}

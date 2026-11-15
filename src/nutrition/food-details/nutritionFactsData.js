@@ -131,9 +131,16 @@ export const DAILY_VALUES = {
  * @returns {object}
  */
 export function resolveMetadata(log) {
-  const raw = log?.metadata;
+  let raw = undefined;
+  if (log) {
+    raw = log.metadata;
+  }
   if (!raw || typeof raw !== 'object') return {};
-  const inner = raw.metadata && typeof raw.metadata === 'object' ? raw.metadata : null;
+
+  let inner = null;
+  if (raw.metadata && typeof raw.metadata === 'object') {
+    inner = raw.metadata;
+  }
   if (inner) {
     return {
       ...inner,
@@ -149,12 +156,12 @@ export function resolveMetadata(log) {
  * @returns {string}
  */
 export function cleanFoodDisplayName(name) {
-  const {
-    readableFoodTitle
-  } = require('../food-search/readableFoodTitle');
-  return readableFoodTitle({
-    name
-  }).name || DEFAULT_FOOD_NAME;
+  const { readableFoodTitle } = require('../food-search/readableFoodTitle');
+  const titled = readableFoodTitle({ name });
+  if (titled && titled.name) {
+    return titled.name;
+  }
+  return DEFAULT_FOOD_NAME;
 }
 
 /**
@@ -198,17 +205,26 @@ export function extractNutrientsFromLog(log) {
  * @returns {object}
  */
 export function mergeEnrichedNutrients(base, enrichedNutrients, log) {
-  void log;
+  // log kept for call-site signature; enrichment scales from calorie totals only
+  if (log) {
+    /* signature freeze */
+  }
   if (!enrichedNutrients) return base;
   const merged = {
     ...base
   };
   const baseCalories = numberOrZero(base.calories);
   const refCalories = numberOrZero(enrichedNutrients.calories);
-  const scale = baseCalories > 0 && refCalories > 0 ? baseCalories / refCalories : 1;
-  for (const key of EXTENDED_KEYS) {
-    if (numberOrZero(merged[key]) <= 0 && numberOrZero(enrichedNutrients[key]) > 0) {
-      merged[key] = roundToOneTenth(numberOrZero(enrichedNutrients[key]) * scale);
+  let scale = 1;
+  if (baseCalories > 0 && refCalories > 0) {
+    scale = baseCalories / refCalories;
+  }
+  for (let index = 0; index < EXTENDED_KEYS.length; index += 1) {
+    const key = EXTENDED_KEYS[index];
+    const mergedAmount = numberOrZero(merged[key]);
+    const enrichedAmount = numberOrZero(enrichedNutrients[key]);
+    if (mergedAmount <= 0 && enrichedAmount > 0) {
+      merged[key] = roundToOneTenth(enrichedAmount * scale);
     }
   }
   merged.caloriesFromFat = merged.fat * CALORIES_PER_GRAM_FAT;
@@ -224,7 +240,11 @@ export function countKnownMicros(nutrients) {
   let knownCount = 0;
   for (let index = 0; index < EXTENDED_KEYS.length; index += 1) {
     const nutrientKey = EXTENDED_KEYS[index];
-    if (numberOrZero(nutrients?.[nutrientKey]) > 0) knownCount += 1;
+    let amount = 0;
+    if (nutrients) {
+      amount = numberOrZero(nutrients[nutrientKey]);
+    }
+    if (amount > 0) knownCount += 1;
   }
   return knownCount;
 }
@@ -240,7 +260,10 @@ export function scaleApiNutrientsToLog(apiNutrients, log) {
   const out = blankNutrientMap();
   const logCalories = numberOrZero(log.calories);
   const refCalories = numberOrZero(apiNutrients.calories);
-  const factor = logCalories > 0 && refCalories > 0 ? logCalories / refCalories : 1;
+  let factor = 1;
+  if (logCalories > 0 && refCalories > 0) {
+    factor = logCalories / refCalories;
+  }
   const apiMapKeys = Object.keys(API_NUTRIENT_MAP);
   for (let index = 0; index < apiMapKeys.length; index += 1) {
     const outKey = apiMapKeys[index];
@@ -263,7 +286,9 @@ export function scaleApiNutrientsToLog(apiNutrients, log) {
  * @returns {boolean}
  */
 export function logNeedsNutrientEnrichment(log) {
-  if (!log?.id || numberOrZero(log.calories) <= 0) return false;
+  if (!log || !log.id) return false;
+  if (numberOrZero(log.calories) <= 0) return false;
+
   const nutrients = extractNutrientsFromLog(log);
   if (numberOrZero(nutrients.fat) > MIN_FAT_FOR_SAT_ENRICH && numberOrZero(nutrients.saturatedFat) <= 0) {
     return true;
@@ -316,24 +341,38 @@ export function buildLogEnrichmentPatch(log, apiNutrients) {
  */
 export function buildNutritionLabelRows(nutrients) {
   const nutrientMap = nutrients || blankNutrientMap();
-  return [{
-    type: 'calories',
-    key: 'calories',
-    label: 'Calories',
-    value: formatNutrientAmount(nutrientMap.calories, 'kcal'),
-    raw: nutrientMap.calories,
-    bold: true
-  }, {
-    type: 'divider'
-  }, nutritionLabelRow(nutrientMap, 'fat', 'Total Fat', 'g', 'fat'), nutritionLabelRow(nutrientMap, 'saturatedFat', 'Saturated Fat', 'g', 'saturatedFat', 1, true), nutritionLabelRow(nutrientMap, 'transFat', 'Trans Fat', 'g', null, 1, true), nutritionLabelRow(nutrientMap, 'polyunsaturatedFat', 'Polyunsaturated Fat', 'g', null, 1), nutritionLabelRow(nutrientMap, 'monounsaturatedFat', 'Monounsaturated Fat', 'g', null, 1), {
-    type: 'divider'
-  }, nutritionLabelRow(nutrientMap, 'cholesterol', 'Cholesterol', 'mg', 'cholesterol', 0, true), nutritionLabelRow(nutrientMap, 'sodium', 'Sodium', 'mg', 'sodium', 0, true), {
-    type: 'divider'
-  }, nutritionLabelRow(nutrientMap, 'carbs', 'Total Carbohydrate', 'g', 'carbs'), nutritionLabelRow(nutrientMap, 'fiber', 'Dietary Fiber', 'g', 'fiber', 1), nutritionLabelRow(nutrientMap, 'sugar', 'Total Sugars', 'g', null, 1, true), {
-    type: 'divider'
-  }, nutritionLabelRow(nutrientMap, 'protein', 'Protein', 'g', 'protein'), {
-    type: 'divider'
-  }, nutritionLabelRow(nutrientMap, 'potassium', 'Potassium', 'mg', 'potassium'), nutritionLabelRow(nutrientMap, 'calcium', 'Calcium', 'mg', 'calcium'), nutritionLabelRow(nutrientMap, 'iron', 'Iron', 'mg', 'iron'), nutritionLabelRow(nutrientMap, 'vitaminA', 'Vitamin A', 'mcg', 'vitaminA'), nutritionLabelRow(nutrientMap, 'vitaminC', 'Vitamin C', 'mg', 'vitaminC'), nutritionLabelRow(nutrientMap, 'vitaminD', 'Vitamin D', 'mcg', 'vitaminD')];
+  return [
+    {
+      type: 'calories',
+      key: 'calories',
+      label: 'Calories',
+      value: formatNutrientAmount(nutrientMap.calories, 'kcal'),
+      raw: nutrientMap.calories,
+      bold: true
+    },
+    { type: 'divider' },
+    nutritionLabelRow(nutrientMap, 'fat', 'Total Fat', 'g', 'fat'),
+    nutritionLabelRow(nutrientMap, 'saturatedFat', 'Saturated Fat', 'g', 'saturatedFat', 1, true),
+    nutritionLabelRow(nutrientMap, 'transFat', 'Trans Fat', 'g', null, 1, true),
+    nutritionLabelRow(nutrientMap, 'polyunsaturatedFat', 'Polyunsaturated Fat', 'g', null, 1),
+    nutritionLabelRow(nutrientMap, 'monounsaturatedFat', 'Monounsaturated Fat', 'g', null, 1),
+    { type: 'divider' },
+    nutritionLabelRow(nutrientMap, 'cholesterol', 'Cholesterol', 'mg', 'cholesterol', 0, true),
+    nutritionLabelRow(nutrientMap, 'sodium', 'Sodium', 'mg', 'sodium', 0, true),
+    { type: 'divider' },
+    nutritionLabelRow(nutrientMap, 'carbs', 'Total Carbohydrate', 'g', 'carbs'),
+    nutritionLabelRow(nutrientMap, 'fiber', 'Dietary Fiber', 'g', 'fiber', 1),
+    nutritionLabelRow(nutrientMap, 'sugar', 'Total Sugars', 'g', null, 1, true),
+    { type: 'divider' },
+    nutritionLabelRow(nutrientMap, 'protein', 'Protein', 'g', 'protein'),
+    { type: 'divider' },
+    nutritionLabelRow(nutrientMap, 'potassium', 'Potassium', 'mg', 'potassium'),
+    nutritionLabelRow(nutrientMap, 'calcium', 'Calcium', 'mg', 'calcium'),
+    nutritionLabelRow(nutrientMap, 'iron', 'Iron', 'mg', 'iron'),
+    nutritionLabelRow(nutrientMap, 'vitaminA', 'Vitamin A', 'mcg', 'vitaminA'),
+    nutritionLabelRow(nutrientMap, 'vitaminC', 'Vitamin C', 'mg', 'vitaminC'),
+    nutritionLabelRow(nutrientMap, 'vitaminD', 'Vitamin D', 'mcg', 'vitaminD')
+  ];
 }
 
 /**
@@ -364,12 +403,17 @@ export function getServingLabel(log) {
  * @returns {object[]}
  */
 export function buildNutritionFactsPanels(log, goals) {
-  void goals;
+  // goals kept for call-site signature
+  if (goals) {
+    /* signature freeze */
+  }
   const nutrients = extractNutrientsFromLog(log);
-  return [{
-    id: 'label',
-    rows: buildNutritionLabelRows(nutrients)
-  }];
+  return [
+    {
+      id: 'label',
+      rows: buildNutritionLabelRows(nutrients)
+    }
+  ];
 }
 
 /**
@@ -381,7 +425,8 @@ export function buildNutritionFactsPanels(log, goals) {
 export function calculateDailyNutrientTotals(logs = [], enrichmentByLogId = {}) {
   // 1. Start from zeroed map; walk every log for the day.
   const totals = blankNutrientMap();
-  for (const log of logs) {
+  for (let index = 0; index < logs.length; index += 1) {
+    const log = logs[index];
     // 2. Portion nutrients, optionally merged with session API enrichment.
     let nutrients = extractNutrientsFromLog(log);
     const apiNutrients = enrichmentByLogId[log.id];
@@ -409,17 +454,32 @@ export function buildDailyNutritionFactsCardData(nutrients, goals = {}) {
   const fatGoal = goals.fatTarget || DEFAULT_FAT_GOAL;
 
   // 2. Small row builders for fats/carbs lists and mineral grid cells.
-  const listRow = (label, value, unit = 'g') => ({
-    label,
-    display: unit === 'mg' || unit === 'mcg' ? formatMilligramsDisplay(value, unit) : formatGramsDisplay(value),
-    raw: numberOrZero(value)
-  });
-  const micro = (key, name, unit = 'mg') => ({
-    key,
-    name,
-    value: numberOrZero(nutrientMap[key]) > 0 ? formatMilligramsDisplay(nutrientMap[key], unit) : EMPTY_SERVING_LABEL,
-    raw: numberOrZero(nutrientMap[key])
-  });
+  const listRow = (label, value, unit = 'g') => {
+    let display;
+    if (unit === 'mg' || unit === 'mcg') {
+      display = formatMilligramsDisplay(value, unit);
+    } else {
+      display = formatGramsDisplay(value);
+    }
+    return {
+      label,
+      display,
+      raw: numberOrZero(value)
+    };
+  };
+  const micro = (key, name, unit = 'mg') => {
+    const amount = numberOrZero(nutrientMap[key]);
+    let valueLabel = EMPTY_SERVING_LABEL;
+    if (amount > 0) {
+      valueLabel = formatMilligramsDisplay(nutrientMap[key], unit);
+    }
+    return {
+      key,
+      name,
+      value: valueLabel,
+      raw: amount
+    };
+  };
 
   // 3. Bundle calories, macro minis, fat/carb sections, and mineral grid.
   return {
@@ -427,48 +487,69 @@ export function buildDailyNutritionFactsCardData(nutrients, goals = {}) {
     calorieGoal,
     caloriePct: percentOfGoal(nutrientMap.calories, calorieGoal),
     foodCount: 0,
-    macros: [{
-      label: 'Protein',
-      value: nutrientMap.protein,
-      display: formatGramsDisplay(nutrientMap.protein),
-      goal: proteinGoal,
-      goalLabel: `${wholeNumberOrOneDecimal(nutrientMap.protein)} / ${proteinGoal}g`,
-      pct: percentOfGoal(nutrientMap.protein, proteinGoal),
-      gradient: NUT_MACRO_RING_GRADIENTS.Protein
-    }, {
-      label: 'Carbs',
-      value: nutrientMap.carbs,
-      display: formatGramsDisplay(nutrientMap.carbs),
-      goal: carbsGoal,
-      goalLabel: `${wholeNumberOrOneDecimal(nutrientMap.carbs)} / ${carbsGoal}g`,
-      pct: percentOfGoal(nutrientMap.carbs, carbsGoal),
-      gradient: NUT_MACRO_RING_GRADIENTS.Carbs
-    }, {
-      label: 'Fat',
-      value: nutrientMap.fat,
-      display: formatGramsDisplay(nutrientMap.fat),
-      goal: fatGoal,
-      goalLabel: `${wholeNumberOrOneDecimal(nutrientMap.fat)} / ${fatGoal}g`,
-      pct: percentOfGoal(nutrientMap.fat, fatGoal),
-      gradient: NUT_MACRO_RING_GRADIENTS.Fat
-    }],
+    macros: [
+      {
+        label: 'Protein',
+        value: nutrientMap.protein,
+        display: formatGramsDisplay(nutrientMap.protein),
+        goal: proteinGoal,
+        goalLabel: `${wholeNumberOrOneDecimal(nutrientMap.protein)} / ${proteinGoal}g`,
+        pct: percentOfGoal(nutrientMap.protein, proteinGoal),
+        gradient: NUT_MACRO_RING_GRADIENTS.Protein
+      },
+      {
+        label: 'Carbs',
+        value: nutrientMap.carbs,
+        display: formatGramsDisplay(nutrientMap.carbs),
+        goal: carbsGoal,
+        goalLabel: `${wholeNumberOrOneDecimal(nutrientMap.carbs)} / ${carbsGoal}g`,
+        pct: percentOfGoal(nutrientMap.carbs, carbsGoal),
+        gradient: NUT_MACRO_RING_GRADIENTS.Carbs
+      },
+      {
+        label: 'Fat',
+        value: nutrientMap.fat,
+        display: formatGramsDisplay(nutrientMap.fat),
+        goal: fatGoal,
+        goalLabel: `${wholeNumberOrOneDecimal(nutrientMap.fat)} / ${fatGoal}g`,
+        pct: percentOfGoal(nutrientMap.fat, fatGoal),
+        gradient: NUT_MACRO_RING_GRADIENTS.Fat
+      }
+    ],
     calorieGradient: NUT_CALORIES_GRADIENT,
     fats: {
       title: 'FATS',
       gradient: NUT_MACRO_RING_GRADIENTS.Fat,
       total: formatGramsDisplay(nutrientMap.fat),
-      rows: [listRow('Saturated Fat', nutrientMap.saturatedFat), listRow('Trans Fat', nutrientMap.transFat), listRow('Polyunsaturated', nutrientMap.polyunsaturatedFat), listRow('Monounsaturated', nutrientMap.monounsaturatedFat)]
+      rows: [
+        listRow('Saturated Fat', nutrientMap.saturatedFat),
+        listRow('Trans Fat', nutrientMap.transFat),
+        listRow('Polyunsaturated', nutrientMap.polyunsaturatedFat),
+        listRow('Monounsaturated', nutrientMap.monounsaturatedFat)
+      ]
     },
     carbs: {
       title: 'CARBOHYDRATES',
       gradient: NUT_MACRO_RING_GRADIENTS.Carbs,
       total: formatGramsDisplay(nutrientMap.carbs),
-      rows: [listRow('Dietary Fiber', nutrientMap.fiber), listRow('Sugars', nutrientMap.sugar)]
+      rows: [
+        listRow('Dietary Fiber', nutrientMap.fiber),
+        listRow('Sugars', nutrientMap.sugar)
+      ]
     },
     minerals: {
       title: 'VITAMINS & MINERALS',
       gradient: NUT_SECTION_GRADIENT,
-      items: [micro('cholesterol', 'Cholesterol'), micro('sodium', 'Sodium'), micro('potassium', 'Potassium'), micro('calcium', 'Calcium'), micro('iron', 'Iron'), micro('vitaminA', 'Vitamin A', 'mcg'), micro('vitaminC', 'Vitamin C'), micro('vitaminD', 'Vitamin D', 'mcg')]
+      items: [
+        micro('cholesterol', 'Cholesterol'),
+        micro('sodium', 'Sodium'),
+        micro('potassium', 'Potassium'),
+        micro('calcium', 'Calcium'),
+        micro('iron', 'Iron'),
+        micro('vitaminA', 'Vitamin A', 'mcg'),
+        micro('vitaminC', 'Vitamin C'),
+        micro('vitaminD', 'Vitamin D', 'mcg')
+      ]
     }
   };
 }
@@ -480,13 +561,25 @@ export function buildDailyNutritionFactsCardData(nutrients, goals = {}) {
  */
 export function buildNutritionFactsCardData(nutrients) {
   const nutrientMap = nutrients || blankNutrientMap();
-  const macroBar = (label, value, max, color, unit = 'g') => ({
-    label,
-    value: numberOrZero(value),
-    display: unit === 'mg' || unit === 'mcg' ? formatMilligramsDisplay(value, unit) : formatGramsDisplay(value),
-    fillPct: max > 0 ? Math.min(numberOrZero(value) / max * MAX_PCT_CAP, MAX_PCT_CAP) : 0,
-    color
-  });
+  const macroBar = (label, value, max, color, unit = 'g') => {
+    let display;
+    if (unit === 'mg' || unit === 'mcg') {
+      display = formatMilligramsDisplay(value, unit);
+    } else {
+      display = formatGramsDisplay(value);
+    }
+    let fillPct = 0;
+    if (max > 0) {
+      fillPct = Math.min(numberOrZero(value) / max * MAX_PCT_CAP, MAX_PCT_CAP);
+    }
+    return {
+      label,
+      value: numberOrZero(value),
+      display,
+      fillPct,
+      color
+    };
+  };
   const micro = (key, name, unit = 'mg') => ({
     key,
     name,
@@ -495,33 +588,55 @@ export function buildNutritionFactsCardData(nutrients) {
   });
   return {
     calories: Math.round(numberOrZero(nutrientMap.calories)),
-    macros: [{
-      label: 'Protein',
-      value: nutrientMap.protein,
-      display: formatGramsDisplay(nutrientMap.protein),
-      pct: percentOfDailyValue(nutrientMap.protein, DAILY_VALUES.protein),
-      gradient: FACTS_CARD_MACRO_CHROME.protein.gradient,
-      barColor: FACTS_CARD_MACRO_CHROME.protein.barColor
-    }, {
-      label: 'Carbs',
-      value: nutrientMap.carbs,
-      display: formatGramsDisplay(nutrientMap.carbs),
-      pct: percentOfDailyValue(nutrientMap.carbs, DAILY_VALUES.carbs),
-      gradient: FACTS_CARD_MACRO_CHROME.carbs.gradient,
-      barColor: FACTS_CARD_MACRO_CHROME.carbs.barColor
-    }, {
-      label: 'Fat',
-      value: nutrientMap.fat,
-      display: formatGramsDisplay(nutrientMap.fat),
-      pct: percentOfDailyValue(nutrientMap.fat, DAILY_VALUES.fat),
-      gradient: FACTS_CARD_MACRO_CHROME.fat.gradient,
-      barColor: FACTS_CARD_MACRO_CHROME.fat.barColor
-    }],
-    fats: [macroBar('Total Fat', nutrientMap.fat, DAILY_VALUES.fat, FACTS_CARD_BAR.totalFat), macroBar('Saturated Fat', nutrientMap.saturatedFat, DAILY_VALUES.saturatedFat, FACTS_CARD_BAR.saturatedFat), macroBar('Trans Fat', nutrientMap.transFat, TRANS_FAT_BAR_MAX, FACTS_CARD_BAR.transFat), macroBar('Polyunsaturated', nutrientMap.polyunsaturatedFat, POLY_FAT_BAR_MAX, FACTS_CARD_BAR.poly), macroBar('Monounsaturated', nutrientMap.monounsaturatedFat, MONO_FAT_BAR_MAX, FACTS_CARD_BAR.mono)],
-    carbs: [macroBar('Total Carbs', nutrientMap.carbs, DAILY_VALUES.carbs, FACTS_CARD_BAR.totalCarbs),
-    // Fiber was #22C55E green — now protein blue (Design Law: never green)
-    macroBar('Dietary Fiber', nutrientMap.fiber, DAILY_VALUES.fiber, FACTS_CARD_BAR.fiber), macroBar('Sugars', nutrientMap.sugar, SUGAR_BAR_MAX, FACTS_CARD_BAR.sugars)],
-    minerals: [micro('cholesterol', 'Cholesterol'), micro('sodium', 'Sodium'), micro('potassium', 'Potassium'), micro('calcium', 'Calcium'), micro('iron', 'Iron'), micro('vitaminA', 'Vitamin A', 'mcg'), micro('vitaminC', 'Vitamin C'), micro('vitaminD', 'Vitamin D', 'mcg')]
+    macros: [
+      {
+        label: 'Protein',
+        value: nutrientMap.protein,
+        display: formatGramsDisplay(nutrientMap.protein),
+        pct: percentOfDailyValue(nutrientMap.protein, DAILY_VALUES.protein),
+        gradient: FACTS_CARD_MACRO_CHROME.protein.gradient,
+        barColor: FACTS_CARD_MACRO_CHROME.protein.barColor
+      },
+      {
+        label: 'Carbs',
+        value: nutrientMap.carbs,
+        display: formatGramsDisplay(nutrientMap.carbs),
+        pct: percentOfDailyValue(nutrientMap.carbs, DAILY_VALUES.carbs),
+        gradient: FACTS_CARD_MACRO_CHROME.carbs.gradient,
+        barColor: FACTS_CARD_MACRO_CHROME.carbs.barColor
+      },
+      {
+        label: 'Fat',
+        value: nutrientMap.fat,
+        display: formatGramsDisplay(nutrientMap.fat),
+        pct: percentOfDailyValue(nutrientMap.fat, DAILY_VALUES.fat),
+        gradient: FACTS_CARD_MACRO_CHROME.fat.gradient,
+        barColor: FACTS_CARD_MACRO_CHROME.fat.barColor
+      }
+    ],
+    fats: [
+      macroBar('Total Fat', nutrientMap.fat, DAILY_VALUES.fat, FACTS_CARD_BAR.totalFat),
+      macroBar('Saturated Fat', nutrientMap.saturatedFat, DAILY_VALUES.saturatedFat, FACTS_CARD_BAR.saturatedFat),
+      macroBar('Trans Fat', nutrientMap.transFat, TRANS_FAT_BAR_MAX, FACTS_CARD_BAR.transFat),
+      macroBar('Polyunsaturated', nutrientMap.polyunsaturatedFat, POLY_FAT_BAR_MAX, FACTS_CARD_BAR.poly),
+      macroBar('Monounsaturated', nutrientMap.monounsaturatedFat, MONO_FAT_BAR_MAX, FACTS_CARD_BAR.mono)
+    ],
+    carbs: [
+      macroBar('Total Carbs', nutrientMap.carbs, DAILY_VALUES.carbs, FACTS_CARD_BAR.totalCarbs),
+      // Fiber was #22C55E green — now protein blue (Design Law: never green)
+      macroBar('Dietary Fiber', nutrientMap.fiber, DAILY_VALUES.fiber, FACTS_CARD_BAR.fiber),
+      macroBar('Sugars', nutrientMap.sugar, SUGAR_BAR_MAX, FACTS_CARD_BAR.sugars)
+    ],
+    minerals: [
+      micro('cholesterol', 'Cholesterol'),
+      micro('sodium', 'Sodium'),
+      micro('potassium', 'Potassium'),
+      micro('calcium', 'Calcium'),
+      micro('iron', 'Iron'),
+      micro('vitaminA', 'Vitamin A', 'mcg'),
+      micro('vitaminC', 'Vitamin C'),
+      micro('vitaminD', 'Vitamin D', 'mcg')
+    ]
   };
 }
 
@@ -547,19 +662,29 @@ function numberOrNull(rawValue) {
   return Number.isFinite(numericValue) ? numericValue : null;
 }
 function readFirstNumericMetaAlias(meta, keys) {
-  for (const aliasKey of keys) {
-    const found = numberOrNull(meta?.[aliasKey]);
+  for (let index = 0; index < keys.length; index += 1) {
+    const aliasKey = keys[index];
+    let found = null;
+    if (meta) {
+      found = numberOrNull(meta[aliasKey]);
+    }
     if (found != null) return found;
   }
   return null;
 }
 function foodDataSource(log) {
   const meta = resolveMetadata(log);
-  return meta.source || log?.source || '';
+  if (meta.source) return meta.source;
+  if (log && log.source) return log.source;
+  return '';
 }
 function logUsesLabelServingBasis(log) {
   const meta = resolveMetadata(log);
-  return String(meta.dataBasis || log?.dataBasis || '').toLowerCase() === DATA_BASIS_LABEL_SERVING;
+  let basisRaw = meta.dataBasis;
+  if (!basisRaw && log) {
+    basisRaw = log.dataBasis;
+  }
+  return String(basisRaw || '').toLowerCase() === DATA_BASIS_LABEL_SERVING;
 }
 function servingScaleMultiplier(log) {
   if (logUsesLabelServingBasis(log)) {
@@ -571,21 +696,54 @@ function servingScaleMultiplier(log) {
   return 1;
 }
 function labelServingScaleMultiplier(log) {
-  const labelGrams = Number(resolveMetadata(log).labelServingGrams) || Number(log?.serving_grams) || 0;
-  const grams = Number(log?.serving_grams) || labelGrams;
+  const meta = resolveMetadata(log);
+  let labelGrams = Number(meta.labelServingGrams) || 0;
+  if (!labelGrams && log) {
+    labelGrams = Number(log.serving_grams) || 0;
+  }
+  let grams = 0;
+  if (log) {
+    grams = Number(log.serving_grams) || labelGrams;
+  } else {
+    grams = labelGrams;
+  }
   if (labelGrams > 0 && grams > 0) return grams / labelGrams;
-  return Number(log?.serving_size) > 0 ? Number(log.serving_size) : 1;
+  if (log && Number(log.serving_size) > 0) {
+    return Number(log.serving_size);
+  }
+  return 1;
 }
 function perHundredGramsScaleMultiplier(log) {
   const meta = resolveMetadata(log);
-  const grams = Number(log?.serving_grams) || Number(meta.servingGrams) || Number(meta.servingAmount) || 0;
+  let grams = 0;
+  if (log) {
+    grams = Number(log.serving_grams) || 0;
+  }
+  if (!grams) {
+    grams = Number(meta.servingGrams) || Number(meta.servingAmount) || 0;
+  }
   if (Number.isFinite(grams) && grams > 0) return grams / GRAMS_PER_100;
-  const quantity = Number(log?.serving_size);
-  return Number.isFinite(quantity) && quantity > 0 ? quantity : 1;
+  let quantity = 0;
+  if (log) {
+    quantity = Number(log.serving_size);
+  }
+  if (Number.isFinite(quantity) && quantity > 0) {
+    return quantity;
+  }
+  return 1;
 }
 function scaledNutrientFromMetadata(log, key) {
   const meta = resolveMetadata(log);
-  const aliases = [...(META_FIELD_ALIASES[key] || []), ...(META_NF_ALIASES[key] || []), key];
+  const fieldAliases = META_FIELD_ALIASES[key] || [];
+  const nfAliases = META_NF_ALIASES[key] || [];
+  const aliases = [];
+  for (let index = 0; index < fieldAliases.length; index += 1) {
+    aliases.push(fieldAliases[index]);
+  }
+  for (let index = 0; index < nfAliases.length; index += 1) {
+    aliases.push(nfAliases[index]);
+  }
+  aliases.push(key);
   const raw = readFirstNumericMetaAlias(meta, aliases);
   if (raw == null) return null;
   if (logUsesLabelServingBasis(log)) {
@@ -629,7 +787,8 @@ function pickNutrientAmount(log, logKey, metaKey) {
   const direct = numberOrNull(log[logKey]);
   if (direct != null && direct > 0) return direct;
   const fromMeta = scaledNutrientFromMetadata(log, metaKey || logKey);
-  return fromMeta != null ? fromMeta : 0;
+  if (fromMeta != null) return fromMeta;
+  return 0;
 }
 function roundToOneTenth(value) {
   return Math.round(value * TENTHS) / TENTHS;
@@ -651,13 +810,17 @@ function formatNutrientAmount(value, unit) {
   return `${gramsDisplay}g`;
 }
 function nutritionLabelRow(nutrients, key, label, unit, dvKey = null, indent = 0, warn = false) {
+  let pct = null;
+  if (dvKey) {
+    pct = percentDailyValue(nutrients[key], dvKey);
+  }
   return {
     key,
     label,
     value: formatNutrientAmount(nutrients[key], unit),
     raw: numberOrZero(nutrients[key]),
     unit,
-    pct: dvKey ? percentDailyValue(nutrients[key], dvKey) : null,
+    pct,
     indent,
     warn,
     bold: indent === 0

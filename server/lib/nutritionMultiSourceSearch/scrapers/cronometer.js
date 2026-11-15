@@ -1,5 +1,10 @@
 const { fetchHtml, parseNutritionFromText } = require('../scrapeHelpers');
 const { SCRAPE_TIMEOUT_MS } = require('../constants');
+const { adaptWeakHtmlSource } = require('../../../../src/nutrition/food-match/adapters/adaptWeakHtmlSource');
+
+function adaptCronometerResult(raw, opts = {}) {
+  return adaptWeakHtmlSource('cronometer', raw, opts);
+}
 
 async function scrapeCronometer(query, timeoutMs = SCRAPE_TIMEOUT_MS) {
   const q = encodeURIComponent(query);
@@ -11,4 +16,4 @@ async function scrapeCronometer(query, timeoutMs = SCRAPE_TIMEOUT_MS) {
   return parseNutritionFromText(html.slice(0, 15000));
 }
 
-module.exports = { scrapeCronometer };
+module.exports = { scrapeCronometer, adaptCronometerResult };

@@ -22,127 +22,7 @@ const RESET_LABEL_NOON = 'T12:00:00';
 const RESET_LABEL_LOCALE = 'en-US';
 const RESET_LABEL_FORMAT = { month: 'long', day: 'numeric', year: 'numeric' };
 
-// ===== MAIN RECIPES (exports) =====
-
-/**
- * First day of next month as a Date (local timezone).
- * @returns {Date}
- */
-export const nextMonthResetDate = () => {
-  const now = new Date();
-  return new Date(now.getFullYear(), now.getMonth() + 1, 1);
-};
-
-/**
- * First day of next month as `YYYY-MM-01`.
- * @param {Date} [date]
- * @returns {string}
- */
-export const nextMonthResetsAtIso = (date = new Date()) => {
-  const firstOfNextMonth = new Date(date.getFullYear(), date.getMonth() + 1, 1);
-  const year = firstOfNextMonth.getFullYear();
-  const monthNumber = firstOfNextMonth.getMonth() + 1;
-  const monthTwoDigits = String(monthNumber).padStart(2, '0');
-  return `${year}-${monthTwoDigits}-01`;
-};
-
-/**
- * "October 1, 2026" for the "resets on" label. Noon local avoids a timezone date-shift.
- * Flow: 1. normalize iso  2. parse at noon  3. bad date → raw  4. locale string
- * @param {string} resetsAt
- * @returns {string}
- */
-export function formatWorkoutLimitResetLabel(resetsAt) {
-  // 1. Prefer the caller's resets_at; else compute next month from now
-  const resetIsoText = String(resetsAt || nextMonthResetsAtIso()).trim();
-
-  // 2. Parse YYYY-MM-DD at local noon so the label does not slip a day across timezones
-  const resetDate = new Date(`${resetIsoText.slice(0, 10)}${RESET_LABEL_NOON}`);
-
-  // 3. Unparseable → show the iso text rather than "Invalid Date"
-  if (Number.isNaN(resetDate.getTime())) {
-    return resetIsoText;
-  }
-
-  // 4. Long month name the usage banner reads
-  return resetDate.toLocaleDateString(RESET_LABEL_LOCALE, RESET_LABEL_FORMAT);
-}
-
-/**
- * Default usage object when Firestore has nothing yet.
- * Object keys (generations_used / generations_limit / resets_at) are frozen for callers.
- * @param {number} [used]
- * @returns {{ generations_used: number, generations_limit: number, resets_at: string }}
- */
-export function buildDefaultWorkoutUsage(used = 0) {
-  return {
-    generations_used: used,
-    generations_limit: PLAN_LIMIT_TOTAL,
-    resets_at: nextMonthResetsAtIso(),
-  };
-}
-
-/**
- * Read the usage doc and take the max of that count vs plans actually saved this month.
- * Flow: 1. need uid+db  2. read usage doc  3. count saved + current  4. max → default shape
- * @param {string} uid
- * @returns {Promise<{ generations_used: number, generations_limit: number, resets_at: string }>}
- */
-export async function loadWorkoutGenerationUsage(uid) {
-  // 1. No user or no Firestore → empty usage with the monthly cap
-  if (!uid || !db) {
-    return buildDefaultWorkoutUsage(0);
-  }
-
-  try {
-    // 2. Usage counter for this calendar month (ignore stale months)
-    // vocab: getDoc = one-shot Firestore read (not a live listener)
-    const usageDocRef = doc(
-      db,
-      USERS_COLLECTION,
-      uid,
-      USAGE_SUBCOLLECTION,
-      WORKOUT_GENERATIONS_DOC,
-    );
-    const usageSnapshot = await getDoc(usageDocRef);
-    const usedFromUsageDoc = usedCountFromThisMonthUsageDoc(usageSnapshot);
-
-    // 3. Also count real plan docs so a missing usage write cannot under-count
-    const savedPlansCount = await countWorkoutPlansThisMonth(uid);
-    const currentPlanCount = await countCurrentWorkoutPlanThisMonth(uid);
-
-    // 4. Highest signal wins, then clamp into the public usage shape
-    const used = Math.max(usedFromUsageDoc, savedPlansCount, currentPlanCount);
-    return buildDefaultWorkoutUsage(used);
-  } catch {
-    return buildDefaultWorkoutUsage(0);
-  }
-}
-
-/**
- * Merge live Firestore usage with optional API / just-generated hints from the caller.
- * Object keys here are the public usage shape callers read — do not rename them.
- * Flow: 1. resolve uid  2. load Firestore  3. merge with opts
- * @param {string} uid
- * @param {object} [opts]
- * @returns {Promise<{ generations_used: number, generations_limit: number, resets_at: string }>}
- */
-export async function resolveWorkoutGenerationUsage(uid, opts = {}) {
-  // 1. Prefer the passed uid; else the signed-in Firebase user
-  // vocab: auth.currentUser = Firebase Auth session (null when signed out)
-  const fallbackUid = uid || auth.currentUser?.uid || null;
-
-  // 2. Live Firestore usage (or empty default)
-  let firestoreUsage = buildDefaultWorkoutUsage(0);
-  if (fallbackUid) {
-    firestoreUsage = await loadWorkoutGenerationUsage(fallbackUid);
-  }
-
-  // 3. Fold in API / justGenerated / generatedPlan hints
-  return mergeWorkoutGenerationUsage({ firestoreUsage, ...opts });
-}
-
-// ===== PLUMBING — skip unless debugging =====
+// ===== HELPER FUNCTIONS =====
 
 /**
  * Pull generations_used from the usage snapshot when its month matches this calendar month.
@@ -405,17 +285,137 @@ async function countWorkoutPlansThisMonth(uid) {
   try {
     const { startOfMonth, endOfMonth } = monthDateRange();
     // vocab: Timestamp.fromDate = JS Date → Firestore Timestamp for range filters
-    const startTs = Timestamp.fromDate(startOfMonth);
-    const endTs = Timestamp.fromDate(endOfMonth);
+    const startTimestamp = Timestamp.fromDate(startOfMonth);
+    const endTimestamp = Timestamp.fromDate(endOfMonth);
     const plansRef = collection(db, USERS_COLLECTION, uid, SAVED_PLANS_SUBCOLLECTION);
     const monthQuery = query(
       plansRef,
-      where('generatedAt', '>=', startTs),
-      where('generatedAt', '<=', endTs),
+      where('generatedAt', '>=', startTimestamp),
+      where('generatedAt', '<=', endTimestamp),
     );
     const snapshot = await getDocs(monthQuery);
     return snapshot.size;
   } catch (_) {
     return countPlansByScanningAll(uid);
   }
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * First day of next month as a Date (local timezone).
+ * @returns {Date}
+ */
+export const nextMonthResetDate = () => {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth() + 1, 1);
+};
+
+/**
+ * First day of next month as `YYYY-MM-01`.
+ * @param {Date} [date]
+ * @returns {string}
+ */
+export const nextMonthResetsAtIso = (date = new Date()) => {
+  const firstOfNextMonth = new Date(date.getFullYear(), date.getMonth() + 1, 1);
+  const year = firstOfNextMonth.getFullYear();
+  const monthNumber = firstOfNextMonth.getMonth() + 1;
+  const monthTwoDigits = String(monthNumber).padStart(2, '0');
+  return `${year}-${monthTwoDigits}-01`;
+};
+
+/**
+ * "October 1, 2026" for the "resets on" label. Noon local avoids a timezone date-shift.
+ * Flow: 1. normalize iso  2. parse at noon  3. bad date → raw  4. locale string
+ * @param {string} resetsAt
+ * @returns {string}
+ */
+export function formatWorkoutLimitResetLabel(resetsAt) {
+  // 1. Prefer the caller's resets_at; else compute next month from now
+  const resetIsoText = String(resetsAt || nextMonthResetsAtIso()).trim();
+
+  // 2. Parse YYYY-MM-DD at local noon so the label does not slip a day across timezones
+  const resetDate = new Date(`${resetIsoText.slice(0, 10)}${RESET_LABEL_NOON}`);
+
+  // 3. Unparseable → show the iso text rather than "Invalid Date"
+  if (Number.isNaN(resetDate.getTime())) {
+    return resetIsoText;
+  }
+
+  // 4. Long month name the usage banner reads
+  return resetDate.toLocaleDateString(RESET_LABEL_LOCALE, RESET_LABEL_FORMAT);
+}
+
+/**
+ * Default usage object when Firestore has nothing yet.
+ * Object keys (generations_used / generations_limit / resets_at) are frozen for callers.
+ * @param {number} [used]
+ * @returns {{ generations_used: number, generations_limit: number, resets_at: string }}
+ */
+export function buildDefaultWorkoutUsage(used = 0) {
+  return {
+    generations_used: used,
+    generations_limit: PLAN_LIMIT_TOTAL,
+    resets_at: nextMonthResetsAtIso(),
+  };
+}
+
+/**
+ * Read the usage doc and take the max of that count vs plans actually saved this month.
+ * Flow: 1. need uid+db  2. read usage doc  3. count saved + current  4. max → default shape
+ * @param {string} uid
+ * @returns {Promise<{ generations_used: number, generations_limit: number, resets_at: string }>}
+ */
+export async function loadWorkoutGenerationUsage(uid) {
+  // 1. No user or no Firestore → empty usage with the monthly cap
+  if (!uid || !db) {
+    return buildDefaultWorkoutUsage(0);
+  }
+
+  try {
+    // 2. Usage counter for this calendar month (ignore stale months)
+    // vocab: getDoc = one-shot Firestore read (not a live listener)
+    const usageDocRef = doc(
+      db,
+      USERS_COLLECTION,
+      uid,
+      USAGE_SUBCOLLECTION,
+      WORKOUT_GENERATIONS_DOC,
+    );
+    const usageSnapshot = await getDoc(usageDocRef);
+    const usedFromUsageDoc = usedCountFromThisMonthUsageDoc(usageSnapshot);
+
+    // 3. Also count real plan docs so a missing usage write cannot under-count
+    const savedPlansCount = await countWorkoutPlansThisMonth(uid);
+    const currentPlanCount = await countCurrentWorkoutPlanThisMonth(uid);
+
+    // 4. Highest signal wins, then clamp into the public usage shape
+    const used = Math.max(usedFromUsageDoc, savedPlansCount, currentPlanCount);
+    return buildDefaultWorkoutUsage(used);
+  } catch {
+    return buildDefaultWorkoutUsage(0);
+  }
+}
+
+/**
+ * Merge live Firestore usage with optional API / just-generated hints from the caller.
+ * Object keys here are the public usage shape callers read — do not rename them.
+ * Flow: 1. resolve uid  2. load Firestore  3. merge with opts
+ * @param {string} uid
+ * @param {object} [opts]
+ * @returns {Promise<{ generations_used: number, generations_limit: number, resets_at: string }>}
+ */
+export async function resolveWorkoutGenerationUsage(uid, opts = {}) {
+  // 1. Prefer the passed uid; else the signed-in Firebase user
+  // vocab: auth.currentUser = Firebase Auth session (null when signed out)
+  const fallbackUid = uid || auth.currentUser?.uid || null;
+
+  // 2. Live Firestore usage (or empty default)
+  let firestoreUsage = buildDefaultWorkoutUsage(0);
+  if (fallbackUid) {
+    firestoreUsage = await loadWorkoutGenerationUsage(fallbackUid);
+  }
+
+  // 3. Fold in API / justGenerated / generatedPlan hints
+  return mergeWorkoutGenerationUsage({ firestoreUsage, ...opts });
 }

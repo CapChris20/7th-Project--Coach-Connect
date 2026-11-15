@@ -37,6 +37,55 @@ import { showSetupAnswers, formatEquipmentFromProfile, formatDaysPerWeek } from 
 import { fillTraineeProfile } from '../../helpers/fillTraineeProfile';
 import { lightColors, darkColors, nb, gradients, navAccentGradient, spacing } from '../../look-and-feel/colorPalette';
 
+/**
+ * Walk nested keys; stop and return undefined when any step is missing.
+ * @param {any} root
+ * @param {...(string|number)} keys
+ * @returns {any}
+ */
+function readNestedValue(root, ...keys) {
+  let cursor = root;
+  for (const key of keys) {
+    if (cursor == null) {
+      return undefined;
+    }
+    cursor = cursor[key];
+  }
+  return cursor;
+}
+
+/**
+ * Call a function when it exists; otherwise return undefined.
+ * @param {Function|null|undefined} maybeFn
+ * @param {...any} args
+ * @returns {any}
+ */
+function callIfFunction(maybeFn, ...args) {
+  if (typeof maybeFn !== 'function') {
+    return undefined;
+  }
+  return maybeFn(...args);
+}
+
+/**
+ * Call obj[methodName](...args) when that method exists (keeps `this`).
+ * @param {object|null|undefined} objectValue
+ * @param {string} methodName
+ * @param {...any} args
+ * @returns {any}
+ */
+function callBoundMethodIfPresent(objectValue, methodName, ...args) {
+  if (objectValue == null) {
+    return undefined;
+  }
+  const maybeMethod = objectValue[methodName];
+  if (typeof maybeMethod !== 'function') {
+    return undefined;
+  }
+  return maybeMethod.apply(objectValue, args);
+}
+
+
 // ===== NAMED CONSTANTS =====
 
 const SHELL_NAV_EXTRA_INSET = 24;
@@ -210,7 +259,15 @@ function formatHeightForDisplay(heightValue) {
 function initialsFromName(name) {
   const nameText = String(name || '').trim();
   if (!nameText) return 'CC';
-  return nameText.split(/\s+/).map(namePart => namePart[0]).slice(0, 2).join('').toUpperCase();
+  const nameParts = nameText.split(/\s+/);
+  let initials = '';
+  for (let index = 0; index < nameParts.length && initials.length < 2; index += 1) {
+    const namePart = nameParts[index];
+    if (namePart && namePart[0]) {
+      initials += namePart[0];
+    }
+  }
+  return initials.toUpperCase();
 }
 
 // ===== LAYOUT COMPONENTS =====
@@ -500,8 +557,7 @@ function PhilosophyQuote({
   onPress,
   theme
 }) {
-  var _optFn;
-  const quote = ((_optFn = text == null ? void 0 : text.trim) == null ? void 0 : _optFn()) || 'Tap to share how you coach — your voice belongs on your profile.';
+  const quote = callIfFunction(readNestedValue(text, "trim")) || 'Tap to share how you coach — your voice belongs on your profile.';
   return <Pressable onPress={onPress}>
       <AccentPanel>
         <View style={styles.philosophyInner}>
@@ -690,11 +746,18 @@ function formatYearsCoaching(yearsValue) {
 }
 function formatSpecialtyList(specialtyList) {
   if (!Array.isArray(specialtyList) || specialtyList.length === 0) return '—';
-  return specialtyList.map(specialty => String(specialty || '').replace(/_/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase())).join(', ');
+  const labeled = [];
+  for (let index = 0; index < specialtyList.length; index += 1) {
+    const specialty = specialtyList[index];
+    const spaced = String(specialty || '').replace(/_/g, ' ');
+    const titled = spaced.replace(/\b\w/g, letter => letter.toUpperCase());
+    labeled.push(titled);
+  }
+  return labeled.join(', ');
 }
 function formatCertifications(data) {
-  const certificationList = Array.isArray(data == null ? void 0 : data.certifications) ? [...data.certifications] : [];
-  const otherCertification = String((data == null ? void 0 : data.certificationOther) || '').trim();
+  const certificationList = Array.isArray(readNestedValue(data, "certifications")) ? [...data.certifications] : [];
+  const otherCertification = String(readNestedValue(data, "certificationOther") || '').trim();
   const listHasOther = certificationList.includes('Other');
   if (listHasOther && otherCertification) {
     const withoutOtherLabel = certificationList.filter(certName => certName !== 'Other');
@@ -729,7 +792,14 @@ function numberFromTypedText(typedText) {
   return numericValue;
 }
 function equipmentFromTypedText(typedText) {
-  const equipmentParts = typedText.split(',').map(piece => piece.trim().toLowerCase().replace(/\s+/g, '_')).filter(Boolean);
+  const rawPieces = typedText.split(',');
+  const equipmentParts = [];
+  for (let index = 0; index < rawPieces.length; index += 1) {
+    const cleaned = rawPieces[index].trim().toLowerCase().replace(/\s+/g, '_');
+    if (cleaned) {
+      equipmentParts.push(cleaned);
+    }
+  }
   if (!equipmentParts.length) {
     return {
       equipmentAccess: null,
@@ -781,32 +851,32 @@ function profilePayloadForField(editKey, typedText) {
  * Field letters (height, name, instagram, …) stay as the sheet already uses them.
  */
 function editSeedForProfileKey(key, profileDoc, trainerDoc, userData) {
-  if (key === 'height') return parseHeightForProfile(profileDoc == null ? void 0 : profileDoc.height).editSeed;
+  if (key === 'height') return parseHeightForProfile(readNestedValue(profileDoc, "height")).editSeed;
   if (key === 'name') {
-    const firstName = (userData == null ? void 0 : userData.firstName) != null ? String(userData.firstName).trim() : '';
-    const lastName = (userData == null ? void 0 : userData.lastName) != null ? String(userData.lastName).trim() : '';
+    const firstName = readNestedValue(userData, "firstName") != null ? String(userData.firstName).trim() : '';
+    const lastName = readNestedValue(userData, "lastName") != null ? String(userData.lastName).trim() : '';
     const combinedName = `${firstName} ${lastName}`.trim();
     if (combinedName) return combinedName;
-    return String((profileDoc == null ? void 0 : profileDoc.name) || '').trim();
+    return String(readNestedValue(profileDoc, "name") || '').trim();
   }
-  if (key === 'location') return String((trainerDoc == null ? void 0 : trainerDoc.location) || '').trim();
-  if (key === 'trainerProfileBio') return String((trainerDoc == null ? void 0 : trainerDoc.trainerProfileBio) || '').trim();
+  if (key === 'location') return String(readNestedValue(trainerDoc, "location") || '').trim();
+  if (key === 'trainerProfileBio') return String(readNestedValue(trainerDoc, "trainerProfileBio") || '').trim();
   if (key === 'instagram') {
-    return String((trainerDoc == null ? void 0 : trainerDoc.instagram) || (trainerDoc == null ? void 0 : trainerDoc.instagramHandle) || '').trim();
+    return String(readNestedValue(trainerDoc, "instagram") || readNestedValue(trainerDoc, "instagramHandle") || '').trim();
   }
   if (key === 'website') {
-    return String((trainerDoc == null ? void 0 : trainerDoc.website) || (trainerDoc == null ? void 0 : trainerDoc.websiteUrl) || '').trim();
+    return String(readNestedValue(trainerDoc, "website") || readNestedValue(trainerDoc, "websiteUrl") || '').trim();
   }
-  if (key === 'trainingPhilosophy') return String((trainerDoc == null ? void 0 : trainerDoc.trainingPhilosophy) || '').trim();
-  if (key === 'primaryGoal') return String((profileDoc == null ? void 0 : profileDoc.primaryGoal) || '').trim();
-  if (key === 'fitnessLevel') return String((profileDoc == null ? void 0 : profileDoc.fitnessLevel) || '').trim();
+  if (key === 'trainingPhilosophy') return String(readNestedValue(trainerDoc, "trainingPhilosophy") || '').trim();
+  if (key === 'primaryGoal') return String(readNestedValue(profileDoc, "primaryGoal") || '').trim();
+  if (key === 'fitnessLevel') return String(readNestedValue(profileDoc, "fitnessLevel") || '').trim();
   if (key === 'daysPerWeek') {
-    return (profileDoc == null ? void 0 : profileDoc.daysPerWeek) != null ? String(profileDoc.daysPerWeek) : '';
+    return readNestedValue(profileDoc, "daysPerWeek") != null ? String(profileDoc.daysPerWeek) : '';
   }
   if (key === 'equipment') {
-    const equipmentList = profileDoc == null ? void 0 : profileDoc.equipmentAccess;
+    const equipmentList = readNestedValue(profileDoc, "equipmentAccess");
     if (Array.isArray(equipmentList) && equipmentList.length) return equipmentList.join(', ');
-    return String((profileDoc == null ? void 0 : profileDoc.equipment) || '').trim();
+    return String(readNestedValue(profileDoc, "equipment") || '').trim();
   }
   return '';
 }
@@ -836,6 +906,129 @@ const EDIT_KEYS_THAT_USE_SEED = ['height', 'name', 'primaryGoal', 'fitnessLevel'
  *   trainerClientCount?: number,
  * }} props
  */
+
+function buildProfileTabButtons(profileTab, theme, setProfileTab) {
+  const tabs = [
+    { key: 'yours', label: 'Your profile' },
+    { key: 'trainer', label: 'Trainer profile' },
+  ];
+  const buttons = [];
+  for (let index = 0; index < tabs.length; index += 1) {
+    const tab = tabs[index];
+    const selected = profileTab === tab.key;
+    const selectedStyle = selected ? { backgroundColor: theme.fill } : null;
+    const labelColor = selected ? theme.onFill : theme.ink;
+    buttons.push(
+      <Pressable
+        key={tab.key}
+        onPress={() => setProfileTab(tab.key)}
+        style={[styles.profileTabCell, selectedStyle]}
+      >
+        <Text style={[styles.profileTabLabel, { color: labelColor }]}>{tab.label}</Text>
+      </Pressable>,
+    );
+  }
+  return buttons;
+}
+
+function buildDesignLawDetailRows(designLawDetailRows, theme, openEdit) {
+  const rows = [];
+  for (let index = 0; index < designLawDetailRows.length; index += 1) {
+    const item = designLawDetailRows[index];
+    let divider = null;
+    if (index > 0) {
+      divider = <View style={[styles.detailDivider, { backgroundColor: theme.border }]} />;
+    }
+    rows.push(
+      <View key={item.key}>
+        {divider}
+        <Pressable
+          onPress={() => openEdit(item.key, item.label, item.value)}
+          style={styles.detailRow}
+        >
+          <Text style={[styles.detailLabel, { color: theme.ink }]}>{item.label}</Text>
+          <Text style={[styles.detailValue, { color: theme.muted }]} numberOfLines={1}>
+            {item.value}
+          </Text>
+          <Ionicons name="chevron-forward" size={18} color={theme.muted} />
+        </Pressable>
+      </View>,
+    );
+  }
+  return rows;
+}
+
+function buildTrainerProfessionalRows(trainerProfessionalPills, theme, isDark, openEdit) {
+  const rows = [];
+  for (let index = 0; index < trainerProfessionalPills.length; index += 1) {
+    const item = trainerProfessionalPills[index];
+    const rowIsReadOnly = Boolean(item.readOnly);
+    let rowPressHandler = undefined;
+    if (!rowIsReadOnly) {
+      rowPressHandler = () => openEdit(item.key, item.label, item.value);
+    }
+    const showRowDivider = item.key !== 'trainerProfileBio';
+    rows.push(
+      <ProfileRow
+        key={item.key}
+        label={item.label}
+        value={item.value}
+        editable={!rowIsReadOnly}
+        onPress={rowPressHandler}
+        theme={theme}
+        isDark={isDark}
+        LeadingIcon={item.Icon}
+        showDivider={showRowDivider}
+      />,
+    );
+  }
+  return rows;
+}
+
+function buildCertificationSheetRows(certSheets, theme, handleDeleteCertification) {
+  const rows = [];
+  for (let index = 0; index < certSheets.length; index += 1) {
+    const sheet = certSheets[index];
+    const rowKey = sheet.storagePath || sheet.fileName;
+    let uploadedLabel = '';
+    if (sheet.uploadedAt) {
+      uploadedLabel = ` · ${String(sheet.uploadedAt).slice(0, 10)}`;
+    }
+    rows.push(
+      <View
+        key={rowKey}
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          paddingVertical: 10,
+          borderTopWidth: StyleSheet.hairlineWidth,
+          borderTopColor: theme.border,
+        }}
+      >
+        <Ionicons name="document-attach-outline" size={18} color={theme.muted} />
+        <View style={{ flex: 1, marginHorizontal: 10 }}>
+          <Text style={{ color: theme.ink, fontWeight: '600', fontSize: 13 }} numberOfLines={1}>
+            {sheet.fileName || 'Certification'}
+          </Text>
+          <Text style={{ color: theme.muted, fontSize: 11 }} numberOfLines={1}>
+            {sheet.fileType || 'file'}
+            {uploadedLabel}
+          </Text>
+        </View>
+        <TouchableOpacity onPress={() => handleDeleteCertification(sheet)} hitSlop={8}>
+          <Ionicons name="trash-outline" size={18} color="#ef4444" />
+        </TouchableOpacity>
+      </View>,
+    );
+  }
+  return rows;
+}
+
+/**
+ * Client profile screen layout and editing form.
+ * @param {object} props
+ * @returns {React.ReactElement}
+ */
 export function ViewMyMyProfileScreen({
   isDark: isDarkProp,
   onBack,
@@ -855,7 +1048,6 @@ export function ViewMyMyProfileScreen({
   onOpenPayments,
   trainerClientCount
 }) {
-  var _optObj2, _optObj4, _optObj10;
   const isTrainer = String(userRole || '').toLowerCase() === 'trainer';
   const {
     isDark: themeIsDark
@@ -870,11 +1062,10 @@ export function ViewMyMyProfileScreen({
   const [draftFullName, setDraftFullName] = useState('');
   const [draftDisplayName, setDraftDisplayName] = useState('');
   React.useEffect(() => {
-    var _optObj;
     // Keep the hero photo in sync with Firestore / auth whenever those URLs change.
-    const photoFromDocs = (onboardingData == null ? void 0 : onboardingData.photoURL) || (userData == null ? void 0 : userData.photoURL) || ((_optObj = auth == null ? void 0 : auth.currentUser) == null ? void 0 : _optObj.photoURL);
+    const photoFromDocs = readNestedValue(onboardingData, "photoURL") || readNestedValue(userData, "photoURL") || readNestedValue(auth, "currentUser", "photoURL");
     setPhotoURL(photoFromDocs || null);
-  }, [onboardingData == null ? void 0 : onboardingData.photoURL, userData == null ? void 0 : userData.photoURL, (_optObj2 = auth == null ? void 0 : auth.currentUser) == null ? void 0 : _optObj2.photoURL]);
+  }, [readNestedValue(onboardingData, "photoURL"), readNestedValue(userData, "photoURL"), readNestedValue(auth, "currentUser", "photoURL")]);
   const [editKey, setEditKey] = useState(null);
   const [editLabel, setEditLabel] = useState('');
   const [editValue, setEditValue] = useState('');
@@ -922,25 +1113,22 @@ export function ViewMyMyProfileScreen({
   }), [userData, onboardingData]);
   React.useEffect(() => {
     if (!isTrainer) return;
-    const sheetsFromDoc = Array.isArray(trainerDoc == null ? void 0 : trainerDoc.certificationSheets) ? trainerDoc.certificationSheets : [];
+    const sheetsFromDoc = Array.isArray(readNestedValue(trainerDoc, "certificationSheets")) ? trainerDoc.certificationSheets : [];
     setCertSheets(sheetsFromDoc);
-  }, [isTrainer, trainerDoc == null ? void 0 : trainerDoc.certificationSheets]);
+  }, [isTrainer, readNestedValue(trainerDoc, "certificationSheets")]);
   React.useEffect(() => {
-    var _optObj3;
     if (!isTrainer || certVerifyBusy) return;
-    const statusFromDoc = (trainerDoc == null ? void 0 : trainerDoc.certificationVerificationStatus) || ((_optObj3 = trainerDoc == null ? void 0 : trainerDoc.aiVerification) == null ? void 0 : _optObj3.status) || null;
+    const statusFromDoc = readNestedValue(trainerDoc, "certificationVerificationStatus") || readNestedValue(trainerDoc, "aiVerification", "status") || null;
     if (statusFromDoc) setCertVerifyStatus(String(statusFromDoc));
-  }, [isTrainer, certVerifyBusy, trainerDoc == null ? void 0 : trainerDoc.certificationVerificationStatus, (_optObj4 = trainerDoc == null ? void 0 : trainerDoc.aiVerification) == null ? void 0 : _optObj4.status]);
+  }, [isTrainer, certVerifyBusy, readNestedValue(trainerDoc, "certificationVerificationStatus"), readNestedValue(trainerDoc, "aiVerification", "status")]);
   const handleAddCertification = async () => {
-    var _optObj5;
     // 1. Fail fast when signed out.
-    const trainerId = (_optObj5 = auth == null ? void 0 : auth.currentUser) == null ? void 0 : _optObj5.uid;
+    const trainerId = readNestedValue(auth, "currentUser", "uid");
     if (!trainerId) {
       showNotice('Sign in required', 'Sign in again to upload certifications.');
       return;
     }
     try {
-      var _optObj6;
       // 2. Pick a PDF/image ≤ 10MB (picker shows its own notices on failure).
       const file = await pickCertificationFile(showNotice);
       if (!file) return;
@@ -959,11 +1147,11 @@ export function ViewMyMyProfileScreen({
         fileSize: file.size
       }, percentComplete => setCertProgress(percentComplete));
       setCertSheets(previousSheets => [...previousSheets, meta]);
-      onProfileSaved == null ? void 0 : onProfileSaved();
+      callIfFunction(onProfileSaved);
 
       // 4. AI-verify images; other types get the manual-review copy.
-      const trainerNameFromParts = `${String((userData == null ? void 0 : userData.firstName) || '').trim()} ${String((userData == null ? void 0 : userData.lastName) || '').trim()}`.trim();
-      const trainerNameFallback = String((userData == null ? void 0 : userData.name) || (onboardingData == null ? void 0 : onboardingData.name) || ((_optObj6 = auth == null ? void 0 : auth.currentUser) == null ? void 0 : _optObj6.displayName) || '').trim();
+      const trainerNameFromParts = `${String(readNestedValue(userData, "firstName") || '').trim()} ${String(readNestedValue(userData, "lastName") || '').trim()}`.trim();
+      const trainerNameFallback = String(readNestedValue(userData, "name") || readNestedValue(onboardingData, "name") || readNestedValue(auth, "currentUser", "displayName") || '').trim();
       const trainerName = trainerNameFromParts || trainerNameFallback || 'Trainer';
       const verifyMessage = await reviewUploadedCertification({
         file,
@@ -977,29 +1165,28 @@ export function ViewMyMyProfileScreen({
       showNotice('Certification', verifyMessage);
       setCertSheetOpen(false);
     } catch (uploadError) {
-      showNotice('Upload failed', (uploadError == null ? void 0 : uploadError.message) || 'Could not upload certification. Try again.');
+      showNotice('Upload failed', readNestedValue(uploadError, "message") || 'Could not upload certification. Try again.');
     } finally {
       setCertUploading(false);
       setCertProgress(0);
     }
   };
   const handleDeleteCertification = sheetMeta => {
-    showNotice('Remove certification', `Delete ${(sheetMeta == null ? void 0 : sheetMeta.fileName) || 'this file'}?`, {
+    showNotice('Remove certification', `Delete ${readNestedValue(sheetMeta, "fileName") || 'this file'}?`, {
       cancelLabel: 'Cancel',
       confirmLabel: 'Delete',
       destructive: true,
       onConfirm: async () => {
-        var _optObj7;
         // 1. Need a signed-in trainer before Storage delete.
-        const trainerId = (_optObj7 = auth == null ? void 0 : auth.currentUser) == null ? void 0 : _optObj7.uid;
+        const trainerId = readNestedValue(auth, "currentUser", "uid");
         if (!trainerId) return;
         try {
           // 2. Remove the Storage object + metadata, then drop it from local state.
           await deleteTrainerCertificationSheet(trainerId, sheetMeta);
           setCertSheets(previousSheets => previousSheets.filter(sheet => sheet.storagePath !== sheetMeta.storagePath));
-          onProfileSaved == null ? void 0 : onProfileSaved();
+          callIfFunction(onProfileSaved);
         } catch (deleteError) {
-          showNotice('Delete failed', (deleteError == null ? void 0 : deleteError.message) || 'Could not remove file.');
+          showNotice('Delete failed', readNestedValue(deleteError, "message") || 'Could not remove file.');
         }
       }
     });
@@ -1007,13 +1194,13 @@ export function ViewMyMyProfileScreen({
   const clientProfile = useMemo(() => fillTraineeProfile(userData, onboardingData), [userData, onboardingData]);
   const profileDoc = isTrainer ? trainerDoc : clientProfile;
   const displayName = useMemo(() => {
-    const signedInUser = auth == null ? void 0 : auth.currentUser;
+    const signedInUser = readNestedValue(auth, "currentUser");
     let firstNameText = '';
-    if (userData == null ? void 0 : userData.firstName) firstNameText = String(userData.firstName).trim();
+    if (readNestedValue(userData, "firstName")) firstNameText = String(userData.firstName).trim();
     let lastNameText = '';
-    if (userData == null ? void 0 : userData.lastName) lastNameText = String(userData.lastName).trim();
+    if (readNestedValue(userData, "lastName")) lastNameText = String(userData.lastName).trim();
     const nameFromUserParts = `${firstNameText} ${lastNameText}`.trim();
-    const nameFromProfileDoc = String((clientProfile == null ? void 0 : clientProfile.name) || (onboardingData == null ? void 0 : onboardingData.name) || '').trim();
+    const nameFromProfileDoc = String(readNestedValue(clientProfile, "name") || readNestedValue(onboardingData, "name") || '').trim();
     let nameFromAuthAccount = '';
     if (signedInUser) {
       nameFromAuthAccount = String(signedInUser.displayName || '').trim();
@@ -1022,7 +1209,7 @@ export function ViewMyMyProfileScreen({
     if (nameFromProfileDoc) return nameFromProfileDoc;
     if (nameFromAuthAccount) return nameFromAuthAccount;
     return 'Your Profile';
-  }, [userData == null ? void 0 : userData.firstName, userData == null ? void 0 : userData.lastName, clientProfile == null ? void 0 : clientProfile.name, onboardingData == null ? void 0 : onboardingData.name]);
+  }, [readNestedValue(userData, "firstName"), readNestedValue(userData, "lastName"), readNestedValue(clientProfile, "name"), readNestedValue(onboardingData, "name")]);
   const handle = useMemo(() => {
     const handleSlug = displayName.toLowerCase().replace(/\s+/g, '_').replace(/[^\w_]/g, '');
     if (handleSlug) return `@${handleSlug}`;
@@ -1030,17 +1217,17 @@ export function ViewMyMyProfileScreen({
   }, [displayName]);
   const profileHeadline = useMemo(() => {
     if (isTrainer) {
-      const bioText = String((trainerDoc == null ? void 0 : trainerDoc.trainerProfileBio) || '').trim();
+      const bioText = String(readNestedValue(trainerDoc, "trainerProfileBio") || '').trim();
       if (bioText.length > BIO_PREVIEW_MAX_CHARS) {
         return `${bioText.slice(0, BIO_PREVIEW_CUT_CHARS)}…`;
       }
       if (bioText) return bioText;
       return 'Add a short public line about who you are — it appears on your profile.';
     }
-    const goalText = String((clientProfile == null ? void 0 : clientProfile.primaryGoal) || '').trim();
+    const goalText = String(readNestedValue(clientProfile, "primaryGoal") || '').trim();
     if (goalText) return showSetupAnswers(goalText, '');
     return 'Keep your details current for a tailored experience.';
-  }, [isTrainer, trainerDoc == null ? void 0 : trainerDoc.trainerProfileBio, clientProfile == null ? void 0 : clientProfile.primaryGoal, onboardingData == null ? void 0 : onboardingData.primaryGoal]);
+  }, [isTrainer, readNestedValue(trainerDoc, "trainerProfileBio"), readNestedValue(clientProfile, "primaryGoal"), readNestedValue(onboardingData, "primaryGoal")]);
   const handleSignOut = () => {
     showNotice('Sign Out', 'Are you sure you want to sign out?', {
       cancelLabel: 'Cancel',
@@ -1052,7 +1239,7 @@ export function ViewMyMyProfileScreen({
           await signOut(auth);
         } catch (error) {
           console.error('Sign out error:', error);
-          showNotice('Error', (error == null ? void 0 : error.message) || 'Failed to sign out.');
+          showNotice('Error', readNestedValue(error, "message") || 'Failed to sign out.');
         }
       }
     });
@@ -1060,12 +1247,10 @@ export function ViewMyMyProfileScreen({
 
   // Photo flow: library permission → crop picker → Storage users/{uid} → merge user doc + marketplace.
   const pickAndUploadPhoto = async () => {
-    var _optObj8;
     // 1. Fail fast when signed out or already uploading.
-    const userId = (_optObj8 = auth == null ? void 0 : auth.currentUser) == null ? void 0 : _optObj8.uid;
+    const userId = readNestedValue(auth, "currentUser", "uid");
     if (!userId || uploading) return;
     try {
-      var _optObj9, _optObj0;
       // 2. Ask for photo-library permission before opening the picker.
       const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permission.granted) {
@@ -1080,7 +1265,7 @@ export function ViewMyMyProfileScreen({
         aspect: [1, 1],
         quality: 0.75
       });
-      if (pickerResult.canceled || !((_optObj9 = (_optObj0 = pickerResult.assets) == null ? void 0 : _optObj0[0]) == null ? void 0 : _optObj9.uri)) return;
+      if (pickerResult.canceled || !readNestedValue(pickerResult, "assets", 0, "uri")) return;
 
       // 4. Upload bytes to Storage profile_photos/{uid}, then merge photoURL on the users doc.
       setUploading(true);
@@ -1106,12 +1291,12 @@ export function ViewMyMyProfileScreen({
           forceTrainer: isTrainer
         });
       } catch (syncError) {
-        console.warn('Trainer marketplace photo sync failed:', (syncError == null ? void 0 : syncError.message) || syncError);
+        console.warn('Trainer marketplace photo sync failed:', readNestedValue(syncError, "message") || syncError);
       }
       setPhotoURL(downloadURL);
     } catch (uploadError) {
       console.error('Profile photo update failed:', uploadError);
-      showNotice('Upload failed', (uploadError == null ? void 0 : uploadError.message) || 'Please try again.');
+      showNotice('Upload failed', readNestedValue(uploadError, "message") || 'Please try again.');
     } finally {
       setUploading(false);
     }
@@ -1140,9 +1325,8 @@ export function ViewMyMyProfileScreen({
 
   // Modal editor save — build payload per editKey letter, merge users doc, sync marketplace when trainer.
   const saveField = async () => {
-    var _optObj1;
     // 1. Need a signed-in user and an open edit key.
-    const userId = (_optObj1 = auth == null ? void 0 : auth.currentUser) == null ? void 0 : _optObj1.uid;
+    const userId = readNestedValue(auth, "currentUser", "uid");
     if (!userId || !editKey) return;
     try {
       setSavingField(true);
@@ -1160,15 +1344,15 @@ export function ViewMyMyProfileScreen({
           forceTrainer: isTrainer
         });
       } catch (syncError) {
-        console.warn('Trainer marketplace sync failed:', (syncError == null ? void 0 : syncError.message) || syncError);
+        console.warn('Trainer marketplace sync failed:', readNestedValue(syncError, "message") || syncError);
       }
 
       // 4. Tell the shell to refetch, then close the sheet.
-      await (onProfileSaved == null ? void 0 : onProfileSaved());
+      await callIfFunction(onProfileSaved);
       closeEdit();
     } catch (saveError) {
       console.error('Failed saving profile field:', saveError);
-      showNotice('Save failed', (saveError == null ? void 0 : saveError.message) || 'Please try again.');
+      showNotice('Save failed', readNestedValue(saveError, "message") || 'Please try again.');
       setSavingField(false);
     }
   };
@@ -1189,7 +1373,7 @@ export function ViewMyMyProfileScreen({
       settings: () => navigateToScreen('settings')
     };
   }, [onNavigate, onHomePress, onPlusPress, onVoicePress, onNutritionPress, onWorkoutPress, onMessagesPress, onProfilePress]);
-  const email = ((_optObj10 = auth == null ? void 0 : auth.currentUser) == null ? void 0 : _optObj10.email) || (clientProfile == null ? void 0 : clientProfile.email) || (onboardingData == null ? void 0 : onboardingData.email) || '—';
+  const email = readNestedValue(auth, "currentUser", "email") || readNestedValue(clientProfile, "email") || readNestedValue(onboardingData, "email") || '—';
   const personalData = [{
     key: 'name',
     Icon: User,
@@ -1204,39 +1388,39 @@ export function ViewMyMyProfileScreen({
   }, {
     key: 'age',
     profileIconId: 'age',
-    value: (clientProfile == null ? void 0 : clientProfile.age) != null ? String(clientProfile.age) : '—',
+    value: readNestedValue(clientProfile, "age") != null ? String(clientProfile.age) : '—',
     label: 'Age'
   }, {
     key: 'height',
     profileIconId: 'height',
-    value: formatHeightForDisplay(clientProfile == null ? void 0 : clientProfile.height),
+    value: formatHeightForDisplay(readNestedValue(clientProfile, "height")),
     label: 'Height'
   }, {
     key: 'weight',
     profileIconId: 'weight',
-    value: formatWeightForDisplay(clientProfile == null ? void 0 : clientProfile.weight),
+    value: formatWeightForDisplay(readNestedValue(clientProfile, "weight")),
     label: 'Weight'
   }, {
     key: 'gender',
     profileIconId: 'gender',
-    value: formatGenderForDisplay(clientProfile == null ? void 0 : clientProfile.gender),
+    value: formatGenderForDisplay(readNestedValue(clientProfile, "gender")),
     label: 'Gender'
   }];
   const trainingPreferences = [{
     key: 'primaryGoal',
     profileIconId: 'goal',
     label: 'Primary goal',
-    value: showSetupAnswers(clientProfile == null ? void 0 : clientProfile.primaryGoal)
+    value: showSetupAnswers(readNestedValue(clientProfile, "primaryGoal"))
   }, {
     key: 'fitnessLevel',
     profileIconId: 'fitnessLevel',
     label: 'Fitness level',
-    value: showSetupAnswers(clientProfile == null ? void 0 : clientProfile.fitnessLevel)
+    value: showSetupAnswers(readNestedValue(clientProfile, "fitnessLevel"))
   }, {
     key: 'daysPerWeek',
     profileIconId: 'frequency',
     label: 'Training frequency',
-    value: formatDaysPerWeek(clientProfile == null ? void 0 : clientProfile.daysPerWeek)
+    value: formatDaysPerWeek(readNestedValue(clientProfile, "daysPerWeek"))
   }, {
     key: 'equipment',
     profileIconId: 'equipment',
@@ -1257,34 +1441,34 @@ export function ViewMyMyProfileScreen({
   }, {
     key: 'location',
     Icon: MapPin,
-    value: String((trainerDoc == null ? void 0 : trainerDoc.location) || '').trim() || '—',
+    value: String(readNestedValue(trainerDoc, "location") || '').trim() || '—',
     label: 'CITY / REGION'
   }, {
     key: 'trainerProfileBio',
     Icon: ClipboardList,
-    value: String((trainerDoc == null ? void 0 : trainerDoc.trainerProfileBio) || '').trim() || '—',
+    value: String(readNestedValue(trainerDoc, "trainerProfileBio") || '').trim() || '—',
     label: 'PUBLIC BIO'
   }];
-  const philosophyText = String((trainerDoc == null ? void 0 : trainerDoc.trainingPhilosophy) || '').trim();
-  const availabilityTitle = formatAvailability(trainerDoc == null ? void 0 : trainerDoc.trainerAvailabilityStatus);
-  const sessionTitle = String((trainerDoc == null ? void 0 : trainerDoc.sessionType) || '—').trim() || '—';
-  const stripeStatus = (trainerDoc == null ? void 0 : trainerDoc.stripeConnectStatus) || 'not_connected';
-  const trainerYearsStat = formatYearsCoaching(trainerDoc == null ? void 0 : trainerDoc.yearsExperience);
-  const trainerRatingStat = (trainerDoc == null ? void 0 : trainerDoc.averageRating) != null ? Number(trainerDoc.averageRating).toFixed(1) : null;
-  const instagram = String((trainerDoc == null ? void 0 : trainerDoc.instagram) || (trainerDoc == null ? void 0 : trainerDoc.instagramHandle) || '').trim();
-  const website = String((trainerDoc == null ? void 0 : trainerDoc.website) || (trainerDoc == null ? void 0 : trainerDoc.websiteUrl) || '').trim();
+  const philosophyText = String(readNestedValue(trainerDoc, "trainingPhilosophy") || '').trim();
+  const availabilityTitle = formatAvailability(readNestedValue(trainerDoc, "trainerAvailabilityStatus"));
+  const sessionTitle = String(readNestedValue(trainerDoc, "sessionType") || '—').trim() || '—';
+  const stripeStatus = readNestedValue(trainerDoc, "stripeConnectStatus") || 'not_connected';
+  const trainerYearsStat = formatYearsCoaching(readNestedValue(trainerDoc, "yearsExperience"));
+  const trainerRatingStat = readNestedValue(trainerDoc, "averageRating") != null ? Number(trainerDoc.averageRating).toFixed(1) : null;
+  const instagram = String(readNestedValue(trainerDoc, "instagram") || readNestedValue(trainerDoc, "instagramHandle") || '').trim();
+  const website = String(readNestedValue(trainerDoc, "website") || readNestedValue(trainerDoc, "websiteUrl") || '').trim();
   React.useEffect(() => {
     setDraftFullName(displayName || '');
-    setDraftDisplayName(String((userData == null ? void 0 : userData.firstName) || displayName || '').trim().split(/\s+/)[0] || '');
-  }, [displayName, userData == null ? void 0 : userData.firstName]);
+    setDraftDisplayName(String(readNestedValue(userData, "firstName") || displayName || '').trim().split(/\s+/)[0] || '');
+  }, [displayName, readNestedValue(userData, "firstName")]);
   const designLawDetailRows = profileTab === 'trainer' && isTrainer ? [{
     key: 'location',
     label: 'Location',
-    value: String((trainerDoc == null ? void 0 : trainerDoc.location) || '').trim() || '—'
+    value: String(readNestedValue(trainerDoc, "location") || '').trim() || '—'
   }, {
     key: 'trainerProfileBio',
     label: 'Public bio',
-    value: String((trainerDoc == null ? void 0 : trainerDoc.trainerProfileBio) || '').trim() || '—'
+    value: String(readNestedValue(trainerDoc, "trainerProfileBio") || '').trim() || '—'
   }, {
     key: 'yearsExperience',
     label: 'Years coaching',
@@ -1292,27 +1476,27 @@ export function ViewMyMyProfileScreen({
   }, {
     key: 'specialties',
     label: 'Specialties',
-    value: formatSpecialtyList(trainerDoc == null ? void 0 : trainerDoc.specialties)
+    value: formatSpecialtyList(readNestedValue(trainerDoc, "specialties"))
   }] : [{
     key: 'weight',
     label: 'Weight',
-    value: formatWeightForDisplay(clientProfile == null ? void 0 : clientProfile.weight)
+    value: formatWeightForDisplay(readNestedValue(clientProfile, "weight"))
   }, {
     key: 'height',
     label: 'Height',
-    value: formatHeightForDisplay(clientProfile == null ? void 0 : clientProfile.height)
+    value: formatHeightForDisplay(readNestedValue(clientProfile, "height"))
   }, {
     key: 'gender',
     label: 'Gender',
-    value: formatGenderForDisplay(clientProfile == null ? void 0 : clientProfile.gender)
+    value: formatGenderForDisplay(readNestedValue(clientProfile, "gender"))
   }, {
     key: 'fitnessLevel',
     label: 'Fitness level',
-    value: showSetupAnswers(clientProfile == null ? void 0 : clientProfile.fitnessLevel)
+    value: showSetupAnswers(readNestedValue(clientProfile, "fitnessLevel"))
   }, {
     key: 'primaryGoal',
     label: 'Primary goal',
-    value: showSetupAnswers(clientProfile == null ? void 0 : clientProfile.primaryGoal)
+    value: showSetupAnswers(readNestedValue(clientProfile, "primaryGoal"))
   }, {
     key: 'equipment',
     label: 'Equipment',
@@ -1320,12 +1504,11 @@ export function ViewMyMyProfileScreen({
   }, {
     key: 'daysPerWeek',
     label: 'Training frequency',
-    value: formatDaysPerWeek(clientProfile == null ? void 0 : clientProfile.daysPerWeek)
+    value: formatDaysPerWeek(readNestedValue(clientProfile, "daysPerWeek"))
   }];
   const saveNameFields = async () => {
-    var _optObj11;
     // 1. Need a signed-in user.
-    const userId = (_optObj11 = auth == null ? void 0 : auth.currentUser) == null ? void 0 : _optObj11.uid;
+    const userId = readNestedValue(auth, "currentUser", "uid");
     if (!userId) return;
 
     // 2. Split full name into first + last; display name defaults to first token.
@@ -1344,9 +1527,9 @@ export function ViewMyMyProfileScreen({
       }, {
         merge: true
       });
-      await (onProfileSaved == null ? void 0 : onProfileSaved());
+      await callIfFunction(onProfileSaved);
     } catch (saveError) {
-      showNotice('Save failed', (saveError == null ? void 0 : saveError.message) || 'Please try again.');
+      showNotice('Save failed', readNestedValue(saveError, "message") || 'Please try again.');
     } finally {
       setSavingField(false);
     }
@@ -1359,7 +1542,7 @@ export function ViewMyMyProfileScreen({
   const saveButtonLabel = savingField ? 'Saving…' : 'Save changes';
   const showTrainerExtraSections = isTrainer && profileTab === 'trainer';
   const paymentPressHandler = typeof onOpenPayments === 'function' ? onOpenPayments : undefined;
-  const trainerClientCountDisplay = trainerClientCount ?? (trainerDoc == null ? void 0 : trainerDoc.clientCount) ?? EMPTY_PROFILE_MARK;
+  const trainerClientCountDisplay = trainerClientCount ?? readNestedValue(trainerDoc, "clientCount") ?? EMPTY_PROFILE_MARK;
   let instagramDisplay = 'Add your handle';
   if (instagram) {
     instagramDisplay = instagram.startsWith('@') ? instagram : `@${instagram}`;
@@ -1402,24 +1585,7 @@ export function ViewMyMyProfileScreen({
           backgroundColor: theme.surface,
           shadowColor: theme.hardShadow
         }]}>
-              {[{
-            key: 'yours',
-            label: 'Your profile'
-          }, {
-            key: 'trainer',
-            label: 'Trainer profile'
-          }].map(tab => {
-            const selected = profileTab === tab.key;
-            return <Pressable key={tab.key} onPress={() => setProfileTab(tab.key)} style={[styles.profileTabCell, selected ? {
-              backgroundColor: theme.fill
-            } : null]}>
-                    <Text style={[styles.profileTabLabel, {
-                color: selected ? theme.onFill : theme.ink
-              }]}>
-                      {tab.label}
-                    </Text>
-                  </Pressable>;
-          })}
+              {buildProfileTabButtons(profileTab, theme, setProfileTab)}
             </View> : null}
 
           <Text style={[styles.sectionEyebrow, {
@@ -1452,22 +1618,7 @@ export function ViewMyMyProfileScreen({
           color: theme.muted
         }]}>DETAILS</Text>
           <NbCard style={styles.detailCard}>
-            {designLawDetailRows.map((item, index) => <View key={item.key}>
-                {index > 0 ? <View style={[styles.detailDivider, {
-              backgroundColor: theme.border
-            }]} /> : null}
-                <Pressable onPress={() => openEdit(item.key, item.label, item.value)} style={styles.detailRow}>
-                  <Text style={[styles.detailLabel, {
-                color: theme.ink
-              }]}>{item.label}</Text>
-                  <Text style={[styles.detailValue, {
-                color: theme.muted
-              }]} numberOfLines={1}>
-                    {item.value}
-                  </Text>
-                  <Ionicons name="chevron-forward" size={18} color={theme.muted} />
-                </Pressable>
-              </View>)}
+            {buildDesignLawDetailRows(designLawDetailRows, theme, openEdit)}
           </NbCard>
 
           {/* Save stays primary; Sign out sits under it so Edit profile can leave the session
@@ -1497,12 +1648,7 @@ export function ViewMyMyProfileScreen({
               <Animated.View style={fadeUpStyleFromAnim(personalAnim)}>
                 <SectionTitle title="PROFILE" theme={theme} />
                 <ProfileSettingsCard theme={theme} isDark={isDark}>
-                  {trainerProfessionalPills.map(item => {
-                const rowIsReadOnly = Boolean(item.readOnly);
-                const rowPressHandler = rowIsReadOnly ? undefined : () => openEdit(item.key, item.label, item.value);
-                const showRowDivider = item.key !== 'trainerProfileBio';
-                return <ProfileRow key={item.key} label={item.label} value={item.value} editable={!rowIsReadOnly} onPress={rowPressHandler} theme={theme} isDark={isDark} LeadingIcon={item.Icon} showDivider={showRowDivider} />;
-              })}
+                  {buildTrainerProfessionalRows(trainerProfessionalPills, theme, isDark, openEdit)}
                 </ProfileSettingsCard>
               </Animated.View>
 
@@ -1576,37 +1722,7 @@ export function ViewMyMyProfileScreen({
                   marginBottom: 10
                 }}>
                         No files uploaded yet
-                      </Text> : certSheets.map(sheet => <View key={sheet.storagePath || sheet.fileName} style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  paddingVertical: 10,
-                  borderTopWidth: StyleSheet.hairlineWidth,
-                  borderTopColor: theme.border
-                }}>
-                          <Ionicons name="document-attach-outline" size={18} color={theme.muted} />
-                          <View style={{
-                    flex: 1,
-                    marginHorizontal: 10
-                  }}>
-                            <Text style={{
-                      color: theme.ink,
-                      fontWeight: '600',
-                      fontSize: 13
-                    }} numberOfLines={1}>
-                              {sheet.fileName || 'Certification'}
-                            </Text>
-                            <Text style={{
-                      color: theme.muted,
-                      fontSize: 11
-                    }} numberOfLines={1}>
-                              {sheet.fileType || 'file'}
-                              {sheet.uploadedAt ? ` · ${String(sheet.uploadedAt).slice(0, 10)}` : ''}
-                            </Text>
-                          </View>
-                          <TouchableOpacity onPress={() => handleDeleteCertification(sheet)} hitSlop={8}>
-                            <Ionicons name="trash-outline" size={18} color="#ef4444" />
-                          </TouchableOpacity>
-                        </View>)}
+                      </Text> : buildCertificationSheetRows(certSheets, theme, handleDeleteCertification)}
                     {certUploading ? <View style={{
                   marginTop: 8
                 }}>
@@ -1649,8 +1765,8 @@ export function ViewMyMyProfileScreen({
                       </TouchableOpacity>}
                   </View>
                   <View style={styles.credRowHalf}>
-                    <CredentialPill Icon={Calendar} label="YEARS COACHING" value={formatYearsCoaching(trainerDoc == null ? void 0 : trainerDoc.yearsExperience)} theme={theme} isDark={isDark} />
-                    <CredentialPill Icon={Sparkles} label="SPECIALTIES" value={formatSpecialtyList(trainerDoc == null ? void 0 : trainerDoc.specialties)} theme={theme} isDark={isDark} />
+                    <CredentialPill Icon={Calendar} label="YEARS COACHING" value={formatYearsCoaching(readNestedValue(trainerDoc, "yearsExperience"))} theme={theme} isDark={isDark} />
+                    <CredentialPill Icon={Sparkles} label="SPECIALTIES" value={formatSpecialtyList(readNestedValue(trainerDoc, "specialties"))} theme={theme} isDark={isDark} />
                   </View>
                 </View>
 
@@ -1736,7 +1852,7 @@ export function ViewMyMyProfileScreen({
           <BottomMenuBar onHomePress={nav.home} onPlusPress={nav.create} onVoicePress={nav.ai} onNutritionPress={nav.nutrition} onWorkoutPress={nav.workout} onMessagesPress={nav.messages} onProfilePress={nav.profile} />
         </ShellBottomNavAnchor> : null}
 
-      <NbNoticeSheet visible={!!notice} onClose={() => setNotice(null)} title={(notice == null ? void 0 : notice.title) || ''} message={notice == null ? void 0 : notice.message} confirmLabel={(notice == null ? void 0 : notice.confirmLabel) || 'OK'} cancelLabel={notice == null ? void 0 : notice.cancelLabel} onConfirm={notice == null ? void 0 : notice.onConfirm} destructive={!!(notice == null ? void 0 : notice.destructive)} />
+      <NbNoticeSheet visible={!!notice} onClose={() => setNotice(null)} title={readNestedValue(notice, "title") || ''} message={readNestedValue(notice, "message")} confirmLabel={readNestedValue(notice, "confirmLabel") || 'OK'} cancelLabel={readNestedValue(notice, "cancelLabel")} onConfirm={readNestedValue(notice, "onConfirm")} destructive={!!readNestedValue(notice, "destructive")} />
     </View>;
 }
 
@@ -1745,14 +1861,13 @@ export function ViewMyMyProfileScreen({
 
 const CERT_FILE_TYPES = ['application/pdf', 'image/jpeg', 'image/png', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/msword'];
 async function pickCertificationFile(showNotice) {
-  var _optObj12;
   const result = await DocumentPicker.getDocumentAsync({
     type: CERT_FILE_TYPES,
     copyToCacheDirectory: true
   });
   if (result.canceled) return null;
-  const file = (_optObj12 = result.assets) == null ? void 0 : _optObj12[0];
-  if (!(file == null ? void 0 : file.uri)) {
+  const file = readNestedValue(result, "assets", 0);
+  if (!readNestedValue(file, "uri")) {
     showNotice('Upload failed', 'Could not read the selected file.');
     return null;
   }
@@ -1763,7 +1878,7 @@ async function pickCertificationFile(showNotice) {
   return file;
 }
 function certificationLooksLikeImage(file, meta) {
-  const mime = String(file.mimeType || (meta == null ? void 0 : meta.fileType) || '').toLowerCase();
+  const mime = String(file.mimeType || readNestedValue(meta, "fileType") || '').toLowerCase();
   if (mime.startsWith('image/')) return true;
   return /\.(jpe?g|png|webp|gif)$/i.test(String(file.name || ''));
 }
@@ -1774,19 +1889,18 @@ async function checkImageCertification({
   trainerId,
   trainerName
 }) {
-  var _optObj13, _optObj14;
   const verification = await checkTrainerCertificate({
     trainerId,
     trainerName,
     localUri: file.uri,
     imageUrl: url,
     mediaType: file.mimeType || 'image/jpeg',
-    storagePath: meta == null ? void 0 : meta.storagePath,
-    fileName: meta == null ? void 0 : meta.fileName
+    storagePath: readNestedValue(meta, "storagePath"),
+    fileName: readNestedValue(meta, "fileName")
   });
   const nextStatus = verification.status || 'manual_review';
   let verifyMessage = verification.userMessage || certificationStatusLabel(nextStatus) || 'Certification sheet added to your profile.';
-  const firstIssue = (_optObj13 = (_optObj14 = verification.analysis) == null ? void 0 : _optObj14.issues) == null ? void 0 : _optObj13[0];
+  const firstIssue = readNestedValue(verification, "analysis", "issues", 0);
   if (firstIssue && verification.status === 'rejected') {
     verifyMessage = `${verifyMessage}\n${firstIssue}`;
   }
@@ -1821,7 +1935,7 @@ async function reviewUploadedCertification({
     setCertVerifyStatus(check.nextStatus);
     return check.verifyMessage;
   } catch (verifyErr) {
-    if (__DEV__) console.warn('cert AI verify:', (verifyErr == null ? void 0 : verifyErr.message) || verifyErr);
+    if (__DEV__) console.warn('cert AI verify:', readNestedValue(verifyErr, "message") || verifyErr);
     setCertVerifyStatus('manual_review');
     return 'Uploaded — Under review. AI check was unavailable; we’ll review it within 24–48 hours.';
   } finally {

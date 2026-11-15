@@ -45,6 +45,11 @@ const {
   isUsableBarcodeFood,
   barcodeNotFoundPayload,
 } = require('../../src/nutrition/barcode/rejectBadBarcodeResults');
+const {
+  shadowEnabled,
+  buildShadowRankV2,
+} = require('../../src/nutrition/food-match/shadowRankV2');
+const logger = require('../lib/logger');
 
 const SERPER_ORGANIC_MAX = 10;
 
@@ -1450,7 +1455,19 @@ app.get('/api/food/search', verifyFirebaseBearerToken, async (req, res) => {
     console.warn('[Food Search] Firestore cache write failed:', fwErr.message);
   }
 
-  return res.json({ results: out, source, hint: searchHint || undefined });
+  const responsePayload = { results: out, source, hint: searchHint || undefined };
+
+  // Shadow mode only — client keeps using `results` (old path).
+  if (shadowEnabled()) {
+    const oldTopId = out[0]?.id || out[0]?.food_name || null;
+    const shadow = buildShadowRankV2(query, out, { oldTopId: oldTopId ? String(oldTopId) : null });
+    responsePayload.rankV2 = shadow.rankV2;
+    if (shadow.disagreement) {
+      logger.info(`[Food Search] rankV2_disagreement ${JSON.stringify(shadow.disagreement)}`);
+    }
+  }
+
+  return res.json(responsePayload);
 });
 
 // Barcode pipeline: ① USDA ② FatSecret ③ Open Food Facts ④ Serper

@@ -1,0 +1,11 @@
+src/workouts/exercise-videos/ExerciseCard.js
+src/workouts/exercise-videos/ShortVideoCard.js
+src/workouts/exercise-videos/VideoPlayer.jsx
+src/workouts/exercise-videos/dislikableExercises.js
+src/workouts/view-plan/makePlanPdf.js
+src/workouts/view-plan/planViewPieces.jsx
+src/app-start/ClientAppStart.js
+src/client-app/home/homeLooks.js
+src/client-app/navigation/ClientMainScreen.jsx
+src/trainer-app/navigation/TrainerMainScreen.jsx
+src/nutrition/food-cards/FoodListScreen.jsx

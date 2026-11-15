@@ -1,0 +1,5 @@
+src/trainer-app/navigation/trainerExtraScreens.jsx
+src/trainer-app/scheduling/ScheduleSessionScreen.jsx
+src/trainer-app/scheduling/SessionCard.jsx
+src/trainer-app/scheduling/SessionDetailSheet.jsx
+src/trainer-app/scheduling/alertTraineeOfSession.js

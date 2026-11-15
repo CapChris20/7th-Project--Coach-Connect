@@ -109,8 +109,9 @@ module.exports = {
       versionCode: 27,
       icon: './assets/icon.png',
       adaptiveIcon: {
-        foregroundImage: './assets/icon.png',
-        backgroundColor: '#000000',
+        foregroundImage: './assets/adaptive-icon.png',
+        // Manipulate here: paper background behind the neo-brutalist CC mark (matches assets/icon.png)
+        backgroundColor: '#F2F2F0',
       },
       ...(androidGoogleServicesFile ? { googleServicesFile: androidGoogleServicesFile } : {}),
       // Camera / mic for progress photos, barcode, AI Coach voice. Prefer modern media/notification perms.

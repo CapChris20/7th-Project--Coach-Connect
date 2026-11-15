@@ -370,7 +370,12 @@ function textIncludesBrand(itemText, brandLabel) {
 }
 
 function rowSearchText(row) {
-  return `${row?.name || row?.food_name || ''} ${row?.brand || row?.brand_name || ''} ${row?.serving_label || row?.servingLabel || row?.serving || ''}`.trim();
+  // Plain reads — missing row or field just becomes ''.
+  if (!row) return '';
+  const foodName = row.name || row.food_name || '';
+  const brandName = row.brand || row.brand_name || '';
+  const servingLabel = row.serving_label || row.servingLabel || row.serving || '';
+  return `${foodName} ${brandName} ${servingLabel}`.trim();
 }
 
 function foodFamilyCompatGroup(category) {
@@ -477,9 +482,14 @@ function variantModifierMissingFromQuery(itemText, query) {
 function isAbsurdBeverageNutrition(row, query) {
   if (!isBeverageStyleQuery(query)) return false;
   const queryNormalized = normalizeQueryText(query);
-  const calories = Number(row?.calories) || 0;
-  const fat = Number(row?.fat) || 0;
-  const protein = Number(row?.protein) || 0;
+  let calories = 0;
+  let fat = 0;
+  let protein = 0;
+  if (row) {
+    calories = Number(row.calories) || 0;
+    fat = Number(row.fat) || 0;
+    protein = Number(row.protein) || 0;
+  }
   const isShakeOrSmoothie = /\b(shake|smoothie|protein)\b/i.test(queryNormalized);
 
   // Lattes / mochas: only reject extreme calorie outliers (same bar as shakes).
@@ -497,16 +507,22 @@ function isAbsurdBeverageNutrition(row, query) {
 }
 
 function isConsensusSourceRow(row) {
-  return String(row?.source || '').toLowerCase() === 'nutrition_consensus';
+  let sourceText = '';
+  if (row && row.source) sourceText = row.source;
+  return String(sourceText).toLowerCase() === 'nutrition_consensus';
 }
 
 function isTrustedCatalogRow(row) {
-  return String(row?.source || '').toLowerCase() === 'trusted_catalog';
+  let sourceText = '';
+  if (row && row.source) sourceText = row.source;
+  return String(sourceText).toLowerCase() === 'trusted_catalog';
 }
 
 // FatSecret / USDA / Open Food Facts — soft-match so a title quirk does not wipe a real hit.
 function isTrustedDatabaseSourceRow(row) {
-  const sourceLower = String(row?.source || '')
+  let sourceText = '';
+  if (row && row.source) sourceText = row.source;
+  const sourceLower = String(sourceText)
     .toLowerCase()
     .replace(/\s+/g, '');
   if (sourceLower === 'fatsecret') return true;
@@ -981,7 +997,10 @@ function menuItemTokensFromQuery(query) {
 }
 
 function rowNameBrandText(row) {
-  return `${row?.name || row?.food_name || ''} ${row?.brand || row?.brand_name || row?.restaurant || ''}`.trim();
+  if (!row) return '';
+  const foodName = row.name || row.food_name || '';
+  const brandName = row.brand || row.brand_name || row.restaurant || '';
+  return `${foodName} ${brandName}`.trim();
 }
 
 function isBeverageStyleQuery(query) {

@@ -46,16 +46,6 @@ const NOOP = () => {};
 // ===== HELPER FUNCTIONS =====
 
 /**
- * Coerce any value to a trimmed string (empty when missing).
- * @param {*} value
- * @returns {string}
- */
-function asTrimmedString(value) {
-  return asTrimmedString(value);
-}
-
-
-/**
  * Every overlay gets the same bottom-nav provider props from the trainer shell.
  * @param {import('react').ReactElement} screenBody
  * @param {object} shell
@@ -75,21 +65,36 @@ function openConversationsList(shell) {
   shell.setShowConversationsList(true);
 }
 
+function clientRowName(clientRow) {
+  if (!clientRow) return '';
+  return clientRow.name || clientRow.displayName || '';
+}
+
 /**
  * Dashboard client the workout tab is editing. Empty roster → no userId.
  * @param {object} shell
  * @returns {{ clientId: string|null, clientName: string }}
  */
 function workoutTabClient(shell) {
-  const rosterHasClients = shell.clients?.length > 0;
+  const clientsList = shell.clients;
+  const rosterHasClients = Boolean(clientsList != null && clientsList.length > 0);
   if (!rosterHasClients) {
     return { clientId: null, clientName: '' };
   }
-  const clientId = shell.selectedClientIdFromDashboard || shell.clients[0]?.id || null;
-  const clientRow = clientId
-    ? shell.clients.find((client) => client.id === clientId)
-    : null;
-  const rawName = clientRow?.name || clientRow?.displayName || '';
+
+  let clientId = null;
+  if (shell.selectedClientIdFromDashboard) {
+    clientId = shell.selectedClientIdFromDashboard;
+  } else if (clientsList[0] != null && clientsList[0].id) {
+    clientId = clientsList[0].id;
+  }
+
+  let clientRow = null;
+  if (clientId) {
+    clientRow = clientsList.find((client) => client.id === clientId) || null;
+  }
+
+  const rawName = clientRowName(clientRow);
   const clientName = String(rawName).trim() || '';
   return { clientId, clientName };
 }
@@ -100,7 +105,13 @@ function workoutTabClient(shell) {
  * @returns {boolean}
  */
 function isOpenCoachConversation(aiChatState) {
-  return aiChatState != null && typeof aiChatState === 'object';
+  if (aiChatState == null) {
+    return false;
+  }
+  if (typeof aiChatState === 'object') {
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -109,9 +120,18 @@ function isOpenCoachConversation(aiChatState) {
  * @returns {string}
  */
 function trainerChatSessionKey(aiChatState) {
+  let sessionIdValue = null;
+  let prefillValue = null;
+  if (aiChatState.sessionId != null) {
+    sessionIdValue = aiChatState.sessionId;
+  }
+  if (aiChatState.prefill != null) {
+    prefillValue = aiChatState.prefill;
+  }
+  // Key letters sid/pf stay so an open conversation does not remount on this rewrite alone.
   return JSON.stringify({
-    sid: aiChatState.sessionId ?? null,
-    pf: aiChatState.prefill ?? null,
+    sid: sessionIdValue,
+    pf: prefillValue,
   });
 }
 
@@ -121,9 +141,15 @@ function trainerChatSessionKey(aiChatState) {
  * @returns {string}
  */
 function platformSubscriptionStatusLabel(access) {
-  if (access === ACCESS_FREE_TRIAL) return 'Free trial active';
-  if (access === ACCESS_ACTIVE) return 'Pro — active';
-  if (access === ACCESS_EXPIRED) return 'Expired';
+  if (access === ACCESS_FREE_TRIAL) {
+    return 'Free trial active';
+  }
+  if (access === ACCESS_ACTIVE) {
+    return 'Pro — active';
+  }
+  if (access === ACCESS_EXPIRED) {
+    return 'Expired';
+  }
   return 'No active subscription';
 }
 
@@ -138,8 +164,15 @@ function closeManualPlanBuilder(shell) {
   shell.setManualPlanBuilderClientIds([]);
   shell.setManualBuilderReturnToAI(false);
   shell.rootGoBack();
-  const shouldReopenAiWorkouts = returnToAiWorkouts && shell.day6Client?.id;
-  if (!shouldReopenAiWorkouts) return;
+
+  let day6ClientId = null;
+  if (shell.day6Client != null) {
+    day6ClientId = shell.day6Client.id;
+  }
+  const shouldReopenAiWorkouts = returnToAiWorkouts && day6ClientId;
+  if (!shouldReopenAiWorkouts) {
+    return;
+  }
   shell.setShowAIWorkouts(true);
   shell.setAiWorkoutsListKey((listKey) => listKey + 1);
 }
@@ -171,6 +204,32 @@ function openWeeklyReportMessages(shell, clientId) {
   shell.setShowConversationsList(true);
 }
 
+/**
+ * Count of clients on the shell roster (0 when missing).
+ * @param {object} shell
+ * @returns {number}
+ */
+function clientCountFromShell(shell) {
+  const clientsList = shell.clients;
+  if (clientsList == null) {
+    return 0;
+  }
+  return clientsList.length;
+}
+
+/**
+ * Signed-in trainer uid from the shell user, or undefined.
+ * @param {object} shell
+ * @returns {string|undefined}
+ */
+function trainerUidFromShell(shell) {
+  const user = shell.user;
+  if (user == null) {
+    return undefined;
+  }
+  return user.uid;
+}
+
 // ===== MAIN FUNCTION =====
 
 /**
@@ -181,7 +240,7 @@ export function TrainerViewMyMyProfileScreen() {
   const shell = useTrainerAppStartShell();
   // 1. Profile body with trainer doc + payout entry.
   const trainerDoc = shell.trainerProfileDoc || {};
-  const clientCount = shell.clients?.length ?? 0;
+  const clientCount = clientCountFromShell(shell);
   const profileScreen = (
     <ViewMyMyProfileScreen
       onBack={shell.rootGoBack}
@@ -359,11 +418,24 @@ export function TrainerWeeklyReportScreenOverlay() {
   const shell = useTrainerAppStartShell();
   // vocab: useRoute = React Navigation hook for the active screen's params
   const route = useRoute();
-  const clientIdFromRoute = route.params?.clientId;
-  const clientIdFromShell = shell.weeklyReportScreen?.clientId;
+
+  let clientIdFromRoute = null;
+  let clientNameFromRoute = null;
+  if (route.params != null) {
+    clientIdFromRoute = route.params.clientId;
+    clientNameFromRoute = route.params.clientName;
+  }
+
+  let clientIdFromShell = null;
+  let clientNameFromShell = '';
+  if (shell.weeklyReportScreen != null) {
+    clientIdFromShell = shell.weeklyReportScreen.clientId;
+    if (shell.weeklyReportScreen.clientName) {
+      clientNameFromShell = shell.weeklyReportScreen.clientName;
+    }
+  }
+
   const clientId = clientIdFromRoute || clientIdFromShell;
-  const clientNameFromRoute = route.params?.clientName;
-  const clientNameFromShell = shell.weeklyReportScreen?.clientName || '';
   const clientName = clientNameFromRoute || clientNameFromShell || '';
 
   if (!clientId) {
@@ -396,8 +468,11 @@ export function TrainerWeeklyReportScreenOverlay() {
  */
 export function TrainerWorkoutPlanScreen() {
   const shell = useTrainerAppStartShell();
-  const { clientId, clientName } = workoutTabClient(shell);
-  const rosterIsEmpty = !shell.clients?.length;
+  const tabClient = workoutTabClient(shell);
+  const clientId = tabClient.clientId;
+  const clientName = tabClient.clientName;
+  const clientsList = shell.clients;
+  const rosterIsEmpty = !(clientsList != null && clientsList.length > 0);
   const workoutPlanScreen = (
     <CreateWorkoutPlanScreen
       userId={clientId || undefined}
@@ -419,8 +494,10 @@ export function TrainerWorkoutPlanScreen() {
  */
 export function TrainerManualPlanBuilderScreen() {
   const shell = useTrainerAppStartShell();
-  const trainerUid = shell.user?.uid;
-  if (!trainerUid) return null;
+  const trainerUid = trainerUidFromShell(shell);
+  if (!trainerUid) {
+    return null;
+  }
 
   const manualBuilderScreen = (
     <ManualWorkoutPlanBuilderScreen
@@ -452,7 +529,10 @@ export function TrainerEarningsScreen() {
  */
 export function TrainerNotificationsScreen() {
   const shell = useTrainerAppStartShell();
-  const onBack = shell.rootGoBack || shell.handleHomePress;
+  let onBack = shell.handleHomePress;
+  if (shell.rootGoBack) {
+    onBack = shell.rootGoBack;
+  }
   const notificationsScreen = (
     <NotificationsScreen onBack={onBack} roleField="trainerUid" />
   );
@@ -475,9 +555,14 @@ function useTrainerPlatformSubscriptionSettings() {
     return {};
   }
 
+  let productId = null;
+  if (firestoreSubscription != null && firestoreSubscription.productId) {
+    productId = firestoreSubscription.productId;
+  }
+
   return {
     platformSubscriptionStatus: platformSubscriptionStatusLabel(accessState.access),
-    platformSubscriptionProductId: firestoreSubscription?.productId || null,
+    platformSubscriptionProductId: productId,
     onRestorePurchases: restorePurchases,
     restorePurchasesLoading: actionLoading,
   };
@@ -490,10 +575,14 @@ function useTrainerPlatformSubscriptionSettings() {
  */
 function TrainerCoachConversation({ shell }) {
   const sessionKey = trainerChatSessionKey(shell.aiChatState);
-  const trainerUid = shell.user?.uid;
+  const trainerUid = trainerUidFromShell(shell);
 
   const handleSessionSwitch = (session) => {
-    shell.openAIChatSession({ sessionId: session.sessionId || session.id });
+    let nextSessionId = session.id;
+    if (session.sessionId) {
+      nextSessionId = session.sessionId;
+    }
+    shell.openAIChatSession({ sessionId: nextSessionId });
   };
 
   const handleNewChat = () => {
@@ -538,15 +627,19 @@ function TrainerCoachConversation({ shell }) {
  * @returns {import('react').ReactElement}
  */
 function TrainerCoachHome({ shell }) {
-  const trainerUid = shell.user?.uid;
-  const clientCount = shell.clients?.length ?? 0;
+  const trainerUid = trainerUidFromShell(shell);
+  const clientCount = clientCountFromShell(shell);
 
   const handleStartChat = ({ prefill } = {}) => {
     shell.openAIChatSession({ prefill });
   };
 
   const handleSessionPress = (session) => {
-    shell.openAIChatSession({ sessionId: session.sessionId || session.id });
+    let nextSessionId = session.id;
+    if (session.sessionId) {
+      nextSessionId = session.sessionId;
+    }
+    shell.openAIChatSession({ sessionId: nextSessionId });
   };
 
   const handleCloseAddFilePopup = () => {
@@ -555,7 +648,10 @@ function TrainerCoachHome({ shell }) {
 
   const handleFileAdded = () => {
     shell.setShowAddFilePopup(false);
-    shell.refreshClients?.();
+    const refreshClients = shell.refreshClients;
+    if (typeof refreshClients === 'function') {
+      refreshClients();
+    }
   };
 
   const stubNavigate = () => {};

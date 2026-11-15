@@ -20,30 +20,7 @@ const DATA_URL_STARTS_WITH_IMAGE = 'data:image';
 // Some pickers embed a fake data-URL header on base64 blobs — strip before we add the real mime.
 const REGEX_STRIP_OLD_DATA_URL_HEADER = /^data:[^;]+;base64,/;
 
-// ===== MAIN FUNCTION =====
-
-/**
- * Convert local coach-chat attachments into API image payloads.
- * @param {Array} [attachments]
- * @returns {Promise<Array<{ type: string, name: string, dataUrl: string }>>}
- */
-export async function preparePhotosToSendForApi(attachments = []) {
-  // 1. Keep only rows that look like images, capped at MAX_PHOTO_ATTACHMENTS.
-  const imageRows = filterImageAttachmentsForSend(attachments);
-
-  // 2. Resolve each row to { type, name, dataUrl } or drop it on error / oversize.
-  const apiReadyPhotos = [];
-  for (const oneAttachment of imageRows) {
-    const onePayload = await buildOnePhotoPayloadForApi(oneAttachment);
-    if (onePayload) {
-      apiReadyPhotos.push(onePayload);
-    }
-  }
-
-  return apiReadyPhotos;
-}
-
-// ===== PLUMBING — skip unless debugging =====
+// ===== HELPER FUNCTIONS =====
 
 function filterImageAttachmentsForSend(attachments) {
   let list = attachments;
@@ -165,4 +142,27 @@ async function buildOnePhotoPayloadForApi(attachment) {
     console.warn('[preparePhotosToSend] skip attachment:', errorMessage);
     return null;
   }
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Convert local coach-chat attachments into API image payloads.
+ * @param {Array} [attachments]
+ * @returns {Promise<Array<{ type: string, name: string, dataUrl: string }>>}
+ */
+export async function preparePhotosToSendForApi(attachments = []) {
+  // 1. Keep only rows that look like images, capped at MAX_PHOTO_ATTACHMENTS.
+  const imageRows = filterImageAttachmentsForSend(attachments);
+
+  // 2. Resolve each row to { type, name, dataUrl } or drop it on error / oversize.
+  const apiReadyPhotos = [];
+  for (const oneAttachment of imageRows) {
+    const onePayload = await buildOnePhotoPayloadForApi(oneAttachment);
+    if (onePayload) {
+      apiReadyPhotos.push(onePayload);
+    }
+  }
+
+  return apiReadyPhotos;
 }

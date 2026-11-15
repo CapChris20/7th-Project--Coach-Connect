@@ -1,7 +1,22 @@
 // Shared macro packing for Candidate adapters.
 // Flow: source numbers → per100 and/or servings → completeness score.
 // Used only by scraper adapters. Does not tidy names.
+// Ensures consistent parsing of nutrition numbers across data sources.
 
+// ===== NAMED CONSTANTS =====
+
+const MAIN_MACRO_KEYS = Object.freeze(['kcal', 'protein', 'carbs', 'fat']);
+const DEFAULT_SERVING_LABEL = '1 serving';
+const DEFAULT_SERVING_ORIGIN = 'derived';
+const DEFAULT_BASIS_GRAMS = 'g';
+
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * Returns a finite number or null if value is missing/empty/invalid.
+ * @param {any} value
+ * @returns {number|null}
+ */
 function finiteOrNull(value) {
   if (value == null || value === '') return null;
   const number = Number(value);
@@ -15,12 +30,13 @@ function finiteOrNull(value) {
  * @returns {number}
  */
 function completenessFromMacros(macros) {
-  const keys = ['kcal', 'protein', 'carbs', 'fat'];
-  let present = 0;
-  for (const key of keys) {
-    if (macros?.[key] != null && Number.isFinite(Number(macros[key]))) present += 1;
+  let presentCount = 0;
+  for (const macroKey of MAIN_MACRO_KEYS) {
+    if (macros?.[macroKey] != null && Number.isFinite(Number(macros[macroKey]))) {
+      presentCount += 1;
+    }
   }
-  return present / keys.length;
+  return presentCount / MAIN_MACRO_KEYS.length;
 }
 
 /**
@@ -29,7 +45,7 @@ function completenessFromMacros(macros) {
  * @param {'g'|'ml'} basis
  * @returns {object|null}
  */
-function per100FromMacros(macros, basis = 'g') {
+function per100FromMacros(macros, basis = DEFAULT_BASIS_GRAMS) {
   if (!macros) return null;
   const kcal = finiteOrNull(macros.kcal ?? macros.calories);
   const protein = finiteOrNull(macros.protein ?? macros.protein_g);
@@ -39,20 +55,22 @@ function per100FromMacros(macros, basis = 'g') {
   return { kcal, protein, carbs, fat, basis };
 }
 
+// ===== MAIN FUNCTION =====
+
 /**
  * Build one serving option from label + macros.
- * @param {object} opts
+ * @param {object} options
  * @returns {object}
  */
-function servingFromMacros(opts = {}) {
+function servingFromMacros(options = {}) {
   return {
-    label: String(opts.label || '1 serving'),
-    grams: finiteOrNull(opts.grams),
-    kcal: finiteOrNull(opts.kcal ?? opts.calories),
-    protein: finiteOrNull(opts.protein ?? opts.protein_g),
-    carbs: finiteOrNull(opts.carbs ?? opts.carbs_g),
-    fat: finiteOrNull(opts.fat ?? opts.fat_g),
-    origin: opts.origin || 'derived',
+    label: String(options.label || DEFAULT_SERVING_LABEL),
+    grams: finiteOrNull(options.grams),
+    kcal: finiteOrNull(options.kcal ?? options.calories),
+    protein: finiteOrNull(options.protein ?? options.protein_g),
+    carbs: finiteOrNull(options.carbs ?? options.carbs_g),
+    fat: finiteOrNull(options.fat ?? options.fat_g),
+    origin: options.origin || DEFAULT_SERVING_ORIGIN,
   };
 }
 

@@ -1,11 +1,16 @@
-import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+// Mechanical Variation 3 floor check: cryptic names, nesting, section headers, file-top.
+// Usage: node scripts/classifyReadable.mjs [path ...]
+// Exit 1 if any listed path fails. Full src/ walk when no paths given.
+// Floor only — CODING_STYLE.md still needs a human junior-recipe read.
+
+import { readFileSync, readdirSync, statSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { parse } from '@babel/parser';
 import _traverse from '@babel/traverse';
 const traverse = _traverse.default || _traverse;
 
-const ROOT = '/Users/captainchris20/Projects/My-Coding-Portfolio/7th-Project--Coach-Connect';
-const CRYPTIC = new Set(['p','n','q','t','s','d','r','c','u','v','x','o','a','b','e','f','g','h','m','w','i','j','k','el','el2','tmp','temp','conv','tA','tB','bg','res','resp','req','obj','arr','val','num','str','ctx','cfg','opts','acc','fn','cb','doc']);
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const ALLOWED = new Set(['id','url','api','db','req','res','msg','uid','doc','i','j','k','x','y','e']);
 // i,j,k,x,y,e are loop/event. Plan examples of bad names are p,n,q,conv,tA. I'll flag those specifically plus 1-letter except i,j,k,x,y.
 const BAD_SHORT = new Set(['p','n','q','t','s','d','r','c','u','v','o','a','b','f','g','h','m','w','bg','conv','tmp','temp','tA','tB','acc']);
@@ -121,7 +126,13 @@ const files =
 const results = files.map(analyze);
 const pass = results.filter(r => r.pass);
 const fail = results.filter(r => !r.pass);
-writeFileSync('/tmp/cc-audit/classification.json', JSON.stringify({ pass: pass.map(p => p.file), fail }, null, 2));
+const auditDir = join(ROOT, 'scripts/full-rewrite');
+if (!existsSync(auditDir)) mkdirSync(auditDir, { recursive: true });
+const tmpAuditDir = '/tmp/cc-audit';
+if (!existsSync(tmpAuditDir)) mkdirSync(tmpAuditDir, { recursive: true });
+const classificationPayload = { pass: pass.map(p => p.file), fail };
+writeFileSync(join(tmpAuditDir, 'classification.json'), JSON.stringify(classificationPayload, null, 2));
+writeFileSync(join(auditDir, 'classification-latest.json'), JSON.stringify(classificationPayload, null, 2));
 console.log(`files ${results.length}`);
 console.log(`already readable ${pass.length}`);
 console.log(`needs rewrite ${fail.length}`);

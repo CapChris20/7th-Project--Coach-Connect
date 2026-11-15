@@ -23,6 +23,8 @@ const FALLBACK_CLIENT_LABEL = 'Client';
 // Manipulate here: 2 characters is the cutoff. Raising it risks rejecting real short names.
 const WEAK_NAME_MAX_LENGTH = 2;
 
+// ===== HELPER FUNCTIONS =====
+
 /**
  * True when the value is empty or a known placeholder (“Client”, “n/a”, …).
  * Also used by the roster loader to decide whether a CRM row’s name is worth self-healing.
@@ -52,49 +54,6 @@ export function isWeakClientDisplayName(value) {
   }
   return false;
 }
-
-/**
- * Resolve a display name for one trainee: profile → CRM → email local → "Client".
- * @param {object} [crmRow]
- * @param {object} [userData]
- * @returns {string}
- */
-export function resolveTrainerClientDisplayName(crmRow = {}, userData = {}) {
-  // Re-default here: an explicit null skips the parameter default and would crash field reads.
-  const userRecord = userData || {};
-  const crmRecord = crmRow || {};
-
-  // 1. Profile doc on users/{id} — prefer real name fields over handles.
-  const nameFromUserProfile = firstUsableName(nameCandidatesFromRecord(userRecord));
-  if (nameFromUserProfile) {
-    return nameFromUserProfile;
-  }
-
-  // 2. Trainer CRM row under trainer_clients/.../clients/{id}.
-  const nameFromCrmRow = firstUsableName(nameCandidatesFromRecord(crmRecord));
-  if (nameFromCrmRow) {
-    return nameFromCrmRow;
-  }
-
-  // 3. Humanize email local parts when no real name field passed the gate.
-  const emailLocalList = emailLocalParts(
-    userRecord.email,
-    userRecord.userEmail,
-    userRecord.primaryEmail,
-    crmRecord.email,
-  );
-  for (let index = 0; index < emailLocalList.length; index += 1) {
-    const localPart = emailLocalList[index];
-    const humanizedName = humanizeEmailLocal(localPart);
-    if (isUsableDisplayName(humanizedName)) {
-      return humanizedName;
-    }
-  }
-
-  return FALLBACK_CLIENT_LABEL;
-}
-
-// PLUMBING — skip unless debugging
 
 // Single gate every candidate must pass: non-empty, not a placeholder, not too short.
 function isUsableDisplayName(value) {
@@ -177,6 +136,19 @@ function emailLocalParts(...emails) {
   return locals;
 }
 
+function titleCaseSeparatedLocal(rawLocal) {
+  const pieces = rawLocal.split(/[._-]+/);
+  const titledPieces = [];
+  for (let index = 0; index < pieces.length; index += 1) {
+    const piece = pieces[index];
+    if (!piece) {
+      continue;
+    }
+    titledPieces.push(piece.charAt(0).toUpperCase() + piece.slice(1).toLowerCase());
+  }
+  return titledPieces.join(' ');
+}
+
 // Last-resort name: "taylor.brooks" → "Taylor Brooks", "taylorbrooks" → "Taylorbrooks".
 function humanizeEmailLocal(local) {
   const rawLocal = String(local ?? '').trim();
@@ -195,15 +167,45 @@ function humanizeEmailLocal(local) {
   return rawLocal.charAt(0).toUpperCase() + rawLocal.slice(1).toLowerCase();
 }
 
-function titleCaseSeparatedLocal(rawLocal) {
-  const pieces = rawLocal.split(/[._-]+/);
-  const titledPieces = [];
-  for (let index = 0; index < pieces.length; index += 1) {
-    const piece = pieces[index];
-    if (!piece) {
-      continue;
-    }
-    titledPieces.push(piece.charAt(0).toUpperCase() + piece.slice(1).toLowerCase());
+// ===== MAIN FUNCTION =====
+
+/**
+ * Resolve a display name for one trainee: profile → CRM → email local → "Client".
+ * @param {object} [crmRow]
+ * @param {object} [userData]
+ * @returns {string}
+ */
+export function resolveTrainerClientDisplayName(crmRow = {}, userData = {}) {
+  // Re-default here: an explicit null skips the parameter default and would crash field reads.
+  const userRecord = userData || {};
+  const crmRecord = crmRow || {};
+
+  // 1. Profile doc on users/{id} — prefer real name fields over handles.
+  const nameFromUserProfile = firstUsableName(nameCandidatesFromRecord(userRecord));
+  if (nameFromUserProfile) {
+    return nameFromUserProfile;
   }
-  return titledPieces.join(' ');
+
+  // 2. Trainer CRM row under trainer_clients/.../clients/{id}.
+  const nameFromCrmRow = firstUsableName(nameCandidatesFromRecord(crmRecord));
+  if (nameFromCrmRow) {
+    return nameFromCrmRow;
+  }
+
+  // 3. Humanize email local parts when no real name field passed the gate.
+  const emailLocalList = emailLocalParts(
+    userRecord.email,
+    userRecord.userEmail,
+    userRecord.primaryEmail,
+    crmRecord.email,
+  );
+  for (let index = 0; index < emailLocalList.length; index += 1) {
+    const localPart = emailLocalList[index];
+    const humanizedName = humanizeEmailLocal(localPart);
+    if (isUsableDisplayName(humanizedName)) {
+      return humanizedName;
+    }
+  }
+
+  return FALLBACK_CLIENT_LABEL;
 }

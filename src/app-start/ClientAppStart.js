@@ -267,6 +267,131 @@ function messageFromCaughtError(caughtError) {
   return String(caughtError);
 }
 
+function codeFromCaughtError(caughtError) {
+  if (!caughtError) return undefined;
+  return caughtError.code;
+}
+
+function uidFromProfile(profile) {
+  if (!profile) return undefined;
+  return profile.uid;
+}
+
+function idFromProfile(profile) {
+  if (!profile) return undefined;
+  return profile.id;
+}
+
+function nameFromExercise(exercise) {
+  if (!exercise) return undefined;
+  return exercise.name;
+}
+
+function exerciseNameFromExercise(exercise) {
+  if (!exercise) return undefined;
+  return exercise.exerciseName;
+}
+
+function perMonthFromPricing(pricing) {
+  if (!pricing) return undefined;
+  return pricing.perMonth;
+}
+
+function routeNameFromRoute(route) {
+  if (!route) return undefined;
+  return route.name;
+}
+
+function idFromTrainerRow(trainer) {
+  if (!trainer) return undefined;
+  return trainer.id;
+}
+
+function uidFromTrainerRow(trainer) {
+  if (!trainer) return undefined;
+  return trainer.uid;
+}
+
+function goalFromOnboarding(onboardingData) {
+  if (!onboardingData) return undefined;
+  return onboardingData.goal;
+}
+
+function primaryGoalFromOnboarding(onboardingData) {
+  if (!onboardingData) return undefined;
+  return onboardingData.primaryGoal;
+}
+
+function fitnessLevelFromOnboarding(onboardingData) {
+  if (!onboardingData) return undefined;
+  return onboardingData.fitnessLevel;
+}
+
+function experienceFromOnboarding(onboardingData) {
+  if (!onboardingData) return undefined;
+  return onboardingData.experience;
+}
+
+function equipmentFromOnboarding(onboardingData) {
+  if (!onboardingData) return undefined;
+  return onboardingData.equipment;
+}
+
+function availableEquipmentFromOnboarding(onboardingData) {
+  if (!onboardingData) return undefined;
+  return onboardingData.availableEquipment;
+}
+
+function injuriesFromOnboarding(onboardingData) {
+  if (!onboardingData) return undefined;
+  return onboardingData.injuries;
+}
+
+function limitationsFromOnboarding(onboardingData) {
+  if (!onboardingData) return undefined;
+  return onboardingData.limitations;
+}
+
+function nameFromOnboarding(onboardingData) {
+  if (!onboardingData) return undefined;
+  return onboardingData.name;
+}
+
+function trainerIdFromProfile(profile) {
+  if (!profile) return undefined;
+  return profile.trainerId;
+}
+
+function roleFromProfile(profile) {
+  if (!profile) return undefined;
+  return profile.role;
+}
+
+function participantsFromConversation(conversationData) {
+  if (!conversationData) return undefined;
+  return conversationData.participants;
+}
+
+function firstNameFromProfile(profile) {
+  if (!profile) return undefined;
+  return profile.firstName;
+}
+
+function nameFromProfile(profile) {
+  if (!profile) return undefined;
+  return profile.name;
+}
+
+function displayNameFromProfile(profile) {
+  if (!profile) return undefined;
+  return profile.displayName;
+}
+
+function stringOrEmpty(value) {
+  if (value == null) return '';
+  return String(value);
+}
+
 function nameFromFileRow(fileRow) {
   if (!fileRow) return null;
   return fileRow.name;
@@ -344,6 +469,45 @@ function keyboardAvoidBehavior() {
   return 'height';
 }
 
+// Pull notice-sheet copy off the shell object into plain locals.
+function noticeFieldsFromShell(shell) {
+  const notice = shell.notice;
+  if (!notice) {
+    return {
+      noticeVisible: false,
+      noticeTitle: '',
+      noticeMessage: undefined,
+      noticeConfirmLabel: 'OK',
+      noticeCancelLabel: undefined,
+      noticeOnConfirm: undefined,
+    };
+  }
+  return {
+    noticeVisible: true,
+    noticeTitle: notice.title || '',
+    noticeMessage: notice.message,
+    noticeConfirmLabel: notice.confirmLabel || 'OK',
+    noticeCancelLabel: notice.cancelLabel,
+    noticeOnConfirm: notice.onConfirm,
+  };
+}
+
+// Names + trainer id for the remove-trainer sheet.
+function removeTrainerFieldsFromShell(shell, trainerData) {
+  const shellTrainerData = shell.trainerData;
+  let removeTrainerDisplayName;
+  if (shellTrainerData) {
+    removeTrainerDisplayName = shellTrainerData.displayName || shellTrainerData.name;
+  }
+  return {
+    removeTrainerVisible: !!shell.showRemoveTrainerPopup,
+    removeTrainerDisplayName,
+    removeClientDisplayName:
+      displayNameFromUser(shell.user) || firstNameFromUserData(shell.userData),
+    removeTrainerId: idFromTrainerData(shellTrainerData) || idFromTrainerData(trainerData),
+  };
+}
+
 // Prefer linked coach id fields; fall back to the client's trainerId on their profile.
 function trainerUidForClientShell(trainerData, userData) {
   return idFromTrainerData(trainerData) || uidFromTrainerData(trainerData) || trainerIdFromUserData(userData) || '';
@@ -352,8 +516,8 @@ function trainerUidForClientShell(trainerData, userData) {
 function coachingPaymentUserData(userData, trainerData, shellUserUid) {
   return {
     ...(userData || {}),
-    uid: shellUserUid || (userData ? userData.uid : undefined),
-    id: shellUserUid || (userData ? userData.id : undefined),
+    uid: shellUserUid || uidFromProfile(userData),
+    id: shellUserUid || idFromProfile(userData),
     sessionRate:
       sessionRateFromUserData(userData) ||
       sessionRateFromTrainerData(trainerData) ||
@@ -379,7 +543,7 @@ function formatOneExerciseSetLabel(setRow) {
 
 function formatExerciseDisplayLine(exercise) {
   if (typeof exercise === 'string') return exercise;
-  const label = (exercise ? exercise.name : undefined) || (exercise ? exercise.exerciseName : undefined) || '';
+  const label = nameFromExercise(exercise) || exerciseNameFromExercise(exercise) || '';
   if (!label) return '';
   if (!Array.isArray(exercise.sets) || exercise.sets.length === 0) return label;
 
@@ -484,8 +648,9 @@ function coachingRateLabelFromProfiles(userData, trainerData) {
   const fromClient = dollarsLabelFromMonthlyRate(monthlyRateFromUserData(userData));
   if (fromClient) return fromClient;
   const pricing = pricingFromTrainerData(trainerData);
-  if ((pricing ? pricing.perMonth : undefined) != null && pricing.perMonth !== '') {
-    return `$${pricing.perMonth}`;
+  const perMonth = perMonthFromPricing(pricing);
+  if (perMonth != null && perMonth !== '') {
+    return `${perMonth}`;
   }
   return null;
 }
@@ -494,14 +659,18 @@ function coachingTrainerDisplayName(trainerRecord) {
   if (!trainerRecord) return 'Your trainer';
   const first = trainerRecord.firstName || trainerRecord.givenName;
   const last = trainerRecord.lastName || trainerRecord.familyName;
-  if (first || last) return `${first ?? ''} ${last ?? ''}`.trim();
+  if (first || last) {
+    const firstPart = stringOrEmpty(first);
+    const lastPart = stringOrEmpty(last);
+    return `${firstPart} ${lastPart}`.trim();
+  }
   return trainerRecord.displayName || trainerRecord.name || 'Your trainer';
 }
 
 function queryNeedsCompositeIndex(err) {
   // vocab: composite index = Firestore requires a pre-built index for multi-field filters.
-  const msg = String((err ? err.message : undefined) || '');
-  if ((err ? err.code : undefined) === 'failed-precondition') return true;
+  const msg = String(messageFromCaughtError(err) || '');
+  if (codeFromCaughtError(err) === 'failed-precondition') return true;
   if (msg.toLowerCase().includes('requires an index')) return true;
   if (msg.toLowerCase().includes('create_composite')) return true;
   return false;
@@ -642,21 +811,38 @@ function ClientAppShellLayout({
   coachingTrainerName,
   onRefetchUserData,
 }) {
+  // Cold boot: blank screen until home data lands (same color as theme).
   if (loading) {
     const bootBackground = bootScreenBackground(isDark);
     return <View style={{ flex: 1, backgroundColor: bootBackground }} />;
   }
 
+  // 1. Keyboard + coach id for the payment sheet.
   const keyboardBehavior = keyboardAvoidBehavior();
   const trainerId = trainerUidForClientShell(trainerData, userData);
-  const shellUserUid = (shell ? shell.uidFromUser : undefined)(user);
+
+  // 2. Payment form user object (rates may live on client or trainer profile).
+  const shellUser = shell.user;
+  const shellUserUid = uidFromUser(shellUser);
   const paymentUserData = coachingPaymentUserData(userData, trainerData, shellUserUid);
-  const noticeVisible = !!shell.notice;
-  const noticeTitle = shell.(notice ? notice.title : undefined) || '';
-  const noticeConfirmLabel = shell.(notice ? notice.confirmLabel : undefined) || 'OK';
-  const removeTrainerVisible = !!shell.showRemoveTrainerPopup;
-  const removeTrainerDisplayName = shell.(trainerData ? trainerData.displayName : undefined) || shell.(trainerData ? trainerData.name : undefined);
-  const removeClientDisplayName = shell.displayNameFromUser(user) || shell.firstNameFromUserData(userData);
+
+  // 3. Notice sheet fields — pull shell.notice into locals (no optional chaining).
+  const noticeFields = noticeFieldsFromShell(shell);
+  const noticeVisible = noticeFields.noticeVisible;
+  const noticeTitle = noticeFields.noticeTitle;
+  const noticeMessage = noticeFields.noticeMessage;
+  const noticeConfirmLabel = noticeFields.noticeConfirmLabel;
+  const noticeCancelLabel = noticeFields.noticeCancelLabel;
+  const noticeOnConfirm = noticeFields.noticeOnConfirm;
+
+  // 4. Remove-trainer sheet names + ids from shell / props.
+  const removeTrainerFields = removeTrainerFieldsFromShell(shell, trainerData);
+  const removeTrainerVisible = removeTrainerFields.removeTrainerVisible;
+  const removeTrainerDisplayName = removeTrainerFields.removeTrainerDisplayName;
+  const removeClientDisplayName = removeTrainerFields.removeClientDisplayName;
+  const removeTrainerId = removeTrainerFields.removeTrainerId;
+  const removeClientId = uidFromUser(shell.user) || uidFromUser(shellUser);
+
   const sheetLiftStyle = { flex: 1, justifyContent: 'flex-end' };
   // Manipulate here: rgba(0,0,0,0.55) is how dark the app behind the sheet goes.
   const scrimStyle = { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.55)' };
@@ -665,6 +851,33 @@ function ClientAppShellLayout({
     borderTopRightRadius: PAYMENT_SHEET_TOP_RADIUS,
     overflow: 'hidden',
   };
+
+  function handleNoticeClose() {
+    callIfFunction(shell.dismissNotice);
+  }
+
+  function handleRemoveTrainerClose() {
+    callIfFunction(shell.setShowRemoveTrainerPopup, false);
+  }
+
+  function handleRemovalComplete() {
+    // Keep the removed coach's name for the optional "leave a review" banner on home.
+    if (shell.trainerData) {
+      callIfFunction(shell.setReviewPromptTrainer, {
+        id: shell.trainerData.id,
+        name:
+          shell.trainerData.displayName ||
+          shell.trainerData.name ||
+          'Your trainer',
+      });
+    }
+    callIfFunction(shell.setTrainerData, null);
+    callIfFunction(shell.setShowRemoveTrainerPopup, false);
+  }
+
+  function handlePaymentSuccess() {
+    callIfFunction(onRefetchUserData);
+  }
 
   return (
     <ClientAppStartShellProvider value={shell}>
@@ -708,9 +921,7 @@ function ClientAppShellLayout({
               trainerName={coachingTrainerName}
               userData={paymentUserData}
               onClose={closeCoachingPayment}
-              onSuccess={() => {
-                callIfFunction(onRefetchUserData);
-              }}
+              onSuccess={handlePaymentSuccess}
             />
           </View>
         </KeyboardAvoidingView>
@@ -720,40 +931,28 @@ function ClientAppShellLayout({
           and Settings can both open it without fighting the stack. */}
       <NbNoticeSheet
         visible={noticeVisible}
-        onClose={() => callIfFunction(shell.dismissNotice)}
+        onClose={handleNoticeClose}
         title={noticeTitle}
-        message={shell.(notice ? notice.message : undefined)}
+        message={noticeMessage}
         confirmLabel={noticeConfirmLabel}
-        cancelLabel={shell.(notice ? notice.cancelLabel : undefined)}
-        onConfirm={shell.(notice ? notice.onConfirm : undefined)}
+        cancelLabel={noticeCancelLabel}
+        onConfirm={noticeOnConfirm}
       />
 
       <RemoveTrainerPopup
         visible={removeTrainerVisible}
-        onClose={() => callIfFunction(shell.setShowRemoveTrainerPopup, false)}
-        onRemovalComplete={() => {
-          // Keep the removed coach’s name for the optional “leave a review” banner on home.
-          if (shell.trainerData) {
-            callIfFunction(shell.setReviewPromptTrainer, {
-              id: shell.trainerData.id,
-              name:
-                shell.trainerData.displayName ||
-                shell.trainerData.name ||
-                'Your trainer',
-            });
-          }
-          callIfFunction(shell.setTrainerData, null);
-          callIfFunction(shell.setShowRemoveTrainerPopup, false);
-        }}
+        onClose={handleRemoveTrainerClose}
+        onRemovalComplete={handleRemovalComplete}
         trainerName={removeTrainerDisplayName}
         clientName={removeClientDisplayName}
         removedBy="client"
-        trainerId={shell.idFromTrainerData(trainerData)}
-        clientId={shell.uidFromUser(user)}
+        trainerId={removeTrainerId}
+        clientId={removeClientId}
       />
     </ClientAppStartShellProvider>
   );
 }
+
 
 
 // ===== MAIN FUNCTION =====
@@ -1056,7 +1255,7 @@ export default function ClientAppStart({ user, userData, onRefetchUserData }) {
   useEffect(() => {
     if (!idFromTrainerData(trainerData) || !rootNavigationRef.isReady()) return;
     const route = rootNavigationRef.getCurrentRoute();
-    if ((route ? route.name : undefined) === CLIENT_ROUTES.TrainerSearch) {
+    if (routeNameFromRoute(route) === CLIENT_ROUTES.TrainerSearch) {
       rootGoBack();
     }
   }, [idFromTrainerData(trainerData), rootGoBack]);
@@ -1312,7 +1511,7 @@ export default function ClientAppStart({ user, userData, onRefetchUserData }) {
       });
     } catch (sessionError) {
       console.error('Respond to session failed:', sessionError);
-      showNotice('Could not update', (sessionError ? sessionError.message : undefined) || 'Please try again.');
+      showNotice('Could not update', messageFromCaughtError(sessionError) || 'Please try again.');
     }
   }, [idFromTrainerData(trainerData), uidFromTrainerData(trainerData), uidFromUser(user), displayNameFromUser(user), showNotice]);
 
@@ -1367,7 +1566,7 @@ export default function ClientAppStart({ user, userData, onRefetchUserData }) {
 
   const deleteAllMyFiles = useCallback(async () => {
     if (!uidFromUser(user)) return;
-    const list = (myOwnFiles || []).filter((f) => (f.addedBy || 'client') === 'client' && (f ? f.id : undefined));
+    const list = (myOwnFiles || []).filter((fileRow) => (fileRow.addedBy || 'client') === 'client' && idFromFileRow(fileRow));
     if (list.length === 0) return;
     setDeletingMyFiles(true);
     try {
@@ -1453,7 +1652,7 @@ export default function ClientAppStart({ user, userData, onRefetchUserData }) {
   const requestTrainerConnection = useCallback(
     async (trainer, { clientIntro } = {}) => {
       const clientId = uidFromUser(user);
-      const trainerId = (trainer ? trainer.id : undefined) || (trainer ? trainer.uid : undefined);
+      const trainerId = idFromTrainerRow(trainer) || uidFromTrainerRow(trainer);
       if (!clientId) throw new Error('Please log in first.');
       if (!trainerId) throw new Error('Trainer not found.');
       // One coach at a time. Requesting a second would create a conflicting link the reconcile
@@ -1468,10 +1667,10 @@ export default function ClientAppStart({ user, userData, onRefetchUserData }) {
       // || chains, and every one ends in a readable default rather than blank.
       await sendClientRequest(conversationId, clientId, clientIntro || '', {
         clientName: firstNameFromUserData(userData) || displayNameFromUser(user) || 'Client',
-        clientGoals: (onboardingData ? onboardingData.goal : undefined) || (onboardingData ? onboardingData.primaryGoal : undefined) || 'Not specified',
-        clientExperienceLevel: (onboardingData ? onboardingData.fitnessLevel : undefined) || (onboardingData ? onboardingData.experience : undefined) || 'Beginner',
-        clientEquipment: (onboardingData ? onboardingData.equipment : undefined) || (onboardingData ? onboardingData.availableEquipment : undefined) || 'Not specified',
-        clientLimitations: (onboardingData ? onboardingData.injuries : undefined) || (onboardingData ? onboardingData.limitations : undefined) || 'None',
+        clientGoals: goalFromOnboarding(onboardingData) || primaryGoalFromOnboarding(onboardingData) || 'Not specified',
+        clientExperienceLevel: fitnessLevelFromOnboarding(onboardingData) || experienceFromOnboarding(onboardingData) || 'Beginner',
+        clientEquipment: equipmentFromOnboarding(onboardingData) || availableEquipmentFromOnboarding(onboardingData) || 'Not specified',
+        clientLimitations: injuriesFromOnboarding(onboardingData) || limitationsFromOnboarding(onboardingData) || 'None',
       });
     },
     [uidFromUser(user), displayNameFromUser(user), userData, onboardingData, idFromTrainerData(trainerData)],
@@ -1519,7 +1718,7 @@ export default function ClientAppStart({ user, userData, onRefetchUserData }) {
           message: `Opened ${planTitle}.${preview}`.trim(),
         };
       } catch (planError) {
-        return { success: false, message: (planError ? planError.message : undefined) || 'Could not load workout plan.' };
+        return { success: false, message: messageFromCaughtError(planError) || 'Could not load workout plan.' };
       }
     },
     onMessagesPress: () => {
@@ -1538,7 +1737,7 @@ export default function ClientAppStart({ user, userData, onRefetchUserData }) {
 
   // Display values derived from whatever data has loaded. Profile name first, then the auth
   // display name, then the onboarding answer, then a neutral default — so the greeting is never blank.
-  const userName = firstNameFromUserData(userData) || displayNameFromUser(user) || (onboardingData ? onboardingData.name : undefined) || 'User';
+  const userName = firstNameFromUserData(userData) || displayNameFromUser(user) || nameFromOnboarding(onboardingData) || 'User';
   const userRole = roleFromUserData(userData) || 'client';
   // vocab/symbol: !! = coerce to a real boolean, so children get `false` rather than `null`.
   const hasTrainer = !!trainerData;
@@ -1950,7 +2149,7 @@ async function mirrorTrainerIdOntoClient(clientUid, trainerUid, trainerProfile, 
     const userRef = doc(db, 'users', clientUid);
     const userSnap = await getDoc(userRef);
     const currentProfile = userSnap.exists() ? userSnap.data() : {};
-    const savedTrainerId = (currentProfile ? currentProfile.trainerId : undefined);
+    const savedTrainerId = trainerIdFromProfile(currentProfile);
     const trainerIdChanged = !savedTrainerId || String(savedTrainerId) !== String(trainerUid);
     if (!trainerIdChanged) return;
     await updateDoc(userRef, {
@@ -1960,7 +2159,7 @@ async function mirrorTrainerIdOntoClient(clientUid, trainerUid, trainerProfile, 
     });
     callIfFunction(onRefetchUserData);
   } catch (mirrorError) {
-    console.warn('Mirror trainerId to client user doc skipped:', (mirrorError ? mirrorError.message : undefined) || mirrorError);
+    console.warn('Mirror trainerId to client user doc skipped:', messageFromCaughtError(mirrorError) || mirrorError);
   }
 }
 
@@ -1971,7 +2170,7 @@ async function applyTrainerFromLink(trainerUid, clientUid, setters) {
     return;
   }
   const trainerProfile = trainerDoc.data();
-  if ((trainerProfile ? trainerProfile.role : undefined) !== 'trainer') {
+  if (roleFromProfile(trainerProfile) !== 'trainer') {
     setters.setTrainerData(null);
     return;
   }
@@ -1998,7 +2197,7 @@ async function handleTrainerClientLinksSnapshot(snap, clientUid, setters) {
   try {
     await applyTrainerFromLink(trainerUid, clientUid, setters);
   } catch (linkError) {
-    console.warn('trainer_client_links listener handler:', (linkError ? linkError.message : undefined) || linkError);
+    console.warn('trainer_client_links listener handler:', messageFromCaughtError(linkError) || linkError);
   }
 }
 
@@ -2093,14 +2292,14 @@ async function openClientMessageThread(conversationId, context) {
     return;
   }
   const conversationData = conversationSnap.data();
-  const participants = (conversationData ? conversationData.participants : undefined) || [];
+  const participants = participantsFromConversation(conversationData) || [];
   const otherId = participants.find((participantId) => participantId !== context.user.uid);
   const otherParticipant = await loadChatPartner(otherId);
   showClientMessageThread(context, conversationId, conversationData, otherParticipant);
 }
 
 async function routeClientNotificationTap(data, context) {
-  if (!context.uidFromUser(user) || !data || typeof data !== 'object') return;
+  if (!uidFromUser(context.user) || !data || typeof data !== 'object') return;
   const type = data.type;
   if (type === 'session_scheduled') {
     openHomeFromScheduledSession(context);
@@ -2139,7 +2338,7 @@ async function clientNameForSessionReply(clientUid, fallbackName) {
     const userSnap = await getDoc(doc(db, 'users', clientUid));
     if (!userSnap.exists()) return fallbackName;
     const clientProfile = userSnap.data();
-    return (clientProfile ? clientProfile.firstName : undefined) || (clientProfile ? clientProfile.name : undefined) || (clientProfile ? clientProfile.displayName : undefined) || fallbackName;
+    return firstNameFromProfile(clientProfile) || nameFromProfile(clientProfile) || displayNameFromProfile(clientProfile) || fallbackName;
   } catch (_) {
     return fallbackName;
   }

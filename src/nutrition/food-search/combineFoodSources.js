@@ -83,12 +83,93 @@ const MIN_USABLE_CALORIES = 0;
 // ===== HELPER FUNCTIONS =====
 
 /**
+ * Read one field when the object exists.
+ * @param {object|null|undefined} object
+ * @param {string} fieldName
+ * @returns {*}
+ */
+function readField(object, fieldName) {
+  if (!object) return undefined;
+  return object[fieldName];
+}
+
+/**
+ * Source string lowercased from a food row (empty when missing).
+ * @param {object|null|undefined} row
+ * @returns {string}
+ */
+function sourceLowerFromRow(row) {
+  const sourceValue = readField(row, 'source');
+  return String(sourceValue || '').toLowerCase();
+}
+
+/**
+ * Query object from a nutrition payload (empty object when missing).
+ * @param {object|null|undefined} payload
+ * @returns {object}
+ */
+function queryFromPayload(payload) {
+  const query = readField(payload, 'query');
+  if (query) return query;
+  return {};
+}
+
+/**
+ * Source-result list from a nutrition payload (empty array when missing).
+ * @param {object|null|undefined} payload
+ * @returns {object[]}
+ */
+function sourceResultsFromPayload(payload) {
+  const sourceResults = readField(payload, 'sourceResults');
+  if (Array.isArray(sourceResults)) return sourceResults;
+  return [];
+}
+
+/**
+ * First source-result row when the list is non-empty.
+ * @param {object|null|undefined} payload
+ * @returns {object|null}
+ */
+function firstSourceResultFromPayload(payload) {
+  const sourceResults = sourceResultsFromPayload(payload);
+  if (sourceResults.length === 0) return null;
+  return sourceResults[0];
+}
+
+/**
+ * sources_used list from payload (empty array when not an array).
+ * @param {object|null|undefined} payload
+ * @returns {*[]}
+ */
+function sourcesUsedFromPayload(payload) {
+  const sourcesUsed = readField(payload, 'sources_used');
+  if (Array.isArray(sourcesUsed)) return sourcesUsed;
+  return [];
+}
+
+/**
+ * True when any consensus nutrient entry asks the user to verify manually.
+ * @param {object|null|undefined} consensus
+ * @returns {boolean}
+ */
+function consensusNeedsManualVerify(consensus) {
+  if (!consensus) return false;
+  const entries = Object.values(consensus);
+  for (let index = 0; index < entries.length; index += 1) {
+    const entry = entries[index];
+    if (!entry) continue;
+    if (entry.warning === 'verify_manually') return true;
+  }
+  return false;
+}
+
+/**
  * True when this row is the multi-source consensus card.
  * @param {object} row
  * @returns {boolean}
  */
 function isConsensusFoodRow(row) {
-  return String((row == null ? void 0 : row.source) || '').toLowerCase() === SOURCE_NUTRITION_CONSENSUS;
+  return sourceLowerFromRow(row) === SOURCE_NUTRITION_CONSENSUS;
 }
 
 /**
@@ -150,17 +231,30 @@ function appendTrustedCousinsWhenConsensus(typedText, filtered, trustedList, clo
   if (!filtered.some(isConsensusFoodRow)) return filtered;
   if (trustedList.length === 0) return filtered;
   const consensus = filtered.find(isConsensusFoodRow);
-  const anchorCalories = Number(consensus == null ? void 0 : consensus.calories) || 0;
+  const consensusCalories = readField(consensus, 'calories');
+  const anchorCalories = Number(consensusCalories) || 0;
   const trustedClose = filterFoodSearchRows(typedText, trustedList, TRUSTED_SEED_LIMIT);
-  const trustedCousins = trustedClose.filter(row => isCloseToAnchorCalories(Number(row.calories) || 0, anchorCalories));
-  const seenKeys = new Set(filtered.map(row => `${String(row.source || '')}:${Number(row.calories) || 0}:${row.name || ''}`));
+  const trustedCousins = [];
+  for (let cousinIndex = 0; cousinIndex < trustedClose.length; cousinIndex += 1) {
+    const cousinRow = trustedClose[cousinIndex];
+    if (isCloseToAnchorCalories(Number(cousinRow.calories) || 0, anchorCalories)) {
+      trustedCousins.push(cousinRow);
+    }
+  }
+  const seenKeys = new Set();
+  for (let filteredIndex = 0; filteredIndex < filtered.length; filteredIndex += 1) {
+    const filteredRow = filtered[filteredIndex];
+    const filteredKey = `${String(filteredRow.source || '')}:${Number(filteredRow.calories) || 0}:${filteredRow.name || ''}`;
+    seenKeys.add(filteredKey);
+  }
   const nextRows = [...filtered];
-  for (const row of trustedCousins) {
+  for (let cousinIndex = 0; cousinIndex < trustedCousins.length; cousinIndex += 1) {
     if (nextRows.length >= closeCap) break;
-    const rowKey = `${String(row.source || '')}:${Number(row.calories) || 0}:${row.name || ''}`;
+    const cousinRow = trustedCousins[cousinIndex];
+    const rowKey = `${String(cousinRow.source || '')}:${Number(cousinRow.calories) || 0}:${cousinRow.name || ''}`;
     if (seenKeys.has(rowKey)) continue;
     seenKeys.add(rowKey);
-    nextRows.push(row);
+    nextRows.push(cousinRow);
   }
   return pinConsensusFirst(nextRows);
 }
@@ -264,21 +358,19 @@ function parseNutritionSearchQuery(rawQuery) {
  * @returns {object|null}
  */
 function mapConsensusToFoodRow(payload, displayQuery) {
-  var _optObj;
-  const consensus = payload == null ? void 0 : payload.consensus;
-  if (!isHighConfidenceConsensus(consensus, {
-    fallbackUsed: payload == null ? void 0 : payload.fallbackUsed
-  })) {
+  const consensus = readField(payload, 'consensus');
+  const fallbackUsed = Boolean(readField(payload, 'fallbackUsed'));
+  if (!isHighConfidenceConsensus(consensus, { fallbackUsed })) {
     return null;
   }
   const calories = mapConsensusNutrient(consensus, 'calories');
   if (calories == null) return null;
-  const query = (payload == null ? void 0 : payload.query) || {};
+  const query = queryFromPayload(payload);
   const baseName = buildDisplayName(payload, displayQuery);
   const displayName = baseName;
   const sourceSubtitle = buildConsensusSubtitle(payload);
-  const needsVerify = Object.values(consensus || {}).some(entry => (entry == null ? void 0 : entry.warning) === 'verify_manually');
-  const sources = Array.isArray(payload == null ? void 0 : payload.sources_used) ? payload.sources_used : [];
+  const needsVerify = consensusNeedsManualVerify(consensus);
+  const sources = sourcesUsedFromPayload(payload);
   const carbs = mapConsensusNutrient(consensus, 'carbs_g');
   const protein = mapConsensusNutrient(consensus, 'protein_g');
   const fat = mapConsensusNutrient(consensus, 'fat_g');
@@ -286,40 +378,46 @@ function mapConsensusToFoodRow(payload, displayQuery) {
     sugar: mapConsensusNutrient(consensus, 'sugar_g'),
     carbs,
     protein,
-    fat
-  });
-  return applyServingFields({
-    id: `nutrition_consensus_${String(displayQuery || baseName).toLowerCase().replace(/\s+/g, '_')}`,
-    name: displayName,
-    food_name: displayName,
-    source_subtitle: sourceSubtitle,
-    brand: query.restaurant || null,
-    brand_name: query.restaurant || null,
-    restaurant: query.restaurant || null,
-    calories,
-    protein,
-    carbs,
     fat,
-    fiber: mapConsensusNutrient(consensus, 'fiber_g'),
-    sodium: mapConsensusNutrient(consensus, 'sodium_mg'),
-    sugar,
-    servingSize: 1,
-    servingGrams: 100,
-    source: SOURCE_NUTRITION_CONSENSUS,
-    nutrition_unverified: needsVerify || (payload == null ? void 0 : payload.fallbackUsed),
-    nf_calories: calories,
-    nf_protein: protein,
-    nf_total_carbohydrate: carbs,
-    nf_total_fat: fat,
-    nf_sugars: sugar,
-    metadata: {
-      consensus,
-      sources_used: sources,
-      cacheHit: payload == null ? void 0 : payload.cacheHit,
-      fallbackUsed: payload == null ? void 0 : payload.fallbackUsed,
-      source: SOURCE_NUTRITION_CONSENSUS
-    }
-  }, displayQuery, payload, (_optObj = payload == null ? void 0 : payload.sourceResults) == null ? void 0 : _optObj[0]);
+  });
+  const nutritionUnverified = needsVerify || fallbackUsed;
+  return applyServingFields(
+    {
+      id: `nutrition_consensus_${String(displayQuery || baseName).toLowerCase().replace(/\s+/g, '_')}`,
+      name: displayName,
+      food_name: displayName,
+      source_subtitle: sourceSubtitle,
+      brand: query.restaurant || null,
+      brand_name: query.restaurant || null,
+      restaurant: query.restaurant || null,
+      calories,
+      protein,
+      carbs,
+      fat,
+      fiber: mapConsensusNutrient(consensus, 'fiber_g'),
+      sodium: mapConsensusNutrient(consensus, 'sodium_mg'),
+      sugar,
+      servingSize: 1,
+      servingGrams: 100,
+      source: SOURCE_NUTRITION_CONSENSUS,
+      nutrition_unverified: nutritionUnverified,
+      nf_calories: calories,
+      nf_protein: protein,
+      nf_total_carbohydrate: carbs,
+      nf_total_fat: fat,
+      nf_sugars: sugar,
+      metadata: {
+        consensus,
+        sources_used: sources,
+        cacheHit: readField(payload, 'cacheHit'),
+        fallbackUsed,
+        source: SOURCE_NUTRITION_CONSENSUS,
+      },
+    },
+    displayQuery,
+    payload,
+    firstSourceResultFromPayload(payload),
+  );
 }
 
 /**
@@ -331,7 +429,7 @@ function mapConsensusToFoodRow(payload, displayQuery) {
  */
 function mapSourceResultToFoodRow(sourceRow, payload, displayQuery) {
   if (!sourceRow || sourceRow.calories == null) return null;
-  const query = (payload == null ? void 0 : payload.query) || {};
+  const query = queryFromPayload(payload);
   const baseName = buildDisplayName(payload, displayQuery);
   const itemLabel = resolveSourceFoodTitle(sourceRow, payload, displayQuery);
   const displayName = itemLabel || baseName;
@@ -391,7 +489,9 @@ function mapSourceResultToFoodRow(sourceRow, payload, displayQuery) {
 function mapSourceResultsToFoodRows(payload, displayQuery) {
   const rows = [];
   const seenKeys = new Set();
-  for (const sourceRow of (payload == null ? void 0 : payload.sourceResults) || []) {
+  const sourceResults = sourceResultsFromPayload(payload);
+  for (let index = 0; index < sourceResults.length; index += 1) {
+    const sourceRow = sourceResults[index];
     const row = mapSourceResultToFoodRow(sourceRow, payload, displayQuery);
     if (!row) continue;
     const key = `${row.source}:${row.calories}`;
@@ -511,17 +611,35 @@ function keepCloseMacroRows(rows, limit = DEFAULT_CLOSE_LIMIT) {
  * @param {number} [limit]
  * @returns {object[]}
  */
+/**
+ * Usable calorie number from a row (calories or nf_calories).
+ * @param {object|null|undefined} row
+ * @returns {number}
+ */
+function usableCaloriesFromRow(row) {
+  if (!row) return NaN;
+  if (row.calories != null) return Number(row.calories);
+  if (row.nf_calories != null) return Number(row.nf_calories);
+  return NaN;
+}
+
 function pickBestRawFoodRows(rows, limit = DEFAULT_CLOSE_LIMIT) {
-  const list = (Array.isArray(rows) ? rows : []).filter(row => {
-    const calories = Number((row == null ? void 0 : row.calories) ?? (row == null ? void 0 : row.nf_calories));
-    return Number.isFinite(calories) && calories >= MIN_USABLE_CALORIES;
-  });
+  const inputList = Array.isArray(rows) ? rows : [];
+  const list = [];
+  for (let index = 0; index < inputList.length; index += 1) {
+    const row = inputList[index];
+    const calories = usableCaloriesFromRow(row);
+    if (!Number.isFinite(calories)) continue;
+    if (calories < MIN_USABLE_CALORIES) continue;
+    list.push(row);
+  }
   if (!list.length) return [];
-  return [...list].sort((leftRow, rightRow) => {
+  const sorted = [...list].sort((leftRow, rightRow) => {
     const priorityGap = sourcePriority(rightRow.source) - sourcePriority(leftRow.source);
     if (priorityGap !== 0) return priorityGap;
     return (Number(rightRow.calories) || 0) - (Number(leftRow.calories) || 0);
-  }).slice(0, Math.max(1, limit));
+  });
+  return sorted.slice(0, Math.max(1, limit));
 }
 
 /**
@@ -631,8 +749,12 @@ function detectLooseRestaurantChain(typedText) {
 }
 function stripRestaurantFromQuery(typedText, chain) {
   let phrase = typedText;
-  if (chain == null ? void 0 : chain.itemRe) phrase = phrase.replace(chain.itemRe, ' ');
-  for (const restaurantChain of RESTAURANT_CHAINS) {
+  if (chain) {
+    const itemRe = chain.itemRe;
+    if (itemRe) phrase = phrase.replace(itemRe, ' ');
+  }
+  for (let index = 0; index < RESTAURANT_CHAINS.length; index += 1) {
+    const restaurantChain = RESTAURANT_CHAINS[index];
     phrase = phrase.replace(restaurantChain.re, ' ');
   }
   return phrase.replace(/\s+/g, ' ').trim();
@@ -641,7 +763,7 @@ function isHighConfidenceConsensus(consensus, {
   fallbackUsed = false
 } = {}) {
   if (fallbackUsed) return false;
-  const calorieEntry = consensus == null ? void 0 : consensus.calories;
+  const calorieEntry = readField(consensus, 'calories');
   if (!calorieEntry || calorieEntry.value == null) return false;
   if ((calorieEntry.sources_agreeing || 0) < MIN_SOURCES_AGREEING) return false;
   // Allow 0-cal diet drinks — only reject negative / missing.
@@ -649,7 +771,8 @@ function isHighConfidenceConsensus(consensus, {
   return true;
 }
 function mapConsensusNutrient(consensus, key) {
-  const entry = consensus == null ? void 0 : consensus[key];
+  if (!consensus) return null;
+  const entry = consensus[key];
   if (!entry || entry.value == null) return null;
   return entry.value;
 }
@@ -666,7 +789,7 @@ function fillSugarFromCarbsWhenDrink({
 }
 function buildDisplayName(payload, displayQuery) {
   const raw = String(displayQuery || '').trim();
-  const query = (payload == null ? void 0 : payload.query) || {};
+  const query = queryFromPayload(payload);
   const fromUser = formatUserQueryAsFoodName(raw);
   if (fromUser && !isJunkFoodTitle(fromUser)) return fromUser;
   let fromParsed = formatUserQueryAsFoodName(query.foodName || '');
@@ -677,27 +800,70 @@ function buildDisplayName(payload, displayQuery) {
   return fromUser || fromParsed || FALLBACK_FOOD_NAME;
 }
 function resolveSourceFoodTitle(sourceRow, payload, displayQuery) {
-  const cleaned = stripLegacyFoodTitleDecorations(sourceRow == null ? void 0 : sourceRow.displayName);
+  const displayName = readField(sourceRow, 'displayName');
+  const cleaned = stripLegacyFoodTitleDecorations(displayName);
   if (cleaned && !isJunkFoodTitle(cleaned)) return cleaned;
   return buildDisplayName(payload, displayQuery);
 }
+
+/**
+ * Collect non-empty source names from sourceResults (for-loop, no .map).
+ * @param {object|null|undefined} payload
+ * @returns {string[]}
+ */
+function sourceNamesFromResults(payload) {
+  const sourceResults = sourceResultsFromPayload(payload);
+  const names = [];
+  for (let index = 0; index < sourceResults.length; index += 1) {
+    const sourceName = sourceResults[index].source;
+    if (sourceName) names.push(sourceName);
+  }
+  return names;
+}
+
 function buildConsensusSubtitle(payload) {
-  const fromResults = ((payload == null ? void 0 : payload.sourceResults) || []).map(resultRow => resultRow.source).filter(Boolean);
-  const fromUsed = Array.isArray(payload == null ? void 0 : payload.sources_used) ? payload.sources_used : [];
-  const names = [...new Set(fromResults.length ? fromResults : fromUsed)];
+  const fromResults = sourceNamesFromResults(payload);
+  const fromUsed = sourcesUsedFromPayload(payload);
+  let namePool = fromUsed;
+  if (fromResults.length > 0) {
+    namePool = fromResults;
+  }
+  const names = [...new Set(namePool)];
   if (names.length === 0) return 'via consensus';
   if (names.length === 1) return `via ${names[0]}`;
   return `via ${names.slice(0, 4).join(', ')}`;
 }
+
+/**
+ * Restaurant for serving label — query.restaurant first, else row.restaurant.
+ * @param {object|null|undefined} payload
+ * @param {object} row
+ * @returns {*}
+ */
+function restaurantForServingFields(payload, row) {
+  const query = queryFromPayload(payload);
+  if (query.restaurant) return query.restaurant;
+  return row.restaurant;
+}
+
+/**
+ * Calories for serving label — nf_calories first, else calories.
+ * @param {object} row
+ * @returns {*}
+ */
+function caloriesForServingFields(row) {
+  if (row.nf_calories != null) return row.nf_calories;
+  return row.calories;
+}
+
 function applyServingFields(row, displayQuery, payload, sourceRow = null) {
-  var _optObj2;
   const detailed = resolveFoodServingLabelDetailed({
     userQuery: displayQuery,
     foodName: row.food_name || row.name,
-    restaurant: ((_optObj2 = payload == null ? void 0 : payload.query) == null ? void 0 : _optObj2.restaurant) || row.restaurant,
-    scraperLabel: sourceRow == null ? void 0 : sourceRow.servingLabel,
-    displayName: sourceRow == null ? void 0 : sourceRow.displayName,
-    calories: row.nf_calories ?? row.calories
+    restaurant: restaurantForServingFields(payload, row),
+    scraperLabel: readField(sourceRow, 'servingLabel'),
+    displayName: readField(sourceRow, 'displayName'),
+    calories: caloriesForServingFields(row),
   });
   const label = detailed.label;
   return {
@@ -710,7 +876,7 @@ function applyServingFields(row, displayQuery, payload, sourceRow = null) {
     serving_qty: 1,
     serving_size: 1,
     nutrition_unverified: Boolean(row.nutrition_unverified) || Boolean(detailed.nutrition_unverified),
-    multiServingFallback: Boolean(row.multiServingFallback) || Boolean(detailed.multiServingFallback)
+    multiServingFallback: Boolean(row.multiServingFallback) || Boolean(detailed.multiServingFallback),
   };
 }
 function isSameFoodCandidate(leftRow, rightRow) {

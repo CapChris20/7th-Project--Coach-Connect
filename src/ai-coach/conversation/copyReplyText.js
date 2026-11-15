@@ -36,55 +36,7 @@ const MARKDOWN_TO_PLAIN_RULES = [
   [/(?:\s*\[\d+\])+/g, ''],
 ];
 
-// ===== MAIN FUNCTIONS =====
-
-/**
- * Remove [1] [2] without rewriting newlines or other markdown (lighter than full coachPlainText).
- * @param {string} text
- * @returns {string}
- */
-export function stripInlineWebCitations(text) {
-  const asString = textAsString(text);
-  const withoutCitations = asString.replace(INLINE_CITATION_PATTERN, '');
-  const withoutExtraSpaces = withoutCitations.replace(EXTRA_SPACES_PATTERN, ' ');
-  return withoutExtraSpaces.trim();
-}
-
-/**
- * Full markdown → plain for paste / share.
- * @param {string} text
- * @returns {string}
- */
-export function coachPlainText(text) {
-  return runMarkdownPlainRules(textAsString(text));
-}
-
-/**
- * Copy coach reply text. On iOS, verify the pasteboard; fall back to the share sheet if it lies.
- * @param {string} text
- * @param {{ announce?: boolean, presentNotice?: Function }} [options]
- * @returns {Promise<boolean>}
- */
-export async function copyCoachText(text, { announce = true, presentNotice } = {}) {
-  // 1. Build plain string; abort with notice if empty.
-  const textToCopy = pickTextForClipboard(text);
-  if (!textToCopy) {
-    showNoticeToUser(presentNotice, NOTHING_TO_COPY_TITLE, NOTHING_TO_COPY_MESSAGE);
-    return false;
-  }
-
-  // 2. Write pasteboard, then verify on iOS (setString can report success while holding old data).
-  const wroteToClipboard = await tryWriteClipboardAndVerify(textToCopy);
-  if (wroteToClipboard) {
-    tellUserCopySucceeded(announce, presentNotice);
-    return true;
-  }
-
-  // 3. Share sheet backup; surface failure only if that also throws.
-  return tryShareSheetOrFail(textToCopy, presentNotice);
-}
-
-// ===== PLUMBING — skip unless debugging =====
+// ===== HELPER FUNCTIONS =====
 
 function textAsString(maybeText) {
   if (!maybeText) {
@@ -178,4 +130,52 @@ async function tryShareSheetOrFail(textToShare, presentNotice) {
     showNoticeToUser(presentNotice, COPY_FAILED_TITLE, failureMessage);
     return false;
   }
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Remove [1] [2] without rewriting newlines or other markdown (lighter than full coachPlainText).
+ * @param {string} text
+ * @returns {string}
+ */
+export function stripInlineWebCitations(text) {
+  const asString = textAsString(text);
+  const withoutCitations = asString.replace(INLINE_CITATION_PATTERN, '');
+  const withoutExtraSpaces = withoutCitations.replace(EXTRA_SPACES_PATTERN, ' ');
+  return withoutExtraSpaces.trim();
+}
+
+/**
+ * Full markdown → plain for paste / share.
+ * @param {string} text
+ * @returns {string}
+ */
+export function coachPlainText(text) {
+  return runMarkdownPlainRules(textAsString(text));
+}
+
+/**
+ * Copy coach reply text. On iOS, verify the pasteboard; fall back to the share sheet if it lies.
+ * @param {string} text
+ * @param {{ announce?: boolean, presentNotice?: Function }} [options]
+ * @returns {Promise<boolean>}
+ */
+export async function copyCoachText(text, { announce = true, presentNotice } = {}) {
+  // 1. Build plain string; abort with notice if empty.
+  const textToCopy = pickTextForClipboard(text);
+  if (!textToCopy) {
+    showNoticeToUser(presentNotice, NOTHING_TO_COPY_TITLE, NOTHING_TO_COPY_MESSAGE);
+    return false;
+  }
+
+  // 2. Write pasteboard, then verify on iOS (setString can report success while holding old data).
+  const wroteToClipboard = await tryWriteClipboardAndVerify(textToCopy);
+  if (wroteToClipboard) {
+    tellUserCopySucceeded(announce, presentNotice);
+    return true;
+  }
+
+  // 3. Share sheet backup; surface failure only if that also throws.
+  return tryShareSheetOrFail(textToCopy, presentNotice);
 }

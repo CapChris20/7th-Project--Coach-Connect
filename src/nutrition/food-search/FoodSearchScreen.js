@@ -78,74 +78,238 @@ function portionTextFromServingUnit(item) {
   return servingUnit;
 }
 function roundMacroNumber(value) {
-  return Math.round(value ?? 0);
+  if (value == null) return Math.round(0);
+  return Math.round(value);
+}
+
+/**
+ * Metadata object from a search hit when it is a plain object.
+ * @param {object|null|undefined} item
+ * @returns {object}
+ */
+function metadataBagFromItem(item) {
+  if (!item) return {};
+  const metadata = item.metadata;
+  if (!metadata) return {};
+  if (typeof metadata !== 'object') return {};
+  return metadata;
+}
+
+/**
+ * Portion / serving label text from item fields or nested metadata.
+ * @param {object} item
+ * @param {object} metadataBag
+ * @returns {*}
+ */
+function portionTextFromItem(item, metadataBag) {
+  if (item.serving_label) return item.serving_label;
+  if (item.servingLabel) return item.servingLabel;
+  if (item.householdServingFullText) return item.householdServingFullText;
+  if (metadataBag.serving_label) return metadataBag.serving_label;
+  if (metadataBag.servingLabel) return metadataBag.servingLabel;
+  if (metadataBag.householdServingFullText) return metadataBag.householdServingFullText;
+  return portionTextFromServingUnit(item);
+}
+
+/**
+ * Display name from API name / food_name / description.
+ * @param {object} item
+ * @returns {string}
+ */
+function nameFromApiItem(item) {
+  if (item.name) return item.name;
+  if (item.food_name) return item.food_name;
+  if (item.description) return item.description;
+  return 'Unknown Food';
+}
+
+/**
+ * Brand string from any frozen brand alias.
+ * @param {object} item
+ * @returns {string}
+ */
+function explicitBrandFromItem(item) {
+  if (item.brand) return item.brand;
+  if (item.brand_name) return item.brand_name;
+  if (item.brand_owner) return item.brand_owner;
+  if (item.brandOwner) return item.brandOwner;
+  return '';
+}
+
+/**
+ * Macro number preferring camelCase then Nutritionix nf_ key.
+ * @param {object} item
+ * @param {string} camelKey
+ * @param {string} nfKey
+ * @returns {number}
+ */
+function macroFromItem(item, camelKey, nfKey) {
+  if (item[camelKey] != null) return roundMacroNumber(item[camelKey]);
+  return roundMacroNumber(item[nfKey]);
+}
+
+function pickFoodServingSize(item) {
+  if (item.servingSize) return item.servingSize;
+  if (item.serving_qty) return item.serving_qty;
+  if (item.serving_size) return item.serving_size;
+  return 1;
+}
+
+function pickFoodServingUnit(item) {
+  if (item.servingUnit) return item.servingUnit;
+  if (item.serving_unit) return item.serving_unit;
+  if (item.servingSizeUnit) return item.servingSizeUnit;
+  return 'serving';
+}
+
+function pickFoodServingGrams(item) {
+  if (item.servingGrams) return item.servingGrams;
+  if (item.serving_weight_grams) return item.serving_weight_grams;
+  if (item.serving_grams) return item.serving_grams;
+  return DEFAULT_SERVING_GRAMS;
+}
+
+function pickFoodServingSizeSnake(item) {
+  if (item.serving_qty) return item.serving_qty;
+  if (item.servingSize) return item.servingSize;
+  return 1;
+}
+
+function pickFoodServingUnitSnake(item) {
+  if (item.serving_unit) return item.serving_unit;
+  if (item.servingUnit) return item.servingUnit;
+  return 'serving';
+}
+
+function pickFoodServingGramsSnake(item) {
+  if (item.serving_weight_grams) return item.serving_weight_grams;
+  if (item.servingGrams) return item.servingGrams;
+  return DEFAULT_SERVING_GRAMS;
+}
+
+function pickFoodServingLabel(item) {
+  if (item.serving_label) return item.serving_label;
+  if (item.servingLabel) return item.servingLabel;
+  if (item.householdServingFullText) return item.householdServingFullText;
+  return null;
 }
 
 // Flatten a search / recent / favorite hit for ConfirmFoodPopup and logFood (camelCase + snake_case keys).
 function normalizeFood(item, searchQuery = '') {
-  const metadataBag = (item == null ? void 0 : item.metadata) && typeof item.metadata === 'object' ? item.metadata : {};
-  const portion_text = item.serving_label || item.servingLabel || item.householdServingFullText || metadataBag.serving_label || metadataBag.servingLabel || metadataBag.householdServingFullText || portionTextFromServingUnit(item);
-  const nameFromApi = item.name || item.food_name || item.description || 'Unknown Food';
+  const metadataBag = metadataBagFromItem(item);
+  const portion_text = portionTextFromItem(item, metadataBag);
+  const nameFromApi = nameFromApiItem(item);
   const isWebSearchSource = item.source === 'serper' || item.source === 'mixed';
   const shouldTidyWebTitle = isWebSearchSource && Boolean(searchQuery);
   let foodName = nameFromApi;
   if (shouldTidyWebTitle) {
     foodName = cleanSerperFoodTitle(nameFromApi, searchQuery);
   }
-  const explicitBrand = item.brand || item.brand_name || item.brand_owner || item.brandOwner || '';
+  const explicitBrand = explicitBrandFromItem(item);
   const brandLabel = resolveFoodBrandLabel(foodName, explicitBrand);
+
+  const servingSize = pickFoodServingSize(item);
+  const servingUnit = pickFoodServingUnit(item);
+  const servingGrams = pickFoodServingGrams(item);
+  const servingSizeSnake = pickFoodServingSizeSnake(item);
+  const servingUnitSnake = pickFoodServingUnitSnake(item);
+  const servingGramsSnake = pickFoodServingGramsSnake(item);
+  const servingLabel = pickFoodServingLabel(item);
+
+  let servingMultiplier = null;
+  if (item.servingMultiplier != null) servingMultiplier = item.servingMultiplier;
+
   return {
     name: foodName,
     brand: brandLabel,
-    servingSize: item.servingSize || item.serving_qty || item.serving_size || 1,
-    servingUnit: item.servingUnit || item.serving_unit || item.servingSizeUnit || 'serving',
-    servingGrams: item.servingGrams || item.serving_weight_grams || item.serving_grams || DEFAULT_SERVING_GRAMS,
-    calories: roundMacroNumber(item.calories ?? item.nf_calories),
-    protein: roundMacroNumber(item.protein ?? item.nf_protein),
-    carbs: roundMacroNumber(item.carbs ?? item.nf_total_carbohydrate),
-    fat: roundMacroNumber(item.fat ?? item.nf_total_fat),
-    fiber: roundMacroNumber(item.fiber ?? item.nf_dietary_fiber),
-    sugar: roundMacroNumber(item.sugar ?? item.nf_sugars),
-    sodium: roundMacroNumber(item.sodium ?? item.nf_sodium),
+    servingSize,
+    servingUnit,
+    servingGrams,
+    calories: macroFromItem(item, 'calories', 'nf_calories'),
+    protein: macroFromItem(item, 'protein', 'nf_protein'),
+    carbs: macroFromItem(item, 'carbs', 'nf_total_carbohydrate'),
+    fat: macroFromItem(item, 'fat', 'nf_total_fat'),
+    fiber: macroFromItem(item, 'fiber', 'nf_dietary_fiber'),
+    sugar: macroFromItem(item, 'sugar', 'nf_sugars'),
+    sodium: macroFromItem(item, 'sodium', 'nf_sodium'),
     source: item.source || 'server',
     nutrition_unverified: Boolean(item.nutrition_unverified),
     multiServingFallback: Boolean(item.multiServingFallback),
-    servingMultiplier: item.servingMultiplier ?? null,
+    servingMultiplier,
     food_name: foodName,
     brand_name: brandLabel,
-    serving_size: item.serving_qty || item.servingSize || 1,
-    serving_unit: item.serving_unit || item.servingUnit || 'serving',
-    serving_grams: item.serving_weight_grams || item.servingGrams || DEFAULT_SERVING_GRAMS,
-    serving_label: item.serving_label || item.servingLabel || item.householdServingFullText || null,
+    serving_size: servingSizeSnake,
+    serving_unit: servingUnitSnake,
+    serving_grams: servingGramsSnake,
+    serving_label: servingLabel,
     portion_text,
-    metadata: item
+    metadata: item,
   };
 }
+
+/**
+ * matchedQuery nested under item.metadata when present.
+ * @param {object|null|undefined} item
+ * @returns {string}
+ */
+function matchedQueryFromItem(item) {
+  if (!item) return '';
+  const metadata = item.metadata;
+  if (!metadata) return '';
+  if (!metadata.matchedQuery) return '';
+  return metadata.matchedQuery;
+}
+
 function formatServingLine(item, userQuery = '') {
-  var _optObj;
-  const matchedQuery = ((_optObj = item == null ? void 0 : item.metadata) == null ? void 0 : _optObj.matchedQuery) || '';
+  const matchedQuery = matchedQueryFromItem(item);
   const queryForServing = userQuery || matchedQuery;
   return formatServingDisplayLine(item, queryForServing);
 }
+
+/**
+ * Macro grams from a favorite’s macros bag.
+ * @param {object|null|undefined} favorite
+ * @param {string} macroKey
+ * @returns {*}
+ */
+function favoriteMacro(favorite, macroKey) {
+  if (!favorite) return undefined;
+  const macros = favorite.macros;
+  if (!macros) return undefined;
+  return macros[macroKey];
+}
+
 function normalizeFavoriteRow(favorite) {
-  var _optObj2, _optObj3, _optObj4;
   return normalizeFood({
     id: favorite.foodId,
     name: favorite.foodName,
     food_name: favorite.foodName,
     calories: favorite.calories,
-    protein: (_optObj2 = favorite.macros) == null ? void 0 : _optObj2.protein,
-    carbs: (_optObj3 = favorite.macros) == null ? void 0 : _optObj3.carbs,
-    fat: (_optObj4 = favorite.macros) == null ? void 0 : _optObj4.fat,
-    brand: favorite.brand
+    protein: favoriteMacro(favorite, 'protein'),
+    carbs: favoriteMacro(favorite, 'carbs'),
+    fat: favoriteMacro(favorite, 'fat'),
+    brand: favorite.brand,
   });
 }
+
+/**
+ * Title string from a raw search hit for junk-title filtering.
+ * @param {object|null|undefined} item
+ * @returns {string}
+ */
+function titleFromSearchHit(item) {
+  if (!item) return '';
+  if (item.name) return item.name;
+  if (item.food_name) return item.food_name;
+  return '';
+}
+
 function normalizeSearchHits(rawHits, trimmedQuery) {
   const safeHits = rawHits || [];
   const cleanedHits = [];
   for (let index = 0; index < safeHits.length; index += 1) {
     const item = safeHits[index];
-    const title = (item == null ? void 0 : item.name) || (item == null ? void 0 : item.food_name) || '';
+    const title = titleFromSearchHit(item);
     if (isJunkWebSearchTitle(title)) continue;
     cleanedHits.push(normalizeFood(item, trimmedQuery));
   }
@@ -157,12 +321,75 @@ function rowMetaLine(item, query) {
   if (serving) return `${brand} · ${serving}`;
   return brand;
 }
+
+/**
+ * Stable id piece for a list row key.
+ * @param {object|null|undefined} item
+ * @param {number} index
+ * @returns {*}
+ */
+function idPieceFromItem(item, index) {
+  if (!item) return index;
+  if (item.id) return item.id;
+  if (item.food_id) return item.food_id;
+  if (item.name) return item.name;
+  if (item.food_name) return item.food_name;
+  return index;
+}
+
 function rowKey(item, index, listKey) {
-  const id = (item == null ? void 0 : item.id) || (item == null ? void 0 : item.food_id) || (item == null ? void 0 : item.name) || (item == null ? void 0 : item.food_name) || index;
+  const id = idPieceFromItem(item, index);
   return `${listKey}-${id}-${index}`;
 }
 function foodRowId(item) {
-  return String((item == null ? void 0 : item.id) || (item == null ? void 0 : item.food_id) || (item == null ? void 0 : item.name) || (item == null ? void 0 : item.food_name) || '').trim().toLowerCase();
+  const idPiece = idPieceFromItem(item, '');
+  return String(idPiece || '').trim().toLowerCase();
+}
+
+/**
+ * Call an optional press handler when it is a function.
+ * @param {Function|undefined|null} handler
+ * @param {*} [argument]
+ */
+function callIfFunction(handler, argument) {
+  if (typeof handler !== 'function') return;
+  if (argument === undefined) {
+    handler();
+    return;
+  }
+  handler(argument);
+}
+
+/**
+ * True when the query string has non-whitespace characters.
+ * @param {string|null|undefined} query
+ * @returns {boolean}
+ */
+function queryHasTypedText(query) {
+  if (!query) return false;
+  return Boolean(query.trim());
+}
+
+/**
+ * Initial browse tab — Results when the screen opened with a seed query.
+ * @param {string|null|undefined} initialQuery
+ * @returns {string}
+ */
+function initialBrowseTab(initialQuery) {
+  if (queryHasTypedText(initialQuery)) return BROWSE_TAB_RESULTS;
+  return BROWSE_TAB_RECENT;
+}
+
+/**
+ * Signed-in uid from prop or Firebase auth.currentUser.
+ * @param {string|null|undefined} userId
+ * @returns {string|undefined}
+ */
+function resolveSignedInUid(userId) {
+  if (userId) return userId;
+  const currentUser = auth.currentUser;
+  if (!currentUser) return undefined;
+  return currentUser.uid;
 }
 function browseListForTab(browseTab, favoriteFoods, recentFoods, results) {
   if (browseTab === BROWSE_TAB_FAVORITES) {
@@ -313,8 +540,7 @@ function EmptyState({
   colors,
   hint
 }) {
-  var _optFn;
-  const typedSomething = Boolean((_optFn = query == null ? void 0 : query.trim) == null ? void 0 : _optFn());
+  const typedSomething = queryHasTypedText(query);
   let kickerText = 'START TYPING';
   let titleText = 'What are you eating?';
   let subtitleText = 'Search packaged foods, restaurants, and groceries.';
@@ -324,6 +550,30 @@ function EmptyState({
     subtitleText = hint || 'Try a shorter name or a brand.';
   }
   const showQuickAddCta = typedSomething && typeof onQuickAdd === 'function';
+
+  // Build quick-pick chips without .map in the layout recipe.
+  const quickPickChips = [];
+  for (let index = 0; index < QUICK_PICKS.length; index += 1) {
+    const label = QUICK_PICKS[index];
+    quickPickChips.push(
+      <Pressable
+        key={label}
+        onPress={() => callIfFunction(onSuggestionPress, label)}
+        accessibilityRole="button"
+        accessibilityLabel={`Search ${label}`}
+        style={[empty.chip, {
+          borderColor: colors.nbBorder,
+          backgroundColor: colors.nbSurfaceChip,
+        }]}
+      >
+        <Ionicons name="add" size={18} color={colors.nbInk} />
+        <Text style={[empty.chipLabel, { color: colors.nbInk }]} numberOfLines={1}>
+          {label}
+        </Text>
+      </Pressable>,
+    );
+  }
+
   return <View style={empty.wrap}>
       <View style={[empty.card, {
       borderColor: colors.nbBorder
@@ -349,17 +599,7 @@ function EmptyState({
       color: colors.nbMuted
     }]}>QUICK PICKS</Text>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={empty.chipRow}>
-        {QUICK_PICKS.map(label => <Pressable key={label} onPress={() => onSuggestionPress == null ? void 0 : onSuggestionPress(label)} accessibilityRole="button" accessibilityLabel={`Search ${label}`} style={[empty.chip, {
-        borderColor: colors.nbBorder,
-        backgroundColor: colors.nbSurfaceChip
-      }]}>
-            <Ionicons name="add" size={18} color={colors.nbInk} />
-            <Text style={[empty.chipLabel, {
-          color: colors.nbInk
-        }]} numberOfLines={1}>
-              {label}
-            </Text>
-          </Pressable>)}
+        {quickPickChips}
       </ScrollView>
     </View>;
 }
@@ -411,7 +651,7 @@ function ScanAndQuickAddRow({
   }
   return <View style={styles.actionRow}>
       <HardShadow offset={nb.shadowOffsetSmall} radius={borderRadius.nbButton} style={styles.actionHalf}>
-        <TouchableOpacity onPress={() => onOpenBarcode == null ? void 0 : onOpenBarcode()} disabled={!barcodeEnabled} accessibilityRole="button" accessibilityLabel="Scan barcode" style={[styles.actionBtn, {
+        <TouchableOpacity onPress={() => callIfFunction(onOpenBarcode)} disabled={!barcodeEnabled} accessibilityRole="button" accessibilityLabel="Scan barcode" style={[styles.actionBtn, {
         borderColor: colors.nbBorder,
         backgroundColor: colors.nbSurface,
         opacity: barcodeOpacity
@@ -426,7 +666,7 @@ function ScanAndQuickAddRow({
         </TouchableOpacity>
       </HardShadow>
       <HardShadow offset={nb.shadowOffsetSmall} radius={borderRadius.nbButton} style={styles.actionHalf}>
-        <TouchableOpacity onPress={() => onOpenQuickAdd == null ? void 0 : onOpenQuickAdd()} disabled={!quickAddEnabled} accessibilityRole="button" accessibilityLabel="Quick add" style={[styles.actionBtn, {
+        <TouchableOpacity onPress={() => callIfFunction(onOpenQuickAdd)} disabled={!quickAddEnabled} accessibilityRole="button" accessibilityLabel="Quick add" style={[styles.actionBtn, {
         borderColor: colors.nbBorder,
         backgroundColor: colors.nbSurface,
         opacity: quickAddOpacity
@@ -535,7 +775,6 @@ function FoodSearchScreen({
   reserveShellBottomNav = false,
   initialQuery = ''
 }) {
-  var _optFn2, _optObj5;
   // vocab: useTheme = Design Law light/dark tokens (nbBackground, nbInk, nbFill, …)
   const {
     isDark,
@@ -558,8 +797,8 @@ function FoodSearchScreen({
   // vocab: basket = foods toggled with +; Log-to-Meal pill opens confirm for the first pick
   const [basket, setBasket] = useState([]);
   // vocab: browseTab = which NbSegmented cell is active (results | favorites | recent)
-  const [browseTab, setBrowseTab] = useState(((_optFn2 = initialQuery == null ? void 0 : initialQuery.trim) == null ? void 0 : _optFn2()) ? BROWSE_TAB_RESULTS : BROWSE_TAB_RECENT);
-  const uid = userId || ((_optObj5 = auth.currentUser) == null ? void 0 : _optObj5.uid);
+  const [browseTab, setBrowseTab] = useState(initialBrowseTab(initialQuery));
+  const uid = resolveSignedInUid(userId);
 
   // Confirm sheet theme — nb tokens only (no pink/purple chrome)
   const confirmTheme = useMemo(() => ({
@@ -787,6 +1026,24 @@ function FoodSearchScreen({
   const showListCard = !loading && listData.length > 0;
   const showSoftDisclaimer = !loading && listData.length > 0;
   const showBasket = basket.length > 0;
+
+  // Build result rows with a for-loop (no .map in the screen recipe).
+  const foodResultRows = [];
+  for (let index = 0; index < listData.length; index += 1) {
+    const item = listData[index];
+    foodResultRows.push(
+      <FoodResultRow
+        key={rowKey(item, index, listKey)}
+        item={item}
+        onToggle={toggleBasket}
+        selected={inBasket(item)}
+        colors={colors}
+        query={query}
+        showDivider={index > 0}
+      />,
+    );
+  }
+
   return <>
       <View style={[styles.root, {
       backgroundColor: screenBg
@@ -832,7 +1089,7 @@ function FoodSearchScreen({
               backgroundColor: colors.nbSurface,
               borderColor: colors.nbBorder
             }]}>
-                  {listData.map((item, index) => <FoodResultRow key={rowKey(item, index, listKey)} item={item} onToggle={toggleBasket} selected={inBasket(item)} colors={colors} query={query} showDivider={index > 0} />)}
+                  {foodResultRows}
                 </View>
               </HardShadow> : null}
 

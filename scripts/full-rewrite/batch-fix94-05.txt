@@ -1,0 +1,5 @@
+src/nutrition/food-search/ConfirmFoodPopup.jsx
+src/nutrition/food-search/FoodSearchScreen.js
+src/nutrition/food-search/cleanSearchText.js
+src/nutrition/food-search/combineFoodSources.js
+src/nutrition/food-search/guessServingLabel.js

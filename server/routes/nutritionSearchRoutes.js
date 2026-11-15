@@ -7,6 +7,10 @@ const {
   setCachedNutritionSearch,
 } = require('../lib/nutritionMultiSourceSearch/nutritionSearchCache');
 const { enforceNutritionSearchDailyLimit } = require('../lib/nutritionSearchDailyLimit');
+const {
+  shadowEnabled,
+  buildShadowRankV2,
+} = require('../../src/nutrition/food-match/shadowRankV2');
 
 function filterConsensusForResponse(consensus) {
   const filtered = {};
@@ -28,6 +32,27 @@ function buildResponsePayload(result, { cacheHit = false, timestamp } = {}) {
     cacheHit: Boolean(cacheHit),
     fallbackUsed: Boolean(result.fallbackUsed),
   };
+}
+
+// Selection happens later on the client, so selectedId is null on this request.
+// Payload is the food query and candidate ids only — no user id, email, or name.
+function logSearchDecision({ query, restaurant, sourceResults, consensus, status }) {
+  const shownCandidateIds = [];
+  if (consensus && Object.keys(consensus).length > 0) shownCandidateIds.push('consensus');
+  const rows = Array.isArray(sourceResults) ? sourceResults : [];
+  for (let index = 0; index < rows.length; index += 1) {
+    const row = rows[index] || {};
+    shownCandidateIds.push(String(row.id || row.sourceKey || row.source || `row-${index}`));
+  }
+  logger.info(
+    `[Nutrition Search] decision ${JSON.stringify({
+      query: String(query || ''),
+      restaurant: restaurant ? String(restaurant) : null,
+      shownCandidateIds,
+      selectedId: null,
+      status,
+    })}`,
+  );
 }
 
 async function verifyNutritionSearchUser(req, res, next) {
@@ -84,6 +109,15 @@ async function handleNutritionSearch(req, res, deps = {}) {
       logger.info(
         `[Nutrition Search] cache hit uid=${uid || 'unknown'} food="${normalizedFood}" restaurant="${normalizedRestaurant || ''}" ${elapsed}ms`,
       );
+      logSearchDecision({
+        query: normalizedFood,
+        restaurant: normalizedRestaurant,
+        sourceResults: cached.sourceResults,
+        consensus: filterConsensusForResponse(cached.consensus),
+        status: (cached.sourceResults || []).length > 0 || Object.keys(filterConsensusForResponse(cached.consensus)).length > 0
+          ? 'shown'
+          : 'none',
+      });
       return res.json({
         query: { foodName: normalizedFood, restaurant: normalizedRestaurant },
         consensus: filterConsensusForResponse(cached.consensus),
@@ -114,6 +148,13 @@ async function handleNutritionSearch(req, res, deps = {}) {
 
     if (result.successCount === 0) {
       const statusCode = result.allSourcesErrored ? 503 : 404;
+      logSearchDecision({
+        query: normalizedFood,
+        restaurant: normalizedRestaurant,
+        sourceResults: [],
+        consensus: {},
+        status: 'none',
+      });
       return res.status(statusCode).json({
         error:
           statusCode === 503
@@ -127,6 +168,13 @@ async function handleNutritionSearch(req, res, deps = {}) {
     }
 
     if (!hasConsensus && !hasSourceRows) {
+      logSearchDecision({
+        query: normalizedFood,
+        restaurant: normalizedRestaurant,
+        sourceResults: [],
+        consensus: {},
+        status: 'none',
+      });
       return res.status(404).json({
         error: 'No nutrition data found for this food',
         query: result.query,
@@ -139,6 +187,52 @@ async function handleNutritionSearch(req, res, deps = {}) {
 
     const timestamp = new Date().toISOString();
     const payload = buildResponsePayload(result, { cacheHit: false, timestamp });
+
+    // Shadow mode: attach rankV2 for logging / clients that ignore it.
+    // The live cards stay sourceResults + consensus (old path).
+    if (shadowEnabled(deps.env || process.env)) {
+      const typedQuery = [normalizedRestaurant, normalizedFood].filter(Boolean).join(' ').trim();
+      const shadowRows = [];
+      if (hasConsensus) {
+        shadowRows.push({
+          id: 'consensus',
+          name: normalizedFood,
+          source: 'nutrition_consensus',
+          calories: filteredConsensus.calories?.value,
+          protein: filteredConsensus.protein_g?.value,
+          carbs: filteredConsensus.carbs_g?.value,
+          fat: filteredConsensus.fat_g?.value,
+        });
+      }
+      for (const row of result.sourceResults || []) {
+        shadowRows.push({
+          id: row.sourceKey || row.source,
+          name: row.displayName || normalizedFood,
+          source: row.sourceKey || row.source,
+          calories: row.calories,
+          protein: row.protein_g,
+          carbs: row.carbs_g,
+          fat: row.fat_g,
+          url: row.url,
+          servingLabel: row.servingLabel,
+          servingBasis: row.servingBasis,
+        });
+      }
+      const oldTopId = shadowRows[0]?.id || null;
+      const shadow = buildShadowRankV2(typedQuery, shadowRows, { oldTopId });
+      payload.rankV2 = shadow.rankV2;
+      if (shadow.disagreement) {
+        logger.info(`[Nutrition Search] rankV2_disagreement ${JSON.stringify(shadow.disagreement)}`);
+      }
+    }
+
+    logSearchDecision({
+      query: normalizedFood,
+      restaurant: normalizedRestaurant,
+      sourceResults: result.sourceResults,
+      consensus: filteredConsensus,
+      status: 'shown',
+    });
 
     setCachedNutritionSearch(normalizedFood, normalizedRestaurant, payload);
 
@@ -173,4 +267,5 @@ module.exports = {
   verifyNutritionSearchUser,
   filterConsensusForResponse,
   buildResponsePayload,
+  logSearchDecision,
 };

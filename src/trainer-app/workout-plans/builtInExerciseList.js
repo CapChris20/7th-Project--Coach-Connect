@@ -99,7 +99,156 @@ export const MANUAL_EXERCISE_LIBRARY = [
   { id: 'turkish_getup', name: 'Turkish Get-Up', muscleGroups: ['Full Body', 'Core'], description: 'Slow controlled transitions.' },
 ];
 
-// ===== MAIN FUNCTIONS =====
+// ===== HELPER FUNCTIONS =====
+
+function firstLibraryPage(limit) {
+  return MANUAL_EXERCISE_LIBRARY.slice(0, limit);
+}
+
+function nameLooksLikeBarbell(nameLower) {
+  const regexHit = /\b(barbell|bb |ez[- ]?bar|landmine|t-bar)\b/.test(nameLower);
+  if (regexHit) {
+    return true;
+  }
+  return nameLower.startsWith('bb ');
+}
+
+function nameLooksLikeDumbbell(nameLower) {
+  const regexHit =
+    /\b(dumbbell|db |kettlebell|kb |hammer curl|goblet)\b/.test(nameLower);
+  if (regexHit) {
+    return true;
+  }
+  return nameLower.startsWith('db ');
+}
+
+function nameLooksLikeCable(nameLower) {
+  return /\b(cable|pulldown|pushdown|face pull|woodchopper|pallof)\b/.test(nameLower);
+}
+
+function nameLooksLikeMachine(nameLower) {
+  return /\b(machine|smith|leg press|leg extension|leg curl|pec deck|hack squat|ergometer|assault bike|rower)\b/.test(
+    nameLower,
+  );
+}
+
+function nameLooksLikeBodyweight(nameLower) {
+  return /\b(push-?up|pull-?up|chin-?up|plank|burpee|mountain climber|jump rope|dip|glute bridge|hanging|ab wheel|box jump)\b/.test(
+    nameLower,
+  );
+}
+
+/**
+ * Additive score: exact name > prefix > contains > muscle text > description.
+ * Tiers stack — "bench press" exact also earns prefix and contains points.
+ */
+function scoreExerciseAgainstQuery(exercise, searchText) {
+  const nameLower = exercise.name.toLowerCase();
+  let score = 0;
+
+  if (nameLower === searchText) {
+    score += SCORE_EXACT_NAME_MATCH;
+  }
+  if (nameLower.startsWith(searchText)) {
+    score += NAME_PREFIX_SCORE;
+  }
+  if (nameLower.includes(searchText)) {
+    score += NAME_CONTAINS_SCORE;
+  }
+
+  const muscleGroupsText = (exercise.muscleGroups || []).join(' ').toLowerCase();
+  if (muscleGroupsText.includes(searchText)) {
+    score += MUSCLE_GROUP_SCORE;
+  }
+
+  const descriptionText = (exercise.description || '').toLowerCase();
+  if (descriptionText.includes(searchText)) {
+    score += DESCRIPTION_SCORE;
+  }
+
+  return { exercise, score };
+}
+
+function compareMatchesByScoreThenName(leftMatch, rightMatch) {
+  const scoreDelta = rightMatch.score - leftMatch.score;
+  if (scoreDelta !== 0) {
+    return scoreDelta;
+  }
+  return leftMatch.exercise.name.localeCompare(rightMatch.exercise.name);
+}
+
+function rankLibraryAgainstSearchText(searchText) {
+  const rankedMatches = [];
+  for (let index = 0; index < MANUAL_EXERCISE_LIBRARY.length; index += 1) {
+    const exercise = MANUAL_EXERCISE_LIBRARY[index];
+    const scoredRow = scoreExerciseAgainstQuery(exercise, searchText);
+    if (scoredRow.score > 0) {
+      rankedMatches.push(scoredRow);
+    }
+  }
+  rankedMatches.sort(compareMatchesByScoreThenName);
+  return rankedMatches;
+}
+
+function takeTopExercises(rankedMatches, limit) {
+  const topExercises = [];
+  const howMany = Math.min(limit, rankedMatches.length);
+  for (let index = 0; index < howMany; index += 1) {
+    topExercises.push(rankedMatches[index].exercise);
+  }
+  return topExercises;
+}
+
+function normalizeEquipmentKeys(equipments) {
+  const rawList = Array.isArray(equipments) ? equipments : [];
+  const keys = [];
+  for (let index = 0; index < rawList.length; index += 1) {
+    const key = String(rawList[index] || '').trim().toLowerCase();
+    if (key) {
+      keys.push(key);
+    }
+  }
+  return keys;
+}
+
+function exerciseHasMuscleGroup(exercise, muscleKey) {
+  const groups = exercise.muscleGroups || [];
+  for (let index = 0; index < groups.length; index += 1) {
+    const groupName = String(groups[index]).toLowerCase();
+    if (groupName === muscleKey) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function keepRowsMatchingMuscle(rows, muscleKey) {
+  const kept = [];
+  for (let index = 0; index < rows.length; index += 1) {
+    const exercise = rows[index];
+    if (exerciseHasMuscleGroup(exercise, muscleKey)) {
+      kept.push(exercise);
+    }
+  }
+  return kept;
+}
+
+function keepRowsMatchingEquipment(rows, equipmentKeys) {
+  const kept = [];
+  for (let index = 0; index < rows.length; index += 1) {
+    const exercise = rows[index];
+    const inferred = String(inferExerciseEquipment(exercise) || '').toLowerCase();
+    if (!inferred) {
+      continue;
+    }
+    if (equipmentKeys.includes(inferred)) {
+      kept.push(exercise);
+    }
+  }
+  return kept;
+}
+
+// ===== MAIN FUNCTION =====
 
 /**
  * Weighted substring search over the library above. Not fuzzy matching — additive score per row.
@@ -189,151 +338,4 @@ export function filterManualExerciseLibrary({
   return matchingRows.slice(0, limit);
 }
 
-// PLUMBING — skip unless debugging
 
-function firstLibraryPage(limit) {
-  return MANUAL_EXERCISE_LIBRARY.slice(0, limit);
-}
-
-function rankLibraryAgainstSearchText(searchText) {
-  const rankedMatches = [];
-  for (let index = 0; index < MANUAL_EXERCISE_LIBRARY.length; index += 1) {
-    const exercise = MANUAL_EXERCISE_LIBRARY[index];
-    const scoredRow = scoreExerciseAgainstQuery(exercise, searchText);
-    if (scoredRow.score > 0) {
-      rankedMatches.push(scoredRow);
-    }
-  }
-  rankedMatches.sort(compareMatchesByScoreThenName);
-  return rankedMatches;
-}
-
-function takeTopExercises(rankedMatches, limit) {
-  const topExercises = [];
-  const howMany = Math.min(limit, rankedMatches.length);
-  for (let index = 0; index < howMany; index += 1) {
-    topExercises.push(rankedMatches[index].exercise);
-  }
-  return topExercises;
-}
-
-function normalizeEquipmentKeys(equipments) {
-  const rawList = Array.isArray(equipments) ? equipments : [];
-  const keys = [];
-  for (let index = 0; index < rawList.length; index += 1) {
-    const key = String(rawList[index] || '').trim().toLowerCase();
-    if (key) {
-      keys.push(key);
-    }
-  }
-  return keys;
-}
-
-function keepRowsMatchingMuscle(rows, muscleKey) {
-  const kept = [];
-  for (let index = 0; index < rows.length; index += 1) {
-    const exercise = rows[index];
-    if (exerciseHasMuscleGroup(exercise, muscleKey)) {
-      kept.push(exercise);
-    }
-  }
-  return kept;
-}
-
-function exerciseHasMuscleGroup(exercise, muscleKey) {
-  const groups = exercise.muscleGroups || [];
-  for (let index = 0; index < groups.length; index += 1) {
-    const groupName = String(groups[index]).toLowerCase();
-    if (groupName === muscleKey) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function keepRowsMatchingEquipment(rows, equipmentKeys) {
-  const kept = [];
-  for (let index = 0; index < rows.length; index += 1) {
-    const exercise = rows[index];
-    const inferred = String(inferExerciseEquipment(exercise) || '').toLowerCase();
-    if (!inferred) {
-      continue;
-    }
-    if (equipmentKeys.includes(inferred)) {
-      kept.push(exercise);
-    }
-  }
-  return kept;
-}
-
-/**
- * Additive score: exact name > prefix > contains > muscle text > description.
- * Tiers stack — "bench press" exact also earns prefix and contains points.
- */
-function scoreExerciseAgainstQuery(exercise, searchText) {
-  const nameLower = exercise.name.toLowerCase();
-  let score = 0;
-
-  if (nameLower === searchText) {
-    score += SCORE_EXACT_NAME_MATCH;
-  }
-  if (nameLower.startsWith(searchText)) {
-    score += NAME_PREFIX_SCORE;
-  }
-  if (nameLower.includes(searchText)) {
-    score += NAME_CONTAINS_SCORE;
-  }
-
-  const muscleGroupsText = (exercise.muscleGroups || []).join(' ').toLowerCase();
-  if (muscleGroupsText.includes(searchText)) {
-    score += MUSCLE_GROUP_SCORE;
-  }
-
-  const descriptionText = (exercise.description || '').toLowerCase();
-  if (descriptionText.includes(searchText)) {
-    score += DESCRIPTION_SCORE;
-  }
-
-  return { exercise, score };
-}
-
-function compareMatchesByScoreThenName(leftMatch, rightMatch) {
-  const scoreDelta = rightMatch.score - leftMatch.score;
-  if (scoreDelta !== 0) {
-    return scoreDelta;
-  }
-  return leftMatch.exercise.name.localeCompare(rightMatch.exercise.name);
-}
-
-function nameLooksLikeBarbell(nameLower) {
-  const regexHit = /\b(barbell|bb |ez[- ]?bar|landmine|t-bar)\b/.test(nameLower);
-  if (regexHit) {
-    return true;
-  }
-  return nameLower.startsWith('bb ');
-}
-
-function nameLooksLikeDumbbell(nameLower) {
-  const regexHit =
-    /\b(dumbbell|db |kettlebell|kb |hammer curl|goblet)\b/.test(nameLower);
-  if (regexHit) {
-    return true;
-  }
-  return nameLower.startsWith('db ');
-}
-
-function nameLooksLikeCable(nameLower) {
-  return /\b(cable|pulldown|pushdown|face pull|woodchopper|pallof)\b/.test(nameLower);
-}
-
-function nameLooksLikeMachine(nameLower) {
-  return /\b(machine|smith|leg press|leg extension|leg curl|pec deck|hack squat|ergometer|assault bike|rower)\b/.test(
-    nameLower,
-  );
-}
-
-function nameLooksLikeBodyweight(nameLower) {
-  return /\b(push-?up|pull-?up|chin-?up|plank|burpee|mountain climber|jump rope|dip|glute bridge|hanging|ab wheel|box jump)\b/.test(
-    nameLower,
-  );
-}

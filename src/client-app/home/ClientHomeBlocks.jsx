@@ -482,6 +482,11 @@ function buildNumberTileElements(tiles, themeColors, sleepHours, onOpenLog, comp
   return elements;
 }
 
+/**
+ * Four client daily health stat tiles: sleep, water, weight, and steps.
+ * @param {object} props
+ * @returns {JSX.Element}
+ */
 export function ClientNumberTiles({
   themeColors,
   sleepHours,
@@ -572,6 +577,11 @@ function buildMacroProgressElements(macros, themeColors) {
   return elements;
 }
 
+/**
+ * Daily nutrition summary card showing calorie ring and macro progress bars.
+ * @param {object} props
+ * @returns {JSX.Element}
+ */
 export function ClientNutritionCard({
   themeColors,
   todayCalories,
@@ -814,6 +824,11 @@ function buildWorkoutExerciseElements(
   return blocks;
 }
 
+/**
+ * Workout tracking card displaying exercises, sets, and rep completion state.
+ * @param {object} props
+ * @returns {JSX.Element|null}
+ */
 export function ClientWorkoutCard({ themeColors, state }) {
   if (!(state && state.loaded)) {
     return null;
@@ -1163,6 +1178,11 @@ function buildGoTileElements(items, themeColors) {
   return tiles;
 }
 
+/**
+ * Quick action navigation grid for key app sections.
+ * @param {object} props
+ * @returns {JSX.Element}
+ */
 export function ClientGoToGrid({ themeColors, items, notesFilesItem }) {
   return (
     <View style={{ marginBottom: 24, gap: 10 }}>
@@ -1366,6 +1386,11 @@ function draftTextFromMaybeNumber(value) {
   return String(value);
 }
 
+/**
+ * Daily health metrics logging bottom sheet for water, sleep, weight, and steps.
+ * @param {object} props
+ * @returns {JSX.Element}
+ */
 export function ClientLogSheet({
   visible,
   metricKey,
@@ -1536,6 +1561,11 @@ function buildTrainerSheetRowElements(rows, themeColors, onClose) {
   return rowElements;
 }
 
+/**
+ * Bottom sheet displaying trainer information and coaching action shortcuts.
+ * @param {object} props
+ * @returns {JSX.Element}
+ */
 export function ClientTrainerSheet({
   visible,
   onClose,
@@ -1706,6 +1736,11 @@ function buildReviewTagElements(tags, setTags, themeColors) {
   return tagElements;
 }
 
+/**
+ * Bottom sheet allowing clients to submit reviews and star ratings for trainers.
+ * @param {object} props
+ * @returns {JSX.Element}
+ */
 export function ClientReviewSheet({
   visible,
   onClose,

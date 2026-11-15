@@ -23,21 +23,25 @@ const FREQUENCY_ICON_PATH_CHUNKS = [
   "</svg>"
 ];
 
-// ===== MAIN =====
+// ===== HELPER FUNCTIONS =====
+
+function joinSvgChunks(chunks) {
+  let combined = '';
+  for (let index = 0; index < chunks.length; index += 1) {
+    combined += chunks[index];
+  }
+  return combined;
+}
+
+// ===== MAIN FUNCTION =====
 
 /**
  * Join the path chunks into the SVG string SvgXml expects.
  * Why a function: keeps the giant markup out of the export line and makes the join step obvious.
  * @returns {string}
  */
-function buildFrequencyIconSvg() {
-  // 1. Start with an empty string and append every chunk in order.
-  let svgMarkup = '';
-  for (let chunkIndex = 0; chunkIndex < FREQUENCY_ICON_PATH_CHUNKS.length; chunkIndex += 1) {
-    svgMarkup += FREQUENCY_ICON_PATH_CHUNKS[chunkIndex];
-  }
-  // 2. Return the full SVG document string (same characters as the old one-line constant).
-  return svgMarkup;
+export function buildFrequencyIconSvg() {
+  return joinSvgChunks(FREQUENCY_ICON_PATH_CHUNKS);
 }
 
 const FREQUENCY_ICON_SVG = buildFrequencyIconSvg();

@@ -38,20 +38,34 @@ const BACK_HIT_SIZE = 44;
 
 /**
  * Pull Nb background / ink / muted from whatever the caller passed historically.
- * Legacy call passes the theme `isDark` flag — keep that door so colors behave the same as before.
+ * Supports theme token objects or legacy boolean isDark flags.
+ * @param {object|boolean} themeOrDarkFlag
+ * @returns {{ screenBackground: string, surface: string, textColor: string, muted: string }}
  */
-function screenPalette(themeDarkFlag) {
+function screenPalette(themeOrDarkFlag) {
+  if (themeOrDarkFlag && typeof themeOrDarkFlag === 'object') {
+    return {
+      screenBackground: themeOrDarkFlag.nbBackground || lightColors.nbBackground,
+      surface: themeOrDarkFlag.nbSurface || lightColors.nbSurface,
+      textColor: themeOrDarkFlag.nbInk || lightColors.nbInk,
+      muted: themeOrDarkFlag.nbMuted || lightColors.nbMuted,
+    };
+  }
+  const isDarkMode = Boolean(themeOrDarkFlag);
+  const colorBag = isDarkMode ? darkColors : lightColors;
   return {
-    screenBackground: themeDarkFlag.nbBackground,
-    surface: themeDarkFlag.nbSurface,
-    textColor: themeDarkFlag.nbInk,
-    muted: themeDarkFlag.nbMuted,
+    screenBackground: colorBag.nbBackground,
+    surface: colorBag.nbSurface,
+    textColor: colorBag.nbInk,
+    muted: colorBag.nbMuted,
   };
 }
 
 /**
  * Map a monthly-limit error payload into the genUsage state shape the UI reads.
  * Object keys (generations_used / generations_limit / resets_at) are frozen for callers.
+ * @param {object} limitPayload
+ * @returns {{ generations_used: number, generations_limit: number, resets_at: string }}
  */
 function usageStateFromLimitPayload(limitPayload) {
   return {
@@ -63,12 +77,14 @@ function usageStateFromLimitPayload(limitPayload) {
 
 /**
  * One-line status under "Generation": no plan yet, plan with no date, or plan + saved date.
+ * @param {object|null} generatedPlan
+ * @returns {string}
  */
 function savedPlanStatusCaption(generatedPlan) {
   if (!generatedPlan) {
     return 'No plan saved yet.';
   }
-  if (!generatedPlan?.generatedAt) {
+  if (!generatedPlan.generatedAt) {
     return 'Plan saved .';
   }
   const savedDate = new Date(generatedPlan.generatedAt).toLocaleDateString();
@@ -77,9 +93,12 @@ function savedPlanStatusCaption(generatedPlan) {
 
 /**
  * After Claude succeeds: refresh usage if the plan carried it, then store the plan.
+ * @param {object} plan
+ * @param {Function} setGenUsage
+ * @param {Function} setGeneratedPlan
  */
 function applySuccessfulGeneration(plan, setGenUsage, setGeneratedPlan) {
-  if (plan?.usage) {
+  if (plan && plan.usage) {
     setGenUsage(plan.usage);
   }
   setGeneratedPlan(plan);
@@ -87,9 +106,12 @@ function applySuccessfulGeneration(plan, setGenUsage, setGeneratedPlan) {
 
 /**
  * Turn a generate failure into a notice sheet. Monthly-limit errors also refresh usage.
+ * @param {Error} error
+ * @param {Function} setGenUsage
+ * @param {Function} showNotice
  */
 function showGenerationFailureNotice(error, setGenUsage, showNotice) {
-  const hitMonthlyLimit = error?.code === WORKOUT_MONTHLY_LIMIT_ERROR_CODE;
+  const hitMonthlyLimit = error && error.code === WORKOUT_MONTHLY_LIMIT_ERROR_CODE;
   if (hitMonthlyLimit) {
     if (error.limitPayload) {
       setGenUsage(usageStateFromLimitPayload(error.limitPayload));
@@ -98,7 +120,7 @@ function showGenerationFailureNotice(error, setGenUsage, showNotice) {
     return;
   }
 
-  const failMessage = error?.message || GENERATE_FAIL_FALLBACK;
+  const failMessage = (error && error.message) || GENERATE_FAIL_FALLBACK;
   showNotice(GENERATE_FAIL_TITLE, failMessage);
 }
 
@@ -132,9 +154,9 @@ async function runGeneratePlanTap({
     // 4. Store the plan (and usage if the response carried it), then toast success
     applySuccessfulGeneration(plan, setGenUsage, setGeneratedPlan);
     showNotice(GENERATE_SUCCESS_TITLE, GENERATE_SUCCESS_MESSAGE);
-  } catch (error) {
+  } catch (caughtError) {
     // 5. Monthly cap or generic failure → notice sheet
-    showGenerationFailureNotice(error, setGenUsage, showNotice);
+    showGenerationFailureNotice(caughtError, setGenUsage, showNotice);
   } finally {
     // 6. Always unlock the button
     setIsGenerating(false);
@@ -211,10 +233,7 @@ function MonthlyUsageLine({ genUsage, muted }) {
 
 function GenerateNewPlanButton({ isGenerating, onPress }) {
   // Manipulate here: busy label while Claude is running
-  let buttonLabel = 'Generate New Plan';
-  if (isGenerating) {
-    buttonLabel = 'Generating...';
-  }
+  const buttonLabel = isGenerating ? 'Generating...' : 'Generate New Plan';
 
   return (
     <View style={{ marginTop: 18 }}>
@@ -249,11 +268,13 @@ function GenerateScreenHeader({ textColor, onBack }) {
   );
 }
 
-// ===== MAIN SCREEN =====
+// ===== MAIN FUNCTION =====
 
 /**
  * Dedicated "generate my workout plan" screen (minimal wrapper; viewer UI is elsewhere).
  * Hook order is frozen: theme → scheme → loading → onboarding → plan → generating → error → usage → notice.
+ * @param {object} props
+ * @returns {React.ReactElement}
  */
 export default function GenerateMyWorkoutPlanScreen({
   userId,
@@ -271,10 +292,7 @@ export default function GenerateMyWorkoutPlanScreen({
   const { isDark } = theme;
   // vocab: useColorScheme = device scheme (kept for parity with older chrome; palette uses isDark)
   const colorScheme = useColorScheme();
-  let colors = lightColors;
-  if (colorScheme === 'dark') {
-    colors = darkColors;
-  }
+  void colorScheme;
 
   // Hook order frozen — do not reorder these useState calls
   const [loading, setLoading] = useState(true);
@@ -371,10 +389,8 @@ export default function GenerateMyWorkoutPlanScreen({
 
   /**
    * Generate button press → runGeneratePlanTap recipe.
-   * Flow: 1. hand state setters + showNotice to the async helper
    */
   const handleGeneratePress = () => {
-    // 1. Kick off Claude with the current onboarding + user id
     runGeneratePlanTap({
       onboardingData,
       userId,

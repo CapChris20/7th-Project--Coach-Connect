@@ -1,7 +1,6 @@
 // Design Law typography for coach markdown replies (screens/ai-coach/03).
 // Flow: theme palette → paragraph + headings + lists/tables/citations → layout gate for web search.
 // Used by CoachReplyText and InternetAnswerReply with react-native-markdown-display.
-// Read order: constants → main style / citation / layout recipes → PLUMBING at the bottom.
 
 import { Platform } from 'react-native';
 import { lightColors, darkColors, nb } from '../../look-and-feel/colorPalette';
@@ -61,87 +60,7 @@ const USER_ROLE = 'user';
 // Re-export so callers can import layout preprocess from this styles module.
 export { preprocessWebSearchLayout };
 
-// ===== MAIN FUNCTIONS =====
-
-/**
- * Style object keys that react-native-markdown-display reads for one theme.
- * Flow: 1. tokens  2. paragraph  3. stack body / headings / lists / tables
- * @param {boolean} isDark
- * @returns {object}
- */
-export function buildCoachMarkdownStyles(isDark) {
-  // 1. Pull ink + border tokens for this theme.
-  const tokens = replyColorTokens(isDark);
-  const paragraphStyle = baseParagraphStyle(tokens);
-
-  // 2. Named blocks first so the return below stays a short checklist.
-  const bodyStyle = bodyRootStyle(tokens);
-  const heading1Style = headingOneStyle(tokens);
-  const heading2Style = headingTwoStyle(tokens);
-  const heading3Style = headingThreeStyle(tokens);
-  const strongStyle = strongTextStyle(tokens);
-  const emphasisStyle = emphasisTextStyle(tokens);
-  const listAndLinkStyleBlock = listAndLinkStyles(tokens, paragraphStyle);
-  const tableStyleBlock = tableStyles(tokens);
-
-  // 3. Stack typography blocks the markdown library reads by key.
-  return Object.assign(
-    {
-      body: bodyStyle,
-      paragraph: paragraphStyle,
-      heading1: heading1Style,
-      heading2: heading2Style,
-      heading3: heading3Style,
-      strong: strongStyle,
-      em: emphasisStyle,
-    },
-    listAndLinkStyleBlock,
-    tableStyleBlock,
-  );
-}
-
-/**
- * Turn bare [Source Name] brackets into tappable coachcite:// markdown links.
- * @param {string} markdown
- * @returns {string}
- */
-export function preprocessCoachCitations(markdown) {
-  const rawMarkdown = String(markdown || '');
-  return rawMarkdown.replace(CITATION_BRACKET_PATTERN, CITATION_MARKDOWN_REPLACEMENT);
-}
-
-/**
- * Whether this chat message should render with rich markdown chrome.
- * Flow: 1. skip user / empty  2. web / tool routes always  3. else need bold or bullets
- * @param {{ role?: string, searchedWeb?: boolean, route?: string, text?: string }|null|undefined} message
- * @returns {boolean}
- */
-export function coachReplyUsesFormattedLayout(message) {
-  if (!message) {
-    return false;
-  }
-  if (message.role === USER_ROLE) {
-    return false;
-  }
-
-  if (message.searchedWeb === true) {
-    return true;
-  }
-
-  const route = message.route;
-  if (route === FOOD_SEARCH_ROUTE) {
-    return true;
-  }
-  if (route === WEB_SEARCH_ROUTE) {
-    return true;
-  }
-
-  const replyText = String(message.text || '');
-  return textLooksFormatted(replyText);
-}
-
 // ===== HELPER FUNCTIONS =====
-// PLUMBING — skip unless PNG 03 typography looks off in light or dark.
 
 function themeColorsForMode(isDark) {
   if (isDark) {
@@ -324,4 +243,83 @@ function textLooksFormatted(replyText) {
   }
   const hasBullets = BULLET_LINE_START.test(replyText);
   return hasBullets;
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Style object keys that react-native-markdown-display reads for one theme.
+ * Flow: 1. tokens  2. paragraph  3. stack body / headings / lists / tables
+ * @param {boolean} isDark
+ * @returns {object}
+ */
+export function buildCoachMarkdownStyles(isDark) {
+  // 1. Pull ink + border tokens for this theme.
+  const tokens = replyColorTokens(isDark);
+  const paragraphStyle = baseParagraphStyle(tokens);
+
+  // 2. Named blocks first so the return below stays a short checklist.
+  const bodyStyle = bodyRootStyle(tokens);
+  const heading1Style = headingOneStyle(tokens);
+  const heading2Style = headingTwoStyle(tokens);
+  const heading3Style = headingThreeStyle(tokens);
+  const strongStyle = strongTextStyle(tokens);
+  const emphasisStyle = emphasisTextStyle(tokens);
+  const listAndLinkStyleBlock = listAndLinkStyles(tokens, paragraphStyle);
+  const tableStyleBlock = tableStyles(tokens);
+
+  // 3. Stack typography blocks the markdown library reads by key.
+  return Object.assign(
+    {
+      body: bodyStyle,
+      paragraph: paragraphStyle,
+      heading1: heading1Style,
+      heading2: heading2Style,
+      heading3: heading3Style,
+      strong: strongStyle,
+      em: emphasisStyle,
+    },
+    listAndLinkStyleBlock,
+    tableStyleBlock,
+  );
+}
+
+/**
+ * Turn bare [Source Name] brackets into tappable coachcite:// markdown links.
+ * @param {string} markdown
+ * @returns {string}
+ */
+export function preprocessCoachCitations(markdown) {
+  const rawMarkdown = String(markdown || '');
+  return rawMarkdown.replace(CITATION_BRACKET_PATTERN, CITATION_MARKDOWN_REPLACEMENT);
+}
+
+/**
+ * Whether this chat message should render with rich markdown chrome.
+ * Flow: 1. skip user / empty  2. web / tool routes always  3. else need bold or bullets
+ * @param {{ role?: string, searchedWeb?: boolean, route?: string, text?: string }|null|undefined} message
+ * @returns {boolean}
+ */
+export function coachReplyUsesFormattedLayout(message) {
+  if (!message) {
+    return false;
+  }
+  if (message.role === USER_ROLE) {
+    return false;
+  }
+
+  if (message.searchedWeb === true) {
+    return true;
+  }
+
+  const route = message.route;
+  if (route === FOOD_SEARCH_ROUTE) {
+    return true;
+  }
+  if (route === WEB_SEARCH_ROUTE) {
+    return true;
+  }
+
+  const replyText = String(message.text || '');
+  return textLooksFormatted(replyText);
 }

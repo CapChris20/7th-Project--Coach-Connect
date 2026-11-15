@@ -1,7 +1,6 @@
 // Dev-only Metro logs for the AI coach conversation — paste bundles when a reply looks wrong.
 // Flow: clip long strings → print YOU / COACH / ERROR blocks → optional JSON paste bundle.
 // Used while __DEV__ is true. Production builds return on the first line of every export.
-// Read order: constants → main log recipes → PLUMBING at the bottom.
 
 // ===== NAMED CONSTANTS =====
 
@@ -23,111 +22,7 @@ const COACH_RULE_LENGTH = 26;
 const ERROR_RULE_LENGTH = 27;
 const CLOSING_RULE_LENGTH = 40;
 
-// ===== MAIN FUNCTIONS =====
-
-/**
- * Print the user’s message in Metro (dev only).
- * Flow: 1. clip body  2. YOU divider + meta  3. attachment count if any
- * @param {string} text
- * @param {object} [meta]
- */
-export function logCoachUserMessage(text, meta = {}) {
-  // vocab: __DEV__ = Metro/Expo flag — true in local builds, false in production bundles
-  if (!__DEV__) {
-    return;
-  }
-
-  // 1. Clip body so Metro does not choke on huge prompts.
-  const clippedBody = clipTextForLog(text);
-  const metaLine = formatMetaLine(meta);
-
-  // 2. Print divider + optional meta + message.
-  printYouDivider();
-  printMetaLineIfPresent(metaLine);
-  printBodyOrEmpty(clippedBody);
-
-  // 3. Attachments are counted separately — not inlined in the text clip.
-  printAttachmentCountIfAny(meta);
-}
-
-/**
- * Print the coach reply in Metro (dev only), with optional web sources under the body.
- * Flow: 1. clip + meta  2. COACH block  3. sources  4. closing rule
- * @param {string} text
- * @param {object} [meta]
- */
-export function logCoachAssistantMessage(text, meta = {}) {
-  if (!__DEV__) {
-    return;
-  }
-
-  // 1. Same clip + meta pattern as the user side.
-  const clippedBody = clipTextForLog(text);
-  const metaLine = formatMetaLine(meta);
-
-  // 2. Coach block header + body.
-  printCoachDivider();
-  printMetaLineIfPresent(metaLine);
-  printBodyOrEmpty(clippedBody);
-
-  // 3. Expand a short list of web sources under the body when present.
-  printWebSourcesFromMeta(meta);
-
-  // 4. Closing divider so the next YOU block is easy to spot while scrolling.
-  printClosingDivider();
-}
-
-/**
- * One JSON blob engineers can paste into a bug report (dev only).
- * Flow: 1. build paste object  2. stringify under PASTE_THIS
- * @param {{ userText?: string, coachText?: string, meta?: object }} input
- */
-export function logCoachTurnBundle({ userText, coachText, meta = {} }) {
-  if (!__DEV__) {
-    return;
-  }
-
-  try {
-    // 1. One paste object — clip texts, flatten tool / web fields, cap sources.
-    const pasteBundle = buildPasteBundle(userText, coachText, meta);
-
-    // 2. vocab: PASTE_THIS prefix is grep-friendly in Metro scrollback
-    console.log(`${LOG_TAG} PASTE_THIS:`, JSON.stringify(pasteBundle, null, 2));
-  } catch (stringifyError) {
-    // Logging must never break the chat UI — swallow stringify failures.
-    void stringifyError;
-  }
-}
-
-/**
- * Print an error header, then still emit the paste bundle with success=false.
- * Flow: 1. ERROR divider + you + message  2. paste bundle with success false
- * @param {*} caughtError
- * @param {string} userText
- * @param {object} [meta]
- */
-export function logCoachError(caughtError, userText, meta = {}) {
-  if (!__DEV__) {
-    return;
-  }
-
-  // 1. Short error header in Metro.
-  printErrorDivider();
-  printErrorUserLine(userText);
-  const errorMessage = errorMessageFromCaught(caughtError);
-  console.log(`${LOG_TAG} ${errorMessage}`);
-
-  // 2. Still emit the paste bundle with success=false for support.
-  const metaWithFailure = metaWithSuccessFalse(meta, errorMessage);
-  logCoachTurnBundle({
-    userText,
-    coachText: '',
-    meta: metaWithFailure,
-  });
-}
-
 // ===== HELPER FUNCTIONS =====
-// PLUMBING — skip unless Metro chat logs look wrong and you are debugging.
 
 function clipTextForLog(text, maxLength = DEFAULT_CLIP_LENGTH) {
   const asString = String(text || '').trim();
@@ -343,4 +238,107 @@ function buildPasteBundle(userText, coachText, meta) {
     sessionId: meta.sessionId ?? null,
     error: meta.error ?? null,
   };
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Print the user’s message in Metro (dev only).
+ * Flow: 1. clip body  2. YOU divider + meta  3. attachment count if any
+ * @param {string} text
+ * @param {object} [meta]
+ */
+export function logCoachUserMessage(text, meta = {}) {
+  // vocab: __DEV__ = Metro/Expo flag — true in local builds, false in production bundles
+  if (!__DEV__) {
+    return;
+  }
+
+  // 1. Clip body so Metro does not choke on huge prompts.
+  const clippedBody = clipTextForLog(text);
+  const metaLine = formatMetaLine(meta);
+
+  // 2. Print divider + optional meta + message.
+  printYouDivider();
+  printMetaLineIfPresent(metaLine);
+  printBodyOrEmpty(clippedBody);
+
+  // 3. Attachments are counted separately — not inlined in the text clip.
+  printAttachmentCountIfAny(meta);
+}
+
+/**
+ * Print the coach reply in Metro (dev only), with optional web sources under the body.
+ * Flow: 1. clip + meta  2. COACH block  3. sources  4. closing rule
+ * @param {string} text
+ * @param {object} [meta]
+ */
+export function logCoachAssistantMessage(text, meta = {}) {
+  if (!__DEV__) {
+    return;
+  }
+
+  // 1. Same clip + meta pattern as the user side.
+  const clippedBody = clipTextForLog(text);
+  const metaLine = formatMetaLine(meta);
+
+  // 2. Coach block header + body.
+  printCoachDivider();
+  printMetaLineIfPresent(metaLine);
+  printBodyOrEmpty(clippedBody);
+
+  // 3. Expand a short list of web sources under the body when present.
+  printWebSourcesFromMeta(meta);
+
+  // 4. Closing divider so the next YOU block is easy to spot while scrolling.
+  printClosingDivider();
+}
+
+/**
+ * One JSON blob engineers can paste into a bug report (dev only).
+ * Flow: 1. build paste object  2. stringify under PASTE_THIS
+ * @param {{ userText?: string, coachText?: string, meta?: object }} input
+ */
+export function logCoachTurnBundle({ userText, coachText, meta = {} }) {
+  if (!__DEV__) {
+    return;
+  }
+
+  try {
+    // 1. One paste object — clip texts, flatten tool / web fields, cap sources.
+    const pasteBundle = buildPasteBundle(userText, coachText, meta);
+
+    // 2. vocab: PASTE_THIS prefix is grep-friendly in Metro scrollback
+    console.log(`${LOG_TAG} PASTE_THIS:`, JSON.stringify(pasteBundle, null, 2));
+  } catch (stringifyError) {
+    // Logging must never break the chat UI — swallow stringify failures.
+    void stringifyError;
+  }
+}
+
+/**
+ * Print an error header, then still emit the paste bundle with success=false.
+ * Flow: 1. ERROR divider + you + message  2. paste bundle with success false
+ * @param {*} caughtError
+ * @param {string} userText
+ * @param {object} [meta]
+ */
+export function logCoachError(caughtError, userText, meta = {}) {
+  if (!__DEV__) {
+    return;
+  }
+
+  // 1. Short error header in Metro.
+  printErrorDivider();
+  printErrorUserLine(userText);
+  const errorMessage = errorMessageFromCaught(caughtError);
+  console.log(`${LOG_TAG} ${errorMessage}`);
+
+  // 2. Still emit the paste bundle with success=false for support.
+  const metaWithFailure = metaWithSuccessFalse(meta, errorMessage);
+  logCoachTurnBundle({
+    userText,
+    coachText: '',
+    meta: metaWithFailure,
+  });
 }

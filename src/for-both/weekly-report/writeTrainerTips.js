@@ -57,16 +57,13 @@ export function writeTrainerTips(stats, days, report, clientMeta = {}) {
  */
 export function resolvePlannedTrainingDays(report, clientMeta = {}) {
   // 1. Prefer explicit fields on the weekly summary doc
-  const fromReport =
-    parseReportNumber(report?.plannedTrainingDays) ??
-    parseReportNumber(report?.daysPerWeek) ??
-    parseReportNumber(report?.trainingDaysPerWeek);
+  const fromReport = firstPlannedDaysOnReport(report);
   if (plannedDaysCountIsValid(fromReport)) {
     return Math.round(fromReport);
   }
 
   // 2. Fall back to profile days/week when the report omitted it
-  const fromProfile = parseReportNumber(clientMeta?.daysPerWeek);
+  const fromProfile = daysPerWeekOnProfile(clientMeta);
   if (plannedDaysCountIsValid(fromProfile)) {
     return Math.round(fromProfile);
   }
@@ -82,7 +79,7 @@ export function resolvePlannedTrainingDays(report, clientMeta = {}) {
  * @returns {{ completed: number, planned: number|null, label: string, sublabel: string, pct: number|null }}
  */
 export function buildWorkoutAdherence(stats, report, clientMeta = {}) {
-  const completedSessions = stats?.workoutDaysLogged ?? 0;
+  const completedSessions = workoutDaysLoggedFromStats(stats);
   const plannedSessions = resolvePlannedTrainingDays(report, clientMeta);
   const dayWord = completedSessions === 1 ? '' : 's';
 
@@ -112,9 +109,9 @@ export function buildWorkoutAdherence(stats, report, clientMeta = {}) {
  */
 export function buildRedFlags(stats, days = [], report = {}, clientMeta = {}) {
   const flags = [];
-  const checkInDays = stats?.checkInDays ?? 0;
-  const averageSleep = parseReportNumber(report?.avgSleep) ?? stats?.avgSleep;
-  const workoutDaysLogged = stats?.workoutDaysLogged ?? 0;
+  const checkInDays = checkInDaysFromStats(stats);
+  const averageSleep = averageSleepFromReportOrStats(report, stats);
+  const workoutDaysLogged = workoutDaysLoggedFromStats(stats);
   const plannedDays = resolvePlannedTrainingDays(report, clientMeta);
 
   // Order matters: logging gaps first, then recovery signals, then plan/hydration
@@ -135,11 +132,8 @@ export function buildRedFlags(stats, days = [], report = {}, clientMeta = {}) {
  * @returns {{ text: string, source: string }|null}
  */
 export function buildTrainerNote(report, clientMeta = {}) {
-  const manualNote =
-    reportTextValue(report?.trainerNote) ||
-    reportTextValue(report?.coachNote) ||
-    reportTextValue(clientMeta?.trainerNote);
-  const autoNote = reportTextValue(report?.signOff);
+  const manualNote = firstManualTrainerNote(report, clientMeta);
+  const autoNote = signOffTextFromReport(report);
 
   if (manualNote) {
     return { text: manualNote, source: NOTE_SOURCE_COACH };
@@ -178,6 +172,63 @@ function percentOfPlan(completedSessions, plannedSessions) {
     PERCENT_COMPLETE,
     Math.round((completedSessions / plannedSessions) * PERCENT_COMPLETE),
   );
+}
+
+function firstPlannedDaysOnReport(report) {
+  if (!report) return null;
+
+  const fromPlannedTrainingDays = parseReportNumber(report.plannedTrainingDays);
+  if (fromPlannedTrainingDays != null) return fromPlannedTrainingDays;
+
+  const fromDaysPerWeek = parseReportNumber(report.daysPerWeek);
+  if (fromDaysPerWeek != null) return fromDaysPerWeek;
+
+  return parseReportNumber(report.trainingDaysPerWeek);
+}
+
+function daysPerWeekOnProfile(clientMeta) {
+  if (!clientMeta) return null;
+  return parseReportNumber(clientMeta.daysPerWeek);
+}
+
+function workoutDaysLoggedFromStats(stats) {
+  if (!stats) return 0;
+  if (stats.workoutDaysLogged == null) return 0;
+  return stats.workoutDaysLogged;
+}
+
+function checkInDaysFromStats(stats) {
+  if (!stats) return 0;
+  if (stats.checkInDays == null) return 0;
+  return stats.checkInDays;
+}
+
+function averageSleepFromReportOrStats(report, stats) {
+  let averageSleep = null;
+  if (report) {
+    averageSleep = parseReportNumber(report.avgSleep);
+  }
+  if (averageSleep != null) return averageSleep;
+  if (!stats) return null;
+  return stats.avgSleep;
+}
+
+function firstManualTrainerNote(report, clientMeta) {
+  if (report) {
+    const fromTrainerNote = reportTextValue(report.trainerNote);
+    if (fromTrainerNote) return fromTrainerNote;
+
+    const fromCoachNote = reportTextValue(report.coachNote);
+    if (fromCoachNote) return fromCoachNote;
+  }
+
+  if (!clientMeta) return '';
+  return reportTextValue(clientMeta.trainerNote);
+}
+
+function signOffTextFromReport(report) {
+  if (!report) return '';
+  return reportTextValue(report.signOff);
 }
 
 // ===== PLUMBING — skip unless debugging =====

@@ -293,6 +293,25 @@ function NutritionShellBottomNav({
   );
 }
 
+function resolveSettingsCurrentGoals(goals) {
+  let settingsCalories = DEFAULT_CALORIE_GOAL;
+  let settingsProtein = SETTINGS_FALLBACK_PROTEIN;
+  let settingsCarbs = SETTINGS_FALLBACK_CARBS;
+  let settingsFat = SETTINGS_FALLBACK_FAT;
+  if (goals) {
+    if (goals.calories != null) settingsCalories = goals.calories;
+    if (goals.proteinTarget != null) settingsProtein = goals.proteinTarget;
+    if (goals.carbsTarget != null) settingsCarbs = goals.carbsTarget;
+    if (goals.fatTarget != null) settingsFat = goals.fatTarget;
+  }
+  return {
+    calories: settingsCalories,
+    proteinTarget: settingsProtein,
+    carbsTarget: settingsCarbs,
+    fatTarget: settingsFat,
+  };
+}
+
 function LoadingNutritionShell({ screenBg, inkColor, bottomNav }) {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: screenBg }} edges={SHELL_SAFE_AREA_EDGES}>
@@ -306,6 +325,10 @@ function LoadingNutritionShell({ screenBg, inkColor, bottomNav }) {
 
 // ===== MAIN FUNCTION =====
 
+/**
+ * Main Daily Food Log screen component.
+ * Manages daily meal logs, macro goals, and child modals for food search and setup.
+ */
 export const DailyLogContent = ({
   onBack,
   onProfilePress,
@@ -815,22 +838,7 @@ export const DailyLogContent = ({
     onboardingBottomInset = NUTRITION_ONBOARDING_TAB_BAR_CLEARANCE;
   }
 
-  let settingsCalories = DEFAULT_CALORIE_GOAL;
-  let settingsProtein = SETTINGS_FALLBACK_PROTEIN;
-  let settingsCarbs = SETTINGS_FALLBACK_CARBS;
-  let settingsFat = SETTINGS_FALLBACK_FAT;
-  if (goals) {
-    if (goals.calories != null) settingsCalories = goals.calories;
-    if (goals.proteinTarget != null) settingsProtein = goals.proteinTarget;
-    if (goals.carbsTarget != null) settingsCarbs = goals.carbsTarget;
-    if (goals.fatTarget != null) settingsFat = goals.fatTarget;
-  }
-  const settingsCurrentGoals = {
-    calories: settingsCalories,
-    proteinTarget: settingsProtein,
-    carbsTarget: settingsCarbs,
-    fatTarget: settingsFat,
-  };
+  const settingsCurrentGoals = resolveSettingsCurrentGoals(goals);
 
   const editPopupIsVisible = !!editingLog;
   let editPopupFoodName = '';

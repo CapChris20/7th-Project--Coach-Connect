@@ -112,17 +112,32 @@ function escapeRegExp(textToEscape) {
 function macroCalories(proteinGrams, carbGrams, fatGrams) {
   return KCAL_PER_PROTEIN_OR_CARB * (Number(proteinGrams) || 0) + KCAL_PER_PROTEIN_OR_CARB * (Number(carbGrams) || 0) + KCAL_PER_FAT * (Number(fatGrams) || 0);
 }
+function firstDefinedNumber(preferred, fallback) {
+  // vocab: nullish — keep a real 0; only fall through when preferred is null/undefined
+  if (preferred != null) return Number(preferred) || 0;
+  return Number(fallback) || 0;
+}
+
 function getRowMacros(row) {
+  if (!row) {
+    return { calories: 0, protein: 0, carbs: 0, fat: 0 };
+  }
   return {
-    // vocab/symbol: ?? keeps 0 calories; || would treat 0 as missing
-    calories: Number((row == null ? void 0 : row.nf_calories) ?? (row == null ? void 0 : row.calories)) || 0,
-    protein: Number((row == null ? void 0 : row.nf_protein) ?? (row == null ? void 0 : row.protein)) || 0,
-    carbs: Number((row == null ? void 0 : row.nf_total_carbohydrate) ?? (row == null ? void 0 : row.carbs)) || 0,
-    fat: Number((row == null ? void 0 : row.nf_total_fat) ?? (row == null ? void 0 : row.fat)) || 0
+    calories: firstDefinedNumber(row.nf_calories, row.calories),
+    protein: firstDefinedNumber(row.nf_protein, row.protein),
+    carbs: firstDefinedNumber(row.nf_total_carbohydrate, row.carbs),
+    fat: firstDefinedNumber(row.nf_total_fat, row.fat),
   };
 }
+
 function getRowText(row) {
-  return `${(row == null ? void 0 : row.food_name) || (row == null ? void 0 : row.name) || ''} ${(row == null ? void 0 : row.brand_name) || (row == null ? void 0 : row.brand) || ''} ${(row == null ? void 0 : row.serving_label) || (row == null ? void 0 : row.serving_unit) || ''}`;
+  if (!row) {
+    return '  ';
+  }
+  const foodName = row.food_name || row.name || '';
+  const brandName = row.brand_name || row.brand || '';
+  const servingLabel = row.serving_label || row.serving_unit || '';
+  return `${foodName} ${brandName} ${servingLabel}`;
 }
 function querySizeModifiers(query) {
   const queryLower = String(query || '').toLowerCase();
@@ -137,7 +152,8 @@ function queryWantsPattern(query, pattern) {
   return pattern.test(String(query || '').toLowerCase());
 }
 function isLowCalBeverageRow(macros, userQuery, rowText) {
-  const calories = Number(macros == null ? void 0 : macros.calories) || 0;
+  let calories = 0;
+  if (macros) calories = Number(macros.calories) || 0;
   if (calories <= 0 || calories > LOW_CAL_DRINK_MAX) return false;
   const combinedQueryAndRowText = `${userQuery} ${rowText}`.toLowerCase();
   return /\b(coffee|tea|espresso|americano|pike|cold brew|diet|zero)\b/.test(combinedQueryAndRowText);
@@ -567,13 +583,22 @@ function applyMultiServingFallback(row) {
     nutrition_unverified: true
   };
 }
+function readMacroParts(macros) {
+  if (!macros) {
+    return { calories: 0, protein: 0, carbs: 0, fat: 0 };
+  }
+  return {
+    calories: Number(macros.calories) || 0,
+    protein: Number(macros.protein) || 0,
+    carbs: Number(macros.carbs) || 0,
+    fat: Number(macros.fat) || 0,
+  };
+}
+
 function isPlausibleRestaurantNutritionRow(macros, {
   relaxed = false
 } = {}) {
-  const calories = Number(macros == null ? void 0 : macros.calories) || 0;
-  const protein = Number(macros == null ? void 0 : macros.protein) || 0;
-  const carbs = Number(macros == null ? void 0 : macros.carbs) || 0;
-  const fat = Number(macros == null ? void 0 : macros.fat) || 0;
+  const { calories, protein, carbs, fat } = readMacroParts(macros);
   if (calories <= 0 || calories > MAX_PLAUSIBLE_CALORIES) return false;
   const fromMacros = macroCalories(protein, carbs, fat);
   const consistency = macroCalorieConsistencyScore(macros);
@@ -600,10 +625,7 @@ function isPlausibleRestaurantNutritionRow(macros, {
   return true;
 }
 function hasImplausibleZeroMacros(macros, userQuery, rowText) {
-  const calories = Number(macros == null ? void 0 : macros.calories) || 0;
-  const protein = Number(macros == null ? void 0 : macros.protein) || 0;
-  const carbs = Number(macros == null ? void 0 : macros.carbs) || 0;
-  const fat = Number(macros == null ? void 0 : macros.fat) || 0;
+  const { calories, protein, carbs, fat } = readMacroParts(macros);
   if (calories <= 0 && protein <= 0 && carbs <= 0 && fat <= 0) return true;
   if (calories < RICH_FOOD_MIN_CALORIES) return false;
   if (!expectsRichMacros(userQuery, rowText)) return false;
@@ -684,10 +706,7 @@ function scoreOrganicNutritionHit(hit, userQuery) {
 
 /** 4-4-9 macro calories vs stated calories — core accuracy gate for restaurant rows. */
 function macroCalorieConsistencyScore(macros) {
-  const calories = Number(macros == null ? void 0 : macros.calories) || 0;
-  const protein = Number(macros == null ? void 0 : macros.protein) || 0;
-  const carbs = Number(macros == null ? void 0 : macros.carbs) || 0;
-  const fat = Number(macros == null ? void 0 : macros.fat) || 0;
+  const { calories, protein, carbs, fat } = readMacroParts(macros);
   const caloriesFromMacros = macroCalories(protein, carbs, fat);
   if (calories < MIN_CALORIES_FOR_CONSISTENCY_SCORE || caloriesFromMacros < MIN_MACRO_CALS_FOR_CONSISTENCY_SCORE) {
     return 0;

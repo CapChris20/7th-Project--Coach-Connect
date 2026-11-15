@@ -15,7 +15,16 @@ const EXPIRED_VARIANT = 'expired';
 // Manipulate here: support inbox opened from the expired-Pro contact link
 const SUPPORT_MAIL_URL = 'mailto:coachconnect0@gmail.com';
 
-// ===== LAYOUT (no hooks) =====
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * Opens the support inbox in the device mail app.
+ * @returns {void}
+ */
+function openExpiredProSupportMail() {
+  // vocab: Linking.openURL = hand a mailto: / https: URL to the OS
+  Linking.openURL(SUPPORT_MAIL_URL);
+}
 
 /**
  * Pure layout — paints the expired offer. Hooks stay in the exported screen below.
@@ -88,13 +97,4 @@ export default function ProExpiredScreen({ onOpenSettings, onOpenTerms, onOpenPr
   );
 }
 
-// ===== PLUMBING — skip unless debugging =====
 
-/**
- * Opens the support inbox in the device mail app.
- * @returns {void}
- */
-function openExpiredProSupportMail() {
-  // vocab: Linking.openURL = hand a mailto: / https: URL to the OS
-  Linking.openURL(SUPPORT_MAIL_URL);
-}

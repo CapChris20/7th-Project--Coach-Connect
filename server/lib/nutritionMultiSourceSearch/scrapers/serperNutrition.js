@@ -10,6 +10,53 @@ const {
   rankSerperFoodResultRows,
 } = require('../../../nutritionSearchHelpers');
 const { isPlausibleNutritionRow } = require('../../../../src/nutrition/food-search/tidyFoodTitles');
+const { createCandidate, assertCandidate } = require('../../../../src/nutrition/food-match/candidate');
+const {
+  completenessFromMacros,
+  servingFromMacros,
+} = require('../../../../src/nutrition/food-match/adapters/macroHelpers');
+
+/**
+ * Candidate adapter for a Serper nutrition hit.
+ * Name stays RAW from the page title / display field.
+ * @param {object} raw
+ * @returns {object|null}
+ */
+function adaptSerperNutritionResult(raw, opts = {}) {
+  if (!raw || typeof raw !== 'object') return null;
+  const name = String(raw.name || raw.displayName || raw.food_name || '').trim();
+  if (!name) return null;
+  const brand = String(raw.brand || '').trim();
+  const macros = {
+    kcal: raw.calories ?? raw.kcal ?? null,
+    protein: raw.protein_g ?? raw.protein ?? null,
+    carbs: raw.carbs_g ?? raw.carbs ?? null,
+    fat: raw.fat_g ?? raw.fat ?? null,
+  };
+  const candidate = createCandidate({
+    id: raw.id ? String(raw.id) : `serper:${name}`,
+    source: 'serper',
+    name,
+    brand,
+    categoryPath: [],
+    channel: 'unknown',
+    gtin: null,
+    per100: null,
+    servings: [
+      servingFromMacros({
+        label: raw.servingLabel || '1 serving',
+        kcal: macros.kcal,
+        protein: macros.protein,
+        carbs: macros.carbs,
+        fat: macros.fat,
+        origin: 'derived',
+      }),
+    ],
+    quality: { completeness: completenessFromMacros(macros), sourceFlags: ['web'] },
+    provenance: { url: raw.url || null, fetchedAt: opts.fetchedAt || null },
+  });
+  return assertCandidate(candidate);
+}
 
 async function fetchSerperOrganic(query, timeoutMs) {
   const apiKey = process.env.SERPER_API_KEY;
@@ -111,4 +158,4 @@ async function scrapeSerperNutrition(query, timeoutMs = SCRAPE_TIMEOUT_MS) {
   return null;
 }
 
-module.exports = { scrapeSerperNutrition };
+module.exports = { scrapeSerperNutrition, adaptSerperNutritionResult };

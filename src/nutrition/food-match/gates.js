@@ -1,6 +1,7 @@
 // Hard rejection gates for food-match v2.
 // Flow: explain tokens → G1 rare coverage → G2 brand → G3 family → G4 plausibility → G5 junk.
-// Pure. Roles come from evidence (IDF / taxonomy), not brand lists.
+// Used by food-match candidate ranking pipeline to reject impossible or mismatched foods early.
+// Pure CommonJS. Roles come from evidence (IDF / taxonomy), not brand lists.
 
 const {
   TAU1_UNEXPLAINED_IDF_SHARE,
@@ -9,6 +10,21 @@ const {
 const { tokenExplainedByFuzzy, brandLexiconOneEditMatch } = require('./fuzzyToken');
 const { checkPlausibility } = require('./plausibility');
 const { normalizeQueryText, tokenize } = require('./queryFrame');
+
+// ===== NAMED CONSTANTS =====
+
+const REASON_BRAND_ABSENT = 'brand_absent_from_query';
+const REASON_BRAND_CONFLICT = 'brand_conflict_rare_unexplained';
+const REASON_FAMILY_CONFLICT = 'family_head_unexplained';
+
+// ===== HELPER FUNCTIONS =====
+
+function checkLexiconBrandMatch(token, brandLexicon, candidateBrand) {
+  const matchesLexicon = brandLexiconOneEditMatch(token, brandLexicon);
+  if (!matchesLexicon) return false;
+  const brandTokens = tokenize(candidateBrand || '');
+  return brandTokens.includes(token) || tokenExplainedByFuzzy(token, brandTokens, { allowFuzzy: true });
+}
 
 /**
  * Tokenize candidate name + brand + category path for matching.
@@ -41,21 +57,18 @@ function explainQueryTokens(queryFrame, candidate) {
   const unexplained = [];
 
   for (const info of queryFrame.tokens || []) {
-    let ok = haySet.has(info.token);
-    if (!ok && info.rare) {
-      ok = tokenExplainedByFuzzy(info.token, hayTokens, { allowFuzzy: true });
+    let tokenIsExplained = haySet.has(info.token);
+    if (!tokenIsExplained && info.rare) {
+      tokenIsExplained = tokenExplainedByFuzzy(info.token, hayTokens, { allowFuzzy: true });
     }
-    if (!ok && info.rare) {
-      ok = brandLexiconOneEditMatch(info.token, queryFrame.brandLexicon);
-      // Lexicon credit only counts when the candidate brand text also fuzzy-matches.
-      if (ok) {
-        const brandTokens = tokenize(candidate.brand || '');
-        ok = tokenExplainedByFuzzy(info.token, brandTokens, { allowFuzzy: true })
-          || brandTokens.includes(info.token);
-      }
+    if (!tokenIsExplained && info.rare) {
+      tokenIsExplained = checkLexiconBrandMatch(info.token, queryFrame.brandLexicon, candidate.brand);
     }
-    if (ok) explained.push(info);
-    else unexplained.push(info);
+    if (tokenIsExplained) {
+      explained.push(info);
+    } else {
+      unexplained.push(info);
+    }
   }
   return { explained, unexplained };
 }
@@ -99,10 +112,10 @@ function gateBrandConflict(queryFrame, candidate, unexplained) {
 
   const rareUnexplained = unexplained.filter((info) => info.rare);
   if (rareUnexplained.length > 0) {
-    return { ok: false, reason: 'brand_conflict_rare_unexplained' };
+    return { ok: false, reason: REASON_BRAND_CONFLICT };
   }
   // No rare tokens in the unexplained set → allowed with soft penalty later.
-  return { ok: true, reason: 'brand_absent_from_query' };
+  return { ok: true, reason: REASON_BRAND_ABSENT };
 }
 
 /**
@@ -122,7 +135,7 @@ function gateFamilyConflict(queryFrame, candidate) {
   }
 
   // Head is rare and never appears in name/brand/categoryPath → family miss.
-  return { ok: false, reason: 'family_head_unexplained' };
+  return { ok: false, reason: REASON_FAMILY_CONFLICT };
 }
 
 /**
@@ -155,6 +168,8 @@ function gateStructuralJunk(candidate, queryFrame) {
   return { ok: true, reason: null };
 }
 
+// ===== MAIN FUNCTION =====
+
 /**
  * Run all hard gates. First failure rejects.
  * @param {object} queryFrame
@@ -165,28 +180,30 @@ function runGates(queryFrame, candidate) {
   const reasons = [];
   const { unexplained } = explainQueryTokens(queryFrame, candidate);
 
-  const g1 = gateRareTokenCoverage(queryFrame, unexplained);
-  if (!g1.ok) reasons.push('g1_rare_token_coverage');
+  const coverageGateResult = gateRareTokenCoverage(queryFrame, unexplained);
+  if (!coverageGateResult.ok) reasons.push('g1_rare_token_coverage');
 
-  const g2 = gateBrandConflict(queryFrame, candidate, unexplained);
-  if (!g2.ok) reasons.push('g2_brand_conflict');
+  const brandGateResult = gateBrandConflict(queryFrame, candidate, unexplained);
+  if (!brandGateResult.ok) reasons.push('g2_brand_conflict');
 
-  const g3 = gateFamilyConflict(queryFrame, candidate);
-  if (!g3.ok) reasons.push('g3_family_conflict');
+  const familyGateResult = gateFamilyConflict(queryFrame, candidate);
+  if (!familyGateResult.ok) reasons.push('g3_family_conflict');
 
-  const g4 = checkPlausibility(candidate, {
+  const plausibilityGateResult = checkPlausibility(candidate, {
     categoryKcalBands: queryFrame.categoryKcalBands,
   });
-  if (!g4.ok) reasons.push(...g4.reasons.map((reason) => `g4_${reason}`));
+  if (!plausibilityGateResult.ok) {
+    reasons.push(...plausibilityGateResult.reasons.map((reason) => `g4_${reason}`));
+  }
 
-  const g5 = gateStructuralJunk(candidate, queryFrame);
-  if (!g5.ok) reasons.push(`g5_${g5.reason}`);
+  const junkGateResult = gateStructuralJunk(candidate, queryFrame);
+  if (!junkGateResult.ok) reasons.push(`g5_${junkGateResult.reason}`);
 
   return {
     pass: reasons.length === 0,
     reasons,
     unexplained,
-    brandAbsent: g2.reason === 'brand_absent_from_query',
+    brandAbsent: brandGateResult.reason === REASON_BRAND_ABSENT,
   };
 }
 

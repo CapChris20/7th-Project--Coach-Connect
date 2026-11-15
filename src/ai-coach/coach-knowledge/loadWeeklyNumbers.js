@@ -1,7 +1,6 @@
 // Reads the last 7 days of food, workouts, and sleep so the coach can talk about the week.
 // Flow: sum nutrition by day → count workout days and volume → average sleep → return three summaries (or null per slice).
 // Used by loadYourWeekForCoach when the coach prompt needs the client's recent numbers.
-// Read order: constants → main recipe → PLUMBING helpers.
 
 import { db } from '../../app-start/cloudConnection';
 import {
@@ -41,31 +40,7 @@ const COMPLETED_WORKOUT_USER_FIELD = 'userId';
 const VOLUME_TREND_LOGGED = 'logged';
 const VOLUME_TREND_NONE = 'none';
 
-// ===== MAIN RECIPE =====
-
-export async function aggregateCoachWeeklyDataClient(userId) {
-  if (!userId || !db) {
-    return emptyWeeklySummary();
-  }
-
-  // 1. The last seven local calendar days (ISO keys like "2026-11-13").
-  const weekStartMilliseconds = Date.now() - SEVEN_DAYS_IN_MS;
-  const weekStartDateKey = calendarDayAsIsoKey(new Date(weekStartMilliseconds));
-
-  // 2. Food totals for days that actually have calories or protein.
-  const daysWithFood = await loadNutritionTotalsByDay(userId, weekStartDateKey);
-  const nutritionAnalysis = buildNutritionAnalysisFromLoggedDays(daysWithFood);
-
-  // 3. Workout days + total volume from completedWorkouts + dailyLogs.
-  const workoutAnalysis = await loadWorkoutWeekSummary(userId, weekStartMilliseconds);
-
-  // 4. Average sleep (dailyLogs first, old daily_tracking second).
-  const sleepAnalysis = await loadSleepWeekSummary(userId);
-
-  return { nutritionAnalysis, workoutAnalysis, sleepAnalysis };
-}
-
-// ===== PLUMBING — skip unless debugging =====
+// ===== HELPER FUNCTIONS =====
 
 function emptyWeeklySummary() {
   return {
@@ -481,4 +456,34 @@ function buildNutritionAnalysisFromLoggedDays(nutritionDays) {
     daysLogged,
     consistencyScore: Math.round((daysLogged / DAYS_IN_WEEK) * 100),
   };
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Reads the last 7 days of food, workouts, and sleep so the coach can talk about the week.
+ * Flow: 1. week start date  2. food totals  3. workout days and volume  4. average sleep
+ * @param {string} userId
+ * @returns {Promise<{ nutritionAnalysis: object|null, workoutAnalysis: object|null, sleepAnalysis: object|null }>}
+ */
+export async function aggregateCoachWeeklyDataClient(userId) {
+  if (!userId || !db) {
+    return emptyWeeklySummary();
+  }
+
+  // 1. The last seven local calendar days (ISO keys like "2026-11-13").
+  const weekStartMilliseconds = Date.now() - SEVEN_DAYS_IN_MS;
+  const weekStartDateKey = calendarDayAsIsoKey(new Date(weekStartMilliseconds));
+
+  // 2. Food totals for days that actually have calories or protein.
+  const daysWithFood = await loadNutritionTotalsByDay(userId, weekStartDateKey);
+  const nutritionAnalysis = buildNutritionAnalysisFromLoggedDays(daysWithFood);
+
+  // 3. Workout days + total volume from completedWorkouts + dailyLogs.
+  const workoutAnalysis = await loadWorkoutWeekSummary(userId, weekStartMilliseconds);
+
+  // 4. Average sleep (dailyLogs first, old daily_tracking second).
+  const sleepAnalysis = await loadSleepWeekSummary(userId);
+
+  return { nutritionAnalysis, workoutAnalysis, sleepAnalysis };
 }

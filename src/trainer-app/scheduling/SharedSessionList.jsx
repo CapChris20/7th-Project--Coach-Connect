@@ -49,7 +49,7 @@ function useReadSharedSessionState() {
   return useContext(SharedSessionListContext);
 }
 
-// ===== MAIN FUNCTIONS =====
+// ===== MAIN FUNCTION =====
 
 /**
  * Mount above any screen that shows trainer sessions.

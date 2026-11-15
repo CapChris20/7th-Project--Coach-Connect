@@ -1,5 +1,13 @@
-/** IQR-based consensus filter for multi-source nutrition macros. */
+// IQR consensus for multi-source nutrition macros — only inside one entity cluster.
+// Flow: raw scrapers → cluster by GTIN/brand+name → pick best cluster → IQR merge.
+// Used by scrapeNutritionSources. Never merges cooked-grain with canned-soup style mismatches.
+
 const { NUTRIENT_KEYS, SOURCE_DISPLAY_NAMES } = require('./constants');
+const {
+  clusterCandidates,
+  pickBestConsensusCluster,
+} = require('../../../src/nutrition/food-match/entityCluster');
+const { resolveSourceTier } = require('../../../src/nutrition/food-match/candidate');
 
 function quantile(sorted, q) {
   if (!sorted.length) return 0;
@@ -87,12 +95,54 @@ function buildSourceResultRow(sourceKey, macros) {
   };
 }
 
-function classifyCalorieSources(rawResults = {}) {
+/**
+ * Turn one scraper row into a lightweight cluster member (not a full Candidate).
+ * @param {string} sourceKey
+ * @param {object} macros
+ * @returns {object}
+ */
+function rawResultToClusterMember(sourceKey, macros) {
+  const isPer100 = macros.servingBasis === 'per_100g';
+  return {
+    id: sourceKey,
+    source: sourceKey,
+    sourceTier: resolveSourceTier(sourceKey),
+    name: String(macros.displayName || macros.name || '').trim(),
+    brand: String(macros.brand || '').trim(),
+    gtin: macros.gtin || null,
+    channel: macros.channel || 'unknown',
+    per100: isPer100
+      ? {
+        kcal: macros.calories ?? null,
+        protein: macros.protein_g ?? null,
+        carbs: macros.carbs_g ?? null,
+        fat: macros.fat_g ?? null,
+        basis: 'g',
+      }
+      : null,
+    servings: isPer100
+      ? []
+      : [{
+        label: macros.servingLabel || '1 serving',
+        grams: null,
+        kcal: macros.calories ?? null,
+        protein: macros.protein_g ?? null,
+        carbs: macros.carbs_g ?? null,
+        fat: macros.fat_g ?? null,
+        origin: 'label',
+      }],
+  };
+}
+
+function classifyCalorieSources(rawResults = {}, allowedKeys = null) {
   const entries = [];
   const excludedSources = [];
+  const allow = allowedKeys instanceof Set ? allowedKeys : null;
 
   for (const [sourceKey, macros] of Object.entries(rawResults)) {
     if (!macros) continue;
+    if (allow && !allow.has(sourceKey)) continue;
+
     if (macros.servingBasis === 'per_100g') {
       if (macros.calories != null) {
         excludedSources.push({
@@ -138,10 +188,44 @@ function classifyCalorieSources(rawResults = {}) {
 
 /**
  * Process raw scraper results into consensus nutrients + per-source rows.
+ * Consensus only runs inside the single best entity cluster.
  * @param {Record<string, object|null>} rawResults keyed by source id
  */
 function getFoodNutritionConsensus(rawResults = {}) {
-  const { inlierKeys, excludedSources } = classifyCalorieSources(rawResults);
+  // 1. Build cluster members from every non-null scraper row.
+  const members = [];
+  for (const [sourceKey, macros] of Object.entries(rawResults)) {
+    if (!macros) continue;
+    members.push(rawResultToClusterMember(sourceKey, macros));
+  }
+
+  // 2. Cluster by GTIN / brand+name (compatible macros only).
+  const clusters = clusterCandidates(members);
+  const bestCluster = pickBestConsensusCluster(clusters);
+  const clusterKeys = bestCluster
+    ? new Set(bestCluster.members.map((member) => member.id))
+    : new Set();
+
+  // 3. Classify calorie inliers ONLY inside that cluster (never across clusters).
+  const { inlierKeys, excludedSources } = classifyCalorieSources(
+    rawResults,
+    clusterKeys.size >= 2 ? clusterKeys : new Set(),
+  );
+
+  // Rows outside the consensus cluster are not "outliers" — they are different foods.
+  if (bestCluster) {
+    for (const [sourceKey, macros] of Object.entries(rawResults)) {
+      if (!macros || clusterKeys.has(sourceKey)) continue;
+      if (macros.servingBasis === 'per_100g') continue;
+      excludedSources.push({
+        source: SOURCE_DISPLAY_NAMES[sourceKey] || sourceKey,
+        sourceKey,
+        calories: macros.calories ?? null,
+        reason: 'different_entity_cluster',
+      });
+    }
+  }
+
   const validatedKeys = Object.keys(rawResults).filter((k) => rawResults[k] != null);
 
   const consensusInput = {};
@@ -198,6 +282,7 @@ function getFoodNutritionConsensus(rawResults = {}) {
     nutrientLogs,
     sourceResults,
     excludedSources,
+    consensusClusterKey: bestCluster?.key || null,
   };
 }
 
@@ -208,4 +293,5 @@ module.exports = {
   formatVariancePct,
   classifyCalorieSources,
   buildSourceResultRow,
+  rawResultToClusterMember,
 };

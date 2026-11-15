@@ -170,6 +170,120 @@ function AcceptRejectButtonRow({
   );
 }
 
+function extractNoticeProps(notice) {
+  if (!notice) {
+    return {
+      noticeTitle: '',
+      noticeConfirmLabel: 'OK',
+      noticeMessage: undefined,
+      noticeCancelLabel: undefined,
+      noticeOnConfirm: undefined,
+    };
+  }
+  const noticeTitle = notice.title || '';
+  const noticeConfirmLabel = notice.confirmLabel || 'OK';
+  const noticeMessage = notice.message;
+  const noticeCancelLabel = notice.cancelLabel;
+  const noticeOnConfirm = notice.onConfirm;
+  return {
+    noticeTitle,
+    noticeConfirmLabel,
+    noticeMessage,
+    noticeCancelLabel,
+    noticeOnConfirm,
+  };
+}
+
+function TrainerListingPopupLayout({
+  visible,
+  onClose,
+  overlayBackground,
+  enterProgress,
+  enterScale,
+  themeColors,
+  modalTitle,
+  clientName,
+  isConnectionRequest,
+  request,
+  messageSectionLabel,
+  messageBody,
+  acceptBusy,
+  rejectBusy,
+  anyBusy,
+  acceptLabel,
+  handleAddClient,
+  handleRejectClient,
+  noticeIsVisible,
+  noticeTitle,
+  noticeMessage,
+  noticeConfirmLabel,
+  noticeCancelLabel,
+  noticeOnConfirm,
+  onNoticeClose,
+}) {
+  return (
+    <Modal visible={visible} transparent statusBarTranslucent animationType="none" onRequestClose={onClose}>
+      <View style={[styles.modalOverlay, { backgroundColor: overlayBackground }]}>
+        <Animated.View
+          style={{
+            width: '100%',
+            paddingHorizontal: 18,
+            opacity: enterProgress,
+            transform: [{ scale: enterScale }],
+          }}
+        >
+          <NbCard style={styles.modalContainer}>
+            <Text style={[styles.modalTitle, { color: themeColors.text }]}>{modalTitle}</Text>
+            <Text style={[styles.clientName, { color: themeColors.clientName }]}>{clientName}</Text>
+
+            <RequestInfoGrid
+              isConnectionRequest={isConnectionRequest}
+              request={request}
+              modalTitle={modalTitle}
+              themeColors={themeColors}
+            />
+
+            <View
+              style={[
+                styles.messagePreview,
+                { backgroundColor: themeColors.glassBg, borderColor: themeColors.glassBorder },
+              ]}
+            >
+              <Text style={[styles.messageLabel, { color: themeColors.label }]}>{messageSectionLabel}</Text>
+              <Text style={[styles.messageText, { color: themeColors.text }]} numberOfLines={6}>
+                {messageBody}
+              </Text>
+            </View>
+
+            <AcceptRejectButtonRow
+              acceptBusy={acceptBusy}
+              rejectBusy={rejectBusy}
+              anyBusy={anyBusy}
+              acceptLabel={acceptLabel}
+              themeColors={themeColors}
+              onAcceptPress={handleAddClient}
+              onRejectPress={handleRejectClient}
+            />
+
+            <TouchableOpacity style={styles.closeButton} onPress={onClose} disabled={anyBusy} activeOpacity={0.8}>
+              <Text style={[styles.closeButtonText, { color: themeColors.muted }]}>{CLOSE_BUTTON_LABEL}</Text>
+            </TouchableOpacity>
+          </NbCard>
+        </Animated.View>
+      </View>
+      <NbNoticeSheet
+        visible={noticeIsVisible}
+        onClose={onNoticeClose}
+        title={noticeTitle}
+        message={noticeMessage}
+        confirmLabel={noticeConfirmLabel}
+        cancelLabel={noticeCancelLabel}
+        onConfirm={noticeOnConfirm}
+      />
+    </Modal>
+  );
+}
+
 // ===== MAIN FUNCTION =====
 
 /**
@@ -235,11 +349,15 @@ const TrainerListingPopup = ({
   }, [visible, enterProgress]);
 
   // Fresh open of a request → clear busy flags so Retry isn’t stuck disabled.
+  let openRequestMessageId = null;
+  if (clientRequest) {
+    openRequestMessageId = clientRequest.messageId;
+  }
   useEffect(() => {
-    if (!visible || !clientRequest?.messageId) return;
+    if (!visible || !openRequestMessageId) return;
     setAcceptBusy(false);
     setRejectBusy(false);
-  }, [visible, clientRequest?.messageId]);
+  }, [visible, openRequestMessageId]);
 
   // After hooks are declared, it's safe to bail out.
   if (!visible || !hasRequest) return null;
@@ -318,69 +436,42 @@ const TrainerListingPopup = ({
   });
   const messageBody = request.message || FALLBACK_MESSAGE_BODY;
   const noticeIsVisible = !!notice;
-  const noticeTitle = notice?.title || '';
-  const noticeConfirmLabel = notice?.confirmLabel || 'OK';
+  const {
+    noticeTitle,
+    noticeConfirmLabel,
+    noticeMessage,
+    noticeCancelLabel,
+    noticeOnConfirm,
+  } = extractNoticeProps(notice);
 
   return (
-    <Modal visible={visible} transparent statusBarTranslucent animationType="none" onRequestClose={onClose}>
-      <View style={[styles.modalOverlay, { backgroundColor: overlayBackground }]}>
-        <Animated.View
-          style={{
-            width: '100%',
-            paddingHorizontal: 18,
-            opacity: enterProgress,
-            transform: [{ scale: enterScale }],
-          }}
-        >
-          <NbCard style={styles.modalContainer}>
-            <Text style={[styles.modalTitle, { color: themeColors.text }]}>{modalTitle}</Text>
-            <Text style={[styles.clientName, { color: themeColors.clientName }]}>{request.clientName}</Text>
-
-            <RequestInfoGrid
-              isConnectionRequest={isConnectionRequest}
-              request={request}
-              modalTitle={modalTitle}
-              themeColors={themeColors}
-            />
-
-            <View
-              style={[
-                styles.messagePreview,
-                { backgroundColor: themeColors.glassBg, borderColor: themeColors.glassBorder },
-              ]}
-            >
-              <Text style={[styles.messageLabel, { color: themeColors.label }]}>{messageSectionLabel}</Text>
-              <Text style={[styles.messageText, { color: themeColors.text }]} numberOfLines={6}>
-                {messageBody}
-              </Text>
-            </View>
-
-            <AcceptRejectButtonRow
-              acceptBusy={acceptBusy}
-              rejectBusy={rejectBusy}
-              anyBusy={anyBusy}
-              acceptLabel={acceptLabel}
-              themeColors={themeColors}
-              onAcceptPress={handleAddClient}
-              onRejectPress={handleRejectClient}
-            />
-
-            <TouchableOpacity style={styles.closeButton} onPress={onClose} disabled={anyBusy} activeOpacity={0.8}>
-              <Text style={[styles.closeButtonText, { color: themeColors.muted }]}>{CLOSE_BUTTON_LABEL}</Text>
-            </TouchableOpacity>
-          </NbCard>
-        </Animated.View>
-      </View>
-      <NbNoticeSheet
-        visible={noticeIsVisible}
-        onClose={() => setNotice(null)}
-        title={noticeTitle}
-        message={notice?.message}
-        confirmLabel={noticeConfirmLabel}
-        cancelLabel={notice?.cancelLabel}
-        onConfirm={notice?.onConfirm}
-      />
-    </Modal>
+    <TrainerListingPopupLayout
+      visible={visible}
+      onClose={onClose}
+      overlayBackground={overlayBackground}
+      enterProgress={enterProgress}
+      enterScale={enterScale}
+      themeColors={themeColors}
+      modalTitle={modalTitle}
+      clientName={request.clientName}
+      isConnectionRequest={isConnectionRequest}
+      request={request}
+      messageSectionLabel={messageSectionLabel}
+      messageBody={messageBody}
+      acceptBusy={acceptBusy}
+      rejectBusy={rejectBusy}
+      anyBusy={anyBusy}
+      acceptLabel={acceptLabel}
+      handleAddClient={handleAddClient}
+      handleRejectClient={handleRejectClient}
+      noticeIsVisible={noticeIsVisible}
+      noticeTitle={noticeTitle}
+      noticeMessage={noticeMessage}
+      noticeConfirmLabel={noticeConfirmLabel}
+      noticeCancelLabel={noticeCancelLabel}
+      noticeOnConfirm={noticeOnConfirm}
+      onNoticeClose={() => setNotice(null)}
+    />
   );
 };
 
@@ -431,7 +522,7 @@ async function notifyClientRequestAccepted({ clientUid, trainerUid, conversation
   try {
     if (!clientUid || !trainerUid) return;
     const trainerName = await loadTrainerDisplayName(trainerUid);
-    void postRemotePushNotify({
+    await postRemotePushNotify({
       recipientId: clientUid,
       senderName: randomClientRequestAcceptedTitle(trainerName),
       messageText: randomClientRequestAcceptedBody(trainerName),
@@ -441,7 +532,11 @@ async function notifyClientRequestAccepted({ clientUid, trainerUid, conversation
       notificationType: PUSH_TYPE_REQUEST_ACCEPTED,
     });
   } catch (pushError) {
-    console.warn('Client accept push skipped:', pushError?.message || pushError);
+    let pushErrorText = pushError;
+    if (pushError && pushError.message) {
+      pushErrorText = pushError.message;
+    }
+    console.warn('Client accept push skipped:', pushErrorText);
   }
 }
 
@@ -466,6 +561,25 @@ function acknowledgmentMessageForType(requestType) {
   return GENERIC_ACK_TEXT;
 }
 
+async function sendNonConnectionAckSafely(clientUid, trainerUid, requestType, fallbackConversationId) {
+  try {
+    const ackConversationId = await getOrCreateConversation(clientUid, trainerUid);
+    await sendMessage(
+      ackConversationId,
+      trainerUid,
+      acknowledgmentMessageForType(requestType),
+    );
+    return ackConversationId;
+  } catch (messageError) {
+    let messageErrorText = messageError;
+    if (messageError && messageError.message) {
+      messageErrorText = messageError.message;
+    }
+    console.warn('Acknowledgment message skipped:', messageErrorText);
+    return fallbackConversationId;
+  }
+}
+
 /**
  * Already-linked client OR non-connection request:
  * mark message accepted, optional ack chat, push, then close.
@@ -485,16 +599,12 @@ async function finishAlreadyLinkedOrNonConnectionAccept({
 
   let ackConversationId = request.conversationId || null;
   if (!isConnectionRequest) {
-    try {
-      ackConversationId = await getOrCreateConversation(request.clientUid, trainerUid);
-      await sendMessage(
-        ackConversationId,
-        trainerUid,
-        acknowledgmentMessageForType(requestType),
-      );
-    } catch (messageError) {
-      console.warn('Acknowledgment message skipped:', messageError?.message || messageError);
-    }
+    ackConversationId = await sendNonConnectionAckSafely(
+      request.clientUid,
+      trainerUid,
+      requestType,
+      ackConversationId,
+    );
   }
 
   await notifyClientRequestAccepted({
@@ -531,7 +641,11 @@ async function finishNewConnectionAccept({ request, trainerUid, onClientAdded, o
   try {
     await syncClientDataFromUsers(request.clientUid, trainerUid);
   } catch (syncError) {
-    console.warn('Could not sync full client data:', syncError?.message);
+    let syncErrorText = syncError;
+    if (syncError && syncError.message) {
+      syncErrorText = syncError.message;
+    }
+    console.warn('Could not sync full client data:', syncErrorText);
   }
 
   await notifyClientRequestAccepted({
@@ -620,10 +734,16 @@ async function runTrainerRejectClientRequest({
     }
     await sendMessage(conversationId, trainerUid, declineText);
   } catch (declineMessageError) {
-    console.warn('Reject notification message skipped:', declineMessageError?.message || declineMessageError);
+    let declineErrorText = declineMessageError;
+    if (declineMessageError && declineMessageError.message) {
+      declineErrorText = declineMessageError.message;
+    }
+    console.warn('Reject notification message skipped:', declineErrorText);
   }
 
-  await onRequestRejected?.();
+  if (onRequestRejected) {
+    await onRequestRejected();
+  }
   onClose();
 }
 

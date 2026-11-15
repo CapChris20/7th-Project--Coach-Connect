@@ -20,7 +20,91 @@ const BLOCKED_USERS_COLLECTION = 'blockedUsers';
 const MAX_DISPLAY_NAME_LENGTH = 120;
 const INVALID_BLOCK_MESSAGE = 'Invalid block request.';
 
-// ===== MAIN FUNCTIONS =====
+// ===== HELPER FUNCTIONS =====
+
+function blockedUsersCollection(uid) {
+  return collection(db, USERS_COLLECTION, uid, BLOCKED_USERS_COLLECTION);
+}
+
+function blockDocReference(signedInUid, blockedUid) {
+  return doc(
+    db,
+    USERS_COLLECTION,
+    signedInUid,
+    BLOCKED_USERS_COLLECTION,
+    blockedUid,
+  );
+}
+
+function trimmedUid(uid) {
+  return String(uid || '').trim();
+}
+
+function blockRequestIsValid(signedInUid, personToBlock) {
+  if (!signedInUid) {
+    return false;
+  }
+  if (!personToBlock) {
+    return false;
+  }
+  if (signedInUid === personToBlock) {
+    return false;
+  }
+  return true;
+}
+
+function displayNameForBlockDoc(meta) {
+  if (!meta.displayName) {
+    return null;
+  }
+  return String(meta.displayName).slice(0, MAX_DISPLAY_NAME_LENGTH);
+}
+
+function blockRecordFromDoc(blockDoc) {
+  const storedFields = blockDoc.data() || {};
+  return { id: blockDoc.id, ...storedFields };
+}
+
+function blockRowsFromSnapshot(snapshot) {
+  const rows = [];
+  const docs = snapshot.docs;
+  for (let index = 0; index < docs.length; index += 1) {
+    const oneRow = blockRecordFromDoc(docs[index]);
+    rows.push(oneRow);
+  }
+  return rows;
+}
+
+function blockedIdSetFromSnapshot(snapshot) {
+  const blockedIds = new Set();
+  const docs = snapshot.docs;
+  for (let index = 0; index < docs.length; index += 1) {
+    blockedIds.add(docs[index].id);
+  }
+  return blockedIds;
+}
+
+function notifyEmptyBlockedSet(onChange, hasChangeHandler) {
+  if (!hasChangeHandler) {
+    return;
+  }
+  onChange(new Set());
+}
+
+function emptyCleanup() {}
+
+function warnSubscribeFailureInDev(listenError) {
+  if (!__DEV__) {
+    return;
+  }
+  let message = listenError;
+  if (listenError && listenError.message) {
+    message = listenError.message;
+  }
+  console.warn('[safety] subscribeMyBlocks:', message);
+}
+
+// ===== MAIN FUNCTION =====
 
 /**
  * Block another user under users/{uid}/blockedUsers/{blockedUid}.
@@ -126,86 +210,4 @@ export function subscribeMyBlocks(uid, onChange) {
   return stopListening;
 }
 
-// ===== PLUMBING — skip unless debugging Firestore paths or listener edge cases =====
 
-function blockedUsersCollection(uid) {
-  return collection(db, USERS_COLLECTION, uid, BLOCKED_USERS_COLLECTION);
-}
-
-function blockDocReference(signedInUid, blockedUid) {
-  return doc(
-    db,
-    USERS_COLLECTION,
-    signedInUid,
-    BLOCKED_USERS_COLLECTION,
-    blockedUid,
-  );
-}
-
-function trimmedUid(uid) {
-  return String(uid || '').trim();
-}
-
-function blockRequestIsValid(signedInUid, personToBlock) {
-  if (!signedInUid) {
-    return false;
-  }
-  if (!personToBlock) {
-    return false;
-  }
-  if (signedInUid === personToBlock) {
-    return false;
-  }
-  return true;
-}
-
-function displayNameForBlockDoc(meta) {
-  if (!meta.displayName) {
-    return null;
-  }
-  return String(meta.displayName).slice(0, MAX_DISPLAY_NAME_LENGTH);
-}
-
-function blockRecordFromDoc(blockDoc) {
-  const storedFields = blockDoc.data() || {};
-  return { id: blockDoc.id, ...storedFields };
-}
-
-function blockRowsFromSnapshot(snapshot) {
-  const rows = [];
-  const docs = snapshot.docs;
-  for (let index = 0; index < docs.length; index += 1) {
-    const oneRow = blockRecordFromDoc(docs[index]);
-    rows.push(oneRow);
-  }
-  return rows;
-}
-
-function blockedIdSetFromSnapshot(snapshot) {
-  const blockedIds = new Set();
-  const docs = snapshot.docs;
-  for (let index = 0; index < docs.length; index += 1) {
-    blockedIds.add(docs[index].id);
-  }
-  return blockedIds;
-}
-
-function notifyEmptyBlockedSet(onChange, hasChangeHandler) {
-  if (!hasChangeHandler) {
-    return;
-  }
-  onChange(new Set());
-}
-
-function emptyCleanup() {}
-
-function warnSubscribeFailureInDev(listenError) {
-  if (!__DEV__) {
-    return;
-  }
-  let message = listenError;
-  if (listenError && listenError.message) {
-    message = listenError.message;
-  }
-  console.warn('[safety] subscribeMyBlocks:', message);
-}

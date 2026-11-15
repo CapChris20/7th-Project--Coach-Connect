@@ -1,17 +1,31 @@
 // Shared Candidate adapter for weak HTML scrapers (Yazio / Cronometer / MyFitnessPal).
 // Flow: raw name + macros → Candidate with sourceTier 3.
-// Used by those scraper modules. Keeps name/brand RAW.
+// Used by scraper modules to normalize unstructured HTML search results.
+// Pure CommonJS. Keeps name/brand raw without altering titles.
 
 const { createCandidate, assertCandidate } = require('../candidate');
 const { completenessFromMacros, servingFromMacros } = require('./macroHelpers');
 
+// ===== NAMED CONSTANTS =====
+
+const DEFAULT_SERVING_LABEL = '1 serving';
+const DEFAULT_CHANNEL = 'unknown';
+const DEFAULT_SERVING_ORIGIN = 'derived';
+const SOURCE_FLAG_HTML = 'html';
+
+// ===== HELPER FUNCTIONS =====
+// (No helper functions in this adapter)
+
+// ===== MAIN FUNCTION =====
+
 /**
+ * Normalizes raw scraped HTML nutrition objects into a validated Candidate.
  * @param {string} source
  * @param {object} raw
- * @param {{ fetchedAt?: string|null }} [opts]
+ * @param {{ fetchedAt?: string|null }} [options]
  * @returns {object|null}
  */
-function adaptWeakHtmlSource(source, raw, opts = {}) {
+function adaptWeakHtmlSource(source, raw, options = {}) {
   if (!raw || typeof raw !== 'object') return null;
   const name = String(raw.name || raw.displayName || '').trim();
   if (!name) return null;
@@ -28,21 +42,21 @@ function adaptWeakHtmlSource(source, raw, opts = {}) {
     name,
     brand,
     categoryPath: [],
-    channel: 'unknown',
+    channel: DEFAULT_CHANNEL,
     gtin: null,
     per100: null,
     servings: [
       servingFromMacros({
-        label: raw.servingLabel || '1 serving',
+        label: raw.servingLabel || DEFAULT_SERVING_LABEL,
         kcal: macros.kcal,
         protein: macros.protein,
         carbs: macros.carbs,
         fat: macros.fat,
-        origin: 'derived',
+        origin: DEFAULT_SERVING_ORIGIN,
       }),
     ],
-    quality: { completeness: completenessFromMacros(macros), sourceFlags: ['html'] },
-    provenance: { url: raw.url || null, fetchedAt: opts.fetchedAt || null },
+    quality: { completeness: completenessFromMacros(macros), sourceFlags: [SOURCE_FLAG_HTML] },
+    provenance: { url: raw.url || null, fetchedAt: options.fetchedAt || null },
   });
   return assertCandidate(candidate);
 }

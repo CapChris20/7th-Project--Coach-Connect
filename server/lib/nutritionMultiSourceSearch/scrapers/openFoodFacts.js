@@ -1,6 +1,13 @@
 const { fetchJson, normalizeMacros, parseNumber } = require('../scrapeHelpers');
 const { SCRAPE_TIMEOUT_MS, USER_AGENT } = require('../constants');
 const { wrapScraperResult } = require('../resolveFoodDetail');
+const { createCandidate, assertCandidate } = require('../../../../src/nutrition/food-match/candidate');
+const {
+  finiteOrNull,
+  completenessFromMacros,
+  per100FromMacros,
+  servingFromMacros,
+} = require('../../../../src/nutrition/food-match/adapters/macroHelpers');
 
 function mapOffProduct(product) {
   if (!product) return null;
@@ -24,6 +31,78 @@ function mapOffProduct(product) {
     sodium_mg,
     sugar_g: parseNumber(n.sugars_serving ?? n.sugars),
   });
+}
+
+/**
+ * Candidate adapter for a raw Open Food Facts product.
+ * Keeps product_name / brands RAW — no title tidy.
+ * @param {object} product
+ * @param {{ fetchedAt?: string|null }} [opts]
+ * @returns {object|null}
+ */
+function adaptOpenFoodFactsProduct(product, opts = {}) {
+  if (!product || typeof product !== 'object') return null;
+
+  // 1. Raw name + brand from the source fields only.
+  const name = String(product.product_name || product.product_name_en || product.food_name || '').trim();
+  if (!name) return null;
+  const brand = String(product.brands || product.brand || '').trim();
+  const code = String(product.code || product._id || '').replace(/\D/g, '') || null;
+  const nutrients = product.nutriments || {};
+
+  // 2. Prefer explicit per-100g when OFF published it; else serving macros.
+  const per100 = per100FromMacros({
+    kcal: nutrients['energy-kcal_100g'],
+    protein: nutrients.proteins_100g,
+    carbs: nutrients.carbohydrates_100g,
+    fat: nutrients.fat_100g,
+  }, 'g');
+
+  const servings = [];
+  if (nHasServing(product) || product.serving_size) {
+    servings.push(servingFromMacros({
+      label: product.serving_size || '1 serving',
+      kcal: nutrients['energy-kcal_serving'] ?? nutrients['energy-kcal'],
+      protein: nutrients.proteins_serving ?? nutrients.proteins,
+      carbs: nutrients.carbohydrates_serving ?? nutrients.carbohydrates,
+      fat: nutrients.fat_serving ?? nutrients.fat,
+      origin: 'label',
+    }));
+  }
+
+  // 3. Quality flags come from OFF's own tags — no invented scores.
+  const states = Array.isArray(product.states_tags) ? product.states_tags.map(String) : [];
+  const qualityErrors = Array.isArray(product.data_quality_errors_tags)
+    ? product.data_quality_errors_tags.map(String)
+    : [];
+  const sourceFlags = [...states, ...qualityErrors];
+  const macrosForCompleteness = per100 || {
+    kcal: finiteOrNull(nutrients['energy-kcal_serving'] ?? nutrients['energy-kcal']),
+    protein: finiteOrNull(nutrients.proteins_serving ?? nutrients.proteins),
+    carbs: finiteOrNull(nutrients.carbohydrates_serving ?? nutrients.carbohydrates),
+    fat: finiteOrNull(nutrients.fat_serving ?? nutrients.fat),
+  };
+
+  const candidate = createCandidate({
+    id: code ? `openFoodFacts:${code}` : `openFoodFacts:${name}`,
+    source: 'openFoodFacts',
+    name,
+    brand,
+    categoryPath: Array.isArray(product.categories_tags) ? product.categories_tags.map(String) : [],
+    channel: brand ? 'packaged' : 'unknown',
+    gtin: code,
+    per100,
+    servings,
+    quality: {
+      completeness: completenessFromMacros(macrosForCompleteness),
+      sourceFlags,
+    },
+    provenance: {
+      url: code ? `https://world.openfoodfacts.org/product/${code}` : null,
+      fetchedAt: opts.fetchedAt || null,
+    },
+  });
+  return assertCandidate(candidate);
 }
 
 async function scrapeOpenFoodFacts(query, timeoutMs = SCRAPE_TIMEOUT_MS) {
@@ -69,4 +148,4 @@ function nHasServing(product) {
   );
 }
 
-module.exports = { scrapeOpenFoodFacts, mapOffProduct };
+module.exports = { scrapeOpenFoodFacts, mapOffProduct, adaptOpenFoodFactsProduct };

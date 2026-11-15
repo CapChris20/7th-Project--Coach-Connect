@@ -1,0 +1,5 @@
+src/trainer-pro-plan/verifyProPurchase.js
+src/workouts/create-plan/CreateWorkoutPlanScreen.js
+src/workouts/create-plan/askForWorkoutPlan.js
+src/workouts/create-plan/editPlanFieldForms.js
+src/workouts/exercise-videos/ExerciseVideosTab.jsx

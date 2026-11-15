@@ -68,16 +68,29 @@ const FALLBACK_CATEGORY = CATEGORY_OTHER;
 // ===== HELPER FUNCTIONS =====
 
 function isTrainerSharedItem(item) {
-  if (item?.addedBy === ADDED_BY_TRAINER) return true;
+  if (!item) return false;
+  if (item.addedBy === ADDED_BY_TRAINER) return true;
   // Trainer-authored document stubs may omit addedBy but still carry trainerId.
-  if (item?.type === DOCUMENT_TYPE && item?.trainerId) return true;
+  if (item.type === DOCUMENT_TYPE && item.trainerId) return true;
   return false;
 }
 
+function firestoreTimestampToDate(createdAt) {
+  if (!createdAt) return null;
+  if (typeof createdAt.toDate === 'function') {
+    return createdAt.toDate();
+  }
+  return null;
+}
+
 function itemCreatedAtDate(item) {
-  if (item?.createdAt instanceof Date) return item.createdAt;
-  if (item?.createdAt?.toDate) return item.createdAt.toDate();
-  return new Date(item?.createdAt || EPOCH_MS);
+  if (!item) return new Date(EPOCH_MS);
+  if (item.createdAt instanceof Date) return item.createdAt;
+
+  const fromTimestamp = firestoreTimestampToDate(item.createdAt);
+  if (fromTimestamp) return fromTimestamp;
+
+  return new Date(item.createdAt || EPOCH_MS);
 }
 
 function sortNewestFirst(files) {
@@ -88,11 +101,19 @@ function sortNewestFirst(files) {
 
 function trainerSharedItemsFromList(items) {
   const list = Array.isArray(items) ? items : [];
-  return list.filter(isTrainerSharedItem);
+  const trainerItems = [];
+  for (let index = 0; index < list.length; index += 1) {
+    const item = list[index];
+    if (isTrainerSharedItem(item)) {
+      trainerItems.push(item);
+    }
+  }
+  return trainerItems;
 }
 
 function categoryForFileType(fileType) {
-  for (const category of CATEGORIES) {
+  for (let index = 0; index < CATEGORIES.length; index += 1) {
+    const category = CATEGORIES[index];
     if (category.matchesFileType(fileType)) return category;
   }
   return FALLBACK_CATEGORY;
@@ -100,7 +121,8 @@ function categoryForFileType(fileType) {
 
 function emptyBucketsByCategoryId() {
   const grouped = {};
-  for (const category of CATEGORIES) {
+  for (let index = 0; index < CATEGORIES.length; index += 1) {
+    const category = CATEGORIES[index];
     grouped[category.id] = [];
   }
   return grouped;
@@ -109,32 +131,53 @@ function emptyBucketsByCategoryId() {
 function groupTrainerItemsByCategory(trainerItems) {
   const grouped = emptyBucketsByCategoryId();
 
-  for (const item of trainerItems) {
+  for (let index = 0; index < trainerItems.length; index += 1) {
+    const item = trainerItems[index];
     const fileType = getFileTypeFromItem(item);
     const category = categoryForFileType(fileType);
     grouped[category.id].push(item);
   }
 
-  for (const categoryId of Object.keys(grouped)) {
+  const categoryIds = Object.keys(grouped);
+  for (let index = 0; index < categoryIds.length; index += 1) {
+    const categoryId = categoryIds[index];
     sortNewestFirst(grouped[categoryId]);
   }
   return grouped;
 }
 
 function countUnreadSharedItems(trainerItems) {
-  return trainerItems.filter((item) => item?.isRead === false).length;
+  let unreadCount = 0;
+  for (let index = 0; index < trainerItems.length; index += 1) {
+    const item = trainerItems[index];
+    if (item && item.isRead === false) {
+      unreadCount += 1;
+    }
+  }
+  return unreadCount;
+}
+
+function itemIsUnread(item) {
+  if (!item) return false;
+  return item.isRead === false;
+}
+
+async function markSharedItemReadIfNeeded(item, onMarkRead) {
+  if (!itemIsUnread(item)) return;
+  if (!onMarkRead) return;
+  try {
+    await onMarkRead(item);
+  } catch {
+    // Ignore mark-read failures.
+  }
 }
 
 async function openSharedItemThenViewer(item, onMarkRead, onOpenItem) {
   // Mark-read is best-effort; always still open the viewer.
-  if (item?.isRead === false) {
-    try {
-      await onMarkRead?.(item);
-    } catch {
-      // Ignore mark-read failures.
-    }
+  await markSharedItemReadIfNeeded(item, onMarkRead);
+  if (onOpenItem) {
+    onOpenItem(item);
   }
-  onOpenItem?.(item);
 }
 
 function colorsForScheme(colorScheme) {
@@ -207,28 +250,39 @@ function CategoryHeader({ category, count, isExpanded, onToggle, colors }) {
   );
 }
 
-function SharedCategoryFileList({ categoryItems, onMarkRead, onOpenItem, onDownloadItem }) {
-  return (
-    <View style={styles.categoryContent}>
-      {categoryItems.map((item) => {
-        const itemIsNew = item?.isRead === false;
-        const openThisItem = () => openSharedItemThenViewer(item, onMarkRead, onOpenItem);
-        const downloadThisItem = () => onDownloadItem?.(item);
+function buildSharedFileCards(categoryItems, onMarkRead, onOpenItem, onDownloadItem) {
+  const cards = [];
+  for (let index = 0; index < categoryItems.length; index += 1) {
+    const item = categoryItems[index];
+    const itemIsNew = itemIsUnread(item);
 
-        return (
-          <FileCard
-            key={item.id}
-            item={item}
-            showActions
-            isTrainerShared
-            isNew={itemIsNew}
-            onOpen={openThisItem}
-            onDownload={downloadThisItem}
-          />
-        );
-      })}
-    </View>
-  );
+    function openThisItem() {
+      openSharedItemThenViewer(item, onMarkRead, onOpenItem);
+    }
+
+    function downloadThisItem() {
+      if (!onDownloadItem) return;
+      onDownloadItem(item);
+    }
+
+    cards.push(
+      <FileCard
+        key={item.id}
+        item={item}
+        showActions
+        isTrainerShared
+        isNew={itemIsNew}
+        onOpen={openThisItem}
+        onDownload={downloadThisItem}
+      />,
+    );
+  }
+  return cards;
+}
+
+function SharedCategoryFileList({ categoryItems, onMarkRead, onOpenItem, onDownloadItem }) {
+  const fileCards = buildSharedFileCards(categoryItems, onMarkRead, onOpenItem, onDownloadItem);
+  return <View style={styles.categoryContent}>{fileCards}</View>;
 }
 
 function SharedCategoryBlock({
@@ -265,7 +319,7 @@ function SharedCategoryBlock({
   );
 }
 
-function SharedCategoryBlocks({
+function buildSharedCategoryBlocks(
   groupedByCategory,
   expandedCategoryId,
   onToggleCategory,
@@ -273,13 +327,18 @@ function SharedCategoryBlocks({
   onMarkRead,
   onOpenItem,
   onDownloadItem,
-}) {
-  return CATEGORIES.map((category) => {
+) {
+  const blocks = [];
+  for (let index = 0; index < CATEGORIES.length; index += 1) {
+    const category = CATEGORIES[index];
     const categoryItems = groupedByCategory[category.id] || [];
     const isExpanded = expandedCategoryId === category.id;
-    const toggleThisCategory = () => onToggleCategory(category.id);
 
-    return (
+    function toggleThisCategory() {
+      onToggleCategory(category.id);
+    }
+
+    blocks.push(
       <SharedCategoryBlock
         key={category.id}
         category={category}
@@ -290,9 +349,30 @@ function SharedCategoryBlocks({
         onMarkRead={onMarkRead}
         onOpenItem={onOpenItem}
         onDownloadItem={onDownloadItem}
-      />
+      />,
     );
-  });
+  }
+  return blocks;
+}
+
+function SharedCategoryBlocks({
+  groupedByCategory,
+  expandedCategoryId,
+  onToggleCategory,
+  colors,
+  onMarkRead,
+  onOpenItem,
+  onDownloadItem,
+}) {
+  return buildSharedCategoryBlocks(
+    groupedByCategory,
+    expandedCategoryId,
+    onToggleCategory,
+    colors,
+    onMarkRead,
+    onOpenItem,
+    onDownloadItem,
+  );
 }
 
 // ===== MAIN FUNCTION =====

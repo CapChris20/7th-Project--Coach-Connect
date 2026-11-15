@@ -1,0 +1,5 @@
+src/workouts/exercise-videos/findExerciseVideos.js
+src/workouts/exercise-videos/loadSavedWorkoutPlans.js
+src/workouts/session/WorkoutSessionScreen.jsx
+src/ai-coach/CoachSelfTest.jsx
+src/ai-coach/conversation/CoachConversationScreen.jsx

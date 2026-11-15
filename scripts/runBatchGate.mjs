@@ -1,4 +1,6 @@
-// Run mechanical + strip gates for one full-rewrite batch (40 files = Na + Nb lists).
+// Variation 3 mechanical gate for one batch (Na + Nb lists).
+// Runs classifyReadable (0 fails) then stripBatchGate (all CODE-MOVED).
+// Metro export + human junior-recipe read are separate (see full-rewrite/README.md).
 // Usage: node scripts/runBatchGate.mjs 1
 
 import { readFileSync, existsSync } from 'node:fs';

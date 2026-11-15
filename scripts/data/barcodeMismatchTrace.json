@@ -1,0 +1,114 @@
+{
+  "inputOrigin": "constructed-to-exercise-control-flow",
+  "notARecordedScan": true,
+  "liveRoute": "POST /api/food/barcode",
+  "liveRouteFile": "server/routes/foodRoutes.js",
+  "resolveBarcodeLookupRequiredByFoodRoutes": false,
+  "clientCaller": "src/nutrition/food-search/searchFoods.js lookupBarcode posts /api/food/barcode",
+  "badChecksum": {
+    "barcode": "111111111118",
+    "checkDigitValid": false,
+    "networkCalls": 12,
+    "urls": [
+      "POST https://api.nal.usda.gov/fdc/v1/foods/search",
+      "GET https://world.openfoodfacts.org/api/v2/product/111111111118.json",
+      "POST https://api.nal.usda.gov/fdc/v1/foods/search",
+      "GET https://world.openfoodfacts.org/api/v2/product/0111111111118.json",
+      "POST https://api.nal.usda.gov/fdc/v1/foods/search",
+      "GET https://world.openfoodfacts.org/api/v2/product/00111111111118.json",
+      "GET https://api.upcitemdb.com/prod/trial/lookup",
+      "GET https://api.upcitemdb.com/prod/trial/lookup",
+      "GET https://api.upcitemdb.com/prod/trial/lookup",
+      "POST https://google.serper.dev/search",
+      "POST https://google.serper.dev/search",
+      "POST https://google.serper.dev/search"
+    ]
+  },
+  "foodRoutesSoupReplacedByUsdaName": {
+    "statusCode": 200,
+    "food": {
+      "notFound": false,
+      "name": "BROCCOLI CHEDDAR SOUP, CONDENSED",
+      "source": "usda",
+      "gtinUpc": "999999999993",
+      "scannedBarcode": "111111111117",
+      "barcodeConfidence": null,
+      "needsVerification": null,
+      "variableWeightBarcode": false
+    },
+    "gtinDiffersFromScan": true,
+    "networkCalls": 13,
+    "urls": [
+      "POST https://api.nal.usda.gov/fdc/v1/foods/search",
+      "GET https://world.openfoodfacts.org/api/v2/product/111111111117.json",
+      "POST https://api.nal.usda.gov/fdc/v1/foods/search",
+      "GET https://world.openfoodfacts.org/api/v2/product/0111111111117.json",
+      "POST https://api.nal.usda.gov/fdc/v1/foods/search",
+      "GET https://world.openfoodfacts.org/api/v2/product/00111111111117.json",
+      "GET https://api.upcitemdb.com/prod/trial/lookup",
+      "GET https://api.upcitemdb.com/prod/trial/lookup",
+      "GET https://api.upcitemdb.com/prod/trial/lookup",
+      "POST https://google.serper.dev/search",
+      "POST https://google.serper.dev/search",
+      "POST https://google.serper.dev/search",
+      "POST https://api.nal.usda.gov/fdc/v1/foods/search"
+    ]
+  },
+  "foodRoutesSerperOnlyAutoFill": {
+    "statusCode": 200,
+    "food": {
+      "notFound": false,
+      "name": "Frozen cooked poultry pieces",
+      "source": "serper",
+      "gtinUpc": null,
+      "scannedBarcode": "111111111124",
+      "barcodeConfidence": "low",
+      "needsVerification": true,
+      "variableWeightBarcode": false
+    },
+    "gtinDiffersFromScan": null,
+    "networkCalls": 14,
+    "urls": [
+      "POST https://api.nal.usda.gov/fdc/v1/foods/search",
+      "GET https://world.openfoodfacts.org/api/v2/product/111111111124.json",
+      "POST https://api.nal.usda.gov/fdc/v1/foods/search",
+      "GET https://world.openfoodfacts.org/api/v2/product/0111111111124.json",
+      "POST https://api.nal.usda.gov/fdc/v1/foods/search",
+      "GET https://world.openfoodfacts.org/api/v2/product/00111111111124.json",
+      "GET https://api.upcitemdb.com/prod/trial/lookup",
+      "GET https://api.upcitemdb.com/prod/trial/lookup",
+      "GET https://api.upcitemdb.com/prod/trial/lookup",
+      "POST https://google.serper.dev/search",
+      "POST https://google.serper.dev/search",
+      "POST https://google.serper.dev/search",
+      "POST https://api.nal.usda.gov/fdc/v1/foods/search",
+      "POST https://api.nal.usda.gov/fdc/v1/foods/search"
+    ]
+  },
+  "resolveBarcodeLookupSerperAutoFill": {
+    "food": {
+      "notFound": false,
+      "name": "Frozen cooked poultry pieces",
+      "source": "serper",
+      "gtinUpc": null,
+      "scannedBarcode": null,
+      "barcodeConfidence": "low",
+      "needsVerification": true,
+      "variableWeightBarcode": false
+    },
+    "networkCalls": 7
+  },
+  "resolveBarcodeLookupSoup": {
+    "food": {
+      "notFound": true,
+      "name": null,
+      "source": null,
+      "gtinUpc": null,
+      "scannedBarcode": "111111111155",
+      "barcodeConfidence": null,
+      "needsVerification": null,
+      "variableWeightBarcode": false
+    },
+    "networkCalls": 7
+  }
+}

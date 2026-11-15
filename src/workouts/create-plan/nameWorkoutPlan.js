@@ -61,58 +61,7 @@ const GOAL_NAME_CATALOGS = [
   },
 ];
 
-// ===== MAIN RECIPES (exports) =====
-
-/**
- * Pick a stable human title for one generated plan.
- * Same goal + weeks + seed → same name across reloads.
- * @param {object} [planData]
- * @param {string} [fallbackSeed]
- * @returns {string}
- */
-export function nameWorkoutPlan(planData = {}, fallbackSeed = '') {
-  // 1. Unwrap structuredPlan when the generator nested the real object.
-  const structuredPlan = readStructuredPlan(planData);
-
-  // 2. Goal text picks the pool; week/day counts salt the hash seed.
-  const goalText = readGoalText(structuredPlan, planData);
-  const weekCount = readWeekCount(structuredPlan, planData);
-  const daysPerWeek = readDaysPerWeek(structuredPlan, planData);
-
-  // 3. Pick a title pool from the goal, then one stable title from that pool.
-  const namePool = pickNamePoolForGoal(goalText);
-  const generatedAt = readGeneratedAtOrNow(planData);
-  const seedParts = [goalText, weekCount, daysPerWeek, fallbackSeed || generatedAt];
-  const seed = seedParts.join('|');
-  const pickedName = pickNameFromPool(namePool, seed);
-
-  // 4. Prefix "8-Week …" when the week count is a believable plan length.
-  const namedPlan = prefixWeeksWhenUseful(pickedName, weekCount);
-
-  // 5. Collapse whitespace and cap length for Firestore card titles.
-  return collapseAndCapPlanName(namedPlan);
-}
-
-/**
- * True when the stored title is still a generic AI placeholder (safe to rename).
- * @param {string} name
- * @returns {boolean}
- */
-export function looksLikeDefaultAiPlanName(name) {
-  // 1. Blank / missing → treat as default so callers can overwrite.
-  const title = String(name || '').trim();
-  if (!title) return true;
-
-  // 2. Match the known placeholder patterns the generator used to ship.
-  if (titleLooksLikeAiPlanPrefix(title)) return true;
-  if (titleLooksLikeWorkoutPlanDashPrefix(title)) return true;
-  if (titleLooksLikeYourWorkoutPlan(title)) return true;
-
-  // 3. Anything else is a real custom name — leave it alone.
-  return false;
-}
-
-// ===== PLUMBING — skip unless debugging =====
+// ===== HELPER FUNCTIONS =====
 
 /**
  * vocab: >>> 0 = force unsigned 32-bit int so modulo index stays non-negative
@@ -260,4 +209,55 @@ function titleLooksLikeWorkoutPlanDashPrefix(title) {
 
 function titleLooksLikeYourWorkoutPlan(title) {
   return /^your workout plan$/i.test(title);
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Pick a stable human title for one generated plan.
+ * Same goal + weeks + seed → same name across reloads.
+ * @param {object} [planData]
+ * @param {string} [fallbackSeed]
+ * @returns {string}
+ */
+export function nameWorkoutPlan(planData = {}, fallbackSeed = '') {
+  // 1. Unwrap structuredPlan when the generator nested the real object.
+  const structuredPlan = readStructuredPlan(planData);
+
+  // 2. Goal text picks the pool; week/day counts salt the hash seed.
+  const goalText = readGoalText(structuredPlan, planData);
+  const weekCount = readWeekCount(structuredPlan, planData);
+  const daysPerWeek = readDaysPerWeek(structuredPlan, planData);
+
+  // 3. Pick a title pool from the goal, then one stable title from that pool.
+  const namePool = pickNamePoolForGoal(goalText);
+  const generatedAt = readGeneratedAtOrNow(planData);
+  const seedParts = [goalText, weekCount, daysPerWeek, fallbackSeed || generatedAt];
+  const seed = seedParts.join('|');
+  const pickedName = pickNameFromPool(namePool, seed);
+
+  // 4. Prefix "8-Week …" when the week count is a believable plan length.
+  const namedPlan = prefixWeeksWhenUseful(pickedName, weekCount);
+
+  // 5. Collapse whitespace and cap length for Firestore card titles.
+  return collapseAndCapPlanName(namedPlan);
+}
+
+/**
+ * True when the stored title is still a generic AI placeholder (safe to rename).
+ * @param {string} name
+ * @returns {boolean}
+ */
+export function looksLikeDefaultAiPlanName(name) {
+  // 1. Blank / missing → treat as default so callers can overwrite.
+  const title = String(name || '').trim();
+  if (!title) return true;
+
+  // 2. Match the known placeholder patterns the generator used to ship.
+  if (titleLooksLikeAiPlanPrefix(title)) return true;
+  if (titleLooksLikeWorkoutPlanDashPrefix(title)) return true;
+  if (titleLooksLikeYourWorkoutPlan(title)) return true;
+
+  // 3. Anything else is a real custom name — leave it alone.
+  return false;
 }

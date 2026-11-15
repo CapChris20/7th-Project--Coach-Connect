@@ -390,7 +390,7 @@ function LoadingClientBlock({ mutedColor }) {
   );
 }
 
-// ===== MAIN RECIPE =====
+// ===== MAIN FUNCTION =====
 
 // Trainer — single-client detail (sessions + notes/files).
 const ClientDetailScreen = ({

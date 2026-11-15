@@ -1,0 +1,5 @@
+src/client-app/home/homeScreenPieces.jsx
+src/client-app/profile/MyProfileScreen.jsx
+src/for-both/online-connection/whereToConnect.js
+src/for-both/payments/PayTrainerPopup.jsx
+src/for-both/photo-gallery/MyProgressPhotosScreen.jsx

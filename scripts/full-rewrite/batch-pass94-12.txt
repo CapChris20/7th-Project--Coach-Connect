@@ -1,0 +1,5 @@
+src/ai-coach/reply-display/copyableReplyText.js
+src/app-start/ClientAppStart.js
+src/block-and-report/index.js
+src/block-and-report/reportReasons.js
+src/client-app/files-and-notes/FileCard.jsx

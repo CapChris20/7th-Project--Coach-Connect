@@ -80,15 +80,23 @@ export function useShellNavigate(navigateFromParent) {
 // ===== PLUMBING — skip unless debugging =====
 
 /**
+ * Call a shell method if it exists (plain if, no optional call).
+ * @param {Function|undefined|null} maybeFn
+ */
+function callIfPresent(maybeFn) {
+  if (!maybeFn) return;
+  maybeFn();
+}
+
+/**
  * Close whatever panel is open by returning to home, then open the next panel.
  * Order matters: home first, or the new panel sits on a stale screen and bounces back.
  * @param {object} shellContext
  * @param {Function} [openNextPanel]
  */
 function goHomeThenOpenNextPanel(shellContext, openNextPanel) {
-  var _optCallObj, _optCallFn;
-  (_optCallObj = shellContext, _optCallFn = _optCallObj.handleHomePress) == null ? void 0 : _optCallFn.call(_optCallObj);
-  openNextPanel == null ? void 0 : openNextPanel();
+  callIfPresent(shellContext.handleHomePress);
+  callIfPresent(openNextPanel);
 }
 
 /**
@@ -97,9 +105,8 @@ function goHomeThenOpenNextPanel(shellContext, openNextPanel) {
  * @param {Function} [openNextPanel]
  */
 function popSettingsStackThenOpen(shellContext, openNextPanel) {
-  var _optCallObj2, _optCallFn2;
-  (_optCallObj2 = shellContext, _optCallFn2 = _optCallObj2.rootGoBack) == null ? void 0 : _optCallFn2.call(_optCallObj2);
-  openNextPanel == null ? void 0 : openNextPanel();
+  callIfPresent(shellContext.rootGoBack);
+  callIfPresent(openNextPanel);
 }
 
 /**
@@ -107,25 +114,41 @@ function popSettingsStackThenOpen(shellContext, openNextPanel) {
  * @param {object} shellContext
  */
 function openMessagesPanelInShell(shellContext) {
-  var _optCallObj3, _optCallFn3, _optCallObj4, _optCallFn4, _optCallObj5, _optCallFn5;
-  (_optCallObj3 = shellContext, _optCallFn3 = _optCallObj3.handleHomePress) == null ? void 0 : _optCallFn3.call(_optCallObj3);
+  callIfPresent(shellContext.handleHomePress);
+
   const hasConversationsHandler = typeof shellContext.handleOpenConversations === 'function';
   if (hasConversationsHandler) {
     shellContext.handleOpenConversations();
     return;
   }
-  (_optCallObj4 = shellContext, _optCallFn4 = _optCallObj4.setShowTrainerMessaging) == null ? void 0 : _optCallFn4.call(_optCallObj4, false);
-  (_optCallObj5 = shellContext, _optCallFn5 = _optCallObj5.setShowConversationsList) == null ? void 0 : _optCallFn5.call(_optCallObj5, true);
+
+  const hideTrainerMessaging = shellContext.setShowTrainerMessaging;
+  if (hideTrainerMessaging) {
+    hideTrainerMessaging(false);
+  }
+  const showConversationsList = shellContext.setShowConversationsList;
+  if (showConversationsList) {
+    showConversationsList(true);
+  }
 }
 
 /**
- * Workout panel: prefer openWorkout, fall back to openWorkoutPlan when the first is missing.
- * vocab/symbol: ?? = use the right side only when the left is null/undefined (missing method → undefined)
+ * Workout panel: prefer openWorkout, fall back to openWorkoutPlan when the first is missing
+ * or returns null/undefined (prefer openWorkout, else openWorkoutPlan).
  * @param {object} shellContext
  */
 function openWorkoutPanelInShell(shellContext) {
-  var _optCallObj6, _optCallFn6, _optCallObj7, _optCallFn7;
-  ((_optCallObj6 = shellContext, _optCallFn6 = _optCallObj6.openWorkout) == null ? void 0 : _optCallFn6.call(_optCallObj6)) ?? ((_optCallObj7 = shellContext, _optCallFn7 = _optCallObj7.openWorkoutPlan) == null ? void 0 : _optCallFn7.call(_optCallObj7));
+  const openWorkout = shellContext.openWorkout;
+  let firstResult = undefined;
+  if (openWorkout) {
+    firstResult = openWorkout();
+  }
+  if (firstResult != null) return;
+
+  const openWorkoutPlan = shellContext.openWorkoutPlan;
+  if (openWorkoutPlan) {
+    openWorkoutPlan();
+  }
 }
 
 /**
@@ -134,8 +157,17 @@ function openWorkoutPanelInShell(shellContext) {
  */
 function openAiOrVoicePanelInShell(shellContext) {
   goHomeThenOpenNextPanel(shellContext, () => {
-    var _optCallObj8, _optCallFn8, _optCallObj9, _optCallFn9;
-    ((_optCallObj8 = shellContext, _optCallFn8 = _optCallObj8.openAIChatHome) == null ? void 0 : _optCallFn8.call(_optCallObj8)) ?? ((_optCallObj9 = shellContext, _optCallFn9 = _optCallObj9.openVoiceAI) == null ? void 0 : _optCallFn9.call(_optCallObj9));
+    const openAiChatHome = shellContext.openAIChatHome;
+    let firstResult = undefined;
+    if (openAiChatHome) {
+      firstResult = openAiChatHome();
+    }
+    if (firstResult != null) return;
+
+    const openVoiceAi = shellContext.openVoiceAI;
+    if (openVoiceAi) {
+      openVoiceAi();
+    }
   });
 }
 
@@ -144,58 +176,38 @@ function openAiOrVoicePanelInShell(shellContext) {
  * Manipulate here: add a destination by putting a new SCREEN_* key here (and a constant above).
  */
 function buildKeywordOpenerTable() {
-  const openProfile = shellContext => goHomeThenOpenNextPanel(shellContext, () => {
-    var _optCallObj0, _optCallFn0;
-    return (_optCallObj0 = shellContext, _optCallFn0 = _optCallObj0.openProfile) == null ? void 0 : _optCallFn0.call(_optCallObj0);
-  });
-  const openSettings = shellContext => goHomeThenOpenNextPanel(shellContext, () => {
-    var _optCallObj1, _optCallFn1;
-    return (_optCallObj1 = shellContext, _optCallFn1 = _optCallObj1.openSettings) == null ? void 0 : _optCallFn1.call(_optCallObj1);
-  });
-  const openHelpFaq = shellContext => popSettingsStackThenOpen(shellContext, () => {
-    var _optCallObj10, _optCallFn10;
-    return (_optCallObj10 = shellContext, _optCallFn10 = _optCallObj10.openHelpFAQ) == null ? void 0 : _optCallFn10.call(_optCallObj10);
-  });
-  const openTerms = shellContext => popSettingsStackThenOpen(shellContext, () => {
-    var _optCallObj11, _optCallFn11;
-    return (_optCallObj11 = shellContext, _optCallFn11 = _optCallObj11.openTerms) == null ? void 0 : _optCallFn11.call(_optCallObj11);
-  });
-  const openPrivacy = shellContext => popSettingsStackThenOpen(shellContext, () => {
-    var _optCallObj12, _optCallFn12;
-    return (_optCallObj12 = shellContext, _optCallFn12 = _optCallObj12.openPrivacy) == null ? void 0 : _optCallFn12.call(_optCallObj12);
-  });
-  const openContactSupport = shellContext => popSettingsStackThenOpen(shellContext, () => {
-    var _optCallObj13, _optCallFn13;
-    return (_optCallObj13 = shellContext, _optCallFn13 = _optCallObj13.openContactSupport) == null ? void 0 : _optCallFn13.call(_optCallObj13);
-  });
-  const openBugReport = shellContext => popSettingsStackThenOpen(shellContext, () => {
-    var _optCallObj14, _optCallFn14;
-    return (_optCallObj14 = shellContext, _optCallFn14 = _optCallObj14.openBugReport) == null ? void 0 : _optCallFn14.call(_optCallObj14);
-  });
-  const openPrivacyDataRights = shellContext => popSettingsStackThenOpen(shellContext, () => {
-    var _optCallObj15, _optCallFn15;
-    return (_optCallObj15 = shellContext, _optCallFn15 = _optCallObj15.openPrivacyDataRights) == null ? void 0 : _optCallFn15.call(_optCallObj15);
-  });
-  const openNutrition = shellContext => goHomeThenOpenNextPanel(shellContext, () => {
-    var _optCallObj16, _optCallFn16;
-    return (_optCallObj16 = shellContext, _optCallFn16 = _optCallObj16.openNutrition) == null ? void 0 : _optCallFn16.call(_optCallObj16);
-  });
-  const openPayments = shellContext => popSettingsStackThenOpen(shellContext, () => {
-    var _optCallObj17, _optCallFn17;
-    return (_optCallObj17 = shellContext, _optCallFn17 = _optCallObj17.openPayments) == null ? void 0 : _optCallFn17.call(_optCallObj17);
-  });
-  const openCoachingPayment = shellContext => popSettingsStackThenOpen(shellContext, () => {
-    var _optCallObj18, _optCallFn18;
-    return (_optCallObj18 = shellContext, _optCallFn18 = _optCallObj18.openCoachingPayment) == null ? void 0 : _optCallFn18.call(_optCallObj18);
-  });
-  const openCreateFilePopup = shellContext => {
-    var _optCallObj19, _optCallFn19;
-    (_optCallObj19 = shellContext, _optCallFn19 = _optCallObj19.setShowAddFilePopup) == null ? void 0 : _optCallFn19.call(_optCallObj19, true);
+  const openProfile = (shellContext) =>
+    goHomeThenOpenNextPanel(shellContext, () => callIfPresent(shellContext.openProfile));
+  const openSettings = (shellContext) =>
+    goHomeThenOpenNextPanel(shellContext, () => callIfPresent(shellContext.openSettings));
+  const openHelpFaq = (shellContext) =>
+    popSettingsStackThenOpen(shellContext, () => callIfPresent(shellContext.openHelpFAQ));
+  const openTerms = (shellContext) =>
+    popSettingsStackThenOpen(shellContext, () => callIfPresent(shellContext.openTerms));
+  const openPrivacy = (shellContext) =>
+    popSettingsStackThenOpen(shellContext, () => callIfPresent(shellContext.openPrivacy));
+  const openContactSupport = (shellContext) =>
+    popSettingsStackThenOpen(shellContext, () => callIfPresent(shellContext.openContactSupport));
+  const openBugReport = (shellContext) =>
+    popSettingsStackThenOpen(shellContext, () => callIfPresent(shellContext.openBugReport));
+  const openPrivacyDataRights = (shellContext) =>
+    popSettingsStackThenOpen(shellContext, () => callIfPresent(shellContext.openPrivacyDataRights));
+  const openNutrition = (shellContext) =>
+    goHomeThenOpenNextPanel(shellContext, () => callIfPresent(shellContext.openNutrition));
+  const openPayments = (shellContext) =>
+    popSettingsStackThenOpen(shellContext, () => callIfPresent(shellContext.openPayments));
+  const openCoachingPayment = (shellContext) =>
+    popSettingsStackThenOpen(shellContext, () => callIfPresent(shellContext.openCoachingPayment));
+  const openCreateFilePopup = (shellContext) => {
+    const showAddFilePopup = shellContext.setShowAddFilePopup;
+    if (showAddFilePopup) {
+      showAddFilePopup(true);
+    }
   };
-  const openHome = shellContext => {
-    var _optCallObj20, _optCallFn20;
-    (_optCallObj20 = shellContext, _optCallFn20 = _optCallObj20.handleHomePress) == null ? void 0 : _optCallFn20.call(_optCallObj20);
+  const openHome = (shellContext) => {
+    callIfPresent(shellContext.handleHomePress);
   };
+
   return {
     [SCREEN_HOME]: openHome,
     [SCREEN_PROFILE]: openProfile,
@@ -217,9 +229,10 @@ function buildKeywordOpenerTable() {
     [SCREEN_PAYMENTS]: openPayments,
     [SCREEN_EARNINGS_LEGACY]: openPayments,
     [SCREEN_DASHBOARD_BILLING]: openCoachingPayment,
-    [SCREEN_COACHING_PAYMENT]: openCoachingPayment
+    [SCREEN_COACHING_PAYMENT]: openCoachingPayment,
   };
 }
+
 const KEYWORD_OPENER_BY_SCREEN = buildKeywordOpenerTable();
 
 /**
@@ -229,7 +242,9 @@ const KEYWORD_OPENER_BY_SCREEN = buildKeywordOpenerTable();
  */
 function runScreenKeywordOnShell(shellContext, screenKeyword) {
   if (!screenKeyword) return;
+
   const openThisScreen = KEYWORD_OPENER_BY_SCREEN[screenKeyword];
   if (!openThisScreen) return;
+
   openThisScreen(shellContext);
 }

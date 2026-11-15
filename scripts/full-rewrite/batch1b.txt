@@ -11,10 +11,10 @@ src/ai-coach/confirm-popups/RateEnergyPopup.jsx
 src/ai-coach/confirm-popups/RateWorkoutPopup.jsx
 src/ai-coach/confirm-popups/UpdateGoalPopup.jsx
 src/ai-coach/confirm-popups/sharedPopupParts.js
+src/ai-coach/conversation/CoachAttachSheet.jsx
 src/ai-coach/conversation/ConfirmActionPopup.jsx
 src/ai-coach/conversation/PasteTextPopup.jsx
 src/ai-coach/conversation/SourceLinkCards.jsx
+src/ai-coach/conversation/TrainerQuietClientsCard.jsx
 src/ai-coach/conversation/_voiceStub.js
 src/ai-coach/conversation/choosePhoto.js
-src/ai-coach/conversation/copyReplyText.js
-src/ai-coach/conversation/keyboardBehavior.js

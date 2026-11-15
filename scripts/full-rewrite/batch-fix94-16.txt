@@ -1,0 +1,5 @@
+src/nutrition/food-search/tidyFoodTitles.js
+src/nutrition/momentum/WeeklyMomentumScreen.jsx
+src/settings/BugReportScreen.jsx
+src/settings/ContactSupportScreen.jsx
+src/settings/PrivacyDataRightsScreen.jsx

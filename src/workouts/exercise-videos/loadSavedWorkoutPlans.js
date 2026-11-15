@@ -77,15 +77,29 @@ function keepFirstFatalError(currentWorstError, nextError) {
  * One library card per plan body — "current" collapses to a fixed key.
  */
 function dedupeKeyForPlanCard(planItem) {
-  const isCurrentCard =
-    planItem?.id === CURRENT_PLAN_DOC_ID || planItem?._singleDoc;
+  // Pull id / flags / body text into named locals (no optional chaining).
+  let planId = null;
+  let isSingleDocFlag = false;
+  let rawPlanText = '';
+  let planTextField = '';
+  if (planItem != null) {
+    planId = planItem.id;
+    isSingleDocFlag = Boolean(planItem._singleDoc);
+    if (planItem.rawPlan) {
+      rawPlanText = planItem.rawPlan;
+    }
+    if (planItem.planText) {
+      planTextField = planItem.planText;
+    }
+  }
+
+  const isCurrentCard = planId === CURRENT_PLAN_DOC_ID || isSingleDocFlag;
   if (isCurrentCard) return DEDUPE_KEY_CURRENT;
 
-  const planTextSlice = String(planItem?.rawPlan || planItem?.planText || '').slice(
-    0,
-    DEDUPE_TEXT_SLICE,
-  );
-  return `plan:${planItem?.id || ''}:${planTextSlice}`;
+  const bodyForDedupe = rawPlanText || planTextField || '';
+  const planTextSlice = String(bodyForDedupe).slice(0, DEDUPE_TEXT_SLICE);
+  const idForKey = planId || '';
+  return `plan:${idForKey}:${planTextSlice}`;
 }
 
 /**
@@ -157,19 +171,20 @@ function plansVisibleForTrainerScope(mergedPlans, trainerId) {
 export async function fetchClientWorkoutPlansForLibrary(clientId, opts = {}) {
   if (!clientId || !db) return { plans: [], error: null };
 
+  // 1. Optional trainer scope from the dashboard caller.
   let trainerId = null;
-  if (opts?.trainerId) {
+  if (opts != null && opts.trainerId) {
     trainerId = String(opts.trainerId);
   }
 
-  // 1. One-time sync so pre-library "current" plans appear in the saved subcollection.
+  // 2. One-time sync so pre-library "current" plans appear in the saved subcollection.
   await mirrorCurrentPlanIntoLibraryIfNeeded(clientId);
 
   const mergedPlans = [];
   const seenDedupeKeys = new Set();
   let worstFatalError = null;
 
-  // 2. Load each Firestore source; keep the first fatal error that is not permission/index noise.
+  // 3. Load each Firestore source; keep the first fatal error that is not permission/index noise.
   worstFatalError = keepFirstFatalError(
     worstFatalError,
     await appendSavedSubcollectionPlans(clientId, seenDedupeKeys, mergedPlans),
@@ -195,10 +210,10 @@ export async function fetchClientWorkoutPlansForLibrary(clientId, opts = {}) {
     await appendLegacySavedPlans(clientId, seenDedupeKeys, mergedPlans),
   );
 
-  // 3. Trainer dashboard: only this trainer's scoped rows (legacy AI spam dropped).
+  // 4. Trainer dashboard: only this trainer's scoped rows (legacy AI spam dropped).
   const visiblePlans = plansVisibleForTrainerScope(mergedPlans, trainerId);
 
-  // 4. Newest first for the library list.
+  // 5. Newest first for the library list.
   sortPlansNewestFirst(visiblePlans);
 
   return {
@@ -210,8 +225,13 @@ export async function fetchClientWorkoutPlansForLibrary(clientId, opts = {}) {
 // ===== PLUMBING — skip unless debugging Firestore plan sources / trainer stamps =====
 
 function dateFromGeneratedAt(data) {
-  if (data.generatedAt?.toDate) return data.generatedAt.toDate();
-  if (data.generatedAt) return new Date(data.generatedAt);
+  if (data != null && data.generatedAt) {
+    const generatedAtValue = data.generatedAt;
+    if (typeof generatedAtValue.toDate === 'function') {
+      return generatedAtValue.toDate();
+    }
+    return new Date(generatedAtValue);
+  }
   return new Date();
 }
 
@@ -219,7 +239,11 @@ function dateFromGeneratedAt(data) {
  * Shape the single "current" plan doc into a library card.
  */
 function decoratePlanAsCurrentCard(data) {
-  if (!data?.rawPlan && !data?.planText) return null;
+  if (data == null) return null;
+
+  const hasRawPlan = Boolean(data.rawPlan);
+  const hasPlanText = Boolean(data.planText);
+  if (!hasRawPlan && !hasPlanText) return null;
 
   const generatedWhen = dateFromGeneratedAt(data);
   const dateLabel = generatedWhen.toLocaleDateString(undefined, DATE_LABEL_OPTIONS);
@@ -245,13 +269,18 @@ function decoratePlanAsCurrentCard(data) {
  * Letters of field names stay frozen for Firestore readers.
  */
 function trainerIdStampValues(plan) {
+  let firebaseTrainerId = null;
+  if (plan != null && plan._firebase != null) {
+    firebaseTrainerId = plan._firebase.trainerId;
+  }
+
   const rawStamps = [
     plan.trainerId,
     plan.createdBy,
     plan.assignedBy,
     plan.authorId,
     plan.ownerTrainerId,
-    plan._firebase?.trainerId,
+    firebaseTrainerId,
   ];
   const stampValues = [];
   for (let index = 0; index < rawStamps.length; index += 1) {
@@ -295,7 +324,12 @@ function firestorePathToCurrentPlan(clientId) {
  */
 async function mirrorCurrentPlanIntoLibraryIfNeeded(clientId) {
   if (!clientId || !db) return;
-  if (auth?.currentUser?.uid !== clientId) return;
+
+  let signedInUid = null;
+  if (auth != null && auth.currentUser != null) {
+    signedInUid = auth.currentUser.uid;
+  }
+  if (signedInUid !== clientId) return;
 
   try {
     const librarySnap = await getDoc(
@@ -304,7 +338,13 @@ async function mirrorCurrentPlanIntoLibraryIfNeeded(clientId) {
     if (librarySnap.exists()) return;
 
     const current = await getCurrentWorkoutPlan(clientId);
-    if (!current?.rawPlan && !current?.planText) return;
+    let hasRawPlan = false;
+    let hasPlanText = false;
+    if (current != null) {
+      hasRawPlan = Boolean(current.rawPlan);
+      hasPlanText = Boolean(current.planText);
+    }
+    if (!hasRawPlan && !hasPlanText) return;
 
     await setCurrentWorkoutPlan(clientId, {
       rawPlan: current.rawPlan || current.planText,
@@ -418,15 +458,29 @@ async function appendLegacySavedPlans(clientId, seenDedupeKeys, mergedPlans) {
   }
 }
 
+/**
+ * Convert a Timestamp / date string into epoch millis, or null.
+ */
+function dateValueToMillis(dateValue) {
+  if (dateValue == null) return null;
+  if (typeof dateValue.toDate === 'function') {
+    const asDate = dateValue.toDate();
+    return asDate ? asDate.getTime() : null;
+  }
+  const dateObj = new Date(dateValue);
+  const time = dateObj.getTime();
+  return Number.isNaN(time) ? null : time;
+}
+
+/**
+ * Milliseconds used to sort newest-first.
+ * Firestore Timestamp objects expose .toDate(); plain strings/numbers use Date().
+ */
 function sortMillisForPlan(plan) {
-  if (plan.generatedAt?.toDate?.()) {
-    return plan.generatedAt.toDate().getTime();
-  }
-  if (plan.generatedAt) {
-    return new Date(plan.generatedAt).getTime();
-  }
-  if (plan.createdAt?.toDate?.()) {
-    return plan.createdAt.toDate().getTime();
-  }
+  if (!plan) return 0;
+  const generatedTime = dateValueToMillis(plan.generatedAt);
+  if (generatedTime != null) return generatedTime;
+  const createdTime = dateValueToMillis(plan.createdAt);
+  if (createdTime != null) return createdTime;
   return 0;
 }

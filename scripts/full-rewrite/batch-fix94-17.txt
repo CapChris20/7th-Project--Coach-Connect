@@ -1,0 +1,5 @@
+src/trainer-app/documents/documentEditorTools.js
+src/trainer-app/home/TrainerHomeBlocks.jsx
+src/trainer-app/new-requests/NewTraineeRequestsScreen.jsx
+src/trainer-app/weekly-report/TrainerWeeklyReportSection.jsx
+src/trainer-app/weekly-report/WeeklyReportBanner.jsx

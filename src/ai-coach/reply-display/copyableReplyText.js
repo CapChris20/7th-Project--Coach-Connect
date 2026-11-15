@@ -8,13 +8,27 @@ import {
   copyCoachText as copyTextHelper,
 } from '../conversation/copyReplyText';
 
-// ===== MAIN FUNCTION =====
-// No recipe body — this file only binds the three frozen names to the conversation helpers.
-// Strip / plain / copy work lives in ../conversation/copyReplyText.js.
+// ===== NAMED CONSTANTS =====
+// No local constants — this file only re-exports frozen names from conversation/.
 
-export const stripInlineWebCitations = stripCitationsHelper;
-export const coachPlainText = plainTextHelper;
-export const copyCoachText = copyTextHelper;
+// ===== HELPER FUNCTIONS =====
+
+// Bind conversation clipboard helpers under the frozen reply-display export names.
+function bindReplyClipboardHelpers() {
+  return {
+    stripInlineWebCitations: stripCitationsHelper,
+    coachPlainText: plainTextHelper,
+    copyCoachText: copyTextHelper,
+  };
+}
+
+// ===== MAIN FUNCTION =====
+
+const replyClipboardHelpers = bindReplyClipboardHelpers();
+
+export const stripInlineWebCitations = replyClipboardHelpers.stripInlineWebCitations;
+export const coachPlainText = replyClipboardHelpers.coachPlainText;
+export const copyCoachText = replyClipboardHelpers.copyCoachText;
 
 // ===== PLUMBING — skip unless debugging =====
 // Edit ../conversation/copyReplyText.js to change clipboard behavior.

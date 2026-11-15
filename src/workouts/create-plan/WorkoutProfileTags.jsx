@@ -34,7 +34,7 @@ const SNAPSHOT_HINT_COACH =
 const DEFAULT_PILL_TEXT = 'Onboarding answers';
 const EMPTY_STATE_ICON_SIZE = 28;
 
-// ===== GRID + DISPLAY HELPERS =====
+// ===== HELPER FUNCTIONS =====
 
 /**
  * Two-column card widths from the current window width.
@@ -51,22 +51,16 @@ function profileGridMetrics() {
  * Weight card text: "N lbs" or the empty dash.
  */
 function formatWeightText(weight) {
-  const hasWeight = weight != null && weight !== '';
-  if (hasWeight) {
-    return `${weight} lbs`;
-  }
-  return PROFILE_TAG_EMPTY_VALUE;
+  const hasWeight = weight !== undefined && weight !== null && weight !== '';
+  return hasWeight ? `${weight} lbs` : PROFILE_TAG_EMPTY_VALUE;
 }
 
 /**
  * Age card text: string age or the empty dash.
  */
 function formatAgeText(age) {
-  const hasAge = age != null && age !== '';
-  if (hasAge) {
-    return String(age);
-  }
-  return PROFILE_TAG_EMPTY_VALUE;
+  const hasAge = age !== undefined && age !== null && age !== '';
+  return hasAge ? String(age) : PROFILE_TAG_EMPTY_VALUE;
 }
 
 /**
@@ -710,7 +704,7 @@ function SectionGrid({ section, layout, theme, onEditField, nextAccentIndex }) {
   };
 }
 
-// ===== MAIN COMPONENT =====
+// ===== MAIN FUNCTION =====
 
 /**
  * Onboarding snapshot grid for the workout plan builder.
@@ -728,10 +722,10 @@ export default function WorkoutProfileTags({
 }) {
   // 1. Header pill text — which onboarding sections actually have answers
   const profileCardSectionLabels = getProfileCardSectionLabels(onboardingData);
-  let profileCardPillText = DEFAULT_PILL_TEXT;
-  if (profileCardSectionLabels.length > 0) {
-    profileCardPillText = profileCardSectionLabels.join(' · ');
-  }
+  const profileCardPillText =
+    profileCardSectionLabels.length > 0
+      ? profileCardSectionLabels.join(' · ')
+      : DEFAULT_PILL_TEXT;
 
   // 2. Layout metrics and which section rows survive the unanswered-field filter
   const layout = profileGridMetrics();

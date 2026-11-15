@@ -33,36 +33,7 @@ const WORKOUT_ONBOARDING_FIELDS = [
 const MIN_DAYS_PER_WEEK = 1;
 const MAX_DAYS_PER_WEEK = 7;
 
-// ===== MAIN RECIPE (export) =====
-
-/**
- * Strip extra user-doc fields before POSTing to /api/workout/generate.
- * @param {object} data
- * @returns {object}
- */
-export function buildWorkoutOnboardingPayload(data) {
-  // 1. Guard non-objects so normalize never sees null / a string.
-  let safeInput = {};
-  if (dataIsPlainObject(data)) {
-    safeInput = data;
-  }
-
-  // 2. Shared trainee normalizer (same keys as profile screens).
-  const profile = normalizeClientProfileFields(safeInput);
-
-  // 3. Copy only fields the workout prompt cares about; skip undefined/null.
-  const payload = copyOnboardingFieldsOntoPayload(profile);
-
-  // 4. Overwrite daysPerWeek with a clamped integer when we can resolve one.
-  const daysPerWeek = resolveDaysPerWeek(profile);
-  if (daysPerWeek != null) {
-    payload.daysPerWeek = daysPerWeek;
-  }
-
-  return payload;
-}
-
-// ===== PLUMBING — skip unless debugging =====
+// ===== HELPER FUNCTIONS =====
 
 function dataIsPlainObject(data) {
   return data != null && typeof data === 'object';
@@ -199,4 +170,33 @@ function resolveDaysPerWeek(profile) {
   if (!daysAreInRange) return null;
 
   return roundedDays;
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Strip extra user-doc fields before POSTing to /api/workout/generate.
+ * @param {object} data
+ * @returns {object}
+ */
+export function buildWorkoutOnboardingPayload(data) {
+  // 1. Guard non-objects so normalize never sees null / a string.
+  let safeInput = {};
+  if (dataIsPlainObject(data)) {
+    safeInput = data;
+  }
+
+  // 2. Shared trainee normalizer (same keys as profile screens).
+  const profile = normalizeClientProfileFields(safeInput);
+
+  // 3. Copy only fields the workout prompt cares about; skip undefined/null.
+  const payload = copyOnboardingFieldsOntoPayload(profile);
+
+  // 4. Overwrite daysPerWeek with a clamped integer when we can resolve one.
+  const daysPerWeek = resolveDaysPerWeek(profile);
+  if (daysPerWeek != null) {
+    payload.daysPerWeek = daysPerWeek;
+  }
+
+  return payload;
 }

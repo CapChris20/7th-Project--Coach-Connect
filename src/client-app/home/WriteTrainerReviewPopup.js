@@ -196,6 +196,142 @@ function buildTagChipViews(tags, colors, onToggleTag) {
   return tagViews;
 }
 
+function hydrateReviewDraft(existingReview) {
+  if (!existingReview) {
+    return {
+      savedRating: DEFAULT_STAR_RATING,
+      savedText: '',
+    };
+  }
+  const savedRating = existingReview.rating ?? DEFAULT_STAR_RATING;
+  const savedText = existingReview.text ?? '';
+  return { savedRating, savedText };
+}
+
+function buildRemoveReviewControl(hasExistingReview, removing, colors, onStartRemove) {
+  if (!hasExistingReview) {
+    return null;
+  }
+  const removeContent = removing ? (
+    <ActivityIndicator size="small" color={colors.nbMuted} />
+  ) : (
+    <Text style={{ fontSize: 13, fontWeight: '700', color: colors.nbMuted }}>Remove review</Text>
+  );
+  return (
+    <TouchableOpacity
+      onPress={onStartRemove}
+      disabled={removing}
+      style={{ alignItems: 'center', marginTop: 12 }}
+    >
+      {removeContent}
+    </TouchableOpacity>
+  );
+}
+
+function WriteTrainerReviewPopupLayout({
+  visible,
+  onClose,
+  colors,
+  avatarFillColor,
+  initials,
+  sheetTitle,
+  starButtonViews,
+  tagChipViews,
+  reviewText,
+  setReviewText,
+  characterCountLabel,
+  submitting,
+  canPost,
+  postButtonLabel,
+  saveReview,
+  removeReviewControl,
+  noticeIsVisible,
+  noticeTitle,
+  noticeMessage,
+  onNoticeClose,
+  confirmRemove,
+  onConfirmRemoveClose,
+  confirmRemoveReview,
+}) {
+  return (
+    <>
+      <NbSheet visible={visible} onClose={onClose}>
+        <View style={styles.body}>
+          <View style={styles.headRow}>
+            <View
+              style={[
+                styles.avatarCircle,
+                { backgroundColor: avatarFillColor, borderColor: colors.nbBorder },
+              ]}
+            >
+              <Text style={{ fontWeight: '900', color: colors.nbInk }}>{initials}</Text>
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={[styles.title, { color: colors.nbInk }]}>{sheetTitle}</Text>
+              <Text style={[styles.subtitle, { color: colors.nbMuted }]}>Visible on their profile.</Text>
+            </View>
+          </View>
+
+          <View style={styles.starRow}>{starButtonViews}</View>
+
+          <View style={styles.tagRow}>{tagChipViews}</View>
+
+          <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetCard}>
+            <TextInput
+              placeholder="Built around my knee from week one, and checks in without nagging."
+              placeholderTextColor={colors.nbMuted}
+              value={reviewText}
+              onChangeText={setReviewText}
+              multiline
+              maxLength={MAX_REVIEW_CHARS}
+              style={[
+                styles.note,
+                {
+                  color: colors.nbInk,
+                  backgroundColor: colors.nbSurface,
+                  borderColor: colors.nbBorder,
+                },
+              ]}
+            />
+          </HardShadow>
+          <Text style={[styles.counter, { color: colors.nbMuted }]}>
+            {characterCountLabel}
+          </Text>
+
+          <View style={styles.actions}>
+            <NbButton variant="ghost" onPress={onClose} style={{ flex: 1 }} disabled={submitting}>
+              Not now
+            </NbButton>
+            <NbButton variant="fill" onPress={saveReview} style={{ flex: 1 }} disabled={!canPost}>
+              {postButtonLabel}
+            </NbButton>
+          </View>
+
+          {removeReviewControl}
+        </View>
+      </NbSheet>
+
+      <NbNoticeSheet
+        visible={noticeIsVisible}
+        onClose={onNoticeClose}
+        title={noticeTitle}
+        message={noticeMessage}
+        confirmLabel="OK"
+      />
+      <NbNoticeSheet
+        visible={confirmRemove}
+        onClose={onConfirmRemoveClose}
+        title="Remove your review?"
+        message="This cannot be undone."
+        confirmLabel="Remove"
+        cancelLabel="Cancel"
+        onConfirm={confirmRemoveReview}
+        destructive
+      />
+    </>
+  );
+}
+
 // ===== MAIN FUNCTION =====
 
 /**
@@ -224,15 +360,9 @@ export default function WriteTrainerReviewPopup({
   useEffect(() => {
     if (!visible) return;
 
-    let savedRating = DEFAULT_STAR_RATING;
-    let savedText = '';
-    if (existingReview) {
-      if (existingReview.rating != null) savedRating = existingReview.rating;
-      if (existingReview.text != null) savedText = existingReview.text;
-    }
-
-    setRating(savedRating ?? DEFAULT_STAR_RATING);
-    setReviewText(savedText ?? '');
+    const { savedRating, savedText } = hydrateReviewDraft(existingReview);
+    setRating(savedRating);
+    setReviewText(savedText);
     setTags(selectedTagsFromExisting(existingReview));
   }, [visible, existingReview]);
 
@@ -314,102 +444,39 @@ export default function WriteTrainerReviewPopup({
 
   const starButtonViews = buildStarButtonViews(rating, colors, setRating);
   const tagChipViews = buildTagChipViews(tags, colors, toggleTagChip);
-
-  let removeReviewControl = null;
-  if (hasExistingReview) {
-    let removeContent = (
-      <Text style={{ fontSize: 13, fontWeight: '700', color: colors.nbMuted }}>Remove review</Text>
-    );
-    if (removing) {
-      removeContent = <ActivityIndicator size="small" color={colors.nbMuted} />;
-    }
-    removeReviewControl = (
-      <TouchableOpacity
-        onPress={() => setConfirmRemove(true)}
-        disabled={removing}
-        style={{ alignItems: 'center', marginTop: 12 }}
-      >
-        {removeContent}
-      </TouchableOpacity>
-    );
-  }
+  const removeReviewControl = buildRemoveReviewControl(
+    hasExistingReview,
+    removing,
+    colors,
+    () => setConfirmRemove(true),
+  );
 
   return (
-    <>
-      <NbSheet visible={visible} onClose={onClose}>
-        <View style={styles.body}>
-          <View style={styles.headRow}>
-            <View
-              style={[
-                styles.avatarCircle,
-                { backgroundColor: avatarFillColor, borderColor: colors.nbBorder },
-              ]}
-            >
-              <Text style={{ fontWeight: '900', color: colors.nbInk }}>{initials}</Text>
-            </View>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={[styles.title, { color: colors.nbInk }]}>{sheetTitle}</Text>
-              <Text style={[styles.subtitle, { color: colors.nbMuted }]}>Visible on their profile.</Text>
-            </View>
-          </View>
-
-          <View style={styles.starRow}>{starButtonViews}</View>
-
-          <View style={styles.tagRow}>{tagChipViews}</View>
-
-          <HardShadow radius={borderRadius.nbCard} offset={nb.shadowOffsetCard}>
-            <TextInput
-              placeholder="Built around my knee from week one, and checks in without nagging."
-              placeholderTextColor={colors.nbMuted}
-              value={reviewText}
-              onChangeText={setReviewText}
-              multiline
-              maxLength={MAX_REVIEW_CHARS}
-              style={[
-                styles.note,
-                {
-                  color: colors.nbInk,
-                  backgroundColor: colors.nbSurface,
-                  borderColor: colors.nbBorder,
-                },
-              ]}
-            />
-          </HardShadow>
-          <Text style={[styles.counter, { color: colors.nbMuted }]}>
-            {characterCountLabel}
-          </Text>
-
-          <View style={styles.actions}>
-            <NbButton variant="ghost" onPress={onClose} style={{ flex: 1 }} disabled={submitting}>
-              Not now
-            </NbButton>
-            <NbButton variant="fill" onPress={saveReview} style={{ flex: 1 }} disabled={!canPost}>
-              {postButtonLabel}
-            </NbButton>
-          </View>
-
-          {removeReviewControl}
-        </View>
-      </NbSheet>
-
-      <NbNoticeSheet
-        visible={noticeIsVisible}
-        onClose={() => setNotice(null)}
-        title={noticeTitle}
-        message={noticeMessage}
-        confirmLabel="OK"
-      />
-      <NbNoticeSheet
-        visible={confirmRemove}
-        onClose={() => setConfirmRemove(false)}
-        title="Remove your review?"
-        message="This cannot be undone."
-        confirmLabel="Remove"
-        cancelLabel="Cancel"
-        onConfirm={confirmRemoveReview}
-        destructive
-      />
-    </>
+    <WriteTrainerReviewPopupLayout
+      visible={visible}
+      onClose={onClose}
+      colors={colors}
+      avatarFillColor={avatarFillColor}
+      initials={initials}
+      sheetTitle={sheetTitle}
+      starButtonViews={starButtonViews}
+      tagChipViews={tagChipViews}
+      reviewText={reviewText}
+      setReviewText={setReviewText}
+      characterCountLabel={characterCountLabel}
+      submitting={submitting}
+      canPost={canPost}
+      postButtonLabel={postButtonLabel}
+      saveReview={saveReview}
+      removeReviewControl={removeReviewControl}
+      noticeIsVisible={noticeIsVisible}
+      noticeTitle={noticeTitle}
+      noticeMessage={noticeMessage}
+      onNoticeClose={() => setNotice(null)}
+      confirmRemove={confirmRemove}
+      onConfirmRemoveClose={() => setConfirmRemove(false)}
+      confirmRemoveReview={confirmRemoveReview}
+    />
   );
 }
 

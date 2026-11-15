@@ -1,0 +1,5 @@
+src/trainer-pro-plan/FreeTrialBanner.jsx
+src/trainer-pro-plan/proPlanStatus.js
+src/workouts/create-plan/GenerateMyWorkoutPlanScreen.jsx
+src/workouts/create-plan/NewPlanPanel.jsx
+src/workouts/create-plan/WorkoutProfileTags.jsx

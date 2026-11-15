@@ -165,10 +165,14 @@ function expectedToolNames(testName) {
  * @returns {boolean}
  */
 function toolMatchesExpectation(testName, toolCall) {
-  // vocab: optional chaining — no name means “no tool call to grade”
-  if (!toolCall?.name) return false;
+  // No tool name means there is nothing to grade against the expected list.
+  let toolCallName = null;
+  if (toolCall != null) {
+    toolCallName = toolCall.name;
+  }
+  if (!toolCallName) return false;
   const expectedNames = expectedToolNames(testName);
-  return expectedNames.includes(toolCall.name);
+  return expectedNames.includes(toolCallName);
 }
 
 /**
@@ -203,7 +207,10 @@ function missingContextResult(testItem) {
  * @returns {object}
  */
 function testErrorResult(testItem, error) {
-  const errorMessage = error?.message || String(error);
+  let errorMessage = String(error);
+  if (error != null && error.message) {
+    errorMessage = error.message;
+  }
   return {
     ...testItem,
     status: STATUS_ERROR,
@@ -218,12 +225,21 @@ function testErrorResult(testItem, error) {
  * @returns {{ status: string, validations: string[] }}
  */
 function gradeReplyLengthAndSuccess(response) {
-  if (!response?.success) {
-    const failReason = response?.error || 'API call failed';
+  let responseSucceeded = false;
+  let failReason = 'API call failed';
+  let replyText = '';
+  if (response != null) {
+    responseSucceeded = Boolean(response.success);
+    if (response.error) {
+      failReason = response.error;
+    }
+    replyText = response.message || '';
+  }
+
+  if (!responseSucceeded) {
     return { status: STATUS_FAIL, validations: [failReason] };
   }
 
-  const replyText = response.message || '';
   const replyIsTooShort = replyText.length < MINIMUM_REPLY_CHARS;
   if (replyIsTooShort) {
     return { status: STATUS_FAIL, validations: ['Response too short'] };
@@ -490,17 +506,19 @@ function WebSearchBadge({ source, searchedWeb }) {
 }
 
 function ValidationBulletList({ validations }) {
-  if (!validations?.length) return null;
+  if (validations == null || validations.length === 0) return null;
 
-  return (
-    <View style={styles.validations}>
-      {validations.map((validation, validationIndex) => (
-        <Text key={validationIndex} style={styles.validationText}>
-          • {validation}
-        </Text>
-      ))}
-    </View>
-  );
+  const bulletLines = [];
+  for (let validationIndex = 0; validationIndex < validations.length; validationIndex += 1) {
+    const validation = validations[validationIndex];
+    bulletLines.push(
+      <Text key={validationIndex} style={styles.validationText}>
+        • {validation}
+      </Text>,
+    );
+  }
+
+  return <View style={styles.validations}>{bulletLines}</View>;
 }
 
 function OneTestResultCard({ result, resultIndex }) {
@@ -681,7 +699,11 @@ export default function CoachSelfTest({
         setContextError(CONTEXT_LOAD_ERROR);
       }
     } catch (error) {
-      setContextError(error?.message || String(error));
+      let loadErrorMessage = String(error);
+      if (error != null && error.message) {
+        loadErrorMessage = error.message;
+      }
+      setContextError(loadErrorMessage);
     } finally {
       setContextLoading(false);
     }

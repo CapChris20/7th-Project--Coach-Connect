@@ -91,15 +91,21 @@ const SPREADSHEET_PICKER_TYPES = [
 // ===== HELPER FUNCTIONS =====
 
 function isTrainerDocumentStub(item) {
-  if (item?.type !== DOCUMENT_TYPE) return false;
-  if (!item?.trainerId) return false;
-  if (!item?.documentId) return false;
+  if (!item) return false;
+  if (item.type !== DOCUMENT_TYPE) return false;
+  if (!item.trainerId) return false;
+  if (!item.documentId) return false;
   return true;
 }
 
 function isClientOwnedLibraryFile(item) {
-  if (item?.type === NOTE_TYPE) return false;
-  const addedBy = item?.addedBy || ADDED_BY_CLIENT;
+  if (!item) return false;
+  if (item.type === NOTE_TYPE) return false;
+
+  let addedBy = ADDED_BY_CLIENT;
+  if (item.addedBy) {
+    addedBy = item.addedBy;
+  }
   if (addedBy !== ADDED_BY_CLIENT) return false;
   if (isTrainerDocumentStub(item)) return false;
   return true;
@@ -107,7 +113,14 @@ function isClientOwnedLibraryFile(item) {
 
 function keepOnlyClientOwnedFiles(items) {
   const list = Array.isArray(items) ? items : [];
-  return list.filter(isClientOwnedLibraryFile);
+  const ownedFiles = [];
+  for (let index = 0; index < list.length; index += 1) {
+    const item = list[index];
+    if (isClientOwnedLibraryFile(item)) {
+      ownedFiles.push(item);
+    }
+  }
+  return ownedFiles;
 }
 
 function fileMatchesTab(fileType, tab) {
@@ -122,8 +135,14 @@ function fileMatchesTab(fileType, tab) {
   return true;
 }
 
+function fileDisplayNameLower(item) {
+  if (!item) return '';
+  const rawName = item.name || item.title || '';
+  return String(rawName).toLowerCase();
+}
+
 function fileMatchesSearchAndTab(item, typedText, tab) {
-  const fileName = String(item?.name || item?.title || '').toLowerCase();
+  const fileName = fileDisplayNameLower(item);
   if (typedText && !fileName.includes(typedText)) return false;
   const fileType = getFileTypeFromItem(item);
   return fileMatchesTab(fileType, tab);
@@ -131,7 +150,14 @@ function fileMatchesSearchAndTab(item, typedText, tab) {
 
 function filterFilesBySearchAndTab(myFiles, searchText, tab) {
   const typedText = searchText.trim().toLowerCase();
-  return myFiles.filter((item) => fileMatchesSearchAndTab(item, typedText, tab));
+  const matchedFiles = [];
+  for (let index = 0; index < myFiles.length; index += 1) {
+    const item = myFiles[index];
+    if (fileMatchesSearchAndTab(item, typedText, tab)) {
+      matchedFiles.push(item);
+    }
+  }
+  return matchedFiles;
 }
 
 function showNotSignedInNotice(showNotice) {
@@ -156,6 +182,13 @@ async function askPhotoPermission(photoSource) {
   return permission.status === PERMISSION_GRANTED;
 }
 
+function firstPickedAsset(result) {
+  if (!result) return null;
+  if (!result.assets) return null;
+  if (result.assets.length === 0) return null;
+  return result.assets[0];
+}
+
 async function pickOnePhotoAsset(photoSource) {
   const pickerOptions = {
     mediaTypes: ['images'],
@@ -171,8 +204,9 @@ async function pickOnePhotoAsset(photoSource) {
   }
 
   if (result.canceled) return null;
-  const asset = result.assets?.[0];
-  if (!asset?.uri) return null;
+  const asset = firstPickedAsset(result);
+  if (!asset) return null;
+  if (!asset.uri) return null;
   return asset;
 }
 
@@ -182,21 +216,33 @@ async function pickOneDocumentFile(pickerTypes) {
     copyToCacheDirectory: true,
   });
   if (result.canceled) return null;
-  const file = result.assets?.[0];
-  if (!file?.uri) return null;
+  const file = firstPickedAsset(result);
+  if (!file) return null;
+  if (!file.uri) return null;
   return file;
 }
 
 function photoFileNameFromAsset(asset) {
   if (asset.fileName) return asset.fileName;
-  const uriTail = asset.uri.split('/').pop();
+  const uriParts = asset.uri.split('/');
+  const uriTail = uriParts[uriParts.length - 1];
   if (uriTail) return uriTail;
   return `photo_${Date.now()}.jpg`;
 }
 
+function mimeTypeLooksLikePdf(mimeType) {
+  if (!mimeType) return false;
+  return mimeType.includes('pdf');
+}
+
+function fileNameLooksLikePdf(fileName) {
+  const lowerName = String(fileName || '').toLowerCase();
+  return lowerName.endsWith('.pdf');
+}
+
 function documentTypeFromPickedFile(file) {
-  const mimeLooksPdf = file.mimeType?.includes('pdf');
-  const nameLooksPdf = String(file.name || '').toLowerCase().endsWith('.pdf');
+  const mimeLooksPdf = mimeTypeLooksLikePdf(file.mimeType);
+  const nameLooksPdf = fileNameLooksLikePdf(file.name);
   if (mimeLooksPdf || nameLooksPdf) return FILE_TYPE_PDF;
   return FILE_TYPE_DOC;
 }
@@ -215,13 +261,18 @@ async function savePhotoAssetForClient(clientId, asset) {
   );
 }
 
+function uploadErrorMessage(error) {
+  if (error && error.message) return error.message;
+  return UPLOAD_FAILED_FALLBACK;
+}
+
 async function runUploadWithSpinner(uploadWork, setUploading, setUploadOpen, showNotice, failureTitle) {
   setUploading(true);
   try {
     await uploadWork();
     setUploadOpen(false);
   } catch (error) {
-    showNotice(failureTitle, error?.message || UPLOAD_FAILED_FALLBACK);
+    showNotice(failureTitle, uploadErrorMessage(error));
   } finally {
     setUploading(false);
   }
@@ -229,7 +280,8 @@ async function runUploadWithSpinner(uploadWork, setUploading, setUploadOpen, sho
 
 function noticeTitleText(notice) {
   if (!notice) return '';
-  return notice.title || '';
+  if (notice.title) return notice.title;
+  return '';
 }
 
 function noticeMessageText(notice) {
@@ -239,7 +291,8 @@ function noticeMessageText(notice) {
 
 function noticeConfirmLabelText(notice) {
   if (!notice) return NOTICE_OK_LABEL;
-  return notice.confirmLabel || NOTICE_OK_LABEL;
+  if (notice.confirmLabel) return notice.confirmLabel;
+  return NOTICE_OK_LABEL;
 }
 
 function noticeCancelLabelText(notice) {
@@ -293,28 +346,55 @@ function EmptyMyFilesMessage({ colors }) {
   );
 }
 
-function MyFilesCardList({ filteredFiles, onOpenItem, onDownloadItem, onShareItem, onDeleteItem }) {
-  return (
-    <View style={{ gap: FILE_CARD_GAP }}>
-      {filteredFiles.map((fileItem) => {
-        const openThisFile = () => onOpenItem?.(fileItem);
-        const downloadThisFile = onDownloadItem ? () => onDownloadItem(fileItem) : undefined;
-        const shareThisFile = onShareItem ? () => onShareItem(fileItem) : undefined;
-        const deleteThisFile = onDeleteItem ? () => onDeleteItem(fileItem) : undefined;
+function buildMyFileCardRows(filteredFiles, onOpenItem, onDownloadItem, onShareItem, onDeleteItem) {
+  const rows = [];
+  for (let index = 0; index < filteredFiles.length; index += 1) {
+    const fileItem = filteredFiles[index];
 
-        return (
-          <FileCard
-            key={fileItem.id}
-            item={fileItem}
-            onOpen={openThisFile}
-            onDownload={downloadThisFile}
-            onShare={shareThisFile}
-            onDelete={deleteThisFile}
-          />
-        );
-      })}
-    </View>
+    function openThisFile() {
+      if (!onOpenItem) return;
+      onOpenItem(fileItem);
+    }
+
+    let downloadThisFile;
+    if (onDownloadItem) {
+      downloadThisFile = () => onDownloadItem(fileItem);
+    }
+
+    let shareThisFile;
+    if (onShareItem) {
+      shareThisFile = () => onShareItem(fileItem);
+    }
+
+    let deleteThisFile;
+    if (onDeleteItem) {
+      deleteThisFile = () => onDeleteItem(fileItem);
+    }
+
+    rows.push(
+      <FileCard
+        key={fileItem.id}
+        item={fileItem}
+        onOpen={openThisFile}
+        onDownload={downloadThisFile}
+        onShare={shareThisFile}
+        onDelete={deleteThisFile}
+      />,
+    );
+  }
+  return rows;
+}
+
+function MyFilesCardList({ filteredFiles, onOpenItem, onDownloadItem, onShareItem, onDeleteItem }) {
+  const cardRows = buildMyFileCardRows(
+    filteredFiles,
+    onOpenItem,
+    onDownloadItem,
+    onShareItem,
+    onDeleteItem,
   );
+
+  return <View style={{ gap: FILE_CARD_GAP }}>{cardRows}</View>;
 }
 
 function UploadChoicesBody({

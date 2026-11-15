@@ -1,0 +1,5 @@
+src/for-both/setup-steps/TrainerProOfferStep.jsx
+src/for-both/weekly-report/prepareReportForScreen.js
+src/for-both/weekly-report/writeTrainerTips.js
+src/login-and-signup/TrainerOnboardingScreens.jsx
+src/messaging/InboxScreen.jsx

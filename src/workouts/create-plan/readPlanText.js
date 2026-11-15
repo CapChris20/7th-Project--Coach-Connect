@@ -49,130 +49,7 @@ const MAX_FORM_CUES_FROM_NOTES = 6;
 // Manipulate here: minimum character length for a split form-cue piece to keep
 const MIN_FORM_CUE_PIECE_LENGTH = 2;
 
-// ===== MAIN RECIPES (exports) =====
-
-/**
- * Peel markdown fences / trailing prose, then JSON.parse. Null on any syntax error.
- * @param {string} str
- * @returns {object|null}
- */
-export function tryParseJsonObject(str) {
-  // 1. Strip fences and keep outermost { … }.
-  const peeled = peelJsonObjectFromText(String(str || ''));
-  if (!peeled) return null;
-
-  // 2. Parse — caller keeps planText as markdown when this returns null.
-  try {
-    return JSON.parse(peeled);
-  } catch (_parseError) {
-    return null;
-  }
-}
-
-/**
- * Normalize Claude / alternate plan keys into the shape the viewer reads.
- * @param {object} raw
- * @returns {object|null}
- */
-export function normalizeStructuredPlanForViewer(raw) {
-  // 1. Refuse non-objects.
-  if (!raw || typeof raw !== 'object') return null;
-
-  // 2. Shallow copy so we never mutate the caller’s object.
-  const plan = { ...raw };
-
-  // 3. overview from planOverview / notes / summary when missing.
-  fillOverviewFromAlternateKeys(plan);
-
-  // 4. weeklySchedule object → [{ day, focus }, …].
-  normalizeWeeklyScheduleToArray(plan);
-
-  // 5. workouts / detailedWorkouts → plan.days when days are empty.
-  fillDaysFromWorkoutsWhenEmpty(plan);
-
-  return plan;
-}
-
-/**
- * True when the structured plan has at least one day card to show.
- * @param {object} structuredPlan
- * @returns {boolean}
- */
-export function structuredPlanHasViewerContent(structuredPlan) {
-  if (!structuredPlan || typeof structuredPlan !== 'object') return false;
-  const days = structuredPlan.days;
-  if (!Array.isArray(days)) return false;
-  return days.length > 0;
-}
-
-/**
- * Normalize one route/nav workout item into a viewer day row.
- * @param {object} item
- * @param {number} index
- * @returns {object|null}
- */
-export function normalizeRouteWorkoutPlanItem(item, index) {
-  // 1. Refuse non-objects.
-  if (!item || typeof item !== 'object') return null;
-
-  // 2. Day label + short weekday code.
-  const rawShort = String(item.short || item.dayShort || '').trim();
-  const day = String(item.day || item.label || item.name || `Day ${index + 1}`).trim();
-  const inferredShort = derivePlanViewerDayShort(day, index, null);
-  let short = inferredShort;
-  if (VALID_DAY_SHORTS.includes(rawShort)) {
-    short = rawShort;
-  }
-
-  // 3. Focus / rest / color / exercises.
-  const focusText =
-    String(item.focus || item.focusArea || item.sessionFocus || '').trim() || 'Training';
-  const rest = !!(item.rest || item.isRest);
-  const typeColor = item.type ? DAY_TYPE_COLORS[item.type] : undefined;
-  const focusColor = item.focusColor || typeColor || PLAN_BUILDER_COLORS.pink;
-  const exercises = mapRouteItemExercises(item);
-
-  // 4. Optional recovery note + time fields.
-  const recoveryNote = readRecoveryNoteFromItem(item);
-  const timeExtra = pickEstimatedTimeFields(item);
-
-  return {
-    short,
-    day,
-    focus: focusText,
-    focusColor,
-    rest,
-    recoveryNote,
-    recoveryActivities: Array.isArray(item.recoveryActivities)
-      ? item.recoveryActivities
-      : undefined,
-    exercises,
-    warmUp: Array.isArray(item.warmUp) ? item.warmUp : [],
-    coolDown: Array.isArray(item.coolDown) ? item.coolDown : [],
-    ...timeExtra,
-  };
-}
-
-/**
- * Map structured plan.days into the row list MyWorkoutPlanScreen renders.
- * @param {object} structured
- * @returns {Array}
- */
-export function mapStructuredDaysToPlanViewerRows(structured) {
-  // 1. Need a non-empty days array.
-  const days = structured && structured.days;
-  if (!Array.isArray(days) || days.length === 0) return [];
-
-  // 2. Build one viewer row per day (weeklySchedule helps weekday shorts).
-  const weeklySchedule = (structured && structured.weeklySchedule) || [];
-  const rows = [];
-  for (let dayIndex = 0; dayIndex < days.length; dayIndex += 1) {
-    rows.push(structuredDayToPlanViewerRow(days[dayIndex], dayIndex, weeklySchedule));
-  }
-  return rows;
-}
-
-// ===== PLUMBING — skip unless debugging =====
+// ===== HELPER FUNCTIONS =====
 
 function fillDaysFromWorkoutsWhenEmpty(plan) {
   const workoutsArray = resolveWorkoutsArrayForPlan(plan);
@@ -944,3 +821,127 @@ function joinTruthyFormCues(formCues) {
   }
   return cueLines.join('\n');
 }
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Peel markdown fences / trailing prose, then JSON.parse. Null on any syntax error.
+ * @param {string} str
+ * @returns {object|null}
+ */
+export function tryParseJsonObject(str) {
+  // 1. Strip fences and keep outermost { … }.
+  const peeled = peelJsonObjectFromText(String(str || ''));
+  if (!peeled) return null;
+
+  // 2. Parse — caller keeps planText as markdown when this returns null.
+  try {
+    return JSON.parse(peeled);
+  } catch (_parseError) {
+    return null;
+  }
+}
+
+/**
+ * Normalize Claude / alternate plan keys into the shape the viewer reads.
+ * @param {object} raw
+ * @returns {object|null}
+ */
+export function normalizeStructuredPlanForViewer(raw) {
+  // 1. Refuse non-objects.
+  if (!raw || typeof raw !== 'object') return null;
+
+  // 2. Shallow copy so we never mutate the caller’s object.
+  const plan = { ...raw };
+
+  // 3. overview from planOverview / notes / summary when missing.
+  fillOverviewFromAlternateKeys(plan);
+
+  // 4. weeklySchedule object → [{ day, focus }, …].
+  normalizeWeeklyScheduleToArray(plan);
+
+  // 5. workouts / detailedWorkouts → plan.days when days are empty.
+  fillDaysFromWorkoutsWhenEmpty(plan);
+
+  return plan;
+}
+
+/**
+ * True when the structured plan has at least one day card to show.
+ * @param {object} structuredPlan
+ * @returns {boolean}
+ */
+export function structuredPlanHasViewerContent(structuredPlan) {
+  if (!structuredPlan || typeof structuredPlan !== 'object') return false;
+  const days = structuredPlan.days;
+  if (!Array.isArray(days)) return false;
+  return days.length > 0;
+}
+
+/**
+ * Normalize one route/nav workout item into a viewer day row.
+ * @param {object} item
+ * @param {number} index
+ * @returns {object|null}
+ */
+export function normalizeRouteWorkoutPlanItem(item, index) {
+  // 1. Refuse non-objects.
+  if (!item || typeof item !== 'object') return null;
+
+  // 2. Day label + short weekday code.
+  const rawShort = String(item.short || item.dayShort || '').trim();
+  const day = String(item.day || item.label || item.name || `Day ${index + 1}`).trim();
+  const inferredShort = derivePlanViewerDayShort(day, index, null);
+  let short = inferredShort;
+  if (VALID_DAY_SHORTS.includes(rawShort)) {
+    short = rawShort;
+  }
+
+  // 3. Focus / rest / color / exercises.
+  const focusText =
+    String(item.focus || item.focusArea || item.sessionFocus || '').trim() || 'Training';
+  const rest = !!(item.rest || item.isRest);
+  const typeColor = item.type ? DAY_TYPE_COLORS[item.type] : undefined;
+  const focusColor = item.focusColor || typeColor || PLAN_BUILDER_COLORS.pink;
+  const exercises = mapRouteItemExercises(item);
+
+  // 4. Optional recovery note + time fields.
+  const recoveryNote = readRecoveryNoteFromItem(item);
+  const timeExtra = pickEstimatedTimeFields(item);
+
+  return {
+    short,
+    day,
+    focus: focusText,
+    focusColor,
+    rest,
+    recoveryNote,
+    recoveryActivities: Array.isArray(item.recoveryActivities)
+      ? item.recoveryActivities
+      : undefined,
+    exercises,
+    warmUp: Array.isArray(item.warmUp) ? item.warmUp : [],
+    coolDown: Array.isArray(item.coolDown) ? item.coolDown : [],
+    ...timeExtra,
+  };
+}
+
+/**
+ * Map structured plan.days into the row list MyWorkoutPlanScreen renders.
+ * @param {object} structured
+ * @returns {Array}
+ */
+export function mapStructuredDaysToPlanViewerRows(structured) {
+  // 1. Need a non-empty days array.
+  const days = structured && structured.days;
+  if (!Array.isArray(days) || days.length === 0) return [];
+
+  // 2. Build one viewer row per day (weeklySchedule helps weekday shorts).
+  const weeklySchedule = (structured && structured.weeklySchedule) || [];
+  const rows = [];
+  for (let dayIndex = 0; dayIndex < days.length; dayIndex += 1) {
+    rows.push(structuredDayToPlanViewerRow(days[dayIndex], dayIndex, weeklySchedule));
+  }
+  return rows;
+}
+

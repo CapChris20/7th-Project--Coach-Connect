@@ -1,0 +1,15 @@
+{
+  "generatedAt": "2026-11-14T22:56:07.492Z",
+  "inventoryCount": 486,
+  "defMatchCount": 3,
+  "defDontCount": 122,
+  "floorOnlyCount": 361,
+  "missingCount": 0,
+  "defMatch": [
+    "src/ai-coach/coach-actions/readActionsFromReply.js",
+    "src/for-both/weekly-report/WeeklyReportBody.jsx",
+    "src/for-both/weekly-report/WeeklyReportScreen.jsx"
+  ],
+  "missing": [],
+  "note": "DEF MATCH = gold + mechanical pass. DEF DONT = fail or documented redo. FLOOR ONLY = checker pass, not proven Variation 3."
+}

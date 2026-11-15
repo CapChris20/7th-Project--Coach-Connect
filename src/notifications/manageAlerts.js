@@ -26,7 +26,7 @@ const NOTIFICATION_LED_COLOR = lightColors.primary;
 const CLEARED_PUSH_TOKEN_FIELDS = {
   expoPushToken: deleteField(),
   fcmToken: deleteField(),
-  pushToken: deleteField()
+  pushToken: deleteField(),
 };
 
 // Module-level (not React) state — OS listener must exist once for the process, not once per screen.
@@ -69,11 +69,16 @@ export function setNotificationTapHandler(handler) {
  */
 export function flushInitialNotificationResponse(delayMs = COLD_START_TAP_DELAY_MS) {
   try {
-    var _optCallObj, _optCallFn, _optObj, _optObj2, _optObj3;
     // vocab: getLastNotificationResponse() = which notification, if any, opened this app
-    const lastResponse = (_optCallObj = Notifications, _optCallFn = _optCallObj.getLastNotificationResponse) == null ? void 0 : _optCallFn.call(_optCallObj);
-    const tapPayload = (_optObj = (_optObj2 = (_optObj3 = lastResponse == null ? void 0 : lastResponse.notification) == null ? void 0 : _optObj3.request) == null ? void 0 : _optObj2.content) == null ? void 0 : _optObj.data;
+    const getLastResponse = Notifications.getLastNotificationResponse;
+    let lastResponse = undefined;
+    if (getLastResponse) {
+      lastResponse = getLastResponse();
+    }
+
+    const tapPayload = readNotificationTapPayload(lastResponse);
     if (!tapPayload) return () => {};
+
     const notificationData = tapPayload || {};
     // Delay lets navigation finish mounting — firing instantly navigates into a missing tree.
     const timeoutId = setTimeout(() => {
@@ -98,8 +103,8 @@ export function configureNotifications() {
       shouldShowBanner: true,
       shouldShowList: true,
       shouldPlaySound: true,
-      shouldSetBadge: false
-    })
+      shouldSetBadge: false,
+    }),
   });
 
   // 2. Android channel (no-op on iOS).
@@ -132,8 +137,8 @@ export async function requestNotificationPermissionsAsync() {
       allowAlert: true,
       allowBadge: true,
       allowSound: true,
-      allowAnnouncements: false
-    }
+      allowAnnouncements: false,
+    },
   });
 }
 
@@ -158,12 +163,15 @@ export async function openSystemSettingsAsync() {
 export async function getNativeDevicePushTokenAsync() {
   try {
     const deviceTokenResult = await Notifications.getDevicePushTokenAsync();
-    const rawToken = deviceTokenResult == null ? void 0 : deviceTokenResult.data;
+    let rawToken = undefined;
+    if (deviceTokenResult) {
+      rawToken = deviceTokenResult.data;
+    }
     const tokenAsString = rawToken != null ? String(rawToken) : null;
     if (tokenAsString) logPushTokenPrefix('native', tokenAsString);
     return tokenAsString;
   } catch (error) {
-    const errorMessage = (error == null ? void 0 : error.message) || String(error);
+    const errorMessage = readErrorMessage(error);
     if (__DEV__) console.warn('[push] native device token unavailable:', errorMessage);
     return null;
   }
@@ -184,9 +192,7 @@ export async function getExpoPushTokenAsync() {
   const expoProjectId = readExpoProjectId();
   try {
     // Passing undefined (not { projectId: undefined }) lets Expo detect the project itself.
-    const tokenOptions = expoProjectId ? {
-      projectId: expoProjectId
-    } : undefined;
+    const tokenOptions = expoProjectId ? { projectId: expoProjectId } : undefined;
     const tokenResult = await Notifications.getExpoPushTokenAsync(tokenOptions);
     const expoTokenString = tokenResult.data;
     logPushTokenPrefix('expo', expoTokenString);
@@ -218,6 +224,7 @@ export async function persistPushTokensForUid(uid, optionsOrPendingToken = {}) {
     const alertsAreOff = await userHasNotificationsDisabled(uid);
     if (alertsAreOff) return;
   }
+
   const userRef = firestoreUserDoc(uid);
   let expoPushToken = null;
 
@@ -226,19 +233,17 @@ export async function persistPushTokensForUid(uid, optionsOrPendingToken = {}) {
     expoPushToken = options.pendingExpoToken || (await getExpoPushTokenAsync());
     const fcmToken = await getNativeDevicePushTokenAsync();
     const tokenFields = buildPushTokenFields(expoPushToken, fcmToken);
-    await setDoc(userRef, tokenFields, {
-      merge: true
-    });
+    await setDoc(userRef, tokenFields, { merge: true });
     await AsyncStorage.removeItem(pendingPushTokenStorageKey(uid)).catch(() => {});
     if (__DEV__) {
       console.log('[push] tokens saved', {
         hasExpo: !!expoPushToken,
-        hasFcm: !!fcmToken
+        hasFcm: !!fcmToken,
       });
     }
   } catch (error) {
     // 3. Offline or transient failure — stash Expo token for the next launch.
-    console.warn('Push token save failed, retrying on next launch:', (error == null ? void 0 : error.message) || error);
+    console.warn('Push token save failed, retrying on next launch:', readErrorMessage(error) || error);
     await stashPendingExpoToken(uid, expoPushToken);
   }
 }
@@ -251,12 +256,10 @@ export async function persistPushTokensForUid(uid, optionsOrPendingToken = {}) {
 export async function clearPushTokensForUid(uid) {
   if (!uid || !db) return;
   try {
-    await updateDoc(firestoreUserDoc(uid), {
-      ...CLEARED_PUSH_TOKEN_FIELDS
-    });
+    await updateDoc(firestoreUserDoc(uid), { ...CLEARED_PUSH_TOKEN_FIELDS });
     if (__DEV__) console.log('[push] tokens cleared for user');
   } catch (error) {
-    if (__DEV__) console.warn('[push] clearPushTokensForUid failed:', (error == null ? void 0 : error.message) || error);
+    if (__DEV__) console.warn('[push] clearPushTokensForUid failed:', readErrorMessage(error) || error);
   }
 }
 
@@ -269,12 +272,10 @@ export async function clearPushTokensForUid(uid) {
  * @returns {Function}
  */
 export function subscribePushTokenRefreshOnResume(uid, shouldRun) {
-  const onAppStateChange = nextAppState => {
+  const onAppStateChange = (nextAppState) => {
     const shouldRefresh = shouldRefreshTokensOnForeground(nextAppState, uid, shouldRun);
     if (!shouldRefresh) return;
-    persistPushTokensForUid(uid, {
-      skipIfDisabled: true
-    }).catch(() => {});
+    persistPushTokensForUid(uid, { skipIfDisabled: true }).catch(() => {});
   };
   const appStateSubscription = AppState.addEventListener('change', onAppStateChange);
   return () => appStateSubscription.remove();
@@ -285,17 +286,16 @@ export function subscribePushTokenRefreshOnResume(uid, shouldRun) {
  */
 export async function sendTestLocalNotificationAsync() {
   configureNotifications();
+
   await Notifications.scheduleNotificationAsync({
     // Manipulate here: the test notification title and body
     content: {
       title: 'CoachConnect',
       body: 'Notifications are enabled.',
-      sound: true
+      sound: true,
     },
     // One second, not immediate, so the banner arrives as a real notification instead of flashing on tap.
-    trigger: {
-      seconds: TEST_NOTIFICATION_DELAY_SECONDS
-    }
+    trigger: { seconds: TEST_NOTIFICATION_DELAY_SECONDS },
   });
 }
 
@@ -304,9 +304,44 @@ export async function sendTestLocalNotificationAsync() {
 function firestoreUserDoc(uid) {
   return doc(db, USERS_COLLECTION, uid);
 }
+
+/**
+ * Pull .data off a notification response chain with named locals.
+ * Path: response.notification.request.content.data
+ * @param {object|null|undefined} response
+ * @returns {object|undefined}
+ */
+function readNotificationTapPayload(response) {
+  if (!response) return undefined;
+  const notification = response.notification;
+  if (!notification) return undefined;
+  const request = notification.request;
+  if (!request) return undefined;
+  const content = request.content;
+  if (!content) return undefined;
+  return content.data;
+}
+
+/**
+ * Error.message when present; otherwise String(error).
+ * @param {unknown} error
+ * @returns {string}
+ */
+function readErrorMessage(error) {
+  if (error && typeof error === 'object' && error.message) {
+    return error.message;
+  }
+  if (error == null) return '';
+  return String(error);
+}
+
 function permissionIsGranted(permission) {
-  const grantedFlag = permission == null ? void 0 : permission.granted;
-  const statusIsGranted = (permission == null ? void 0 : permission.status) === 'granted';
+  let grantedFlag = false;
+  let statusIsGranted = false;
+  if (permission) {
+    grantedFlag = Boolean(permission.granted);
+    statusIsGranted = permission.status === 'granted';
+  }
   return Boolean(grantedFlag || statusIsGranted);
 }
 
@@ -317,8 +352,9 @@ function logPushTokenPrefix(label, value) {
   const tokenPrefix = value.slice(0, TOKEN_LOG_PREFIX_LENGTH);
   console.log(`[push] ${label} prefix`, tokenPrefix + '…');
 }
+
 function errorLooksLikeSimulator(error) {
-  const messageText = ((error == null ? void 0 : error.message) || String(error)).toLowerCase();
+  const messageText = (readErrorMessage(error) || String(error)).toLowerCase();
   const mentionsSimulator = messageText.includes('simulator');
   const mentionsDevice = messageText.includes('device');
   return mentionsSimulator || mentionsDevice;
@@ -328,22 +364,23 @@ function errorLooksLikeSimulator(error) {
 // A read failure returns false so we still try to save the token instead of dropping it.
 async function userHasNotificationsDisabled(uid) {
   try {
-    var _optObj4;
     const userSnap = await getDoc(firestoreUserDoc(uid));
     if (!userSnap.exists()) return false;
-    return ((_optObj4 = userSnap.data()) == null ? void 0 : _optObj4.notificationsEnabled) === false;
+    const userData = userSnap.data();
+    if (!userData) return false;
+    return userData.notificationsEnabled === false;
   } catch {
     return false;
   }
 }
+
 function optionalFcmField(fcmToken) {
   // vocab/symbol: returning {} vs { fcmToken } = include the key only when we have a value.
   // Writing undefined makes Firestore throw, and the native token is optional.
   if (!fcmToken) return {};
-  return {
-    fcmToken
-  };
+  return { fcmToken };
 }
+
 function buildPushTokenFields(expoPushToken, fcmToken) {
   const updatedAtIso = new Date().toISOString();
   return {
@@ -351,9 +388,10 @@ function buildPushTokenFields(expoPushToken, fcmToken) {
     // pushToken is the legacy field. It mirrors the Expo token so older Cloud Functions keep working.
     pushToken: expoPushToken,
     pushTokenUpdatedAt: updatedAtIso,
-    ...optionalFcmField(fcmToken)
+    ...optionalFcmField(fcmToken),
   };
 }
+
 async function stashPendingExpoToken(uid, expoPushToken) {
   if (!expoPushToken) return;
   try {
@@ -366,35 +404,48 @@ async function stashPendingExpoToken(uid, expoPushToken) {
 // Attaches the OS tap listener exactly once. Subscribing twice would navigate twice per tap.
 function attachNotificationTapListenerOnce() {
   if (notificationResponseSubscription) return;
-  notificationResponseSubscription = Notifications.addNotificationResponseReceivedListener(response => {
-    var _optObj5, _optObj6, _optObj7;
-    const notificationData = ((_optObj5 = (_optObj6 = (_optObj7 = response == null ? void 0 : response.notification) == null ? void 0 : _optObj7.request) == null ? void 0 : _optObj6.content) == null ? void 0 : _optObj5.data) || {};
-    if (notificationTapHandler) notificationTapHandler(notificationData);
-  });
+  notificationResponseSubscription = Notifications.addNotificationResponseReceivedListener(
+    (response) => {
+      const notificationData = readNotificationTapPayload(response) || {};
+      if (notificationTapHandler) notificationTapHandler(notificationData);
+    },
+  );
 }
+
 function readExpoProjectId() {
-  var _optObj8, _optObj9, _optObj0, _optObj1;
   // vocab: EAS = Expo Application Services. Project id lives in a different place for EAS builds vs the dev client.
-  const fromExpoConfig = (_optObj8 = (_optObj9 = (_optObj0 = Constants == null ? void 0 : Constants.expoConfig) == null ? void 0 : _optObj0.extra) == null ? void 0 : _optObj9.eas) == null ? void 0 : _optObj8.projectId;
+  let fromExpoConfig = undefined;
+  if (Constants && Constants.expoConfig && Constants.expoConfig.extra) {
+    const easBlock = Constants.expoConfig.extra.eas;
+    if (easBlock) {
+      fromExpoConfig = easBlock.projectId;
+    }
+  }
   if (fromExpoConfig) return fromExpoConfig;
-  const fromEasConfig = (_optObj1 = Constants == null ? void 0 : Constants.easConfig) == null ? void 0 : _optObj1.projectId;
+
+  let fromEasConfig = undefined;
+  if (Constants && Constants.easConfig) {
+    fromEasConfig = Constants.easConfig.projectId;
+  }
   if (fromEasConfig) return fromEasConfig;
   return undefined;
 }
+
 function shouldRefreshTokensOnForeground(nextAppState, uid, shouldRun) {
   // vocab: AppState 'change' fires on background and foreground. 'active' means foreground.
   if (nextAppState !== 'active') return false;
   if (!uid) return false;
-  return Boolean(shouldRun == null ? void 0 : shouldRun());
+  if (!shouldRun) return false;
+  return Boolean(shouldRun());
 }
+
 function normalizePersistOptions(optionsOrPendingToken) {
   if (typeof optionsOrPendingToken === 'string') {
-    return {
-      pendingExpoToken: optionsOrPendingToken
-    };
+    return { pendingExpoToken: optionsOrPendingToken };
   }
   return optionsOrPendingToken;
 }
+
 async function createAndroidNotificationChannelIfNeeded() {
   if (Platform.OS !== 'android') return;
 
@@ -410,6 +461,6 @@ async function createAndroidNotificationChannelIfNeeded() {
     sound: 'default',
     enableLights: true,
     lightColor: NOTIFICATION_LED_COLOR,
-    enableVibrate: true
+    enableVibrate: true,
   }).catch(() => {});
 }

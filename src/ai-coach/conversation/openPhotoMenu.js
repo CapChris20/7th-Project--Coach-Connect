@@ -34,28 +34,14 @@ const ATTACH_SHEET_MESSAGE = 'Choose an option';
 const DEPRECATION_WARNING =
   '[AI Coach] showCoachAttachMenu is deprecated — open CoachAttachSheet (Design Law) instead.';
 
-// ===== MAIN FUNCTION =====
+// ===== HELPER FUNCTIONS =====
 
-/**
- * @deprecated Open CoachAttachSheet on conversation screens — this ActionSheet/Alert path is old chrome.
- * @param {{ onPhotoLibrary?: Function, onCamera?: Function, onFile?: Function }} callbacks
- */
-export function showCoachAttachMenu(callbacks) {
-  if (__DEV__) {
-    console.warn(DEPRECATION_WARNING);
+function callbackOrNull(maybeCallback) {
+  if (maybeCallback === null || maybeCallback === undefined) {
+    return null;
   }
-
-  // 1. Pick the native chrome for this OS, then return — only one branch runs.
-  const runningOnIos = Platform.OS === 'ios';
-  if (runningOnIos) {
-    showIosActionSheetAttachMenu(callbacks);
-    return;
-  }
-
-  showAndroidAlertAttachMenu(callbacks);
+  return maybeCallback;
 }
-
-// ===== PLUMBING — skip unless debugging =====
 
 function pickCallbackForMenuIndex(selectedIndex, callbacks) {
   if (selectedIndex === MENU_INDEX_PHOTO_LIBRARY) {
@@ -68,13 +54,6 @@ function pickCallbackForMenuIndex(selectedIndex, callbacks) {
     return callbackOrNull(callbacks.onFile);
   }
   return null;
-}
-
-function callbackOrNull(maybeCallback) {
-  if (maybeCallback === null || maybeCallback === undefined) {
-    return null;
-  }
-  return maybeCallback;
 }
 
 function runPickerAfterNativeMenuCloses(pickerCallback) {
@@ -135,4 +114,25 @@ function showAndroidAlertAttachMenu(callbacks) {
   // vocab: Alert.alert = Android/iOS system dialog; on Android this is our attach menu stand-in.
   const alertButtons = buildAndroidAttachAlertButtons(callbacks);
   Alert.alert(ATTACH_SHEET_TITLE, ATTACH_SHEET_MESSAGE, alertButtons);
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * @deprecated Open CoachAttachSheet on conversation screens — this ActionSheet/Alert path is old chrome.
+ * @param {{ onPhotoLibrary?: Function, onCamera?: Function, onFile?: Function }} callbacks
+ */
+export function showCoachAttachMenu(callbacks) {
+  if (__DEV__) {
+    console.warn(DEPRECATION_WARNING);
+  }
+
+  // 1. Pick the native chrome for this OS, then return — only one branch runs.
+  const runningOnIos = Platform.OS === 'ios';
+  if (runningOnIos) {
+    showIosActionSheetAttachMenu(callbacks);
+    return;
+  }
+
+  showAndroidAlertAttachMenu(callbacks);
 }

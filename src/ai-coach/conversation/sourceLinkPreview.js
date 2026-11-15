@@ -1,7 +1,6 @@
 // Web source rows: human host label, favicon, and hero preview image for coach citations.
 // Flow: parse hostname from page URL → Google favicon URL → API image if present → else Thum.io screenshot.
 // Used by coach source link cards under internet-sourced answers. Pure string logic — no network here.
-// Read order: constants → exported helpers (mains) → PLUMBING URL builders.
 
 // ===== NAMED CONSTANTS =====
 
@@ -17,7 +16,73 @@ const THUM_IO_CAPTURE_PREFIX = 'https://image.thum.io/get/width/480/crop/600/';
 
 const WWW_HOST_PREFIX = /^www\./i;
 
-// ===== MAIN HELPERS — exported for source link UI =====
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * Truncate a bad URL string so the chip still shows something.
+ * @param {string} pageUrl
+ * @returns {string}
+ */
+function truncatedRawHostFallback(pageUrl) {
+  const fallbackText = String(pageUrl || '');
+  return fallbackText.slice(0, MAX_HOST_FALLBACK_CHARACTERS);
+}
+
+/**
+ * Hostname without www., or a truncated raw string when URL() throws.
+ * @param {string} pageUrl
+ * @returns {string}
+ */
+function hostnameFromPageUrl(pageUrl) {
+  try {
+    // vocab: URL constructor throws on garbage strings — we catch and fall back.
+    const parsedUrl = new URL(pageUrl);
+    const rawHostname = parsedUrl.hostname;
+    const hostWithoutWww = rawHostname.replace(WWW_HOST_PREFIX, '');
+    return hostWithoutWww;
+  } catch (parseError) {
+    void parseError;
+    return truncatedRawHostFallback(pageUrl);
+  }
+}
+
+/**
+ * Build a Thum.io capture URL, or null when the page URL is blank.
+ * @param {string} pageUrl
+ * @returns {string|null}
+ */
+function thumIoPreviewUrlForPage(pageUrl) {
+  const trimmedPageUrl = String(pageUrl || '').trim();
+  if (!trimmedPageUrl) {
+    return null;
+  }
+
+  const encodedPageUrl = encodeURIComponent(trimmedPageUrl);
+  const thumIoLink = THUM_IO_CAPTURE_PREFIX + encodedPageUrl;
+  return thumIoLink;
+}
+
+/**
+ * Prefer imageUrl; fall back to legacy `image`. Empty string means “no API image.”
+ * Field letters stay frozen — other files write these keys.
+ * @param {{ imageUrl?: string, image?: string }} sourceFields
+ * @returns {string}
+ */
+function firstNonEmptyApiImage(sourceFields) {
+  const fromImageUrl = sourceFields.imageUrl;
+  if (fromImageUrl) {
+    return String(fromImageUrl).trim();
+  }
+
+  const fromLegacyImage = sourceFields.image;
+  if (fromLegacyImage) {
+    return String(fromLegacyImage).trim();
+  }
+
+  return '';
+}
+
+// ===== MAIN FUNCTION =====
 
 /**
  * Short host label for a citation row (strips leading www.).
@@ -76,70 +141,4 @@ export function resolveSourcePreviewUri(sourceFields = {}) {
   const pageUrl = sourceFields.url;
   const thumIoPreview = thumIoPreviewUrlForPage(pageUrl);
   return thumIoPreview;
-}
-
-// ===== PLUMBING — skip unless debugging =====
-
-/**
- * Hostname without www., or a truncated raw string when URL() throws.
- * @param {string} pageUrl
- * @returns {string}
- */
-function hostnameFromPageUrl(pageUrl) {
-  try {
-    // vocab: URL constructor throws on garbage strings — we catch and fall back.
-    const parsedUrl = new URL(pageUrl);
-    const rawHostname = parsedUrl.hostname;
-    const hostWithoutWww = rawHostname.replace(WWW_HOST_PREFIX, '');
-    return hostWithoutWww;
-  } catch (parseError) {
-    void parseError;
-    return truncatedRawHostFallback(pageUrl);
-  }
-}
-
-/**
- * Truncate a bad URL string so the chip still shows something.
- * @param {string} pageUrl
- * @returns {string}
- */
-function truncatedRawHostFallback(pageUrl) {
-  const fallbackText = String(pageUrl || '');
-  return fallbackText.slice(0, MAX_HOST_FALLBACK_CHARACTERS);
-}
-
-/**
- * Build a Thum.io capture URL, or null when the page URL is blank.
- * @param {string} pageUrl
- * @returns {string|null}
- */
-function thumIoPreviewUrlForPage(pageUrl) {
-  const trimmedPageUrl = String(pageUrl || '').trim();
-  if (!trimmedPageUrl) {
-    return null;
-  }
-
-  const encodedPageUrl = encodeURIComponent(trimmedPageUrl);
-  const thumIoLink = THUM_IO_CAPTURE_PREFIX + encodedPageUrl;
-  return thumIoLink;
-}
-
-/**
- * Prefer imageUrl; fall back to legacy `image`. Empty string means “no API image.”
- * Field letters stay frozen — other files write these keys.
- * @param {{ imageUrl?: string, image?: string }} sourceFields
- * @returns {string}
- */
-function firstNonEmptyApiImage(sourceFields) {
-  const fromImageUrl = sourceFields.imageUrl;
-  if (fromImageUrl) {
-    return String(fromImageUrl).trim();
-  }
-
-  const fromLegacyImage = sourceFields.image;
-  if (fromLegacyImage) {
-    return String(fromLegacyImage).trim();
-  }
-
-  return '';
 }

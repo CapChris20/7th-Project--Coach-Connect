@@ -7,41 +7,39 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getResilientApiBases } from '../../for-both/online-connection/whereToConnect';
 import { getApiAuthHeaders } from '../../for-both/online-connection/attachLoginProof';
 import logger from '../../for-both/online-connection/sendCrashReport';
+
 const {
   isMenuStyleQuery,
-  filterFoodSearchRows
+  filterFoodSearchRows,
 } = require('../food-search/rankFoodResults');
-const {
-  findConsumerBrandInQuery
-} = require('../food-details/tidyBrandName');
+const { findConsumerBrandInQuery } = require('../food-details/tidyBrandName');
 const {
   parseNutritionSearchQuery,
   mapNutritionSearchToFoodRows,
   mergeNutritionSearchWithLegacy,
   keepCloseMacroRows,
   presentFoodSearchRows,
-  enrichSearchRowMicros
+  enrichSearchRowMicros,
 } = require('./combineFoodSources');
-const {
-  applyFoodCardPresentationToRows
-} = require('./tidyFoodTitles');
-const {
-  lookupTrustedFoods
-} = require('./knownRestaurantFoods');
-const {
-  normalizeOpenFoodFactsProduct
-} = require('../food-details/fixPackageAmounts');
+const { applyFoodCardPresentationToRows } = require('./tidyFoodTitles');
+const { lookupTrustedFoods } = require('./knownRestaurantFoods');
+const { normalizeOpenFoodFactsProduct } = require('../food-details/fixPackageAmounts');
 
 // ===== NAMED CONSTANTS =====
 
-const OPEN_FOOD_FACTS_USER_AGENT = 'CoachConnect/1.0 (Mobile; https://github.com/coachconnect; contact: support@coachconnect.app)';
-export const FOOD_SEARCH_OFFLINE_HINT = "Could not reach the food search server. Check your internet connection and try again.";
+const OPEN_FOOD_FACTS_USER_AGENT =
+  'CoachConnect/1.0 (Mobile; https://github.com/coachconnect; contact: support@coachconnect.app)';
+
+export const FOOD_SEARCH_OFFLINE_HINT =
+  "Could not reach the food search server. Check your internet connection and try again.";
+
 const OPEN_FOOD_FACTS_SEARCH_API = 'https://search.openfoodfacts.org';
 const SAL_SEARCH_FIELDS = 'code,product_name,product_name_en,brands,nutriments';
 const OFF_SEARCH_HEADERS = {
   Accept: 'application/json',
-  'User-Agent': OPEN_FOOD_FACTS_USER_AGENT
+  'User-Agent': OPEN_FOOD_FACTS_USER_AGENT,
 };
+
 const FOOD_SERVER_FETCH_TIMEOUT_MS = 10000;
 const NUTRITION_CONSENSUS_FETCH_TIMEOUT_MS = 28000;
 const OFF_FETCH_TIMEOUT_MS = 12000;
@@ -69,11 +67,16 @@ const SEARCH_CACHE_PREFIX = 'search_v56_';
 const BARCODE_CACHE_PREFIX = 'barcode_v9_';
 // Manipulate here: random span for raceId Metro log tags
 const RACE_ID_RANDOM_SPAN = 10000;
-const MENU_EMPTY_HINT = 'No matching menu item found. Include the restaurant and item (e.g. "Chipotle chicken bowl").';
-const MENU_SERVER_HINT = 'No results yet. Make sure the app can reach your Coach Connect API (Serper/USDA run on the server, not in the app).';
-const SERVER_DOWN_HINT = 'Food search server unavailable. Restaurant and brand searches need the server — try again shortly.';
+
+const MENU_EMPTY_HINT =
+  'No matching menu item found. Include the restaurant and item (e.g. "Chipotle chicken bowl").';
+const MENU_SERVER_HINT =
+  'No results yet. Make sure the app can reach your Coach Connect API (Serper/USDA run on the server, not in the app).';
+const SERVER_DOWN_HINT =
+  'Food search server unavailable. Restaurant and brand searches need the server — try again shortly.';
 const SIGN_IN_HINT = 'Sign in to search foods on the server.';
 const MISSING_API_HINT = 'Set EXPO_PUBLIC_API_BASE_URL to your Coach Connect API (Cloud Run URL).';
+
 const foodSearchCache = new Map();
 let lastSearchHint = null;
 let cachedServerUrl = null;
@@ -89,16 +92,19 @@ function presentSearchResults(rows, query) {
   }
   return applyFoodCardPresentationToRows(enrichedRows, query);
 }
+
 function getServerUrl() {
   const firstBase = getResilientApiBases()[0] || '';
   return String(firstBase).replace(/\/$/, '');
 }
+
 function getServerUrlCached() {
   if (cachedServerUrl == null) {
     cachedServerUrl = getServerUrl();
   }
   return cachedServerUrl;
 }
+
 function hasUsableServerUrl() {
   const serverUrl = getServerUrlCached();
   if (!serverUrl) return false;
@@ -106,6 +112,7 @@ function hasUsableServerUrl() {
   if (serverUrl === 'undefined') return false;
   return true;
 }
+
 function getFromCache(key) {
   const entry = foodSearchCache.get(key);
   if (!entry) return null;
@@ -116,13 +123,12 @@ function getFromCache(key) {
   }
   return entry.data;
 }
+
 function setCache(key, data) {
   if (!Array.isArray(data) || data.length === 0) return;
-  foodSearchCache.set(key, {
-    data,
-    timestamp: Date.now()
-  });
+  foodSearchCache.set(key, { data, timestamp: Date.now() });
 }
+
 function clearExpiredCache() {
   const now = Date.now();
   for (const [key, entry] of foodSearchCache.entries()) {
@@ -132,6 +138,7 @@ function clearExpiredCache() {
     }
   }
 }
+
 async function getCachedFoods() {
   try {
     const cached = await AsyncStorage.getItem(FOOD_CACHE_STORAGE_KEY);
@@ -142,6 +149,7 @@ async function getCachedFoods() {
     return [];
   }
 }
+
 async function saveCachedFoods(foods) {
   try {
     await AsyncStorage.setItem(FOOD_CACHE_STORAGE_KEY, JSON.stringify(foods));
@@ -149,18 +157,22 @@ async function saveCachedFoods(foods) {
     logger.error('Error saving cached foods', error);
   }
 }
+
 function clearAllCaches() {
   foodSearchCache.clear();
   AsyncStorage.removeItem(FOOD_CACHE_STORAGE_KEY);
 }
+
 function getLastSearchHint() {
   if (lastSearchHint) return lastSearchHint;
   return null;
 }
+
 function buildFoodSearchRaceId(startedAt) {
   const randomPart = Math.floor(Math.random() * RACE_ID_RANDOM_SPAN);
   return `fs_${startedAt.toString(36)}_${randomPart}`;
 }
+
 function normalizeBarcode(barcode) {
   const digits = String(barcode || '').replace(/\D/g, '');
   if (digits.length === UPC_E_PAD_FROM) {
@@ -168,18 +180,31 @@ function normalizeBarcode(barcode) {
   }
   return digits;
 }
+
+function errorName(error) {
+  if (!error) return '';
+  if (!error.name) return '';
+  return error.name;
+}
+
+function errorMessageText(error) {
+  if (!error) return '';
+  if (error.message) return String(error.message);
+  return String(error);
+}
+
 function isNetworkSearchError(error) {
-  if ((error == null ? void 0 : error.name) === 'AbortError') return true;
-  const message = ((error == null ? void 0 : error.message) || '').toLowerCase();
+  const name = errorName(error);
+  if (name === 'AbortError') return true;
+  const message = errorMessageText(error).toLowerCase();
   if (message.includes('network')) return true;
-  if ((error == null ? void 0 : error.name) === 'TypeError' && message.includes('fetch')) return true;
+  if (name === 'TypeError' && message.includes('fetch')) return true;
   return false;
 }
+
 async function loginHeadersForSearch() {
   try {
-    const headers = await getApiAuthHeaders({
-      'Content-Type': 'application/json'
-    });
+    const headers = await getApiAuthHeaders({ 'Content-Type': 'application/json' });
     if (!headers.Authorization) return null;
     return headers;
   } catch (error) {
@@ -210,13 +235,14 @@ async function searchFoods(query, limit = DEFAULT_SEARCH_LIMIT) {
   const startedAt = Date.now();
   const raceId = buildFoodSearchRaceId(startedAt);
   const typedText = String(query || '').trim();
+
   try {
     lastSearchHint = null;
     logger.debug('🍔 Searching foods', {
       raceId,
       query: typedText,
       limit,
-      apiBase: getServerUrlCached() || null
+      apiBase: getServerUrlCached() || null,
     });
 
     // 1. Nothing typed → nothing to search.
@@ -230,7 +256,7 @@ async function searchFoods(query, limit = DEFAULT_SEARCH_LIMIT) {
       logger.debug('🍔 Returning cached search results', {
         raceId,
         count: cachedFoods.length,
-        ms: Date.now() - startedAt
+        ms: Date.now() - startedAt,
       });
       return presentSearchResults(cachedFoods, typedText);
     }
@@ -240,10 +266,14 @@ async function searchFoods(query, limit = DEFAULT_SEARCH_LIMIT) {
 
     // 4a. No API URL → phone cache + Open Food Facts only.
     if (!hasUsableServerUrl()) {
-      logger.warn('🍔 API base URL missing. Using cached + Open Food Facts only.', {
-        raceId
-      });
-      return presentOfflineSearch(typedText, limit, trustedMenuFoods, cacheKey, MISSING_API_HINT);
+      logger.warn('🍔 API base URL missing. Using cached + Open Food Facts only.', { raceId });
+      return presentOfflineSearch(
+        typedText,
+        limit,
+        trustedMenuFoods,
+        cacheKey,
+        MISSING_API_HINT,
+      );
     }
 
     // 4b. Not signed in → offline path with a sign-in hint.
@@ -253,22 +283,27 @@ async function searchFoods(query, limit = DEFAULT_SEARCH_LIMIT) {
     }
 
     // 4c. Signed in → ask the server, filter, present cards.
-    return searchFoodsWhenSignedIn(typedText, limit, trustedMenuFoods, cacheKey, loginHeaders, raceId, startedAt);
+    return searchFoodsWhenSignedIn(
+      typedText,
+      limit,
+      trustedMenuFoods,
+      cacheKey,
+      loginHeaders,
+      raceId,
+      startedAt,
+    );
   } catch (error) {
     // 5. Network died → try offline recover.
     if (isNetworkSearchError(error)) {
       logger.warn('🍔 Food search network failure', {
         raceId,
         ms: Date.now() - startedAt,
-        message: (error == null ? void 0 : error.message) || String(error)
+        message: errorMessageText(error),
       });
       return recoverFromNetworkFailure(typedText, limit, cacheKey, error);
     }
     // 6. Anything else → empty list.
-    logger.error('🍔 Error searching foods', {
-      raceId,
-      error
-    });
+    logger.error('🍔 Error searching foods', { raceId, error });
     return [];
   }
 }
@@ -282,6 +317,7 @@ async function lookupBarcode(barcode) {
   const lookupCode = normalizeBarcode(barcode);
   const cacheKey = `${BARCODE_CACHE_PREFIX}${lookupCode}`;
   logger.debug('🍔 Looking up barcode', lookupCode);
+
   try {
     // 1. Memory cache hit → return it.
     const cached = getFromCache(cacheKey);
@@ -291,21 +327,22 @@ async function lookupBarcode(barcode) {
     }
 
     // 2. Need a signed-in user for the Coach Connect barcode API.
-    const authHeaders = await getApiAuthHeaders({
-      'Content-Type': 'application/json'
-    });
+    const authHeaders = await getApiAuthHeaders({ 'Content-Type': 'application/json' });
     if (!authHeaders.Authorization) {
       throw new Error('Sign in to scan barcodes');
     }
 
     // 3. Ask our server.
-    const response = await fetchWithTimeout(`${getServerUrlCached()}/api/food/barcode`, {
-      method: 'POST',
-      headers: authHeaders,
-      body: JSON.stringify({
-        barcode: lookupCode
-      })
-    }, FOOD_SERVER_FETCH_TIMEOUT_MS);
+    const response = await fetchWithTimeout(
+      `${getServerUrlCached()}/api/food/barcode`,
+      {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify({ barcode: lookupCode }),
+      },
+      FOOD_SERVER_FETCH_TIMEOUT_MS,
+    );
+
     if (!response.ok) {
       throw new Error(`Barcode lookup failed: ${response.status}`);
     }
@@ -335,27 +372,25 @@ async function saveVerifiedBarcode(barcode, food) {
 
   // 1. Need both a barcode and a food card.
   if (!cleanBarcode || !food) return false;
+
   try {
     // 2. Need a signed-in user.
-    const authHeaders = await getApiAuthHeaders({
-      'Content-Type': 'application/json'
-    });
+    const authHeaders = await getApiAuthHeaders({ 'Content-Type': 'application/json' });
     if (!authHeaders.Authorization) return false;
 
     // 3. POST the verified food.
-    const response = await fetchWithTimeout(`${getServerUrlCached()}/api/food/barcode/verify`, {
-      method: 'POST',
-      headers: authHeaders,
-      body: JSON.stringify({
-        barcode: cleanBarcode,
-        food
-      })
-    }, FOOD_SERVER_FETCH_TIMEOUT_MS);
+    const response = await fetchWithTimeout(
+      `${getServerUrlCached()}/api/food/barcode/verify`,
+      {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify({ barcode: cleanBarcode, food }),
+      },
+      FOOD_SERVER_FETCH_TIMEOUT_MS,
+    );
     return response.ok;
   } catch (error) {
-    logger.warn('🍔 saveVerifiedBarcode failed', {
-      message: (error == null ? void 0 : error.message) || String(error)
-    });
+    logger.warn('🍔 saveVerifiedBarcode failed', { message: errorMessageText(error) });
     return false;
   }
 }
@@ -370,6 +405,7 @@ async function fetchNutritionDetails(queryText) {
 
   // 1. Empty query → nothing to fetch.
   if (!typedText) return null;
+
   try {
     // 2. Need an API base.
     const apiBase = getServerUrl();
@@ -379,16 +415,15 @@ async function fetchNutritionDetails(queryText) {
     // Manipulate here: query param letter stays `q` — server contract
     const headers = await getApiAuthHeaders();
     const url = `${apiBase}/api/food/nutrition-details?q=${encodeURIComponent(typedText)}`;
-    const response = await fetch(url, {
-      headers
-    });
+    const response = await fetch(url, { headers });
     if (!response.ok) return null;
     return await response.json();
   } catch (error) {
-    logger.debug('fetchNutritionDetails failed', error == null ? void 0 : error.message);
+    logger.debug('fetchNutritionDetails failed', errorMessageText(error));
     return null;
   }
 }
+
 const foodSearchApi = {
   searchFoods,
   lookupBarcode,
@@ -400,28 +435,29 @@ const foodSearchApi = {
   clearAllCaches,
   getFromCache,
   setCache,
-  clearExpiredCache
+  clearExpiredCache,
 };
+
 export default foodSearchApi;
 
 // ===== PLUMBING — skip unless debugging food search / OFF / server fallback =====
+
 
 // vocab: AbortController = cancel a fetch that sat too long.
 fetchWithTimeout = async function fetchWithTimeout(url, init = {}, timeoutMs = FOOD_SERVER_FETCH_TIMEOUT_MS) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetch(url, {
-      ...init,
-      signal: controller.signal
-    });
+    return await fetch(url, { ...init, signal: controller.signal });
   } finally {
     clearTimeout(timeoutId);
   }
 };
+
 function mapOffProductToRow(product, limitIndex) {
   const normalized = normalizeOpenFoodFactsProduct(product);
   if (normalized) return normalized;
+
   const nutriments = product.nutriments || {};
   let kcalFromKj = 0;
   if (nutriments.energy_100g != null) {
@@ -431,10 +467,12 @@ function mapOffProductToRow(product, limitIndex) {
   if (nutriments['energy-kcal_100g'] != null) {
     calories = nutriments['energy-kcal_100g'];
   }
+
   let sodiumMg = null;
   if (nutriments.sodium_100g) {
     sodiumMg = nutriments.sodium_100g * MG_PER_GRAM;
   }
+
   return {
     id: product.code || `off_${Date.now()}_${limitIndex}`,
     name: product.product_name,
@@ -450,9 +488,10 @@ function mapOffProductToRow(product, limitIndex) {
     servingSize: 1,
     servingUnit: 'grams',
     servingGrams: 100,
-    source: 'openfoodfacts'
+    source: 'openfoodfacts',
   };
 }
+
 function productHasMinimumNutrition(product) {
   if (!product) return false;
   if (!product.product_name) return false;
@@ -464,6 +503,7 @@ function productHasMinimumNutrition(product) {
   if (nutriments.proteins_serving != null) return true;
   return false;
 }
+
 function parseOffSearchJson(text) {
   const trimmed = String(text || '').trim();
   const startsLikeJson = trimmed.startsWith('{') || trimmed.startsWith('[');
@@ -474,20 +514,24 @@ function parseOffSearchJson(text) {
     return null;
   }
 }
+
 function mapOffProductsToRows(products, limit) {
   if (!Array.isArray(products) || products.length === 0) return [];
+
   const withNutrition = [];
   for (let index = 0; index < products.length; index += 1) {
     if (productHasMinimumNutrition(products[index])) {
       withNutrition.push(products[index]);
     }
   }
+
   const limitedWithNutrition = withNutrition.slice(0, limit);
   const mapped = [];
   for (let index = 0; index < limitedWithNutrition.length; index += 1) {
     mapped.push(mapOffProductToRow(limitedWithNutrition[index], index));
   }
   if (mapped.length > 0) return mapped;
+
   const withNameAndNutriments = [];
   for (let index = 0; index < products.length; index += 1) {
     const product = products[index];
@@ -502,22 +546,31 @@ function mapOffProductsToRows(products, limit) {
   }
   return fallbackMapped;
 }
+
 function shouldSkipOffFallback(query) {
   const typedText = String(query || '').trim();
   if (!typedText) return true;
   return isMenuStyleQuery(typedText);
 }
+
 function preferQueryRelevantMatches(query, rows, limit) {
   return filterFoodSearchRows(query, rows, limit);
 }
+
 function openFoodFactsQueryVariants(raw) {
   const typedText = String(raw || '').trim();
   if (!typedText) return [];
-  const stripped = typedText.replace(/[''`]/g, ' ').replace(/\s+/g, ' ').trim();
+
+  const stripped = typedText
+    .replace(/[''`]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
   const variants = [typedText];
   if (stripped && stripped.toLowerCase() !== typedText.toLowerCase()) {
     variants.push(stripped);
   }
+
   const unique = [];
   const seen = new Set();
   for (let index = 0; index < variants.length; index += 1) {
@@ -528,6 +581,7 @@ function openFoodFactsQueryVariants(raw) {
   }
   return unique;
 }
+
 function brandTextFromSalHit(hit) {
   // Search-a-licious may send brands as a string or as a list of strings.
   if (typeof hit.brands === 'string' && hit.brands.trim()) {
@@ -545,6 +599,7 @@ function brandTextFromSalHit(hit) {
   if (brandParts.length === 0) return null;
   return brandParts.join(', ');
 }
+
 function firstNonEmptyTrimmedString(...candidates) {
   for (let index = 0; index < candidates.length; index += 1) {
     const candidate = candidates[index];
@@ -555,57 +610,67 @@ function firstNonEmptyTrimmedString(...candidates) {
   }
   return null;
 }
+
 function productNameFromSalHit(hit) {
   // Prefer English product_name, then product_name_en, then French fallback.
-  return firstNonEmptyTrimmedString(hit.product_name, hit.product_name_en, hit.product_name_fr);
+  return firstNonEmptyTrimmedString(
+    hit.product_name,
+    hit.product_name_en,
+    hit.product_name_fr,
+  );
 }
+
 function salHitToOffStyleProduct(hit) {
   // Turn one Search-a-licious hit into the same shape world.openfoodfacts.org products use,
   // so mapOffProductsToRows can treat both sources the same.
   if (!hit || typeof hit !== 'object') return null;
+
   const productName = productNameFromSalHit(hit);
   if (!productName) return null;
+
   let barcodeCode;
   if (hit.code != null) barcodeCode = String(hit.code);
+
   let nutriments = {};
   if (hit.nutriments && typeof hit.nutriments === 'object') {
     nutriments = hit.nutriments;
   }
+
   return {
     code: barcodeCode,
     product_name: productName,
     brands: brandTextFromSalHit(hit),
-    nutriments
+    nutriments,
   };
 }
+
 async function searchOpenFoodFactsSearchALicious(query, limit = DEFAULT_SEARCH_LIMIT) {
   const raw = String(query || '').trim();
   if (!raw) return [];
-  const cleaned = raw.replace(/[+\-&|!(){}\[\]^"~*?:\\]/g, ' ').replace(/\s+/g, ' ').trim() || raw;
+
+  const cleaned =
+    raw.replace(/[+\-&|!(){}\[\]^"~*?:\\]/g, ' ').replace(/\s+/g, ' ').trim() || raw;
   const pageSize = Math.min(Math.max(limit, 1), OFF_PAGE_SIZE_MAX);
   const params = new URLSearchParams({
     q: cleaned,
     page_size: String(pageSize),
     page: '1',
     langs: 'en',
-    fields: SAL_SEARCH_FIELDS
+    fields: SAL_SEARCH_FIELDS,
   });
   const url = `${OPEN_FOOD_FACTS_SEARCH_API}/search?${params.toString()}`;
-  const response = await fetchWithTimeout(url, {
-    method: 'GET',
-    headers: OFF_SEARCH_HEADERS
-  }, OFF_FETCH_TIMEOUT_MS);
+  const response = await fetchWithTimeout(url, { method: 'GET', headers: OFF_SEARCH_HEADERS }, OFF_FETCH_TIMEOUT_MS);
   const text = await response.text();
   if (!response.ok) {
-    if (__DEV__) logger.warn('🍔 OFF Search-a-licious HTTP', {
-      status: response.status
-    });
+    if (__DEV__) logger.warn('🍔 OFF Search-a-licious HTTP', { status: response.status });
     return [];
   }
+
   const data = parseOffSearchJson(text);
   if (!data || typeof data !== 'object') return [];
   if (Array.isArray(data.errors) && data.errors.length && !Array.isArray(data.hits)) return [];
   if (!Array.isArray(data.hits) || data.hits.length === 0) return [];
+
   const products = [];
   for (let index = 0; index < data.hits.length; index += 1) {
     const product = salHitToOffStyleProduct(data.hits[index]);
@@ -613,18 +678,18 @@ async function searchOpenFoodFactsSearchALicious(query, limit = DEFAULT_SEARCH_L
   }
   return mapOffProductsToRows(products, limit);
 }
+
 async function tryOneSalVariant(searchTerms, query, limit) {
   try {
     const salRows = await searchOpenFoodFactsSearchALicious(searchTerms, limit);
     if (salRows.length === 0) return [];
     return preferQueryRelevantMatches(query, salRows, limit);
   } catch (error) {
-    if (__DEV__) logger.warn('🍔 OFF Search-a-licious failed', {
-      message: error == null ? void 0 : error.message
-    });
+    if (__DEV__) logger.warn('🍔 OFF Search-a-licious failed', { message: errorMessageText(error) });
     return [];
   }
 }
+
 async function trySalSearchForVariants(query, variants, limit) {
   for (let index = 0; index < variants.length; index += 1) {
     const rows = await tryOneSalVariant(variants[index], query, limit);
@@ -632,22 +697,27 @@ async function trySalSearchForVariants(query, variants, limit) {
   }
   return [];
 }
+
 async function tryOffPostSearch(origin, searchTerms, pageSize, query, limit) {
   const body = new URLSearchParams({
     action: 'process',
     search_terms: searchTerms,
     search_simple: '1',
     json: '1',
-    page_size: String(pageSize)
+    page_size: String(pageSize),
   }).toString();
-  const response = await fetchWithTimeout(`${origin}/cgi/search.pl`, {
-    method: 'POST',
-    headers: {
-      ...OFF_SEARCH_HEADERS,
-      'Content-Type': 'application/x-www-form-urlencoded'
+  const response = await fetchWithTimeout(
+    `${origin}/cgi/search.pl`,
+    {
+      method: 'POST',
+      headers: {
+        ...OFF_SEARCH_HEADERS,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body,
     },
-    body
-  }, OFF_FETCH_TIMEOUT_MS);
+    OFF_FETCH_TIMEOUT_MS,
+  );
   const text = await response.text();
   const data = parseOffSearchJson(text);
   const products = data && Array.isArray(data.products) ? data.products : [];
@@ -655,11 +725,9 @@ async function tryOffPostSearch(origin, searchTerms, pageSize, query, limit) {
   const rows = mapOffProductsToRows(products, limit);
   return preferQueryRelevantMatches(query, rows, limit);
 }
+
 async function tryOffGetSearch(offUrl, query, limit) {
-  const response = await fetchWithTimeout(offUrl, {
-    method: 'GET',
-    headers: OFF_SEARCH_HEADERS
-  }, OFF_FETCH_TIMEOUT_MS);
+  const response = await fetchWithTimeout(offUrl, { method: 'GET', headers: OFF_SEARCH_HEADERS }, OFF_FETCH_TIMEOUT_MS);
   const text = await response.text();
   const data = parseOffSearchJson(text);
   const products = data && Array.isArray(data.products) ? data.products : [];
@@ -673,27 +741,25 @@ async function tryOffGetSearch(offUrl, query, limit) {
   const rows = mapOffProductsToRows(products, limit);
   return preferQueryRelevantMatches(query, rows, limit);
 }
+
 async function tryOneOffPost(origin, searchTerms, pageSize, query, limit) {
   try {
     return await tryOffPostSearch(origin, searchTerms, pageSize, query, limit);
   } catch (error) {
-    logger.warn('🍔 OFF POST failed', {
-      origin,
-      message: error == null ? void 0 : error.message
-    });
+    logger.warn('🍔 OFF POST failed', { origin, message: errorMessageText(error) });
     return [];
   }
 }
+
 async function tryOneOffGet(offUrl, query, limit) {
   try {
     return await tryOffGetSearch(offUrl, query, limit);
   } catch (error) {
-    logger.warn('🍔 OFF GET failed', {
-      message: error == null ? void 0 : error.message
-    });
+    logger.warn('🍔 OFF GET failed', { message: errorMessageText(error) });
     return [];
   }
 }
+
 async function tryOffPostsForVariant(hosts, searchTerms, pageSize, query, limit) {
   for (let index = 0; index < hosts.length; index += 1) {
     const rows = await tryOneOffPost(hosts[index], searchTerms, pageSize, query, limit);
@@ -701,6 +767,7 @@ async function tryOffPostsForVariant(hosts, searchTerms, pageSize, query, limit)
   }
   return [];
 }
+
 async function tryOffGetsForVariant(hosts, searchTerms, pageSize, query, limit) {
   const encoded = encodeURIComponent(searchTerms);
   for (let index = 0; index < hosts.length; index += 1) {
@@ -710,12 +777,15 @@ async function tryOffGetsForVariant(hosts, searchTerms, pageSize, query, limit) 
   }
   return [];
 }
+
 async function searchOpenFoodFactsDirect(query, limit = DEFAULT_SEARCH_LIMIT) {
   const pageSize = Math.min(Math.max(limit, 1), OFF_PAGE_SIZE_MAX);
   const variants = openFoodFactsQueryVariants(query);
   if (variants.length === 0) return [];
+
   const salRows = await trySalSearchForVariants(query, variants, limit);
   if (salRows.length > 0) return salRows;
+
   const hosts = ['https://world.openfoodfacts.org', 'https://us.openfoodfacts.org'];
   for (let index = 0; index < variants.length; index += 1) {
     const searchTerms = variants[index];
@@ -726,17 +796,20 @@ async function searchOpenFoodFactsDirect(query, limit = DEFAULT_SEARCH_LIMIT) {
   }
   return [];
 }
+
 function cachedFoodsMatchingQuery(cachedFoods, typedText) {
   const needle = typedText.toLowerCase();
   const list = Array.isArray(cachedFoods) ? cachedFoods : [];
   const matches = [];
   for (let index = 0; index < list.length; index += 1) {
     const food = list[index];
-    const foodName = ((food == null ? void 0 : food.name) || '').toLowerCase();
+    let foodName = '';
+    if (food && food.name) foodName = String(food.name).toLowerCase();
     if (foodName.includes(needle)) matches.push(food);
   }
   return matches;
 }
+
 async function loadCachedAndOffRows(typedText, limit) {
   // vocab: Promise.all = start phone-cache + Open Food Facts together; wait until both finish
   const cachedPromise = getCachedFoods().catch(() => []);
@@ -747,19 +820,18 @@ async function loadCachedAndOffRows(typedText, limit) {
   const cachedAndOpenFoodFacts = await Promise.all([cachedPromise, openFoodFactsPromise]);
   return {
     cachedFoods: cachedAndOpenFoodFacts[0],
-    openFoodFactsRows: cachedAndOpenFoodFacts[1]
+    openFoodFactsRows: cachedAndOpenFoodFacts[1],
   };
 }
+
 async function offlineFoodFallback(query, limit) {
   const typedText = String(query || '').trim();
-  const {
-    cachedFoods,
-    openFoodFactsRows
-  } = await loadCachedAndOffRows(typedText, limit);
+  const { cachedFoods, openFoodFactsRows } = await loadCachedAndOffRows(typedText, limit);
   const localMatches = cachedFoodsMatchingQuery(cachedFoods, typedText);
   const merged = [...localMatches, ...openFoodFactsRows];
   return merged.slice(0, limit);
 }
+
 function setEmptySearchHint(typedText, requiredBrand) {
   const menuStyle = isMenuStyleQuery(typedText);
   if (menuStyle && !lastSearchHint) {
@@ -774,101 +846,83 @@ function setEmptySearchHint(typedText, requiredBrand) {
     lastSearchHint = MENU_SERVER_HINT;
   }
 }
+
 async function mergeOfflineWhenServerEmpty(query, limit, serverResults) {
   const typedText = String(query || '').trim();
   const base = Array.isArray(serverResults) ? serverResults : [];
   if (base.length > 0) return base;
+
   const requiredBrand = findConsumerBrandInQuery(typedText);
   const merged = await offlineFoodFallback(typedText, limit);
   if (merged.length === 0) setEmptySearchHint(typedText, requiredBrand);
   return merged;
 }
+
 function interpretConsensusResponse(response, typedText, base) {
   if (response.status === HTTP_NOT_FOUND || response.status === HTTP_SERVICE_UNAVAILABLE) {
-    if (__DEV__) logger.debug('🍔 Nutrition consensus empty', {
-      status: response.status,
-      q: typedText
-    });
-    return {
-      done: true,
-      result: null
-    };
+    if (__DEV__) logger.debug('🍔 Nutrition consensus empty', { status: response.status, q: typedText });
+    return { done: true, result: null };
   }
   if (!response.ok) {
-    if (__DEV__) logger.warn('🍔 Nutrition consensus HTTP', {
-      status: response.status,
-      base
-    });
-    return {
-      done: false,
-      result: null
-    };
+    if (__DEV__) logger.warn('🍔 Nutrition consensus HTTP', { status: response.status, base });
+    return { done: false, result: null };
   }
-  return {
-    done: null,
-    result: null
-  };
+  return { done: null, result: null };
 }
+
 async function consensusRowsFromResponse(response, typedText) {
-  var _optObj, _optObj2;
   const data = await response.json();
   const rows = mapNutritionSearchToFoodRows(data, typedText);
   if (rows.length === 0) return null;
+  let sourceResultCount = 0;
+  if (data.sourceResults && data.sourceResults.length) {
+    sourceResultCount = data.sourceResults.length;
+  }
+  let consensusHasCalories = false;
+  if (data.consensus && data.consensus.calories) {
+    consensusHasCalories = true;
+  }
   logger.debug('🍔 Nutrition consensus hit', {
     rows: rows.length,
-    sources: ((_optObj = data.sourceResults) == null ? void 0 : _optObj.length) || 0,
-    consensus: Boolean((_optObj2 = data.consensus) == null ? void 0 : _optObj2.calories)
+    sources: sourceResultCount,
+    consensus: consensusHasCalories,
   });
-  return {
-    rows,
-    payload: data
-  };
+  return { rows, payload: data };
 }
+
 async function tryOneConsensusBase(base, typedText, foodName, restaurant, authHeaders) {
   try {
-    const response = await fetchWithTimeout(`${base}/api/nutrition/search`, {
-      method: 'POST',
-      headers: authHeaders,
-      body: JSON.stringify({
-        foodName,
-        restaurant
-      })
-    }, NUTRITION_CONSENSUS_FETCH_TIMEOUT_MS);
+    const response = await fetchWithTimeout(
+      `${base}/api/nutrition/search`,
+      {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify({ foodName, restaurant }),
+      },
+      NUTRITION_CONSENSUS_FETCH_TIMEOUT_MS,
+    );
     const earlyExit = interpretConsensusResponse(response, typedText, base);
-    if (earlyExit.done === true) return {
-      stop: true,
-      result: null
-    };
-    if (earlyExit.done === false) return {
-      stop: false,
-      result: null
-    };
+    if (earlyExit.done === true) return { stop: true, result: null };
+    if (earlyExit.done === false) return { stop: false, result: null };
     const result = await consensusRowsFromResponse(response, typedText);
-    return {
-      stop: true,
-      result
-    };
+    return { stop: true, result };
   } catch (error) {
-    const errorMessage = (error == null ? void 0 : error.message) || String(error);
-    const isTimeout = (error == null ? void 0 : error.name) === 'AbortError';
+    const message = errorMessageText(error);
+    const isTimeout = errorName(error) === 'AbortError';
     logger.warn('🍔 Nutrition consensus failed', {
       base,
-      message: errorMessage,
-      isTimeout
+      message,
+      isTimeout,
     });
-    return {
-      stop: false,
-      result: null
-    };
+    return { stop: false, result: null };
   }
 }
+
 async function searchNutritionConsensus(query, authHeaders) {
   const typedText = String(query || '').trim();
   if (!typedText) return null;
-  const {
-    foodName,
-    restaurant
-  } = parseNutritionSearchQuery(typedText);
+
+  const { foodName, restaurant } = parseNutritionSearchQuery(typedText);
   const bases = getResilientApiBases();
   for (let index = 0; index < bases.length; index += 1) {
     const attempt = await tryOneConsensusBase(bases[index], typedText, foodName, restaurant, authHeaders);
@@ -876,6 +930,7 @@ async function searchNutritionConsensus(query, authHeaders) {
   }
   return null;
 }
+
 function isFallbackHttpStatus(status) {
   if (status === HTTP_UNAUTHORIZED) return true;
   if (status === HTTP_FORBIDDEN) return true;
@@ -884,34 +939,28 @@ function isFallbackHttpStatus(status) {
   if (status >= HTTP_SERVER_ERROR) return true;
   return false;
 }
+
 async function tryOneLegacyBase(base, typedText, limit, authHeaders) {
   const url = `${base}/api/food/search?query=${encodeURIComponent(typedText)}&limit=${limit}`;
   try {
-    logger.debug('🔍 Searching food', {
-      q: typedText,
-      url
-    });
-    const response = await fetchWithTimeout(url, {
-      method: 'GET',
-      headers: authHeaders
-    }, FOOD_SERVER_FETCH_TIMEOUT_MS);
-    if (__DEV__ && (response == null ? void 0 : response.ok)) logger.debug('🍔 Food search server', base);
-    return {
-      response,
-      fetchErr: null
-    };
+    logger.debug('🔍 Searching food', { q: typedText, url });
+    const response = await fetchWithTimeout(
+      url,
+      { method: 'GET', headers: authHeaders },
+      FOOD_SERVER_FETCH_TIMEOUT_MS,
+    );
+    if (__DEV__ && response && response.ok) logger.debug('🍔 Food search server', base);
+    return { response, fetchErr: null };
   } catch (caught) {
     logger.warn('🍔 Food search unreachable', {
       base,
-      message: (caught == null ? void 0 : caught.message) || caught,
-      isTimeout: (caught == null ? void 0 : caught.name) === 'AbortError'
+      message: errorMessageText(caught),
+      isTimeout: errorName(caught) === 'AbortError',
     });
-    return {
-      response: null,
-      fetchErr: caught
-    };
+    return { response: null, fetchErr: caught };
   }
 }
+
 async function fetchLegacySearchResponse(typedText, limit, authHeaders) {
   let response;
   let fetchErr;
@@ -924,11 +973,9 @@ async function fetchLegacySearchResponse(typedText, limit, authHeaders) {
     }
     fetchErr = attempt.fetchErr;
   }
-  return {
-    response,
-    fetchErr
-  };
+  return { response, fetchErr };
 }
+
 async function fallbackLegacyWhenHttpFailed(typedText, limit, status) {
   logger.warn(`🍔 Server search failed (${status}). Using cached + OFF fallback.`);
   if (shouldSkipOffFallback(typedText)) {
@@ -938,35 +985,37 @@ async function fallbackLegacyWhenHttpFailed(typedText, limit, status) {
   const offline = await offlineFoodFallback(typedText, limit);
   return presentSearchResults(offline, typedText);
 }
+
 async function searchFoodsLegacy(query, limit, authHeaders) {
   const typedText = String(query || '').trim();
-  const {
-    response,
-    fetchErr
-  } = await fetchLegacySearchResponse(typedText, limit, authHeaders);
+  const { response, fetchErr } = await fetchLegacySearchResponse(typedText, limit, authHeaders);
   if (!response) {
     throw fetchErr || new Error('Network request failed');
   }
+
   if (!response.ok) {
     if (isFallbackHttpStatus(response.status)) {
       return fallbackLegacyWhenHttpFailed(typedText, limit, response.status);
     }
     throw new Error(`Food search failed: ${response.status}`);
   }
+
   const data = await response.json();
   lastSearchHint = data.hint || null;
   const list = Array.isArray(data.results) ? data.results : [];
   return mergeOfflineWhenServerEmpty(typedText, limit, list);
 }
+
 async function askServerForBothLists(typedText, limit, authHeaders) {
   // vocab: Promise.all = start both server calls together; wait until both finish.
   // Lives in PLUMBING so the main recipe stays a short numbered list.
-  const bothLists = await Promise.all([searchNutritionConsensus(typedText, authHeaders).catch(() => null), searchFoodsLegacy(typedText, limit, authHeaders)]);
-  return {
-    consensusResult: bothLists[0],
-    legacyResults: bothLists[1]
-  };
+  const bothLists = await Promise.all([
+    searchNutritionConsensus(typedText, authHeaders).catch(() => null),
+    searchFoodsLegacy(typedText, limit, authHeaders),
+  ]);
+  return { consensusResult: bothLists[0], legacyResults: bothLists[1] };
 }
+
 function mergeTrustedIntoSearch(nutritionRows, legacyResults, trusted, limit) {
   if (trusted.length === 0) {
     return mergeNutritionSearchWithLegacy(nutritionRows, legacyResults, limit);
@@ -976,9 +1025,11 @@ function mergeTrustedIntoSearch(nutritionRows, legacyResults, trusted, limit) {
   }
   return mergeNutritionSearchWithLegacy(trusted, legacyResults, limit);
 }
+
 function filterAndKeepClose(typedText, merged, trusted, limit) {
   return presentFoodSearchRows(typedText, merged, trusted, limit);
 }
+
 async function refillFromOfflineIfEmpty(typedText, filtered, limit) {
   if (filtered.length > 0) return filtered;
   const offline = await offlineFoodFallback(typedText, limit);
@@ -991,6 +1042,7 @@ async function refillFromOfflineIfEmpty(typedText, filtered, limit) {
   if (refiltered.length > 0) return refiltered;
   return offline.slice(0, closeCap);
 }
+
 presentOfflineSearch = async function presentOfflineSearch(typedText, limit, trusted, cacheKey, hintIfEmpty) {
   let merged = await offlineFoodFallback(typedText, limit);
   if (trusted.length) {
@@ -1004,6 +1056,7 @@ presentOfflineSearch = async function presentOfflineSearch(typedText, limit, tru
   if (presented.length > 0) setCache(cacheKey, presented);
   return presented;
 };
+
 searchFoodsWhenSignedOut = async function searchFoodsWhenSignedOut(typedText, limit, trusted) {
   lastSearchHint = SIGN_IN_HINT;
   const offline = await offlineFoodFallback(typedText, limit);
@@ -1014,10 +1067,11 @@ searchFoodsWhenSignedOut = async function searchFoodsWhenSignedOut(typedText, li
   const nameFiltered = filterFoodSearchRows(typedText, combined, limit);
   return presentSearchResults(nameFiltered, typedText);
 };
+
 recoverFromNetworkFailure = async function recoverFromNetworkFailure(typedText, limit, cacheKey, error) {
   logger.warn('🍔 Server unreachable; trying cache + Open Food Facts', {
-    message: (error == null ? void 0 : error.message) || String(error),
-    menuStyle: isMenuStyleQuery(typedText)
+    message: errorMessageText(error),
+    menuStyle: isMenuStyleQuery(typedText),
   });
   try {
     const merged = await offlineFoodFallback(typedText, limit);
@@ -1030,9 +1084,11 @@ recoverFromNetworkFailure = async function recoverFromNetworkFailure(typedText, 
       return presented;
     }
     if (!lastSearchHint) lastSearchHint = FOOD_SEARCH_OFFLINE_HINT;
+    let serverMessage = '';
+    if (error && error.message) serverMessage = error.message;
     logger.warn('🍔 Food search: server unreachable and fallback returned no rows', {
       query: typedText,
-      serverMessage: error == null ? void 0 : error.message
+      serverMessage,
     });
   } catch (fallbackErr) {
     logger.error('🍔 Food search fallback failed', fallbackErr);
@@ -1040,40 +1096,57 @@ recoverFromNetworkFailure = async function recoverFromNetworkFailure(typedText, 
   }
   return [];
 };
+
 async function lookupBarcodeFromOpenFoodFacts(lookupCode, cacheKey) {
-  const response = await fetchWithTimeout(`https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(lookupCode)}.json`, {
-    headers: OFF_SEARCH_HEADERS
-  }, OFF_FETCH_TIMEOUT_MS);
+  const response = await fetchWithTimeout(
+    `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(lookupCode)}.json`,
+    { headers: OFF_SEARCH_HEADERS },
+    OFF_FETCH_TIMEOUT_MS,
+  );
   const data = await response.json();
-  if (!(data == null ? void 0 : data.product)) return null;
+  if (!data || !data.product) return null;
   const result = normalizeOpenFoodFactsProduct(data.product);
   if (!result) return null;
   setCache(cacheKey, result);
   return result;
 }
+
 recoverBarcodeFromOff = async function recoverBarcodeFromOff(lookupCode, cacheKey) {
   try {
     return await lookupBarcodeFromOpenFoodFacts(lookupCode, cacheKey);
   } catch (fallbackError) {
-    logger.warn('🍔 Barcode fallback failed', {
-      message: (fallbackError == null ? void 0 : fallbackError.message) || String(fallbackError)
-    });
+    logger.warn('🍔 Barcode fallback failed', { message: errorMessageText(fallbackError) });
     return null;
   }
 };
-searchFoodsWhenSignedIn = async function searchFoodsWhenSignedIn(typedText, limit, trustedMenuFoods, cacheKey, loginHeaders, raceId, startedAt) {
+
+searchFoodsWhenSignedIn = async function searchFoodsWhenSignedIn(
+  typedText,
+  limit,
+  trustedMenuFoods,
+  cacheKey,
+  loginHeaders,
+  raceId,
+  startedAt,
+) {
   // 1. Ask the server for consensus macros + the older search list.
-  const {
-    consensusResult,
-    legacyResults
-  } = await askServerForBothLists(typedText, limit, loginHeaders);
+  const { consensusResult, legacyResults } = await askServerForBothLists(
+    typedText,
+    limit,
+    loginHeaders,
+  );
 
   // 2. Mix trusted menu seeds into those lists.
   let nutritionRows = [];
   if (consensusResult && Array.isArray(consensusResult.rows)) {
     nutritionRows = consensusResult.rows;
   }
-  const mergedFoods = mergeTrustedIntoSearch(nutritionRows, legacyResults, trustedMenuFoods, limit);
+  const mergedFoods = mergeTrustedIntoSearch(
+    nutritionRows,
+    legacyResults,
+    trustedMenuFoods,
+    limit,
+  );
   const rawMergedCount = Array.isArray(mergedFoods) ? mergedFoods.length : 0;
 
   // 3. Drop cousins / keep close macros; refill from offline if blank.
@@ -1088,6 +1161,7 @@ searchFoodsWhenSignedIn = async function searchFoodsWhenSignedIn(typedText, limi
     setEmptySearchHint(typedText, findConsumerBrandInQuery(typedText));
   }
   if (presented.length > 0) setCache(cacheKey, presented);
+
   logger.debug('✅ Food search success', {
     raceId,
     query: typedText,
@@ -1098,7 +1172,8 @@ searchFoodsWhenSignedIn = async function searchFoodsWhenSignedIn(typedText, limi
     postFilter: postFilterCount,
     presented: presented.length,
     hint: lastSearchHint,
-    ms: Date.now() - startedAt
+    ms: Date.now() - startedAt,
   });
   return presented;
 };
+

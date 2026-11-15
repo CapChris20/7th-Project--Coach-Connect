@@ -27,7 +27,124 @@ const AVATAR_SIZE = 40;
 const TIME_COL_WIDTH = 78;
 const FALLBACK_TIME_LABEL = '—';
 
-// ===== PURE LAYOUT (no hooks) =====
+// ===== HELPER FUNCTIONS =====
+
+function initialsFromName(fullName) {
+  const nameParts = String(fullName || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (nameParts.length === 0) {
+    return '?';
+  }
+  if (nameParts.length === 1) {
+    return nameParts[0].slice(0, 2).toUpperCase();
+  }
+
+  const firstInitial = nameParts[0][0] || '';
+  const secondInitial = nameParts[1][0] || '';
+  return `${firstInitial}${secondInitial}`.toUpperCase();
+}
+
+function statusLabel(status) {
+  if (status === STATUS_ACCEPTED) {
+    return 'Confirmed';
+  }
+  if (status === STATUS_DECLINED) {
+    return 'Declined';
+  }
+  return 'Pending';
+}
+
+function sessionTypeLabel(session) {
+  if (session == null) {
+    return 'Training';
+  }
+  if (session.title) {
+    return session.title;
+  }
+  if (session.focus) {
+    return session.focus;
+  }
+  if (session.type) {
+    return session.type;
+  }
+  if (session.sessionType) {
+    return session.sessionType;
+  }
+  return 'Training';
+}
+
+function whereLabel(session) {
+  if (session == null) {
+    return 'In person';
+  }
+  if (session.zoomLink) {
+    return 'Video link attached';
+  }
+  return 'In person';
+}
+
+function formatDurationMin(durationMin) {
+  const minutes = Number(durationMin) || DEFAULT_DURATION_MIN;
+  return `${minutes} min`;
+}
+
+function pickStatusChipVariant(isConfirmed, isDeclined) {
+  if (isConfirmed) {
+    return 'default';
+  }
+  if (isDeclined) {
+    return 'outline';
+  }
+  return 'dashed';
+}
+
+function splitTimeLabelForRail(timeLabel) {
+  const pieces = String(timeLabel).split(' ');
+  const clockText = pieces[0] || timeLabel;
+  const meridiemText = pieces[1] || '';
+  return { clockText, meridiemText };
+}
+
+function extractSessionCardFields(session) {
+  if (!session) {
+    return {
+      sessionTime: null,
+      durationMin: DEFAULT_DURATION_MIN,
+      status: STATUS_PENDING,
+      clientNameFromSession: null,
+      notesFromSession: null,
+      dateFromSession: null,
+    };
+  }
+  const sessionTime = session.time || null;
+  const durationRaw = session.durationMin || session.duration || DEFAULT_DURATION_MIN;
+  const durationMin = durationRaw;
+  const status = session.status || STATUS_PENDING;
+  const clientNameFromSession = session.clientName || null;
+  const notesFromSession = session.notes || null;
+  const dateFromSession = session.date || null;
+  return {
+    sessionTime,
+    durationMin,
+    status,
+    clientNameFromSession,
+    notesFromSession,
+    dateFromSession,
+  };
+}
+
+function resolveDisplayName(nameOverride, clientNameFromSession) {
+  if (nameOverride) {
+    return nameOverride;
+  }
+  if (clientNameFromSession) {
+    return clientNameFromSession;
+  }
+  return CLIENT_NAME_DEFAULT;
+}
 
 function SessionTimeRail({
   clockText,
@@ -42,20 +159,30 @@ function SessionTimeRail({
   const shouldShowMeridiem = Boolean(meridiemText);
   const shouldShowDateHint = showDate && Boolean(dateSlice);
 
+  let meridiemLine = null;
+  if (shouldShowMeridiem) {
+    meridiemLine = (
+      <Text style={[styles.meridiem, { color: inkColor }]}>{meridiemText}</Text>
+    );
+  }
+
+  let dateHintLine = null;
+  if (shouldShowDateHint) {
+    dateHintLine = (
+      <Text style={[styles.dateHint, { color: mutedColor }]} numberOfLines={1}>
+        {dateSlice}
+      </Text>
+    );
+  }
+
   return (
     <View style={[styles.timeCol, { borderRightColor: borderColor }]}>
       <Text style={[styles.clock, { color: inkColor }]} numberOfLines={1}>
         {clockText}
       </Text>
-      {shouldShowMeridiem ? (
-        <Text style={[styles.meridiem, { color: inkColor }]}>{meridiemText}</Text>
-      ) : null}
+      {meridiemLine}
       <Text style={[styles.duration, { color: mutedColor }]}>{durationLabel}</Text>
-      {shouldShowDateHint ? (
-        <Text style={[styles.dateHint, { color: mutedColor }]} numberOfLines={1}>
-          {dateSlice}
-        </Text>
-      ) : null}
+      {dateHintLine}
     </View>
   );
 }
@@ -75,6 +202,15 @@ function SessionCardBody({
   mutedColor,
 }) {
   const hasNotes = Boolean(notes);
+
+  let notesLine = null;
+  if (hasNotes) {
+    notesLine = (
+      <Text style={[styles.notes, { color: mutedColor }]} numberOfLines={2}>
+        {notes}
+      </Text>
+    );
+  }
 
   return (
     <View style={styles.body}>
@@ -104,11 +240,7 @@ function SessionCardBody({
         </NbChip>
       </View>
 
-      {hasNotes ? (
-        <Text style={[styles.notes, { color: mutedColor }]} numberOfLines={2}>
-          {notes}
-        </Text>
-      ) : null}
+      {notesLine}
 
       {footerActions}
     </View>
@@ -180,7 +312,7 @@ function SessionCardLayout({
   );
 }
 
-// ===== MAIN =====
+// ===== MAIN FUNCTION =====
 
 /**
  * One session row for calendar/list: time rail + client + status chips.
@@ -188,7 +320,8 @@ function SessionCardLayout({
  */
 export const SessionCard = ({
   session,
-  theme: _themeIgnored,
+  // Call sites may still pass theme; colors always come from useTheme() below.
+  theme: themePropKeptForCallSites,
   showDate = false,
   nameOverride,
   subtitleOverride,
@@ -196,30 +329,43 @@ export const SessionCard = ({
 }) => {
   const { colors } = useTheme();
 
-  // 1. Clock label from stored 24h time string (e.g. "18:30" → "6:30 PM").
+  // 1. Pull session fields into named locals.
+  const {
+    sessionTime,
+    durationMin,
+    status,
+    clientNameFromSession,
+    notesFromSession,
+    dateFromSession,
+  } = extractSessionCardFields(session);
+
+  // 2. Clock label from stored 24h time string (e.g. "18:30" → "6:30 PM").
   // vocab: useMemo = recompute only when session.time changes
   const timeLabel = useMemo(() => {
-    const formatted = formatTime12(session?.time);
-    return formatted || FALLBACK_TIME_LABEL;
-  }, [session?.time]);
+    const formatted = formatTime12(sessionTime);
+    if (formatted) {
+      return formatted;
+    }
+    return FALLBACK_TIME_LABEL;
+  }, [sessionTime]);
 
-  // 2. Status and display fields for chips and avatar.
-  const durationMin = session?.durationMin || session?.duration || DEFAULT_DURATION_MIN;
-  const status = session?.status || STATUS_PENDING;
+  // 3. Status and display fields for chips and avatar.
   const isConfirmed = status === STATUS_ACCEPTED;
   const isDeclined = status === STATUS_DECLINED;
-  const displayName = nameOverride || session?.clientName || CLIENT_NAME_DEFAULT;
+  const displayName = resolveDisplayName(nameOverride, clientNameFromSession);
   const typeLabel = subtitleOverride || sessionTypeLabel(session);
-  const notesText = session?.notes ? String(session.notes) : '';
+  const notesText = notesFromSession ? String(notesFromSession) : '';
 
-  // 3. Split "6:30 PM" so the rail stacks clock + meridiem like the PNG.
-  const { clockText, meridiemText } = splitTimeLabelForRail(timeLabel);
+  // 4. Split "6:30 PM" so the rail stacks clock + meridiem like the PNG.
+  const railPieces = splitTimeLabelForRail(timeLabel);
+  const clockText = railPieces.clockText;
+  const meridiemText = railPieces.meridiemText;
   const durationLabel = formatDurationMin(durationMin);
   const statusChipVariant = pickStatusChipVariant(isConfirmed, isDeclined);
   const statusText = statusLabel(status);
   const whereText = whereLabel(session);
   const avatarInitials = initialsFromName(displayName);
-  const dateSlice = session?.date ? String(session.date).slice(5) : '';
+  const dateSlice = dateFromSession ? String(dateFromSession).slice(5) : '';
 
   return (
     <SessionCardLayout
@@ -244,81 +390,6 @@ export const SessionCard = ({
 };
 
 export default SessionCard;
-
-// ===== PLUMBING — skip unless debugging =====
-
-function initialsFromName(fullName) {
-  const nameParts = String(fullName || '')
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-
-  if (nameParts.length === 0) {
-    return '?';
-  }
-  if (nameParts.length === 1) {
-    return nameParts[0].slice(0, 2).toUpperCase();
-  }
-
-  const firstInitial = nameParts[0][0] || '';
-  const secondInitial = nameParts[1][0] || '';
-  return `${firstInitial}${secondInitial}`.toUpperCase();
-}
-
-function statusLabel(status) {
-  if (status === STATUS_ACCEPTED) {
-    return 'Confirmed';
-  }
-  if (status === STATUS_DECLINED) {
-    return 'Declined';
-  }
-  return 'Pending';
-}
-
-function sessionTypeLabel(session) {
-  if (session?.title) {
-    return session.title;
-  }
-  if (session?.focus) {
-    return session.focus;
-  }
-  if (session?.type) {
-    return session.type;
-  }
-  if (session?.sessionType) {
-    return session.sessionType;
-  }
-  return 'Training';
-}
-
-function whereLabel(session) {
-  if (session?.zoomLink) {
-    return 'Video link attached';
-  }
-  return 'In person';
-}
-
-function formatDurationMin(durationMin) {
-  const minutes = Number(durationMin) || DEFAULT_DURATION_MIN;
-  return `${minutes} min`;
-}
-
-function pickStatusChipVariant(isConfirmed, isDeclined) {
-  if (isConfirmed) {
-    return 'default';
-  }
-  if (isDeclined) {
-    return 'outline';
-  }
-  return 'dashed';
-}
-
-function splitTimeLabelForRail(timeLabel) {
-  const pieces = String(timeLabel).split(' ');
-  const clockText = pieces[0] || timeLabel;
-  const meridiemText = pieces[1] || '';
-  return { clockText, meridiemText };
-}
 
 const styles = StyleSheet.create({
   card: {

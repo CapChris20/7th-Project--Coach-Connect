@@ -1,13 +1,25 @@
 // Normalize a typed food query into tokens + numeric quantity cues + IDF.
 // Flow: clean text → tokenize → parse size/count → attach rarity from tokenStats.
-// Pure. Does not classify brands, menus, or families with lists.
+// Used by food-match gates and candidate scoring.
+// Pure CommonJS. Does not classify brands, menus, or families with hardcoded lists.
 
 const {
   RARE_TOKEN_IDF_MIN,
 } = require('./config/weights');
 
+// ===== NAMED CONSTANTS =====
+
+const FALLBACK_DOCUMENT_COUNT = 1;
+const QUANTITY_SUFFIX_TOKENS = Object.freeze(['oz', 'fl', 'g', 'pc', 'pcs', 'piece', 'pieces']);
+
 let cachedStats = null;
 
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * Loads token document-frequency statistics from the generated corpus.
+ * @returns {object}
+ */
 function loadTokenStats() {
   if (cachedStats) return cachedStats;
   // Generated offline by scripts/buildTokenStats.mjs
@@ -24,6 +36,11 @@ function setTokenStatsForTests(stats) {
   cachedStats = stats;
 }
 
+/**
+ * Cleans punctuation and whitespace from a search query string.
+ * @param {string} text
+ * @returns {string}
+ */
 function normalizeQueryText(text) {
   return String(text || '')
     .toLowerCase()
@@ -33,18 +50,30 @@ function normalizeQueryText(text) {
     .trim();
 }
 
+/**
+ * Splits normalized query text into lowercase words.
+ * @param {string} text
+ * @returns {string[]}
+ */
 function tokenize(text) {
   const normalized = normalizeQueryText(text);
   if (!normalized) return [];
   return normalized.split(' ').filter((token) => token.length > 0);
 }
 
+/**
+ * Calculates inverse document frequency (IDF) for a token.
+ * @param {string} token
+ * @param {object} stats
+ * @returns {number}
+ */
 function idfForToken(token, stats) {
-  const documentCount = Number(stats.documentCount) || 1;
-  const df = Object.prototype.hasOwnProperty.call(stats.tokenDf || {}, token)
-    ? Number(stats.tokenDf[token])
+  const documentCount = Number(stats.documentCount) || FALLBACK_DOCUMENT_COUNT;
+  const tokenDfMap = stats.tokenDf || {};
+  const documentFrequency = Object.prototype.hasOwnProperty.call(tokenDfMap, token)
+    ? Number(tokenDfMap[token])
     : Number(stats.unknownDf) || 0;
-  return Math.log((documentCount + 1) / (df + 1));
+  return Math.log((documentCount + 1) / (documentFrequency + 1));
 }
 
 /**
@@ -64,15 +93,27 @@ function extractQuantities(normalized) {
   };
 }
 
+function pickHeadToken(tokenInfos) {
+  for (let index = tokenInfos.length - 1; index >= 0; index -= 1) {
+    const info = tokenInfos[index];
+    if (/^\d+(?:\.\d+)?$/.test(info.token)) continue;
+    if (QUANTITY_SUFFIX_TOKENS.includes(info.token)) continue;
+    return info;
+  }
+  return null;
+}
+
+// ===== MAIN FUNCTION =====
+
 /**
  * Build the query frame used by gates and scoring.
  * @param {string} rawQuery
- * @param {{ stats?: object }} [opts]
+ * @param {{ stats?: object }} [options]
  * @returns {object}
  */
-function buildQueryFrame(rawQuery, opts = {}) {
+function buildQueryFrame(rawQuery, options = {}) {
   // 1. Normalize and tokenize.
-  const stats = opts.stats || loadTokenStats();
+  const stats = options.stats || loadTokenStats();
   const normalized = normalizeQueryText(rawQuery);
   const tokens = tokenize(normalized);
   const quantities = extractQuantities(normalized);
@@ -113,16 +154,3 @@ module.exports = {
   setTokenStatsForTests,
   loadTokenStats,
 };
-
-// ===== PLUMBING =====
-
-function pickHeadToken(tokenInfos) {
-  for (let index = tokenInfos.length - 1; index >= 0; index -= 1) {
-    const info = tokenInfos[index];
-    if (/^\d+(?:\.\d+)?$/.test(info.token)) continue;
-    if (info.token === 'oz' || info.token === 'fl' || info.token === 'g') continue;
-    if (info.token === 'pc' || info.token === 'pcs' || info.token === 'piece' || info.token === 'pieces') continue;
-    return info;
-  }
-  return null;
-}

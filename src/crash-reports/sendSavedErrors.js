@@ -1,7 +1,6 @@
 // Offline error buffer, and the drain that writes it into ERRORS.txt.
 // Flow: failed report → AsyncStorage queue → later drain into ERRORS.txt (newest first) → clear queue.
 // queueErrorForSync is called from recordError. initializeErrorSync runs at startup.
-// Read order: constants → exported recipes → PLUMBING (storage + file formatting).
 
 const isNode = typeof process !== 'undefined' && process.versions && process.versions.node;
 
@@ -25,98 +24,10 @@ const TOTAL_ERRORS_HEADER_PREFIX = 'Total Errors: ';
 const ERROR_COUNT_PATTERN = /Total Errors: (\d+)/;
 const UTF8_ENCODING = 'utf8';
 
-// ===== MAIN FUNCTIONS =====
-
-/**
- * Push one error onto the on-device queue. Never throws.
- * @param {object} errorData
- * @returns {Promise<void>}
- */
-export async function queueErrorForSync(errorData) {
-  try {
-    // 1. Need AsyncStorage with get/set — some test environments omit it.
-    const asyncStorage = getAsyncStorage();
-    if (!canWriteQueue(asyncStorage)) {
-      return;
-    }
-
-    // 2. Append with a queuedAt stamp so offline drains can sort sensibly.
-    const existingQueue = await readErrorQueue(asyncStorage);
-    const queuedAtStamp = new Date().toISOString();
-    const queuedRecord = Object.assign({}, errorData, { queuedAt: queuedAtStamp });
-    existingQueue.push(queuedRecord);
-    const queueJson = JSON.stringify(existingQueue);
-    await asyncStorage.setItem(ERROR_QUEUE_KEY, queueJson);
-  } catch (queueError) {
-    const warningMessage = queueError && queueError.message ? queueError.message : String(queueError);
-    console.warn(
-      'Failed to queue error for sync (this is okay in some environments):',
-      warningMessage,
-    );
-  }
-}
-
-/**
- * Write every queued error into ERRORS.txt, then clear the queue.
- * @returns {Promise<void>}
- */
-export async function syncErrorsToFile() {
-  const asyncStorage = getAsyncStorage();
-  const fileSystem = getFs();
-  const errorLogFile = resolveErrorLogFilePath();
-  const canRead = canReadQueue(asyncStorage);
-  if (!canRead) {
-    return;
-  }
-  if (!fileSystem) {
-    return;
-  }
-  if (!errorLogFile) {
-    return;
-  }
-
-  try {
-    // 1. Bail early when nothing is waiting — avoids rewriting the file on every tick.
-    const queuedErrors = await readErrorQueue(asyncStorage);
-    if (queuedErrors.length === 0) {
-      return;
-    }
-
-    // 2. Prepend queued blocks ahead of whatever was already on disk.
-    const existingContent = readExistingLogFile(fileSystem, errorLogFile);
-    const previousCount = errorCountFromFile(existingContent);
-    const newContent = buildSyncedLogContent(existingContent, queuedErrors, previousCount);
-    fileSystem.writeFileSync(errorLogFile, newContent, UTF8_ENCODING);
-
-    // 3. Only clear the queue after the write succeeds.
-    await asyncStorage.removeItem(ERROR_QUEUE_KEY);
-    console.log(`✅ Synced ${queuedErrors.length} errors to ${errorLogFile}`);
-  } catch (syncError) {
-    console.error('Failed to sync errors to file:', syncError);
-  }
-}
-
-/**
- * Drain once now, then keep draining for the life of the process.
- * @returns {Promise<void>}
- */
-export async function initializeErrorSync() {
-  // 1. Flush anything left from a previous session before the timer starts.
-  await syncErrorsToFile();
-
-  // 2. Keep draining on a timer when setInterval exists (Node / RN).
-  if (typeof setInterval === 'undefined') {
-    return;
-  }
-  setInterval(async () => {
-    await syncErrorsToFile();
-  }, SYNC_INTERVAL_MS);
-}
-
-// PLUMBING — skip unless a queued crash never shows up in ERRORS.txt.
-
 let cachedAsyncStorage = null;
 let cachedFileSystem = null;
+
+// ===== HELPER FUNCTIONS =====
 
 function markAsyncStorageUnavailable() {
   cachedAsyncStorage = false;
@@ -397,4 +308,92 @@ function readExistingLogFile(fileSystem, errorLogFile) {
   }
   const parts = existingContent.split(EMPTY_LOG_MARKER);
   return parts[0];
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Push one error onto the on-device queue. Never throws.
+ * @param {object} errorData
+ * @returns {Promise<void>}
+ */
+export async function queueErrorForSync(errorData) {
+  try {
+    // 1. Need AsyncStorage with get/set — some test environments omit it.
+    const asyncStorage = getAsyncStorage();
+    if (!canWriteQueue(asyncStorage)) {
+      return;
+    }
+
+    // 2. Append with a queuedAt stamp so offline drains can sort sensibly.
+    const existingQueue = await readErrorQueue(asyncStorage);
+    const queuedAtStamp = new Date().toISOString();
+    const queuedRecord = Object.assign({}, errorData, { queuedAt: queuedAtStamp });
+    existingQueue.push(queuedRecord);
+    const queueJson = JSON.stringify(existingQueue);
+    await asyncStorage.setItem(ERROR_QUEUE_KEY, queueJson);
+  } catch (queueError) {
+    const warningMessage = queueError && queueError.message ? queueError.message : String(queueError);
+    console.warn(
+      'Failed to queue error for sync (this is okay in some environments):',
+      warningMessage,
+    );
+  }
+}
+
+/**
+ * Write every queued error into ERRORS.txt, then clear the queue.
+ * @returns {Promise<void>}
+ */
+export async function syncErrorsToFile() {
+  const asyncStorage = getAsyncStorage();
+  const fileSystem = getFs();
+  const errorLogFile = resolveErrorLogFilePath();
+  const canRead = canReadQueue(asyncStorage);
+  if (!canRead) {
+    return;
+  }
+  if (!fileSystem) {
+    return;
+  }
+  if (!errorLogFile) {
+    return;
+  }
+
+  try {
+    // 1. Bail early when nothing is waiting — avoids rewriting the file on every tick.
+    const queuedErrors = await readErrorQueue(asyncStorage);
+    if (queuedErrors.length === 0) {
+      return;
+    }
+
+    // 2. Prepend queued blocks ahead of whatever was already on disk.
+    const existingContent = readExistingLogFile(fileSystem, errorLogFile);
+    const previousCount = errorCountFromFile(existingContent);
+    const newContent = buildSyncedLogContent(existingContent, queuedErrors, previousCount);
+    fileSystem.writeFileSync(errorLogFile, newContent, UTF8_ENCODING);
+
+    // 3. Only clear the queue after the write succeeds.
+    await asyncStorage.removeItem(ERROR_QUEUE_KEY);
+    console.log(`✅ Synced ${queuedErrors.length} errors to ${errorLogFile}`);
+  } catch (syncError) {
+    console.error('Failed to sync errors to file:', syncError);
+  }
+}
+
+/**
+ * Drain once now, then keep draining for the life of the process.
+ * @returns {Promise<void>}
+ */
+export async function initializeErrorSync() {
+  // 1. Flush anything left from a previous session before the timer starts.
+  await syncErrorsToFile();
+
+  // 2. Keep draining on a timer when setInterval exists (Node / RN).
+  if (typeof setInterval === 'undefined') {
+    return;
+  }
+  setInterval(async () => {
+    await syncErrorsToFile();
+  }, SYNC_INTERVAL_MS);
 }

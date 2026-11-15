@@ -37,30 +37,34 @@ const TYPE_META = {
 
 // Firestore Timestamp → Date, or pass through a real Date / raw value.
 function createdAtDateFromItem(item) {
-  if (item?.createdAt instanceof Date) {
-    return item.createdAt;
-  }
+  if (!item) return undefined;
+  const createdAt = item.createdAt;
+  if (!createdAt) return undefined;
+  if (createdAt instanceof Date) return createdAt;
   // vocab: toDate = Firestore Timestamp → JS Date
-  if (item?.createdAt?.toDate) {
-    return item.createdAt.toDate();
+  if (typeof createdAt.toDate === 'function') {
+    return createdAt.toDate();
   }
-  return item?.createdAt;
+  return createdAt;
 }
 
 // Prefer an explicit thumbnailUrl; for photos fall back to the file url itself.
 function thumbnailUrlFromItem(item, fileType) {
-  if (item?.thumbnailUrl) {
-    return item.thumbnailUrl;
-  }
-  if (fileType === FILE_TYPE_IMAGE) {
-    return item?.url;
-  }
+  if (!item) return null;
+  if (item.thumbnailUrl) return item.thumbnailUrl;
+  if (fileType === FILE_TYPE_IMAGE) return item.url || null;
   return null;
 }
 
 function itemWasAddedByClient(item) {
-  const addedBy = item?.addedBy || ADDED_BY_CLIENT;
+  if (!item) return true;
+  const addedBy = item.addedBy || ADDED_BY_CLIENT;
   return addedBy === ADDED_BY_CLIENT;
+}
+
+function sizeBytesFromItem(item) {
+  if (!item) return undefined;
+  return item.size;
 }
 
 // Stop the card's onOpen from firing when the user taps an action icon.
@@ -72,9 +76,7 @@ function runActionWithoutBubbling(event, action) {
 }
 
 function typeLabelWithDate(meta, createdAt) {
-  if (!createdAt) {
-    return meta.label;
-  }
+  if (!createdAt) return meta.label;
   const shortDate = formatDateShort(createdAt);
   return `${meta.label} \u00B7 ${shortDate}`;
 }
@@ -94,17 +96,13 @@ function resolveFileCardPermissions(item, isTrainerShared) {
 }
 
 function colorsForScheme(colorScheme) {
-  if (colorScheme === DARK_SCHEME) {
-    return darkColors;
-  }
+  if (colorScheme === DARK_SCHEME) return darkColors;
   return lightColors;
 }
 
 function typeMetaForFileType(fileType) {
   const knownMeta = TYPE_META[fileType];
-  if (knownMeta) {
-    return knownMeta;
-  }
+  if (knownMeta) return knownMeta;
   return TYPE_META.file;
 }
 
@@ -272,7 +270,7 @@ export function FileCard({
   // 3. Friendly title, created date, bytes, and preview URL.
   const displayName = getFriendlyFileTitle(item) || DEFAULT_FILE_NAME;
   const createdAt = createdAtDateFromItem(item);
-  const fileSizeBytes = item?.size;
+  const fileSizeBytes = sizeBytesFromItem(item);
   const thumbnailUrl = thumbnailUrlFromItem(item, fileType);
 
   // 4. Trainer-shared rows never get share/delete — client cannot remove coach files.

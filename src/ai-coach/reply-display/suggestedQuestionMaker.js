@@ -2,7 +2,6 @@
 // Flow: pull a "## Suggested follow-ups" section if the model wrote one →
 // otherwise build up to three questions from this thread → drop generic profile prompts.
 // Used by the coach conversation after each reply.
-// Read order: constants → main recipes → PLUMBING at the bottom.
 
 // ===== NAMED CONSTANTS =====
 
@@ -58,105 +57,7 @@ const CLOSING_FOLLOW_UP_PROMPTS = [
   'Can you simplify that in plain language?',
 ];
 
-// ===== MAIN FUNCTIONS =====
-
-/**
- * Pull the model's "## Suggested follow-ups" block out of the reply.
- * Flow: 1. match section  2. parse question lines  3. strip section from display text
- * @param {string} text
- * @returns {{ displayText: string, prompts: string[] }}
- */
-export function extractFollowUpSection(text) {
-  const rawText = text == null ? '' : String(text);
-
-  // 1. No dedicated follow-up heading → show the whole reply, no model chips.
-  const sectionMatch = rawText.match(FOLLOW_UP_SECTION_PATTERN);
-  if (!sectionMatch) {
-    return { displayText: rawText.trim(), prompts: [] };
-  }
-
-  // 2. Lines under that heading that look like real questions become chips.
-  const followUpBlock = sectionMatch[1];
-  const prompts = promptsFromFollowUpBlock(followUpBlock);
-
-  // 3. Remove the whole ## Suggested follow-ups block from what the bubble shows.
-  const displayText = rawText.replace(FOLLOW_UP_SECTION_PATTERN, '').trim();
-  return { displayText, prompts };
-}
-
-/**
- * Build follow-up chips from this thread when the model didn't write its own.
- * userProfile is accepted so callers can pass their options object through; these
- * prompts stay anchored to the message, not the profile.
- * Flow: 1. clean ask + scan reply  2. stack candidate groups  3. drop generics  4. keep first 3 unique
- * @param {{ userMessage?: string, assistantReply?: string, searchedWeb?: boolean, userProfile?: object|null }} [input]
- * @returns {string[]}
- */
-export function buildContextualFollowUps({
-  userMessage = '',
-  assistantReply = '',
-  searchedWeb = false,
-  userProfile = null,
-} = {}) {
-  // Callers may pass userProfile; chips stay message-anchored, so it is unused on purpose.
-  ignoreUnusedProfile(userProfile);
-
-  // 1. Clean the ask and scan the reply for titles / bullets / topic words.
-  const userAsk = cleanUserAsk(userMessage);
-  const replyText = assistantReply == null ? '' : String(assistantReply);
-  const topicText = topicTextFromParts(userMessage, assistantReply);
-  const sectionTitles = extractReplySections(replyText);
-  const replyBullets = extractReplyBullets(replyText);
-
-  // 2. Order is the priority. Earlier groups win when we cap at three.
-  const promptCandidates = collectPromptCandidates({
-    searchedWeb,
-    userAsk,
-    sectionTitles,
-    replyBullets,
-    topicText,
-  });
-
-  // 3. Drop vague “based on my logs / goal” chips.
-  const withoutGenericProfile = dropGenericProfilePrompts(promptCandidates);
-
-  // 4. Cap and de-dupe for the chip row.
-  return keepFirstUniquePrompts(withoutGenericProfile, MAXIMUM_FOLLOW_UP_PROMPTS);
-}
-
-/**
- * Text to show, plus up to three follow-up chips.
- * Model chips win when at least two of them are specific. Otherwise the thread heuristics replace them.
- * Flow: 1. strip model section  2. keep model chips if enough  3. else heuristics  4. cap unique
- * @param {string} rawText
- * @param {object} [options] Passed through to buildContextualFollowUps. assistantReply is overwritten with the stripped text.
- * @returns {{ displayText: string, followUpPrompts: string[] }}
- */
-export function prepareCoachReplyForDisplay(rawText, options = {}) {
-  // 1. Strip any model-authored follow-up section from the visible reply.
-  const extracted = extractFollowUpSection(rawText);
-  const strippedDisplayText = extracted.displayText;
-  const promptsFromModel = extracted.prompts;
-  const displayText = strippedDisplayText || textOrEmpty(rawText).trim();
-
-  // 2. Start from model chips when they're specific enough (not generic profile prompts).
-  let followUpPrompts = dropGenericProfilePrompts(promptsFromModel);
-
-  // 3. Fall back to thread heuristics when the model gave fewer than two good chips.
-  if (followUpPrompts.length < MINIMUM_MODEL_FOLLOW_UPS) {
-    const heuristicOptions = optionsWithStrippedReply(options, displayText);
-    followUpPrompts = buildContextualFollowUps(heuristicOptions);
-  }
-
-  // 4. Cap and de-dupe for the chip row.
-  return {
-    displayText,
-    followUpPrompts: keepFirstUniquePrompts(followUpPrompts, MAXIMUM_FOLLOW_UP_PROMPTS),
-  };
-}
-
 // ===== HELPER FUNCTIONS =====
-// PLUMBING — skip unless follow-up chips look wrong under a coach reply.
 
 function ignoreUnusedProfile(userProfile) {
   void userProfile;
@@ -476,4 +377,101 @@ function followUpsFromThreadTopics(topicText, searchedWeb) {
   appendWorkoutInjuryProgressSleepPrompts(topicPrompts, topicText);
 
   return topicPrompts;
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Pull the model's "## Suggested follow-ups" block out of the reply.
+ * Flow: 1. match section  2. parse question lines  3. strip section from display text
+ * @param {string} text
+ * @returns {{ displayText: string, prompts: string[] }}
+ */
+export function extractFollowUpSection(text) {
+  const rawText = text == null ? '' : String(text);
+
+  // 1. No dedicated follow-up heading → show the whole reply, no model chips.
+  const sectionMatch = rawText.match(FOLLOW_UP_SECTION_PATTERN);
+  if (!sectionMatch) {
+    return { displayText: rawText.trim(), prompts: [] };
+  }
+
+  // 2. Lines under that heading that look like real questions become chips.
+  const followUpBlock = sectionMatch[1];
+  const prompts = promptsFromFollowUpBlock(followUpBlock);
+
+  // 3. Remove the whole ## Suggested follow-ups block from what the bubble shows.
+  const displayText = rawText.replace(FOLLOW_UP_SECTION_PATTERN, '').trim();
+  return { displayText, prompts };
+}
+
+/**
+ * Build follow-up chips from this thread when the model didn't write its own.
+ * userProfile is accepted so callers can pass their options object through; these
+ * prompts stay anchored to the message, not the profile.
+ * Flow: 1. clean ask + scan reply  2. stack candidate groups  3. drop generics  4. keep first 3 unique
+ * @param {{ userMessage?: string, assistantReply?: string, searchedWeb?: boolean, userProfile?: object|null }} [input]
+ * @returns {string[]}
+ */
+export function buildContextualFollowUps({
+  userMessage = '',
+  assistantReply = '',
+  searchedWeb = false,
+  userProfile = null,
+} = {}) {
+  // Callers may pass userProfile; chips stay message-anchored, so it is unused on purpose.
+  ignoreUnusedProfile(userProfile);
+
+  // 1. Clean the ask and scan the reply for titles / bullets / topic words.
+  const userAsk = cleanUserAsk(userMessage);
+  const replyText = assistantReply == null ? '' : String(assistantReply);
+  const topicText = topicTextFromParts(userMessage, assistantReply);
+  const sectionTitles = extractReplySections(replyText);
+  const replyBullets = extractReplyBullets(replyText);
+
+  // 2. Order is the priority. Earlier groups win when we cap at three.
+  const promptCandidates = collectPromptCandidates({
+    searchedWeb,
+    userAsk,
+    sectionTitles,
+    replyBullets,
+    topicText,
+  });
+
+  // 3. Drop vague “based on my logs / goal” chips.
+  const withoutGenericProfile = dropGenericProfilePrompts(promptCandidates);
+
+  // 4. Cap and de-dupe for the chip row.
+  return keepFirstUniquePrompts(withoutGenericProfile, MAXIMUM_FOLLOW_UP_PROMPTS);
+}
+
+/**
+ * Text to show, plus up to three follow-up chips.
+ * Model chips win when at least two of them are specific. Otherwise the thread heuristics replace them.
+ * Flow: 1. strip model section  2. keep model chips if enough  3. else heuristics  4. cap unique
+ * @param {string} rawText
+ * @param {object} [options] Passed through to buildContextualFollowUps. assistantReply is overwritten with the stripped text.
+ * @returns {{ displayText: string, followUpPrompts: string[] }}
+ */
+export function prepareCoachReplyForDisplay(rawText, options = {}) {
+  // 1. Strip any model-authored follow-up section from the visible reply.
+  const extracted = extractFollowUpSection(rawText);
+  const strippedDisplayText = extracted.displayText;
+  const promptsFromModel = extracted.prompts;
+  const displayText = strippedDisplayText || textOrEmpty(rawText).trim();
+
+  // 2. Start from model chips when they're specific enough (not generic profile prompts).
+  let followUpPrompts = dropGenericProfilePrompts(promptsFromModel);
+
+  // 3. Fall back to thread heuristics when the model gave fewer than two good chips.
+  if (followUpPrompts.length < MINIMUM_MODEL_FOLLOW_UPS) {
+    const heuristicOptions = optionsWithStrippedReply(options, displayText);
+    followUpPrompts = buildContextualFollowUps(heuristicOptions);
+  }
+
+  // 4. Cap and de-dupe for the chip row.
+  return {
+    displayText,
+    followUpPrompts: keepFirstUniquePrompts(followUpPrompts, MAXIMUM_FOLLOW_UP_PROMPTS),
+  };
 }

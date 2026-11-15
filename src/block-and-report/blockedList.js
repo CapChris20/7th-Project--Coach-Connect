@@ -7,37 +7,13 @@ import { subscribeMyBlocks } from './blockUser';
 
 // ===== NAMED CONSTANTS =====
 
+// (no named constants needed)
+
+// ===== HELPER FUNCTIONS =====
+
 function makeEmptyBlockedIdSet() {
   return new Set();
 }
-
-// ===== MAIN FUNCTION =====
-
-/**
- * Hooks stay in this function, in this order: blockedIds state, loading state, then the subscription effect.
- * The returned key is `loading` because callers already read that name.
- * @param {string|null|undefined} uid
- * @returns {{ blockedIds: Set<string>, loading: boolean }}
- */
-export function blockedList(uid) {
-  const [blockedIds, setBlockedIds] = useState(makeEmptyBlockedIdSet);
-  const [isLoadingBlocks, setIsLoadingBlocks] = useState(Boolean(uid));
-
-  useEffect(() => {
-    // 1. Start (or clear) the live block list for this uid.
-    const stopListening = startBlockedListSubscription(
-      uid,
-      setBlockedIds,
-      setIsLoadingBlocks,
-    );
-    // 2. Cleanup when uid changes or the screen leaves.
-    return stopListening;
-  }, [uid]);
-
-  return { blockedIds, loading: isLoadingBlocks };
-}
-
-// ===== PLUMBING — skip unless debugging uid normalization / subscription wiring =====
 
 function normalizedSignedInUid(uid) {
   return String(uid || '').trim();
@@ -71,4 +47,30 @@ function startBlockedListSubscription(uid, setBlockedIds, setIsLoadingBlocks) {
   });
 
   return stopListening;
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Hooks stay in this function, in this order: blockedIds state, loading state, then the subscription effect.
+ * The returned key is `loading` because callers already read that name.
+ * @param {string|null|undefined} uid
+ * @returns {{ blockedIds: Set<string>, loading: boolean }}
+ */
+export function blockedList(uid) {
+  const [blockedIds, setBlockedIds] = useState(makeEmptyBlockedIdSet);
+  const [isLoadingBlocks, setIsLoadingBlocks] = useState(Boolean(uid));
+
+  useEffect(() => {
+    // 1. Start (or clear) the live block list for this uid.
+    const stopListening = startBlockedListSubscription(
+      uid,
+      setBlockedIds,
+      setIsLoadingBlocks,
+    );
+    // 2. Cleanup when uid changes or the screen leaves.
+    return stopListening;
+  }, [uid]);
+
+  return { blockedIds, loading: isLoadingBlocks };
 }

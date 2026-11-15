@@ -9,11 +9,22 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 import { doc, onSnapshot } from 'firebase/firestore';
-import { useIAP, ErrorCode, getAvailablePurchases as getAvailablePurchasesDirect, restorePurchases as restorePurchasesIap } from 'expo-iap';
+import {
+  useIAP,
+  ErrorCode,
+  getAvailablePurchases as getAvailablePurchasesDirect,
+  restorePurchases as restorePurchasesIap,
+} from 'expo-iap';
 import { db } from '../app-start/cloudConnection';
-import { TRAINER_PRO_MONTHLY_PRODUCT_ID, TRAINER_SUBSCRIPTION_PRODUCT_IDS } from './proPlanSwitches';
+import {
+  TRAINER_PRO_MONTHLY_PRODUCT_ID,
+  TRAINER_SUBSCRIPTION_PRODUCT_IDS,
+} from './proPlanSwitches';
 import { resolveSubscriptionAccess } from './proAccessRules';
-import { restoreAppleSubscriptionOnServer, verifyAppleSubscriptionOnServer } from './verifyProPurchase';
+import {
+  restoreAppleSubscriptionOnServer,
+  verifyAppleSubscriptionOnServer,
+} from './verifyProPurchase';
 import { SubscriptionContext } from './proPlanStatus';
 import NbNoticeSheet from '../look-and-feel/NbNoticeSheet';
 
@@ -34,22 +45,65 @@ const DEFAULT_NOTICE_CONFIRM_LABEL = 'OK';
 // ===== HELPER FUNCTIONS =====
 
 /**
+ * Safe string from an error.message (or empty when missing).
+ * @param {object|null|undefined} error
+ * @returns {string}
+ */
+function messageFromError(error) {
+  if (error == null) return '';
+  if (error.message) return String(error.message);
+  return '';
+}
+
+/**
+ * Safe error.code (or empty when missing).
+ * @param {object|null|undefined} error
+ * @returns {string|*}
+ */
+function codeFromError(error) {
+  if (error == null) return '';
+  return error.code;
+}
+
+/**
  * Context provider + notice sheet shell around IAP children.
  * @param {{ notice: object|null, onCloseNotice: Function, value: object, children: React.ReactNode }} props
  */
-function IapProPlanProviderShell({
-  notice,
-  onCloseNotice,
-  value,
-  children
-}) {
+function IapProPlanProviderShell({ notice, onCloseNotice, value, children }) {
   const noticeIsVisible = !!notice;
-  const noticeTitle = (notice == null ? void 0 : notice.title) || '';
-  const noticeConfirmLabel = (notice == null ? void 0 : notice.confirmLabel) || DEFAULT_NOTICE_CONFIRM_LABEL;
-  return <SubscriptionContext.Provider value={value}>
+
+  let noticeTitle = '';
+  let noticeConfirmLabel = DEFAULT_NOTICE_CONFIRM_LABEL;
+  let noticeMessage = undefined;
+  let noticeCancelLabel = undefined;
+  let noticeOnConfirm = undefined;
+
+  if (notice != null) {
+    if (notice.title) {
+      noticeTitle = notice.title;
+    }
+    if (notice.confirmLabel) {
+      noticeConfirmLabel = notice.confirmLabel;
+    }
+    noticeMessage = notice.message;
+    noticeCancelLabel = notice.cancelLabel;
+    noticeOnConfirm = notice.onConfirm;
+  }
+
+  return (
+    <SubscriptionContext.Provider value={value}>
       {children}
-      <NbNoticeSheet visible={noticeIsVisible} onClose={onCloseNotice} title={noticeTitle} message={notice == null ? void 0 : notice.message} confirmLabel={noticeConfirmLabel} cancelLabel={notice == null ? void 0 : notice.cancelLabel} onConfirm={notice == null ? void 0 : notice.onConfirm} />
-    </SubscriptionContext.Provider>;
+      <NbNoticeSheet
+        visible={noticeIsVisible}
+        onClose={onCloseNotice}
+        title={noticeTitle}
+        message={noticeMessage}
+        confirmLabel={noticeConfirmLabel}
+        cancelLabel={noticeCancelLabel}
+        onConfirm={noticeOnConfirm}
+      />
+    </SubscriptionContext.Provider>
+  );
 }
 
 // ===== MAIN FUNCTION =====
@@ -59,10 +113,7 @@ function IapProPlanProviderShell({
  * Hook order is frozen — do not reorder state / effects / memos.
  * @param {{ userId: string|null|undefined, children: React.ReactNode }} props
  */
-export function IapProPlanSetup({
-  userId,
-  children
-}) {
+export function IapProPlanSetup({ userId, children }) {
   // Hook order frozen: six state slots → showNotice → dedupe ref → useIAP → Firestore → products → access → purchase/restore → context value.
   const [firestoreSubscription, setFirestoreSubscription] = useState(null);
   const [firestoreLoading, setFirestoreLoading] = useState(true);
@@ -70,38 +121,36 @@ export function IapProPlanSetup({
   const [lastError, setLastError] = useState(null);
   const [productsAttempted, setProductsAttempted] = useState(false);
   const [notice, setNotice] = useState(null);
+
   const showNotice = useCallback((title, message, extras = {}) => {
-    setNotice({
-      title,
-      message,
-      ...extras
-    });
+    setNotice({ title, message, ...extras });
   }, []);
 
   // Dedup set so a StoreKit double-callback does not verify the same receipt twice.
   const purchaseIdsAlreadyVerifying = useRef(new Set());
+
   const {
     connected: storeKitIsConnected,
     subscriptions: storeKitSubscriptions,
     fetchProducts,
     requestPurchase,
-    finishTransaction
+    finishTransaction,
   } = useIAP({
-    onPurchaseSuccess: async purchase => {
+    onPurchaseSuccess: async (purchase) => {
       await handlePurchaseSuccess({
         purchase,
         finishTransaction,
         purchaseIdsAlreadyVerifying,
         setActionLoading,
-        setLastError
+        setLastError,
       });
     },
-    onPurchaseError: error => {
+    onPurchaseError: (error) => {
       applyPurchaseErrorToState(error, setLastError);
     },
-    onError: error => {
+    onError: (error) => {
       warnIapDevError(error);
-    }
+    },
   });
 
   // 1. Mirror users/{uid}.subscription from Firestore for access gating elsewhere.
@@ -112,21 +161,28 @@ export function IapProPlanSetup({
       setFirestoreLoading(false);
       return undefined;
     }
+
     setFirestoreLoading(true);
     const userDocRef = doc(db, FIRESTORE_USERS_COLLECTION, userId);
-    const unsubscribe = onSnapshot(userDocRef, snapshot => {
-      applyFirestoreUserSnapshot(snapshot, setFirestoreSubscription, setFirestoreLoading);
-    }, () => {
-      setFirestoreLoading(false);
-    });
+    const unsubscribe = onSnapshot(
+      userDocRef,
+      (snapshot) => {
+        applyFirestoreUserSnapshot(snapshot, setFirestoreSubscription, setFirestoreLoading);
+      },
+      () => {
+        setFirestoreLoading(false);
+      },
+    );
+
     return unsubscribe;
   }, [userId]);
+
   const loadStoreProducts = useCallback(async () => {
     await fetchSubscriptionProductsFromStore({
       storeKitIsConnected,
       fetchProducts,
       setProductsAttempted,
-      setLastError
+      setLastError,
     });
   }, [storeKitIsConnected, fetchProducts]);
 
@@ -138,81 +194,145 @@ export function IapProPlanSetup({
     }
     loadStoreProducts();
   }, [storeKitIsConnected, loadStoreProducts]);
-  const accessState = useMemo(() => resolveSubscriptionAccess(firestoreSubscription), [firestoreSubscription]);
-  const storeProducts = useMemo(() => mapKnownSubscriptionProducts(storeKitSubscriptions), [storeKitSubscriptions]);
-  const storeProduct = useMemo(() => storeProducts[TRAINER_PRO_MONTHLY_PRODUCT_ID] || null, [storeProducts]);
+
+  const accessState = useMemo(
+    () => resolveSubscriptionAccess(firestoreSubscription),
+    [firestoreSubscription],
+  );
+
+  const storeProducts = useMemo(
+    () => mapKnownSubscriptionProducts(storeKitSubscriptions),
+    [storeKitSubscriptions],
+  );
+
+  const storeProduct = useMemo(
+    () => storeProducts[TRAINER_PRO_MONTHLY_PRODUCT_ID] || null,
+    [storeProducts],
+  );
 
   // 3. Primary CTA — request purchase for monthly (or explicit product id) after products load.
-  const startFreeTrial = useCallback(async productId => {
-    await requestProSubscriptionPurchase({
-      productId,
+  const startFreeTrial = useCallback(
+    async (productId) => {
+      await requestProSubscriptionPurchase({
+        productId,
+        storeKitIsConnected,
+        storeProducts,
+        storeKitSubscriptions,
+        loadStoreProducts,
+        requestPurchase,
+        setActionLoading,
+        setLastError,
+        showNotice,
+      });
+    },
+    [
       storeKitIsConnected,
-      storeProducts,
-      storeKitSubscriptions,
-      loadStoreProducts,
       requestPurchase,
-      setActionLoading,
-      setLastError,
-      showNotice
-    });
-  }, [storeKitIsConnected, requestPurchase, storeProducts, loadStoreProducts, storeKitSubscriptions, showNotice]);
+      storeProducts,
+      loadStoreProducts,
+      storeKitSubscriptions,
+      showNotice,
+    ],
+  );
 
   // 4. Restore — query local entitlements, verify on server, show notice sheet.
   const restorePurchases = useCallback(async () => {
     return restoreProSubscriptionPurchases({
       setActionLoading,
       setLastError,
-      showNotice
+      showNotice,
     });
   }, [showNotice]);
+
   const clearError = useCallback(() => setLastError(null), []);
-  const value = useMemo(() => ({
-    firestoreSubscription,
-    firestoreLoading,
-    actionLoading,
-    lastError,
-    clearError,
-    accessState,
-    storeProduct,
-    storeProducts,
-    connected: storeKitIsConnected,
-    productsAttempted,
-    startFreeTrial,
-    restorePurchases,
-    retryLastAction: startFreeTrial,
-    refreshProducts: loadStoreProducts
-  }), [firestoreSubscription, firestoreLoading, actionLoading, lastError, clearError, accessState, storeProduct, storeProducts, storeKitIsConnected, productsAttempted, startFreeTrial, restorePurchases, loadStoreProducts]);
-  return <IapProPlanProviderShell notice={notice} onCloseNotice={() => setNotice(null)} value={value}>
+
+  const value = useMemo(
+    () => ({
+      firestoreSubscription,
+      firestoreLoading,
+      actionLoading,
+      lastError,
+      clearError,
+      accessState,
+      storeProduct,
+      storeProducts,
+      connected: storeKitIsConnected,
+      productsAttempted,
+      startFreeTrial,
+      restorePurchases,
+      retryLastAction: startFreeTrial,
+      refreshProducts: loadStoreProducts,
+    }),
+    [
+      firestoreSubscription,
+      firestoreLoading,
+      actionLoading,
+      lastError,
+      clearError,
+      accessState,
+      storeProduct,
+      storeProducts,
+      storeKitIsConnected,
+      productsAttempted,
+      startFreeTrial,
+      restorePurchases,
+      loadStoreProducts,
+    ],
+  );
+
+  return (
+    <IapProPlanProviderShell
+      notice={notice}
+      onCloseNotice={() => setNotice(null)}
+      value={value}
+    >
       {children}
-    </IapProPlanProviderShell>;
+    </IapProPlanProviderShell>
+  );
 }
 
 // PLUMBING — skip unless debugging
 
 function productSkuFromStoreItem(product) {
-  return String((product == null ? void 0 : product.id) || (product == null ? void 0 : product.productId) || '').trim();
+  if (product == null) return '';
+  if (product.id) return String(product.id).trim();
+  if (product.productId) return String(product.productId).trim();
+  return '';
 }
+
 function productSkuFromPurchase(purchase) {
-  return String((purchase == null ? void 0 : purchase.productId) || (purchase == null ? void 0 : purchase.id) || '').trim();
+  if (purchase == null) return '';
+  if (purchase.productId) return String(purchase.productId).trim();
+  if (purchase.id) return String(purchase.id).trim();
+  return '';
 }
+
 function purchaseDedupeKey(purchase) {
-  return (purchase == null ? void 0 : purchase.transactionId) || (purchase == null ? void 0 : purchase.purchaseToken) || productSkuFromPurchase(purchase);
+  if (purchase == null) {
+    return productSkuFromPurchase(purchase);
+  }
+  if (purchase.transactionId) return purchase.transactionId;
+  if (purchase.purchaseToken) return purchase.purchaseToken;
+  return productSkuFromPurchase(purchase);
 }
+
 async function handlePurchaseSuccess({
   purchase,
   finishTransaction,
   purchaseIdsAlreadyVerifying,
   setActionLoading,
-  setLastError
+  setLastError,
 }) {
   const dedupeKey = purchaseDedupeKey(purchase);
-  const alreadyProcessing = dedupeKey && purchaseIdsAlreadyVerifying.current.has(dedupeKey);
+  const alreadyProcessing =
+    dedupeKey && purchaseIdsAlreadyVerifying.current.has(dedupeKey);
   if (alreadyProcessing) {
     return;
   }
   if (dedupeKey) {
     purchaseIdsAlreadyVerifying.current.add(dedupeKey);
   }
+
   try {
     setActionLoading(true);
     setLastError(null);
@@ -226,38 +346,55 @@ async function handlePurchaseSuccess({
     }
   }
 }
+
 async function verifyPurchaseThenFinishTransaction(purchase, finishTransaction) {
   await verifyAppleSubscriptionOnServer(purchase);
   try {
-    await finishTransaction({
-      purchase,
-      isConsumable: false
-    });
+    await finishTransaction({ purchase, isConsumable: false });
   } catch (finishError) {
     warnFinishTransactionDevError(finishError);
   }
 }
+
 function applyPurchaseErrorToState(error, setLastError) {
   if (purchaseWasUserCancelled(error)) {
     return;
   }
   const errorIsNetworkFailure = purchaseErrorIsNetwork(error);
-  const errorType = errorIsNetworkFailure ? 'network' : 'generic';
+  let errorType = 'generic';
+  if (errorIsNetworkFailure) {
+    errorType = 'network';
+  }
+  let failMessage = 'Purchase failed';
+  const errorMessage = messageFromError(error);
+  if (errorMessage) {
+    failMessage = errorMessage;
+  }
   setLastError({
     type: errorType,
-    message: (error == null ? void 0 : error.message) || 'Purchase failed'
+    message: failMessage,
   });
 }
+
 function applyFirestoreUserSnapshot(snapshot, setFirestoreSubscription, setFirestoreLoading) {
-  const userData = snapshot.exists() ? snapshot.data() : null;
-  setFirestoreSubscription((userData == null ? void 0 : userData.subscription) || null);
+  let userData = null;
+  if (snapshot.exists()) {
+    userData = snapshot.data();
+  }
+
+  let subscription = null;
+  if (userData != null && userData.subscription) {
+    subscription = userData.subscription;
+  }
+  setFirestoreSubscription(subscription);
   setFirestoreLoading(false);
 }
+
 async function fetchSubscriptionProductsFromStore({
   storeKitIsConnected,
   fetchProducts,
   setProductsAttempted,
-  setLastError
+  setLastError,
 }) {
   if (Platform.OS !== IOS_PLATFORM) {
     return;
@@ -265,25 +402,28 @@ async function fetchSubscriptionProductsFromStore({
   if (!storeKitIsConnected) {
     setLastError({
       type: 'network',
-      message: 'App Store not connected yet. Wait a moment, then try again.'
+      message: 'App Store not connected yet. Wait a moment, then try again.',
     });
     return;
   }
+
   setProductsAttempted(true);
   try {
     await fetchProducts({
       skus: TRAINER_SUBSCRIPTION_PRODUCT_IDS,
-      type: SUBSCRIPTION_PRODUCT_TYPE
+      type: SUBSCRIPTION_PRODUCT_TYPE,
     });
     setLastError(null);
   } catch (error) {
     warnFetchProductsDevError(error);
     setLastError({
       type: 'generic',
-      message: `Could not load subscriptions from the App Store. Confirm ${TRAINER_PRO_MONTHLY_PRODUCT_ID} is Ready to Submit in App Store Connect, and this device is signed into a Sandbox Apple ID.`
+      message:
+        `Could not load subscriptions from the App Store. Confirm ${TRAINER_PRO_MONTHLY_PRODUCT_ID} is Ready to Submit in App Store Connect, and this device is signed into a Sandbox Apple ID.`,
     });
   }
 }
+
 async function requestProSubscriptionPurchase({
   productId,
   storeKitIsConnected,
@@ -293,9 +433,10 @@ async function requestProSubscriptionPurchase({
   requestPurchase,
   setActionLoading,
   setLastError,
-  showNotice
+  showNotice,
 }) {
   const storeKitSku = skuForPurchaseRequest(productId);
+
   if (Platform.OS !== IOS_PLATFORM) {
     showNotice(NOTICE_UNAVAILABLE_TITLE, 'Subscriptions are available on iOS.');
     return;
@@ -303,10 +444,11 @@ async function requestProSubscriptionPurchase({
   if (!storeKitIsConnected) {
     setLastError({
       type: 'network',
-      message: 'Store not connected. Check your connection and try again.'
+      message: 'Store not connected. Check your connection and try again.',
     });
     return;
   }
+
   if (!storeProducts[storeKitSku]) {
     try {
       await loadStoreProducts();
@@ -314,24 +456,26 @@ async function requestProSubscriptionPurchase({
       /* lastError already set inside loadStoreProducts */
     }
   }
-  const skuStillMissing = isSkuMissingFromStore(storeProducts, storeKitSubscriptions, storeKitSku);
+
+  const skuStillMissing = isSkuMissingFromStore(
+    storeProducts,
+    storeKitSubscriptions,
+    storeKitSku,
+  );
   if (skuStillMissing) {
     setLastError(errorForMissingSku(storeKitSku));
     return;
   }
+
   setActionLoading(true);
   setLastError(null);
   try {
     await requestPurchase({
       request: {
-        apple: {
-          sku: storeKitSku
-        },
-        ios: {
-          sku: storeKitSku
-        }
+        apple: { sku: storeKitSku },
+        ios: { sku: storeKitSku },
       },
-      type: SUBSCRIPTION_PRODUCT_TYPE
+      type: SUBSCRIPTION_PRODUCT_TYPE,
     });
   } catch (error) {
     applyRequestPurchaseCatch(error, storeKitSku, setLastError);
@@ -339,6 +483,7 @@ async function requestProSubscriptionPurchase({
     setActionLoading(false);
   }
 }
+
 function applyRequestPurchaseCatch(error, storeKitSku, setLastError) {
   if (purchaseWasUserCancelled(error)) {
     return;
@@ -347,32 +492,42 @@ function applyRequestPurchaseCatch(error, storeKitSku, setLastError) {
     setLastError(errorForSkuMissingInConnect(storeKitSku));
     return;
   }
-  const errorIsNetworkFailure = (error == null ? void 0 : error.code) === ErrorCode.NetworkError;
-  const errorType = errorIsNetworkFailure ? 'network' : 'generic';
+  const errorCode = codeFromError(error);
+  const errorIsNetworkFailure = errorCode === ErrorCode.NetworkError;
+  let errorType = 'generic';
+  if (errorIsNetworkFailure) {
+    errorType = 'network';
+  }
+  let failMessage = 'Could not start purchase';
+  const errorMessage = messageFromError(error);
+  if (errorMessage) {
+    failMessage = errorMessage;
+  }
   setLastError({
     type: errorType,
-    message: (error == null ? void 0 : error.message) || 'Could not start purchase'
+    message: failMessage,
   });
 }
-async function restoreProSubscriptionPurchases({
-  setActionLoading,
-  setLastError,
-  showNotice
-}) {
+
+async function restoreProSubscriptionPurchases({ setActionLoading, setLastError, showNotice }) {
   if (Platform.OS !== IOS_PLATFORM) {
     showNotice(NOTICE_UNAVAILABLE_TITLE, 'Restore is available on iOS.');
     return false;
   }
+
   setActionLoading(true);
   setLastError(null);
   try {
     await tryRestorePurchasesIapQuietly();
     const availablePurchases = await getAvailablePurchasesDirect({
-      onlyIncludeActiveItemsIOS: true
+      onlyIncludeActiveItemsIOS: true,
     });
     const matchingProPurchases = filterProSubscriptionPurchases(availablePurchases);
     if (!matchingProPurchases.length) {
-      showNotice(NOTICE_NO_SUBSCRIPTION_TITLE, 'We could not find an active Coach Connect Pro subscription for this Apple ID.');
+      showNotice(
+        NOTICE_NO_SUBSCRIPTION_TITLE,
+        'We could not find an active Coach Connect Pro subscription for this Apple ID.',
+      );
       return false;
     }
     await restoreAppleSubscriptionOnServer(matchingProPurchases);
@@ -384,82 +539,122 @@ async function restoreProSubscriptionPurchases({
     setActionLoading(false);
   }
 }
+
 function applyRestoreCatch(error, setLastError, showNotice) {
-  if ((error == null ? void 0 : error.code) === ERROR_NOT_FOUND) {
-    showNotice(NOTICE_NO_SUBSCRIPTION_TITLE, error.message || 'No active subscription to restore.');
+  const errorCode = codeFromError(error);
+  if (errorCode === ERROR_NOT_FOUND) {
+    let notFoundMessage = 'No active subscription to restore.';
+    const errorMessage = messageFromError(error);
+    if (errorMessage) {
+      notFoundMessage = errorMessage;
+    }
+    showNotice(NOTICE_NO_SUBSCRIPTION_TITLE, notFoundMessage);
     return false;
   }
   setLastError(errorStateForFailedRestore(error));
   return false;
 }
+
 function errorStateForFailedPurchase(error) {
-  const errorCode = (error == null ? void 0 : error.code) || 'purchase_failed';
+  let errorCode = 'purchase_failed';
+  const rawCode = codeFromError(error);
+  if (rawCode) {
+    errorCode = rawCode;
+  }
+
   if (errorCode === ERROR_VERIFICATION_FAILED) {
     return {
       type: 'verification',
-      message: 'Purchase verification failed. Contact support if this continues.'
+      message: 'Purchase verification failed. Contact support if this continues.',
     };
   }
   if (errorCode === ERROR_NETWORK) {
-    return {
-      type: 'network',
-      message: error.message || 'Network error'
-    };
+    let networkMessage = 'Network error';
+    const errorMessage = messageFromError(error);
+    if (errorMessage) {
+      networkMessage = errorMessage;
+    }
+    return { type: 'network', message: networkMessage };
   }
-  return {
-    type: 'generic',
-    message: (error == null ? void 0 : error.message) || 'Purchase failed'
-  };
+
+  let failMessage = 'Purchase failed';
+  const errorMessage = messageFromError(error);
+  if (errorMessage) {
+    failMessage = errorMessage;
+  }
+  return { type: 'generic', message: failMessage };
 }
+
 function errorStateForFailedRestore(error) {
-  const errorCode = (error == null ? void 0 : error.code) || 'restore_failed';
+  let errorCode = 'restore_failed';
+  const rawCode = codeFromError(error);
+  if (rawCode) {
+    errorCode = rawCode;
+  }
+
   if (errorCode === ERROR_VERIFICATION_FAILED) {
     return {
       type: 'verification',
-      message: 'Could not verify restored purchases. Contact support.'
+      message: 'Could not verify restored purchases. Contact support.',
     };
   }
   if (errorCode === ERROR_NETWORK) {
-    return {
-      type: 'network',
-      message: error.message || 'Network error'
-    };
+    let networkMessage = 'Network error';
+    const errorMessage = messageFromError(error);
+    if (errorMessage) {
+      networkMessage = errorMessage;
+    }
+    return { type: 'network', message: networkMessage };
   }
-  return {
-    type: 'generic',
-    message: (error == null ? void 0 : error.message) || 'Restore failed'
-  };
+
+  let failMessage = 'Restore failed';
+  const errorMessage = messageFromError(error);
+  if (errorMessage) {
+    failMessage = errorMessage;
+  }
+  return { type: 'generic', message: failMessage };
 }
+
 function purchaseWasUserCancelled(error) {
-  const errorCode = error == null ? void 0 : error.code;
+  const errorCode = codeFromError(error);
   const cancelledByExpo = errorCode === ErrorCode.UserCancelled;
   const cancelledByLegacyCode = String(errorCode || '') === ERROR_USER_CANCELLED_LEGACY;
   return cancelledByExpo || cancelledByLegacyCode;
 }
+
 function purchaseErrorIsNetwork(error) {
-  const isExpoNetwork = (error == null ? void 0 : error.code) === ErrorCode.NetworkError;
-  const codeLooksLikeNetwork = String((error == null ? void 0 : error.code) || '').includes('NETWORK');
+  const errorCode = codeFromError(error);
+  const isExpoNetwork = errorCode === ErrorCode.NetworkError;
+  const codeLooksLikeNetwork = String(errorCode || '').includes('NETWORK');
   return isExpoNetwork || codeLooksLikeNetwork;
 }
+
 function errorMessageSaysSkuNotFound(error) {
-  const messageText = String((error == null ? void 0 : error.message) || '');
+  const messageText = messageFromError(error);
   return /sku not found/i.test(messageText) || /product.*(not found|invalid)/i.test(messageText);
 }
+
 function errorForMissingSku(storeKitSku) {
   return {
     type: 'generic',
-    message: `SKU not found: "${storeKitSku}". In App Store Connect → your app → Subscriptions, create/open the subscription whose Product ID is exactly "${storeKitSku}" (and "${TRAINER_SUBSCRIPTION_PRODUCT_IDS.join('" / "')}"). Status must not be Missing Metadata. Paid Apps Agreement must be Active.`
+    message:
+      `SKU not found: "${storeKitSku}". In App Store Connect → your app → Subscriptions, create/open the subscription whose Product ID is exactly "${storeKitSku}" (and "${TRAINER_SUBSCRIPTION_PRODUCT_IDS.join('" / "')}"). Status must not be Missing Metadata. Paid Apps Agreement must be Active.`,
   };
 }
+
 function errorForSkuMissingInConnect(storeKitSku) {
   return {
     type: 'generic',
-    message: `SKU not found: "${storeKitSku}". Open App Store Connect → Monetization → Subscriptions and confirm a Product ID of exactly "${storeKitSku}" exists.`
+    message:
+      `SKU not found: "${storeKitSku}". Open App Store Connect → Monetization → Subscriptions and confirm a Product ID of exactly "${storeKitSku}" exists.`,
   };
 }
+
 function mapKnownSubscriptionProducts(storeKitSubscriptions) {
   const productsBySku = {};
-  for (const subscription of storeKitSubscriptions || []) {
+  const subscriptionList = storeKitSubscriptions || [];
+  for (let index = 0; index < subscriptionList.length; index += 1) {
+    const subscription = subscriptionList[index];
     const storeKitSku = productSkuFromStoreItem(subscription);
     if (TRAINER_SUBSCRIPTION_PRODUCT_IDS.includes(storeKitSku)) {
       productsBySku[storeKitSku] = subscription;
@@ -467,23 +662,45 @@ function mapKnownSubscriptionProducts(storeKitSubscriptions) {
   }
   return productsBySku;
 }
+
 function filterProSubscriptionPurchases(purchases) {
-  return (purchases || []).filter(purchase => TRAINER_SUBSCRIPTION_PRODUCT_IDS.includes(productSkuFromPurchase(purchase)));
+  const purchaseList = purchases || [];
+  const matching = [];
+  for (let index = 0; index < purchaseList.length; index += 1) {
+    const purchase = purchaseList[index];
+    const purchaseSku = productSkuFromPurchase(purchase);
+    if (TRAINER_SUBSCRIPTION_PRODUCT_IDS.includes(purchaseSku)) {
+      matching.push(purchase);
+    }
+  }
+  return matching;
 }
+
 function skuForPurchaseRequest(productId) {
   if (TRAINER_SUBSCRIPTION_PRODUCT_IDS.includes(productId)) {
     return productId;
   }
   return TRAINER_PRO_MONTHLY_PRODUCT_ID;
 }
+
 function isSkuMissingFromStore(storeProducts, storeKitSubscriptions, storeKitSku) {
-  var _optFn;
   if (storeProducts[storeKitSku]) {
     return false;
   }
-  const foundInRawList = (_optFn = storeKitSubscriptions == null ? void 0 : storeKitSubscriptions.some) == null ? void 0 : _optFn(subscription => productSkuFromStoreItem(subscription) === storeKitSku);
-  return !foundInRawList;
+
+  if (storeKitSubscriptions == null) {
+    return true;
+  }
+
+  for (let index = 0; index < storeKitSubscriptions.length; index += 1) {
+    const subscription = storeKitSubscriptions[index];
+    if (productSkuFromStoreItem(subscription) === storeKitSku) {
+      return false;
+    }
+  }
+  return true;
 }
+
 async function tryRestorePurchasesIapQuietly() {
   try {
     await restorePurchasesIap();
@@ -491,27 +708,35 @@ async function tryRestorePurchasesIapQuietly() {
     warnRestoreHookDevError(restoreHookError);
   }
 }
+
 function warnIapDevError(error) {
   if (!__DEV__) {
     return;
   }
-  console.warn('[ProPlanSetup] IAP error:', (error == null ? void 0 : error.message) || error);
+  const errorMessage = messageFromError(error);
+  console.warn('[ProPlanSetup] IAP error:', errorMessage || error);
 }
+
 function warnFinishTransactionDevError(finishError) {
   if (!__DEV__) {
     return;
   }
-  console.warn('[ProPlanSetup] finishTransaction:', (finishError == null ? void 0 : finishError.message) || finishError);
+  const errorMessage = messageFromError(finishError);
+  console.warn('[ProPlanSetup] finishTransaction:', errorMessage || finishError);
 }
+
 function warnFetchProductsDevError(error) {
   if (!__DEV__) {
     return;
   }
-  console.warn('[ProPlanSetup] fetchProducts failed:', (error == null ? void 0 : error.message) || error);
+  const errorMessage = messageFromError(error);
+  console.warn('[ProPlanSetup] fetchProducts failed:', errorMessage || error);
 }
+
 function warnRestoreHookDevError(restoreHookError) {
   if (!__DEV__) {
     return;
   }
-  console.warn('[ProPlanSetup] restorePurchasesIap:', (restoreHookError == null ? void 0 : restoreHookError.message) || restoreHookError);
+  const errorMessage = messageFromError(restoreHookError);
+  console.warn('[ProPlanSetup] restorePurchasesIap:', errorMessage || restoreHookError);
 }

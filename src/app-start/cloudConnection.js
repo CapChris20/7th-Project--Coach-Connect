@@ -1,7 +1,6 @@
 // Boots Firebase once for the whole app and hands out the shared service handles.
 // Flow: read env config → sanity-check (loudly) → create/reuse app → auth + Firestore + extras.
 // Used by: anywhere that touches the backend (`import { db, auth } from '.../cloudConnection'`).
-// Read order: constants → boot recipe → exports → PLUMBING at the bottom.
 
 import { initializeApp, getApps } from 'firebase/app';
 import { getAuth, initializeAuth, getReactNativePersistence } from 'firebase/auth';
@@ -36,53 +35,7 @@ const FIREBASE_ENV_NAMES = {
   appId: 'EXPO_PUBLIC_FIREBASE_APP_ID',
 };
 
-// ===== MAIN FUNCTION =====
-
-/**
- * One-shot boot: scream if misconfigured, then build the shared Firebase handles.
- * Flow: 1. sanity  2. app  3. auth  4. Firestore  5. optional siblings
- * @returns {{ firebaseApp: object|null, auth: object|null, db: object|null, functions: object|null, storage: object|null, supabase: null }}
- */
-function bootSharedFirebaseServices() {
-  // 1. Scream early if env points at the wrong project or missing keys.
-  runFirebaseConfigSanityChecks();
-
-  // 2. App singleton (Fast Refresh safe — never call initializeApp twice for the same name).
-  const firebaseApp = createOrReuseFirebaseApp();
-
-  // 3. Auth with AsyncStorage persistence (React Native requirement).
-  const authHandle = createFirebaseAuth(firebaseApp);
-
-  // 4. Firestore with RN transport tweaks + network wake-up.
-  const firestoreHandle = createFirestore(firebaseApp);
-
-  // 5. Optional siblings — null when the app failed to boot.
-  const functionsHandle = functionsHandleForApp(firebaseApp);
-  const storageHandle = storageHandleForApp(firebaseApp);
-  const supabasePlaceholder = createSupabasePlaceholder();
-
-  return {
-    firebaseApp,
-    auth: authHandle,
-    db: firestoreHandle,
-    functions: functionsHandle,
-    storage: storageHandle,
-    supabase: supabasePlaceholder,
-  };
-}
-
-const sharedServices = bootSharedFirebaseServices();
-const auth = sharedServices.auth;
-const db = sharedServices.db;
-const functions = sharedServices.functions;
-const storage = sharedServices.storage;
-const supabase = sharedServices.supabase;
-const firebaseApp = sharedServices.firebaseApp;
-
-export { auth, db, storage, firebaseApp as app, functions };
-export default supabase;
-
-// ===== PLUMBING — skip unless debugging =====
+// ===== HELPER FUNCTIONS =====
 
 function functionsHandleForApp(firebaseAppHandle) {
   if (!firebaseAppHandle) {
@@ -365,3 +318,49 @@ function createSupabasePlaceholder() {
   }
   return null;
 }
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * One-shot boot: scream if misconfigured, then build the shared Firebase handles.
+ * Flow: 1. sanity  2. app  3. auth  4. Firestore  5. optional siblings
+ * @returns {{ firebaseApp: object|null, auth: object|null, db: object|null, functions: object|null, storage: object|null, supabase: null }}
+ */
+function bootSharedFirebaseServices() {
+  // 1. Scream early if env points at the wrong project or missing keys.
+  runFirebaseConfigSanityChecks();
+
+  // 2. App singleton (Fast Refresh safe — never call initializeApp twice for the same name).
+  const firebaseAppHandle = createOrReuseFirebaseApp();
+
+  // 3. Auth with AsyncStorage persistence (React Native requirement).
+  const authHandle = createFirebaseAuth(firebaseAppHandle);
+
+  // 4. Firestore with RN transport tweaks + network wake-up.
+  const firestoreHandle = createFirestore(firebaseAppHandle);
+
+  // 5. Optional siblings — null when the app failed to boot.
+  const functionsHandle = functionsHandleForApp(firebaseAppHandle);
+  const storageHandle = storageHandleForApp(firebaseAppHandle);
+  const supabasePlaceholder = createSupabasePlaceholder();
+
+  return {
+    firebaseApp: firebaseAppHandle,
+    auth: authHandle,
+    db: firestoreHandle,
+    functions: functionsHandle,
+    storage: storageHandle,
+    supabase: supabasePlaceholder,
+  };
+}
+
+const sharedServices = bootSharedFirebaseServices();
+const auth = sharedServices.auth;
+const db = sharedServices.db;
+const functions = sharedServices.functions;
+const storage = sharedServices.storage;
+const supabase = sharedServices.supabase;
+const firebaseApp = sharedServices.firebaseApp;
+
+export { auth, db, storage, firebaseApp as app, functions };
+export default supabase;

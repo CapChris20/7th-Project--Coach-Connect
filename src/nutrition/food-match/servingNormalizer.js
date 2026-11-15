@@ -1,116 +1,51 @@
 // Normalize one Candidate's per-100 and serving options so they agree.
 // Flow: copy → restaurant keep published portion → cross-check grams ↔ per100 → default serving.
-// Used by matchFoodsV2 before gates/score. Never invents macro numbers.
+// Used by matchFoodsV2 before gates and score.
+// Never invents macro numbers. Pure CommonJS.
 
 const {
   SERVING_CROSSCHECK_TOLERANCE,
 } = require('./config/weights');
 
+// ===== NAMED CONSTANTS =====
+
 const FLAG_SERVING_INCONSISTENT = 'serving_inconsistent';
 const FLAG_DO_NOT_AUTOFILL = 'do_not_autofill';
 const DEFAULT_PER100_LABEL = '100 g';
+const DEFAULT_RESTAURANT_PORTION_LABEL = '1 serving';
+const HUNDRED_GRAM_BASIS = 100;
 
-/**
- * Return a Candidate with consistent servings / per100 and quality flags.
- * Does not tidy names. Does not invent kcal/macros.
- * @param {object} candidate
- * @returns {object}
- */
-function normalizeCandidateServings(candidate) {
-  // 1. Nothing usable → return as-is.
-  if (!candidate || typeof candidate !== 'object') return candidate;
+// ===== HELPER FUNCTIONS =====
 
-  // 2. Shallow-copy nutrition blocks so we never mutate the caller's object.
-  const next = {
-    ...candidate,
-    per100: candidate.per100 ? { ...candidate.per100 } : null,
-    servings: Array.isArray(candidate.servings)
-      ? candidate.servings.map((row) => ({ ...row }))
-      : [],
-    quality: {
-      completeness: candidate.quality?.completeness ?? 0,
-      sourceFlags: Array.isArray(candidate.quality?.sourceFlags)
-        ? [...candidate.quality.sourceFlags]
-        : [],
-    },
-  };
-
-  // 3. Restaurant channel: keep the published portion; never invent grams.
-  if (next.channel === 'restaurant') {
-    return ensureRestaurantPortions(next);
-  }
-
-  // 4. Cross-check every serving that has grams against per100.
-  applyServingPer100CrossCheck(next);
-
-  // 5. If we only have per100, offer an explicit "100 g" default (no guessed macros).
-  ensureDefaultHundredGramServing(next);
-
-  // 6. If we only have a labeled serving with grams, derive per100 from it.
-  derivePer100FromLabeledServing(next);
-
-  return next;
+function rowHasGramsOrExplicitUnit(row) {
+  if (row.grams != null && row.grams > 0) return true;
+  const label = String(row.label || '').toLowerCase();
+  // explicit unit = grams/ml/oz/cup/etc. already written on the label string
+  return /\d/.test(label) && /(g|gram|ml|oz|cup|tbsp|tsp|fl\s*oz|piece|pc|slice)\b/.test(label);
 }
 
-/**
- * Pick the serving row the UI / autofill should default to.
- * @param {object} candidate
- * @returns {object|null}
- */
-function pickDefaultServing(candidate) {
-  const servings = Array.isArray(candidate?.servings) ? candidate.servings : [];
-
-  // 1. Prefer label/menu rows that already carry grams or an explicit unit in the label.
-  for (const origin of ['label', 'menu']) {
-    for (const row of servings) {
-      if (row.origin !== origin) continue;
-      if (rowHasGramsOrExplicitUnit(row)) return row;
-    }
-  }
-
-  // 2. Any remaining label/menu row (restaurant published portion).
-  for (const origin of ['label', 'menu']) {
-    for (const row of servings) {
-      if (row.origin === origin) return row;
-    }
-  }
-
-  // 3. Explicit 100 g derived from per100 — never a silent guess of macros.
+function findServingByOrigin(servings, targetOrigin, requireExplicitUnit) {
   for (const row of servings) {
-    if (row.label === DEFAULT_PER100_LABEL && row.origin === 'derived') return row;
+    if (row.origin !== targetOrigin) continue;
+    if (!requireExplicitUnit || rowHasGramsOrExplicitUnit(row)) {
+      return row;
+    }
   }
-
-  return servings[0] || null;
+  return null;
 }
 
-/**
- * True when this candidate must not auto-fill (serving vs per100 fight).
- * @param {object} candidate
- * @returns {boolean}
- */
-function candidateBlocksAutofill(candidate) {
-  const flags = candidate?.quality?.sourceFlags;
-  if (!Array.isArray(flags)) return false;
-  return flags.includes(FLAG_DO_NOT_AUTOFILL) || flags.includes(FLAG_SERVING_INCONSISTENT);
+function markInconsistent(candidate) {
+  const flags = candidate.quality.sourceFlags;
+  if (!flags.includes(FLAG_SERVING_INCONSISTENT)) flags.push(FLAG_SERVING_INCONSISTENT);
+  if (!flags.includes(FLAG_DO_NOT_AUTOFILL)) flags.push(FLAG_DO_NOT_AUTOFILL);
 }
-
-module.exports = {
-  normalizeCandidateServings,
-  pickDefaultServing,
-  candidateBlocksAutofill,
-  FLAG_SERVING_INCONSISTENT,
-  FLAG_DO_NOT_AUTOFILL,
-  DEFAULT_PER100_LABEL,
-};
-
-// ===== PLUMBING — skip unless debugging =====
 
 function ensureRestaurantPortions(candidate) {
   // Restaurant items stay on the published portion string ("1 sandwich", "10 pc").
   // We never convert them to grams here.
   if (candidate.servings.length === 0) {
     candidate.servings.push({
-      label: '1 serving',
+      label: DEFAULT_RESTAURANT_PORTION_LABEL,
       grams: null,
       kcal: null,
       protein: null,
@@ -138,9 +73,8 @@ function applyServingPer100CrossCheck(candidate) {
       continue;
     }
 
-    const impliedPer100 = (row.kcal / row.grams) * 100;
+    const impliedPer100 = (row.kcal / row.grams) * HUNDRED_GRAM_BASIS;
     const relativeGap = Math.abs(impliedPer100 - per100.kcal) / per100.kcal;
-    // Manipulate here: gap vs SERVING_CROSSCHECK_TOLERANCE in weights.js
     if (relativeGap <= SERVING_CROSSCHECK_TOLERANCE) {
       kept.push(row);
       continue;
@@ -173,7 +107,7 @@ function ensureDefaultHundredGramServing(candidate) {
 
   candidate.servings.push({
     label: DEFAULT_PER100_LABEL,
-    grams: 100,
+    grams: HUNDRED_GRAM_BASIS,
     kcal: per100.kcal,
     protein: per100.protein,
     carbs: per100.carbs,
@@ -195,7 +129,7 @@ function derivePer100FromLabeledServing(candidate) {
   }
   if (!sourceRow) return;
 
-  const scale = 100 / sourceRow.grams;
+  const scale = HUNDRED_GRAM_BASIS / sourceRow.grams;
   candidate.per100 = {
     kcal: sourceRow.kcal * scale,
     protein: sourceRow.protein == null ? null : sourceRow.protein * scale,
@@ -205,15 +139,94 @@ function derivePer100FromLabeledServing(candidate) {
   };
 }
 
-function rowHasGramsOrExplicitUnit(row) {
-  if (row.grams != null && row.grams > 0) return true;
-  const label = String(row.label || '').toLowerCase();
-  // vocab: explicit unit = grams/ml/oz/cup/etc. already written on the label string
-  return /\d/.test(label) && /(g|gram|ml|oz|cup|tbsp|tsp|fl\s*oz|piece|pc|slice)\b/.test(label);
+// ===== MAIN FUNCTION =====
+
+/**
+ * Return a Candidate with consistent servings / per100 and quality flags.
+ * Does not tidy names. Does not invent kcal/macros.
+ * @param {object} candidate
+ * @returns {object}
+ */
+function normalizeCandidateServings(candidate) {
+  // 1. Nothing usable → return as-is.
+  if (!candidate || typeof candidate !== 'object') return candidate;
+
+  // 2. Shallow-copy nutrition blocks so we never mutate the caller's object.
+  const nextCandidate = {
+    ...candidate,
+    per100: candidate.per100 ? { ...candidate.per100 } : null,
+    servings: Array.isArray(candidate.servings)
+      ? candidate.servings.map((row) => ({ ...row }))
+      : [],
+    quality: {
+      completeness: candidate.quality?.completeness ?? 0,
+      sourceFlags: Array.isArray(candidate.quality?.sourceFlags)
+        ? [...candidate.quality.sourceFlags]
+        : [],
+    },
+  };
+
+  // 3. Restaurant channel: keep the published portion; never invent grams.
+  if (nextCandidate.channel === 'restaurant') {
+    return ensureRestaurantPortions(nextCandidate);
+  }
+
+  // 4. Cross-check every serving that has grams against per100.
+  applyServingPer100CrossCheck(nextCandidate);
+
+  // 5. If we only have per100, offer an explicit "100 g" default (no guessed macros).
+  ensureDefaultHundredGramServing(nextCandidate);
+
+  // 6. If we only have a labeled serving with grams, derive per100 from it.
+  derivePer100FromLabeledServing(nextCandidate);
+
+  return nextCandidate;
 }
 
-function markInconsistent(candidate) {
-  const flags = candidate.quality.sourceFlags;
-  if (!flags.includes(FLAG_SERVING_INCONSISTENT)) flags.push(FLAG_SERVING_INCONSISTENT);
-  if (!flags.includes(FLAG_DO_NOT_AUTOFILL)) flags.push(FLAG_DO_NOT_AUTOFILL);
+/**
+ * Pick the serving row the UI / autofill should default to.
+ * @param {object} candidate
+ * @returns {object|null}
+ */
+function pickDefaultServing(candidate) {
+  const servings = Array.isArray(candidate?.servings) ? candidate.servings : [];
+
+  // 1. Prefer label/menu rows that already carry grams or an explicit unit in the label.
+  const labelWithUnit = findServingByOrigin(servings, 'label', true);
+  if (labelWithUnit) return labelWithUnit;
+  const menuWithUnit = findServingByOrigin(servings, 'menu', true);
+  if (menuWithUnit) return menuWithUnit;
+
+  // 2. Any remaining label/menu row (restaurant published portion).
+  const anyLabel = findServingByOrigin(servings, 'label', false);
+  if (anyLabel) return anyLabel;
+  const anyMenu = findServingByOrigin(servings, 'menu', false);
+  if (anyMenu) return anyMenu;
+
+  // 3. Explicit 100 g derived from per100 — never a silent guess of macros.
+  for (const row of servings) {
+    if (row.label === DEFAULT_PER100_LABEL && row.origin === 'derived') return row;
+  }
+
+  return servings[0] || null;
 }
+
+/**
+ * True when this candidate must not auto-fill (serving vs per100 fight).
+ * @param {object} candidate
+ * @returns {boolean}
+ */
+function candidateBlocksAutofill(candidate) {
+  const flags = candidate?.quality?.sourceFlags;
+  if (!Array.isArray(flags)) return false;
+  return flags.includes(FLAG_DO_NOT_AUTOFILL) || flags.includes(FLAG_SERVING_INCONSISTENT);
+}
+
+module.exports = {
+  normalizeCandidateServings,
+  pickDefaultServing,
+  candidateBlocksAutofill,
+  FLAG_SERVING_INCONSISTENT,
+  FLAG_DO_NOT_AUTOFILL,
+  DEFAULT_PER100_LABEL,
+};

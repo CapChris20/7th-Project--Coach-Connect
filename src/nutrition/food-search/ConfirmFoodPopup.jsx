@@ -72,8 +72,9 @@ function parseAmountNumber(rawValue) {
  * @returns {string}
  */
 function foodDisplayName(food) {
-  if (food?.name) return food.name;
-  if (food?.food_name) return food.food_name;
+  if (!food) return 'Food';
+  if (food.name) return food.name;
+  if (food.food_name) return food.food_name;
   return 'Food';
 }
 
@@ -96,10 +97,11 @@ function mealTitle(mealType) {
  * @returns {string}
  */
 function unitFromFood(food) {
-  if (food?.servingUnit) return food.servingUnit;
-  if (food?.serving_unit) return food.serving_unit;
-  if (food?.portion_text) return food.portion_text;
-  if (food?.serving_label) return food.serving_label;
+  if (!food) return 'serving';
+  if (food.servingUnit) return food.servingUnit;
+  if (food.serving_unit) return food.serving_unit;
+  if (food.portion_text) return food.portion_text;
+  if (food.serving_label) return food.serving_label;
   return 'serving';
 }
 
@@ -113,9 +115,12 @@ function unitFromFood(food) {
  */
 function readMicroFromFood(food, key, metaKey) {
   const metadataKey = metaKey != null ? metaKey : key;
-  const fromTop = food?.[key];
+  if (!food) return numberOr(undefined);
+  const fromTop = food[key];
   if (fromTop != null) return numberOr(fromTop);
-  return numberOr(food?.metadata?.[metadataKey]);
+  const metadata = food.metadata;
+  if (!metadata) return numberOr(undefined);
+  return numberOr(metadata[metadataKey]);
 }
 function scaleMicroValue(rawValue, ratio) {
   return Math.round(rawValue * ratio * 10) / 10;
@@ -182,9 +187,23 @@ function buildConfirmedFoodPayload({
     originalAmount: servingsLogged,
     labelServingGrams,
     userVerified: true,
-    scannedBarcode: scannedBarcode || nutritionBase?.scannedBarcode || null
+    scannedBarcode: pickScannedBarcode(scannedBarcode, nutritionBase),
   };
 }
+
+/**
+ * Prefer the prop barcode; else the one already on the nutrition base card.
+ * @param {*} scannedBarcode
+ * @param {object|null|undefined} nutritionBase
+ * @returns {*|null}
+ */
+function pickScannedBarcode(scannedBarcode, nutritionBase) {
+  if (scannedBarcode) return scannedBarcode;
+  if (!nutritionBase) return null;
+  if (nutritionBase.scannedBarcode) return nutritionBase.scannedBarcode;
+  return null;
+}
+
 function pickHeaderTitle(titleProp) {
   // PNG title is always "Nutrition facts" — ignore legacy "Confirm & log" callers
   if (!titleProp) return 'Nutrition facts';
@@ -192,7 +211,7 @@ function pickHeaderTitle(titleProp) {
   return String(titleProp);
 }
 function pickScreenBackground(colors, theme) {
-  if (theme?.screenBg) return theme.screenBg;
+  if (theme && theme.screenBg) return theme.screenBg;
   return colors.nbBackground;
 }
 function emptyMacros() {
@@ -604,6 +623,22 @@ export default function FoodConfirmSheet({
   }
   const showWrongItem = showVerification && typeof onWrongItem === 'function';
   const keyboardBehavior = Platform.OS === 'ios' ? 'padding' : undefined;
+
+  // Meal chips built with a for-loop (no .map in the screen recipe).
+  const mealChips = [];
+  for (let index = 0; index < MEAL_CHIP_LABELS.length; index += 1) {
+    const mealName = MEAL_CHIP_LABELS[index];
+    mealChips.push(
+      <MealChip
+        key={mealName}
+        mealName={mealName}
+        selected={meal === mealName}
+        onPress={() => setMeal(mealName)}
+        colors={colors}
+      />,
+    );
+  }
+
   return <SafeAreaView style={{
     flex: 1,
     backgroundColor: screenBg
@@ -624,7 +659,7 @@ export default function FoodConfirmSheet({
           color: colors.nbMuted
         }]}>MEAL</Text>
           <View style={styles.mealRow}>
-            {MEAL_CHIP_LABELS.map(mealName => <MealChip key={mealName} mealName={mealName} selected={meal === mealName} onPress={() => setMeal(mealName)} colors={colors} />)}
+            {mealChips}
           </View>
 
           <View style={styles.nutrientHeader}>

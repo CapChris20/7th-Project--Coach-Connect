@@ -179,7 +179,7 @@ function buildDemoPeopleMap() {
   };
 }
 
-// ===== MAIN EXPORTS =====
+// ===== MAIN FUNCTION =====
 
 export const DEMO_PEOPLE = buildDemoPeopleMap();
 

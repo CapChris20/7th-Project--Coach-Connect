@@ -90,6 +90,19 @@ function addApiBaseOnce(apiBaseList, seenBases, candidateBase) {
   apiBaseList.push(normalizedBase);
 }
 
+/**
+ * Host name before the optional :port in a Metro hostUri string.
+ * @param {string} hostUri
+ * @returns {string}
+ */
+function hostNameBeforePort(hostUri) {
+  const beforeColon = String(hostUri || '').split(':')[0];
+  if (!beforeColon) {
+    return '';
+  }
+  return beforeColon.trim();
+}
+
 // ===== MAIN FUNCTION =====
 
 /**
@@ -164,7 +177,7 @@ export function getResilientApiBases() {
     if (typeof hostUri !== 'string') {
       continue;
     }
-    const host = hostUri.split(':')[0]?.trim();
+    const host = hostNameBeforePort(hostUri);
     if (!host) {
       continue;
     }
@@ -314,27 +327,64 @@ function isLikelyLanMetroHost(host) {
   return false;
 }
 
+/**
+ * Read one nested string from an object path; return null when any step is missing.
+ * @param {object|null|undefined} root
+ * @param {string[]} pathKeys
+ * @returns {string|null}
+ */
+function readNestedString(root, pathKeys) {
+  let cursor = root;
+  for (const key of pathKeys) {
+    if (cursor == null) {
+      return null;
+    }
+    cursor = cursor[key];
+  }
+  if (cursor == null || cursor === '') {
+    return null;
+  }
+  return String(cursor);
+}
+
 function readExpoHostCandidates() {
   // vocab: hostUri / debuggerHost = where Expo Metro thinks the packager lives
-  return [
-    Constants.expoConfig?.hostUri,
-    Constants.expoGoConfig?.debuggerHost,
-    Constants.manifest?.debuggerHost,
-    Constants.manifest2?.extra?.expoGo?.debuggerHost,
-  ];
+  const hostUri = readNestedString(Constants, ['expoConfig', 'hostUri']);
+  const debuggerHostFromGo = readNestedString(Constants, ['expoGoConfig', 'debuggerHost']);
+  const debuggerHostFromManifest = readNestedString(Constants, ['manifest', 'debuggerHost']);
+  const debuggerHostFromManifest2 = readNestedString(Constants, [
+    'manifest2',
+    'extra',
+    'expoGo',
+    'debuggerHost',
+  ]);
+  return [hostUri, debuggerHostFromGo, debuggerHostFromManifest, debuggerHostFromManifest2];
 }
 
 function readEnvApiBaseOverride() {
-  const envExists = typeof process !== 'undefined' && process.env?.EXPO_PUBLIC_API_BASE_URL;
-  if (!envExists) return '';
-  return String(process.env.EXPO_PUBLIC_API_BASE_URL).trim();
+  if (typeof process === 'undefined') {
+    return '';
+  }
+  const envBag = process.env;
+  if (!envBag) {
+    return '';
+  }
+  const envValue = envBag.EXPO_PUBLIC_API_BASE_URL;
+  if (!envValue) {
+    return '';
+  }
+  return String(envValue).trim();
 }
 
 function readExpoExtraApiBaseOverride() {
-  const upperExtra = Constants.expoConfig?.extra?.API_BASE_URL;
-  if (upperExtra) return String(upperExtra).trim();
-  const camelExtra = Constants.expoConfig?.extra?.apiBaseUrl;
-  if (camelExtra) return String(camelExtra).trim();
+  const upperExtra = readNestedString(Constants, ['expoConfig', 'extra', 'API_BASE_URL']);
+  if (upperExtra) {
+    return upperExtra.trim();
+  }
+  const camelExtra = readNestedString(Constants, ['expoConfig', 'extra', 'apiBaseUrl']);
+  if (camelExtra) {
+    return camelExtra.trim();
+  }
   return '';
 }
 
@@ -350,10 +400,14 @@ function readExplicitApiBaseString() {
 
 // getApiBase checks camel extra, then UPPER extra, then env — different order on purpose.
 function readPrimaryApiBaseOverride() {
-  const camelExtra = Constants.expoConfig?.extra?.apiBaseUrl;
-  if (camelExtra) return String(camelExtra).trim();
-  const upperExtra = Constants.expoConfig?.extra?.API_BASE_URL;
-  if (upperExtra) return String(upperExtra).trim();
+  const camelExtra = readNestedString(Constants, ['expoConfig', 'extra', 'apiBaseUrl']);
+  if (camelExtra) {
+    return camelExtra.trim();
+  }
+  const upperExtra = readNestedString(Constants, ['expoConfig', 'extra', 'API_BASE_URL']);
+  if (upperExtra) {
+    return upperExtra.trim();
+  }
   return readEnvApiBaseOverride();
 }
 
@@ -361,7 +415,10 @@ function isIosSimulator() {
   // vocab: __DEV__ = Metro development build (false in production binaries)
   const isIos = Platform.OS === 'ios';
   const isDevBuild = typeof __DEV__ !== 'undefined' && __DEV__;
-  const isNotPhysicalDevice = Constants?.isDevice === false;
+  let isNotPhysicalDevice = false;
+  if (Constants) {
+    isNotPhysicalDevice = Constants.isDevice === false;
+  }
   return isIos && isDevBuild && isNotPhysicalDevice;
 }
 
@@ -370,12 +427,17 @@ function findMetroLanHostForPhone() {
     return null;
   }
 
-  const candidates = readExpoHostCandidates().filter(Boolean);
+  const candidates = [];
+  for (const hostUri of readExpoHostCandidates()) {
+    if (hostUri) {
+      candidates.push(hostUri);
+    }
+  }
   for (const hostUri of candidates) {
     if (typeof hostUri !== 'string') {
       continue;
     }
-    const host = hostUri.split(':')[0]?.trim();
+    const host = hostNameBeforePort(hostUri);
     const isLoopbackHost =
       host === LOOPBACK_HOST_LOCALHOST || host === LOOPBACK_HOST_IPV4;
     if (host && !isLoopbackHost && isLikelyLanMetroHost(host)) {

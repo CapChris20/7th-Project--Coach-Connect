@@ -433,6 +433,78 @@ function WorkoutDiaryForm({
   );
 }
 
+function ensureFirstExerciseAdded(diary) {
+  const diaryIsBlank = workoutDiaryLooksEmpty(diary.workoutExercises);
+  if (!diaryIsBlank) {
+    diary.addExercise();
+    return;
+  }
+  const hasNoExercises = !diary.workoutExercises || diary.workoutExercises.length === 0;
+  if (hasNoExercises) {
+    diary.addExercise();
+  }
+}
+
+function pickLogWorkoutScrollBody({
+  showLoadingLine,
+  showEmptyShell,
+  colors,
+  openPlanOrBeginExercise,
+  beginAddingExercises,
+  diary,
+  doneBySetId,
+  rating,
+  handleToggleSetDone,
+  setRating,
+  saveAll,
+}) {
+  if (showLoadingLine) {
+    return (
+      <Text style={{ color: colors.nbMuted, fontWeight: '600' }}>Loading…</Text>
+    );
+  }
+  if (showEmptyShell) {
+    return (
+      <EmptyWorkoutShell
+        colors={colors}
+        onAddFromPlan={openPlanOrBeginExercise}
+        onAddExercise={beginAddingExercises}
+      />
+    );
+  }
+  return (
+    <WorkoutDiaryForm
+      colors={colors}
+      diary={diary}
+      doneBySetId={doneBySetId}
+      rating={rating}
+      onToggleSetDone={handleToggleSetDone}
+      onRatingChange={setRating}
+      onSave={saveAll}
+    />
+  );
+}
+
+function LogWorkoutScreenLayout({
+  rootStyle,
+  headerSubtitle,
+  onBack,
+  scrollBody,
+}) {
+  return (
+    <SafeAreaView style={rootStyle} edges={SHELL_SAFE_AREA_EDGES}>
+      <NbPageHeader title="Log workout" subtitle={headerSubtitle} onBack={onBack} />
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {scrollBody}
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
 // ===== MAIN FUNCTION =====
 
 /**
@@ -465,20 +537,8 @@ export default function LogWorkoutScreen({ onBack, onOpenPlan, workoutRating: ra
 
   // 4. Leave the dashed empty state and show the exercise form.
   function beginAddingExercises() {
-    // 1. Leave the dashed empty state
     setForceShowForm(true);
-
-    // 2. Ensure at least one row exists — diary may already seed a blank exercise
-    const diaryIsBlank = workoutDiaryLooksEmpty(diary.workoutExercises);
-    if (diaryIsBlank) {
-      const hasNoExercises = !diary.workoutExercises || diary.workoutExercises.length === 0;
-      if (hasNoExercises) {
-        diary.addExercise();
-      }
-      return;
-    }
-
-    diary.addExercise();
+    ensureFirstExerciseAdded(diary);
   }
 
   function openPlanOrBeginExercise() {
@@ -497,55 +557,35 @@ export default function LogWorkoutScreen({ onBack, onOpenPlan, workoutRating: ra
 
   // 5. Persist workoutLog + optional dashboard_workout_rating, then go back.
   async function saveAll() {
-    // 1. Persist workoutLog via diary helper (unchanged keys)
     await diary.save();
-    // 2. Mirror post-workout rating to dashboard_workout_rating when signed in
     await persistWorkoutRatingIfSignedIn(rating);
-    // 3. Return to caller
     if (onBack) {
       onBack();
     }
   }
 
   // 6. Header + loading / empty shell / exercise form.
-  let scrollBody = null;
-  if (showLoadingLine) {
-    scrollBody = (
-      <Text style={{ color: colors.nbMuted, fontWeight: '600' }}>Loading…</Text>
-    );
-  } else if (showEmptyShell) {
-    scrollBody = (
-      <EmptyWorkoutShell
-        colors={colors}
-        onAddFromPlan={openPlanOrBeginExercise}
-        onAddExercise={beginAddingExercises}
-      />
-    );
-  } else {
-    scrollBody = (
-      <WorkoutDiaryForm
-        colors={colors}
-        diary={diary}
-        doneBySetId={doneBySetId}
-        rating={rating}
-        onToggleSetDone={handleToggleSetDone}
-        onRatingChange={setRating}
-        onSave={saveAll}
-      />
-    );
-  }
+  const scrollBody = pickLogWorkoutScrollBody({
+    showLoadingLine,
+    showEmptyShell,
+    colors,
+    openPlanOrBeginExercise,
+    beginAddingExercises,
+    diary,
+    doneBySetId,
+    rating,
+    handleToggleSetDone,
+    setRating,
+    saveAll,
+  });
 
   return (
-    <SafeAreaView style={rootStyle} edges={SHELL_SAFE_AREA_EDGES}>
-      <NbPageHeader title="Log workout" subtitle={headerSubtitle} onBack={onBack} />
-      <ScrollView
-        contentContainerStyle={styles.scroll}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
-        {scrollBody}
-      </ScrollView>
-    </SafeAreaView>
+    <LogWorkoutScreenLayout
+      rootStyle={rootStyle}
+      headerSubtitle={headerSubtitle}
+      onBack={onBack}
+      scrollBody={scrollBody}
+    />
   );
 }
 

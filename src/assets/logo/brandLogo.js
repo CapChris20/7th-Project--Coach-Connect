@@ -1,7 +1,6 @@
 // Coach Connect logo PNG modules and the width÷height each Image should use.
 // Flow: Metro require() loads the file → we store native width/height → AppLogo sizes from aspect.
 // Used by: AppLogo. Transparent mark is the Design Law welcome hero centerpiece.
-// Read order: asset requires → native size constants → aspect mains → exports.
 
 // ===== NAMED CONSTANTS =====
 
@@ -23,12 +22,6 @@ function aspectRatioFromWidthAndHeight(nativeWidth, nativeHeight) {
   return nativeWidth / nativeHeight;
 }
 
-// ===== MAIN =====
-
-/**
- * Aspect ratios AppLogo reads so height = width ÷ aspect (or the reverse).
- * Frozen export names: BRAND_LOGO_SOURCE, BRAND_LOGO_ASPECT, TRANSPARENT_*.
- */
 // 1. Square mark — width ÷ height is always 1 while the asset stays square.
 const BRAND_LOGO_ASPECT = aspectRatioFromWidthAndHeight(
   SQUARE_LOGO_NATIVE_WIDTH,
@@ -40,6 +33,27 @@ const TRANSPARENT_BRAND_LOGO_ASPECT = aspectRatioFromWidthAndHeight(
   TRANSPARENT_LOGO_NATIVE_WIDTH,
   TRANSPARENT_LOGO_NATIVE_HEIGHT,
 );
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Aspect ratios AppLogo reads so height = width ÷ aspect (or the reverse).
+ * Frozen export names: BRAND_LOGO_SOURCE, BRAND_LOGO_ASPECT, TRANSPARENT_*.
+ * @param {boolean} [isTransparent]
+ * @returns {{ source: any, aspect: number }}
+ */
+export function getBrandLogoDetails(isTransparent = false) {
+  if (isTransparent) {
+    return {
+      source: TRANSPARENT_BRAND_LOGO_SOURCE,
+      aspect: TRANSPARENT_BRAND_LOGO_ASPECT,
+    };
+  }
+  return {
+    source: BRAND_LOGO_SOURCE,
+    aspect: BRAND_LOGO_ASPECT,
+  };
+}
 
 export {
   BRAND_LOGO_SOURCE,

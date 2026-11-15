@@ -27,8 +27,6 @@ const DEFAULT_SERVING_SIZE = 1;
 const LIQUID_SERVING_GRAMS_MAX = 500;
 const NUTRIENT_ROUND_FACTOR = 10;
 
-// ===== HELPER FUNCTIONS =====
-
 // Manipulate here: add solid keywords when ml-tagged packaged solids slip through
 const SOLID_FOOD_PATTERN =
   /\b(nugget|nuggets|chicken|tenders|wings|produce|apple|banana|orange|potato|tomato|lettuce|broccoli|carrot|onion|grape|berry|berries|frozen|snack|chips|crisp|crisps|cracker|crackers|cookie|cookies|candy|bar|bars|cereal|granola|popcorn|pretzel|pretzels|pizza|bread|bagel|muffin|cake|brownie|doritos|oreo|klondike|ice\s*cream\s*bar|tortilla|nacho|cheese\s*stick|fish\s*stick|patty|meatball|sausage|bacon|ham|turkey|beef|pork|lamb|tofu|tempeh|seitan|yogurt\s*cup|pudding\s*cup|ramen|noodle|pasta|rice|oatmeal|granola)\b/i;
@@ -41,6 +39,8 @@ const SOLID_CATEGORY_PATTERN =
 
 const USDA_LIQUID_FALLBACK_PATTERN =
   /\b(soda|cola|juice|tea|coffee|milk|water|beverage|drink|shake|smoothie|beer|wine)\b/i;
+
+// ===== HELPER FUNCTIONS =====
 
 function toFiniteNumber(value) {
   const numericValue = Number(value);
@@ -55,15 +55,43 @@ function roundOrNull(value) {
   return Math.round(numericValue * NUTRIENT_ROUND_FACTOR) / NUTRIENT_ROUND_FACTOR;
 }
 
+/**
+ * Read one top-level field when the food object exists.
+ * @param {object|null|undefined} food
+ * @param {string} fieldName
+ * @returns {*}
+ */
+function readFoodField(food, fieldName) {
+  if (!food) return undefined;
+  return food[fieldName];
+}
+
+/**
+ * Categories string from food.metadata.categories when metadata exists.
+ * @param {object|null|undefined} food
+ * @returns {*}
+ */
+function readMetadataCategories(food) {
+  if (!food) return undefined;
+  const metadata = food.metadata;
+  if (!metadata) return undefined;
+  return metadata.categories;
+}
+
+/**
+ * Join name / brand / description / categories into one lowercase haystack for liquid/solid tests.
+ * @param {object|null|undefined} food
+ * @returns {string}
+ */
 function foodTextHaystack(food) {
   const pieces = [
-    food?.name,
-    food?.food_name,
-    food?.brand,
-    food?.brand_name,
-    food?.description,
-    food?.categories,
-    food?.metadata?.categories,
+    readFoodField(food, 'name'),
+    readFoodField(food, 'food_name'),
+    readFoodField(food, 'brand'),
+    readFoodField(food, 'brand_name'),
+    readFoodField(food, 'description'),
+    readFoodField(food, 'categories'),
+    readMetadataCategories(food),
   ];
   const presentPieces = [];
   for (let index = 0; index < pieces.length; index += 1) {
@@ -79,16 +107,179 @@ function isBarcodeOrUsdaSource(source) {
   return false;
 }
 
-module.exports = {
-  SOLID_FOOD_PATTERN,
-  LIQUID_FOOD_PATTERN,
-  isLiquidFood,
-  usdaDescriptionLooksLiquid,
-  servingUnitGuard,
-  mapSearchRowToFoodShape,
-  normalizeFoodForLog,
-  normalizeFoodItem,
-};
+/**
+ * Pick calories from camelCase or Nutritionix nf_calories.
+ * @param {object} item
+ * @returns {number}
+ */
+function readCaloriesFromItem(item) {
+  if (item.calories != null) return toFiniteNumber(item.calories);
+  return toFiniteNumber(item.nf_calories);
+}
+
+function readProteinFromItem(item) {
+  if (item.protein != null) return toFiniteNumber(item.protein);
+  return toFiniteNumber(item.nf_protein);
+}
+
+function readCarbsFromItem(item) {
+  if (item.carbs != null) return toFiniteNumber(item.carbs);
+  return toFiniteNumber(item.nf_total_carbohydrate);
+}
+
+function readFatFromItem(item) {
+  if (item.fat != null) return toFiniteNumber(item.fat);
+  return toFiniteNumber(item.nf_total_fat);
+}
+
+function readFiberFromItem(item) {
+  if (item.fiber != null) return roundOrNull(item.fiber);
+  return roundOrNull(item.nf_dietary_fiber);
+}
+
+function readSugarFromItem(item) {
+  if (item.sugar != null) return roundOrNull(item.sugar);
+  return roundOrNull(item.nf_sugars);
+}
+
+function readSodiumFromItem(item) {
+  if (item.sodium != null) return roundOrNull(item.sodium);
+  return roundOrNull(item.nf_sodium);
+}
+
+function readSaturatedFatFromItem(item) {
+  if (item.saturatedFat != null) return roundOrNull(item.saturatedFat);
+  return roundOrNull(item.saturated_fat);
+}
+
+function readTransFatFromItem(item) {
+  if (item.transFat != null) return roundOrNull(item.transFat);
+  return roundOrNull(item.trans_fat);
+}
+
+/**
+ * Serving grams from any of the frozen alias keys; 0 when all missing.
+ * @param {object} item
+ * @returns {number}
+ */
+function readRawServingGrams(item) {
+  if (item.servingGrams) return toFiniteNumber(item.servingGrams);
+  if (item.serving_weight_grams) return toFiniteNumber(item.serving_weight_grams);
+  if (item.serving_grams) return toFiniteNumber(item.serving_grams);
+  if (item.servingAmount) return toFiniteNumber(item.servingAmount);
+  return 0;
+}
+
+/**
+ * Serving unit string from camelCase / snake / USDA unit field.
+ * @param {object} item
+ * @returns {string}
+ */
+function readServingUnitFromItem(item) {
+  if (item.servingUnit) return item.servingUnit;
+  if (item.serving_unit) return item.serving_unit;
+  if (item.servingSizeUnit) return item.servingSizeUnit;
+  return DEFAULT_SERVING_UNIT;
+}
+
+/**
+ * Serving size / qty from any frozen alias; default 1.
+ * @param {object} item
+ * @returns {*}
+ */
+function readServingSizeFromItem(item) {
+  if (item.servingSize != null) return item.servingSize;
+  if (item.serving_qty != null) return item.serving_qty;
+  if (item.serving_size != null) return item.serving_size;
+  return DEFAULT_SERVING_SIZE;
+}
+
+/**
+ * Display serving label from any of the frozen label aliases.
+ * @param {object} item
+ * @returns {string|null}
+ */
+function readServingLabelFromItem(item) {
+  if (item.serving_label) return item.serving_label;
+  if (item.servingLabel) return item.servingLabel;
+  if (item.householdServingFullText) return item.householdServingFullText;
+  return null;
+}
+
+/**
+ * Portion text for the card — prefers portion_text, then label aliases.
+ * @param {object} item
+ * @returns {string|null}
+ */
+function readPortionTextFromItem(item) {
+  if (item.portion_text) return item.portion_text;
+  if (item.serving_label) return item.serving_label;
+  if (item.servingLabel) return item.servingLabel;
+  return null;
+}
+
+/**
+ * Food display name from name / food_name / description.
+ * @param {object} item
+ * @returns {string}
+ */
+function readFoodNameFromItem(item) {
+  if (item.name) return item.name;
+  if (item.food_name) return item.food_name;
+  if (item.description) return item.description;
+  return DEFAULT_FOOD_NAME;
+}
+
+/**
+ * Brand from any of the frozen brand aliases.
+ * @param {object} item
+ * @returns {string}
+ */
+function readBrandFromItem(item) {
+  if (item.brand) return item.brand;
+  if (item.brand_name) return item.brand_name;
+  if (item.brand_owner) return item.brand_owner;
+  if (item.brandOwner) return item.brandOwner;
+  return '';
+}
+
+/**
+ * Id from id / fdcId / barcode code.
+ * @param {object} item
+ * @returns {*}
+ */
+function readIdFromItem(item) {
+  if (item.id) return item.id;
+  if (item.fdcId) return item.fdcId;
+  if (item.code) return item.code;
+  return null;
+}
+
+/**
+ * Serving unit lowercased for liquid/solid guard (empty when food missing).
+ * @param {object|null|undefined} food
+ * @returns {string}
+ */
+function readServingUnitLower(food) {
+  const fromCamel = readFoodField(food, 'servingUnit');
+  if (fromCamel) return String(fromCamel).toLowerCase();
+  const fromSnake = readFoodField(food, 'serving_unit');
+  if (fromSnake) return String(fromSnake).toLowerCase();
+  return '';
+}
+
+/**
+ * brand_name for the presented card — prefer tidy brand, else original snake alias.
+ * @param {object} presentedCard
+ * @param {object} item
+ * @returns {string}
+ */
+function brandNameForPresentedCard(presentedCard, item) {
+  if (presentedCard.brand) return presentedCard.brand;
+  const originalBrandName = readFoodField(item, 'brand_name');
+  if (originalBrandName) return originalBrandName;
+  return '';
+}
 
 // ===== MAIN FUNCTION =====
 
@@ -152,10 +343,14 @@ function normalizeFoodItem(item, searchQuery) {
   );
 
   // 3. Keep brand_name + serving_grams letters frozen for ConfirmFoodPopup / logFood.
+  let servingGramsForCard = mappedShape.servingGrams;
+  if (!servingGramsForCard) {
+    servingGramsForCard = DEFAULT_SERVING_GRAMS;
+  }
   return {
     ...presentedCard,
-    brand_name: presentedCard.brand || item?.brand_name || '',
-    serving_grams: mappedShape.servingGrams || DEFAULT_SERVING_GRAMS,
+    brand_name: brandNameForPresentedCard(presentedCard, item),
+    serving_grams: servingGramsForCard,
   };
 }
 
@@ -170,50 +365,43 @@ function mapSearchRowToFoodShape(item) {
 
   // 1. Serving grams — fall back to 100g when the API omitted weight.
   const sourceLower = String(item.source || SOURCE_SERVER).toLowerCase();
-  const rawServingGrams = toFiniteNumber(
-    item.servingGrams ||
-      item.serving_weight_grams ||
-      item.serving_grams ||
-      item.servingAmount,
-  );
-  const servingGramsOrDefault =
-    rawServingGrams > 0 ? rawServingGrams : DEFAULT_SERVING_GRAMS;
+  const rawServingGrams = readRawServingGrams(item);
+  let servingGramsOrDefault = rawServingGrams;
+  if (!(rawServingGrams > 0)) {
+    servingGramsOrDefault = DEFAULT_SERVING_GRAMS;
+  }
 
   // 2. One card with both camelCase display fields and frozen snake aliases where needed.
   const baseFoodCard = {
-    id: item.id || item.fdcId || item.code || null,
-    name: item.name || item.food_name || item.description || DEFAULT_FOOD_NAME,
-    brand: item.brand || item.brand_name || item.brand_owner || item.brandOwner || '',
-    calories: toFiniteNumber(item.calories ?? item.nf_calories),
-    protein: toFiniteNumber(item.protein ?? item.nf_protein),
-    carbs: toFiniteNumber(item.carbs ?? item.nf_total_carbohydrate),
-    fat: toFiniteNumber(item.fat ?? item.nf_total_fat),
-    fiber: roundOrNull(item.fiber ?? item.nf_dietary_fiber),
-    sugar: roundOrNull(item.sugar ?? item.nf_sugars),
-    sodium: roundOrNull(item.sodium ?? item.nf_sodium),
+    id: readIdFromItem(item),
+    name: readFoodNameFromItem(item),
+    brand: readBrandFromItem(item),
+    calories: readCaloriesFromItem(item),
+    protein: readProteinFromItem(item),
+    carbs: readCarbsFromItem(item),
+    fat: readFatFromItem(item),
+    fiber: readFiberFromItem(item),
+    sugar: readSugarFromItem(item),
+    sodium: readSodiumFromItem(item),
     potassium: roundOrNull(item.potassium),
     cholesterol: roundOrNull(item.cholesterol),
-    saturatedFat: roundOrNull(item.saturatedFat ?? item.saturated_fat),
-    transFat: roundOrNull(item.transFat ?? item.trans_fat),
+    saturatedFat: readSaturatedFatFromItem(item),
+    transFat: readTransFatFromItem(item),
     source: sourceLower,
     dataBasis: item.dataBasis || null,
     labelServingGrams: item.labelServingGrams || null,
-    servingUnit:
-      item.servingUnit || item.serving_unit || item.servingSizeUnit || DEFAULT_SERVING_UNIT,
+    servingUnit: readServingUnitFromItem(item),
     servingGrams: servingGramsOrDefault,
     servingAmount: item.servingAmount || servingGramsOrDefault,
-    servingSize:
-      item.servingSize ?? item.serving_qty ?? item.serving_size ?? DEFAULT_SERVING_SIZE,
+    servingSize: readServingSizeFromItem(item),
     kcalPer100Unit: item.kcalPer100Unit || null,
     barcodeConfidence: item.barcodeConfidence || null,
     needsVerification: item.needsVerification || null,
     nutrition_unverified: Boolean(item.nutrition_unverified),
     multiServingFallback: Boolean(item.multiServingFallback),
-    servingMultiplier: item.servingMultiplier ?? null,
-    serving_label:
-      item.serving_label || item.servingLabel || item.householdServingFullText || null,
-    portion_text:
-      item.portion_text || item.serving_label || item.servingLabel || null,
+    servingMultiplier: item.servingMultiplier != null ? item.servingMultiplier : null,
+    serving_label: readServingLabelFromItem(item),
+    portion_text: readPortionTextFromItem(item),
   };
 
   // 3a. Non-barcode sources: only fix ml tagged on solids.
@@ -248,9 +436,15 @@ function mapSearchRowToFoodShape(item) {
 function servingUnitGuard(food) {
   if (!food) return food;
 
-  const servingUnitLower = String(
-    food.servingUnit || food.serving_unit || UNIT_GRAMS,
-  ).toLowerCase();
+  const fromCamel = food.servingUnit;
+  const fromSnake = food.serving_unit;
+  let servingUnitLower = UNIT_GRAMS;
+  if (fromCamel) {
+    servingUnitLower = String(fromCamel).toLowerCase();
+  } else if (fromSnake) {
+    servingUnitLower = String(fromSnake).toLowerCase();
+  }
+
   const unitLooksLikeMilliliters =
     servingUnitLower === UNIT_ML || servingUnitLower === UNIT_MILLILITERS;
   if (!unitLooksLikeMilliliters) return food;
@@ -276,16 +470,14 @@ function isLiquidFood(food) {
   if (SOLID_CATEGORY_PATTERN.test(nameBrandHaystack)) return false;
   if (LIQUID_FOOD_PATTERN.test(nameBrandHaystack)) return true;
 
-  const servingUnitLower = String(
-    food?.servingUnit || food?.serving_unit || '',
-  ).toLowerCase();
+  const servingUnitLower = readServingUnitLower(food);
   const unitIsFluid =
     servingUnitLower === UNIT_ML ||
     servingUnitLower === UNIT_MILLILITERS ||
     servingUnitLower === UNIT_FL_OZ;
   if (!unitIsFluid) return false;
 
-  const servingGrams = toFiniteNumber(food?.servingGrams);
+  const servingGrams = toFiniteNumber(readFoodField(food, 'servingGrams'));
   const liquidNameOrSmallServe =
     LIQUID_FOOD_PATTERN.test(nameBrandHaystack) ||
     servingGrams <= LIQUID_SERVING_GRAMS_MAX;
@@ -304,3 +496,13 @@ function usdaDescriptionLooksLiquid(description) {
   return USDA_LIQUID_FALLBACK_PATTERN.test(descriptionLower);
 }
 
+module.exports = {
+  SOLID_FOOD_PATTERN,
+  LIQUID_FOOD_PATTERN,
+  isLiquidFood,
+  usdaDescriptionLooksLiquid,
+  servingUnitGuard,
+  mapSearchRowToFoodShape,
+  normalizeFoodForLog,
+  normalizeFoodItem,
+};

@@ -1,0 +1,4 @@
+src/workouts/create-plan/countPlansCreated.js
+src/workouts/create-plan/workoutPlanCreation.js
+src/workouts/exercise-videos/ExerciseCard.js
+src/workouts/view-plan/PlanPdfViewer.js

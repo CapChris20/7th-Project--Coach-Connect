@@ -1,0 +1,79 @@
+{
+  "invariants": [
+    {
+      "failureCount": 0,
+      "failures": [],
+      "holds": true,
+      "id": 1,
+      "name": "Dropping the brand token never promotes a different-brand row to confident"
+    },
+    {
+      "failureCount": 0,
+      "failures": [],
+      "holds": true,
+      "id": 2,
+      "name": "A one-edit typo on a rare token yields the same top entity"
+    },
+    {
+      "failureCount": 0,
+      "failures": [],
+      "holds": true,
+      "id": 3,
+      "name": "An unexplained rare token yields none or ambiguous, never confident"
+    },
+    {
+      "failureCount": 0,
+      "failures": [],
+      "holds": true,
+      "id": 4,
+      "name": "The cousin never outranks its target"
+    },
+    {
+      "failureCount": 0,
+      "failures": [],
+      "holds": true,
+      "id": 5,
+      "name": "All-zero macros outside beverage/water/sweetener categories are rejected"
+    },
+    {
+      "failureCount": 0,
+      "failures": [],
+      "holds": true,
+      "id": 6,
+      "name": "Atwater-violating candidates are rejected"
+    },
+    {
+      "failureCount": 0,
+      "failures": [],
+      "holds": true,
+      "id": 7,
+      "name": "Serper-only data is never confident and never auto-fills a barcode",
+      "note": "P2 checks search confidence only; barcode autofill is P4."
+    },
+    {
+      "failureCount": 1,
+      "failures": [
+        "networkCalls=12"
+      ],
+      "holds": false,
+      "id": 8,
+      "name": "Barcodes with a bad checksum make no network call",
+      "note": "Count comes from scripts/traceBarcodeMismatch.js, which invokes the live /api/food/barcode handler with axios stubbed."
+    },
+    {
+      "failureCount": 0,
+      "failures": [],
+      "holds": true,
+      "id": 9,
+      "name": "Consensus never merges rows from different clusters"
+    },
+    {
+      "failureCount": 0,
+      "failures": [],
+      "holds": true,
+      "id": 10,
+      "name": "Output is byte-identical across runs"
+    }
+  ],
+  "pipeline": "v2"
+}

@@ -23,6 +23,55 @@ import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage
 import TopHeader from '../loading-and-header/TopHeader';
 import { BOTTOM_NAV_BAR_HEIGHT, SHELL_SAFE_AREA_EDGES } from '../../navigation/bottomMenuSpacing';
 
+/**
+ * Walk nested keys; stop and return undefined when any step is missing.
+ * @param {any} root
+ * @param {...(string|number)} keys
+ * @returns {any}
+ */
+function readNestedValue(root, ...keys) {
+  let cursor = root;
+  for (const key of keys) {
+    if (cursor == null) {
+      return undefined;
+    }
+    cursor = cursor[key];
+  }
+  return cursor;
+}
+
+/**
+ * Call a function when it exists; otherwise return undefined.
+ * @param {Function|null|undefined} maybeFn
+ * @param {...any} args
+ * @returns {any}
+ */
+function callIfFunction(maybeFn, ...args) {
+  if (typeof maybeFn !== 'function') {
+    return undefined;
+  }
+  return maybeFn(...args);
+}
+
+/**
+ * Call obj[methodName](...args) when that method exists (keeps `this`).
+ * @param {object|null|undefined} objectValue
+ * @param {string} methodName
+ * @param {...any} args
+ * @returns {any}
+ */
+function callBoundMethodIfPresent(objectValue, methodName, ...args) {
+  if (objectValue == null) {
+    return undefined;
+  }
+  const maybeMethod = objectValue[methodName];
+  if (typeof maybeMethod !== 'function') {
+    return undefined;
+  }
+  return maybeMethod.apply(objectValue, args);
+}
+
+
 // ===== NAMED CONSTANTS =====
 
 const TABLET_MIN_WIDTH = 768;
@@ -114,7 +163,7 @@ const TABLET_COLUMN_COUNT = 3;
 // ===== HELPER FUNCTIONS =====
 
 /**
- * Pull gallery route options into plain locals (no nested ?. in the screen body).
+ * Pull gallery route options into plain locals (no nested optional chains in the screen body).
  * @param {object|undefined} route
  * @param {boolean} reserveShellBottomNav
  */
@@ -854,6 +903,51 @@ function ProgressPhotosViewerThumbStrip({
     </ScrollView>;
 }
 
+
+/**
+ * Sort menu rows (for-loop so the main screen stays free of .map).
+ */
+function buildSortMenuRows(sortId, theme, colors, onPickSort) {
+  const rows = [];
+  for (let index = 0; index < SORT_OPTIONS.length; index += 1) {
+    const option = SORT_OPTIONS[index];
+    const isSelected = sortId === option.id;
+    rows.push(
+      <TouchableOpacity
+        key={option.id}
+        style={[styles.menuRow, { borderBottomColor: colors.nbBorder }]}
+        onPress={() => onPickSort(option.id)}
+      >
+        <Text style={[styles.menuText, { color: theme.textColor }]}>{option.label}</Text>
+        {isSelected ? <Ionicons name="checkmark" size={18} color={colors.nbFill} /> : null}
+      </TouchableOpacity>,
+    );
+  }
+  return rows;
+}
+
+/**
+ * Filter menu rows (for-loop so the main screen stays free of .map).
+ */
+function buildFilterMenuRows(filterId, theme, colors, onPickFilter) {
+  const rows = [];
+  for (let index = 0; index < FILTER_OPTIONS.length; index += 1) {
+    const option = FILTER_OPTIONS[index];
+    const isSelected = filterId === option.id;
+    rows.push(
+      <TouchableOpacity
+        key={option.id}
+        style={[styles.menuRow, { borderBottomColor: colors.nbBorder }]}
+        onPress={() => onPickFilter(option.id)}
+      >
+        <Text style={[styles.menuText, { color: theme.textColor }]}>{option.label}</Text>
+        {isSelected ? <Ionicons name="checkmark" size={18} color={colors.nbFill} /> : null}
+      </TouchableOpacity>,
+    );
+  }
+  return rows;
+}
+
 // ===== MAIN FUNCTION =====
 
 /**
@@ -919,7 +1013,7 @@ export default function MyProgressPhotosScreen({
       setPhotos(photosFromSnapshot(firestoreSnapshot));
       setLoading(false);
     }, snapshotError => {
-      setError((snapshotError == null ? void 0 : snapshotError.message) || 'Failed to load photos');
+      setError(readNestedValue(snapshotError, "message") || 'Failed to load photos');
       setPhotos([]);
       setLoading(false);
     });
@@ -973,14 +1067,13 @@ export default function MyProgressPhotosScreen({
 
     // 6. Upload to Storage and write the Firestore row. The live listener adds the card.
     try {
-      var _optObj;
       await uploadProgressPhoto({
         clientId,
         localUri,
-        uploadedByUid: (_optObj = auth == null ? void 0 : auth.currentUser) == null ? void 0 : _optObj.uid
+        uploadedByUid: readNestedValue(auth, "currentUser", "uid")
       });
     } catch (uploadError) {
-      showNotice('Upload failed', (uploadError == null ? void 0 : uploadError.message) || 'Could not add photo.');
+      showNotice('Upload failed', readNestedValue(uploadError, "message") || 'Could not add photo.');
     }
   }, [allowUpload, clientId, db, storage, showNotice]);
   useEffect(() => {
@@ -1004,14 +1097,12 @@ export default function MyProgressPhotosScreen({
     if (modalIndex == null || filteredSorted.length === 0) return;
     const scrollTimer = setTimeout(() => {
       try {
-        var _optFn, _optObj2;
-        (_optFn = (_optObj2 = listRef.current) == null ? void 0 : _optObj2.scrollToIndex) == null ? void 0 : _optFn({
+        callIfFunction(readNestedValue(listRef, "current", "scrollToIndex"), {
           index: Math.min(modalIndex, filteredSorted.length - 1),
           animated: false
         });
       } catch (_) {
-        var _optFn2, _optObj3;
-        (_optFn2 = (_optObj3 = listRef.current) == null ? void 0 : _optObj3.scrollToOffset) == null ? void 0 : _optFn2({
+        callIfFunction(readNestedValue(listRef, "current", "scrollToOffset"), {
           offset: windowWidth * modalIndex,
           animated: false
         });
@@ -1046,7 +1137,7 @@ export default function MyProgressPhotosScreen({
           });
           closeModal();
         } catch (deleteError) {
-          showNotice('Error', (deleteError == null ? void 0 : deleteError.message) || 'Could not delete photo.');
+          showNotice('Error', readNestedValue(deleteError, "message") || 'Could not delete photo.');
         }
       }
     });
@@ -1064,7 +1155,7 @@ export default function MyProgressPhotosScreen({
   const showPhotoActions = photo => {
     // 1. Share / Delete / Cancel. iOS uses the action sheet; Android uses NbSheet.
     const buttons = ['Share', 'Delete', 'Cancel'];
-    const handlers = [() => handleShare(photo == null ? void 0 : photo.url), () => handleDeletePhoto(photo), () => {}];
+    const handlers = [() => handleShare(readNestedValue(photo, "url")), () => handleDeletePhoto(photo), () => {}];
     if (Platform.OS === 'ios') {
       ActionSheetIOS.showActionSheetWithOptions({
         options: buttons,
@@ -1100,7 +1191,7 @@ export default function MyProgressPhotosScreen({
     photoOverlayCaption = `${modalBodyPart}, ${formatPhotoShortDate(currentDate)}`;
   }
   const indexPill = flatIndexValid && filteredSorted.length ? `${modalIndex + 1} / ${filteredSorted.length}` : '';
-  const noteLine = (current == null ? void 0 : current.note) || (current == null ? void 0 : current.caption) || null;
+  const noteLine = readNestedValue(current, "note") || readNestedValue(current, "caption") || null;
   const fullscreenHeight = windowHeight - insets.top - insets.bottom;
   const goAdjacentPhoto = direction => {
     if (modalIndex == null) return;
@@ -1111,18 +1202,16 @@ export default function MyProgressPhotosScreen({
     }
   };
   const selectFullscreenThumb = thumbIndex => {
-    var _optFn3, _optObj4;
     setModalIndex(thumbIndex);
-    (_optFn3 = (_optObj4 = listRef.current) == null ? void 0 : _optObj4.scrollToIndex) == null ? void 0 : _optFn3({
+    callIfFunction(readNestedValue(listRef, "current", "scrollToIndex"), {
       index: thumbIndex,
       animated: true
     });
   };
   const headerIconColor = colors.nbInk;
   const handleBack = () => {
-    var _optFn4;
     // 1. Shell header uses onBack. Standalone screen uses navigation.goBack.
-    if (typeof onBack === 'function') onBack();else (_optFn4 = navigation == null ? void 0 : navigation.goBack) == null ? void 0 : _optFn4();
+    if (typeof onBack === 'function') onBack();else callIfFunction(readNestedValue(navigation, "goBack"));
   };
   const gridBottomPad = insets.bottom + GRID_BOTTOM_EXTRA + (reserveNav ? BOTTOM_NAV_BAR_HEIGHT : 0);
   const showSortOrFilterMenu = showSortMenu || showFilterMenu;
@@ -1217,28 +1306,14 @@ export default function MyProgressPhotosScreen({
         backgroundColor: theme.menuBackgroundColor,
         borderColor: colors.nbBorder
       }]}>
-            {showSortMenu ? SORT_OPTIONS.map(option => <TouchableOpacity key={option.id} style={[styles.menuRow, {
-          borderBottomColor: colors.nbBorder
-        }]} onPress={() => {
-          setSortId(option.id);
+            {showSortMenu ? buildSortMenuRows(sortId, theme, colors, (pickedId) => {
+          setSortId(pickedId);
           setShowSortMenu(false);
-        }}>
-                    <Text style={[styles.menuText, {
-            color: theme.textColor
-          }]}>{option.label}</Text>
-                    {sortId === option.id ? <Ionicons name="checkmark" size={18} color={colors.nbFill} /> : null}
-                  </TouchableOpacity>) : null}
-            {showFilterMenu ? FILTER_OPTIONS.map(option => <TouchableOpacity key={option.id} style={[styles.menuRow, {
-          borderBottomColor: colors.nbBorder
-        }]} onPress={() => {
-          setFilterId(option.id);
+        }) : null}
+            {showFilterMenu ? buildFilterMenuRows(filterId, theme, colors, (pickedId) => {
+          setFilterId(pickedId);
           setShowFilterMenu(false);
-        }}>
-                    <Text style={[styles.menuText, {
-            color: theme.textColor
-          }]}>{option.label}</Text>
-                    {filterId === option.id ? <Ionicons name="checkmark" size={18} color={colors.nbFill} /> : null}
-                  </TouchableOpacity>) : null}
+        }) : null}
           </View> : null}
       </View>
 
@@ -1360,9 +1435,8 @@ export default function MyProgressPhotosScreen({
         })} onScrollToIndexFailed={({
           index
         }) => {
-          var _optFn5, _optObj5;
           const offset = index * windowWidth;
-          (_optFn5 = (_optObj5 = listRef.current) == null ? void 0 : _optObj5.scrollToOffset) == null ? void 0 : _optFn5({
+          callIfFunction(readNestedValue(listRef, "current", "scrollToOffset"), {
             offset,
             animated: false
           });
@@ -1430,7 +1504,7 @@ export default function MyProgressPhotosScreen({
               <View style={{
               flex: 1
             }}>
-                <NbButton variant="ghost" onPress={() => (current == null ? void 0 : current.url) && handleShare(current.url)}>
+                <NbButton variant="ghost" onPress={() => readNestedValue(current, "url") && handleShare(current.url)}>
                   Share
                 </NbButton>
               </View>
@@ -1457,7 +1531,7 @@ export default function MyProgressPhotosScreen({
           <NbButton variant="fill" onPress={() => {
           const photo = photoActionsPhoto;
           setPhotoActionsPhoto(null);
-          handleShare(photo == null ? void 0 : photo.url);
+          handleShare(readNestedValue(photo, "url"));
         }}>
             Share
           </NbButton>
@@ -1474,7 +1548,7 @@ export default function MyProgressPhotosScreen({
         </View>
       </NbSheet>
 
-      <NbNoticeSheet visible={noticeSheetVisible} onClose={() => setNotice(null)} title={(notice == null ? void 0 : notice.title) || ''} message={notice == null ? void 0 : notice.message} confirmLabel={(notice == null ? void 0 : notice.confirmLabel) || 'OK'} cancelLabel={notice == null ? void 0 : notice.cancelLabel} onConfirm={notice == null ? void 0 : notice.onConfirm} destructive={!!(notice == null ? void 0 : notice.destructive)} />
+      <NbNoticeSheet visible={noticeSheetVisible} onClose={() => setNotice(null)} title={readNestedValue(notice, "title") || ''} message={readNestedValue(notice, "message")} confirmLabel={readNestedValue(notice, "confirmLabel") || 'OK'} cancelLabel={readNestedValue(notice, "cancelLabel")} onConfirm={readNestedValue(notice, "onConfirm")} destructive={!!readNestedValue(notice, "destructive")} />
     </SafeAreaView>;
 }
 

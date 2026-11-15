@@ -16,6 +16,52 @@ const {
   resolveFoodServingLabel,
   extractServingLabelFromPageText,
 } = require('../../../../src/nutrition/food-search/guessServingLabel');
+const { createCandidate, assertCandidate } = require('../../../../src/nutrition/food-match/candidate');
+const {
+  completenessFromMacros,
+  servingFromMacros,
+} = require('../../../../src/nutrition/food-match/adapters/macroHelpers');
+
+/**
+ * Candidate adapter for a FastFoodNutrition detail payload.
+ * @param {object} raw
+ * @returns {object|null}
+ */
+function adaptFastFoodNutritionResult(raw, opts = {}) {
+  if (!raw || typeof raw !== 'object') return null;
+  const name = String(raw.name || raw.displayName || '').trim();
+  if (!name) return null;
+  const brand = String(raw.brand || raw.restaurant || '').trim();
+  const macros = {
+    kcal: raw.calories ?? raw.kcal ?? null,
+    protein: raw.protein_g ?? raw.protein ?? null,
+    carbs: raw.carbs_g ?? raw.carbs ?? null,
+    fat: raw.fat_g ?? raw.fat ?? null,
+  };
+  const candidate = createCandidate({
+    id: raw.id ? String(raw.id) : `fastFoodNutrition:${name}`,
+    source: 'fastFoodNutrition',
+    name,
+    brand,
+    categoryPath: [],
+    channel: 'restaurant',
+    gtin: null,
+    per100: null,
+    servings: [
+      servingFromMacros({
+        label: raw.servingLabel || '1 serving',
+        kcal: macros.kcal,
+        protein: macros.protein,
+        carbs: macros.carbs,
+        fat: macros.fat,
+        origin: 'menu',
+      }),
+    ],
+    quality: { completeness: completenessFromMacros(macros), sourceFlags: [] },
+    provenance: { url: raw.url || null, fetchedAt: opts.fetchedAt || null },
+  });
+  return assertCandidate(candidate);
+}
 
 function collectFfnCandidates($, baseUrl = 'https://fastfoodnutrition.org') {
   const seen = new Set();
@@ -118,4 +164,9 @@ async function scrapeFastFoodNutrition(query, timeoutMs = SCRAPE_TIMEOUT_MS) {
   return parseFfnDetailPage(detailHtml, best.href, query);
 }
 
-module.exports = { scrapeFastFoodNutrition, collectFfnCandidates, parseFfnDetailPage };
+module.exports = {
+  scrapeFastFoodNutrition,
+  collectFfnCandidates,
+  parseFfnDetailPage,
+  adaptFastFoodNutritionResult,
+};

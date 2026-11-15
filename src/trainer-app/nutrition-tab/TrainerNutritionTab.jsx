@@ -39,7 +39,7 @@ const MICRO_KEYS = [
   { key: 'potassium', label: 'Potassium', unit: 'mg' },
 ];
 
-// ===== LAYOUT PIECES (pure — no hooks) =====
+// ===== HELPER FUNCTIONS =====
 
 function CalorieRing({ calories, goal, isDark }) {
   const { ink, muted } = inkAndMutedForTheme(isDark);
@@ -315,58 +315,6 @@ function NutritionLoggedDay({
   );
 }
 
-// ===== MAIN FUNCTION =====
-
-/**
- * Trainer Nutrition tab body for one client’s today totals.
- * Flow: 1. normalize foods/micros  2. pull totals/goals  3. empty shell or logged day
- */
-const NutritionTab = ({ isDark, clientData, clientName, onRemindLog }) => {
-  // vocab: useMemo = remember a computed value until its inputs change (foods / micros reshape).
-  const nutrition = clientData?.nutrition || {};
-  const foods = useMemo(() => normalizeFoodRows(nutrition.foods), [nutrition.foods]);
-  const microRows = useMemo(() => microRowsFromNutrition(nutrition), [nutrition]);
-
-  // 1. Pull totals and goals (defaults match Design Law placeholder day).
-  const calories = Number(nutrition.calories) || 0;
-  const caloriesGoal = Number(nutrition.caloriesGoal) || CALORIES_GOAL_DEFAULT;
-  const protein = Number(nutrition.protein) || 0;
-  const carbs = Number(nutrition.carbs) || 0;
-  const fat = Number(nutrition.fat) || 0;
-  const proteinGoal = Number(nutrition.proteinGoal) || PROTEIN_GOAL_DEFAULT_G;
-  const carbsGoal = Number(nutrition.carbsGoal) || CARBS_GOAL_DEFAULT_G;
-  const fatGoal = Number(nutrition.fatGoal) || FAT_GOAL_DEFAULT_G;
-
-  // 2. Totally empty → dashed shell (Design Law PNG 08/10).
-  const isTotallyEmpty = foods.length === 0 && calories <= 0;
-  if (isTotallyEmpty) {
-    return (
-      <NutritionEmptyDay isDark={isDark} clientName={clientName} onRemindLog={onRemindLog} />
-    );
-  }
-
-  // 3. Otherwise render ring, micros, and meal list.
-  return (
-    <NutritionLoggedDay
-      isDark={isDark}
-      foods={foods}
-      calories={calories}
-      caloriesGoal={caloriesGoal}
-      protein={protein}
-      carbs={carbs}
-      fat={fat}
-      proteinGoal={proteinGoal}
-      carbsGoal={carbsGoal}
-      fatGoal={fatGoal}
-      microRows={microRows}
-    />
-  );
-};
-
-export default NutritionTab;
-
-// ===== PLUMBING — skip unless debugging food-row / micro reshape =====
-
 function firstNameFromFullName(fullName) {
   const trimmed = String(fullName || 'Alex').trim();
   const nameParts = trimmed.split(/\s+/);
@@ -480,6 +428,58 @@ function missingDesignLawMealSlots(foods) {
   }
   return emptySlots.slice(0, 1);
 }
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Trainer Nutrition tab body for one client’s today totals.
+ * Flow: 1. normalize foods/micros  2. pull totals/goals  3. empty shell or logged day
+ */
+const NutritionTab = ({ isDark, clientData, clientName, onRemindLog }) => {
+  // vocab: useMemo = remember a computed value until its inputs change (foods / micros reshape).
+  const nutrition = clientData?.nutrition || {};
+  const foods = useMemo(() => normalizeFoodRows(nutrition.foods), [nutrition.foods]);
+  const microRows = useMemo(() => microRowsFromNutrition(nutrition), [nutrition]);
+
+  // 1. Pull totals and goals (defaults match Design Law placeholder day).
+  const calories = Number(nutrition.calories) || 0;
+  const caloriesGoal = Number(nutrition.caloriesGoal) || CALORIES_GOAL_DEFAULT;
+  const protein = Number(nutrition.protein) || 0;
+  const carbs = Number(nutrition.carbs) || 0;
+  const fat = Number(nutrition.fat) || 0;
+  const proteinGoal = Number(nutrition.proteinGoal) || PROTEIN_GOAL_DEFAULT_G;
+  const carbsGoal = Number(nutrition.carbsGoal) || CARBS_GOAL_DEFAULT_G;
+  const fatGoal = Number(nutrition.fatGoal) || FAT_GOAL_DEFAULT_G;
+
+  // 2. Totally empty → dashed shell (Design Law PNG 08/10).
+  const isTotallyEmpty = foods.length === 0 && calories <= 0;
+  if (isTotallyEmpty) {
+    return (
+      <NutritionEmptyDay isDark={isDark} clientName={clientName} onRemindLog={onRemindLog} />
+    );
+  }
+
+  // 3. Otherwise render ring, micros, and meal list.
+  return (
+    <NutritionLoggedDay
+      isDark={isDark}
+      foods={foods}
+      calories={calories}
+      caloriesGoal={caloriesGoal}
+      protein={protein}
+      carbs={carbs}
+      fat={fat}
+      proteinGoal={proteinGoal}
+      carbsGoal={carbsGoal}
+      fatGoal={fatGoal}
+      microRows={microRows}
+    />
+  );
+};
+
+export default NutritionTab;
+
+
 
 const styles = StyleSheet.create({
   root: {

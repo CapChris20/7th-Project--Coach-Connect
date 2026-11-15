@@ -1,7 +1,11 @@
 // Writes one error to a file (Node scripts) or to the API (the app), and also to Firestore.
 // Flow: build one error record → Node prepends it to ERRORS.md, the app POSTs /api/log-error → either way, add an app_errors document.
 // Called from the app's crash path. CommonJS so plain Node scripts can require() it.
-// Read order: constants → recordError recipe → PLUMBING (filesystem, API, Firestore).
+
+const isNode = typeof process !== 'undefined' && process.versions && process.versions.node;
+const { getApiBase } = require('../for-both/online-connection/whereToConnect');
+
+// ===== NAMED CONSTANTS =====
 
 const LOG_ERROR_PATH = '/api/log-error';
 const APP_ERRORS_COLLECTION = 'app_errors';
@@ -16,38 +20,10 @@ const TOTAL_ERRORS_HEADER_PREFIX = 'Total Errors: ';
 const ERROR_LOG_TITLE = '🔥 ANATROX ERROR LOG';
 const ERROR_COUNT_PATTERN = /Total Errors: (\d+)/;
 
-const isNode = typeof process !== 'undefined' && process.versions && process.versions.node;
-const { getApiBase } = require('../for-both/online-connection/whereToConnect');
+let cachedFirestoreDb = null;
+let firestoreLookupAttempted = false;
 
-/**
- * Record one error to the file or the API, then to Firestore.
- * The API call is not awaited — the app must not block the UI on logging.
- * @param {Error|object} error
- * @param {string} context
- * @returns {Promise<void>}
- */
-async function recordError(error, context) {
-  // 1. Turn the thrown value into one consistent record shape for every sink.
-  const recordedAt = new Date();
-  const errorData = buildErrorData(error, recordedAt, context);
-
-  // 2. Node scripts append to ERRORS.md; the mobile app posts to /api/log-error instead.
-  const fileSystem = getFs();
-  const errorLogFile = getErrorLogFile();
-  const shouldWriteMarkdown = canWriteMarkdownFile(fileSystem, errorLogFile);
-  if (shouldWriteMarkdown) {
-    writeErrorToMarkdownFile(fileSystem, errorLogFile, errorData, recordedAt);
-  } else {
-    writeErrorToApi(errorData);
-  }
-
-  // 3. Firestore is always attempted so support can search app_errors in anatrox-auth.
-  await writeErrorToFirestore(errorData);
-}
-
-module.exports = { recordError };
-
-// PLUMBING — skip unless ERRORS.md, /api/log-error, or app_errors is missing a crash.
+// ===== HELPER FUNCTIONS =====
 
 function formatReadableCrashTime(date) {
   const moment = date || new Date();
@@ -122,9 +98,6 @@ function getErrorLogFile() {
 function canWriteMarkdownFile(fileSystem, errorLogFile) {
   return Boolean(isNode && fileSystem && errorLogFile);
 }
-
-let cachedFirestoreDb = null;
-let firestoreLookupAttempted = false;
 
 function firestoreHandleFromConfig(firebaseConfig) {
   if (!firebaseConfig || !firebaseConfig.db) {
@@ -277,3 +250,33 @@ async function writeErrorToFirestore(errorData) {
     console.error('❌ Failed to log error to Firestore:', firestoreError.message);
   }
 }
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Record one error to the file or the API, then to Firestore.
+ * The API call is not awaited — the app must not block the UI on logging.
+ * @param {Error|object} error
+ * @param {string} context
+ * @returns {Promise<void>}
+ */
+async function recordError(error, context) {
+  // 1. Turn the thrown value into one consistent record shape for every sink.
+  const recordedAt = new Date();
+  const errorData = buildErrorData(error, recordedAt, context);
+
+  // 2. Node scripts append to ERRORS.md; the mobile app posts to /api/log-error instead.
+  const fileSystem = getFs();
+  const errorLogFile = getErrorLogFile();
+  const shouldWriteMarkdown = canWriteMarkdownFile(fileSystem, errorLogFile);
+  if (shouldWriteMarkdown) {
+    writeErrorToMarkdownFile(fileSystem, errorLogFile, errorData, recordedAt);
+  } else {
+    writeErrorToApi(errorData);
+  }
+
+  // 3. Firestore is always attempted so support can search app_errors in anatrox-auth.
+  await writeErrorToFirestore(errorData);
+}
+
+module.exports = { recordError };

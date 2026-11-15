@@ -8,6 +8,9 @@ import { lightColors } from '../../look-and-feel/colorPalette';
 
 // ===== NAMED CONSTANTS =====
 
+const LAYOUT_SIZE_24 = 24;
+const LAYOUT_SIZE_60 = 60;
+
 // Layout numbers importers can reuse without pulling the full sheet.
 // Manipulate here: CARD_GAP / STATS_ROW_* must stay in sync with statsRowContent padding + gap.
 export const CARD_GAP = 16;
@@ -39,7 +42,7 @@ function heroAndHeaderHomeStyles() {
     marginHorizontal: 22,
     marginTop: 0,
     marginBottom: 6,
-    borderRadius: 24,
+    borderRadius: LAYOUT_SIZE_24,
     borderWidth: 1,
     backgroundColor: 'transparent',
     shadowOffset: {
@@ -47,11 +50,11 @@ function heroAndHeaderHomeStyles() {
       height: 14
     },
     shadowOpacity: 0.14,
-    shadowRadius: 24,
+    shadowRadius: LAYOUT_SIZE_24,
     elevation: 10
   },
   heroBorderGradient: {
-    borderRadius: 24,
+    borderRadius: LAYOUT_SIZE_24,
     padding: 2
   },
   heroInner: {
@@ -134,7 +137,7 @@ function heroAndHeaderHomeStyles() {
     marginHorizontal: 16,
     marginTop: 0,
     marginBottom: 16,
-    borderRadius: 24,
+    borderRadius: LAYOUT_SIZE_24,
     borderWidth: 1,
     borderColor: 'rgba(255,107,157,0.25)',
     backgroundColor: 'transparent'
@@ -148,7 +151,7 @@ function heroAndHeaderHomeStyles() {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 24,
+    paddingVertical: LAYOUT_SIZE_24,
     backgroundColor: 'transparent',
     borderWidth: 1,
     borderColor: 'rgba(255,107,157,0.08)',
@@ -323,7 +326,7 @@ function heroAndHeaderHomeStyles() {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    borderRadius: 24,
+    borderRadius: LAYOUT_SIZE_24,
     paddingHorizontal: 20,
     paddingVertical: 18,
     borderWidth: 1
@@ -411,16 +414,16 @@ function heroAndHeaderHomeStyles() {
   },
   heroCardContainer: {
     marginBottom: 20,
-    borderRadius: 24,
+    borderRadius: LAYOUT_SIZE_24,
     overflow: 'hidden'
   },
   heroColorBorder: {
-    borderRadius: 24,
+    borderRadius: LAYOUT_SIZE_24,
     padding: 1
   },
   heroCard: {
-    borderRadius: 24,
-    padding: 24,
+    borderRadius: LAYOUT_SIZE_24,
+    padding: LAYOUT_SIZE_24,
     backgroundColor: '#1F1F2A'
   },
   heroHeader: {
@@ -437,7 +440,7 @@ function heroAndHeaderHomeStyles() {
     fontFamily: 'System'
   },
   heroWorkoutName: {
-    fontSize: 24,
+    fontSize: LAYOUT_SIZE_24,
     fontWeight: '600',
     color: lightColors.white,
     marginBottom: 8,
@@ -474,7 +477,7 @@ function heroAndHeaderHomeStyles() {
     gap: 8,
     paddingVertical: 14,
     paddingHorizontal: 20,
-    borderRadius: 24,
+    borderRadius: LAYOUT_SIZE_24,
     backgroundColor: '#6C5CE7'
   },
   heroButtonText: {
@@ -499,7 +502,7 @@ function statsRowHomeStyles() {
     gap: 12
   },
   statCardShadow: {
-    borderRadius: 24,
+    borderRadius: LAYOUT_SIZE_24,
     marginRight: 12,
     shadowOffset: {
       width: 0,
@@ -511,13 +514,13 @@ function statsRowHomeStyles() {
     overflow: 'visible'
   },
   statCardBlur: {
-    borderRadius: 24,
+    borderRadius: LAYOUT_SIZE_24,
     overflow: 'hidden',
     width: '100%',
     alignSelf: 'stretch'
   },
   statCardInner: {
-    borderRadius: 24,
+    borderRadius: LAYOUT_SIZE_24,
     padding: 14,
     borderWidth: 1,
     minHeight: 150,
@@ -867,7 +870,7 @@ function agendaHomeStyles() {
   agendaEmptyIconWrap: {
     width: 48,
     height: 48,
-    borderRadius: 24,
+    borderRadius: LAYOUT_SIZE_24,
     alignItems: 'center',
     justifyContent: 'center'
   },
@@ -876,7 +879,7 @@ function agendaHomeStyles() {
     fontSize: 18,
     fontWeight: '700',
     letterSpacing: -0.25,
-    lineHeight: 24,
+    lineHeight: LAYOUT_SIZE_24,
     textAlign: 'center',
     alignSelf: 'center'
   },
@@ -927,7 +930,7 @@ function agendaHomeStyles() {
     textTransform: 'uppercase'
   },
   agendaTitle: {
-    fontSize: 24,
+    fontSize: LAYOUT_SIZE_24,
     fontWeight: '800',
     color: lightColors.white,
     letterSpacing: 0.2
@@ -1236,7 +1239,7 @@ function nutritionHomeStyles() {
   additionalNutrientItem: {
     alignItems: 'center',
     width: '22%',
-    minWidth: 60,
+    minWidth: LAYOUT_SIZE_60,
     paddingHorizontal: 2,
     paddingVertical: 4
   },
@@ -1295,7 +1298,7 @@ function nutritionHomeStyles() {
     marginBottom: CARD_GAP
   },
   caloriesContent: {
-    padding: 24
+    padding: LAYOUT_SIZE_24
   },
   caloriesHeader: {
     flexDirection: 'row',
@@ -1546,7 +1549,7 @@ function notesAndFilesHomeStyles() {
     fontSize: 14
   },
   emptyState: {
-    padding: 24,
+    padding: LAYOUT_SIZE_24,
     alignItems: 'center',
     justifyContent: 'center',
     height: '100%'
@@ -1589,14 +1592,14 @@ function cardsAndDiscoverHomeStyles() {
     backgroundColor: '#F3F4F6'
   },
   glassCard: {
-    borderRadius: 24,
+    borderRadius: LAYOUT_SIZE_24,
     overflow: 'hidden',
     position: 'relative',
     backgroundColor: '#1F1F2A'
   },
   glassCardBorder: {
     ...StyleSheet.absoluteFillObject,
-    borderRadius: 24,
+    borderRadius: LAYOUT_SIZE_24,
     borderWidth: 1,
     borderColor: '#F2F2F0',
     pointerEvents: 'none'
@@ -1641,7 +1644,7 @@ function cardsAndDiscoverHomeStyles() {
     resizeMode: 'contain'
   },
   smallStatValue: {
-    fontSize: 24,
+    fontSize: LAYOUT_SIZE_24,
     fontWeight: '600',
     color: lightColors.white,
     marginBottom: 4,
@@ -1698,7 +1701,7 @@ function cardsAndDiscoverHomeStyles() {
     fontFamily: 'System'
   },
   upcomingSection: {
-    marginBottom: 24
+    marginBottom: LAYOUT_SIZE_24
   },
   upcomingContainer: {
     padding: 4
@@ -1757,7 +1760,7 @@ function cardsAndDiscoverHomeStyles() {
     fontFamily: 'System'
   },
   discoverSection: {
-    marginBottom: 24
+    marginBottom: LAYOUT_SIZE_24
   },
   discoverGrid: {
     flexDirection: 'row',
@@ -1803,7 +1806,7 @@ function cardsAndDiscoverHomeStyles() {
     fontFamily: 'System'
   },
   findTrainersSection: {
-    marginBottom: 24
+    marginBottom: LAYOUT_SIZE_24
   },
   findTrainersContent: {
     padding: 20

@@ -143,7 +143,7 @@ const EMPTY_VALUE_DASH = '—';
 const TRAINER_INITIALS_FALLBACK = 'T';
 const CHEVRON_SIZE = 18;
 
-// ===== ROW VALUE HELPERS =====
+// ===== HELPER FUNCTIONS =====
 
 /**
  * Frequency row: drop "per week" so the trailing value stays short on the list card.
@@ -153,17 +153,14 @@ function frequencyValueForNewPlanRow(onboardingData) {
   const shortened = String(frequencyText || EMPTY_VALUE_DASH)
     .replace(/\s*per\s*week/i, '')
     .trim();
-  if (shortened) {
-    return shortened;
-  }
-  return EMPTY_VALUE_DASH;
+  return shortened || EMPTY_VALUE_DASH;
 }
 
 /**
  * Equipment row: show "N selected" when the client picked a list; else the field display string.
  */
 function equipmentValueForNewPlanRow(onboardingData) {
-  const equipmentList = onboardingData?.equipmentAccess;
+  const equipmentList = onboardingData ? onboardingData.equipmentAccess : null;
   const hasSelectedGear = Array.isArray(equipmentList) && equipmentList.length > 0;
   if (hasSelectedGear) {
     return `${equipmentList.length} selected`;
@@ -188,13 +185,11 @@ function hydrationValueForNewPlanRow(onboardingData) {
  * Level row icon: beginner / advanced art when the text matches; else intermediate handoff art.
  */
 function fitnessLevelIconSource(onboardingData) {
-  const levelText = String(onboardingData?.fitnessLevel || '').toLowerCase();
-  const looksBeginner = levelText.includes('begin');
-  if (looksBeginner) {
+  const levelText = String((onboardingData && onboardingData.fitnessLevel) || '').toLowerCase();
+  if (levelText.includes('begin')) {
     return require('../../assets/icons/handoff/beginner.png');
   }
-  const looksAdvanced = levelText.includes('adv');
-  if (looksAdvanced) {
+  if (levelText.includes('adv')) {
     return require('../../assets/icons/handoff/adv.png');
   }
   return require('../../assets/icons/handoff/inter.png');
@@ -689,7 +684,7 @@ function NewPlanAiTab({
   );
 }
 
-// ===== MAIN PANEL =====
+// ===== MAIN FUNCTION =====
 
 /**
  * New-plan body: AI profile list or ask-trainer form behind NbSegmented.

@@ -28,7 +28,118 @@ const CLIENT_NAME_DEFAULT = 'Client';
 const AVATAR_SIZE = 48;
 const FALLBACK_TIME_LABEL = '—';
 
-// ===== PURE LAYOUT (no hooks) =====
+// ===== HELPER FUNCTIONS =====
+
+function initialsFromName(fullName) {
+  const nameParts = String(fullName || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (nameParts.length === 0) {
+    return '?';
+  }
+  if (nameParts.length === 1) {
+    return nameParts[0].slice(0, 2).toUpperCase();
+  }
+
+  const firstInitial = nameParts[0][0] || '';
+  const secondInitial = nameParts[1][0] || '';
+  return `${firstInitial}${secondInitial}`.toUpperCase();
+}
+
+function sessionTypeLabel(session) {
+  if (session == null) {
+    return 'Training';
+  }
+  if (session.title) {
+    return session.title;
+  }
+  if (session.focus) {
+    return session.focus;
+  }
+  if (session.type) {
+    return session.type;
+  }
+  if (session.sessionType) {
+    return session.sessionType;
+  }
+  return 'Training';
+}
+
+function whereLabel(session) {
+  if (session == null) {
+    return 'In person';
+  }
+  if (session.zoomLink) {
+    return 'Video link';
+  }
+  return 'In person';
+}
+
+function formatWhen(session) {
+  let dateRaw = '';
+  let timeRaw = null;
+  if (session != null) {
+    if (session.date) {
+      dateRaw = String(session.date);
+    }
+    timeRaw = session.time;
+  }
+  const dateKey = dateRaw.slice(0, 10);
+  let timeLabel = formatTime12(timeRaw);
+  if (!timeLabel) {
+    timeLabel = FALLBACK_TIME_LABEL;
+  }
+  if (!dateKey) {
+    return timeLabel;
+  }
+
+  try {
+    // vocab: parseISO = turn "2026-11-13" into a Date; isValid = date-fns guard
+    const parsedDay = parseISO(dateKey);
+    if (!isValid(parsedDay)) {
+      return `${dateKey} · ${timeLabel}`;
+    }
+    return `${format(parsedDay, 'EEE, MMM d')} · ${timeLabel}`;
+  } catch {
+    return `${dateKey} · ${timeLabel}`;
+  }
+}
+
+function statusLabel(status) {
+  if (status === STATUS_ACCEPTED) {
+    return 'Confirmed';
+  }
+  if (status === STATUS_DECLINED) {
+    return 'Declined';
+  }
+  return 'Pending';
+}
+
+function pickStatusChipVariant(isConfirmed) {
+  if (isConfirmed) {
+    return 'default';
+  }
+  return 'outline';
+}
+
+function extractSessionFields(session) {
+  if (!session) {
+    return {
+      name: CLIENT_NAME_DEFAULT,
+      status: STATUS_PENDING,
+      durationMin: DEFAULT_DURATION,
+      notesText: '',
+    };
+  }
+  const name = session.clientName || CLIENT_NAME_DEFAULT;
+  const status = session.status || STATUS_PENDING;
+  const durationRaw = session.durationMin || session.duration || DEFAULT_DURATION;
+  const durationMin = Number(durationRaw);
+  const notesText = session.notes ? String(session.notes) : '';
+  return { name, status, durationMin, notesText };
+}
 
 function DetailRow({ label, value, colors, isLastRow }) {
   // Name the border decision before JSX — no nested ternary in the style array.
@@ -78,7 +189,10 @@ function SessionDetailHeader({
 }
 
 function SessionDetailNotesBox({ notes, colors }) {
-  const notesSurfaceColor = colors.nbSurfaceChip || colors.nbBackground;
+  let notesSurfaceColor = colors.nbBackground;
+  if (colors.nbSurfaceChip) {
+    notesSurfaceColor = colors.nbSurfaceChip;
+  }
 
   return (
     <View
@@ -95,13 +209,19 @@ function SessionDetailNotesBox({ notes, colors }) {
 
 function SessionDetailActions({ session, onMessage, onReschedule, onDelete }) {
   const handleMessagePress = () => {
-    onMessage?.(session);
+    if (typeof onMessage === 'function') {
+      onMessage(session);
+    }
   };
   const handleReschedulePress = () => {
-    onReschedule?.(session);
+    if (typeof onReschedule === 'function') {
+      onReschedule(session);
+    }
   };
   const handleDeletePress = () => {
-    onDelete?.(session);
+    if (typeof onDelete === 'function') {
+      onDelete(session);
+    }
   };
 
   return (
@@ -140,6 +260,11 @@ function SessionDetailSheetLayout({
 }) {
   const hasNotes = Boolean(notes);
 
+  let notesBox = null;
+  if (hasNotes) {
+    notesBox = <SessionDetailNotesBox notes={notes} colors={colors} />;
+  }
+
   return (
     <View style={styles.body}>
       <SessionDetailHeader
@@ -158,7 +283,7 @@ function SessionDetailSheetLayout({
         <DetailRow label="Where" value={whereText} colors={colors} isLastRow />
       </NbCard>
 
-      {hasNotes ? <SessionDetailNotesBox notes={notes} colors={colors} /> : null}
+      {notesBox}
 
       <SessionDetailActions
         session={session}
@@ -170,7 +295,7 @@ function SessionDetailSheetLayout({
   );
 }
 
-// ===== MAIN =====
+// ===== MAIN FUNCTION =====
 
 /**
  * Bottom sheet for one session: when/length/where, notes, and action buttons.
@@ -187,12 +312,9 @@ export default function SessionDetailSheet({
   const { colors } = useTheme();
 
   // 1. Client-facing labels from the session doc (Firestore keys unchanged).
-  const name = session?.clientName || CLIENT_NAME_DEFAULT;
+  const { name, status, durationMin, notesText } = extractSessionFields(session);
   const typeLabel = sessionTypeLabel(session);
-  const status = session?.status || STATUS_PENDING;
   const isConfirmed = status === STATUS_ACCEPTED;
-  const durationMin = Number(session?.durationMin || session?.duration || DEFAULT_DURATION);
-  const notesText = session?.notes ? String(session.notes) : '';
 
   // 2. Avatar initials memoized so long names do not re-split every render.
   // vocab: useMemo = cache the string until `name` changes
@@ -227,85 +349,6 @@ export default function SessionDetailSheet({
       />
     </NbSheet>
   );
-}
-
-// ===== PLUMBING — skip unless debugging =====
-
-function initialsFromName(fullName) {
-  const nameParts = String(fullName || '')
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-
-  if (nameParts.length === 0) {
-    return '?';
-  }
-  if (nameParts.length === 1) {
-    return nameParts[0].slice(0, 2).toUpperCase();
-  }
-
-  const firstInitial = nameParts[0][0] || '';
-  const secondInitial = nameParts[1][0] || '';
-  return `${firstInitial}${secondInitial}`.toUpperCase();
-}
-
-function sessionTypeLabel(session) {
-  if (session?.title) {
-    return session.title;
-  }
-  if (session?.focus) {
-    return session.focus;
-  }
-  if (session?.type) {
-    return session.type;
-  }
-  if (session?.sessionType) {
-    return session.sessionType;
-  }
-  return 'Training';
-}
-
-function whereLabel(session) {
-  if (session?.zoomLink) {
-    return 'Video link';
-  }
-  return 'In person';
-}
-
-function formatWhen(session) {
-  const dateKey = String(session?.date || '').slice(0, 10);
-  const timeLabel = formatTime12(session?.time) || FALLBACK_TIME_LABEL;
-  if (!dateKey) {
-    return timeLabel;
-  }
-
-  try {
-    // vocab: parseISO = turn "2026-11-13" into a Date; isValid = date-fns guard
-    const parsedDay = parseISO(dateKey);
-    if (!isValid(parsedDay)) {
-      return `${dateKey} · ${timeLabel}`;
-    }
-    return `${format(parsedDay, 'EEE, MMM d')} · ${timeLabel}`;
-  } catch {
-    return `${dateKey} · ${timeLabel}`;
-  }
-}
-
-function statusLabel(status) {
-  if (status === STATUS_ACCEPTED) {
-    return 'Confirmed';
-  }
-  if (status === STATUS_DECLINED) {
-    return 'Declined';
-  }
-  return 'Pending';
-}
-
-function pickStatusChipVariant(isConfirmed) {
-  if (isConfirmed) {
-    return 'default';
-  }
-  return 'outline';
 }
 
 const styles = StyleSheet.create({

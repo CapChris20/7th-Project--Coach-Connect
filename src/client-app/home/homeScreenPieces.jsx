@@ -19,6 +19,55 @@ import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 're
 import { calculateBMR, calculateTDEE } from '../../for-both/calorieAndMacroMath';
 import styles, { SCREEN_WIDTH, STATS_ROW_PAD_H, STATS_ROW_CARD_GAP, CARD_GAP } from './homeLooks';
 import { lightColors, darkColors } from '../../look-and-feel/colorPalette';
+
+/**
+ * Walk nested keys; stop and return undefined when any step is missing.
+ * @param {any} root
+ * @param {...(string|number)} keys
+ * @returns {any}
+ */
+function readNestedValue(root, ...keys) {
+  let cursor = root;
+  for (const key of keys) {
+    if (cursor == null) {
+      return undefined;
+    }
+    cursor = cursor[key];
+  }
+  return cursor;
+}
+
+/**
+ * Call a function when it exists; otherwise return undefined.
+ * @param {Function|null|undefined} maybeFn
+ * @param {...any} args
+ * @returns {any}
+ */
+function callIfFunction(maybeFn, ...args) {
+  if (typeof maybeFn !== 'function') {
+    return undefined;
+  }
+  return maybeFn(...args);
+}
+
+/**
+ * Call obj[methodName](...args) when that method exists (keeps `this`).
+ * @param {object|null|undefined} objectValue
+ * @param {string} methodName
+ * @param {...any} args
+ * @returns {any}
+ */
+function callBoundMethodIfPresent(objectValue, methodName, ...args) {
+  if (objectValue == null) {
+    return undefined;
+  }
+  const maybeMethod = objectValue[methodName];
+  if (typeof maybeMethod !== 'function') {
+    return undefined;
+  }
+  return maybeMethod.apply(objectValue, args);
+}
+
 const LOTTIE_SORENESS_EMPTY = require('../../assets/sad reaction.json');
 const LOTTIE_ENERGY_EMPTY = require('../../assets/Run Hamster... run.json');
 const LOTTIE_STRESS_EMPTY = require('../../assets/Stressed Employee At Work.json');
@@ -125,15 +174,15 @@ function getPremiumTheme(isDark, colors) {
 }
 function backgroundColorForHomeCard(isDark, colors) {
   if (isDark) return darkColors.nbBackground;
-  return (colors == null ? void 0 : colors.nbBackground) ?? lightColors.nbBackground;
+  return readNestedValue(colors, "nbBackground") ?? lightColors.nbBackground;
 }
 function statKickerColor(isDark, colors) {
   if (isDark) return darkColors.nbMuted;
-  return (colors == null ? void 0 : colors.nbMuted) ?? lightColors.nbMuted;
+  return readNestedValue(colors, "nbMuted") ?? lightColors.nbMuted;
 }
 function statFootnoteColor(isDark, colors) {
   if (isDark) return darkColors.nbMuted;
-  return (colors == null ? void 0 : colors.nbMuted) ?? lightColors.nbMuted;
+  return readNestedValue(colors, "nbMuted") ?? lightColors.nbMuted;
 }
 function cardTiltDegrees(cardIndex) {
   if (cardIndex % 2 === 0) return '-1.2deg';
@@ -259,7 +308,7 @@ function formatGoalLabel(primaryGoal) {
  * @returns {string|null}
  */
 function inferWorkoutType(todayWorkout) {
-  const name = (todayWorkout == null ? void 0 : todayWorkout.name) || (todayWorkout == null ? void 0 : todayWorkout.workoutName);
+  const name = readNestedValue(todayWorkout, "name") || readNestedValue(todayWorkout, "workoutName");
   if (!name) return null;
   const trimmed = String(name).trim();
   if (!trimmed) return null;
@@ -346,16 +395,16 @@ function numericFromNutrientValue(value) {
 }
 function oneMacroRow(macro, nutritionGoals) {
   const numericValue = numericFromNutrientValue(macro.value);
-  let goal = (nutritionGoals == null ? void 0 : nutritionGoals.fatTarget) || DEFAULT_FAT_TARGET;
+  let goal = readNestedValue(nutritionGoals, "fatTarget") || DEFAULT_FAT_TARGET;
   let color = '#06B6D4';
   let gradientColors = NUT_DONUT_MACRO_GRADIENTS.fat;
   if (macro.label === 'Protein') {
-    goal = (nutritionGoals == null ? void 0 : nutritionGoals.proteinTarget) || DEFAULT_PROTEIN_TARGET;
+    goal = readNestedValue(nutritionGoals, "proteinTarget") || DEFAULT_PROTEIN_TARGET;
     color = '#EC4899';
     gradientColors = NUT_DONUT_MACRO_GRADIENTS.protein;
   }
   if (macro.label === 'Carbs') {
-    goal = (nutritionGoals == null ? void 0 : nutritionGoals.carbsTarget) || DEFAULT_CARBS_TARGET;
+    goal = readNestedValue(nutritionGoals, "carbsTarget") || DEFAULT_CARBS_TARGET;
     color = '#F97316';
     gradientColors = NUT_DONUT_MACRO_GRADIENTS.carbs;
   }
@@ -413,7 +462,7 @@ function FlatStatCard({
 }) {
   const cardFill = isDark ? darkColors.nbSurface : lightColors.nbSurface;
   const cardBorder = isDark ? darkColors.nbBorder : lightColors.nbBorder;
-  const shadow = (colors == null ? void 0 : colors.black) ?? (isDark ? darkColors.nbShadow : lightColors.nbShadow);
+  const shadow = readNestedValue(colors, "black") ?? (isDark ? darkColors.nbShadow : lightColors.nbShadow);
   return <View style={[styles.statCardShadow, {
     shadowColor: shadow
   }, style]}>
@@ -612,7 +661,7 @@ function TopStatsRow({
   // Live window width (not module-level Dimensions) — fixes Expo Go on device where initial width is wrong and cards look full-width.
   const cardWidth = Math.max(132, Math.floor((windowWidth - STATS_ROW_PAD_H - STATS_ROW_CARD_GAP) / 2));
   const accent = ACCENT_COLOR;
-  const primary = (colors == null ? void 0 : colors.primary) ?? accent;
+  const primary = readNestedValue(colors, "primary") ?? accent;
   const workoutType = pickWorkoutDisplayName(todayWorkout, dashboardWorkoutSummary);
   const displayWorkoutType = workoutType;
   const workoutFontSize = workoutFontSizeForCard(displayWorkoutType, cardWidth);
@@ -625,7 +674,7 @@ function TopStatsRow({
   }];
   const isRestDay = workoutType === 'Rest Day';
   const fallbackBorder = isDark ? '#38383A' : '#E5E5E7';
-  const border = (colors == null ? void 0 : colors.border) ?? fallbackBorder;
+  const border = readNestedValue(colors, "border") ?? fallbackBorder;
   const borderAlpha = isDark ? 0.5 : 0.55;
   const track = hexToRgba(border, borderAlpha);
   const waterVal = typeof waterIntake === 'number' ? waterIntake : null;
@@ -669,7 +718,7 @@ function TopStatsRow({
                 </View> : <View style={styles.statEmpty}>
                   <LottieView source={require('../../assets/animations/legacy/boxer lottie.json')} autoPlay loop style={styles.statEmptyLottie} />
                   <Text style={[styles.statEmptyText, {
-                color: colors == null ? void 0 : colors.textSecondary
+                color: readNestedValue(colors, "textSecondary")
               }]}>No workout planned yet</Text>
                 </View>}
             </FlatStatCard>
@@ -710,7 +759,7 @@ function TopStatsRow({
                   <LottieView source={require('../../assets/animations/legacy/glass water.json')} autoPlay loop style={styles.statEmptyLottie} />
                   <TouchableOpacity onPress={onOpenDashboard} activeOpacity={0.7}>
                     <Text style={[styles.statEmptyCta, {
-                  color: colors == null ? void 0 : colors.textSecondary
+                  color: readNestedValue(colors, "textSecondary")
                 }]}>Log Water →</Text>
                   </TouchableOpacity>
                 </View>}
@@ -752,7 +801,7 @@ function TopStatsRow({
                   <LottieView source={require('../../assets/animations/legacy/sleep.json')} autoPlay loop style={styles.statEmptyLottie} />
                   <TouchableOpacity onPress={onOpenDashboard} activeOpacity={0.7}>
                     <Text style={[styles.statEmptyCta, {
-                  color: colors == null ? void 0 : colors.textSecondary
+                  color: readNestedValue(colors, "textSecondary")
                 }]}>Log Sleep →</Text>
                   </TouchableOpacity>
                 </View>}
@@ -848,7 +897,7 @@ function WellnessStatsRow({
                   <LottieView source={LOTTIE_SORENESS_EMPTY} autoPlay loop style={styles.wellnessEmptyLottie} />
                   <TouchableOpacity onPress={onOpenDashboard} activeOpacity={0.7}>
                     <Text style={[styles.wellnessEmptyCta, {
-                  color: colors == null ? void 0 : colors.textSecondary
+                  color: readNestedValue(colors, "textSecondary")
                 }]}>Log Soreness →</Text>
                   </TouchableOpacity>
                 </View>}
@@ -885,7 +934,7 @@ function WellnessStatsRow({
                   <LottieView source={LOTTIE_ENERGY_EMPTY} autoPlay loop style={styles.wellnessEmptyLottie} />
                   <TouchableOpacity onPress={onOpenDashboard} activeOpacity={0.7}>
                     <Text style={[styles.wellnessEmptyCta, {
-                  color: colors == null ? void 0 : colors.textSecondary
+                  color: readNestedValue(colors, "textSecondary")
                 }]}>Rate Energy →</Text>
                   </TouchableOpacity>
                 </View>}
@@ -922,7 +971,7 @@ function WellnessStatsRow({
                   <LottieView source={LOTTIE_STRESS_EMPTY} autoPlay loop style={styles.wellnessEmptyLottie} />
                   <TouchableOpacity onPress={onOpenDashboard} activeOpacity={0.7}>
                     <Text style={[styles.wellnessEmptyCta, {
-                  color: colors == null ? void 0 : colors.textSecondary
+                  color: readNestedValue(colors, "textSecondary")
                 }]}>Log Stress →</Text>
                   </TouchableOpacity>
                 </View>}
@@ -1136,7 +1185,7 @@ function TrainingAgenda({
   const subtleFill = isDark ? darkColors.nbSurfaceChip : lightColors.nbSurfaceChip;
   const agendaTextureColors = agendaTextureColorList(isDark);
   const firstWorkout = (workouts || [])[0] || null;
-  const rawTitle = String((firstWorkout == null ? void 0 : firstWorkout.name) || (firstWorkout == null ? void 0 : firstWorkout.workoutName) || 'Training Agenda').trim();
+  const rawTitle = String(readNestedValue(firstWorkout, "name") || readNestedValue(firstWorkout, "workoutName") || 'Training Agenda').trim();
   const exercises = exerciseLinesFromWorkout(firstWorkout);
   const exerciseCount = exercises.length;
   const isEmpty = exerciseCount === 0;
@@ -1968,8 +2017,7 @@ function calculateCalorieGoal(primaryGoal, weight, height, age, gender, daysPerW
  * @returns {number}
  */
 function workoutCompletedDate(workout) {
-  var _optObj;
-  if ((_optObj = workout.completedAt) == null ? void 0 : _optObj.toDate) {
+  if (readNestedValue(workout, "completedAt", "toDate")) {
     return workout.completedAt.toDate();
   }
   return new Date(workout.completedAt);

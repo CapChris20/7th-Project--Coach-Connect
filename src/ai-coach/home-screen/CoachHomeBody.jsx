@@ -133,88 +133,231 @@ const PHOTO_MODE_SUB = 'Send a photo or a video frame';
 const WEB_MODE_TITLE = 'Fitness web research';
 const WEB_MODE_SUB = 'Answers come with sources';
 
-// ===== MAIN FUNCTION =====
+// ===== HELPER FUNCTIONS =====
 
-/**
- * Full Design Law coach home scroll body (PNG 01 client / missing-screens 17 trainer).
- * Flow: 1. theme + role  2. empty vs data  3. chips  4. sections
- * @param {{ viewerRole?: 'client'|'trainer', clientCount?: number }} props
- */
-export default function CoachHomeBody({
-  isDark,
-  suggestions,
-  dailyMetrics,
-  nutritionToday,
-  userData,
-  latestSession,
-  onStartChat,
-  onContinueSession,
-  onPhotoPress,
-  viewerRole = 'client',
-  clientCount = 0,
-}) {
-  // 1. Theme colors + trainer vs client role.
-  const colors = paletteForDarkMode(isDark);
-  // vocab: viewerRole = shell-passed role; trainers get roster tools, not personal log one-taps
-  const isTrainer = viewerRoleIsTrainer(viewerRole);
-  const safeClientCount = safeClientCountFromProp(clientCount);
+function viewerRoleIsTrainer(viewerRole) {
+  const roleText = String(viewerRole || '').toLowerCase();
+  return roleText === ROLE_TRAINER;
+}
 
-  // 2. empty-vs-data PNG 07/08: SeesToday empty when no metrics (even if a past session exists).
-  const hasMetrics = hasAnyCoachMetric(dailyMetrics, nutritionToday, userData);
-  const isEmptySeesToday = !isTrainer && !hasMetrics;
-  const isEmptyClientHome = !isTrainer && !hasMetrics && !latestSession;
+function safeClientCountFromProp(clientCount) {
+  return Math.max(0, Number(clientCount) || 0);
+}
 
-  // 3. “Sees today” chips from logs — never invent quiet-client counts.
-  // vocab: useMemo = recompute chips only when metrics / role / count change
-  const chips = useMemo(() => {
-    return buildSeesTodayChips({
-      isTrainer,
-      safeClientCount,
-      dailyMetrics,
-      nutritionToday,
-      userData,
-    });
-  }, [dailyMetrics, nutritionToday, userData, isTrainer, safeClientCount]);
-
-  // 4. Ask-carousel copy: trainer roster prompts vs client suggestions from the shell.
-  const askSuggestions = askSuggestionsForRole(isTrainer, suggestions);
-
-  // 5. Photo/web rows when metrics exist (PNG 08); trainers and empty-sees skip this block.
-  const shouldShowPhotoWebRows = !isTrainer && !isEmptySeesToday;
-  const photoWebRowsBlock = photoWebRowsOrNull(
-    shouldShowPhotoWebRows,
-    onStartChat,
-    onPhotoPress,
-    colors,
-  );
-  const pickUpBlock = pickUpCardOrNull(latestSession, onContinueSession, colors);
-
-  function handleHeroPress() {
-    if (!onStartChat) {
-      return;
-    }
-    onStartChat({});
+function askSuggestionsForRole(isTrainer, suggestions) {
+  if (isTrainer) {
+    return TRAINER_SUGGESTIONS;
   }
+  return suggestions;
+}
 
+function photoWebRowsOrNull(shouldShow, onStartChat, onPhotoPress, colors) {
+  if (!shouldShow) {
+    return null;
+  }
   return (
-    <View style={styles.bodyRoot}>
-      <HeroBlock
-        colors={colors}
-        onPress={handleHeroPress}
-        isTrainer={isTrainer}
-        clientCount={safeClientCount}
-        isEmpty={isEmptyClientHome}
-      />
-      <SeesTodayRow chips={chips} colors={colors} isEmpty={isEmptySeesToday} />
-      <OneTapGrid onStartChat={onStartChat} colors={colors} isTrainer={isTrainer} />
-      {photoWebRowsBlock}
-      {pickUpBlock}
-      <TryAskingCarousel suggestions={askSuggestions} onStartChat={onStartChat} colors={colors} />
-    </View>
+    <PhotoWebRows onStartChat={onStartChat} onPhoto={onPhotoPress} colors={colors} />
   );
 }
 
-// ===== UI PIECES =====
+function pickUpCardOrNull(latestSession, onContinueSession, colors) {
+  if (!latestSession) {
+    return null;
+  }
+  return (
+    <PickUpCard session={latestSession} onContinue={onContinueSession} colors={colors} />
+  );
+}
+
+function paletteForDarkMode(isDark) {
+  if (isDark) {
+    return darkColors;
+  }
+  return lightColors;
+}
+
+function hapticThenRun(callback) {
+  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+  if (!callback) return;
+  callback();
+}
+
+function heroEyebrowForRole(isTrainer) {
+  if (isTrainer) return HERO_EYEBROW_TRAINER;
+  return HERO_EYEBROW_CLIENT;
+}
+
+function heroTitleForRole(isTrainer) {
+  if (isTrainer) return HERO_TITLE_TRAINER;
+  return HERO_TITLE_CLIENT;
+}
+
+function heroSubtitleForRole(isTrainer, clientCount, isEmpty) {
+  if (isTrainer) {
+    return `I see all ${clientCount} clients and their logs.`;
+  }
+  if (isEmpty) {
+    return HERO_SUB_CLIENT_EMPTY;
+  }
+  return HERO_SUB_CLIENT_DEFAULT;
+}
+
+// Build “Sleep X h avg” chip when daily_metrics has sleepHours.
+function formatSleepChip(metrics) {
+  if (!metrics) return null;
+  const hours = metrics.sleepHours;
+  if (hours == null) return null;
+  if (!Number.isFinite(Number(hours))) return null;
+  // Design Law empty-vs-data PNG 08: “Sleep 5.8 h avg”
+  return `Sleep ${Number(hours).toFixed(1)} h avg`;
+}
+
+// Protein eaten vs target from user profile goals.
+function formatProteinChip(nutrition, userData) {
+  const protein = nutrition ? nutrition.protein : undefined;
+  const target = proteinTargetFromUserData(userData);
+
+  if (protein == null && target == null) return null;
+  if (target != null) {
+    return `Protein ${Math.round(protein || 0)} / ${Math.round(target)} g`;
+  }
+  return `Protein ${Math.round(protein || 0)} g`;
+}
+
+function proteinTargetFromUserData(userData) {
+  if (!userData) return null;
+  if (userData.proteinTarget) return userData.proteinTarget;
+  if (userData.macroGoals && userData.macroGoals.protein) return userData.macroGoals.protein;
+  if (userData.nutritionGoals && userData.nutritionGoals.proteinTarget) {
+    return userData.nutritionGoals.proteinTarget;
+  }
+  return null;
+}
+
+// Convert ounces logged to whole cups for display.
+function formatWaterChip(metrics) {
+  if (!metrics) return null;
+  const ounces = metrics.waterIntake;
+  if (ounces == null) return null;
+  if (!Number.isFinite(Number(ounces))) return null;
+  const cups = Math.round(Number(ounces) / OUNCES_PER_CUP);
+  return `Water ${cups} cups`;
+}
+
+// Pass-through soreness label when present.
+function formatSorenessChip(metrics) {
+  if (!metrics) return null;
+  const sorenessLevel = metrics.soreness;
+  if (sorenessLevel == null) return null;
+  if (sorenessLevel === '') return null;
+  return `Soreness ${sorenessLevel}`;
+}
+
+/** empty-vs-data PNG 07: true when the coach has nothing logged to show. */
+function hasAnyCoachMetric(dailyMetrics, nutritionToday, userData) {
+  if (formatSleepChip(dailyMetrics) != null) return true;
+  if (formatProteinChip(nutritionToday, userData) != null) return true;
+  if (formatWaterChip(dailyMetrics) != null) return true;
+  if (formatSorenessChip(dailyMetrics) != null) return true;
+  return false;
+}
+
+function buildSeesTodayChips({ isTrainer, safeClientCount, dailyMetrics, nutritionToday, userData }) {
+  if (isTrainer) {
+    return trainerRosterChips(safeClientCount);
+  }
+  return clientMetricChips(dailyMetrics, nutritionToday, userData);
+}
+
+function trainerRosterChips(safeClientCount) {
+  // Honest roster chip only — never invent a “quiet clients” count without real data
+  if (safeClientCount <= 0) return [];
+
+  let clientWord = 'clients';
+  if (safeClientCount === 1) {
+    clientWord = 'client';
+  }
+
+  return [
+    {
+      id: 'clients',
+      label: `${safeClientCount} ${clientWord}`,
+      icon: require('../../assets/icons/handoff/people.png'),
+      gradient: accentGradients[0],
+    },
+  ];
+}
+
+function clientMetricChips(dailyMetrics, nutritionToday, userData) {
+  const candidates = [
+    {
+      id: 'sleep',
+      label: formatSleepChip(dailyMetrics),
+      icon: require('../../assets/icons/handoff/sleeping.png'),
+      gradient: accentGradients[2],
+    },
+    {
+      id: 'protein',
+      label: formatProteinChip(nutritionToday, userData),
+      icon: require('../../assets/icons/handoff/protein.png'),
+      gradient: accentGradients[0],
+    },
+    {
+      id: 'water',
+      label: formatWaterChip(dailyMetrics),
+      icon: require('../../assets/icons/handoff/hydration.png'),
+      gradient: accentGradients[1],
+    },
+    {
+      id: 'soreness',
+      label: formatSorenessChip(dailyMetrics),
+      icon: require('../../assets/icons/handoff/injury.png'),
+      gradient: accentGradients[4],
+    },
+  ];
+
+  const chipsWithLabels = [];
+  for (let index = 0; index < candidates.length; index += 1) {
+    const chip = candidates[index];
+    if (chip.label != null) chipsWithLabels.push(chip);
+  }
+  return chipsWithLabels;
+}
+
+function sessionTitle(session) {
+  if (!session) return DEFAULT_CONTINUE_TITLE;
+  if (session.title) return session.title;
+  if (session.preview) return session.preview;
+  if (session.lastMessagePreview) return session.lastMessagePreview;
+  return DEFAULT_CONTINUE_TITLE;
+}
+
+function sessionMeta(session) {
+  if (!session) return DEFAULT_SESSION_WHEN;
+
+  let messageCount = session.messageCount;
+  if (messageCount == null) messageCount = session.messagesCount;
+  if (messageCount == null) messageCount = session.count;
+
+  let whenLabel = session.updatedAtLabel;
+  if (!whenLabel) whenLabel = session.relativeTime;
+  if (!whenLabel) whenLabel = DEFAULT_SESSION_WHEN;
+
+  if (messageCount != null) {
+    return `${messageCount} messages · ${whenLabel}`;
+  }
+  return String(whenLabel);
+}
+
+function askCarouselItems(suggestions) {
+  if (!suggestions) return [];
+  const filled = [];
+  for (let index = 0; index < suggestions.length; index += 1) {
+    const text = suggestions[index];
+    if (text) filled.push(text);
+  }
+  return filled.slice(0, MAX_ASK_CARDS);
+}
 
 function SectionLabel({ text, colors }) {
   const labelColor = { color: colors.nbMuted };
@@ -582,230 +725,86 @@ function buildTryAskingCardViews(items, colors, onStartChat) {
   return cardViews;
 }
 
-// ===== PLUMBING — skip unless debugging =====
+// ===== MAIN FUNCTION =====
 
-function viewerRoleIsTrainer(viewerRole) {
-  const roleText = String(viewerRole || '').toLowerCase();
-  return roleText === ROLE_TRAINER;
-}
+/**
+ * Full Design Law coach home scroll body (PNG 01 client / missing-screens 17 trainer).
+ * Flow: 1. theme + role  2. empty vs data  3. chips  4. sections
+ * @param {{ viewerRole?: 'client'|'trainer', clientCount?: number }} props
+ * @returns {React.ReactElement}
+ */
+export default function CoachHomeBody({
+  isDark,
+  suggestions,
+  dailyMetrics,
+  nutritionToday,
+  userData,
+  latestSession,
+  onStartChat,
+  onContinueSession,
+  onPhotoPress,
+  viewerRole = 'client',
+  clientCount = 0,
+}) {
+  // 1. Theme colors + trainer vs client role.
+  const colors = paletteForDarkMode(isDark);
+  // vocab: viewerRole = shell-passed role; trainers get roster tools, not personal log one-taps
+  const isTrainer = viewerRoleIsTrainer(viewerRole);
+  const safeClientCount = safeClientCountFromProp(clientCount);
 
-function safeClientCountFromProp(clientCount) {
-  return Math.max(0, Number(clientCount) || 0);
-}
+  // 2. empty-vs-data PNG 07/08: SeesToday empty when no metrics (even if a past session exists).
+  const hasMetrics = hasAnyCoachMetric(dailyMetrics, nutritionToday, userData);
+  const isEmptySeesToday = !isTrainer && !hasMetrics;
+  const isEmptyClientHome = !isTrainer && !hasMetrics && !latestSession;
 
-function askSuggestionsForRole(isTrainer, suggestions) {
-  if (isTrainer) {
-    return TRAINER_SUGGESTIONS;
-  }
-  return suggestions;
-}
+  // 3. “Sees today” chips from logs — never invent quiet-client counts.
+  // vocab: useMemo = recompute chips only when metrics / role / count change
+  const chips = useMemo(() => {
+    return buildSeesTodayChips({
+      isTrainer,
+      safeClientCount,
+      dailyMetrics,
+      nutritionToday,
+      userData,
+    });
+  }, [dailyMetrics, nutritionToday, userData, isTrainer, safeClientCount]);
 
-function photoWebRowsOrNull(shouldShow, onStartChat, onPhotoPress, colors) {
-  if (!shouldShow) {
-    return null;
-  }
-  return (
-    <PhotoWebRows onStartChat={onStartChat} onPhoto={onPhotoPress} colors={colors} />
+  // 4. Ask-carousel copy: trainer roster prompts vs client suggestions from the shell.
+  const askSuggestions = askSuggestionsForRole(isTrainer, suggestions);
+
+  // 5. Photo/web rows when metrics exist (PNG 08); trainers and empty-sees skip this block.
+  const shouldShowPhotoWebRows = !isTrainer && !isEmptySeesToday;
+  const photoWebRowsBlock = photoWebRowsOrNull(
+    shouldShowPhotoWebRows,
+    onStartChat,
+    onPhotoPress,
+    colors,
   );
-}
+  const pickUpBlock = pickUpCardOrNull(latestSession, onContinueSession, colors);
 
-function pickUpCardOrNull(latestSession, onContinueSession, colors) {
-  if (!latestSession) {
-    return null;
+  function handleHeroPress() {
+    if (!onStartChat) {
+      return;
+    }
+    onStartChat({});
   }
+
   return (
-    <PickUpCard session={latestSession} onContinue={onContinueSession} colors={colors} />
+    <View style={styles.bodyRoot}>
+      <HeroBlock
+        colors={colors}
+        onPress={handleHeroPress}
+        isTrainer={isTrainer}
+        clientCount={safeClientCount}
+        isEmpty={isEmptyClientHome}
+      />
+      <SeesTodayRow chips={chips} colors={colors} isEmpty={isEmptySeesToday} />
+      <OneTapGrid onStartChat={onStartChat} colors={colors} isTrainer={isTrainer} />
+      {photoWebRowsBlock}
+      {pickUpBlock}
+      <TryAskingCarousel suggestions={askSuggestions} onStartChat={onStartChat} colors={colors} />
+    </View>
   );
-}
-
-function paletteForDarkMode(isDark) {
-  if (isDark) {
-    return darkColors;
-  }
-  return lightColors;
-}
-
-function hapticThenRun(fn) {
-  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-  if (!fn) return;
-  fn();
-}
-
-function heroEyebrowForRole(isTrainer) {
-  if (isTrainer) return HERO_EYEBROW_TRAINER;
-  return HERO_EYEBROW_CLIENT;
-}
-
-function heroTitleForRole(isTrainer) {
-  if (isTrainer) return HERO_TITLE_TRAINER;
-  return HERO_TITLE_CLIENT;
-}
-
-function heroSubtitleForRole(isTrainer, clientCount, isEmpty) {
-  if (isTrainer) {
-    return `I see all ${clientCount} clients and their logs.`;
-  }
-  if (isEmpty) {
-    return HERO_SUB_CLIENT_EMPTY;
-  }
-  return HERO_SUB_CLIENT_DEFAULT;
-}
-
-// Build “Sleep X h avg” chip when daily_metrics has sleepHours.
-function formatSleepChip(metrics) {
-  if (!metrics) return null;
-  const hours = metrics.sleepHours;
-  if (hours == null) return null;
-  if (!Number.isFinite(Number(hours))) return null;
-  // Design Law empty-vs-data PNG 08: “Sleep 5.8 h avg”
-  return `Sleep ${Number(hours).toFixed(1)} h avg`;
-}
-
-// Protein eaten vs target from user profile goals.
-function formatProteinChip(nutrition, userData) {
-  const protein = nutrition ? nutrition.protein : undefined;
-  const target = proteinTargetFromUserData(userData);
-
-  if (protein == null && target == null) return null;
-  if (target != null) {
-    return `Protein ${Math.round(protein || 0)} / ${Math.round(target)} g`;
-  }
-  return `Protein ${Math.round(protein || 0)} g`;
-}
-
-function proteinTargetFromUserData(userData) {
-  if (!userData) return null;
-  if (userData.proteinTarget) return userData.proteinTarget;
-  if (userData.macroGoals && userData.macroGoals.protein) return userData.macroGoals.protein;
-  if (userData.nutritionGoals && userData.nutritionGoals.proteinTarget) {
-    return userData.nutritionGoals.proteinTarget;
-  }
-  return null;
-}
-
-// Convert ounces logged to whole cups for display.
-function formatWaterChip(metrics) {
-  if (!metrics) return null;
-  const ounces = metrics.waterIntake;
-  if (ounces == null) return null;
-  if (!Number.isFinite(Number(ounces))) return null;
-  const cups = Math.round(Number(ounces) / OUNCES_PER_CUP);
-  return `Water ${cups} cups`;
-}
-
-// Pass-through soreness label when present.
-function formatSorenessChip(metrics) {
-  if (!metrics) return null;
-  const sorenessLevel = metrics.soreness;
-  if (sorenessLevel == null) return null;
-  if (sorenessLevel === '') return null;
-  return `Soreness ${sorenessLevel}`;
-}
-
-/** empty-vs-data PNG 07: true when the coach has nothing logged to show. */
-function hasAnyCoachMetric(dailyMetrics, nutritionToday, userData) {
-  if (formatSleepChip(dailyMetrics) != null) return true;
-  if (formatProteinChip(nutritionToday, userData) != null) return true;
-  if (formatWaterChip(dailyMetrics) != null) return true;
-  if (formatSorenessChip(dailyMetrics) != null) return true;
-  return false;
-}
-
-function buildSeesTodayChips({ isTrainer, safeClientCount, dailyMetrics, nutritionToday, userData }) {
-  if (isTrainer) {
-    return trainerRosterChips(safeClientCount);
-  }
-  return clientMetricChips(dailyMetrics, nutritionToday, userData);
-}
-
-function trainerRosterChips(safeClientCount) {
-  // Honest roster chip only — never invent a “quiet clients” count without real data
-  if (safeClientCount <= 0) return [];
-
-  let clientWord = 'clients';
-  if (safeClientCount === 1) {
-    clientWord = 'client';
-  }
-
-  return [
-    {
-      id: 'clients',
-      label: `${safeClientCount} ${clientWord}`,
-      icon: require('../../assets/icons/handoff/people.png'),
-      gradient: accentGradients[0],
-    },
-  ];
-}
-
-function clientMetricChips(dailyMetrics, nutritionToday, userData) {
-  const candidates = [
-    {
-      id: 'sleep',
-      label: formatSleepChip(dailyMetrics),
-      icon: require('../../assets/icons/handoff/sleeping.png'),
-      gradient: accentGradients[2],
-    },
-    {
-      id: 'protein',
-      label: formatProteinChip(nutritionToday, userData),
-      icon: require('../../assets/icons/handoff/protein.png'),
-      gradient: accentGradients[0],
-    },
-    {
-      id: 'water',
-      label: formatWaterChip(dailyMetrics),
-      icon: require('../../assets/icons/handoff/hydration.png'),
-      gradient: accentGradients[1],
-    },
-    {
-      id: 'soreness',
-      label: formatSorenessChip(dailyMetrics),
-      icon: require('../../assets/icons/handoff/injury.png'),
-      gradient: accentGradients[4],
-    },
-  ];
-
-  const chipsWithLabels = [];
-  for (let index = 0; index < candidates.length; index += 1) {
-    const chip = candidates[index];
-    if (chip.label != null) chipsWithLabels.push(chip);
-  }
-  return chipsWithLabels;
-}
-
-function sessionTitle(session) {
-  if (!session) return DEFAULT_CONTINUE_TITLE;
-  if (session.title) return session.title;
-  if (session.preview) return session.preview;
-  if (session.lastMessagePreview) return session.lastMessagePreview;
-  return DEFAULT_CONTINUE_TITLE;
-}
-
-function sessionMeta(session) {
-  if (!session) return DEFAULT_SESSION_WHEN;
-
-  let messageCount = session.messageCount;
-  if (messageCount == null) messageCount = session.messagesCount;
-  if (messageCount == null) messageCount = session.count;
-
-  let whenLabel = session.updatedAtLabel;
-  if (!whenLabel) whenLabel = session.relativeTime;
-  if (!whenLabel) whenLabel = DEFAULT_SESSION_WHEN;
-
-  if (messageCount != null) {
-    return `${messageCount} messages · ${whenLabel}`;
-  }
-  return String(whenLabel);
-}
-
-function askCarouselItems(suggestions) {
-  if (!suggestions) return [];
-  const filled = [];
-  for (let index = 0; index < suggestions.length; index += 1) {
-    const text = suggestions[index];
-    if (text) filled.push(text);
-  }
-  return filled.slice(0, MAX_ASK_CARDS);
 }
 
 const styles = StyleSheet.create({

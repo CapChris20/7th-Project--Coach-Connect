@@ -26,92 +26,16 @@ const GAP_COMPOSER_ABOVE_BOTTOM_NAV_PX = 10;
 const GAP_MESSAGE_LIST_WHEN_KEYBOARD_UP_PX = 12;
 const GAP_MESSAGE_LIST_WHEN_KEYBOARD_DOWN_PX = 20;
 
-// ===== COMPOSER TEXT INPUT — exported props for the coach typing field =====
-
-function androidPropsThatBlockAutofillBar() {
-  const runningOnAndroid = Platform.OS === OPERATING_SYSTEM_ANDROID;
-  if (!runningOnAndroid) {
-    return {};
-  }
-  // vocab: importantForAutofill = Android View prop; 'no' tells autofill to skip this field.
-  return { importantForAutofill: 'no' };
-}
-
-// Android ignores autoComplete: 'off' alone — the Android prop above is what quiets the bar.
+// Android ignores autoComplete: 'off' alone — importantForAutofill: 'no' quiets the bar.
 export const COACH_COMPOSER_TEXT_INPUT_PROPS = {
   autoComplete: 'off',
   textContentType: 'none',
   autoCorrect: true,
   spellCheck: true,
-  ...androidPropsThatBlockAutofillBar(),
+  ...(Platform.OS === OPERATING_SYSTEM_ANDROID ? { importantForAutofill: 'no' } : {}),
 };
 
-// ===== MAIN FUNCTION =====
-
-/**
- * Padding numbers so the coach composer and message list respect the keyboard and shell nav.
- * hideBottomNav is accepted because both screens still pass it; this hook does not read it.
- * Hook order is frozen: useSafeAreaInsets → useState → useEffect.
- * @param {{ hideBottomNav?: boolean }} [options]
- * @returns {{
- *   keyboardVisible: boolean,
- *   keyboardInset: number,
- *   composerBottomPad: number,
- *   composerKeyboardPad: number,
- *   listBottomPad: number,
- *   shellNavPad: number,
- * }}
- */
-export function keyboardBehavior({ hideBottomNav: _unusedHideBottomNav = false } = {}) {
-  // vocab: useSafeAreaInsets = home-indicator / notch inset from the OS safe-area context.
-  const safeArea = useSafeAreaInsets();
-  const bottomSafeInsetPixels = Math.max(safeArea.bottom, 0);
-  const shellNavPadPixels = BOTTOM_NAV_BAR_HEIGHT + bottomSafeInsetPixels;
-
-  // vocab: keyboardInsetPixels = how many px the keyboard covers from the bottom.
-  const [keyboardInsetPixels, setKeyboardInsetPixels] = useState(0);
-
-  // 1. Listen for keyboard show/hide for as long as this screen is mounted.
-  useEffect(() => {
-    const listenerNames = pickKeyboardListenerNamesForThisOs();
-
-    const showSubscription = Keyboard.addListener(listenerNames.show, (keyboardEvent) => {
-      const measuredInsetPixels = measureKeyboardInsetFromEvent(keyboardEvent);
-      setKeyboardInsetPixels(measuredInsetPixels);
-    });
-
-    const hideSubscription = Keyboard.addListener(listenerNames.hide, () => {
-      setKeyboardInsetPixels(0);
-    });
-
-    // 2. Tear listeners down when the user leaves chat so nothing keeps nudging padding.
-    return () => {
-      showSubscription.remove();
-      hideSubscription.remove();
-    };
-  }, []);
-
-  // 3. Turn “keyboard open or closed” into the three pad values screens actually apply.
-  const keyboardIsOpen = keyboardInsetPixels > 0;
-  const composerBottomPad = bottomPadForComposer(keyboardIsOpen, shellNavPadPixels);
-  const listBottomPad = bottomPadForMessageList(keyboardIsOpen);
-  const composerKeyboardPad = keyboardLiftPadForComposer(
-    keyboardIsOpen,
-    keyboardInsetPixels,
-    composerBottomPad,
-  );
-
-  return {
-    keyboardVisible: keyboardIsOpen,
-    keyboardInset: keyboardInsetPixels,
-    composerBottomPad,
-    composerKeyboardPad,
-    listBottomPad,
-    shellNavPad: shellNavPadPixels,
-  };
-}
-
-// ===== PLUMBING — skip unless debugging =====
+// ===== HELPER FUNCTIONS =====
 
 function pickKeyboardListenerNamesForThisOs() {
   const runningOnIos = Platform.OS === OPERATING_SYSTEM_IOS;
@@ -178,4 +102,69 @@ function keyboardLiftPadForComposer(
     return keyboardInsetPixels + GAP_COMPOSER_WHEN_KEYBOARD_UP_PX;
   }
   return composerBottomPadWhenClosed;
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Padding numbers so the coach composer and message list respect the keyboard and shell nav.
+ * hideBottomNav is accepted because both screens still pass it; this hook does not read it.
+ * Hook order is frozen: useSafeAreaInsets → useState → useEffect.
+ * @param {{ hideBottomNav?: boolean }} [options]
+ * @returns {{
+ *   keyboardVisible: boolean,
+ *   keyboardInset: number,
+ *   composerBottomPad: number,
+ *   composerKeyboardPad: number,
+ *   listBottomPad: number,
+ *   shellNavPad: number,
+ * }}
+ */
+export function keyboardBehavior({ hideBottomNav: _unusedHideBottomNav = false } = {}) {
+  // vocab: useSafeAreaInsets = home-indicator / notch inset from the OS safe-area context.
+  const safeArea = useSafeAreaInsets();
+  const bottomSafeInsetPixels = Math.max(safeArea.bottom, 0);
+  const shellNavPadPixels = BOTTOM_NAV_BAR_HEIGHT + bottomSafeInsetPixels;
+
+  // vocab: keyboardInsetPixels = how many px the keyboard covers from the bottom.
+  const [keyboardInsetPixels, setKeyboardInsetPixels] = useState(0);
+
+  // 1. Listen for keyboard show/hide for as long as this screen is mounted.
+  useEffect(() => {
+    const listenerNames = pickKeyboardListenerNamesForThisOs();
+
+    const showSubscription = Keyboard.addListener(listenerNames.show, (keyboardEvent) => {
+      const measuredInsetPixels = measureKeyboardInsetFromEvent(keyboardEvent);
+      setKeyboardInsetPixels(measuredInsetPixels);
+    });
+
+    const hideSubscription = Keyboard.addListener(listenerNames.hide, () => {
+      setKeyboardInsetPixels(0);
+    });
+
+    // 2. Tear listeners down when the user leaves chat so nothing keeps nudging padding.
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
+
+  // 3. Turn “keyboard open or closed” into the three pad values screens actually apply.
+  const keyboardIsOpen = keyboardInsetPixels > 0;
+  const composerBottomPad = bottomPadForComposer(keyboardIsOpen, shellNavPadPixels);
+  const listBottomPad = bottomPadForMessageList(keyboardIsOpen);
+  const composerKeyboardPad = keyboardLiftPadForComposer(
+    keyboardIsOpen,
+    keyboardInsetPixels,
+    composerBottomPad,
+  );
+
+  return {
+    keyboardVisible: keyboardIsOpen,
+    keyboardInset: keyboardInsetPixels,
+    composerBottomPad,
+    composerKeyboardPad,
+    listBottomPad,
+    shellNavPad: shellNavPadPixels,
+  };
 }

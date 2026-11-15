@@ -1,0 +1,5 @@
+src/client-app/files-and-notes/FilesScreen.jsx
+src/client-app/files-and-notes/MyFilesSection.jsx
+src/client-app/files-and-notes/NotesFromTrainerSection.jsx
+src/client-app/files-and-notes/SharedByTrainerSection.jsx
+src/client-app/home/TrainingHomeScreen.jsx

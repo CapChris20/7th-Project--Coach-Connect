@@ -1,8 +1,9 @@
 // All numeric weights and thresholds for food-match v2.
 // Flow: gates read tau* → features use FEATURE_WEIGHTS → decide uses theta/delta.
 // Manipulate here only — no magic numbers in scoring modules.
+// Used by food-match gates, feature extraction, and candidate ranking.
 
-// ===== GATES =====
+// ===== NAMED CONSTANTS =====
 
 // Manipulate here: IDF-weighted share of UNEXPLAINED query tokens allowed through G1
 const TAU1_UNEXPLAINED_IDF_SHARE = 0.22;
@@ -19,8 +20,7 @@ const MAX_KCAL_PER_100 = 900;
 // Manipulate here: fiber/alcohol kcal allowance inside Atwater (kcal)
 const ATWATER_FIBER_ALCOHOL_ALLOWANCE = 40;
 
-// ===== SCORE FEATURES (must sum conceptually; source tier capped separately) =====
-
+// FEATURE WEIGHTS (must sum conceptually; source tier capped separately)
 const FEATURE_WEIGHTS = Object.freeze({
   // Manipulate here: primary signal — IDF-weighted token coverage
   idfCoverage: 0.42,
@@ -55,15 +55,13 @@ const CHANNEL_PRIOR = Object.freeze({
   unknown: 0.4,
 });
 
-// ===== DECISION =====
-
+// DECISION
 // Manipulate here: calibrated on the P0 eval set (see docs later in P6)
 const THETA_HI = 0.58;
 const MARGIN_DELTA = 0.08;
 const AMBIGUOUS_MAX_RESULTS = 5;
 
-// ===== TOKEN / FUZZY =====
-
+// TOKEN / FUZZY
 const RARE_TOKEN_IDF_MIN = 2.2;
 const FUZZY_MIN_TOKEN_LENGTH = 5;
 const FUZZY_MAX_EDIT_DISTANCE = 1;
@@ -78,13 +76,18 @@ const STRUCTURAL_JUNK_DOMAINS = Object.freeze([
   'gs1us.org',
 ]);
 
-// ===== SERVING / CLUSTER =====
-
+// SERVING / CLUSTER
 // Manipulate here: perServing/grams*100 vs per100 must agree within this relative gap
 const SERVING_CROSSCHECK_TOLERANCE = 0.15;
 
 // Manipulate here: same brand+name rows need kcal this close to share one cluster
 const CLUSTER_MACRO_TOLERANCE = 0.15;
+
+// ===== HELPER FUNCTIONS =====
+// (No helper functions in this configuration file)
+
+// ===== MAIN FUNCTION =====
+// (No main function - exports static weights and thresholds)
 
 module.exports = {
   TAU1_UNEXPLAINED_IDF_SHARE,

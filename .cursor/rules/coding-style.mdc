@@ -1,0 +1,43 @@
+---
+description: CODING_STYLE.md Variation 3 — every file must read like a junior wrote a plain-English recipe
+alwaysApply: true
+---
+
+# Coding Style (Variation 3) — app-wide
+
+**Authoritative file:** `CODING_STYLE.md` at the repo root.
+
+Before writing or editing **any** `.js` / `.jsx` / `.ts` / `.tsx` under `src/` (screens, nutrition, auth, look-and-feel, backend helpers — **not** nutrition-only), **read and follow** `CODING_STYLE.md`. Pair with `docs/INLINE_COMMENT_STYLE.md` (already required).
+
+## North star
+
+Chris should open any file and read it like a junior coded it: plain English, obvious control flow, no clever AI output. Same behavior. Different telling.
+
+## Non-negotiables
+
+- **Plain-English recipe** — spoken variable/function names; one job per function; max nesting depth 2.
+- **Numbered main** — exported / orchestrating functions read as `// 1.` `// 2.` … someone can narrate without decoding letters.
+- **Story first** — file-top summary → mains with steps → exports → `// PLUMBING — skip unless debugging` for hard leftovers.
+- **Name the decision before you use it** — no nested ternaries in JSX; no one-letter locals (`t`, `gp`, `bg`, …).
+- **Boring and long beats short and clever.**
+- **Same behavior** — do not change screens, Firestore/API/food-card key letters, hook order, or Firebase `projectId` `anatrox-auth` (see freeze list in `CODING_STYLE.md`).
+
+## Fail (do not ship)
+
+- Header-only / section-banner-only edits while the body stays cryptic.
+- One numbered main while helpers stay clever regex / terse names.
+- Brand- or example-specific special-case dumps instead of general plain rules.
+- “Looks updated” presentation pass — comment-stripped body same as before = not done.
+
+## Pass check
+
+Could a developer who barely reads code change this file from **names + comments alone** without asking what a weird line means?
+
+## Gold files (copy voice, not path)
+
+- `src/for-both/weekly-report/WeeklyReportBody.jsx`
+- `src/for-both/weekly-report/WeeklyReportScreen.jsx`
+- `src/nutrition/food-search/searchFoods.js`
+- Index: `docs/gold-examples/README.md`
+
+When in doubt: open `CODING_STYLE.md` again and match Variation 3 before shipping.

@@ -1,0 +1,144 @@
+{
+  "invariants": [
+    {
+      "failureCount": 10,
+      "failures": [
+        "off:3068320120256:drop_brand",
+        "off:3760049790214:drop_brand",
+        "off:4001724039112:drop_brand",
+        "off:5053990156009:drop_brand",
+        "off:6111035003509:drop_brand",
+        "off:6111203006653:drop_brand",
+        "off:6111242100206:drop_brand",
+        "off:6111246721964:drop_brand",
+        "off:6111266960336:drop_brand",
+        "off:8002270014901:drop_brand"
+      ],
+      "holds": false,
+      "id": 1,
+      "name": "Dropping the brand token never promotes a different-brand row to confident"
+    },
+    {
+      "failureCount": 18,
+      "failures": [
+        "off:20150907",
+        "off:3083681093926",
+        "off:3229820160672",
+        "off:3242272346050",
+        "off:3245414620131",
+        "off:3412290070385",
+        "off:3560070273546",
+        "off:3560071501570",
+        "off:3760049798609",
+        "off:5053990156009",
+        "off:5449000046413",
+        "off:6111031005064",
+        "off:6111032006619",
+        "off:6111035003509",
+        "off:6111242100305",
+        "off:6111246721278",
+        "off:6111248360130",
+        "off:7613035937420"
+      ],
+      "holds": false,
+      "id": 2,
+      "name": "A one-edit typo on a rare token yields the same top entity"
+    },
+    {
+      "failureCount": 141,
+      "failures": [
+        "off:0898999000503:unanswerable",
+        "off:20004132:unanswerable",
+        "off:20014384:unanswerable",
+        "off:20150907:unanswerable",
+        "off:20166090:unanswerable",
+        "off:20534479:unanswerable",
+        "off:3017233001008:unanswerable",
+        "off:3029330022428:unanswerable",
+        "off:3038352876506:unanswerable",
+        "off:3046920022606:unanswerable",
+        "off:3046920022651:unanswerable",
+        "off:3046920029759:unanswerable",
+        "off:3057640257773:unanswerable",
+        "off:3068320120256:unanswerable",
+        "off:3068320123264:unanswerable",
+        "off:3073781131888:unanswerable",
+        "off:3073781131925:unanswerable",
+        "off:3083680482035:unanswerable",
+        "off:3083680482042:unanswerable",
+        "off:3083680613576:unanswerable"
+      ],
+      "holds": false,
+      "id": 3,
+      "name": "An unexplained rare token yields none or ambiguous, never confident"
+    },
+    {
+      "failureCount": 5,
+      "failures": [
+        "off:3760049790214:drop_brand",
+        "off:4001724039112:exact",
+        "off:6111246721278:typo_rare",
+        "off:6111246721964:drop_brand",
+        "off:6111246721964:reorder"
+      ],
+      "holds": false,
+      "id": 4,
+      "name": "The cousin never outranks its target"
+    },
+    {
+      "failureCount": 1,
+      "failures": [
+        "constructed:zero"
+      ],
+      "holds": false,
+      "id": 5,
+      "name": "All-zero macros outside beverage/water/sweetener categories are rejected"
+    },
+    {
+      "failureCount": 1,
+      "failures": [
+        "constructed:atwater"
+      ],
+      "holds": false,
+      "id": 6,
+      "name": "Atwater-violating candidates are rejected"
+    },
+    {
+      "failureCount": 1,
+      "failures": [
+        "search-status-confident",
+        "barcode-autofill"
+      ],
+      "holds": false,
+      "id": 7,
+      "name": "Serper-only data is never confident and never auto-fills a barcode"
+    },
+    {
+      "failureCount": 1,
+      "failures": [
+        "networkCalls=12"
+      ],
+      "holds": false,
+      "id": 8,
+      "name": "Barcodes with a bad checksum make no network call",
+      "note": "Count comes from scripts/traceBarcodeMismatch.js, which invokes the live /api/food/barcode handler with axios stubbed."
+    },
+    {
+      "failureCount": 1,
+      "failures": [
+        "usdaFdc:cooked grain + fatSecret:canned soup"
+      ],
+      "holds": false,
+      "id": 9,
+      "name": "Consensus never merges rows from different clusters"
+    },
+    {
+      "failureCount": 0,
+      "failures": [],
+      "holds": true,
+      "id": 10,
+      "name": "Output is byte-identical across runs"
+    }
+  ],
+  "pipeline": "v1"
+}

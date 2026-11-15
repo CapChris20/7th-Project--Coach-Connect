@@ -5,79 +5,11 @@
 import { useCallback, useRef, useState } from 'react';
 import * as Clipboard from 'expo-clipboard';
 
-// ===== MAIN FUNCTION =====
+// ===== NAMED CONSTANTS =====
 
-/**
- * Composer hook for the AI Coach message field.
- * vocab: useRef inputRef = native TextInput handle for focus after paste.
- * Hook order (freeze): value → pasteSheetVisible → inputRef → callbacks below.
- * @param {string} [initial]
- * @returns {object}
- */
-export function typingBox(initial = '') {
-  // 1. Draft string and paste-sheet visibility — order must not change (freeze list).
-  const [value, setValue] = useState(initial);
-  const [pasteSheetVisible, setPasteSheetVisible] = useState(false);
-  const inputRef = useRef(null);
+const DEFAULT_INITIAL_TEXT = '';
 
-  // 2. Typing and clear — thin wrappers so parents do not own setState.
-  const onChangeText = useCallback((nextText) => {
-    setValue(nextText);
-  }, []);
-
-  const clear = useCallback(() => {
-    setValue('');
-  }, []);
-
-  // 3. Paste or manual commit — merges into existing draft with a space when needed.
-  const commitText = useCallback((incomingText) => {
-    applyPastedChunkToDraft(incomingText, setValue, setPasteSheetVisible);
-  }, []);
-
-  // 4. Voice path replaces the whole draft (recognition already merged on device).
-  const applySpeechTranscript = useCallback((spokenText) => {
-    replaceDraftWithSpeechText(spokenText, setValue);
-  }, []);
-
-  const openPasteSheet = useCallback(() => {
-    setPasteSheetVisible(true);
-  }, []);
-
-  const closePasteSheet = useCallback(() => {
-    setPasteSheetVisible(false);
-  }, []);
-
-  // 5. System clipboard — empty / failed clipboard opens the manual paste sheet instead of failing silent.
-  const pasteFromClipboard = useCallback(async () => {
-    const pasteResult = await tryPasteClipboardIntoDraft(commitText, setPasteSheetVisible);
-    return pasteResult;
-  }, [commitText]);
-
-  return {
-    value,
-    onChangeText,
-    setValue,
-    clear,
-    commitText,
-    applySpeechTranscript,
-    pasteFromClipboard,
-    openPasteSheet,
-    closePasteSheet,
-    pasteSheetVisible,
-    inputRef,
-  };
-}
-
-/**
- * True when the clipboard has non-whitespace text (empty-draft UX hints).
- * @returns {Promise<boolean>}
- */
-export async function pasteHintForEmptyClipboard() {
-  const hasText = await clipboardHasNonEmptyText();
-  return hasText;
-}
-
-// ===== PLUMBING — skip unless debugging =====
+// ===== HELPER FUNCTIONS =====
 
 /**
  * Merge a pasted chunk into the draft and close the paste sheet.
@@ -164,4 +96,76 @@ async function clipboardHasNonEmptyText() {
     void clipboardError;
     return false;
   }
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Composer hook for the AI Coach message field.
+ * vocab: useRef inputRef = native TextInput handle for focus after paste.
+ * Hook order (freeze): value → pasteSheetVisible → inputRef → callbacks below.
+ * @param {string} [initial]
+ * @returns {object}
+ */
+export function typingBox(initial = DEFAULT_INITIAL_TEXT) {
+  // 1. Draft string and paste-sheet visibility — order must not change (freeze list).
+  const [value, setValue] = useState(initial);
+  const [pasteSheetVisible, setPasteSheetVisible] = useState(false);
+  const inputRef = useRef(null);
+
+  // 2. Typing and clear — thin wrappers so parents do not own setState.
+  const onChangeText = useCallback((nextText) => {
+    setValue(nextText);
+  }, []);
+
+  const clear = useCallback(() => {
+    setValue('');
+  }, []);
+
+  // 3. Paste or manual commit — merges into existing draft with a space when needed.
+  const commitText = useCallback((incomingText) => {
+    applyPastedChunkToDraft(incomingText, setValue, setPasteSheetVisible);
+  }, []);
+
+  // 4. Voice path replaces the whole draft (recognition already merged on device).
+  const applySpeechTranscript = useCallback((spokenText) => {
+    replaceDraftWithSpeechText(spokenText, setValue);
+  }, []);
+
+  const openPasteSheet = useCallback(() => {
+    setPasteSheetVisible(true);
+  }, []);
+
+  const closePasteSheet = useCallback(() => {
+    setPasteSheetVisible(false);
+  }, []);
+
+  // 5. System clipboard — empty / failed clipboard opens the manual paste sheet instead of failing silent.
+  const pasteFromClipboard = useCallback(async () => {
+    const pasteResult = await tryPasteClipboardIntoDraft(commitText, setPasteSheetVisible);
+    return pasteResult;
+  }, [commitText]);
+
+  return {
+    value,
+    onChangeText,
+    setValue,
+    clear,
+    commitText,
+    applySpeechTranscript,
+    pasteFromClipboard,
+    openPasteSheet,
+    closePasteSheet,
+    pasteSheetVisible,
+    inputRef,
+  };
+}
+
+/**
+ * True when the clipboard has non-whitespace text (empty-draft UX hints).
+ * @returns {Promise<boolean>}
+ */
+export async function pasteHintForEmptyClipboard() {
+  const hasText = await clipboardHasNonEmptyText();
+  return hasText;
 }

@@ -1,0 +1,5 @@
+src/trainer-app/scheduling/mySessions.js
+src/trainer-app/weekly-report/WeeklyReportBars.jsx
+src/trainer-app/workout-plans/ManualWorkoutPlanBuilderScreen.jsx
+src/trainer-app/workout-plans/manualPlanToWorkoutPlan.js
+src/trainer-pro-plan/ProPlanPurchases.jsx

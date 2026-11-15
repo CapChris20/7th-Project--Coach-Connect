@@ -8,6 +8,52 @@ const {
   wrapScraperResult,
   normalizeText,
 } = require('../resolveFoodDetail');
+const { createCandidate, assertCandidate } = require('../../../../src/nutrition/food-match/candidate');
+const {
+  completenessFromMacros,
+  servingFromMacros,
+} = require('../../../../src/nutrition/food-match/adapters/macroHelpers');
+
+/**
+ * Candidate adapter for a FoodFacto menu item hit.
+ * @param {object} raw
+ * @returns {object|null}
+ */
+function adaptFoodFactoResult(raw, opts = {}) {
+  if (!raw || typeof raw !== 'object') return null;
+  const name = String(raw.name || raw.displayName || '').trim();
+  if (!name) return null;
+  const brand = String(raw.brand || '').trim();
+  const macros = {
+    kcal: raw.calories ?? raw.kcal ?? null,
+    protein: raw.protein_g ?? raw.protein ?? null,
+    carbs: raw.carbs_g ?? raw.carbs ?? null,
+    fat: raw.fat_g ?? raw.fat ?? null,
+  };
+  const candidate = createCandidate({
+    id: raw.id ? String(raw.id) : `foodFacto:${name}`,
+    source: 'foodFacto',
+    name,
+    brand,
+    categoryPath: [],
+    channel: 'restaurant',
+    gtin: null,
+    per100: null,
+    servings: [
+      servingFromMacros({
+        label: raw.servingLabel || '1 serving',
+        kcal: macros.kcal,
+        protein: macros.protein,
+        carbs: macros.carbs,
+        fat: macros.fat,
+        origin: 'menu',
+      }),
+    ],
+    quality: { completeness: completenessFromMacros(macros), sourceFlags: [] },
+    provenance: { url: raw.url || null, fetchedAt: opts.fetchedAt || null },
+  });
+  return assertCandidate(candidate);
+}
 
 function detectBrandSlugFromQuery(query) {
   const q = normalizeText(query);
@@ -108,4 +154,9 @@ async function scrapeFoodFacto(query, timeoutMs = SCRAPE_TIMEOUT_MS) {
   );
 }
 
-module.exports = { scrapeFoodFacto, parseFoodFactoMenuItems, detectBrandSlugFromQuery };
+module.exports = {
+  scrapeFoodFacto,
+  parseFoodFactoMenuItems,
+  detectBrandSlugFromQuery,
+  adaptFoodFactoResult,
+};

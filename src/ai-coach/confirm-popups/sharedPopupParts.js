@@ -47,6 +47,10 @@ const MACRO_CELL_FATS = { key: 'f', label: 'Fats' };
 
 // ===== HELPER FUNCTIONS =====
 
+/**
+ * Returns light or dark theme color definitions for confirmation popups.
+ * @returns {object}
+ */
 export function usePopupColors() {
   const { isDark } = useTheme();
   if (isDark) {
@@ -55,6 +59,11 @@ export function usePopupColors() {
   return lightColors;
 }
 
+/**
+ * Returns a readable date label for the action, defaulting to today.
+ * @param {object} params
+ * @returns {string}
+ */
 export function logDateLabel(params) {
   if (!params) {
     return TODAY_DATE_LABEL;
@@ -66,6 +75,11 @@ export function logDateLabel(params) {
   return String(dateFromTool);
 }
 
+/**
+ * Gradient pill badge indicating the AI coach requested this action.
+ * @param {object} props
+ * @returns {React.ReactElement|null}
+ */
 export function CoachWantsBadge({ text }) {
   const colors = usePopupColors();
 
@@ -102,6 +116,11 @@ function ReasoningLine({ reasoning, mutedInkColor }) {
   );
 }
 
+/**
+ * Displays a single label and value row in a confirmation popup.
+ * @param {object} props
+ * @returns {React.ReactElement|null}
+ */
 export function DetailRow({ label, value }) {
   const colors = usePopupColors();
   const valueIsMissing = value == null || value === '';
@@ -125,6 +144,11 @@ export function DetailRow({ label, value }) {
   );
 }
 
+/**
+ * Form field label with muted styling.
+ * @param {object} props
+ * @returns {React.ReactElement|null}
+ */
 export function FieldLabel({ label }) {
   const colors = usePopupColors();
 
@@ -135,6 +159,11 @@ export function FieldLabel({ label }) {
   return <Text style={[sharedStyles.label, { color: colors.nbMuted }]}>{label}</Text>;
 }
 
+/**
+ * Neobrutalist single or multiline text input for popups.
+ * @param {object} props
+ * @returns {React.ReactElement}
+ */
 export function PopupTextField({ value, onChangeText, placeholder, multiline = false }) {
   const colors = usePopupColors();
 
@@ -190,6 +219,11 @@ function tableRowStyle(isLastRow, borderColor) {
   ];
 }
 
+/**
+ * Table displaying key-value information rows.
+ * @param {object} props
+ * @returns {React.ReactElement|null}
+ */
 export function InfoTable({ rows }) {
   const colors = usePopupColors();
   const visible = listVisibleInfoRows(rows);
@@ -293,6 +327,11 @@ function DiffTableRow({ row, index, isLastRow, colors }) {
   );
 }
 
+/**
+ * Table displaying before and after comparison values.
+ * @param {object} props
+ * @returns {React.ReactElement|null}
+ */
 export function DiffTable({ rows }) {
   const colors = usePopupColors();
   const visible = listVisibleDiffRows(rows);
@@ -366,6 +405,11 @@ function fillChipPressStyle(pressed, colors, chipBackgroundColor) {
   ];
 }
 
+/**
+ * Selectable pill chip with press feedback.
+ * @param {object} props
+ * @returns {React.ReactElement}
+ */
 export function FillChip({ label, selected = false, onPress }) {
   const colors = usePopupColors();
   const chipBackgroundColor = fillChipBackgroundColor(selected, colors);
@@ -406,6 +450,11 @@ function buildFillChipElements(options, value, onChange) {
   return chips;
 }
 
+/**
+ * Row of selectable fill chips.
+ * @param {object} props
+ * @returns {React.ReactElement}
+ */
 export function FillChipRow({ options, value, onChange }) {
   const chips = buildFillChipElements(options, value, onChange);
   return <View style={sharedStyles.chipWrap}>{chips}</View>;
@@ -446,12 +495,22 @@ function buildMacroStatCardElements(protein, carbs, fats, colors) {
   return cards;
 }
 
+/**
+ * Three stat cards displaying protein, carbs, and fats.
+ * @param {object} props
+ * @returns {React.ReactElement}
+ */
 export function MacroStatCards({ protein, carbs, fats }) {
   const colors = usePopupColors();
   const cards = buildMacroStatCardElements(protein, carbs, fats, colors);
   return <View style={sharedStyles.macroRow}>{cards}</View>;
 }
 
+/**
+ * Hero block displaying a large value and subtitle with children.
+ * @param {object} props
+ * @returns {React.ReactElement}
+ */
 export function BigValueBlock({ label, valueLabel, children }) {
   const colors = usePopupColors();
   const inkColor = colors.nbInk;
@@ -472,6 +531,11 @@ export function BigValueBlock({ label, valueLabel, children }) {
   );
 }
 
+/**
+ * Slider component wrapped with themed gradient accents.
+ * @param {object} props
+ * @returns {React.ReactElement}
+ */
 export function PopupSlider(props) {
   let sliderColors = accentGradients[0];
   if (props.colors) {

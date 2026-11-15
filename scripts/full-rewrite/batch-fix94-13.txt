@@ -1,0 +1,5 @@
+src/client-app/progress/ProgressChartsScreen.jsx
+src/for-both/files-and-notes/viewers/SpreadsheetViewer.js
+src/for-both/home-cards/DailyQuoteCard.js
+src/for-both/online-connection/checkConnectionHealth.js
+src/for-both/online-connection/checkTrainerCertificate.js

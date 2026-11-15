@@ -26,25 +26,52 @@ const GENERIC_CATEGORY = 'generic';
  * @param {string} [restaurant]
  * @returns {string}
  */
+/**
+ * True when primary (or combined when query empty) matches a bread family phrase.
+ * Bare "bread" only counts when the rest of the text is not another meal family.
+ * @param {string} queryText
+ * @param {string} primary
+ * @param {string} combined
+ * @returns {boolean}
+ */
+function textLooksLikeBreadFamily(queryText, primary, combined) {
+  const breadPhraseRe =
+    /\b(crazy\s*bread|breadsticks?|cheesy\s+bread|garlic\s+(cheese\s+)?bread|cheese\s+bread|cheese\s*sticks?|cheesesticks?|garlic\s+parmesan)\b/;
+  const breadWordRe = /\b(breadstick|bread)\b/;
+  const otherMealRe = /\b(pizza|burger|sandwich|nugget|wing|bowl|burrito)\b/;
+
+  if (breadPhraseRe.test(primary)) return true;
+  if (!queryText && breadPhraseRe.test(combined)) return true;
+
+  const breadWordInPrimary = breadWordRe.test(primary);
+  const breadWordInCombinedOnly = !queryText && breadWordRe.test(combined);
+  if (!breadWordInPrimary && !breadWordInCombinedOnly) return false;
+  if (otherMealRe.test(combined)) return false;
+  return true;
+}
+
 function inferFoodServingCategory(userQuery = '', foodName = '', restaurant = '') {
   const queryText = collapseWhitespace(userQuery).toLowerCase();
   const name = collapseWhitespace(foodName).toLowerCase();
   const place = collapseWhitespace(restaurant).toLowerCase();
-  const primary = queryText || `${name} ${place}`;
+  let primary = queryText;
+  if (!primary) {
+    primary = `${name} ${place}`;
+  }
   const combined = collapseWhitespace(`${queryText} ${name} ${place}`).toLowerCase();
   if (!combined) return GENERIC_CATEGORY;
-  const hasPizza = /\bpizza\b/.test(primary) || !queryText && /\bpizza\b/.test(combined);
+
+  let hasPizza = /\bpizza\b/.test(primary);
+  if (!hasPizza && !queryText) {
+    hasPizza = /\bpizza\b/.test(combined);
+  }
   if (hasPizza) return 'pizza';
   if (queryOrCombinedMatches(primary, combined, /\b(mcnuggets?|mc\s*nuggets?|chicken\s*nuggets?|nuggets?)\b/)) {
     return 'nugget';
   }
   if (queryOrCombinedMatches(primary, combined, /\b(wings?|boneless\s+wings?)\b/)) return 'wing';
   if (queryOrCombinedMatches(primary, combined, /\b(tenders?|chicken\s+fingers?|strips?)\b/)) return 'tender';
-  const breadRe = /\b(crazy\s*bread|breadsticks?|cheesy\s+bread|garlic\s+(cheese\s+)?bread|cheese\s+bread|cheese\s*sticks?|cheesesticks?|garlic\s+parmesan)\b/;
-  const breadWordRe = /\b(breadstick|bread)\b/;
-  if (breadRe.test(primary) || !queryText && breadRe.test(combined) || (breadWordRe.test(primary) || !queryText && breadWordRe.test(combined)) && !/\b(pizza|burger|sandwich|nugget|wing|bowl|burrito)\b/.test(combined)) {
-    return 'bread';
-  }
+  if (textLooksLikeBreadFamily(queryText, primary, combined)) return 'bread';
   if (queryOrCombinedMatches(primary, combined, /\b(burger|cheeseburger|hamburger|whopper|big\s*mac|quarter\s*pounder|baconator|slider)\b/)) {
     return 'burger';
   }
@@ -231,26 +258,140 @@ function resolveFoodServingLabelDetailed(opts = {}) {
   };
 }
 
+/**
+ * Read one field from a search-row item when the object exists.
+ * @param {object|null|undefined} item
+ * @param {string} fieldName
+ * @returns {*}
+ */
+function readItemField(item, fieldName) {
+  if (!item) return undefined;
+  return item[fieldName];
+}
+
+/**
+ * Food name for serving display — food_name first, then name.
+ * @param {object|null|undefined} item
+ * @returns {*}
+ */
+function foodNameFromSearchItem(item) {
+  const fromFoodName = readItemField(item, 'food_name');
+  if (fromFoodName) return fromFoodName;
+  return readItemField(item, 'name');
+}
+
+/**
+ * Restaurant / brand line for serving conflict checks.
+ * @param {object|null|undefined} item
+ * @returns {*}
+ */
+function restaurantFromSearchItem(item) {
+  const fromRestaurant = readItemField(item, 'restaurant');
+  if (fromRestaurant) return fromRestaurant;
+  const fromBrandName = readItemField(item, 'brand_name');
+  if (fromBrandName) return fromBrandName;
+  return readItemField(item, 'brand');
+}
+
+/**
+ * Calories for multi-bread heuristics — nf_calories first, then calories.
+ * @param {object|null|undefined} item
+ * @returns {*}
+ */
+function caloriesFromSearchItem(item) {
+  if (!item) return undefined;
+  if (item.nf_calories != null) return item.nf_calories;
+  return item.calories;
+}
+
+/**
+ * Existing serving label text from any frozen alias on the row.
+ * @param {object|null|undefined} item
+ * @returns {string}
+ */
+function existingServingLabelFromItem(item) {
+  const fromServingLabel = readItemField(item, 'serving_label');
+  if (fromServingLabel) return collapseWhitespace(fromServingLabel);
+  const fromCamelLabel = readItemField(item, 'servingLabel');
+  if (fromCamelLabel) return collapseWhitespace(fromCamelLabel);
+  const fromPortion = readItemField(item, 'portion_text');
+  if (fromPortion) return collapseWhitespace(fromPortion);
+  return '';
+}
+
+/**
+ * Scraper / row serving label before resolver (raw, not collapsed).
+ * @param {object|null|undefined} item
+ * @returns {*}
+ */
+function scraperLabelFromItem(item) {
+  const fromServingLabel = readItemField(item, 'serving_label');
+  if (fromServingLabel) return fromServingLabel;
+  const fromCamelLabel = readItemField(item, 'servingLabel');
+  if (fromCamelLabel) return fromCamelLabel;
+  return readItemField(item, 'portion_text');
+}
+
+/**
+ * Page URL from metadata.sourceResult.url when nested objects exist.
+ * @param {object|null|undefined} item
+ * @returns {string}
+ */
+function pageTextUrlFromItem(item) {
+  if (!item) return '';
+  const metadata = item.metadata;
+  if (!metadata) return '';
+  const sourceResult = metadata.sourceResult;
+  if (!sourceResult) return '';
+  if (!sourceResult.url) return '';
+  return sourceResult.url;
+}
+
+/**
+ * Serving unit string from snake or camel alias.
+ * @param {object|null|undefined} item
+ * @returns {string}
+ */
+function servingUnitFromItem(item) {
+  const fromSnake = readItemField(item, 'serving_unit');
+  if (fromSnake) return collapseWhitespace(fromSnake);
+  const fromCamel = readItemField(item, 'servingUnit');
+  if (fromCamel) return collapseWhitespace(fromCamel);
+  return '';
+}
+
+/**
+ * Serving qty for unit display — serving_size, then serving_qty, else 1.
+ * @param {object|null|undefined} item
+ * @returns {number}
+ */
+function servingQtyFromItem(item) {
+  if (!item) return 1;
+  if (item.serving_size != null) return item.serving_size;
+  if (item.serving_qty != null) return item.serving_qty;
+  return 1;
+}
+
 /** UI line under the food title on search cards — single authority for display. */
 function formatServingDisplayLine(item, userQuery = '') {
-  var _optObj, _optObj2;
-  const foodName = (item == null ? void 0 : item.food_name) || (item == null ? void 0 : item.name);
-  const restaurant = (item == null ? void 0 : item.restaurant) || (item == null ? void 0 : item.brand_name) || (item == null ? void 0 : item.brand);
-  const calories = (item == null ? void 0 : item.nf_calories) ?? (item == null ? void 0 : item.calories);
-  const existing = collapseWhitespace((item == null ? void 0 : item.serving_label) || (item == null ? void 0 : item.servingLabel) || (item == null ? void 0 : item.portion_text) || '');
+  const foodName = foodNameFromSearchItem(item);
+  const restaurant = restaurantFromSearchItem(item);
+  const calories = caloriesFromSearchItem(item);
+  const existing = existingServingLabelFromItem(item);
 
   // 1. Keep the row’s label when it already matches the food family.
-  if (existing && !isWeakServingLabel(existing) && !servingConflictsWithFood({
+  const existingConflicts = servingConflictsWithFood({
     userQuery,
     foodName,
     restaurant,
-    servingLabel: existing
-  })) {
+    servingLabel: existing,
+  });
+  if (existing && !isWeakServingLabel(existing) && !existingConflicts) {
     return finalizeServingLabelResult(existing, {
       userQuery,
       foodName,
       restaurant,
-      calories
+      calories,
     }).label;
   }
 
@@ -259,25 +400,32 @@ function formatServingDisplayLine(item, userQuery = '') {
     userQuery,
     foodName,
     restaurant,
-    scraperLabel: (item == null ? void 0 : item.serving_label) || (item == null ? void 0 : item.servingLabel) || (item == null ? void 0 : item.portion_text),
-    pageText: ((_optObj = (_optObj2 = item == null ? void 0 : item.metadata) == null ? void 0 : _optObj2.sourceResult) == null ? void 0 : _optObj.url) || '',
-    calories
+    scraperLabel: scraperLabelFromItem(item),
+    pageText: pageTextUrlFromItem(item),
+    calories,
   });
   if (resolved && !isWeakServingLabel(resolved)) return resolved;
-  const unit = collapseWhitespace((item == null ? void 0 : item.serving_unit) || (item == null ? void 0 : item.servingUnit) || '');
-  if (unit && !isWeakServingLabel(unit) && !/^(grams?|g|ml)$/i.test(unit) && !servingConflictsWithFood({
+
+  const unit = servingUnitFromItem(item);
+  const unitConflicts = servingConflictsWithFood({
     userQuery,
     foodName,
     restaurant,
-    servingLabel: unit
-  })) {
-    const qty = (item == null ? void 0 : item.serving_size) ?? (item == null ? void 0 : item.serving_qty) ?? 1;
-    return qty > 1 ? `${qty} ${unit}` : unit;
+    servingLabel: unit,
+  });
+  const unitIsBareWeight = /^(grams?|g|ml)$/i.test(unit);
+  if (unit && !isWeakServingLabel(unit) && !unitIsBareWeight && !unitConflicts) {
+    const qty = servingQtyFromItem(item);
+    if (qty > 1) return `${qty} ${unit}`;
+    return unit;
   }
-  if ((item == null ? void 0 : item.source) === 'serper' || (item == null ? void 0 : item.source) === 'mixed') {
+
+  const itemSource = readItemField(item, 'source');
+  if (itemSource === 'serper' || itemSource === 'mixed') {
     return SERPER_ESTIMATED_SERVING;
   }
-  return resolved || DEFAULT_SERVING_LABEL;
+  if (resolved) return resolved;
+  return DEFAULT_SERVING_LABEL;
 }
 
 // PLUMBING — skip unless debugging weak-label / conflict / page-text scrapers.

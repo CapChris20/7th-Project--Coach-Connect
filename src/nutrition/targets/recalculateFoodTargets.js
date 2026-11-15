@@ -7,7 +7,17 @@
 // vocab: macroTargets/current = the live calorie/macro doc under users/{uid}
 
 import { db } from '../../app-start/cloudConnection';
-import { doc, getDoc, setDoc, getDocs, collection, query, where, serverTimestamp, addDoc } from 'firebase/firestore';
+import {
+  doc,
+  getDoc,
+  setDoc,
+  getDocs,
+  collection,
+  query,
+  where,
+  serverTimestamp,
+  addDoc,
+} from 'firebase/firestore';
 import { getDailyGoals, upsertDailyGoals } from '../daily-log/saveLoggedFood';
 
 // ===== NAMED CONSTANTS =====
@@ -22,11 +32,14 @@ const MACRO_HISTORY_SUBCOLLECTION = 'macroHistory';
 const MIN_LOGGED_DAYS = 8;
 const ERROR_THRESHOLD_PERCENT = 15;
 const RECALIBRATION_DAYS = 14;
+
 const HOURS_PER_DAY = 24;
 const MINUTES_PER_HOUR = 60;
 const SECONDS_PER_MINUTE = 60;
 const MS_PER_SECOND = 1000;
-const MS_PER_DAY = HOURS_PER_DAY * MINUTES_PER_HOUR * SECONDS_PER_MINUTE * MS_PER_SECOND;
+const MS_PER_DAY =
+  HOURS_PER_DAY * MINUTES_PER_HOUR * SECONDS_PER_MINUTE * MS_PER_SECOND;
+
 const DEFAULT_CALORIES = 2000;
 const DEFAULT_PROTEIN_GRAMS = 160;
 const DEFAULT_CARBS_GRAMS = 200;
@@ -34,6 +47,7 @@ const DEFAULT_FAT_GRAMS = 70;
 const MIN_PROTEIN_GRAMS = 50;
 const MIN_CARBS_GRAMS = 50;
 const MIN_FAT_GRAMS = 30;
+
 const KCAL_PER_GRAM_PROTEIN = 4;
 const KCAL_PER_GRAM_CARBS = 4;
 const KCAL_PER_GRAM_FAT = 9;
@@ -42,11 +56,8 @@ const KCAL_PER_GRAM_FAT = 9;
 const CUT_CALORIE_MULTIPLIER = 0.95;
 const BULK_CALORIE_MULTIPLIER = 1.05;
 const MAINTAIN_CALORIE_MULTIPLIER = 1;
-const DEFAULT_MACRO_SPLIT = {
-  protein: 0.3,
-  carbs: 0.4,
-  fat: 0.3
-};
+
+const DEFAULT_MACRO_SPLIT = { protein: 0.3, carbs: 0.4, fat: 0.3 };
 const CONFIDENCE_HIGH = 'high';
 const UPDATED_BY_RECALIBRATION = 'macroRecalibration';
 const PERMISSION_DENIED = 'permission-denied';
@@ -55,18 +66,6 @@ const RESULT_REASON_NOT_ENOUGH_DATA = 'not_enough_data';
 const RESULT_REASON_ACCURATE = 'accurate';
 
 // ===== HELPER FUNCTIONS =====
-
-/**
- * Coerce any value to a trimmed string (empty when missing).
- * @param {*} value
- * @returns {string}
- */
-function asTrimmedString(value) {
-  if (value == null) {
-    return '';
-  }
-  return String(value).trim();
-}
 
 /**
  * Turn a Date (or date-like) into the app's day key: "2026-10-09".
@@ -117,10 +116,14 @@ function daysBetweenCalendarDates(startDate, endDate) {
  */
 function calorieMultiplierForGoal(goalRaw) {
   const goalText = String(goalRaw || '').toLowerCase();
-  const looksLikeCut = goalText.includes('lose') || goalText.includes('cut') || goalText.includes('fat');
+  const looksLikeCut =
+    goalText.includes('lose') || goalText.includes('cut') || goalText.includes('fat');
   if (looksLikeCut) return CUT_CALORIE_MULTIPLIER;
-  const looksLikeBulk = goalText.includes('muscle') || goalText.includes('bulk') || goalText.includes('build');
+
+  const looksLikeBulk =
+    goalText.includes('muscle') || goalText.includes('bulk') || goalText.includes('build');
   if (looksLikeBulk) return BULK_CALORIE_MULTIPLIER;
+
   return MAINTAIN_CALORIE_MULTIPLIER;
 }
 
@@ -158,18 +161,27 @@ function sumCaloriesPerDayFromLogDocs(logDocs) {
  * @returns {{ loggedDays: number, averageDailyCalories: number }}
  */
 function averageCaloriesFromDayMap(caloriesPerDay) {
-  const dayEntries = Object.entries(caloriesPerDay);
-  const daysWithFood = dayEntries.filter(([, calories]) => calories > 0);
+  // Only days with calories > 0 count as "logged" for the average.
+  const dayKeys = Object.keys(caloriesPerDay);
   let totalCalories = 0;
-  for (const [, calories] of daysWithFood) {
+  let loggedDays = 0;
+  for (let index = 0; index < dayKeys.length; index += 1) {
+    const calories = caloriesPerDay[dayKeys[index]];
+    if (calories <= 0) continue;
     totalCalories += calories;
+    loggedDays += 1;
   }
-  const loggedDays = daysWithFood.length;
-  const averageDailyCalories = loggedDays ? Math.round(totalCalories / loggedDays) : 0;
-  return {
-    loggedDays,
-    averageDailyCalories
-  };
+  let averageDailyCalories = 0;
+  if (loggedDays) {
+    averageDailyCalories = Math.round(totalCalories / loggedDays);
+  }
+  return { loggedDays, averageDailyCalories };
+}
+
+function readMacroSplitOrDefault(macroBaseline) {
+  if (!macroBaseline.goals) return DEFAULT_MACRO_SPLIT;
+  if (!macroBaseline.goals.macroSplit) return DEFAULT_MACRO_SPLIT;
+  return macroBaseline.goals.macroSplit;
 }
 
 /**
@@ -190,10 +202,16 @@ function firstPositiveNumber(candidates, fallback) {
  * Scale one macro gram target with the calorie change, floor at minGrams.
  * @returns {number}
  */
-function scaleMacroGramsFromBaseline(adjustedCalories, baselineGrams, initialEstimate, kcalPerGram, minGrams) {
+function scaleMacroGramsFromBaseline(
+  adjustedCalories,
+  baselineGrams,
+  initialEstimate,
+  kcalPerGram,
+  minGrams,
+) {
   const safeEstimate = Math.max(initialEstimate, 1);
   const gramsPerCalorie = baselineGrams / safeEstimate;
-  const scaledGrams = Math.round(adjustedCalories * gramsPerCalorie / kcalPerGram);
+  const scaledGrams = Math.round((adjustedCalories * gramsPerCalorie) / kcalPerGram);
   return Math.max(minGrams, scaledGrams);
 }
 
@@ -203,8 +221,15 @@ function scaleMacroGramsFromBaseline(adjustedCalories, baselineGrams, initialEst
  * @returns {string}
  */
 function readPrimaryGoalText(macroBaseline) {
-  var _optObj, _optObj2, _optObj3;
-  return ((_optObj = macroBaseline.userData) == null ? void 0 : _optObj.primaryGoal) || ((_optObj2 = macroBaseline.userData) == null ? void 0 : _optObj2.goal) || ((_optObj3 = macroBaseline.macroDoc) == null ? void 0 : _optObj3.goal) || 'maintain';
+  // Prefer user primaryGoal, then user goal, then macro doc goal.
+  if (macroBaseline.userData) {
+    if (macroBaseline.userData.primaryGoal) return macroBaseline.userData.primaryGoal;
+    if (macroBaseline.userData.goal) return macroBaseline.userData.goal;
+  }
+  if (macroBaseline.macroDoc && macroBaseline.macroDoc.goal) {
+    return macroBaseline.macroDoc.goal;
+  }
+  return 'maintain';
 }
 
 /**
@@ -213,9 +238,11 @@ function readPrimaryGoalText(macroBaseline) {
  * @returns {boolean}
  */
 function isFirestorePermissionError(error) {
-  const code = (error == null ? void 0 : error.code) || '';
+  let code = '';
+  if (error && error.code) code = error.code;
   if (code === PERMISSION_DENIED) return true;
-  const message = String((error == null ? void 0 : error.message) || '');
+  let message = '';
+  if (error && error.message) message = String(error.message);
   return message.includes('permission');
 }
 
@@ -226,12 +253,17 @@ function isFirestorePermissionError(error) {
  * @returns {Date|null}
  */
 function pickOnboardingAnchorDate(userData, macroSnap) {
-  var _optObj4;
   const fromOnboarding = firestoreTimestampToDate(userData.onboardingCompletedAt);
   if (fromOnboarding) return fromOnboarding;
+
   const fromCreated = firestoreTimestampToDate(userData.createdAt);
   if (fromCreated) return fromCreated;
-  const macroCreatedAt = macroSnap.exists() ? (_optObj4 = macroSnap.data()) == null ? void 0 : _optObj4.createdAt : null;
+
+  let macroCreatedAt = null;
+  if (macroSnap.exists()) {
+    const macroData = macroSnap.data();
+    if (macroData) macroCreatedAt = macroData.createdAt;
+  }
   return firestoreTimestampToDate(macroCreatedAt);
 }
 
@@ -243,8 +275,9 @@ function pickOnboardingAnchorDate(userData, macroSnap) {
 function userAlreadyRecalibratedWithHighConfidence(macroSnap) {
   if (!macroSnap.exists()) return false;
   const data = macroSnap.data();
-  const isHighConfidence = (data == null ? void 0 : data.confidence) === CONFIDENCE_HIGH;
-  const hasRecalibratedAt = Boolean(data == null ? void 0 : data.recalibratedAt);
+  if (!data) return false;
+  const isHighConfidence = data.confidence === CONFIDENCE_HIGH;
+  const hasRecalibratedAt = Boolean(data.recalibratedAt);
   return isHighConfidence && hasRecalibratedAt;
 }
 
@@ -256,29 +289,52 @@ function userAlreadyRecalibratedWithHighConfidence(macroSnap) {
  */
 function computeEstimateErrorPercent(averageDailyCalories, initialEstimate) {
   const error = Math.abs(averageDailyCalories - initialEstimate);
-  if (initialEstimate > 0) return error / initialEstimate * 100;
+  if (initialEstimate > 0) return (error / initialEstimate) * 100;
   return 0;
 }
+
 function buildNotEnoughLoggedDaysResult(loggedDays) {
   return {
     success: false,
     reason: RESULT_REASON_NOT_ENOUGH_DATA,
-    message: `Log at least ${MIN_LOGGED_DAYS} days of meals to recalibrate (you have ${loggedDays}).`
+    message: `Log at least ${MIN_LOGGED_DAYS} days of meals to recalibrate (you have ${loggedDays}).`,
   };
 }
+
 function buildRecalibrationFailureResult(error) {
   console.error('[macroRecalibration] failed:', error);
+  let errorText = String(error);
+  if (error && error.message) errorText = error.message;
   return {
     success: false,
-    error: (error == null ? void 0 : error.message) || String(error),
-    message: 'Could not recalibrate macros right now.'
+    error: errorText,
+    message: 'Could not recalibrate macros right now.',
   };
 }
+
 function computeAdjustedMacroGrams(adjustedCalories, macroBaseline, initialEstimate) {
   return {
-    protein: scaleMacroGramsFromBaseline(adjustedCalories, macroBaseline.protein, initialEstimate, KCAL_PER_GRAM_PROTEIN, MIN_PROTEIN_GRAMS),
-    carbs: scaleMacroGramsFromBaseline(adjustedCalories, macroBaseline.carbs, initialEstimate, KCAL_PER_GRAM_CARBS, MIN_CARBS_GRAMS),
-    fat: scaleMacroGramsFromBaseline(adjustedCalories, macroBaseline.fat, initialEstimate, KCAL_PER_GRAM_FAT, MIN_FAT_GRAMS)
+    protein: scaleMacroGramsFromBaseline(
+      adjustedCalories,
+      macroBaseline.protein,
+      initialEstimate,
+      KCAL_PER_GRAM_PROTEIN,
+      MIN_PROTEIN_GRAMS,
+    ),
+    carbs: scaleMacroGramsFromBaseline(
+      adjustedCalories,
+      macroBaseline.carbs,
+      initialEstimate,
+      KCAL_PER_GRAM_CARBS,
+      MIN_CARBS_GRAMS,
+    ),
+    fat: scaleMacroGramsFromBaseline(
+      adjustedCalories,
+      macroBaseline.fat,
+      initialEstimate,
+      KCAL_PER_GRAM_FAT,
+      MIN_FAT_GRAMS,
+    ),
   };
 }
 
@@ -292,10 +348,7 @@ function computeAdjustedMacroGrams(adjustedCalories, macroBaseline, initialEstim
 export async function recalibrateMacros(userId) {
   // 1. Need a signed-in user and a live Firestore handle.
   if (!userId || !db) {
-    return {
-      success: false,
-      reason: 'Missing user'
-    };
+    return { success: false, reason: 'Missing user' };
   }
 
   // 2. Run the pipeline; never throw to callers — return a friendly failure object.
@@ -313,6 +366,7 @@ export async function recalibrateMacros(userId) {
  */
 export async function shouldRecalibrateMacros(userId) {
   if (!userId || !db) return false;
+
   try {
     return await checkIfUserIsDueForRecalibration(userId);
   } catch (error) {
@@ -329,10 +383,7 @@ export async function shouldRecalibrateMacros(userId) {
 export async function recalibrateIfEligible(userId) {
   // 1. Ask eligibility first so we do not rewrite accurate targets early.
   const eligible = await shouldRecalibrateMacros(userId);
-  if (!eligible) return {
-    success: true,
-    skipped: true
-  };
+  if (!eligible) return { success: true, skipped: true };
 
   // 2. Same path as a manual recalibrate call.
   return recalibrateMacros(userId);
@@ -341,37 +392,47 @@ export async function recalibrateIfEligible(userId) {
 // PLUMBING — skip unless debugging
 
 async function checkIfUserIsDueForRecalibration(userId) {
-  const macroSnap = await getDoc(doc(db, USERS_COLLECTION, userId, MACRO_TARGETS_SUBCOLLECTION, MACRO_TARGETS_DOC_ID));
+  const macroSnap = await getDoc(
+    doc(db, USERS_COLLECTION, userId, MACRO_TARGETS_SUBCOLLECTION, MACRO_TARGETS_DOC_ID),
+  );
   if (userAlreadyRecalibratedWithHighConfidence(macroSnap)) return false;
+
   const userSnap = await getDoc(doc(db, USERS_COLLECTION, userId));
   if (!userSnap.exists()) return false;
+
   const userData = userSnap.data();
   const anchorDate = pickOnboardingAnchorDate(userData, macroSnap);
   if (!anchorDate) return false;
+
   const daysSinceAnchor = daysBetweenCalendarDates(anchorDate, new Date());
   return daysSinceAnchor >= RECALIBRATION_DAYS;
 }
+
 function warnAboutRecalibrationEligibilityError(error) {
   if (isFirestorePermissionError(error)) {
-    console.warn('[shouldRecalibrateMacros] Firestore rules missing for macroTargets — deploy firestore.rules');
+    console.warn(
+      '[shouldRecalibrateMacros] Firestore rules missing for macroTargets — deploy firestore.rules',
+    );
     return;
   }
-  console.warn('[shouldRecalibrateMacros]', (error == null ? void 0 : error.message) || error);
+  let warnText = error;
+  if (error && error.message) warnText = error.message;
+  console.warn('[shouldRecalibrateMacros]', warnText);
 }
+
 async function runMacroRecalibrationForUser(userId) {
-  const {
-    loggedDays,
-    averageDailyCalories
-  } = await loadAverageDailyCaloriesFromLogs(userId);
+  const { loggedDays, averageDailyCalories } = await loadAverageDailyCaloriesFromLogs(userId);
   if (loggedDays < MIN_LOGGED_DAYS) {
     return buildNotEnoughLoggedDaysResult(loggedDays);
   }
+
   const macroBaseline = await loadMacroBaselineForUser(userId);
   const initialEstimate = macroBaseline.initialEstimate;
   const errorPercent = computeEstimateErrorPercent(averageDailyCalories, initialEstimate);
   if (errorPercent <= ERROR_THRESHOLD_PERCENT) {
     return markTargetsAccurateAndReturn(userId, errorPercent);
   }
+
   return saveAdjustedMacrosAndReturn({
     userId,
     macroBaseline,
@@ -379,27 +440,77 @@ async function runMacroRecalibrationForUser(userId) {
     averageDailyCalories,
     errorPercent,
     loggedDays,
-    goalRaw: readPrimaryGoalText(macroBaseline)
+    goalRaw: readPrimaryGoalText(macroBaseline),
   });
 }
+
 async function loadAverageDailyCaloriesFromLogs(userId, lookbackDays = RECALIBRATION_DAYS) {
   const startKey = lookbackStartDateKey(lookbackDays);
   // vocab: where('user_id'…) / where('date'…) = field letters frozen on nutrition_logs
-  const snapshot = await getDocs(query(collection(db, LOGS_COLLECTION), where('user_id', '==', userId), where('date', '>=', startKey)));
+  const snapshot = await getDocs(
+    query(
+      collection(db, LOGS_COLLECTION),
+      where('user_id', '==', userId),
+      where('date', '>=', startKey),
+    ),
+  );
   const caloriesPerDay = sumCaloriesPerDayFromLogDocs(snapshot.docs);
   return averageCaloriesFromDayMap(caloriesPerDay);
 }
+
 async function readMacroTargetsDoc(userId) {
   try {
-    const macroSnap = await getDoc(doc(db, USERS_COLLECTION, userId, MACRO_TARGETS_SUBCOLLECTION, MACRO_TARGETS_DOC_ID));
+    const macroSnap = await getDoc(
+      doc(db, USERS_COLLECTION, userId, MACRO_TARGETS_SUBCOLLECTION, MACRO_TARGETS_DOC_ID),
+    );
     if (!macroSnap.exists()) return null;
     return macroSnap.data();
   } catch (ignoredError) {
     return null;
   }
 }
+
+function readNestedMacroField(userData, fieldName) {
+  if (!userData) return undefined;
+  if (!userData.macroTargets) return undefined;
+  return userData.macroTargets[fieldName];
+}
+
+function calorieCandidatesFromBaseline(macroDoc, goals, userData) {
+  const candidates = [];
+  if (macroDoc) candidates.push(macroDoc.calories);
+  if (goals) candidates.push(goals.calories);
+  candidates.push(readNestedMacroField(userData, 'calories'));
+  candidates.push(readNestedMacroField(userData, 'cals'));
+  return candidates;
+}
+
+function proteinCandidatesFromBaseline(macroDoc, goals, userData) {
+  const candidates = [];
+  if (macroDoc) candidates.push(macroDoc.protein);
+  if (goals) candidates.push(goals.proteinTarget);
+  candidates.push(readNestedMacroField(userData, 'protein'));
+  return candidates;
+}
+
+function carbsCandidatesFromBaseline(macroDoc, goals, userData) {
+  const candidates = [];
+  if (macroDoc) candidates.push(macroDoc.carbs);
+  if (goals) candidates.push(goals.carbsTarget);
+  candidates.push(readNestedMacroField(userData, 'carbs'));
+  return candidates;
+}
+
+function fatCandidatesFromBaseline(macroDoc, goals, userData) {
+  const candidates = [];
+  if (macroDoc) candidates.push(macroDoc.fat);
+  if (goals) candidates.push(goals.fatTarget);
+  candidates.push(readNestedMacroField(userData, 'fats'));
+  candidates.push(readNestedMacroField(userData, 'fat'));
+  return candidates;
+}
+
 async function loadMacroBaselineForUser(userId) {
-  var _optObj5, _optObj6, _optObj7, _optObj8, _optObj9, _optObj0;
   const goals = await getDailyGoals(userId);
   const macroDoc = await readMacroTargetsDoc(userId);
   const userSnap = await getDoc(doc(db, USERS_COLLECTION, userId));
@@ -407,10 +518,27 @@ async function loadMacroBaselineForUser(userId) {
   if (userSnap.exists()) {
     userData = userSnap.data();
   }
-  const initialEstimate = Math.round(firstPositiveNumber([macroDoc == null ? void 0 : macroDoc.calories, goals == null ? void 0 : goals.calories, (_optObj5 = userData == null ? void 0 : userData.macroTargets) == null ? void 0 : _optObj5.calories, (_optObj6 = userData == null ? void 0 : userData.macroTargets) == null ? void 0 : _optObj6.cals], DEFAULT_CALORIES));
-  const protein = firstPositiveNumber([macroDoc == null ? void 0 : macroDoc.protein, goals == null ? void 0 : goals.proteinTarget, (_optObj7 = userData == null ? void 0 : userData.macroTargets) == null ? void 0 : _optObj7.protein], DEFAULT_PROTEIN_GRAMS);
-  const carbs = firstPositiveNumber([macroDoc == null ? void 0 : macroDoc.carbs, goals == null ? void 0 : goals.carbsTarget, (_optObj8 = userData == null ? void 0 : userData.macroTargets) == null ? void 0 : _optObj8.carbs], DEFAULT_CARBS_GRAMS);
-  const fat = firstPositiveNumber([macroDoc == null ? void 0 : macroDoc.fat, goals == null ? void 0 : goals.fatTarget, (_optObj9 = userData == null ? void 0 : userData.macroTargets) == null ? void 0 : _optObj9.fats, (_optObj0 = userData == null ? void 0 : userData.macroTargets) == null ? void 0 : _optObj0.fat], DEFAULT_FAT_GRAMS);
+
+  const initialEstimate = Math.round(
+    firstPositiveNumber(
+      calorieCandidatesFromBaseline(macroDoc, goals, userData),
+      DEFAULT_CALORIES,
+    ),
+  );
+
+  const protein = firstPositiveNumber(
+    proteinCandidatesFromBaseline(macroDoc, goals, userData),
+    DEFAULT_PROTEIN_GRAMS,
+  );
+  const carbs = firstPositiveNumber(
+    carbsCandidatesFromBaseline(macroDoc, goals, userData),
+    DEFAULT_CARBS_GRAMS,
+  );
+  const fat = firstPositiveNumber(
+    fatCandidatesFromBaseline(macroDoc, goals, userData),
+    DEFAULT_FAT_GRAMS,
+  );
+
   return {
     goals,
     macroDoc,
@@ -418,43 +546,49 @@ async function loadMacroBaselineForUser(userId) {
     initialEstimate,
     protein,
     carbs,
-    fat
+    fat,
   };
 }
+
 async function persistMacroTargets(userId, historyPayload, goalsPayload) {
   await upsertDailyGoals(userId, goalsPayload);
-  await setDoc(doc(db, USERS_COLLECTION, userId, MACRO_TARGETS_SUBCOLLECTION, MACRO_TARGETS_DOC_ID), {
-    calories: goalsPayload.calories,
-    protein: goalsPayload.proteinTarget,
-    carbs: goalsPayload.carbsTarget,
-    fat: goalsPayload.fatTarget,
-    confidence: historyPayload.confidence || CONFIDENCE_HIGH,
-    recalibratedAt: serverTimestamp(),
-    initialEstimate: historyPayload.initialEstimate,
-    actualAverage: historyPayload.actualAverage,
-    errorPercent: historyPayload.errorPercent,
-    updatedBy: UPDATED_BY_RECALIBRATION
-  }, {
-    merge: true
-  });
+
+  await setDoc(
+    doc(db, USERS_COLLECTION, userId, MACRO_TARGETS_SUBCOLLECTION, MACRO_TARGETS_DOC_ID),
+    {
+      calories: goalsPayload.calories,
+      protein: goalsPayload.proteinTarget,
+      carbs: goalsPayload.carbsTarget,
+      fat: goalsPayload.fatTarget,
+      confidence: historyPayload.confidence || CONFIDENCE_HIGH,
+      recalibratedAt: serverTimestamp(),
+      initialEstimate: historyPayload.initialEstimate,
+      actualAverage: historyPayload.actualAverage,
+      errorPercent: historyPayload.errorPercent,
+      updatedBy: UPDATED_BY_RECALIBRATION,
+    },
+    { merge: true },
+  );
+
   try {
     await addDoc(collection(db, USERS_COLLECTION, userId, MACRO_HISTORY_SUBCOLLECTION), {
       event: HISTORY_EVENT_RECALIBRATION,
       timestamp: serverTimestamp(),
-      ...historyPayload
+      ...historyPayload,
     });
   } catch (ignoredError) {
     /* history is nice-to-have — do not fail the live targets write */
   }
 }
+
 async function markTargetsVerifiedHighConfidence(userId) {
-  await setDoc(doc(db, USERS_COLLECTION, userId, MACRO_TARGETS_SUBCOLLECTION, MACRO_TARGETS_DOC_ID), {
-    confidence: CONFIDENCE_HIGH,
-    verifiedAt: serverTimestamp()
-  }, {
-    merge: true
-  });
+  await setDoc(
+    doc(db, USERS_COLLECTION, userId, MACRO_TARGETS_SUBCOLLECTION, MACRO_TARGETS_DOC_ID),
+    { confidence: CONFIDENCE_HIGH, verifiedAt: serverTimestamp() },
+    { merge: true },
+  );
 }
+
 async function markTargetsAccurateAndReturn(userId, errorPercent) {
   await markTargetsVerifiedHighConfidence(userId);
   return {
@@ -462,9 +596,10 @@ async function markTargetsAccurateAndReturn(userId, errorPercent) {
     adjusted: false,
     reason: RESULT_REASON_ACCURATE,
     message: 'Your macro targets already match what you have been logging.',
-    errorPercent: Number(errorPercent.toFixed(1))
+    errorPercent: Number(errorPercent.toFixed(1)),
   };
 }
+
 async function saveAdjustedMacrosAndReturn({
   userId,
   macroBaseline,
@@ -472,30 +607,37 @@ async function saveAdjustedMacrosAndReturn({
   averageDailyCalories,
   errorPercent,
   loggedDays,
-  goalRaw
+  goalRaw,
 }) {
-  var _optObj1;
-  const adjustedCalories = Math.round(averageDailyCalories * calorieMultiplierForGoal(goalRaw));
+  const adjustedCalories = Math.round(
+    averageDailyCalories * calorieMultiplierForGoal(goalRaw),
+  );
   const grams = computeAdjustedMacroGrams(adjustedCalories, macroBaseline, initialEstimate);
   const goalsPayload = {
     calories: adjustedCalories,
     proteinTarget: grams.protein,
     carbsTarget: grams.carbs,
     fatTarget: grams.fat,
-    macroSplit: ((_optObj1 = macroBaseline.goals) == null ? void 0 : _optObj1.macroSplit) || DEFAULT_MACRO_SPLIT
+    macroSplit: readMacroSplitOrDefault(macroBaseline),
   };
   const roundedErrorPercent = Number(errorPercent.toFixed(1));
-  await persistMacroTargets(userId, {
-    confidence: CONFIDENCE_HIGH,
-    initialEstimate,
-    actualAverage: averageDailyCalories,
-    errorPercent: roundedErrorPercent,
-    previousCals: initialEstimate,
-    newCals: adjustedCalories,
-    newProtein: grams.protein,
-    newCarbs: grams.carbs,
-    newFat: grams.fat
-  }, goalsPayload);
+
+  await persistMacroTargets(
+    userId,
+    {
+      confidence: CONFIDENCE_HIGH,
+      initialEstimate,
+      actualAverage: averageDailyCalories,
+      errorPercent: roundedErrorPercent,
+      previousCals: initialEstimate,
+      newCals: adjustedCalories,
+      newProtein: grams.protein,
+      newCarbs: grams.carbs,
+      newFat: grams.fat,
+    },
+    goalsPayload,
+  );
+
   return {
     success: true,
     adjusted: true,
@@ -506,7 +648,7 @@ async function saveAdjustedMacrosAndReturn({
       newProtein: grams.protein,
       newCarbs: grams.carbs,
       newFat: grams.fat,
-      errorPercent: roundedErrorPercent
-    }
+      errorPercent: roundedErrorPercent,
+    },
   };
 }

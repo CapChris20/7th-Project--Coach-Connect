@@ -53,57 +53,7 @@ export const LOVABLE_ACCENTS = [
   { key: 'warm-d', gradient: ['#9A3412', '#C2410C'], text: '#C2410C' },
 ];
 
-// ===== MAIN RECIPES (exports) =====
-
-/**
- * Format height for a profile pill: feet/inches object, or total inches in adult range.
- * @param {unknown} height
- * @returns {string}
- */
-export function formatProfileHeightDisplay(height) {
-  // 1. Missing height → em dash.
-  if (height == null) return MISSING_VALUE;
-
-  // 2. Object shape { feet, inches } from onboarding forms.
-  if (typeof height === 'object') {
-    return heightFromFeetAndInches(height);
-  }
-
-  // 3. Number or digit string of total inches — only format when in believable adult range.
-  const totalInches = parseHeightAsTotalInches(height);
-  if (totalInchesAreInAdultRange(totalInches)) {
-    return heightFromTotalInches(totalInches);
-  }
-
-  // 4. Anything else (junk text, out-of-range) → em dash.
-  return MISSING_VALUE;
-}
-
-/**
- * One pill label for a workout-builder field key.
- * @param {string} fieldKey
- * @param {object} onboardingData
- * @returns {string}
- */
-export function displayForFieldKey(fieldKey, onboardingData) {
-  // 1. One concatenated or looked-up string for this pill key.
-  const rawLine = getWorkoutBuilderFieldRawDisplay(fieldKey, onboardingData);
-
-  // 2. Drop placeholders and humanize equipment/hydration tokens.
-  const formatted = formatDisplayValue(rawLine);
-  let displayText = '';
-  if (formatted != null) {
-    displayText = String(formatted).trim();
-  }
-
-  // 3. Em dash when the trainee never answered or we got string "null".
-  if (!displayText) return MISSING_VALUE;
-  if (displayText === 'null') return MISSING_VALUE;
-  if (displayText === 'undefined') return MISSING_VALUE;
-  return displayText;
-}
-
-// ===== PLUMBING — skip unless debugging =====
+// ===== HELPER FUNCTIONS =====
 
 function isUsableNumber(rawNumber) {
   return rawNumber != null && rawNumber !== '';
@@ -274,4 +224,54 @@ function getWorkoutBuilderFieldRawDisplay(key, onboardingData) {
   const reader = WORKOUT_BUILDER_FIELD_READERS[key];
   if (!reader) return '';
   return reader(onboardingData);
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Format height for a profile pill: feet/inches object, or total inches in adult range.
+ * @param {unknown} height
+ * @returns {string}
+ */
+export function formatProfileHeightDisplay(height) {
+  // 1. Missing height → em dash.
+  if (height == null) return MISSING_VALUE;
+
+  // 2. Object shape { feet, inches } from onboarding forms.
+  if (typeof height === 'object') {
+    return heightFromFeetAndInches(height);
+  }
+
+  // 3. Number or digit string of total inches — only format when in believable adult range.
+  const totalInches = parseHeightAsTotalInches(height);
+  if (totalInchesAreInAdultRange(totalInches)) {
+    return heightFromTotalInches(totalInches);
+  }
+
+  // 4. Anything else (junk text, out-of-range) → em dash.
+  return MISSING_VALUE;
+}
+
+/**
+ * One pill label for a workout-builder field key.
+ * @param {string} fieldKey
+ * @param {object} onboardingData
+ * @returns {string}
+ */
+export function displayForFieldKey(fieldKey, onboardingData) {
+  // 1. One concatenated or looked-up string for this pill key.
+  const rawLine = getWorkoutBuilderFieldRawDisplay(fieldKey, onboardingData);
+
+  // 2. Drop placeholders and humanize equipment/hydration tokens.
+  const formatted = formatDisplayValue(rawLine);
+  let displayText = '';
+  if (formatted != null) {
+    displayText = String(formatted).trim();
+  }
+
+  // 3. Em dash when the trainee never answered or we got string "null".
+  if (!displayText) return MISSING_VALUE;
+  if (displayText === 'null') return MISSING_VALUE;
+  if (displayText === 'undefined') return MISSING_VALUE;
+  return displayText;
 }

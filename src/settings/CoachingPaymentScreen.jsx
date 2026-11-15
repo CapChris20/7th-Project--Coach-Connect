@@ -48,16 +48,6 @@ const PAST_DUE_LIKE_STATUSES = new Set([
 // ===== HELPER FUNCTIONS =====
 
 /**
- * Coerce any value to a trimmed string (empty when missing).
- * @param {*} value
- * @returns {string}
- */
-function asTrimmedString(value) {
-  return asTrimmedString(value);
-}
-
-
-/**
  * First word of a full name (for charge subtitles).
  * @param {string} fullName
  * @returns {string}
@@ -94,11 +84,12 @@ function describePaymentStatusChip(status) {
  * @returns {number|null}
  */
 function readSessionRateFromUserData(userData) {
-  const fromSession = Number(userData?.sessionRate);
+  if (!userData) return null;
+  const fromSession = Number(userData.sessionRate);
   if (fromSession) return fromSession;
-  const fromMonthly = Number(userData?.monthlyRate);
+  const fromMonthly = Number(userData.monthlyRate);
   if (fromMonthly) return fromMonthly;
-  const fromTrainer = Number(userData?.trainerRate);
+  const fromTrainer = Number(userData.trainerRate);
   if (fromTrainer) return fromTrainer;
   return null;
 }
@@ -177,12 +168,13 @@ function EmptyCoachingPaymentCard({ colors, onAddMethod, trainerIdMissing }) {
  */
 function ChargeRow({ row, coachLabel, isLastRow, colors }) {
   const coachSubtitle = row.coach || firstNameFromFullName(coachLabel);
-  const rowBorderStyle = isLastRow
-    ? null
-    : {
-        borderBottomWidth: StyleSheet.hairlineWidth,
-        borderBottomColor: colors.nbBorder,
-      };
+  let rowBorderStyle = null;
+  if (!isLastRow) {
+    rowBorderStyle = {
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.nbBorder,
+    };
+  }
 
   return (
     <View style={[styles.chargeRow, rowBorderStyle]}>
@@ -211,19 +203,23 @@ function RecentChargesCard({ chargeRows, coachLabel, colors }) {
     );
   }
 
-  return (
-    <NbCard style={styles.chargesCard}>
-      {rows.map((row, rowIndex) => (
-        <ChargeRow
-          key={row.id}
-          row={row}
-          coachLabel={coachLabel}
-          isLastRow={rowIndex === rows.length - 1}
-          colors={colors}
-        />
-      ))}
-    </NbCard>
-  );
+  // Build rows with a plain loop — no .map in the screen tree.
+  const chargeElements = [];
+  for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
+    const row = rows[rowIndex];
+    const isLastRow = rowIndex === rows.length - 1;
+    chargeElements.push(
+      <ChargeRow
+        key={row.id}
+        row={row}
+        coachLabel={coachLabel}
+        isLastRow={isLastRow}
+        colors={colors}
+      />,
+    );
+  }
+
+  return <NbCard style={styles.chargesCard}>{chargeElements}</NbCard>;
 }
 
 /**
@@ -243,15 +239,18 @@ function ActiveCoachingPaymentBody({
 }) {
   const heroEyebrow = `COACHING WITH ${coachLabel.toUpperCase()}`;
   const isPastDue = paymentStatus === STATUS_PAST_DUE;
-  const heroFootnote = isPastDue
-    ? 'Payment past due — update your method to keep coaching.'
-    : 'Billed per completed session.';
-  const methodTitle = cardLast4
-    ? `${cardBrand} ending ${cardLast4}`
-    : 'Payment method';
-  const methodSubtitle = cardExp
-    ? `Expires ${cardExp}`
-    : 'Tap Update to manage card';
+  let heroFootnote = 'Billed per completed session.';
+  if (isPastDue) {
+    heroFootnote = 'Payment past due — update your method to keep coaching.';
+  }
+  let methodTitle = 'Payment method';
+  if (cardLast4) {
+    methodTitle = `${cardBrand} ending ${cardLast4}`;
+  }
+  let methodSubtitle = 'Tap Update to manage card';
+  if (cardExp) {
+    methodSubtitle = `Expires ${cardExp}`;
+  }
 
   return (
     <>
@@ -295,6 +294,43 @@ function ActiveCoachingPaymentBody({
   );
 }
 
+function extractUserCardDetails(userData) {
+  if (!userData) {
+    return {
+      clientId: null,
+      cardLast4: null,
+      cardBrand: DEFAULT_CARD_BRAND,
+      cardExp: null,
+      usesMonthlyRate: false,
+    };
+  }
+  const clientId = userData.uid || userData.id || null;
+  const cardLast4 = userData.paymentMethodLast4 || userData.cardLast4 || null;
+  const cardBrand = userData.paymentMethodBrand || userData.cardBrand || DEFAULT_CARD_BRAND;
+  const cardExp = userData.paymentMethodExp || userData.cardExp || null;
+  const usesMonthlyRate = Boolean(userData.monthlyRate);
+  return { clientId, cardLast4, cardBrand, cardExp, usesMonthlyRate };
+}
+
+function CoachingPaymentScreenLayout({
+  colors,
+  onClose,
+  scrollBottomPad,
+  body,
+}) {
+  return (
+    <View style={[styles.root, { backgroundColor: colors.nbBackground }]}>
+      <NbPageHeader title="Coaching payment" onBack={onClose} />
+      <ScrollView
+        contentContainerStyle={[styles.scroll, { paddingBottom: scrollBottomPad }]}
+        {...FORM_SCROLL_PROPS}
+      >
+        {body}
+      </ScrollView>
+    </View>
+  );
+}
+
 // ===== MAIN FUNCTION =====
 
 /**
@@ -315,22 +351,17 @@ export default function CoachingPaymentScreen({
   const trimmedTrainerName = String(trainerName || DEFAULT_COACH_LABEL).trim();
   const coachLabel = trimmedTrainerName || DEFAULT_COACH_LABEL;
   const sessionRate = readSessionRateFromUserData(userData);
-  const paymentStatus = String(userData?.paymentStatus || 'inactive').toLowerCase();
+
+  const paymentStatusRaw = (userData && userData.paymentStatus) || 'inactive';
+  const paymentStatus = String(paymentStatusRaw).toLowerCase();
   const hasActiveSubscription = clientHasActiveSubscriptionLook(trainerId, paymentStatus);
 
   // 2. Recent charges load from Firestore via hook-shaped helper (rows only).
-  const clientId = userData?.uid || userData?.id || null;
+  const { clientId, cardLast4, cardBrand, cardExp, usesMonthlyRate } = extractUserCardDetails(userData);
   const { rows: chargeRows } = traineePaymentHistory(clientId, coachLabel);
 
-  const cardLast4 = userData?.paymentMethodLast4 || userData?.cardLast4 || null;
-  const cardBrand = userData?.paymentMethodBrand || userData?.cardBrand || DEFAULT_CARD_BRAND;
-  const cardExp = userData?.paymentMethodExp || userData?.cardExp || null;
-
-  let rateLabel = '—';
-  if (sessionRate != null) {
-    rateLabel = `$${Math.round(sessionRate)}`;
-  }
-  const rateUnit = userData?.monthlyRate ? '/mo' : '/session';
+  const rateLabel = sessionRate != null ? `$${Math.round(sessionRate)}` : '—';
+  const rateUnit = usesMonthlyRate ? '/mo' : '/session';
   const trainerIdMissing = !trainerId;
 
   function closePayForm() {
@@ -343,10 +374,10 @@ export default function CoachingPaymentScreen({
 
   function handlePaySuccess() {
     setShowPayForm(false);
-    onSuccess?.();
+    if (onSuccess) onSuccess();
   }
 
-  // Pay form replaces the whole screen until close / success.
+  // 3. Pay form replaces the whole screen until close / success.
   if (showPayForm) {
     return (
       <View style={[styles.root, { backgroundColor: colors.nbBackground }]}>
@@ -360,35 +391,38 @@ export default function CoachingPaymentScreen({
     );
   }
 
+  // 4. Empty shell or active subscription body.
+  let body = (
+    <EmptyCoachingPaymentCard
+      colors={colors}
+      onAddMethod={openPayForm}
+      trainerIdMissing={trainerIdMissing}
+    />
+  );
+  if (hasActiveSubscription) {
+    body = (
+      <ActiveCoachingPaymentBody
+        colors={colors}
+        coachLabel={coachLabel}
+        paymentStatus={paymentStatus}
+        rateLabel={rateLabel}
+        rateUnit={rateUnit}
+        cardLast4={cardLast4}
+        cardBrand={cardBrand}
+        cardExp={cardExp}
+        chargeRows={chargeRows}
+        onOpenPayForm={openPayForm}
+      />
+    );
+  }
+
   return (
-    <View style={[styles.root, { backgroundColor: colors.nbBackground }]}>
-      <NbPageHeader title="Coaching payment" onBack={onClose} />
-      <ScrollView
-        contentContainerStyle={[styles.scroll, { paddingBottom: scrollBottomPad }]}
-        {...FORM_SCROLL_PROPS}
-      >
-        {!hasActiveSubscription ? (
-          <EmptyCoachingPaymentCard
-            colors={colors}
-            onAddMethod={openPayForm}
-            trainerIdMissing={trainerIdMissing}
-          />
-        ) : (
-          <ActiveCoachingPaymentBody
-            colors={colors}
-            coachLabel={coachLabel}
-            paymentStatus={paymentStatus}
-            rateLabel={rateLabel}
-            rateUnit={rateUnit}
-            cardLast4={cardLast4}
-            cardBrand={cardBrand}
-            cardExp={cardExp}
-            chargeRows={chargeRows}
-            onOpenPayForm={openPayForm}
-          />
-        )}
-      </ScrollView>
-    </View>
+    <CoachingPaymentScreenLayout
+      colors={colors}
+      onClose={onClose}
+      scrollBottomPad={scrollBottomPad}
+      body={body}
+    />
   );
 }
 

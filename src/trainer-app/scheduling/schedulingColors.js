@@ -10,6 +10,9 @@ import { lightColors, darkColors } from '../../look-and-feel/colorPalette';
 
 // Manipulate here: only if a legacy screen still reads these keys — new UI uses colorPalette nb*
 
+// ===== HELPER FUNCTIONS =====
+// (no internal helpers needed)
+
 // ===== MAIN FUNCTION =====
 
 /**

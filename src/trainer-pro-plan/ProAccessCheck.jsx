@@ -16,6 +16,44 @@ const ACCESS_EXPIRED = 'expired';
 const IOS_PLATFORM = 'ios';
 const LOADING_SPINNER_SIZE = 'large';
 
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * True when the app should not run the Pro gate at all.
+ * @returns {boolean}
+ */
+function proBillingGateIsDisabled() {
+  const subscriptionFeatureIsOff = !TRAINER_PLATFORM_SUBSCRIPTION_ENABLED;
+  const deviceIsNotIos = Platform.OS !== IOS_PLATFORM;
+  return subscriptionFeatureIsOff || deviceIsNotIos;
+}
+
+/**
+ * True only for the Firestore access value that means "had Pro, lost it."
+ * @param {{ access?: string }} accessState
+ * @returns {boolean}
+ */
+function accessStateSaysProExpired(accessState) {
+  return accessState.access === ACCESS_EXPIRED;
+}
+
+/**
+ * Full-screen spinner while ProPlanSetup reads subscription state from Firestore.
+ * @returns {JSX.Element}
+ */
+function ProGateLoadingSpinner() {
+  // vocab: useColorScheme = OS light/dark; palette.nb* = Design Law ink/background tokens
+  const colorScheme = useColorScheme();
+  const isDarkMode = colorScheme === 'dark';
+  const palette = isDarkMode ? darkColors : lightColors;
+
+  return (
+    <View style={[styles.loading, { backgroundColor: palette.nbBackground }]}>
+      <ActivityIndicator size={LOADING_SPINNER_SIZE} color={palette.nbInk} />
+    </View>
+  );
+}
+
 // ===== MAIN FUNCTION =====
 
 /**
@@ -56,44 +94,6 @@ export default function ProAccessCheck({ children, onOpenSettings, onOpenTerms, 
 
   // 4. Active, trial, or never subscribed — render the trainer app.
   return children;
-}
-
-// ===== PLUMBING — skip unless debugging =====
-
-/**
- * True when the app should not run the Pro gate at all.
- * @returns {boolean}
- */
-function proBillingGateIsDisabled() {
-  const subscriptionFeatureIsOff = !TRAINER_PLATFORM_SUBSCRIPTION_ENABLED;
-  const deviceIsNotIos = Platform.OS !== IOS_PLATFORM;
-  return subscriptionFeatureIsOff || deviceIsNotIos;
-}
-
-/**
- * True only for the Firestore access value that means "had Pro, lost it."
- * @param {{ access?: string }} accessState
- * @returns {boolean}
- */
-function accessStateSaysProExpired(accessState) {
-  return accessState.access === ACCESS_EXPIRED;
-}
-
-/**
- * Full-screen spinner while ProPlanSetup reads subscription state from Firestore.
- * @returns {JSX.Element}
- */
-function ProGateLoadingSpinner() {
-  // vocab: useColorScheme = OS light/dark; palette.nb* = Design Law ink/background tokens
-  const colorScheme = useColorScheme();
-  const isDarkMode = colorScheme === 'dark';
-  const palette = isDarkMode ? darkColors : lightColors;
-
-  return (
-    <View style={[styles.loading, { backgroundColor: palette.nbBackground }]}>
-      <ActivityIndicator size={LOADING_SPINNER_SIZE} color={palette.nbInk} />
-    </View>
-  );
 }
 
 const styles = StyleSheet.create({

@@ -46,6 +46,7 @@ import HardShadow from '../../look-and-feel/HardShadow';
 
 // ===== NAMED CONSTANTS =====
 
+const DAYS_IN_ONE_WEEK = 7;
 const SCROLL_BOTTOM_PAD_EMBEDDED = 24;
 const SCROLL_BOTTOM_PAD_STANDALONE = 40;
 const UPCOMING_LIMIT = 12;
@@ -57,7 +58,7 @@ const VIEW_SEGMENTS = [
   { id: 'list', label: 'List' },
 ];
 
-// ===== HELPERS =====
+// ===== HELPER FUNCTIONS =====
 
 function dateKeyFromDate(dateValue) {
   return format(dateValue, 'yyyy-MM-dd');
@@ -65,13 +66,13 @@ function dateKeyFromDate(dateValue) {
 
 function generateWeekDates(anchor) {
   const weekStart = startOfWeek(anchor, { weekStartsOn: 0 });
-  return Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+  return Array.from({ length: DAYS_IN_ONE_WEEK }, (_, i) => addDays(weekStart, i));
 }
 
 function collectSessionDayKeys(sessions) {
   const set = new Set();
-  for (const s of sessions || []) {
-    if (s?.date) set.add(String(s.date).slice(0, 10));
+  for (const sessionItem of sessions || []) {
+    if (sessionItem?.date) set.add(String(sessionItem.date).slice(0, 10));
   }
   return set;
 }
@@ -79,9 +80,9 @@ function collectSessionDayKeys(sessions) {
 function formatDayHeader(dateKey, todayKey) {
   if (!dateKey) return '';
   try {
-    const d = parseISO(dateKey);
-    if (!isValid(d)) return dateKey;
-    const base = format(d, 'EEE, MMM d');
+    const parsedDate = parseISO(dateKey);
+    if (!isValid(parsedDate)) return dateKey;
+    const base = format(parsedDate, 'EEE, MMM d');
     if (dateKey === todayKey) return `Today · ${base}`;
     return base;
   } catch (_e) {
@@ -91,9 +92,9 @@ function formatDayHeader(dateKey, todayKey) {
 
 function formatAgendaTitle(dateKey) {
   try {
-    const d = parseISO(dateKey);
-    if (!isValid(d)) return dateKey;
-    return format(d, 'EEEE, MMM d');
+    const parsedDate = parseISO(dateKey);
+    if (!isValid(parsedDate)) return dateKey;
+    return format(parsedDate, 'EEEE, MMM d');
   } catch (_e) {
     return dateKey;
   }
@@ -193,7 +194,7 @@ function WeekDateStrip({
   );
 }
 
-// ===== MAIN =====
+// ===== MAIN FUNCTION =====
 
 /**
  * Trainer session calendar — week agenda (default), month grid, or upcoming list.

@@ -101,11 +101,16 @@ const CLIENT_PUSHED_SCREENS = [
 // ===== HELPER FUNCTIONS =====
 
 /**
- * One pushed card route. Shared options: slide from right, no native header.
+ * Make one Stack.Screen element for a pushed route entry.
+ * @param {{ routeName: string, ScreenComponent: Function }} routeEntry
+ * @returns {import('react').ReactElement}
  */
-function PushedClientRoute({ routeName, ScreenComponent }) {
+function makePushedClientStackScreen(routeEntry) {
+  const routeName = routeEntry.routeName;
+  const ScreenComponent = routeEntry.ScreenComponent;
   return (
     <Stack.Screen
+      key={routeName}
       name={routeName}
       component={ScreenComponent}
       options={pushedScreenOptions}
@@ -122,15 +127,7 @@ function buildPushedRouteScreens() {
   let routeIndex = 0;
   while (routeIndex < CLIENT_PUSHED_SCREENS.length) {
     const routeEntry = CLIENT_PUSHED_SCREENS[routeIndex];
-    const routeName = routeEntry.routeName;
-    const ScreenComponent = routeEntry.ScreenComponent;
-    routeScreens.push(
-      <PushedClientRoute
-        key={routeName}
-        routeName={routeName}
-        ScreenComponent={ScreenComponent}
-      />,
-    );
+    routeScreens.push(makePushedClientStackScreen(routeEntry));
     routeIndex += 1;
   }
   return routeScreens;

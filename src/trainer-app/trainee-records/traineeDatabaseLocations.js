@@ -2,7 +2,7 @@
 // Flow: prefer trainer_clients/{trainerId}/clients/{clientId} → fall back to legacy clients/{clientId}.
 // Used by trainer CRM, roster paging, notes/tasks/progress subcollections.
 // Path STRING VALUES must not change (rules + old app versions depend on them).
-// Read order: constants → ref builders → read mains → write mains → PLUMBING.
+// Read order: constants → ref builders → read mains → write mains.
 
 import {
   collection,
@@ -45,16 +45,34 @@ const DEFAULT_MAX_CLIENTS = 300;
 
 const EMPTY_ROSTER_PAGE = { clients: [], lastDoc: null, hasMore: false };
 
-// ===== DOC REF BUILDERS =====
+// ===== HELPER FUNCTIONS =====
 
+/**
+ * Returns a document reference for a trainer's client in trainer_clients.
+ * @param {string} trainerId
+ * @param {string} clientId
+ * @returns {object} Firestore doc ref
+ */
 export function trainerClientDocRef(trainerId, clientId) {
   return doc(db, TRAINER_CLIENTS_ROOT, String(trainerId), CLIENTS_SUBCOLLECTION, String(clientId));
 }
 
+/**
+ * Returns a document reference for a legacy CRM client document.
+ * @param {string} clientId
+ * @returns {object} Firestore doc ref
+ */
 export function legacyClientDocRef(clientId) {
   return doc(db, LEGACY_CRM_CLIENTS_COLLECTION, String(clientId));
 }
 
+/**
+ * Returns a subcollection reference under a specific trainer's client document.
+ * @param {string} trainerId
+ * @param {string} clientId
+ * @param {string} subcollection
+ * @returns {object} Firestore collection ref
+ */
 export function trainerClientSubcollectionRef(trainerId, clientId, subcollection) {
   return collection(
     db,
@@ -66,10 +84,24 @@ export function trainerClientSubcollectionRef(trainerId, clientId, subcollection
   );
 }
 
+/**
+ * Returns a subcollection reference under a legacy CRM client document.
+ * @param {string} clientId
+ * @param {string} subcollection
+ * @returns {object} Firestore collection ref
+ */
 export function legacyClientSubcollectionRef(clientId, subcollection) {
   return collection(db, LEGACY_CRM_CLIENTS_COLLECTION, String(clientId), subcollection);
 }
 
+/**
+ * Returns a document reference for a child doc in a client subcollection.
+ * @param {string|null} trainerId
+ * @param {string} clientId
+ * @param {string} subcollection
+ * @param {string} docId
+ * @returns {object} Firestore doc ref
+ */
 export function trainerClientSubdocRef(trainerId, clientId, subcollection, docId) {
   if (trainerId) {
     return doc(
@@ -85,6 +117,12 @@ export function trainerClientSubdocRef(trainerId, clientId, subcollection, docId
   return doc(db, LEGACY_CRM_CLIENTS_COLLECTION, String(clientId), subcollection, String(docId));
 }
 
+/**
+ * Returns the collection reference for client progress records.
+ * @param {string|null} trainerId
+ * @param {string} clientId
+ * @returns {object} Firestore collection ref
+ */
 export function progressCollectionRef(trainerId, clientId) {
   if (trainerId) {
     return trainerClientSubcollectionRef(trainerId, clientId, PROGRESS_SUBCOLLECTION);
@@ -92,6 +130,12 @@ export function progressCollectionRef(trainerId, clientId) {
   return legacyClientSubcollectionRef(clientId, PROGRESS_SUBCOLLECTION);
 }
 
+/**
+ * Returns the collection reference for client tasks.
+ * @param {string|null} trainerId
+ * @param {string} clientId
+ * @returns {object} Firestore collection ref
+ */
 export function tasksCollectionRef(trainerId, clientId) {
   if (trainerId) {
     return trainerClientSubcollectionRef(trainerId, clientId, TASKS_SUBCOLLECTION);
@@ -99,6 +143,12 @@ export function tasksCollectionRef(trainerId, clientId) {
   return legacyClientSubcollectionRef(clientId, TASKS_SUBCOLLECTION);
 }
 
+/**
+ * Returns the collection reference for client notes.
+ * @param {string|null} trainerId
+ * @param {string} clientId
+ * @returns {object} Firestore collection ref
+ */
 export function notesCollectionRef(trainerId, clientId) {
   if (trainerId) {
     return trainerClientSubcollectionRef(trainerId, clientId, NOTES_SUBCOLLECTION);
@@ -106,7 +156,146 @@ export function notesCollectionRef(trainerId, clientId) {
   return legacyClientSubcollectionRef(clientId, NOTES_SUBCOLLECTION);
 }
 
-// ===== READ PATHS =====
+function rowFromFirestoreSnap(docSnap, extraFields) {
+  const mergedExtra = extraFields || {};
+  return { id: docSnap.id, ...docSnap.data(), ...mergedExtra };
+}
+
+async function readCanonicalClientRow(trainerId, clientId) {
+  const canonicalSnap = await getDoc(trainerClientDocRef(trainerId, clientId));
+  if (!canonicalSnap.exists()) {
+    return null;
+  }
+  return rowFromFirestoreSnap(canonicalSnap, { _source: SOURCE_CANONICAL });
+}
+
+async function readLegacyClientRow(clientId) {
+  const legacySnap = await getDoc(legacyClientDocRef(clientId));
+  if (!legacySnap.exists()) {
+    return null;
+  }
+  return rowFromFirestoreSnap(legacySnap, { _source: SOURCE_LEGACY });
+}
+
+function sortRosterDocsWhenUpdatedAtMissing(docs, pageSize) {
+  if (docs.length === 0) {
+    return docs;
+  }
+  const firstRowData = docs[0].data();
+  // vocab: ?. = only read updatedAt when data() returned an object.
+  const firstHasUpdatedAt = Boolean(firstRowData?.updatedAt);
+  if (firstHasUpdatedAt) {
+    return docs;
+  }
+  return sortDocsByMillis(docs, UPDATED_AT_FIELD, 'desc').slice(0, pageSize);
+}
+
+async function loadCanonicalRosterPageDocs(trainerId, pageSize, startAfterDoc) {
+  const canonicalRef = collection(
+    db,
+    TRAINER_CLIENTS_ROOT,
+    String(trainerId),
+    CLIENTS_SUBCOLLECTION,
+  );
+
+  let orderedQuery;
+  if (startAfterDoc) {
+    orderedQuery = query(
+      canonicalRef,
+      orderBy(UPDATED_AT_FIELD, 'desc'),
+      startAfter(startAfterDoc),
+      limit(pageSize),
+    );
+  } else {
+    orderedQuery = query(canonicalRef, orderBy(UPDATED_AT_FIELD, 'desc'), limit(pageSize));
+  }
+
+  const fallbackLimit = Math.min(pageSize * INDEX_FALLBACK_MULTIPLIER, INDEX_FALLBACK_CAP);
+  const snapshot = await getDocsWithIndexFallback(
+    orderedQuery,
+    () => query(canonicalRef, limit(fallbackLimit)),
+    'trainer_clients roster',
+  );
+
+  return sortRosterDocsWhenUpdatedAtMissing(snapshot.docs, pageSize);
+}
+
+function rowsFromDocList(sortedDocs, seenClientIds) {
+  const clients = [];
+  for (let index = 0; index < sortedDocs.length; index += 1) {
+    const docSnap = sortedDocs[index];
+    seenClientIds.add(docSnap.id);
+    clients.push(rowFromFirestoreSnap(docSnap));
+  }
+  return clients;
+}
+
+function pushAll(targetList, sourceList) {
+  for (let index = 0; index < sourceList.length; index += 1) {
+    targetList.push(sourceList[index]);
+  }
+}
+
+async function readSubcollectionRows(collectionRef) {
+  const snapshot = await getDocs(collectionRef);
+  const rows = [];
+  for (let index = 0; index < snapshot.docs.length; index += 1) {
+    rows.push(rowFromFirestoreSnap(snapshot.docs[index]));
+  }
+  return rows;
+}
+
+async function tryDeleteCanonicalSubdoc(trainerId, clientId, subcollection, docId) {
+  const canonicalRef = trainerClientSubdocRef(trainerId, clientId, subcollection, docId);
+  const snap = await getDoc(canonicalRef);
+  if (!snap.exists()) {
+    return false;
+  }
+  await deleteDoc(canonicalRef);
+  return true;
+}
+
+async function loadLegacyRosterPageSnap(trainerId, pageSize) {
+  const legacyOrderedQuery = query(
+    collection(db, LEGACY_CRM_CLIENTS_COLLECTION),
+    where(TRAINER_ID_FIELD, '==', String(trainerId)),
+    orderBy(UPDATED_AT_FIELD, 'desc'),
+    limit(pageSize),
+  );
+  return getDocsWithIndexFallback(
+    legacyOrderedQuery,
+    () =>
+      query(
+        collection(db, LEGACY_CRM_CLIENTS_COLLECTION),
+        where(TRAINER_ID_FIELD, '==', String(trainerId)),
+        limit(pageSize),
+      ),
+    'legacy clients roster',
+  );
+}
+
+function appendUnseenLegacyClientDocs(legacyDocs, seenClientIds, clients) {
+  for (let index = 0; index < legacyDocs.length; index += 1) {
+    const docSnap = legacyDocs[index];
+    if (seenClientIds.has(docSnap.id)) {
+      continue;
+    }
+    seenClientIds.add(docSnap.id);
+    clients.push(rowFromFirestoreSnap(docSnap, { _legacyOnly: true }));
+  }
+}
+
+async function appendFirstPageLegacyClients(trainerId, pageSize, seenClientIds, clients) {
+  // 1. Load page-one legacy clients; rules may deny the collection — ignore and keep canonical.
+  try {
+    const legacySnap = await loadLegacyRosterPageSnap(trainerId, pageSize);
+    appendUnseenLegacyClientDocs(legacySnap.docs, seenClientIds, clients);
+  } catch (_legacyQueryError) {
+    // Rules may block legacy collection reads — canonical roster still returns.
+  }
+}
+
+// ===== MAIN FUNCTION =====
 
 /**
  * Read one CRM client row: canonical trainer_clients path first, then legacy clients/{id}.
@@ -226,8 +415,6 @@ export async function fetchTrainerClientSubcollectionDocs(clientId, subcollectio
   return readSubcollectionRows(legacyClientSubcollectionRef(clientId, subcollection));
 }
 
-// ===== WRITE PATHS =====
-
 /**
  * Create or merge the canonical trainer_clients/{trainerId}/clients/{clientId} doc.
  * @param {string} trainerId
@@ -252,10 +439,26 @@ export async function upsertTrainerClientDoc(trainerId, clientId, payload, { mer
   return ref;
 }
 
+/**
+ * Update an existing client document with merge semantics.
+ * @param {string} trainerId
+ * @param {string} clientId
+ * @param {object} updates
+ * @returns {Promise<object>}
+ */
 export async function updateTrainerClientDoc(trainerId, clientId, updates) {
   return upsertTrainerClientDoc(trainerId, clientId, updates, { merge: true });
 }
 
+/**
+ * Update a specific child doc inside a client subcollection.
+ * @param {string} trainerId
+ * @param {string} clientId
+ * @param {string} subcollection
+ * @param {string} docId
+ * @param {object} updates
+ * @returns {Promise<{ success: boolean }>}
+ */
 export async function updateTrainerClientSubdoc(trainerId, clientId, subcollection, docId, updates) {
   if (!clientId || !docId || !db) {
     throw new Error('Missing clientId or docId');
@@ -265,6 +468,14 @@ export async function updateTrainerClientSubdoc(trainerId, clientId, subcollecti
   return { success: true };
 }
 
+/**
+ * Delete a specific child doc from a client subcollection (canonical first, then legacy).
+ * @param {string} trainerId
+ * @param {string} clientId
+ * @param {string} subcollection
+ * @param {string} docId
+ * @returns {Promise<{ success: boolean }>}
+ */
 export async function deleteTrainerClientSubdoc(trainerId, clientId, subcollection, docId) {
   if (!clientId || !docId || !db) {
     throw new Error('Missing clientId or docId');
@@ -291,145 +502,4 @@ export async function deleteTrainerClientSubdoc(trainerId, clientId, subcollecti
   );
   await deleteDoc(legacyRef);
   return { success: true };
-}
-
-// PLUMBING — skip unless debugging
-
-function rowFromFirestoreSnap(docSnap, extraFields) {
-  const mergedExtra = extraFields || {};
-  return { id: docSnap.id, ...docSnap.data(), ...mergedExtra };
-}
-
-async function readCanonicalClientRow(trainerId, clientId) {
-  const canonicalSnap = await getDoc(trainerClientDocRef(trainerId, clientId));
-  if (!canonicalSnap.exists()) {
-    return null;
-  }
-  return rowFromFirestoreSnap(canonicalSnap, { _source: SOURCE_CANONICAL });
-}
-
-async function readLegacyClientRow(clientId) {
-  const legacySnap = await getDoc(legacyClientDocRef(clientId));
-  if (!legacySnap.exists()) {
-    return null;
-  }
-  return rowFromFirestoreSnap(legacySnap, { _source: SOURCE_LEGACY });
-}
-
-async function loadCanonicalRosterPageDocs(trainerId, pageSize, startAfterDoc) {
-  const canonicalRef = collection(
-    db,
-    TRAINER_CLIENTS_ROOT,
-    String(trainerId),
-    CLIENTS_SUBCOLLECTION,
-  );
-
-  let orderedQuery;
-  if (startAfterDoc) {
-    orderedQuery = query(
-      canonicalRef,
-      orderBy(UPDATED_AT_FIELD, 'desc'),
-      startAfter(startAfterDoc),
-      limit(pageSize),
-    );
-  } else {
-    orderedQuery = query(canonicalRef, orderBy(UPDATED_AT_FIELD, 'desc'), limit(pageSize));
-  }
-
-  const fallbackLimit = Math.min(pageSize * INDEX_FALLBACK_MULTIPLIER, INDEX_FALLBACK_CAP);
-  const snapshot = await getDocsWithIndexFallback(
-    orderedQuery,
-    () => query(canonicalRef, limit(fallbackLimit)),
-    'trainer_clients roster',
-  );
-
-  return sortRosterDocsWhenUpdatedAtMissing(snapshot.docs, pageSize);
-}
-
-function sortRosterDocsWhenUpdatedAtMissing(docs, pageSize) {
-  if (docs.length === 0) {
-    return docs;
-  }
-  const firstRowData = docs[0].data();
-  // vocab: ?. = only read updatedAt when data() returned an object.
-  const firstHasUpdatedAt = Boolean(firstRowData?.updatedAt);
-  if (firstHasUpdatedAt) {
-    return docs;
-  }
-  return sortDocsByMillis(docs, UPDATED_AT_FIELD, 'desc').slice(0, pageSize);
-}
-
-function rowsFromDocList(sortedDocs, seenClientIds) {
-  const clients = [];
-  for (let index = 0; index < sortedDocs.length; index += 1) {
-    const docSnap = sortedDocs[index];
-    seenClientIds.add(docSnap.id);
-    clients.push(rowFromFirestoreSnap(docSnap));
-  }
-  return clients;
-}
-
-function pushAll(targetList, sourceList) {
-  for (let index = 0; index < sourceList.length; index += 1) {
-    targetList.push(sourceList[index]);
-  }
-}
-
-async function readSubcollectionRows(collectionRef) {
-  const snapshot = await getDocs(collectionRef);
-  const rows = [];
-  for (let index = 0; index < snapshot.docs.length; index += 1) {
-    rows.push(rowFromFirestoreSnap(snapshot.docs[index]));
-  }
-  return rows;
-}
-
-async function tryDeleteCanonicalSubdoc(trainerId, clientId, subcollection, docId) {
-  const canonicalRef = trainerClientSubdocRef(trainerId, clientId, subcollection, docId);
-  const snap = await getDoc(canonicalRef);
-  if (!snap.exists()) {
-    return false;
-  }
-  await deleteDoc(canonicalRef);
-  return true;
-}
-
-async function appendFirstPageLegacyClients(trainerId, pageSize, seenClientIds, clients) {
-  // 1. Load page-one legacy clients; rules may deny the collection — ignore and keep canonical.
-  try {
-    const legacySnap = await loadLegacyRosterPageSnap(trainerId, pageSize);
-    appendUnseenLegacyClientDocs(legacySnap.docs, seenClientIds, clients);
-  } catch (_legacyQueryError) {
-    // Rules may block legacy collection reads — canonical roster still returns.
-  }
-}
-
-async function loadLegacyRosterPageSnap(trainerId, pageSize) {
-  const legacyOrderedQuery = query(
-    collection(db, LEGACY_CRM_CLIENTS_COLLECTION),
-    where(TRAINER_ID_FIELD, '==', String(trainerId)),
-    orderBy(UPDATED_AT_FIELD, 'desc'),
-    limit(pageSize),
-  );
-  return getDocsWithIndexFallback(
-    legacyOrderedQuery,
-    () =>
-      query(
-        collection(db, LEGACY_CRM_CLIENTS_COLLECTION),
-        where(TRAINER_ID_FIELD, '==', String(trainerId)),
-        limit(pageSize),
-      ),
-    'legacy clients roster',
-  );
-}
-
-function appendUnseenLegacyClientDocs(legacyDocs, seenClientIds, clients) {
-  for (let index = 0; index < legacyDocs.length; index += 1) {
-    const docSnap = legacyDocs[index];
-    if (seenClientIds.has(docSnap.id)) {
-      continue;
-    }
-    seenClientIds.add(docSnap.id);
-    clients.push(rowFromFirestoreSnap(docSnap, { _legacyOnly: true }));
-  }
 }

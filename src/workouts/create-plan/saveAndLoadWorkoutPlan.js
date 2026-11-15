@@ -788,6 +788,30 @@ export async function deleteWorkout(workoutId) {
 
 
 
+function extractPlanSummaryMetrics(structured) {
+  if (!structured) {
+    return {
+      goal: '',
+      weeks: DEFAULT_PLAN_WEEKS,
+      daysPerWeek: DEFAULT_DAYS_PER_WEEK,
+      sessionMinutes: DEFAULT_SESSION_MINUTES,
+    };
+  }
+
+  const goal = structured.goal || structured.focus || '';
+  const weeks = structured.weeks || structured.totalWeeks || structured.durationWeeks || DEFAULT_PLAN_WEEKS;
+  let daysPerWeek = structured.daysPerWeek;
+  if (!daysPerWeek && structured.trainingDays && structured.trainingDays.length) {
+    daysPerWeek = structured.trainingDays.length;
+  }
+  if (!daysPerWeek) {
+    daysPerWeek = DEFAULT_DAYS_PER_WEEK;
+  }
+  const sessionMinutes = structured.sessionMinutes || structured.sessionLength || DEFAULT_SESSION_MINUTES;
+
+  return { goal, weeks, daysPerWeek, sessionMinutes };
+}
+
 /**
  * Save an AI-generated plan into users/{uid}/workoutPlans.
  * @param {string} userId
@@ -803,28 +827,7 @@ export async function saveGeneratedPlanToCollection(userId, planData, name) {
   try {
     const displayName = resolveWorkoutPlanDisplayTitle(name, planData);
     const structured = planData.structuredPlan || null;
-
-    let goal = '';
-    let weeks = DEFAULT_PLAN_WEEKS;
-    let daysPerWeek = DEFAULT_DAYS_PER_WEEK;
-    let sessionMinutes = DEFAULT_SESSION_MINUTES;
-    if (structured) {
-      if (structured.goal) goal = structured.goal;
-      else if (structured.focus) goal = structured.focus;
-
-      if (structured.weeks) weeks = structured.weeks;
-      else if (structured.totalWeeks) weeks = structured.totalWeeks;
-      else if (structured.durationWeeks) weeks = structured.durationWeeks;
-
-      if (structured.daysPerWeek) {
-        daysPerWeek = structured.daysPerWeek;
-      } else if (structured.trainingDays && structured.trainingDays.length) {
-        daysPerWeek = structured.trainingDays.length;
-      }
-
-      if (structured.sessionMinutes) sessionMinutes = structured.sessionMinutes;
-      else if (structured.sessionLength) sessionMinutes = structured.sessionLength;
-    }
+    const { goal, weeks, daysPerWeek, sessionMinutes } = extractPlanSummaryMetrics(structured);
 
     const docData = {
       userId,

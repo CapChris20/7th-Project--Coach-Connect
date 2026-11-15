@@ -462,6 +462,32 @@ export function scoreTrainerMatch(trainer, clientPrefs) {
   return score;
 }
 
+function formatSpecialtiesList(specialties) {
+  if (!specialties || specialties.length === 0) {
+    return [DEFAULT_SPECIALTY];
+  }
+  const formattedSpecialties = [];
+  for (let specialtyIndex = 0; specialtyIndex < specialties.length; specialtyIndex += 1) {
+    formattedSpecialties.push(formatMarketplaceLabel(specialties[specialtyIndex]));
+  }
+  return formattedSpecialties;
+}
+
+function resolveTrainerDisplayName(raw) {
+  return raw.displayName || raw.name || DEFAULT_COACH_NAME;
+}
+
+function resolveTrainerExperienceYears(raw) {
+  let experienceRaw = raw.years;
+  if (experienceRaw == null) {
+    experienceRaw = raw.yearsExperience;
+  }
+  if (experienceRaw == null) {
+    experienceRaw = raw.experienceRange;
+  }
+  return yearsFromExperienceField(experienceRaw);
+}
+
 /**
  * Map a Firestore trainer doc onto the card shape. The raw doc stays on `_firebase`.
  * @param {object} raw
@@ -470,24 +496,10 @@ export function scoreTrainerMatch(trainer, clientPrefs) {
  */
 export function normalizeTrainer(raw, index = 0) {
   // 1. Pull display fields with the same fallbacks the marketplace cards already expect.
-  let name = DEFAULT_COACH_NAME;
-  if (raw.displayName) {
-    name = raw.displayName;
-  } else if (raw.name) {
-    name = raw.name;
-  }
-
+  const name = resolveTrainerDisplayName(raw);
   const specialties = specialtiesFromTrainerDoc(raw);
   const price = getTrainerPrice(raw);
-
-  let experienceRaw = raw.years;
-  if (experienceRaw == null) {
-    experienceRaw = raw.yearsExperience;
-  }
-  if (experienceRaw == null) {
-    experienceRaw = raw.experienceRange;
-  }
-  const years = yearsFromExperienceField(experienceRaw);
+  const years = resolveTrainerExperienceYears(raw);
 
   const gradFallback = ACCENT_GRAD_KEYS[index % ACCENT_GRAD_KEYS.length];
   let location = String(raw.location || raw.city || '').trim();
@@ -515,55 +527,14 @@ export function normalizeTrainer(raw, index = 0) {
   );
 
   // 3. Card shape — field letters stay name / specialties / price / years / verified / available.
-  const formattedSpecialties = [];
-  if (specialties.length) {
-    for (let specialtyIndex = 0; specialtyIndex < specialties.length; specialtyIndex += 1) {
-      formattedSpecialties.push(formatMarketplaceLabel(specialties[specialtyIndex]));
-    }
-  } else {
-    formattedSpecialties.push(DEFAULT_SPECIALTY);
-  }
-
-  let cardPrice = 0;
-  if (price != null) {
-    cardPrice = price;
-  }
-
-  let photoURL = null;
-  if (raw.photoURL) {
-    photoURL = raw.photoURL;
-  } else if (raw.photoUrl) {
-    photoURL = raw.photoUrl;
-  }
-
-  let rating = null;
-  if (raw.averageRating != null) {
-    rating = raw.averageRating;
-  } else if (raw.rating != null) {
-    rating = raw.rating;
-  }
-
-  let reviewCount = 0;
-  if (raw.reviewCount != null) {
-    reviewCount = raw.reviewCount;
-  }
-
-  let bioText = DEFAULT_BIO;
-  if (rawBio) {
-    bioText = rawBio;
-  }
-
-  let responds = DEFAULT_RESPONSE_TIME;
-  if (raw.responds) {
-    responds = raw.responds;
-  } else if (raw.responseTime) {
-    responds = raw.responseTime;
-  }
-
-  let grad = gradFallback;
-  if (raw.grad) {
-    grad = raw.grad;
-  }
+  const formattedSpecialties = formatSpecialtiesList(specialties);
+  const cardPrice = price != null ? price : 0;
+  const photoURL = raw.photoURL || raw.photoUrl || null;
+  const rating = raw.averageRating != null ? raw.averageRating : (raw.rating != null ? raw.rating : null);
+  const reviewCount = raw.reviewCount != null ? raw.reviewCount : 0;
+  const bioText = rawBio || DEFAULT_BIO;
+  const responds = raw.responds || raw.responseTime || DEFAULT_RESPONSE_TIME;
+  const grad = raw.grad || gradFallback;
 
   return {
     id: raw.id,

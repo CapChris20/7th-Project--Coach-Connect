@@ -395,6 +395,27 @@ function aiCoachConversationMountKey(aiChatPayload) {
   });
 }
 
+function extractMacroGoals(nutritionGoals) {
+  if (!nutritionGoals) {
+    return { proteinGoal: undefined, carbsGoal: undefined, fatsGoal: undefined };
+  }
+  const macroSplit = nutritionGoals.macroSplit || {};
+  const proteinGoal = nutritionGoals.proteinTarget || macroSplit.protein;
+  const carbsGoal = nutritionGoals.carbsTarget || macroSplit.carbs;
+  const fatsGoal = nutritionGoals.fatTarget || macroSplit.fat;
+  return { proteinGoal, carbsGoal, fatsGoal };
+}
+
+function resolveUserFirstName(userData, user) {
+  if (userData && userData.firstName) {
+    return userData.firstName;
+  }
+  if (user && user.displayName) {
+    return user.displayName.split(' ')[0];
+  }
+  return '';
+}
+
 function ClientHomeColumn({
   isDark,
   showHomeTab,
@@ -455,17 +476,7 @@ function ClientHomeColumn({
     openRemoveTrainer = () => setShowRemoveTrainerPopup(true);
   }
 
-  let proteinGoal;
-  let carbsGoal;
-  let fatsGoal;
-  if (nutritionGoals) {
-    if (nutritionGoals.proteinTarget) proteinGoal = nutritionGoals.proteinTarget;
-    else if (nutritionGoals.macroSplit) proteinGoal = nutritionGoals.macroSplit.protein;
-    if (nutritionGoals.carbsTarget) carbsGoal = nutritionGoals.carbsTarget;
-    else if (nutritionGoals.macroSplit) carbsGoal = nutritionGoals.macroSplit.carbs;
-    if (nutritionGoals.fatTarget) fatsGoal = nutritionGoals.fatTarget;
-    else if (nutritionGoals.macroSplit) fatsGoal = nutritionGoals.macroSplit.fat;
-  }
+  const { proteinGoal, carbsGoal, fatsGoal } = extractMacroGoals(nutritionGoals);
 
   return (
     <View style={columnStyle} pointerEvents={pointerEvents}>
@@ -565,12 +576,7 @@ function ClientFileViewers({
   user,
   userData,
 }) {
-  let clientFirstName;
-  if (userData && userData.firstName) {
-    clientFirstName = userData.firstName;
-  } else if (user && user.displayName) {
-    clientFirstName = user.displayName.split(' ')[0];
-  }
+  const clientFirstName = resolveUserFirstName(userData, user);
 
   return (
     <>

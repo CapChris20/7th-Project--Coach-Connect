@@ -1,0 +1,15 @@
+{
+  "at": "2026-11-14T06:02:50.837Z",
+  "inventory": 486,
+  "pass": 485,
+  "fail": 1,
+  "nonGoldFail": [],
+  "goldFail": [
+    {
+      "rel": "src/trainer-app/scheduling/BookSessionScreen.jsx",
+      "reasons": [
+        "cryptic:s,d"
+      ]
+    }
+  ]
+}

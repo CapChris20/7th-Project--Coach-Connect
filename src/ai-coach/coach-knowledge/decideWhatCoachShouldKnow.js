@@ -126,47 +126,7 @@ const USER_PUSHBACK_ABOUT_LOGS_PATTERNS = [
   /\b(food logs?|nutrition (log|diary)|my logs?|my data)\b/,
 ];
 
-// ===== MAIN RECIPE =====
-
-export function shouldIncludeWeeklyContextInCoachPrompt(userText, messages = null) {
-  const loweredTrimmedText = lowerCaseTrimmedUserMessage(userText);
-
-  // 1. Empty / whitespace-only never loads account history.
-  if (!loweredTrimmedText) {
-    return false;
-  }
-
-  // 2. Reload if the last coach reply wrongly said it can't see logs and the user is pushing back.
-  const threadNeedsPersonalDataAfterDenial = userIsPushingBackAfterCoachDeniedLogs(
-    loweredTrimmedText,
-    messages,
-  );
-  if (threadNeedsPersonalDataAfterDenial) {
-    return true;
-  }
-
-  // 3. Personal phrases ("how am I doing", "my logs", "what's on my plan").
-  const userAskedAboutTheirOwnData = textMatchesAnyPattern(
-    loweredTrimmedText,
-    PERSONAL_DATA_PHRASE_PATTERNS,
-  );
-  if (userAskedAboutTheirOwnData) {
-    return true;
-  }
-
-  // 4. Action phrases ("log sleep", "change my macros") — still need their targets in context.
-  const userAskedToLogOrChangeTargets = textMatchesAnyPattern(
-    loweredTrimmedText,
-    LOG_OR_CHANGE_TARGET_PHRASE_PATTERNS,
-  );
-  if (userAskedToLogOrChangeTargets) {
-    return true;
-  }
-
-  return false;
-}
-
-// ===== PLUMBING — skip unless debugging =====
+// ===== HELPER FUNCTIONS =====
 
 function lowerCaseTrimmedUserMessage(userText) {
   return String(userText || '')
@@ -251,4 +211,51 @@ function userIsPushingBackAfterCoachDeniedLogs(userTextLower, messages) {
   }
 
   return userMessageSoundsLikeLogAccessPushback(userTextLower);
+}
+
+// ===== MAIN FUNCTION =====
+
+/**
+ * Decides whether the AI Coach should load this user's app history into the system prompt.
+ * Flow: 1. check empty  2. check pushback  3. check personal phrases  4. check action phrases
+ * @param {string} userText
+ * @param {Array|null} [messages]
+ * @returns {boolean}
+ */
+export function shouldIncludeWeeklyContextInCoachPrompt(userText, messages = null) {
+  const loweredTrimmedText = lowerCaseTrimmedUserMessage(userText);
+
+  // 1. Empty / whitespace-only never loads account history.
+  if (!loweredTrimmedText) {
+    return false;
+  }
+
+  // 2. Reload if the last coach reply wrongly said it can't see logs and the user is pushing back.
+  const threadNeedsPersonalDataAfterDenial = userIsPushingBackAfterCoachDeniedLogs(
+    loweredTrimmedText,
+    messages,
+  );
+  if (threadNeedsPersonalDataAfterDenial) {
+    return true;
+  }
+
+  // 3. Personal phrases ("how am I doing", "my logs", "what's on my plan").
+  const userAskedAboutTheirOwnData = textMatchesAnyPattern(
+    loweredTrimmedText,
+    PERSONAL_DATA_PHRASE_PATTERNS,
+  );
+  if (userAskedAboutTheirOwnData) {
+    return true;
+  }
+
+  // 4. Action phrases ("log sleep", "change my macros") — still need their targets in context.
+  const userAskedToLogOrChangeTargets = textMatchesAnyPattern(
+    loweredTrimmedText,
+    LOG_OR_CHANGE_TARGET_PHRASE_PATTERNS,
+  );
+  if (userAskedToLogOrChangeTargets) {
+    return true;
+  }
+
+  return false;
 }

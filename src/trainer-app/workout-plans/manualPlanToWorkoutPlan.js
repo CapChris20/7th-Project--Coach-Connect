@@ -75,7 +75,7 @@ const DAY_NAME_TO_SHORT = {
 
 const SHORT_DAY_CYCLE = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
 
-// ===== MAIN FUNCTIONS (exports) =====
+// ===== HELPER FUNCTIONS =====
 
 /**
  * Local-only id for a new day or exercise row before Firestore assigns a real id.
@@ -222,7 +222,8 @@ export function buildClientAssignedPlanDoc(trainerPayload, { trainerId, clientId
     trainingDays: trainerPayload.trainingDays,
     daysPerWeek: trainerPayload.daysPerWeek,
     totalWeeks: trainerPayload.totalWeeks,
-    weeksCompleted: trainerPayload.weeksCompleted ?? 0,
+    weeksCompleted:
+      trainerPayload.weeksCompleted != null ? trainerPayload.weeksCompleted : 0,
     sessionMinutes: trainerPayload.sessionMinutes,
     focus: trainerPayload.focus || trainerPayload.category,
     goal: MANUAL_PLAN_GOAL,
@@ -234,6 +235,8 @@ export function buildClientAssignedPlanDoc(trainerPayload, { trainerId, clientId
     _source: 'usersSubcollection',
   };
 }
+
+// ===== MAIN FUNCTION =====
 
 /**
  * Create a new trainer_workout_plans doc from a builder draft.
@@ -281,9 +284,13 @@ export async function updateManualWorkoutPlan(trainerId, planId, draft) {
   }
 
   // 3. Merge draft clients over existing when the draft omitted the field.
-  // vocab/symbol: ?? = keep left when it is null/undefined only (0 / [] survive)
-  const assignedClients =
-    draft.assignedClients ?? existingData.assignedClients ?? [];
+  // Prefer draft.assignedClients when present (including []); else keep existing; else [].
+  let assignedClients = [];
+  if (draft.assignedClients != null) {
+    assignedClients = draft.assignedClients;
+  } else if (existingData.assignedClients != null) {
+    assignedClients = existingData.assignedClients;
+  }
   await setDoc(
     planRef,
     {
@@ -318,6 +325,19 @@ export async function getManualWorkoutPlan(trainerId, planId) {
   return { id: snapshot.id, ...planData };
 }
 
+async function tryListManualPlansFallback(trainerId, max) {
+  try {
+    return await listManualPlansWithoutCompoundIndex(trainerId, max);
+  } catch (fallbackError) {
+    let fallbackMessage = fallbackError;
+    if (fallbackError != null && fallbackError.message) {
+      fallbackMessage = fallbackError.message;
+    }
+    console.warn('listManualWorkoutPlansForTrainer:', fallbackMessage);
+    return [];
+  }
+}
+
 /**
  * List this trainer's manual-builder plans, newest first.
  * @param {string} trainerId
@@ -338,17 +358,9 @@ export async function listManualWorkoutPlansForTrainer(trainerId, max = DEFAULT_
     );
     const snapshot = await getDocs(indexedQuery);
     return collectPlansFromSnapshotUpToMax(snapshot, max);
-  } catch (indexedQueryError) {
+  } catch (_indexedQueryError) {
     // 3. Fallback when the composite index is missing — filter source in memory.
-    try {
-      return await listManualPlansWithoutCompoundIndex(trainerId, max);
-    } catch (fallbackError) {
-      console.warn(
-        'listManualWorkoutPlansForTrainer:',
-        fallbackError?.message || fallbackError,
-      );
-      return [];
-    }
+    return tryListManualPlansFallback(trainerId, max);
   }
 }
 
@@ -466,8 +478,16 @@ export async function deleteManualWorkoutPlan(trainerId, planId) {
  * @returns {Array}
  */
 export function searchExercisesForBuilder(query, limit, filters = {}) {
-  const muscleChip = filters?.muscle || null;
-  const equipmentChips = Array.isArray(filters?.equipments) ? filters.equipments : [];
+  let muscleChip = null;
+  if (filters != null && filters.muscle) {
+    muscleChip = filters.muscle;
+  }
+
+  let equipmentChips = [];
+  if (filters != null && Array.isArray(filters.equipments)) {
+    equipmentChips = filters.equipments;
+  }
+
   const hasChipFilters = Boolean(muscleChip) || equipmentChips.length > 0;
 
   // 1. PNG 21 muscle/equipment pills — run filtered search.
@@ -815,12 +835,32 @@ function splitIdsIntoFirestoreBatches(items, chunkSize) {
  * @param {object[]} rows
  * @returns {void}
  */
+/**
+ * Firestore Timestamp millis when the field has toMillis(); else 0.
+ * @param {object|undefined} timestampField
+ * @returns {number}
+ */
+function millisFromTimestampField(timestampField) {
+  if (timestampField == null) return 0;
+  if (typeof timestampField.toMillis !== 'function') return 0;
+  return timestampField.toMillis();
+}
+
+/**
+ * Newest-sort key for a plan row: updatedAt first, then createdAt, else 0.
+ * @param {object} planRow
+ * @returns {number}
+ */
+function planRowSortTimeMillis(planRow) {
+  const updatedMillis = millisFromTimestampField(planRow.updatedAt);
+  if (updatedMillis) return updatedMillis;
+  return millisFromTimestampField(planRow.createdAt);
+}
+
 function sortPlansNewestFirst(rows) {
   rows.sort((left, right) => {
-    const leftTime =
-      left.updatedAt?.toMillis?.() ?? left.createdAt?.toMillis?.() ?? 0;
-    const rightTime =
-      right.updatedAt?.toMillis?.() ?? right.createdAt?.toMillis?.() ?? 0;
+    const leftTime = planRowSortTimeMillis(left);
+    const rightTime = planRowSortTimeMillis(right);
     return rightTime - leftTime;
   });
 }
@@ -954,10 +994,15 @@ function builderDayFromSavedDoc(dayDoc, dayIndex) {
       exercises.push(builderExerciseFromSavedDoc(dayDoc.exercises[exerciseIndex]));
     }
   }
+  let dayNumber = dayIndex + 1;
+  if (dayDoc.dayNumber != null) {
+    dayNumber = dayDoc.dayNumber;
+  }
+
   return {
     id: dayDoc.dayId || newLocalId('day'),
     dayName: dayDoc.dayName || `Day ${dayIndex + 1}`,
-    dayNumber: dayDoc.dayNumber ?? dayIndex + 1,
+    dayNumber,
     exercises,
   };
 }

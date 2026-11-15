@@ -1081,24 +1081,15 @@ function safeFoodObject(food) {
 
 function favoriteFoodId(food) {
   const safeFood = safeFoodObject(food);
-  let rawId = '';
-  if (safeFood.foodId) rawId = safeFood.foodId;
-  else if (safeFood.id) rawId = safeFood.id;
-  else if (safeFood.food_id) rawId = safeFood.food_id;
-  else if (safeFood.name) rawId = safeFood.name;
-  else if (safeFood.food_name) rawId = safeFood.food_name;
+  const rawId = safeFood.foodId || safeFood.id || safeFood.food_id || safeFood.name || safeFood.food_name || '';
   return String(rawId).trim().toLowerCase();
 }
 function buildFavoriteFoodEntry(food) {
   const safeFood = safeFoodObject(food);
-  let rawName = 'Food';
-  if (safeFood.food_name) rawName = safeFood.food_name;
-  else if (safeFood.name) rawName = safeFood.name;
+  const rawName = safeFood.food_name || safeFood.name || 'Food';
   const foodName = String(rawName).trim();
   const foodId = favoriteFoodId(safeFood) || foodName.toLowerCase();
-  let brand = '';
-  if (safeFood.brand_name) brand = safeFood.brand_name;
-  else if (safeFood.brand) brand = safeFood.brand;
+  const brand = safeFood.brand_name || safeFood.brand || '';
   return {
     foodId,
     foodName,

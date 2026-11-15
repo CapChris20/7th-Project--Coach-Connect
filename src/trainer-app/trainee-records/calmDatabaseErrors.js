@@ -22,6 +22,30 @@ const BENIGN_MESSAGE_SNIPPETS = [
   FAILED_TO_GET_DOCUMENT_TEXT,
 ];
 
+// ===== HELPER FUNCTIONS =====
+
+function codeIsOnBenignList(errorCode) {
+  for (let index = 0; index < BENIGN_FIRESTORE_CODES.length; index += 1) {
+    const benignCode = BENIGN_FIRESTORE_CODES[index];
+    if (benignCode === errorCode) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function messageLooksBenign(errorMessage) {
+  for (let index = 0; index < BENIGN_MESSAGE_SNIPPETS.length; index += 1) {
+    const snippet = BENIGN_MESSAGE_SNIPPETS[index];
+    if (errorMessage.includes(snippet)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// ===== MAIN FUNCTION =====
+
 /**
  * True when this Firestore error is a flicker, not a bug.
  * Auth settling, offline, and a rules re-check all throw these.
@@ -43,27 +67,5 @@ export function isBenignTrainerClientFirestoreError(firestoreError) {
     return true;
   }
 
-  return false;
-}
-
-// PLUMBING — skip unless debugging
-
-function codeIsOnBenignList(errorCode) {
-  for (let index = 0; index < BENIGN_FIRESTORE_CODES.length; index += 1) {
-    const benignCode = BENIGN_FIRESTORE_CODES[index];
-    if (benignCode === errorCode) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function messageLooksBenign(errorMessage) {
-  for (let index = 0; index < BENIGN_MESSAGE_SNIPPETS.length; index += 1) {
-    const snippet = BENIGN_MESSAGE_SNIPPETS[index];
-    if (errorMessage.includes(snippet)) {
-      return true;
-    }
-  }
   return false;
 }

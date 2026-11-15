@@ -55,6 +55,30 @@ function clampPer100Calories(food) {
   return MAX_SANE_KCAL_PER_100;
 }
 
+/**
+ * Read a numeric field from food when food exists; otherwise 0.
+ * @param {object|null|undefined} food
+ * @param {string} fieldName
+ * @returns {number}
+ */
+function foodNumberOrZero(food, fieldName) {
+  if (!food) return 0;
+  return numericOrZero(food[fieldName]);
+}
+
+/**
+ * Read dataBasis / source strings safely when food may be missing.
+ * @param {object|null|undefined} food
+ * @param {string} fieldName
+ * @returns {string}
+ */
+function foodStringField(food, fieldName) {
+  if (!food) return '';
+  const rawValue = food[fieldName];
+  if (rawValue == null) return '';
+  return String(rawValue);
+}
+
 module.exports = {
   PER_100G_SOURCES,
   MAX_SANE_KCAL_PER_100,
@@ -91,12 +115,13 @@ function isPer100gSource(source) {
  * @returns {boolean}
  */
 function isLabelServingBasis(food) {
-  const basis = String(food?.dataBasis || '').toLowerCase();
+  const basis = foodStringField(food, 'dataBasis').toLowerCase();
 
   if (basis === DATA_BASIS_LABEL_SERVING || basis === DATA_BASIS_PER_SERVING) return true;
   if (basis === DATA_BASIS_PER_100G || basis === DATA_BASIS_PER_100) return false;
 
-  return !isPer100gSource(food?.source);
+  const foodSource = foodStringField(food, 'source');
+  return !isPer100gSource(foodSource);
 }
 
 /**
@@ -107,12 +132,13 @@ function isLabelServingBasis(food) {
  */
 function resolveServingGrams(food) {
   // 1. Prefer explicit gram fields from the scanner or editor.
-  const gramsFromFood =
-    numericOrZero(food?.servingGrams) || numericOrZero(food?.servingAmount);
+  const gramsFromServingGrams = foodNumberOrZero(food, 'servingGrams');
+  const gramsFromServingAmount = foodNumberOrZero(food, 'servingAmount');
+  const gramsFromFood = gramsFromServingGrams || gramsFromServingAmount;
   if (gramsFromFood > 0) return clampServingGrams(gramsFromFood);
 
   // 2. Tiny servingSize (e.g. 1.5) means “portions of 100 g” on some cards.
-  const portionFactor = numericOrZero(food?.servingSize);
+  const portionFactor = foodNumberOrZero(food, 'servingSize');
   const looksLikePortionOfHundred =
     portionFactor > 0 && portionFactor <= MAX_PORTION_FACTOR_FOR_GRAMS_GUESS;
   if (looksLikePortionOfHundred) {
@@ -159,13 +185,14 @@ function caloriesForGrams(food, grams) {
   if (isLabelServingBasis(food)) {
     const baseGrams = resolveServingGrams(food) || GRAMS_PER_100;
     const labelCalories =
-      numericOrZero(food?.calories) ||
-      numericOrZero(food?.nf_calories) ||
-      numericOrZero(food?.kcalPer100Unit);
+      foodNumberOrZero(food, 'calories') ||
+      foodNumberOrZero(food, 'nf_calories') ||
+      foodNumberOrZero(food, 'kcalPer100Unit');
     return Math.round(labelCalories * (gramAmount / baseGrams));
   }
 
-  const per100Calories = numericOrZero(food?.calories) || numericOrZero(food?.kcalPer100Unit);
+  const per100Calories =
+    foodNumberOrZero(food, 'calories') || foodNumberOrZero(food, 'kcalPer100Unit');
   return Math.round(nutrientTotalForGrams(per100Calories, gramAmount));
 }
 
@@ -218,11 +245,17 @@ function scaleNutritionByServings(macros, servings) {
   if (!Number.isFinite(servingCount) || servingCount <= 0) {
     return { ...macros, servings: 0 };
   }
+
+  const calories = foodNumberOrZero(macros, 'calories');
+  const protein = foodNumberOrZero(macros, 'protein');
+  const carbs = foodNumberOrZero(macros, 'carbs');
+  const fat = foodNumberOrZero(macros, 'fat');
+
   return {
-    calories: roundToTenths(numericOrZero(macros?.calories) * servingCount),
-    protein: roundToTenths(numericOrZero(macros?.protein) * servingCount),
-    carbs: roundToTenths(numericOrZero(macros?.carbs) * servingCount),
-    fat: roundToTenths(numericOrZero(macros?.fat) * servingCount),
+    calories: roundToTenths(calories * servingCount),
+    protein: roundToTenths(protein * servingCount),
+    carbs: roundToTenths(carbs * servingCount),
+    fat: roundToTenths(fat * servingCount),
     servings: servingCount,
   };
 }
@@ -261,4 +294,3 @@ function parseServingQtyInput(value) {
   if (!Number.isFinite(numericValue)) return null;
   return numericValue;
 }
-

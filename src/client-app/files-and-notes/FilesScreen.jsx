@@ -5,8 +5,18 @@
 import React, { useCallback, useState } from 'react';
 import { Linking, Platform, Share, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { deleteNotesAndFilesItem, markNotesAndFilesItemRead, resolveTrainerSpreadsheetView, packSpreadsheetRowsHaveContent } from '../../for-both/files-and-notes/saveNotesAndFiles';
-import { getEmbedViewerUri, isImageFile as fileLooksLikeImage, isPdfFile as fileLooksLikePdf, isVideoFile as fileLooksLikeVideo } from '../../helpers/whichViewerForFile';
+import {
+  deleteNotesAndFilesItem,
+  markNotesAndFilesItemRead,
+  resolveTrainerSpreadsheetView,
+  packSpreadsheetRowsHaveContent,
+} from '../../for-both/files-and-notes/saveNotesAndFiles';
+import {
+  getEmbedViewerUri,
+  isImageFile as fileLooksLikeImage,
+  isPdfFile as fileLooksLikePdf,
+  isVideoFile as fileLooksLikeVideo,
+} from '../../helpers/whichViewerForFile';
 import FilesSection from '../../for-both/files-and-notes/viewers/FilesSection';
 import PdfViewer from '../../for-both/files-and-notes/viewers/PdfViewer';
 import SpreadsheetViewer from '../../for-both/files-and-notes/viewers/SpreadsheetViewer';
@@ -25,34 +35,12 @@ const DOCUMENT_TYPE = 'document';
 const SPREADSHEET_TYPE = 'spreadsheet';
 
 // Manipulate here: closed shapes for every viewer modal (visible false + null payload fields).
-const CLOSED_PDF_VIEWER = {
-  visible: false,
-  url: null,
-  name: null
-};
-const CLOSED_SPREADSHEET_VIEWER = {
-  visible: false,
-  url: null,
-  name: null,
-  rows: null
-};
-const CLOSED_DOCUMENT_VIEWER = {
-  visible: false,
-  trainerId: null,
-  documentId: null,
-  title: null
-};
-const CLOSED_MEDIA_VIEWER = {
-  visible: false,
-  url: null,
-  kind: 'image',
-  name: null
-};
-const CLOSED_WEB_VIEWER = {
-  visible: false,
-  uri: null,
-  title: null
-};
+const CLOSED_PDF_VIEWER = { visible: false, url: null, name: null };
+const CLOSED_SPREADSHEET_VIEWER = { visible: false, url: null, name: null, rows: null };
+const CLOSED_DOCUMENT_VIEWER = { visible: false, trainerId: null, documentId: null, title: null };
+const CLOSED_MEDIA_VIEWER = { visible: false, url: null, kind: 'image', name: null };
+const CLOSED_WEB_VIEWER = { visible: false, uri: null, title: null };
+
 const PAGE_TITLE = 'Your Notes & Files';
 const PAGE_SUBTITLE = 'Everything shared between you and your coach, all in one place.';
 const NOTICE_OK_LABEL = 'OK';
@@ -71,186 +59,252 @@ const DELETE_FAILED_FALLBACK = 'Try again.';
 // ===== HELPER FUNCTIONS =====
 
 function spreadsheetDisplayName(file) {
-  if (file == null ? void 0 : file.name) return file.name;
-  if (file == null ? void 0 : file.title) return file.title;
+  if (!file) return FALLBACK_SPREADSHEET_NAME;
+  if (file.name) return file.name;
+  if (file.title) return file.title;
   return FALLBACK_SPREADSHEET_NAME;
 }
+
 function fileNameLooksLikeSpreadsheet(fileName) {
   const nameText = String(fileName || '');
   return !!nameText.match(/\.(xlsx|csv)$/i);
 }
+
 function fileHasDirectSpreadsheetUrl(file) {
-  if (!(file == null ? void 0 : file.url)) return false;
-  if ((file == null ? void 0 : file.type) === SPREADSHEET_TYPE) return true;
-  return fileNameLooksLikeSpreadsheet(file == null ? void 0 : file.name);
+  if (!file) return false;
+  if (!file.url) return false;
+  if (file.type === SPREADSHEET_TYPE) return true;
+  return fileNameLooksLikeSpreadsheet(file.name);
 }
+
 function fileIsTrainerSpreadsheetPack(file) {
-  if ((file == null ? void 0 : file.type) !== SPREADSHEET_TYPE) return false;
-  if (!(file == null ? void 0 : file.trainerId)) return false;
-  if (!(file == null ? void 0 : file.documentId)) return false;
+  if (!file) return false;
+  if (file.type !== SPREADSHEET_TYPE) return false;
+  if (!file.trainerId) return false;
+  if (!file.documentId) return false;
   return true;
 }
+
 async function tryOpenSpreadsheetViewer(file, setSpreadsheetViewer) {
   if (!file) return false;
+
   if (fileHasDirectSpreadsheetUrl(file)) {
     setSpreadsheetViewer({
       visible: true,
       url: file.url,
       name: spreadsheetDisplayName(file),
-      rows: null
+      rows: null,
     });
     return true;
   }
+
   if (!fileIsTrainerSpreadsheetPack(file)) return false;
+
   try {
     const resolved = await resolveTrainerSpreadsheetView(file.trainerId, file.documentId);
-    const hasUrl = !!(resolved == null ? void 0 : resolved.url);
-    const hasRows = packSpreadsheetRowsHaveContent(resolved == null ? void 0 : resolved.rows);
+    if (!resolved) return false;
+
+    const resolvedUrl = resolved.url || null;
+    const resolvedRows = resolved.rows || null;
+    const hasUrl = !!resolvedUrl;
+    const hasRows = packSpreadsheetRowsHaveContent(resolvedRows);
     if (!hasUrl && !hasRows) return false;
+
     setSpreadsheetViewer({
       visible: true,
-      url: resolved.url || null,
-      rows: resolved.rows || null,
-      name: spreadsheetDisplayName(file)
+      url: resolvedUrl,
+      rows: resolvedRows,
+      name: spreadsheetDisplayName(file),
     });
     return true;
   } catch (_ignored) {
     return false;
   }
 }
+
 function fileIsTrainerAuthoredDocument(file) {
-  if ((file == null ? void 0 : file.type) === DOCUMENT_TYPE) return true;
-  if ((file == null ? void 0 : file.documentId) && (file == null ? void 0 : file.trainerId)) return true;
+  if (!file) return false;
+  if (file.type === DOCUMENT_TYPE) return true;
+  if (file.documentId && file.trainerId) return true;
   return false;
 }
+
 function documentViewerTitle(file) {
-  if (file == null ? void 0 : file.title) return file.title;
-  if (file == null ? void 0 : file.name) return file.name;
+  if (!file) return FALLBACK_DOCUMENT_NAME;
+  if (file.title) return file.title;
+  if (file.name) return file.name;
   return FALLBACK_DOCUMENT_NAME;
 }
+
 function mediaDisplayName(file, fallbackName) {
-  if (file == null ? void 0 : file.name) return file.name;
-  if (file == null ? void 0 : file.title) return file.title;
+  if (!file) return fallbackName;
+  if (file.name) return file.name;
+  if (file.title) return file.title;
   return fallbackName;
 }
+
 function webViewerTitle(file) {
-  if (file == null ? void 0 : file.name) return file.name;
-  if (file == null ? void 0 : file.title) return file.title;
+  if (!file) return FALLBACK_DOCUMENT_NAME;
+  if (file.name) return file.name;
+  if (file.title) return file.title;
   return FALLBACK_DOCUMENT_NAME;
 }
+
+function pdfViewerName(file) {
+  if (!file) return FALLBACK_DOCUMENT_NAME;
+  if (file.name) return file.name;
+  return FALLBACK_DOCUMENT_NAME;
+}
+
 async function openFileInMatchingViewer(file, viewerSetters) {
   const {
     setSpreadsheetViewer,
     setDocumentViewer,
     setMediaViewer,
     setPdfViewer,
-    setEmbedWebViewer
+    setEmbedWebViewer,
   } = viewerSetters;
+
+  // 1. Spreadsheet (direct URL or trainer pack rows).
   const spreadsheetOpened = await tryOpenSpreadsheetViewer(file, setSpreadsheetViewer);
   if (spreadsheetOpened) return;
+
+  // 2. Trainer-authored document stub.
   if (fileIsTrainerAuthoredDocument(file)) {
     setDocumentViewer({
       visible: true,
       trainerId: file.trainerId,
       documentId: file.documentId,
-      title: documentViewerTitle(file)
+      title: documentViewerTitle(file),
     });
     return;
   }
-  if ((file == null ? void 0 : file.url) && fileLooksLikeImage(file)) {
+
+  const fileUrl = file && file.url ? file.url : null;
+  if (!fileUrl) return;
+
+  // 3. Photo.
+  if (fileLooksLikeImage(file)) {
     setMediaViewer({
       visible: true,
-      url: file.url,
+      url: fileUrl,
       kind: 'image',
-      name: mediaDisplayName(file, FALLBACK_PHOTO_NAME)
+      name: mediaDisplayName(file, FALLBACK_PHOTO_NAME),
     });
     return;
   }
-  if ((file == null ? void 0 : file.url) && fileLooksLikeVideo(file)) {
+
+  // 4. Video.
+  if (fileLooksLikeVideo(file)) {
     setMediaViewer({
       visible: true,
-      url: file.url,
+      url: fileUrl,
       kind: 'video',
-      name: mediaDisplayName(file, FALLBACK_VIDEO_NAME)
+      name: mediaDisplayName(file, FALLBACK_VIDEO_NAME),
     });
     return;
   }
-  if ((file == null ? void 0 : file.url) && fileLooksLikePdf(file, file.url)) {
+
+  // 5. PDF.
+  if (fileLooksLikePdf(file, fileUrl)) {
     setPdfViewer({
       visible: true,
-      url: file.url,
-      name: (file == null ? void 0 : file.name) || FALLBACK_DOCUMENT_NAME
+      url: fileUrl,
+      name: pdfViewerName(file),
     });
     return;
   }
-  if (file == null ? void 0 : file.url) {
-    setEmbedWebViewer({
-      visible: true,
-      uri: getEmbedViewerUri(file, file.url),
-      title: webViewerTitle(file)
-    });
-  }
+
+  // 6. Everything else → embed / web viewer.
+  setEmbedWebViewer({
+    visible: true,
+    uri: getEmbedViewerUri(file, fileUrl),
+    title: webViewerTitle(file),
+  });
 }
+
+function shareTitleFromItem(item) {
+  if (!item) return FALLBACK_FILE_NAME;
+  if (item.name) return item.name;
+  if (item.title) return item.title;
+  return FALLBACK_FILE_NAME;
+}
+
 async function shareNotesFile(item) {
-  const fileUrl = item == null ? void 0 : item.url;
-  const shareTitle = (item == null ? void 0 : item.name) || (item == null ? void 0 : item.title) || FALLBACK_FILE_NAME;
+  const fileUrl = item && item.url ? item.url : null;
+  const shareTitle = shareTitleFromItem(item);
+
   try {
     if (fileUrl) {
-      const androidMessage = Platform.OS === 'android' ? fileUrl : undefined;
+      const isAndroid = Platform.OS === 'android';
+      const androidMessage = isAndroid ? fileUrl : undefined;
       await Share.share({
         url: fileUrl,
         message: androidMessage,
-        title: shareTitle
+        title: shareTitle,
       });
       return;
     }
-    await Share.share({
-      message: shareTitle,
-      title: shareTitle
-    });
+    await Share.share({ message: shareTitle, title: shareTitle });
   } catch (_ignored) {
     // User dismissed the share sheet — not an error we surface.
   }
 }
+
 async function downloadNotesFileOrWarn(item, showNotice) {
-  const fileUrl = item == null ? void 0 : item.url;
+  const fileUrl = item && item.url ? item.url : null;
   if (!fileUrl) {
     showNotice(DOWNLOAD_MISSING_TITLE, DOWNLOAD_MISSING_MESSAGE);
     return;
   }
+
   try {
     await Linking.openURL(fileUrl);
   } catch (_ignored) {
     showNotice(DOWNLOAD_FAILED_TITLE, DOWNLOAD_FAILED_MESSAGE);
   }
 }
+
+function deleteErrorMessage(error) {
+  if (error && error.message) return error.message;
+  return DELETE_FAILED_FALLBACK;
+}
+
 async function deleteNotesFileOrWarn(clientId, item, showNotice) {
   try {
     await deleteNotesAndFilesItem(clientId, item.id);
   } catch (error) {
-    showNotice(DELETE_FAILED_TITLE, (error == null ? void 0 : error.message) || DELETE_FAILED_FALLBACK);
+    showNotice(DELETE_FAILED_TITLE, deleteErrorMessage(error));
   }
 }
+
 function noticeTitleText(notice) {
   if (!notice) return '';
-  return notice.title || '';
+  if (notice.title) return notice.title;
+  return '';
 }
+
 function noticeMessageText(notice) {
   if (!notice) return undefined;
   return notice.message;
 }
+
 function noticeConfirmLabelText(notice) {
   if (!notice) return NOTICE_OK_LABEL;
-  return notice.confirmLabel || NOTICE_OK_LABEL;
+  if (notice.confirmLabel) return notice.confirmLabel;
+  return NOTICE_OK_LABEL;
 }
+
 function noticeCancelLabelText(notice) {
   if (!notice) return undefined;
   return notice.cancelLabel;
 }
+
 function noticeConfirmAction(notice) {
   if (!notice) return undefined;
   return notice.onConfirm;
 }
+
 function AllFileViewers({
   isDark,
   pdfViewer,
@@ -262,16 +316,52 @@ function AllFileViewers({
   closeSpreadsheet,
   closeDocument,
   closeMedia,
-  closeWeb
+  closeWeb,
 }) {
-  return <>
-      <PdfViewer visible={pdfViewer.visible} url={pdfViewer.url} name={pdfViewer.name} isDark={isDark} onClose={closePdf} />
-      <SpreadsheetViewer visible={spreadsheetViewer.visible} url={spreadsheetViewer.url} rows={spreadsheetViewer.rows} name={spreadsheetViewer.name} isDark={isDark} onClose={closeSpreadsheet} />
-      <DocumentViewer visible={documentViewer.visible} trainerId={documentViewer.trainerId} documentId={documentViewer.documentId} title={documentViewer.title} isDark={isDark} onClose={closeDocument} />
-      <PhotoVideoViewer visible={mediaViewer.visible} url={mediaViewer.url} kind={mediaViewer.kind} name={mediaViewer.name} isDark={isDark} onClose={closeMedia} />
-      <WebPageViewer visible={webViewer.visible} uri={webViewer.uri} title={webViewer.title} isDark={isDark} onClose={closeWeb} />
-    </>;
+  return (
+    <>
+      <PdfViewer
+        visible={pdfViewer.visible}
+        url={pdfViewer.url}
+        name={pdfViewer.name}
+        isDark={isDark}
+        onClose={closePdf}
+      />
+      <SpreadsheetViewer
+        visible={spreadsheetViewer.visible}
+        url={spreadsheetViewer.url}
+        rows={spreadsheetViewer.rows}
+        name={spreadsheetViewer.name}
+        isDark={isDark}
+        onClose={closeSpreadsheet}
+      />
+      <DocumentViewer
+        visible={documentViewer.visible}
+        trainerId={documentViewer.trainerId}
+        documentId={documentViewer.documentId}
+        title={documentViewer.title}
+        isDark={isDark}
+        onClose={closeDocument}
+      />
+      <PhotoVideoViewer
+        visible={mediaViewer.visible}
+        url={mediaViewer.url}
+        kind={mediaViewer.kind}
+        name={mediaViewer.name}
+        isDark={isDark}
+        onClose={closeMedia}
+      />
+      <WebPageViewer
+        visible={webViewer.visible}
+        uri={webViewer.uri}
+        title={webViewer.title}
+        isDark={isDark}
+        onClose={closeWeb}
+      />
+    </>
+  );
 }
+
 function FilesScreenLayout({
   colors,
   isDark,
@@ -294,7 +384,7 @@ function FilesScreenLayout({
   closeMedia,
   closeWeb,
   notice,
-  clearNotice
+  clearNotice,
 }) {
   const noticeIsVisible = !!notice;
   const noticeTitle = noticeTitleText(notice);
@@ -302,19 +392,54 @@ function FilesScreenLayout({
   const noticeConfirmLabel = noticeConfirmLabelText(notice);
   const noticeCancelLabel = noticeCancelLabelText(notice);
   const noticeConfirmHandler = noticeConfirmAction(notice);
-  return <SafeAreaView style={[styles.shell, {
-    backgroundColor: colors.nbBackground
-  }]} edges={SHELL_SAFE_AREA_EDGES}>
+
+  return (
+    <SafeAreaView
+      style={[styles.shell, { backgroundColor: colors.nbBackground }]}
+      edges={SHELL_SAFE_AREA_EDGES}
+    >
       <NbPageHeader title={PAGE_TITLE} subtitle={PAGE_SUBTITLE} onBack={onBack} />
 
       <View style={styles.body}>
-        <FilesSection items={items} audience="client" isDark={isDark} showHero={false} onOpenItem={openItem} onDownloadItem={downloadItem} onShareItem={shareItem} onDeleteItem={deleteItem} onMarkRead={markRead} onUploadPress={onUploadPress} />
+        <FilesSection
+          items={items}
+          audience="client"
+          isDark={isDark}
+          showHero={false}
+          onOpenItem={openItem}
+          onDownloadItem={downloadItem}
+          onShareItem={shareItem}
+          onDeleteItem={deleteItem}
+          onMarkRead={markRead}
+          onUploadPress={onUploadPress}
+        />
       </View>
 
-      <AllFileViewers isDark={isDark} pdfViewer={pdfViewer} spreadsheetViewer={spreadsheetViewer} documentViewer={documentViewer} mediaViewer={mediaViewer} webViewer={webViewer} closePdf={closePdf} closeSpreadsheet={closeSpreadsheet} closeDocument={closeDocument} closeMedia={closeMedia} closeWeb={closeWeb} />
+      <AllFileViewers
+        isDark={isDark}
+        pdfViewer={pdfViewer}
+        spreadsheetViewer={spreadsheetViewer}
+        documentViewer={documentViewer}
+        mediaViewer={mediaViewer}
+        webViewer={webViewer}
+        closePdf={closePdf}
+        closeSpreadsheet={closeSpreadsheet}
+        closeDocument={closeDocument}
+        closeMedia={closeMedia}
+        closeWeb={closeWeb}
+      />
 
-      <NbNoticeSheet visible={noticeIsVisible} onClose={clearNotice} title={noticeTitle} message={noticeMessage} confirmLabel={noticeConfirmLabel} cancelLabel={noticeCancelLabel} onConfirm={noticeConfirmHandler} />
-    </SafeAreaView>;
+      <NbNoticeSheet
+        visible={noticeIsVisible}
+        onClose={clearNotice}
+        title={noticeTitle}
+        message={noticeMessage}
+        confirmLabel={noticeConfirmLabel}
+        cancelLabel={noticeCancelLabel}
+        onConfirm={noticeConfirmHandler}
+      />
+    </SafeAreaView>
+  );
 }
 
 // ===== MAIN FUNCTION =====
@@ -323,30 +448,21 @@ function FilesScreenLayout({
  * Client files screen: my files, trainer-shared files, and coaching notes.
  * @param {{ clientId: string, items: Array, isDark?: boolean, onBack: Function, onUploadPress?: Function }} props
  */
-export default function FilesScreen({
-  clientId,
-  items,
-  isDark = true,
-  onBack,
-  onUploadPress
-}) {
-  const {
-    colors
-  } = useTheme();
+export default function FilesScreen({ clientId, items, isDark = true, onBack, onUploadPress }) {
+  const { colors } = useTheme();
+
   const [pdfViewer, setPdfViewer] = useState(CLOSED_PDF_VIEWER);
   const [spreadsheetViewer, setSpreadsheetViewer] = useState(CLOSED_SPREADSHEET_VIEWER);
   const [documentViewer, setDocumentViewer] = useState(CLOSED_DOCUMENT_VIEWER);
   const [mediaViewer, setMediaViewer] = useState(CLOSED_MEDIA_VIEWER);
   const [embedWebViewer, setEmbedWebViewer] = useState(CLOSED_WEB_VIEWER);
   const [notice, setNotice] = useState(null);
+
   const showNotice = useCallback((title, message, extras = {}) => {
-    setNotice({
-      title,
-      message,
-      ...extras
-    });
+    setNotice({ title, message, ...extras });
   }, []);
-  const openItem = useCallback(async file => {
+
+  const openItem = useCallback(async (file) => {
     if (!file) return;
 
     // 1. Hand the file to the viewer router (spreadsheet → document → media → pdf → web).
@@ -355,43 +471,83 @@ export default function FilesScreen({
       setDocumentViewer,
       setMediaViewer,
       setPdfViewer,
-      setEmbedWebViewer
+      setEmbedWebViewer,
     });
   }, []);
-  const markRead = useCallback(async item => {
-    // 1. Need both the signed-in client and a saved row id.
-    if (!clientId || !(item == null ? void 0 : item.id)) return;
-    // 2. Write isRead on that notes-and-files row (Firestore letters stay put).
-    await markNotesAndFilesItemRead(clientId, item.id);
-  }, [clientId]);
-  const deleteItem = useCallback(async item => {
-    // 1. Refuse when we cannot target a row.
-    if (!clientId || !(item == null ? void 0 : item.id)) return;
-    // 2. Delete or show a notice sheet on failure.
-    await deleteNotesFileOrWarn(clientId, item, showNotice);
-  }, [clientId, showNotice]);
-  const shareItem = useCallback(async item => {
+
+  const markRead = useCallback(
+    async (item) => {
+      // 1. Need both the signed-in client and a saved row id.
+      if (!clientId) return;
+      if (!item) return;
+      if (!item.id) return;
+      // 2. Write isRead on that notes-and-files row (Firestore letters stay put).
+      await markNotesAndFilesItemRead(clientId, item.id);
+    },
+    [clientId],
+  );
+
+  const deleteItem = useCallback(
+    async (item) => {
+      // 1. Refuse when we cannot target a row.
+      if (!clientId) return;
+      if (!item) return;
+      if (!item.id) return;
+      // 2. Delete or show a notice sheet on failure.
+      await deleteNotesFileOrWarn(clientId, item, showNotice);
+    },
+    [clientId, showNotice],
+  );
+
+  const shareItem = useCallback(async (item) => {
     // 1. Open the OS share sheet with the file URL (or title-only fallback).
     await shareNotesFile(item);
   }, []);
-  const downloadItem = useCallback(async item => {
-    // 1. Open the download URL in the system browser, or warn if missing.
-    await downloadNotesFileOrWarn(item, showNotice);
-  }, [showNotice]);
+
+  const downloadItem = useCallback(
+    async (item) => {
+      // 1. Open the download URL in the system browser, or warn if missing.
+      await downloadNotesFileOrWarn(item, showNotice);
+    },
+    [showNotice],
+  );
+
   const clearNotice = () => setNotice(null);
   const closePdf = () => setPdfViewer(CLOSED_PDF_VIEWER);
   const closeSpreadsheet = () => setSpreadsheetViewer(CLOSED_SPREADSHEET_VIEWER);
   const closeDocument = () => setDocumentViewer(CLOSED_DOCUMENT_VIEWER);
   const closeMedia = () => setMediaViewer(CLOSED_MEDIA_VIEWER);
   const closeWeb = () => setEmbedWebViewer(CLOSED_WEB_VIEWER);
-  return <FilesScreenLayout colors={colors} isDark={isDark} items={items} onBack={onBack} onUploadPress={onUploadPress} openItem={openItem} downloadItem={downloadItem} shareItem={shareItem} deleteItem={deleteItem} markRead={markRead} pdfViewer={pdfViewer} spreadsheetViewer={spreadsheetViewer} documentViewer={documentViewer} mediaViewer={mediaViewer} webViewer={embedWebViewer} closePdf={closePdf} closeSpreadsheet={closeSpreadsheet} closeDocument={closeDocument} closeMedia={closeMedia} closeWeb={closeWeb} notice={notice} clearNotice={clearNotice} />;
+
+  return (
+    <FilesScreenLayout
+      colors={colors}
+      isDark={isDark}
+      items={items}
+      onBack={onBack}
+      onUploadPress={onUploadPress}
+      openItem={openItem}
+      downloadItem={downloadItem}
+      shareItem={shareItem}
+      deleteItem={deleteItem}
+      markRead={markRead}
+      pdfViewer={pdfViewer}
+      spreadsheetViewer={spreadsheetViewer}
+      documentViewer={documentViewer}
+      mediaViewer={mediaViewer}
+      webViewer={embedWebViewer}
+      closePdf={closePdf}
+      closeSpreadsheet={closeSpreadsheet}
+      closeDocument={closeDocument}
+      closeMedia={closeMedia}
+      closeWeb={closeWeb}
+      notice={notice}
+      clearNotice={clearNotice}
+    />
+  );
 }
+
 const styles = StyleSheet.create({
-  shell: {
-    flex: 1
-  },
-  body: {
-    flex: 1,
-    paddingHorizontal: spacing.md
-  }
+  shell: { flex: 1 },
+  body: { flex: 1, paddingHorizontal: spacing.md },
 });

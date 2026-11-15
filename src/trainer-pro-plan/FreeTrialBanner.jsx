@@ -23,7 +23,8 @@ const ACCESS_EXPIRED = 'expired';
 const ACCESS_ACTIVE = 'active';
 // Manipulate here: how often the countdown badge re-reads the clock
 const TRIAL_COUNTDOWN_TICK_MS = 60000;
-const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
+// 24 * 60 * 60 * 1000 milliseconds in one day
+const MILLISECONDS_PER_DAY = 86400000;
 // Manipulate here: “last two days” urgency switch (PNG dark / fill banner)
 const LAST_DAYS_MS = 2 * MILLISECONDS_PER_DAY;
 // Manipulate here: assumed free-trial length for the progress bar when start is unknown

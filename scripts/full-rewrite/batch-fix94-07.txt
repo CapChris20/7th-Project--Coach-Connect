@@ -1,0 +1,5 @@
+src/trainer-app/documents/DocumentEditor.js
+src/trainer-app/home/TrainerListingPopup.js
+src/trainer-app/home/trainerHomePieces.jsx
+src/trainer-app/my-trainees/MyTraineesScreen.jsx
+src/trainer-app/navigation/TrainerMainScreen.jsx

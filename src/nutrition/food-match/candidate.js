@@ -1,6 +1,7 @@
 // One food-search candidate shape for every nutrition source.
 // Flow: raw source fields → createCandidate → validateCandidate.
-// Used by scraper adapters and (later) gates/ranking. Pure CommonJS — no network.
+// Used by scraper adapters, gates, and candidate ranking.
+// Pure CommonJS — no network calls.
 
 // ===== NAMED CONSTANTS =====
 
@@ -21,8 +22,148 @@ const SOURCE_TIERS = Object.freeze({
 const CHANNELS = Object.freeze(['packaged', 'restaurant', 'generic', 'unknown']);
 const PER100_BASES = Object.freeze(['g', 'ml']);
 const SERVING_ORIGINS = Object.freeze(['label', 'menu', 'derived']);
+const DEFAULT_SERVING_LABEL = '1 serving';
+const DEFAULT_SERVING_ORIGIN = 'derived';
+const DEFAULT_BASIS_GRAMS = 'g';
+const DEFAULT_CHANNEL = 'unknown';
 
-// ===== MAIN RECIPES =====
+// ===== HELPER FUNCTIONS =====
+
+function isNonEmptyString(value) {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function buildFallbackId(source, name, brand) {
+  const joined = `${source}|${brand}|${name}`.toLowerCase().replace(/\s+/g, ' ').trim();
+  return `candidate:${joined || 'empty'}`;
+}
+
+function resolveChannel(channel) {
+  if (CHANNELS.includes(channel)) return channel;
+  return DEFAULT_CHANNEL;
+}
+
+function normalizeCategoryPath(path) {
+  if (!Array.isArray(path)) return [];
+  const normalizedParts = [];
+  for (const part of path) {
+    if (part == null) continue;
+    normalizedParts.push(String(part));
+  }
+  return normalizedParts;
+}
+
+function finiteOrNull(value) {
+  if (value == null || value === '') return null;
+  const number = Number(value);
+  if (!Number.isFinite(number)) return null;
+  return number;
+}
+
+function normalizePer100(per100) {
+  if (!per100 || typeof per100 !== 'object') return null;
+  const basis = PER100_BASES.includes(per100.basis) ? per100.basis : DEFAULT_BASIS_GRAMS;
+  return {
+    kcal: finiteOrNull(per100.kcal),
+    protein: finiteOrNull(per100.protein),
+    carbs: finiteOrNull(per100.carbs),
+    fat: finiteOrNull(per100.fat),
+    basis,
+  };
+}
+
+function normalizeServings(servings) {
+  if (!Array.isArray(servings)) return [];
+  const normalizedServings = [];
+  for (const row of servings) {
+    if (!row || typeof row !== 'object') continue;
+    const origin = SERVING_ORIGINS.includes(row.origin) ? row.origin : DEFAULT_SERVING_ORIGIN;
+    normalizedServings.push({
+      label: String(row.label || DEFAULT_SERVING_LABEL),
+      grams: finiteOrNull(row.grams),
+      kcal: finiteOrNull(row.kcal),
+      protein: finiteOrNull(row.protein),
+      carbs: finiteOrNull(row.carbs),
+      fat: finiteOrNull(row.fat),
+      origin,
+    });
+  }
+  return normalizedServings;
+}
+
+function normalizeQuality(quality) {
+  const input = quality && typeof quality === 'object' ? quality : {};
+  let completeness = Number(input.completeness);
+  if (!Number.isFinite(completeness)) completeness = 0;
+  if (completeness < 0) completeness = 0;
+  if (completeness > 1) completeness = 1;
+  const sourceFlags = Array.isArray(input.sourceFlags)
+    ? input.sourceFlags.map((flag) => String(flag))
+    : [];
+  return { completeness, sourceFlags };
+}
+
+function normalizeProvenance(provenance) {
+  const input = provenance && typeof provenance === 'object' ? provenance : {};
+  return {
+    url: input.url == null || input.url === '' ? null : String(input.url),
+    fetchedAt: input.fetchedAt == null || input.fetchedAt === '' ? null : String(input.fetchedAt),
+  };
+}
+
+function pushPer100Errors(per100, errors) {
+  if (per100 == null) return;
+  if (typeof per100 !== 'object') {
+    errors.push('per100_not_object');
+    return;
+  }
+  if (!PER100_BASES.includes(per100.basis)) errors.push('per100_basis_invalid');
+  for (const macroKey of ['kcal', 'protein', 'carbs', 'fat']) {
+    if (per100[macroKey] != null && !Number.isFinite(Number(per100[macroKey]))) {
+      errors.push(`per100_${macroKey}_invalid`);
+    }
+  }
+}
+
+function pushServingsErrors(servings, errors) {
+  if (!Array.isArray(servings)) {
+    errors.push('servings_not_array');
+    return;
+  }
+  for (let index = 0; index < servings.length; index += 1) {
+    const row = servings[index];
+    if (!row || typeof row !== 'object') {
+      errors.push(`servings_${index}_not_object`);
+      continue;
+    }
+    if (typeof row.label !== 'string') errors.push(`servings_${index}_label_invalid`);
+    if (!SERVING_ORIGINS.includes(row.origin)) errors.push(`servings_${index}_origin_invalid`);
+  }
+}
+
+function pushQualityErrors(quality, errors) {
+  if (!quality || typeof quality !== 'object') {
+    errors.push('quality_missing');
+    return;
+  }
+  if (!Number.isFinite(Number(quality.completeness))) errors.push('quality_completeness_invalid');
+  if (!Array.isArray(quality.sourceFlags)) errors.push('quality_sourceFlags_invalid');
+}
+
+function pushProvenanceErrors(provenance, errors) {
+  if (!provenance || typeof provenance !== 'object') {
+    errors.push('provenance_missing');
+    return;
+  }
+  if (provenance.url != null && typeof provenance.url !== 'string') {
+    errors.push('provenance_url_invalid');
+  }
+  if (provenance.fetchedAt != null && typeof provenance.fetchedAt !== 'string') {
+    errors.push('provenance_fetchedAt_invalid');
+  }
+}
+
+// ===== MAIN FUNCTION =====
 
 /**
  * Build one Candidate. Does not tidy titles or invent macros.
@@ -146,139 +287,3 @@ module.exports = {
   assertCandidate,
   resolveSourceTier,
 };
-
-// ===== PLUMBING — skip unless debugging =====
-
-function isNonEmptyString(value) {
-  return typeof value === 'string' && value.trim().length > 0;
-}
-
-function buildFallbackId(source, name, brand) {
-  const joined = `${source}|${brand}|${name}`.toLowerCase().replace(/\s+/g, ' ').trim();
-  return `candidate:${joined || 'empty'}`;
-}
-
-function resolveChannel(channel) {
-  if (CHANNELS.includes(channel)) return channel;
-  return 'unknown';
-}
-
-function normalizeCategoryPath(path) {
-  if (!Array.isArray(path)) return [];
-  const out = [];
-  for (const part of path) {
-    if (part == null) continue;
-    out.push(String(part));
-  }
-  return out;
-}
-
-function finiteOrNull(value) {
-  if (value == null || value === '') return null;
-  const number = Number(value);
-  if (!Number.isFinite(number)) return null;
-  return number;
-}
-
-function normalizePer100(per100) {
-  if (!per100 || typeof per100 !== 'object') return null;
-  const basis = PER100_BASES.includes(per100.basis) ? per100.basis : 'g';
-  return {
-    kcal: finiteOrNull(per100.kcal),
-    protein: finiteOrNull(per100.protein),
-    carbs: finiteOrNull(per100.carbs),
-    fat: finiteOrNull(per100.fat),
-    basis,
-  };
-}
-
-function normalizeServings(servings) {
-  if (!Array.isArray(servings)) return [];
-  const out = [];
-  for (const row of servings) {
-    if (!row || typeof row !== 'object') continue;
-    const origin = SERVING_ORIGINS.includes(row.origin) ? row.origin : 'derived';
-    out.push({
-      label: String(row.label || '1 serving'),
-      grams: finiteOrNull(row.grams),
-      kcal: finiteOrNull(row.kcal),
-      protein: finiteOrNull(row.protein),
-      carbs: finiteOrNull(row.carbs),
-      fat: finiteOrNull(row.fat),
-      origin,
-    });
-  }
-  return out;
-}
-
-function normalizeQuality(quality) {
-  const input = quality && typeof quality === 'object' ? quality : {};
-  let completeness = Number(input.completeness);
-  if (!Number.isFinite(completeness)) completeness = 0;
-  if (completeness < 0) completeness = 0;
-  if (completeness > 1) completeness = 1;
-  const sourceFlags = Array.isArray(input.sourceFlags)
-    ? input.sourceFlags.map((flag) => String(flag))
-    : [];
-  return { completeness, sourceFlags };
-}
-
-function normalizeProvenance(provenance) {
-  const input = provenance && typeof provenance === 'object' ? provenance : {};
-  return {
-    url: input.url == null || input.url === '' ? null : String(input.url),
-    fetchedAt: input.fetchedAt == null || input.fetchedAt === '' ? null : String(input.fetchedAt),
-  };
-}
-
-function pushPer100Errors(per100, errors) {
-  if (per100 == null) return;
-  if (typeof per100 !== 'object') {
-    errors.push('per100_not_object');
-    return;
-  }
-  if (!PER100_BASES.includes(per100.basis)) errors.push('per100_basis_invalid');
-  for (const key of ['kcal', 'protein', 'carbs', 'fat']) {
-    if (per100[key] != null && !Number.isFinite(Number(per100[key]))) {
-      errors.push(`per100_${key}_invalid`);
-    }
-  }
-}
-
-function pushServingsErrors(servings, errors) {
-  if (!Array.isArray(servings)) {
-    errors.push('servings_not_array');
-    return;
-  }
-  for (let index = 0; index < servings.length; index += 1) {
-    const row = servings[index];
-    if (!row || typeof row !== 'object') {
-      errors.push(`servings_${index}_not_object`);
-      continue;
-    }
-    if (typeof row.label !== 'string') errors.push(`servings_${index}_label_invalid`);
-    if (!SERVING_ORIGINS.includes(row.origin)) errors.push(`servings_${index}_origin_invalid`);
-  }
-}
-
-function pushQualityErrors(quality, errors) {
-  if (!quality || typeof quality !== 'object') {
-    errors.push('quality_missing');
-    return;
-  }
-  if (!Number.isFinite(Number(quality.completeness))) errors.push('quality_completeness_invalid');
-  if (!Array.isArray(quality.sourceFlags)) errors.push('quality_sourceFlags_invalid');
-}
-
-function pushProvenanceErrors(provenance, errors) {
-  if (!provenance || typeof provenance !== 'object') {
-    errors.push('provenance_missing');
-    return;
-  }
-  if (provenance.url != null && typeof provenance.url !== 'string') {
-    errors.push('provenance_url_invalid');
-  }
-  if (provenance.fetchedAt != null && typeof provenance.fetchedAt !== 'string') {
-    errors.push('provenance_fetchedAt_invalid');
-  }
-}

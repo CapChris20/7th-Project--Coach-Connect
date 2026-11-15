@@ -36,8 +36,11 @@ const CLOSE_BUTTON_HIT = 44;
 /**
  * Pick the headline shown in the sheet header.
  * Prefer an explicit title; fall back to the field key; last resort "Field".
+ * @param {string|undefined} title
+ * @param {string|undefined} fieldKey
+ * @returns {string}
  */
-function titleLineForSheet({ title, fieldKey }) {
+function resolveSheetTitle(title, fieldKey) {
   if (title) {
     return title;
   }
@@ -50,17 +53,17 @@ function titleLineForSheet({ title, fieldKey }) {
 /**
  * Map the device color scheme to Design Law light/dark token bags.
  * vocab: useColorScheme = React Native hook that returns 'light' | 'dark' | null
+ * @param {string|null|undefined} colorScheme
+ * @returns {object}
  */
 function themeColorsFromDeviceScheme(colorScheme) {
   const isDarkMode = colorScheme === 'dark';
-  if (isDarkMode) {
-    return darkColors;
-  }
-  return lightColors;
+  return isDarkMode ? darkColors : lightColors;
 }
 
 /**
  * iOS needs padding so the keyboard does not cover inputs; Android handles that itself.
+ * @returns {string|undefined}
  */
 function keyboardAvoidBehaviorForPlatform() {
   if (Platform.OS === PLATFORM_IOS) {
@@ -69,9 +72,7 @@ function keyboardAvoidBehaviorForPlatform() {
   return undefined;
 }
 
-// ===== IN-FILE UI PIECES =====
-
-function EditWorkoutSheetHeader({ colors, titleLine, onClose }) {
+function EditWorkoutSheetHeader({ colors, titleText, onClose }) {
   const dragHandleStyle = [styles.dragHandle, { backgroundColor: colors.nbMuted }];
   const headerStyle = [styles.header, { borderBottomColor: colors.nbBorder }];
   const kickerStyle = [styles.label, { color: colors.nbMuted }];
@@ -86,7 +87,7 @@ function EditWorkoutSheetHeader({ colors, titleLine, onClose }) {
         <View style={styles.headerTextColumn}>
           <Text style={kickerStyle}>{EDIT_SHEET_KICKER}</Text>
           <Text style={titleStyle} numberOfLines={1}>
-            {titleLine}
+            {titleText}
           </Text>
         </View>
         <TouchableOpacity
@@ -114,45 +115,41 @@ function EditWorkoutSheetFooter({ onClose, onDone }) {
   );
 }
 
-// ===== MAIN COMPONENT =====
+// ===== MAIN FUNCTION =====
 
 /**
  * Slide-up edit sheet for one plan-builder field.
  * Flow: 1. theme tokens  2. title line  3. hide when not visible  4. sheet + children + footer
  *
  * Legacy props (cardBg, textColor, …) stay on the signature so older callers do not break —
- * chrome uses theme tokens only. Do not delete those unused names.
+ * chrome uses theme tokens only.
+ * @param {object} props
+ * @returns {React.ReactElement|null}
  */
-export function EditModalForm({
-  visible,
-  fieldKey,
-  title,
-  cardBg: deprecatedCardBg,
-  textColor: deprecatedTextColor,
-  mutedColor: deprecatedMutedColor,
-  borderColor: deprecatedBorderColor,
-  doneGradient: deprecatedDoneGradient,
-  isDark: deprecatedIsDark,
-  children,
-  onClose,
-  onDone,
-}) {
+export function EditModalForm(props) {
+  const {
+    visible,
+    fieldKey,
+    title,
+    cardBg: _deprecatedCardBg,
+    textColor: _deprecatedTextColor,
+    mutedColor: _deprecatedMutedColor,
+    borderColor: _deprecatedBorderColor,
+    doneGradient: _deprecatedDoneGradient,
+    isDark: _deprecatedIsDark,
+    children,
+    onClose,
+    onDone,
+  } = props;
+
   // vocab: useColorScheme = device light/dark; we never trust deprecatedIsDark for chrome
   const colorScheme = useColorScheme();
-
-  // Legacy chrome props stay on the signature for old callers — theme tokens win.
-  void deprecatedCardBg;
-  void deprecatedTextColor;
-  void deprecatedMutedColor;
-  void deprecatedBorderColor;
-  void deprecatedDoneGradient;
-  void deprecatedIsDark;
 
   // 1. Theme tokens from the device scheme (not the legacy isDark prop)
   const colors = themeColorsFromDeviceScheme(colorScheme);
 
   // 2. Header title: explicit title → field key → "Field"
-  const titleLine = titleLineForSheet({ title, fieldKey });
+  const titleText = resolveSheetTitle(title, fieldKey);
 
   // 3. Hidden → render nothing (Modal must not stay mounted when closed)
   if (!visible) {
@@ -161,11 +158,9 @@ export function EditModalForm({
 
   // 4. Sheet chrome: dim backdrop, avoid keyboard, scroll children, Cancel/Done
   const keyboardAvoidBehavior = keyboardAvoidBehaviorForPlatform();
-  const sheetBackgroundColor = colors.nbSurface;
-  const sheetBorderColor = colors.nbBorder;
   const sheetStyle = [
     styles.sheet,
-    { backgroundColor: sheetBackgroundColor, borderColor: sheetBorderColor },
+    { backgroundColor: colors.nbSurface, borderColor: colors.nbBorder },
   ];
 
   return (
@@ -174,7 +169,7 @@ export function EditModalForm({
         <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
 
         <View style={sheetStyle}>
-          <EditWorkoutSheetHeader colors={colors} titleLine={titleLine} onClose={onClose} />
+          <EditWorkoutSheetHeader colors={colors} titleText={titleText} onClose={onClose} />
 
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
             {children}
