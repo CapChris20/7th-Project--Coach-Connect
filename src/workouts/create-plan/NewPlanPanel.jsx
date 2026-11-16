@@ -12,7 +12,6 @@ import {
   ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import NbSegmented from '../../look-and-feel/NbSegmented';
 import NbButton from '../../look-and-feel/NbButton';
 import NbPill from '../../look-and-feel/NbPill';
 import NbIconChip from '../../look-and-feel/NbIconChip';
@@ -133,10 +132,6 @@ const NEW_PLAN_ROWS = [
   },
 ];
 
-const SEGMENTS = [
-  { id: 'ai', label: 'Build with AI' },
-  { id: 'trainer', label: 'Ask my trainer' },
-];
 
 const ICON_CHIP_SIZE = 40;
 const EMPTY_VALUE_DASH = '—';
@@ -684,6 +679,74 @@ function NewPlanAiTab({
   );
 }
 
+// ===== IN-FILE UI — SOURCE SELECTOR =====
+
+function PlanSourceOptionCard({
+  isSelected,
+  iconName,
+  title,
+  colors,
+  onPress,
+}) {
+  const cardBackground = isSelected ? colors.nbFill : colors.nbSurface;
+  const textColor = isSelected ? colors.nbOnFill : colors.nbInk;
+  const iconColor = isSelected ? colors.nbOnFill : colors.nbInk;
+
+  const cardStyle = [
+    styles.sourceCard,
+    {
+      backgroundColor: cardBackground,
+      borderColor: colors.nbBorder,
+    },
+  ];
+
+  return (
+    <View style={{ flex: 1 }}>
+      <HardShadow
+        radius={borderRadius.nbCard}
+        offset={isSelected ? nb.shadowOffsetSmall : 0}
+        style={{ width: '100%' }}
+      >
+        <TouchableOpacity
+          activeOpacity={0.88}
+          onPress={onPress}
+          style={cardStyle}
+        >
+          <Ionicons name={iconName} size={16} color={iconColor} style={{ marginRight: 6 }} />
+          <Text style={[styles.sourceCardLabel, { color: textColor }]}>{title}</Text>
+        </TouchableOpacity>
+      </HardShadow>
+    </View>
+  );
+}
+
+function PlanSourceModeSelector({ sourceTab, onSourceTabChange, colors }) {
+  const isAiSelected = sourceTab === 'ai';
+  const isTrainerSelected = sourceTab === 'trainer';
+
+  const selectAi = () => onSourceTabChange?.('ai');
+  const selectTrainer = () => onSourceTabChange?.('trainer');
+
+  return (
+    <View style={styles.sourceSelectorRow}>
+      <PlanSourceOptionCard
+        isSelected={isAiSelected}
+        iconName="sparkles"
+        title="Build with AI"
+        colors={colors}
+        onPress={selectAi}
+      />
+      <PlanSourceOptionCard
+        isSelected={isTrainerSelected}
+        iconName="chatbubble-ellipses-outline"
+        title="Ask my trainer"
+        colors={colors}
+        onPress={selectTrainer}
+      />
+    </View>
+  );
+}
+
 // ===== MAIN FUNCTION =====
 
 /**
@@ -741,11 +804,10 @@ export default function NewPlanPanel({
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
     >
-      <NbSegmented
-        segments={SEGMENTS}
-        selected={sourceTab}
-        onSelect={onSourceTabChange}
-        style={styles.segmented}
+      <PlanSourceModeSelector
+        sourceTab={sourceTab}
+        onSourceTabChange={onSourceTabChange}
+        colors={colors}
       />
 
       {showTrainerTab ? (
@@ -797,8 +859,25 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
     gap: 0,
   },
-  segmented: {
-    marginBottom: 16,
+  sourceSelectorRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 20,
+    marginTop: 2,
+  },
+  sourceCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 44,
+    borderRadius: borderRadius.nbCard,
+    borderWidth: nb.borderWidth,
+    paddingHorizontal: 10,
+  },
+  sourceCardLabel: {
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: -0.2,
   },
   aiBlock: {
     flexGrow: 1,
