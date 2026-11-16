@@ -37,3 +37,9 @@ Whenever generating, modifying, refactoring, or reviewing code in this codebase:
    - Never trust raw user inputs in regexes without length caps.
    - Always ensure prototype pollution keys (`__proto__`, `constructor`, `prototype`) are rejected.
 
+7. **Always Provide Build Command**:
+   - Every single time you make a change or fix to the app code, always provide the exact build command in your response so the user can run it themselves to verify their Apple ID / credentials:
+   ```bash
+   eas build --platform ios --profile production --auto-submit
+   ```
+
