@@ -685,11 +685,16 @@ function PlanSourceOptionCard({
   isSelected,
   iconName,
   title,
+  subtitle,
   colors,
   onPress,
 }) {
   const cardBackground = isSelected ? colors.nbFill : colors.nbSurface;
   const textColor = isSelected ? colors.nbOnFill : colors.nbInk;
+  const subtitleColor = isSelected ? (colors.nbOnFill === '#000000' ? '#555555' : 'rgba(255,255,255,0.7)') : colors.nbMuted;
+  const iconBackground = isSelected
+    ? (colors.nbOnFill === '#000000' ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.18)')
+    : colors.nbSoft;
   const iconColor = isSelected ? colors.nbOnFill : colors.nbInk;
 
   const cardStyle = [
@@ -711,9 +716,20 @@ function PlanSourceOptionCard({
           activeOpacity={0.88}
           onPress={onPress}
           style={cardStyle}
+          accessibilityRole="button"
+          accessibilityState={{ selected: isSelected }}
         >
-          <Ionicons name={iconName} size={16} color={iconColor} style={{ marginRight: 6 }} />
-          <Text style={[styles.sourceCardLabel, { color: textColor }]}>{title}</Text>
+          <View style={[styles.sourceIconCircle, { backgroundColor: iconBackground }]}>
+            <Ionicons name={iconName} size={18} color={iconColor} />
+          </View>
+          <View style={styles.sourceTextColumn}>
+            <Text style={[styles.sourceCardLabel, { color: textColor }]} numberOfLines={1}>
+              {title}
+            </Text>
+            <Text style={[styles.sourceCardSub, { color: subtitleColor }]} numberOfLines={1}>
+              {subtitle}
+            </Text>
+          </View>
         </TouchableOpacity>
       </HardShadow>
     </View>
@@ -733,6 +749,7 @@ function PlanSourceModeSelector({ sourceTab, onSourceTabChange, colors }) {
         isSelected={isAiSelected}
         iconName="sparkles"
         title="Build with AI"
+        subtitle="From profile"
         colors={colors}
         onPress={selectAi}
       />
@@ -740,6 +757,7 @@ function PlanSourceModeSelector({ sourceTab, onSourceTabChange, colors }) {
         isSelected={isTrainerSelected}
         iconName="chatbubble-ellipses-outline"
         title="Ask my trainer"
+        subtitle="Custom program"
         colors={colors}
         onPress={selectTrainer}
       />
@@ -863,21 +881,38 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 10,
     marginBottom: 20,
-    marginTop: 2,
+    marginTop: 4,
   },
   sourceCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'column',
+    alignItems: 'flex-start',
     justifyContent: 'center',
-    height: 44,
+    minHeight: 82,
     borderRadius: borderRadius.nbCard,
     borderWidth: nb.borderWidth,
-    paddingHorizontal: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+  },
+  sourceIconCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  sourceTextColumn: {
+    width: '100%',
   },
   sourceCardLabel: {
     fontSize: 13,
-    fontWeight: '800',
+    fontWeight: '900',
     letterSpacing: -0.2,
+  },
+  sourceCardSub: {
+    fontSize: 11,
+    fontWeight: '600',
+    marginTop: 2,
   },
   aiBlock: {
     flexGrow: 1,

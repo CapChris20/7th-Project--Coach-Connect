@@ -106,13 +106,14 @@ function inferCoachToolCall(userMessage, weeklyContext = {}) {
   const targetF = Number(weeklyContext.targetF) || 65;
   const targetCal = Number(weeklyContext.targetCal) || 2250;
 
-  // logWater: "I drank X oz", "Log 20 oz of water", etc.
-  const waterMatch =
-    raw.match(/(?:drank|drink|had)\s*(?:about\s*)?(\d+)\s*(?:oz|ounce)/i) ||
-    raw.match(/(?:log|track|record|add|save)\s*(?:my\s*)?(?:water\s*)?(?:as\s*)?(\d+)\s*(?:oz|ounce)/i) ||
-    raw.match(/(\d+)\s*(?:oz|ounce)s?\s*(?:of\s*)?water/i);
-  if (waterMatch && userWantsExplicitDashboardLog(raw, 'water')) {
-    const amount_oz = Number(waterMatch[1]);
+  // logWater: "I drank X oz", "Log 20 oz of water", "Help me log my water", etc.
+  if (userWantsExplicitDashboardLog(raw, 'water')) {
+    const waterMatch =
+      raw.match(/(?:drank|drink|had)\s*(?:about\s*)?(\d+)\s*(?:oz|ounce)/i) ||
+      raw.match(/(?:log|track|record|add|save)\s*(?:my\s*)?(?:water\s*)?(?:as\s*)?(\d+)\s*(?:oz|ounce)/i) ||
+      raw.match(/(\d+)\s*(?:oz|ounce)s?\s*(?:of\s*)?water/i) ||
+      raw.match(/(\d+)\s*(?:oz|ounce)\b/i);
+    const amount_oz = waterMatch ? Number(waterMatch[1]) : 16;
     if (amount_oz > 0 && amount_oz < 1000) {
       return {
         name: 'logWater',
@@ -122,12 +123,12 @@ function inferCoachToolCall(userMessage, weeklyContext = {}) {
     }
   }
 
-  // logSteps: "I did X steps", "Log 8000 steps", etc.
-  const stepsMatch =
-    raw.match(/(?:did|walked|got|logged|log|track|record|add)\s*(?:about\s*)?(\d+(?:,\d{3})*)\s*steps/i) ||
-    raw.match(/(\d+(?:,\d{3})*)\s*steps/i);
-  if (stepsMatch && userWantsExplicitDashboardLog(raw, 'steps')) {
-    const step_count = Number(stepsMatch[1].replace(/,/g, ''));
+  // logSteps: "I did X steps", "Log 8000 steps", "Help me log steps", etc.
+  if (userWantsExplicitDashboardLog(raw, 'steps')) {
+    const stepsMatch =
+      raw.match(/(?:did|walked|got|logged|log|track|record|add)\s*(?:about\s*)?(\d+(?:,\d{3})*)\s*steps/i) ||
+      raw.match(/(\d+(?:,\d{3})*)\s*steps/i);
+    const step_count = stepsMatch ? Number(stepsMatch[1].replace(/,/g, '')) : 6400;
     if (step_count >= 0 && step_count < 100000) {
       return {
         name: 'logSteps',
@@ -137,12 +138,12 @@ function inferCoachToolCall(userMessage, weeklyContext = {}) {
     }
   }
 
-  // rateEnergy: "My energy is X/10", "Log my energy as 7/10", etc.
-  const energyMatch =
-    raw.match(/(?:energy|feel)\s*(?:is|as|at)?\s*(\d+)\s*(?:out\s*of\s*10|\/10)?/i) ||
-    raw.match(/(?:log|track|rate)\s*(?:my\s*)?energy\s*(?:as|at|to)?\s*(\d+)/i);
-  if (energyMatch && userWantsExplicitDashboardLog(raw, 'energy')) {
-    const rating = Number(energyMatch[1]);
+  // rateEnergy: "My energy is X/10", "Log my energy as 7/10", "Help me rate energy", etc.
+  if (userWantsExplicitDashboardLog(raw, 'energy')) {
+    const energyMatch =
+      raw.match(/(?:energy|feel)\s*(?:is|as|at)?\s*(\d+)\s*(?:out\s*of\s*10|\/10)?/i) ||
+      raw.match(/(?:log|track|rate)\s*(?:my\s*)?energy\s*(?:as|at|to)?\s*(\d+)/i);
+    const rating = energyMatch ? Number(energyMatch[1]) : 5;
     if (rating >= 1 && rating <= 10) {
       return {
         name: 'rateEnergy',
@@ -152,22 +153,20 @@ function inferCoachToolCall(userMessage, weeklyContext = {}) {
     }
   }
 
-  // logMood: any explicit log verb + any mood word, in any order.
-  // The old regex required the literal pattern "mood/feel/feeling is|as <mood>",
-  // so real user phrasing "Log that I'm Happy" (no word "mood" at all) and
-  // "Log my mood: happy" (colon) both fell through → the coach said
-  // "Tap Confirm" but no Confirm chip ever existed. A log verb plus a mood
-  // word is the intent; findMoodInText normalizes Happy/great/😊 → canonical.
+  // logMood: user asks to log mood, or mentions mood with a log verb.
+  // When no specific mood is in the text (e.g. "Help me log my mood for today."),
+  // default to 'okay' so LogMoodPopup opens immediately with the 5 mood chips.
   const moodFromText = findMoodInText(raw);
   if (
-    moodFromText &&
-    (userWantsExplicitDashboardLog(raw, 'mood') ||
-      /\b(log|track|record|add|save|enter|put|mark|rate)\b/i.test(t))
+    userWantsExplicitDashboardLog(raw, 'mood') ||
+    (/\b(log|track|record|add|save|enter|put|mark|rate)\b/i.test(t) && /\b(mood|feeling)\b/i.test(t)) ||
+    (moodFromText && /\b(log|track|record|add|save|enter|put|mark|rate)\b/i.test(t))
   ) {
+    const chosenMood = moodFromText || 'okay';
     return {
       name: 'logMood',
-      params: { mood: moodFromText },
-      reasoning: `Log your mood as ${moodFromText}.`,
+      params: { mood: chosenMood },
+      reasoning: moodFromText ? `Log your mood as ${moodFromText}.` : 'Log your mood for today.',
     };
   }
 
@@ -184,12 +183,12 @@ function inferCoachToolCall(userMessage, weeklyContext = {}) {
     };
   }
 
-  // rateWorkout: "That workout was X/10", "Rate today's workout 8/10"
-  const workoutMatch =
-    raw.match(/(?:workout|session)\s*(?:was|is|rate[sd]?|as)?\s*(\d+)\s*(?:out\s*of\s*10|\/10)?/i) ||
-    raw.match(/(?:rate|log)\s*(?:my\s*|today'?s?\s*)?(?:workout|session)\s*(?:as|at|to)?\s*(\d+)/i);
-  if (workoutMatch && userWantsExplicitDashboardLog(raw, 'workout')) {
-    const rating = Number(workoutMatch[1]);
+  // rateWorkout: "That workout was X/10", "Rate today's workout 8/10", "Help me rate workout", etc.
+  if (userWantsExplicitDashboardLog(raw, 'workout')) {
+    const workoutMatch =
+      raw.match(/(?:workout|session)\s*(?:was|is|rate[sd]?|as)?\s*(\d+)\s*(?:out\s*of\s*10|\/10)?/i) ||
+      raw.match(/(?:rate|log)\s*(?:my\s*|today'?s?\s*)?(?:workout|session)\s*(?:as|at|to)?\s*(\d+)/i);
+    const rating = workoutMatch ? Number(workoutMatch[1]) : 7;
     if (rating >= 1 && rating <= 10) {
       return {
         name: 'rateWorkout',
@@ -199,12 +198,14 @@ function inferCoachToolCall(userMessage, weeklyContext = {}) {
     }
   }
 
-  const sleepHours = parseSleepHoursFromMessage(raw);
-  if (sleepHours != null && userWantsExplicitDashboardLog(raw, 'sleep')) {
+  // logSleep: "I slept 8 hours", "Help me log my sleep for last night", etc.
+  if (userWantsExplicitDashboardLog(raw, 'sleep')) {
+    const sleepHours = parseSleepHoursFromMessage(raw);
+    const resolvedHours = sleepHours != null ? sleepHours : 8;
     return {
       name: 'logSleep',
-      params: { hours: sleepHours },
-      reasoning: `Log ${sleepHours} hours of sleep on your dashboard for today.`,
+      params: { hours: resolvedHours, quality: 'good' },
+      reasoning: `Log ${resolvedHours} hours of sleep on your dashboard for today.`,
     };
   }
 
@@ -482,56 +483,107 @@ function inferToolCallFromAssistantProse(modelText, userMessage, weeklyContext =
       parseSleepHoursFromMessage(reply) ||
       parseSleepHoursFromMessage(user) ||
       parseSleepHoursFromMessage(`${user}\n${reply}`);
-    if (hours != null) {
-      return {
-        name: 'logSleep',
-        params: { hours },
-        reasoning: `Log ${hours} hours of sleep on your dashboard.`,
-      };
-    }
-    // Incomplete: still open the chip so they can fill hours (params stay empty → chip-only).
-    if (saysConfirm || userWantsExplicitDashboardLog(user, 'sleep')) {
-      return {
-        name: 'logSleep',
-        params: {},
-        reasoning: 'Log sleep on your dashboard — confirm the hours.',
-      };
-    }
+    const resolvedHours = hours != null ? hours : 8;
+    return {
+      name: 'logSleep',
+      params: { hours: resolvedHours, quality: 'good' },
+      reasoning: `Log ${resolvedHours} hours of sleep on your dashboard.`,
+    };
   }
 
-  // Water: coach "Logging 90oz…" + user "90oz" — do not require the word "water".
-  if (userWantsExplicitDashboardLog(user, 'water') || followUpMetric === 'water' || (saysConfirm && /\d+\s*(?:oz|ounces?)\b/i.test(`${user}\n${reply}`))) {
+  // Water: coach "Logging 90oz…", "I'll log your water", user "90oz"
+  if (
+    userWantsExplicitDashboardLog(user, 'water') ||
+    followUpMetric === 'water' ||
+    (saysConfirm && /\b(water|hydration|drank|oz|ounces?)\b/i.test(`${user}\n${reply}`))
+  ) {
     const waterMatch =
       reply.match(/(\d+)\s*(?:oz|ounces?)\b/i) ||
       user.match(/(\d+)\s*(?:oz|ounces?)\b/i);
-    if (waterMatch) {
-      return {
-        name: 'logWater',
-        params: { amount_oz: Number(waterMatch[1]) },
-        reasoning: `Log ${waterMatch[1]}oz of water.`,
-      };
-    }
+    const amount_oz = waterMatch ? Number(waterMatch[1]) : 16;
+    return {
+      name: 'logWater',
+      params: { amount_oz },
+      reasoning: `Log ${amount_oz}oz of water.`,
+    };
   }
 
-  if (userWantsExplicitDashboardLog(user, 'steps') || followUpMetric === 'steps') {
+  // Steps: coach "Logging 8000 steps…", user "8000 steps"
+  if (
+    userWantsExplicitDashboardLog(user, 'steps') ||
+    followUpMetric === 'steps' ||
+    (saysConfirm && /\b(steps?|walked)\b/i.test(`${user}\n${reply}`))
+  ) {
     const stepsMatch =
       reply.match(/(\d[\d,]*)\s*steps/i) ||
       user.match(/(\d[\d,]*)\s*steps/i);
-    if (stepsMatch) {
-      return {
-        name: 'logSteps',
-        params: { step_count: Number(String(stepsMatch[1]).replace(/,/g, '')) },
-        reasoning: 'Log steps on your dashboard.',
-      };
-    }
+    const step_count = stepsMatch ? Number(String(stepsMatch[1]).replace(/,/g, '')) : 6400;
+    return {
+      name: 'logSteps',
+      params: { step_count },
+      reasoning: `Log ${step_count} steps on your dashboard.`,
+    };
   }
 
-  const moodFromReply = findMoodInText(reply) || findMoodInText(user);
-  if (moodFromReply && (/\b(log|track|record|mood)\b/i.test(user) || saysConfirm)) {
+  // Mood: coach "I'll log your mood for today. Tap Confirm in the app and it'll save."
+  if (
+    userWantsExplicitDashboardLog(user, 'mood') ||
+    followUpMetric === 'mood' ||
+    (saysConfirm && /\b(mood|feeling)\b/i.test(`${user}\n${reply}`))
+  ) {
+    const moodFromReply = findMoodInText(reply) || findMoodInText(user);
+    const chosenMood = moodFromReply || 'okay';
     return {
       name: 'logMood',
-      params: { mood: moodFromReply },
-      reasoning: `Log your mood as ${moodFromReply}.`,
+      params: { mood: chosenMood },
+      reasoning: moodFromReply ? `Log your mood as ${moodFromReply}.` : 'Log your mood for today.',
+    };
+  }
+
+  // Energy: coach says confirm or user wants energy log
+  if (
+    userWantsExplicitDashboardLog(user, 'energy') ||
+    followUpMetric === 'energy' ||
+    (saysConfirm && /\b(energy|fatigue)\b/i.test(`${user}\n${reply}`))
+  ) {
+    const energyMatch =
+      reply.match(/(\d+)\s*(?:\/\s*10|out of 10)?/i) ||
+      user.match(/(\d+)\s*(?:\/\s*10|out of 10)?/i);
+    const rating = energyMatch ? Number(energyMatch[1]) : 5;
+    return {
+      name: 'rateEnergy',
+      params: { rating },
+      reasoning: `Rate your energy level as ${rating}/10.`,
+    };
+  }
+
+  // Workout rating: coach says confirm or user wants workout log
+  if (
+    userWantsExplicitDashboardLog(user, 'workout') ||
+    followUpMetric === 'workout' ||
+    (saysConfirm && /\b(workout|session)\b/i.test(`${user}\n${reply}`))
+  ) {
+    const workoutMatch =
+      reply.match(/(\d+)\s*(?:\/\s*10|out of 10)?/i) ||
+      user.match(/(\d+)\s*(?:\/\s*10|out of 10)?/i);
+    const rating = workoutMatch ? Number(workoutMatch[1]) : 7;
+    return {
+      name: 'rateWorkout',
+      params: { rating },
+      reasoning: `Rate your workout experience as ${rating}/10.`,
+    };
+  }
+
+  // Rest day: coach says confirm or user wants rest day log
+  if (
+    userWantsExplicitDashboardLog(user, 'restDay') ||
+    (saysConfirm && /\b(rest\s*day|rest)\b/i.test(`${user}\n${reply}`))
+  ) {
+    const dateMatch = `${user}\n${reply}`.match(/\b(20\d{2}-\d{2}-\d{2})\b/);
+    return {
+      name: 'logRestDay',
+      params: { date: dateMatch?.[1] },
+      reasoning: 'Log a rest day on your dashboard workout card.',
     };
   }
 

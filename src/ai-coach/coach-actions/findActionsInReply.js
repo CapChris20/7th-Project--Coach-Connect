@@ -301,17 +301,20 @@ function guessToolFromConfirmPrompt(replyText, userText) {
   // only said "help me log my sleep" — search reply first, then the user text.
   const combined = `${replyText}\n${userText}`;
 
-  const stepsMatch = combined.match(/(\d[\d,]*)\s*steps?/i);
-  if (stepsMatch && userWantsExplicitDashboardLog(userText, 'steps')) {
-    const stepCount = Number(firstCaptureGroup(stepsMatch).replace(/,/g, ''));
+  // Mood: "I'll log your mood for today. Tap Confirm in the app and it'll save."
+  if (
+    userWantsExplicitDashboardLog(userText, 'mood') ||
+    /\b(mood|feeling)\b/i.test(combined)
+  ) {
+    const moodValue = findMoodInText(combined) || 'okay';
     return normalizeToolCall({
-      name: LOG_STEPS_TOOL,
-      params: { step_count: stepCount },
-      reasoning: 'Log steps on your dashboard.',
+      name: LOG_MOOD_TOOL,
+      params: { mood: moodValue },
+      reasoning: 'Log your mood on the dashboard.',
     });
   }
 
-  // Manipulate here: sleep hour patterns — must catch "Logging 10 hours for last night"
+  // Sleep: "Logging 10 hours for last night", "Help me log my sleep"
   const sleepMatch =
     combined.match(/log(?:ging|ged)?\s+(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)/i) ||
     combined.match(
@@ -320,22 +323,21 @@ function guessToolFromConfirmPrompt(replyText, userText) {
   if (sleepMatch && userWantsExplicitDashboardLog(userText, 'sleep')) {
     return normalizeToolCall({
       name: LOG_SLEEP_TOOL,
-      params: { hours: Number(firstCaptureGroup(sleepMatch)) },
+      params: { hours: Number(firstCaptureGroup(sleepMatch)), quality: 'good' },
       reasoning: 'Log sleep on your dashboard.',
     });
   }
 
-  // Confirm promised, sleep intent, no number → still show the chip so they can fill hours.
-  if (userWantsExplicitDashboardLog(userText, 'sleep')) {
+  // Confirm promised, sleep intent, no number → default to 8 hours so the modal opens ready to confirm
+  if (userWantsExplicitDashboardLog(userText, 'sleep') || /\b(sleep|slept)\b/i.test(combined)) {
     return normalizeToolCall({
       name: LOG_SLEEP_TOOL,
-      params: {},
+      params: { hours: DEFAULT_SLEEP_HOURS, quality: 'good' },
       reasoning: 'Log sleep on your dashboard.',
     });
   }
 
-  // Coach often writes "Logging 90oz for today" without the word "water".
-  // Follow-up user turns are often just "90oz" — still offer Confirm.
+  // Water: "Logging 90oz for today", "Help me log my water"
   const waterMatch =
     combined.match(/(\d+)\s*(?:oz|ounces?)\s*(?:of\s*)?water/i) ||
     combined.match(/(\d+)\s*(?:oz|ounces?)\b/i);
@@ -346,14 +348,55 @@ function guessToolFromConfirmPrompt(replyText, userText) {
       reasoning: 'Log water intake.',
     });
   }
+  if (userWantsExplicitDashboardLog(userText, 'water') || /\b(water|hydration)\b/i.test(combined)) {
+    return normalizeToolCall({
+      name: LOG_WATER_TOOL,
+      params: { amount_oz: 16 },
+      reasoning: 'Log water intake.',
+    });
+  }
 
-  const stepsOnlyMatch = combined.match(/(\d[\d,]*)\s*steps?\b/i);
-  if (stepsOnlyMatch) {
-    const stepCount = Number(firstCaptureGroup(stepsOnlyMatch).replace(/,/g, ''));
+  // Steps
+  const stepsMatch = combined.match(/(\d[\d,]*)\s*steps?/i);
+  if (stepsMatch) {
+    const stepCount = Number(firstCaptureGroup(stepsMatch).replace(/,/g, ''));
     return normalizeToolCall({
       name: LOG_STEPS_TOOL,
       params: { step_count: stepCount },
       reasoning: 'Log steps on your dashboard.',
+    });
+  }
+  if (userWantsExplicitDashboardLog(userText, 'steps') || /\b(steps?|walked)\b/i.test(combined)) {
+    return normalizeToolCall({
+      name: LOG_STEPS_TOOL,
+      params: { step_count: 6400 },
+      reasoning: 'Log steps on your dashboard.',
+    });
+  }
+
+  // Energy
+  const energyMatch =
+    combined.match(/(?:energy|feel)\s*(?:is|as|at)?\s*(\d+)\s*(?:out\s*of\s*10|\/10)?/i) ||
+    combined.match(/(?:log|track|rate)\s*(?:my\s*)?energy\s*(?:as|at|to)?\s*(\d+)/i);
+  if (userWantsExplicitDashboardLog(userText, 'energy') || /\b(energy|fatigue)\b/i.test(combined)) {
+    const rating = energyMatch ? Number(firstCaptureGroup(energyMatch)) : 5;
+    return normalizeToolCall({
+      name: RATE_ENERGY_TOOL,
+      params: { rating },
+      reasoning: 'Log your energy level on the dashboard.',
+    });
+  }
+
+  // Workout
+  const workoutMatch =
+    combined.match(/(?:workout|session)\s*(?:was|is|rate[sd]?|as)?\s*(\d+)\s*(?:out\s*of\s*10|\/10)?/i) ||
+    combined.match(/(?:rate|log)\s*(?:my\s*|today'?s?\s*)?(?:workout|session)\s*(?:as|at|to)?\s*(\d+)/i);
+  if (userWantsExplicitDashboardLog(userText, 'workout') || /\b(workout|session)\b/i.test(combined)) {
+    const rating = workoutMatch ? Number(firstCaptureGroup(workoutMatch)) : 7;
+    return normalizeToolCall({
+      name: RATE_WORKOUT_TOOL,
+      params: { rating },
+      reasoning: 'Log your workout rating on the dashboard.',
     });
   }
 
@@ -502,20 +545,12 @@ function inferWaterLog(userText, combinedLower) {
     combinedLower.match(/(\d+)\s*(?:oz|ounces?)\s*(?:of\s*)?water/i) ||
     combinedLower.match(/(\d+)\s*(?:oz|ounces?)\b/i);
 
-  if (!(waterMatch || /\blog\s*water/i.test(combinedLower))) {
-    return null;
-  }
-
-  // "log water" with no ounces: no number to confirm, so offer nothing here.
-  // (The old code read waterMatch[1] anyway and threw a TypeError, which
-  // killed the whole guess pipeline for that reply.)
-  if (!waterMatch) {
-    return null;
-  }
+  const parsedAmount = waterMatch ? Number(firstCaptureGroup(waterMatch)) : 16;
+  const amount_oz = Number.isFinite(parsedAmount) && parsedAmount > 0 ? parsedAmount : 16;
 
   return normalizeToolCall({
     name: LOG_WATER_TOOL,
-    params: { amount_oz: Number(firstCaptureGroup(waterMatch)) },
+    params: { amount_oz },
     reasoning: 'Log water intake.',
   });
 }
@@ -534,18 +569,16 @@ function inferEnergyRating(userText, combinedLower) {
   }
 
   const energyMatch =
-    combinedLower.match(/(?:energy|log\s*(?:my\s*)?energy)[^\d]{0,24}(\d+)\s*(?:\/\s*10|out of 10)?/i) ||
+    combinedLower.match(/(?:energy|feel)\s*(?:is|as|at)?\s*(\d+)\s*(?:out\s*of\s*10|\/10)?/i) ||
     combinedLower.match(/(\d+)\s*(?:\/\s*10|out of 10)\s*(?:energy|energy level)/i) ||
     combinedLower.match(/(?:rate|log)\s*(?:my\s*)?energy\s*(?:as|at|to)?\s*(\d+)/i);
 
-  const askedToLogEnergy = /\blog\s*(?:my\s*)?energy/i.test(combinedLower);
-  if (!(energyMatch || askedToLogEnergy)) {
-    return null;
-  }
-
-  const rating = Number(firstCaptureGroup(energyMatch));
-  if (!Number.isFinite(rating) || rating < ENERGY_RATING_MIN || rating > ENERGY_RATING_MAX) {
-    return null;
+  let rating = 5;
+  if (energyMatch) {
+    const parsedRating = Number(firstCaptureGroup(energyMatch));
+    if (Number.isFinite(parsedRating) && parsedRating >= ENERGY_RATING_MIN && parsedRating <= ENERGY_RATING_MAX) {
+      rating = parsedRating;
+    }
   }
 
   return normalizeToolCall({
@@ -556,11 +589,9 @@ function inferEnergyRating(userText, combinedLower) {
 }
 
 /**
- * Mood was missing from this client pipeline entirely (server-only before):
- * when the model forgot its JSON and the server inferrer missed a phrasing,
- * the phone could never recover — the coach said "Tap Confirm" and no chip
- * existed. Any explicit log verb + a mood word ("Log that I'm happy",
- * "log my mood: happy") is enough; findMoodInText normalizes the spelling.
+ * Mood: any explicit log verb + mood word, or user explicitly asks to log mood.
+ * If user didn't name a mood ("Help me log my mood for today"), default to 'okay'
+ * so LogMoodPopup opens immediately with the 5 mood chips ready to tap.
  * @param {string} userText
  * @returns {object|null}
  */
@@ -568,24 +599,28 @@ function inferMoodLog(userText) {
   if (!userText) {
     return null;
   }
-  if (!/\b(log|track|record|add|save|enter|put|mark|rate)\b/i.test(userText)) {
+  const hasLogVerb = /\b(log|track|record|add|save|enter|put|mark|rate)\b/i.test(userText);
+  if (!hasLogVerb) {
     return null;
   }
 
-  const mood = findMoodInText(userText);
-  if (!mood) {
+  const moodFromText = findMoodInText(userText);
+  const wantsMood = userWantsExplicitDashboardLog(userText, 'mood') || /\b(mood|feeling)\b/i.test(userText);
+  if (!moodFromText && !wantsMood) {
     return null;
   }
 
+  const chosenMood = moodFromText || 'okay';
   return normalizeToolCall({
     name: LOG_MOOD_TOOL,
-    params: { mood },
+    params: { mood: chosenMood },
     reasoning: 'Log your mood on the dashboard.',
   });
 }
 
 /**
- * Workout rating had the same hole as mood: server-only, no client fallback.
+ * Workout rating: user asks to rate workout or gives a score.
+ * Defaults to 7/10 when no score is given so RateWorkoutPopup opens ready to adjust.
  * @param {string} userText
  * @param {string} combinedLower
  * @returns {object|null}
@@ -606,9 +641,12 @@ function inferWorkoutRating(userText, combinedLower) {
       /(?:rate|log)\s*(?:my\s*|today'?s\s*)?(?:workout|session)\s*(?:as|at|to)?\s*(\d+)/i,
     );
 
-  const rating = Number(firstCaptureGroup(ratingMatch));
-  if (!Number.isFinite(rating) || rating < ENERGY_RATING_MIN || rating > ENERGY_RATING_MAX) {
-    return null;
+  let rating = 7;
+  if (ratingMatch) {
+    const parsedRating = Number(firstCaptureGroup(ratingMatch));
+    if (Number.isFinite(parsedRating) && parsedRating >= ENERGY_RATING_MIN && parsedRating <= ENERGY_RATING_MAX) {
+      rating = parsedRating;
+    }
   }
 
   return normalizeToolCall({

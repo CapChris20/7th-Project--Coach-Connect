@@ -376,19 +376,24 @@ function shouldOpenChipModal(toolCall, toolName, normalizedTool, fromServer, use
   if (!COACH_TOOL_CHIP_ONLY.has(toolName)) {
     return false;
   }
-  if (!hasCompleteLogToolParams(toolCall)) {
-    return false;
-  }
 
-  // Server-attached tools are already vetted by the model pipeline.
+  // 1. Server-attached tools are already vetted by the model pipeline — open popup immediately.
   if (fromServer) {
     return true;
   }
 
+  // 2. User explicitly asked to log this metric — open popup immediately so they can confirm without typing.
+  if (userText && userExplicitlyRequestsLog(userText, toolName)) {
+    return true;
+  }
+
+  // 3. Valid proposal matching user's words — open popup.
   if (userText && isValidCoachToolProposal(normalizedTool, userText)) {
     return true;
   }
-  if (userText && userExplicitlyRequestsLog(userText, toolName)) {
+
+  // 4. Complete parameters allow auto-opening.
+  if (hasCompleteLogToolParams(toolCall)) {
     return true;
   }
 
