@@ -351,10 +351,10 @@ function buildMyFileCardRows(filteredFiles, onOpenItem, onDownloadItem, onShareI
   for (let index = 0; index < filteredFiles.length; index += 1) {
     const fileItem = filteredFiles[index];
 
-    function openThisFile() {
+    const openThisFile = () => {
       if (!onOpenItem) return;
       onOpenItem(fileItem);
-    }
+    };
 
     let downloadThisFile;
     if (onDownloadItem) {

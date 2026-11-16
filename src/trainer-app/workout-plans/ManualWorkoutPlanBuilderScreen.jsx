@@ -1372,7 +1372,7 @@ export default function ManualWorkoutPlanBuilderScreen({
                 <Text style={styles.summaryMeta}>
                   {duration} · {planType}
                 </Text>
-                {!!description.trim() ? <Text style={styles.summaryDesc}>{description}</Text> : null}
+                {description.trim() ? <Text style={styles.summaryDesc}>{description}</Text> : null}
                 <TouchableOpacity
                   onPress={() => {
                     setStep(1);

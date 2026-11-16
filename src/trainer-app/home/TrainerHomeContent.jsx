@@ -589,6 +589,7 @@ const DashboardContent = ({
   onOpenPhotoGallery,
   onOpenAIWorkouts,
   onOpenDocumentEditor: openDocumentEditor,
+  onOpenSpreadsheetEditor: openSpreadsheetEditor,
   onRefreshClients,
   userName,
   trainerId,
@@ -1123,8 +1124,8 @@ const DashboardContent = ({
         onMessagesPress && onMessagesPress(idFromClientRow(currentClient));
         return;
       }
-      // PNG 05: Document maker opens the “Create something” launcher (spreadsheet editor retired).
-      if (action === 'document') {
+      // PNG 05: Document maker and Spreadsheet creator open the “Create something” launcher.
+      if (action === 'document' || action === 'spreadsheet') {
         setShowCreateSheet(true);
         return;
       }
@@ -1224,6 +1225,18 @@ const DashboardContent = ({
     });
   };
 
+  const openSpreadsheetFromNotesFile = (fileRow) => {
+    if (!fileRow) {
+      openSpreadsheetEditor && openSpreadsheetEditor({ documentId: null, title: '', rows: null });
+      return;
+    }
+    openSpreadsheetEditor && openSpreadsheetEditor({
+      documentId: (fileRow && fileRow.documentId) || (fileRow && fileRow.id) || null,
+      title: fileRow.title || fileRow.name || '',
+      rows: null,
+    });
+  };
+
   const remindClientToLogMeals = () => {
     const firstName = String(
       nameFromClientRow(currentClient) || displayNameFromClientRow(currentClient) || 'Client',
@@ -1300,6 +1313,7 @@ const DashboardContent = ({
             setSpreadsheetViewer={setSpreadsheetViewer}
             onRefetchTrainerDocuments={() => getTrainerDocuments(trainerId).then(setTrainerDocuments).catch(() => {})}
             onOpenDocumentEditor={openDocFromNotesFile}
+            onOpenSpreadsheetEditor={openSpreadsheetFromNotesFile}
             onOpenShareModal={({ documentId, initialSharedWith }) =>
               setShareModal({ visible: true, documentId, sharedWith: initialSharedWith || [] })
             }
@@ -1482,6 +1496,12 @@ const DashboardContent = ({
       onClose={() => setShowCreateSheet(false)}
       isDark={isDark}
       onRichText={() => openDocumentEditor && openDocumentEditor({ documentId: null })}
+      onBlankGrid={() =>
+        openSpreadsheetEditor && openSpreadsheetEditor({ documentId: null, title: '', rows: null, isProgramStarter: false })
+      }
+      onCustomProgram={() =>
+        openSpreadsheetEditor && openSpreadsheetEditor({ documentId: null, title: 'Week 3 program', rows: null, isProgramStarter: true })
+      }
     />
     <NbNoticeSheet
       visible={!!notice}

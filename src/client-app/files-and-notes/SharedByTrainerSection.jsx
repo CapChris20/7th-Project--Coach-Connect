@@ -256,14 +256,14 @@ function buildSharedFileCards(categoryItems, onMarkRead, onOpenItem, onDownloadI
     const item = categoryItems[index];
     const itemIsNew = itemIsUnread(item);
 
-    function openThisItem() {
+    const openThisItem = () => {
       openSharedItemThenViewer(item, onMarkRead, onOpenItem);
-    }
+    };
 
-    function downloadThisItem() {
+    const downloadThisItem = () => {
       if (!onDownloadItem) return;
       onDownloadItem(item);
-    }
+    };
 
     cards.push(
       <FileCard
@@ -334,9 +334,9 @@ function buildSharedCategoryBlocks(
     const categoryItems = groupedByCategory[category.id] || [];
     const isExpanded = expandedCategoryId === category.id;
 
-    function toggleThisCategory() {
+    const toggleThisCategory = () => {
       onToggleCategory(category.id);
-    }
+    };
 
     blocks.push(
       <SharedCategoryBlock

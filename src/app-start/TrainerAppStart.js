@@ -1049,6 +1049,13 @@ function TrainerAppStartContent({ user }) {
   // supplies what it should show.
   const [pdfViewer, setPdfViewer] = useState({ visible: false, url: null, name: null });
   const [documentEditor, setDocumentEditor] = useState({ visible: false, documentId: null });
+  const [spreadsheetEditor, setSpreadsheetEditor] = useState({
+    visible: false,
+    documentId: null,
+    title: '',
+    rows: null,
+    isProgramStarter: false,
+  });
   // A counter used as a manual cache-buster: bumping it makes the documents list re-fetch. Simpler
   // than threading a refresh callback through every editor that might save a document.
   const [trainerDocsRefreshKey, setTrainerDocsRefreshKey] = useState(0);
@@ -1318,6 +1325,7 @@ function TrainerAppStartContent({ user }) {
     const closeEditors = () => {
       callIfPresent(closeDashboardEditors);
       setDocumentEditor({ visible: false, documentId: null });
+      setSpreadsheetEditor({ visible: false, documentId: null, title: '', rows: null, isProgramStarter: false });
     };
     return {
       // Forces the nav highlight onto Files while an editor is open — editors are reached from the
@@ -1456,6 +1464,8 @@ function TrainerAppStartContent({ user }) {
     setPdfViewer,
     documentEditor,
     setDocumentEditor,
+    spreadsheetEditor,
+    setSpreadsheetEditor,
     trainerDocsRefreshKey,
     setTrainerDocsRefreshKey,
     clientPickerForFilesOpen,
@@ -1490,6 +1500,7 @@ function TrainerAppStartContent({ user }) {
     weeklyReportScreen,
     pdfViewer,
     documentEditor,
+    spreadsheetEditor,
     trainerDocsRefreshKey,
     clientPickerForFilesOpen,
     notice,

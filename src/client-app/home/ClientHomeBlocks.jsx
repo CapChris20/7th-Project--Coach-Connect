@@ -248,7 +248,7 @@ function countCompletedCheckInFields(values) {
     (values && values.energy),
     (values && values.stress),
     (values && values.mood),
-    (values && values.workout),
+    (values && (values.workout ?? values.workoutRating)),
   ];
   let doneCount = 0;
   for (const fieldValue of fieldValues) {
@@ -1004,15 +1004,18 @@ export function ClientCheckInCard({
   themeColors,
   values,
   onSave,
+  onSaveMetric,
   trainerFirstName,
   noteValue,
+  noteDraft,
   onNoteChange,
   onNoteBlur,
 }) {
-  // Hook order frozen: expanded only
-  const [expanded, setExpanded] = useState(false);
+  // 1. Pick save callback and note draft text from either prop name.
+  const saveMetric = onSave || onSaveMetric;
+  const currentNote = noteValue ?? noteDraft ?? '';
 
-  // 1. Read slider defaults + mood chip from stored dailyLogs values.
+  // 2. Read slider defaults + mood chip from stored dailyLogs values.
   let soreness = Number(values && values.soreness);
   if (!soreness) {
     soreness = DEFAULT_SORENESS;
@@ -1025,7 +1028,7 @@ export function ClientCheckInCard({
   if (!stress) {
     stress = DEFAULT_STRESS;
   }
-  let workout = Number(values && values.workout);
+  let workout = Number(values && (values.workout ?? values.workoutRating));
   if (!workout) {
     workout = DEFAULT_WORKOUT_RATING;
   }
@@ -1037,12 +1040,7 @@ export function ClientCheckInCard({
     noteHeading = `Note to ${trainerFirstName}`;
   }
 
-  // empty-vs-data PNG: collapsed “Not logged yet” until the first slider/mood is saved (or tap to expand)
-  if (doneCount === 0 && !expanded) {
-    return <CheckInEmptyCard themeColors={themeColors} onExpand={() => setExpanded(true)} />;
-  }
-
-  // 2. Full check-in: sliders, mood chips, workout rating, note.
+  // 3. Full check-in: sliders, mood chips, workout rating, note (always visible).
   // Storage keys stay dashboard_* — letters frozen for dailyLogs / RatingCard compatibility.
   return (
     <HardShadow offset={nb.shadowOffsetCard} radius={10} style={{ marginBottom: nb.blockGap }}>
@@ -1073,7 +1071,7 @@ export function ClientCheckInCard({
           min={1}
           max={8}
           colors={accentGradients[1]}
-          onChange={(sliderValue) => callIfFunction(onSave, 'dashboard_soreness', String(sliderValue))}
+          onChange={(sliderValue) => callIfFunction(saveMetric, 'dashboard_soreness', String(sliderValue))}
           style={{ marginBottom: 14 }}
         />
         <NbSlider
@@ -1083,7 +1081,7 @@ export function ClientCheckInCard({
           min={1}
           max={8}
           colors={accentGradients[0]}
-          onChange={(sliderValue) => callIfFunction(onSave, 'dashboard_energy', String(sliderValue))}
+          onChange={(sliderValue) => callIfFunction(saveMetric, 'dashboard_energy', String(sliderValue))}
           style={{ marginBottom: 14 }}
         />
         <NbSlider
@@ -1093,12 +1091,12 @@ export function ClientCheckInCard({
           min={1}
           max={8}
           colors={accentGradients[2]}
-          onChange={(sliderValue) => callIfFunction(onSave, 'dashboard_stress', String(sliderValue))}
+          onChange={(sliderValue) => callIfFunction(saveMetric, 'dashboard_stress', String(sliderValue))}
           style={{ marginBottom: 14 }}
         />
 
         <Text style={[styles.moodLabel, { color: themeColors.text }]}>Mood</Text>
-        <MoodChipRow moodLabel={moodLabel} themeColors={themeColors} onSave={onSave} />
+        <MoodChipRow moodLabel={moodLabel} themeColors={themeColors} onSave={saveMetric} />
 
         <NbSlider
           label="Post-workout rating"
@@ -1107,7 +1105,7 @@ export function ClientCheckInCard({
           min={1}
           max={10}
           colors={accentGradients[3]}
-          onChange={(sliderValue) => callIfFunction(onSave, 'dashboard_workout_rating', String(sliderValue))}
+          onChange={(sliderValue) => callIfFunction(saveMetric, 'dashboard_workout_rating', String(sliderValue))}
           style={{ marginTop: 14, marginBottom: 14 }}
         />
 
@@ -1124,7 +1122,7 @@ export function ClientCheckInCard({
           placeholder="How did you feel today? Any pain or wins?"
           placeholderTextColor={themeColors.textMuted}
           multiline
-          value={noteValue || ''}
+          value={currentNote}
           onChangeText={onNoteChange}
           onBlur={onNoteBlur}
         />

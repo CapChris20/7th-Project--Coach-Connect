@@ -741,7 +741,7 @@ function formatSpecialtyTag(raw) {
   const key = String(raw).trim();
   if (TAG_MAP[key]) return TAG_MAP[key];
   return key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-};
+}
 function formatSpecialtyTagString(raw) {
   if (raw == null || raw === '') return '';
   const tagText = String(raw).trim();
@@ -758,7 +758,7 @@ function formatSpecialtyTagString(raw) {
     labels.push(formatSpecialtyTag(matchingKeys[index]));
   }
   return labels.join(' · ');
-};
+}
 
 function formatClientWeeklyRange(weekStart, weekEnd) {
   const weekStartText = String(weekStart || '').trim();

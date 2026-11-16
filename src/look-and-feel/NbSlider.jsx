@@ -75,6 +75,7 @@ function steppedValueFromRatio(ratio, minimum, maximum) {
  * Finger X on the track → clamped 0–1 ratio.
  */
 function fingerXToClampedRatio(fingerX, trackWidthPixels) {
+  'worklet';
   const safeWidth = Math.max(1, trackWidthPixels);
   return Math.min(1, Math.max(0, fingerX / safeWidth));
 }
@@ -83,6 +84,7 @@ function fingerXToClampedRatio(fingerX, trackWidthPixels) {
  * Knob translateX from ratio — clamped so the knob never hangs past either end.
  */
 function knobTranslateXFromRatio(ratio, trackWidthPixels) {
+  'worklet';
   const safeWidth = Math.max(1, trackWidthPixels);
   const rawX = ratio * safeWidth - KNOB_SIZE / 2;
   const maxX = safeWidth - KNOB_SIZE;
@@ -93,6 +95,7 @@ function knobTranslateXFromRatio(ratio, trackWidthPixels) {
  * Fill width percent (0–100) from progress ratio.
  */
 function fillWidthPercentFromRatio(ratio) {
+  'worklet';
   const clampedRatio = Math.min(1, Math.max(0, ratio));
   return `${clampedRatio * 100}%`;
 }

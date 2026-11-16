@@ -17,7 +17,6 @@ const rateLimit = require('express-rate-limit');
 const admin = require('firebase-admin');
 const axios = require('axios');
 const multer = require('multer');
-const WebSocket = require('ws');
 const { getWeeklyContext } = require('./getWeeklyContext');
 const { serperOrganicSearch } = require('./lib/serperWebSearch');
 const {
@@ -143,9 +142,10 @@ if (firebaseAdminInit.ok) {
 }
 
 const app = express();
-// Cloud Run sits behind Google's proxy; trust one hop so express-rate-limit
-// can read X-Forwarded-For without throwing validation errors on startup.
-if (process.env.K_SERVICE) {
+// Cloud Run and production reverse proxies sit behind Google's proxy.
+// Trust 1 hop so rate limiting reads the real client IP and ignores spoofed headers.
+const isBehindReverseProxy = Boolean(process.env.K_SERVICE || process.env.NODE_ENV === 'production');
+if (isBehindReverseProxy) {
   app.set('trust proxy', 1);
 }
 
@@ -176,6 +176,36 @@ app.use(cors({
 }));
 
 app.use(express.json({ limit: '25mb' }));
+
+// Prevent prototype pollution attacks by rejecting suspicious keys in request payloads
+function hasForbiddenPrototypeKey(objectToCheck) {
+  if (!objectToCheck || typeof objectToCheck !== 'object') return false;
+  const keys = Object.keys(objectToCheck);
+  for (let index = 0; index < keys.length; index += 1) {
+    const key = keys[index];
+    if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+      return true;
+    }
+    if (typeof objectToCheck[key] === 'object' && hasForbiddenPrototypeKey(objectToCheck[key])) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function preventPrototypePollution(req, res, next) {
+  const hasSuspiciousPayload =
+    hasForbiddenPrototypeKey(req.body) ||
+    hasForbiddenPrototypeKey(req.query) ||
+    hasForbiddenPrototypeKey(req.params);
+
+  if (hasSuspiciousPayload) {
+    return res.status(400).json({ error: 'Invalid payload keys' });
+  }
+  next();
+}
+
+app.use(preventPrototypePollution);
 registerHealthRoutes(app);
 // For file uploads (transcription)
 const upload = multer({ storage: multer.memoryStorage() });

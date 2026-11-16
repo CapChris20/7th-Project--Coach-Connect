@@ -475,7 +475,7 @@ function FlatStatCard({
       </View>
     </View>;
 }
-;
+
 
 // Circle progress ui components for nutrition stats on client home screen  
 function CircularProgress({
@@ -496,7 +496,7 @@ function CircularProgress({
       <Circle cx={size / 2} cy={size / 2} r={radius} stroke={progressColor} strokeWidth={strokeWidth} fill="none" strokeDasharray={`${circumference} ${circumference}`} strokeDashoffset={dashOffset} strokeLinecap="round" rotation={-90} originX={size / 2} originY={size / 2} />
     </Svg>;
 }
-;
+
 
 // Home stat card value gradients live in ../../../look-and-feel/homeStatColors.js
 
@@ -527,7 +527,7 @@ function LightModeOutlineText({
       {children}
     </Text>;
 }
-;
+
 function FightyBouncyCardWrap({
   index = 0,
   width,
@@ -637,7 +637,7 @@ function FightyBouncyCardWrap({
       </TouchableOpacity>
     </Animated.View>;
 }
-;
+
 
 // ===== MAIN FUNCTION =====
 
@@ -813,7 +813,7 @@ function TopStatsRow({
       </ScrollView>
     </View>;
 }
-;
+
 
 // Second row: Soreness, Energy Level, Stress Level — smaller type, teal/indigo color combo
 function formatWellnessScore(rawValue, max) {
@@ -981,7 +981,7 @@ function WellnessStatsRow({
       </ScrollView>
     </View>;
 }
-;
+
 function GreetingSection({
   userName = "Client",
   theme,
@@ -1010,7 +1010,7 @@ function GreetingSection({
       </View>
     </View>;
 }
-;
+
 function datesForThisWeekMondayFirst() {
   const today = new Date();
   const currentDay = today.getDay();
@@ -1334,7 +1334,7 @@ function TrainingAgenda({
       </View>
     </View>;
 }
-;
+
 function nutritionRingHasGradient(gradientColors) {
   return Array.isArray(gradientColors) && gradientColors.length >= 2;
 }
@@ -2009,7 +2009,7 @@ function calculateCalorieGoal(primaryGoal, weight, height, age, gender, daysPerW
   const tdee = calculateTDEE(bmr, activityLevel);
   return calorieGoalFromTdee(primaryGoal, tdee);
 }
-;
+
 
 /**
  * Consecutive days with a completed workout, counting back from today.

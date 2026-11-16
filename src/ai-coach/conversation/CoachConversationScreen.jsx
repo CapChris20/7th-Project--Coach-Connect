@@ -1573,7 +1573,7 @@ function messagesAfterToolRun(prevMessages, {
     next = [
       ...marked,
       {
-        id: `msg_tool_ok_${Date.formatCoachMessageTime()}`,
+        id: `msg_tool_ok_${Date.now()}`,
         role: 'ai',
         text: result.message,
         time: nowFn(),
@@ -1692,7 +1692,7 @@ async function executeConfirmedCoachTool({
 
   // Pre-build an error bubble; only appended when result.success is false.
   const resultMsg = {
-    id: `msg_tool_${Date.formatCoachMessageTime()}`,
+    id: `msg_tool_${Date.now()}`,
     role: 'ai',
     text: result.message || 'Could not complete that action.',
     time: formatCoachMessageTime(),
@@ -1816,7 +1816,7 @@ async function finishCoachSendSuccess({
 
   // +1 on Date.now so the AI id never collides with the optimistic user msg_ id.
   const aiMsg = {
-    id: `msg_${Date.formatCoachMessageTime() + 1}`,
+    id: `msg_${Date.now() + 1}`,
     role: 'ai',
     text: prepared.displayText,
     followUpPrompts: prepared.followUpPrompts,
@@ -2282,7 +2282,7 @@ export default function CoachConversationScreen({
     Array.isArray(initialAttachments) ? initialAttachments : []
   );
   // Stable id for this conversation — generated once if parent didn't pass one.
-  const [sessionId] = useState(initialSessionId || `aiChat_${Date.formatCoachMessageTime()}`);
+  const [sessionId] = useState(initialSessionId || `aiChat_${Date.now()}`);
   // false until Firestore restore finishes (or immediately true for brand-new chats).
   const [loadedSession, setLoadedSession] = useState(!initialSessionId);
   // Progressive "feature explanation" cards while waiting (cleared when reply arrives).
@@ -2496,7 +2496,7 @@ export default function CoachConversationScreen({
       setMessages((prev) => [
         ...prev,
         {
-          id: `msg_tool_err_${Date.formatCoachMessageTime()}`,
+          id: `msg_tool_err_${Date.now()}`,
           role: 'ai',
           text: readProp(error, 'message') || 'Something went wrong running that action.',
           time: formatCoachMessageTime(),
@@ -2593,7 +2593,7 @@ export default function CoachConversationScreen({
 
     // Optimistic user bubble — appears immediately while the API is in flight.
     const userMsg = {
-      id: `msg_${Date.formatCoachMessageTime()}`,
+      id: `msg_${Date.now()}`,
       role: 'user',
       text: text.trim(),
       time: formatCoachMessageTime(),
@@ -2661,7 +2661,7 @@ export default function CoachConversationScreen({
       setMessages((prev) => [
         ...prev,
         {
-          id: `msg_err_${Date.formatCoachMessageTime()}`,
+          id: `msg_err_${Date.now()}`,
           role: 'ai',
           text: friendly,
           time: formatCoachMessageTime(),

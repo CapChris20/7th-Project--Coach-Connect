@@ -1,4 +1,5 @@
 /** Food search, barcode, USDA, restaurant nutrition */
+const { randomUUID } = require('crypto');
 const path = require('path');
 const admin = require('firebase-admin');
 const axios = require('axios');
@@ -117,7 +118,7 @@ const searchFoodWithSerper = async (rawQuery) => {
     const displayName = name || userQuery;
     const brandLabel = resolveFoodBrandLabel(displayName, '');
     return {
-      id: `serper_${Date.now()}_${Math.random()}`,
+      id: `serper_${Date.now()}_${randomUUID()}`,
       food_name: displayName,
       name: displayName,
       brand_name: brandLabel,
@@ -1681,7 +1682,7 @@ app.post('/api/food/usda', verifyFirebaseBearerToken, async (req, res) => {
 
     if (usdaResponse.data && usdaResponse.data.foods) {
       const results = usdaResponse.data.foods.map(food => ({
-        id: food.fdcId || `usda_${Date.now()}_${Math.random()}`,
+        id: food.fdcId || `usda_${Date.now()}_${randomUUID()}`,
         name: food.description,
         brand: food.brandOwner || null,
         restaurant: null,

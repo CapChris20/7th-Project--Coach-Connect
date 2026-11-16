@@ -30,6 +30,7 @@ import {
 import PdfViewer from '../../for-both/files-and-notes/viewers/PdfViewer';
 import SpreadsheetViewer from '../../for-both/files-and-notes/viewers/SpreadsheetViewer';
 import DocumentEditor from '../documents/DocumentEditor';
+import SpreadsheetEditor from '../documents/SpreadsheetEditor';
 import ShareDocumentPopup from '../documents/ShareDocumentPopup';
 import NbNoticeSheet from '../../look-and-feel/NbNoticeSheet';
 import RemoveClientSheet from '../my-trainees/RemoveClientSheet';
@@ -161,6 +162,9 @@ function ClientDetailLayout({
   trainerId,
   onCloseDocumentEditor,
   onDocumentSaved,
+  spreadsheetEditor,
+  onCloseSpreadsheetEditor,
+  onSpreadsheetSaved,
   trainerEditorNav,
   shareModal,
   onCloseShareModal,
@@ -251,6 +255,17 @@ function ClientDetailLayout({
         onClose={onCloseDocumentEditor}
         onSaved={onDocumentSaved}
         trainerNavChrome={trainerEditorNav}
+      />
+      <SpreadsheetEditor
+        visible={spreadsheetEditor?.visible || false}
+        trainerId={trainerId}
+        documentId={spreadsheetEditor?.documentId || null}
+        isDark={isDark}
+        initialTitle={spreadsheetEditor?.title || ''}
+        initialRows={spreadsheetEditor?.rows || null}
+        isProgramStarter={spreadsheetEditor?.isProgramStarter || false}
+        onClose={onCloseSpreadsheetEditor}
+        onSaved={onSpreadsheetSaved}
       />
       <ShareDocumentPopup
         visible={shareModal.visible}
@@ -417,6 +432,13 @@ const ClientDetailScreen = ({
   const [spreadsheetViewer, setSpreadsheetViewer] = useState({ visible: false, url: null, name: null });
   const [trainerDocuments, setTrainerDocuments] = useState([]);
   const [documentEditor, setDocumentEditor] = useState({ visible: false, documentId: null });
+  const [spreadsheetEditor, setSpreadsheetEditor] = useState({
+    visible: false,
+    documentId: null,
+    title: '',
+    rows: null,
+    isProgramStarter: false,
+  });
   const [shareModal, setShareModal] = useState({ visible: false, documentId: null, sharedWith: [] });
   // vocab: notice = NbNoticeSheet payload — Design Law sheet instead of Alert.alert
   const [notice, setNotice] = useState(null);
@@ -427,6 +449,7 @@ const ClientDetailScreen = ({
       typeof getTrainerEditorNavChrome === 'function'
         ? getTrainerEditorNavChrome(() => {
             setDocumentEditor({ visible: false, documentId: null });
+            setSpreadsheetEditor({ visible: false, documentId: null, title: '', rows: null, isProgramStarter: false });
           })
         : null,
     [getTrainerEditorNavChrome],
@@ -700,6 +723,14 @@ const ClientDetailScreen = ({
         else if (fileItem.id) documentId = fileItem.id;
         setDocumentEditor({ visible: true, documentId });
       }}
+      onOpenSpreadsheetEditor={(fileItem) => {
+        if (!fileItem) return;
+        let documentId = null;
+        if (fileItem.documentId) documentId = fileItem.documentId;
+        else if (fileItem.id) documentId = fileItem.id;
+        const title = fileItem.title || fileItem.name || '';
+        setSpreadsheetEditor({ visible: true, documentId, title, rows: null, isProgramStarter: false });
+      }}
       onOpenShareModal={({ documentId, initialSharedWith }) =>
         setShareModal({
           visible: true,
@@ -749,6 +780,20 @@ const ClientDetailScreen = ({
       trainerId={trainerId}
       onCloseDocumentEditor={() => setDocumentEditor({ visible: false, documentId: null })}
       onDocumentSaved={() => getTrainerDocuments(trainerId).then(setTrainerDocuments).catch(() => {})}
+      spreadsheetEditor={spreadsheetEditor}
+      onCloseSpreadsheetEditor={() =>
+        setSpreadsheetEditor({
+          visible: false,
+          documentId: null,
+          title: '',
+          rows: null,
+          isProgramStarter: false,
+        })
+      }
+      onSpreadsheetSaved={() => {
+        getTrainerDocuments(trainerId).then(setTrainerDocuments).catch(() => {});
+        setRefreshNotesAndFilesTrigger((previous) => previous + 1);
+      }}
       trainerEditorNav={trainerEditorNav}
       shareModal={shareModal}
       onCloseShareModal={() => setShareModal({ visible: false, documentId: null, sharedWith: [] })}

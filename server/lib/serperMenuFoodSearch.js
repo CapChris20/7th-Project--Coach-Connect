@@ -1,5 +1,6 @@
 'use strict';
 
+const { randomUUID } = require('crypto');
 const axios = require('axios');
 const {
   extractMacrosFromText,
@@ -43,7 +44,7 @@ async function searchFoodWithSerper(rawQuery) {
     const brandLabel = resolveFoodBrandLabel(displayName, '');
     const extended = mergeExtendedNutrients(extras, extras.extended || {});
     return {
-      id: `serper_${Date.now()}_${Math.random()}`,
+      id: `serper_${Date.now()}_${randomUUID()}`,
       food_name: displayName,
       name: displayName,
       brand_name: brandLabel,

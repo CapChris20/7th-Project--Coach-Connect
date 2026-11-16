@@ -973,6 +973,7 @@ const TrainerNotesFilesHeroAndWorkspace = ({
   setSpreadsheetViewer,
   onRefetchTrainerDocuments,
   onOpenDocumentEditor,
+  onOpenSpreadsheetEditor,
   onOpenShareModal,
 }) => {
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
@@ -1004,21 +1005,16 @@ const TrainerNotesFilesHeroAndWorkspace = ({
     const isSpreadsheet = fileRow.type === 'spreadsheet';
     const isDoc = fileRow.type === 'document';
 
-    // 1. Spreadsheet with a URL → SpreadsheetViewer (native editor retired).
-    if (isSpreadsheet && fileRow.url) {
-      if (setSpreadsheetViewer) {
-        setSpreadsheetViewer({ visible: true, url: fileRow.url, name: fileRow.name || 'Spreadsheet' });
+    // 1. Spreadsheet document → in-app SpreadsheetEditor or file viewer.
+    if (isSpreadsheet) {
+      if (onOpenSpreadsheetEditor && (fileRow.documentId || !fileRow.url)) {
+        onOpenSpreadsheetEditor(fileRow);
+        return;
       }
-      return;
-    }
-
-    // 1b. Old in-app spreadsheet id without a URL → tell the trainer to upload instead.
-    if (isSpreadsheet && fileRow.documentId && !fileRow.url) {
-      setNotice({
-        title: 'Spreadsheet editor removed',
-        message: 'Use Google Sheets, then upload a .xlsx or CSV here to share it.',
-      });
-      return;
+      if (setSpreadsheetViewer && fileRow.url) {
+        setSpreadsheetViewer({ visible: true, url: fileRow.url, name: fileRow.name || 'Spreadsheet' });
+        return;
+      }
     }
 
     // 2. Rich-text document → parent DocumentEditor.
@@ -1061,7 +1057,7 @@ const TrainerNotesFilesHeroAndWorkspace = ({
         title: fileRow.name || fileRow.title || 'Document',
       });
     }
-  }, [onOpenDocumentEditor, setPdfViewer, setSpreadsheetViewer]);
+  }, [onOpenDocumentEditor, onOpenSpreadsheetEditor, setPdfViewer, setSpreadsheetViewer]);
 
   /**
    * Delete a trainer-owned notes/files row, then refetch.

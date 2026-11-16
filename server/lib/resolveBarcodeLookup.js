@@ -47,6 +47,10 @@ function mapUsdaBrandedHitToBarcodeFood(hit) {
   const useMl = (unitRaw === 'ml' || unitRaw === 'milliliters')
     && usdaDescriptionLooksLiquid(hit.description);
 
+  // USDA /foods/search branded nutrient values (nutrientId 1008/1003/etc.) are
+  // returned per serving, not per 100 g. dataBasis='label_serving' tells
+  // caloriesForGrams / scaleMacroForGrams to treat them as label totals so the
+  // confirm sheet shows the correct number instead of scaling them down again.
   return servingUnitGuard(finalizeBarcodeFood({
     id: String(hit.fdcId),
     name: hit.description || 'Unknown',
@@ -60,6 +64,7 @@ function mapUsdaBrandedHitToBarcodeFood(hit) {
     servingGrams: servingG,
     servingAmount: servingG,
     source: 'usda',
+    dataBasis: 'label_serving',
     kcalPer100Unit: kcal,
   }));
 }

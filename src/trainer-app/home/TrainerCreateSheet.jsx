@@ -1,6 +1,6 @@
-// Design Law “Create something” sheet — trainer home Tools launcher (document maker only).
-// Flow: sheet opens → trainer picks a row → sheet closes → parent opens DocumentEditor.
-// Used by TrainerHomeContent only. SpreadsheetEditor retired (Google Sheets / upload).
+// Design Law “Create something” sheet — trainer home Tools launcher.
+// Flow: sheet opens → trainer picks document or spreadsheet option → sheet closes → parent opens editor.
+// Used by TrainerHomeContent only.
 
 import React from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
@@ -13,17 +13,18 @@ import { trainerHomeThemeColors } from './TrainerHomeBlocks';
 // ===== NAMED CONSTANTS =====
 
 const ICON_CHECKIN = require('../../assets/icons/handoff/checkin.png');
+const ICON_MUSCLE = require('../../assets/icons/handoff/muscle.png');
+const ICON_WORKOUT = require('../../assets/icons/handoff/workout.png');
 
-// Manipulate here: ms to wait after NbSheet dismiss before opening the full-screen editor
-// (stacking two modals flickers / traps focus on some phones)
 const EDITOR_OPEN_DELAY_MS = 120;
 
-const DOCUMENT_ROW_ID_RICH_TEXT = 'richText';
+const ROW_ID_RICH_TEXT = 'richText';
+const ROW_ID_BLANK_GRID = 'blankGrid';
+const ROW_ID_CUSTOM_PROGRAM = 'customProgram';
 
-// Manipulate here: titles / subtitles shown in the Document maker block
 const DOCUMENT_ROWS = [
   {
-    id: DOCUMENT_ROW_ID_RICH_TEXT,
+    id: ROW_ID_RICH_TEXT,
     title: 'Rich-text editor',
     subtitle: 'Meal guides, intake forms, handouts',
     icon: ICON_CHECKIN,
@@ -31,17 +32,33 @@ const DOCUMENT_ROWS = [
   },
 ];
 
+const SPREADSHEET_ROWS = [
+  {
+    id: ROW_ID_BLANK_GRID,
+    title: 'Blank grid',
+    subtitle: 'Start from empty cells',
+    icon: ICON_MUSCLE,
+    chipIndex: 9,
+  },
+  {
+    id: ROW_ID_CUSTOM_PROGRAM,
+    title: 'Custom program',
+    subtitle: 'Weeks by days, with sets and reps',
+    icon: ICON_WORKOUT,
+    chipIndex: 0,
+  },
+];
+
 const SHEET_TITLE = 'Create something';
-const BLOCK_EYEBROW = 'Document maker';
+const EYEBROW_DOCUMENT_MAKER = 'DOCUMENT MAKER';
+const EYEBROW_SPREADSHEET_CREATOR = 'SPREADSHEET CREATOR';
 
 // ===== HELPER FUNCTIONS =====
 
 /**
- * One tappable document-maker row inside the sheet list.
- * Why a separate piece: keeps the main sheet free of pressed-style math.
+ * One tappable row inside the creator list.
  */
-function CreateSheetDocumentRow({ row, isLastInBlock, themeColors, onRowPress }) {
-  // Decide border + pressed look before JSX (no nested ternaries in the tree).
+function CreateSheetOptionRow({ row, isLastInBlock, themeColors, onRowPress }) {
   const bottomBorderWidth = isLastInBlock ? 0 : 2;
   const bottomBorderColor = themeColors.cardBorder;
 
@@ -53,7 +70,6 @@ function CreateSheetDocumentRow({ row, isLastInBlock, themeColors, onRowPress })
         {
           borderBottomWidth: bottomBorderWidth,
           borderBottomColor: bottomBorderColor,
-          // Manipulate here: pressed opacity for the row feedback
           opacity: pressed ? 0.88 : 1,
         },
       ]}
@@ -71,18 +87,17 @@ function CreateSheetDocumentRow({ row, isLastInBlock, themeColors, onRowPress })
 }
 
 /**
- * Map DOCUMENT_ROWS into CreateSheetDocumentRow elements.
- * Kept as a helper so the main return stays a short checklist.
+ * Build row elements for a given section.
  */
-function buildDocumentRowElements(themeColors, onRowPress) {
-  const lastIndex = DOCUMENT_ROWS.length - 1;
+function buildSectionRowElements(rowsList, themeColors, onRowPress) {
+  const lastIndex = rowsList.length - 1;
   const rowElements = [];
 
-  for (let index = 0; index < DOCUMENT_ROWS.length; index += 1) {
-    const row = DOCUMENT_ROWS[index];
+  for (let index = 0; index < rowsList.length; index += 1) {
+    const row = rowsList[index];
     const isLastInBlock = index === lastIndex;
     rowElements.push(
-      <CreateSheetDocumentRow
+      <CreateSheetOptionRow
         key={row.id}
         row={row}
         isLastInBlock={isLastInBlock}
@@ -98,14 +113,16 @@ function buildDocumentRowElements(themeColors, onRowPress) {
 // ===== MAIN FUNCTION =====
 
 /**
- * Bottom sheet that lists document-maker tools for the trainer home Tools grid.
- * Flow: 1. theme colors  2. dismiss then open tool  3. paint sheet
+ * Bottom sheet that lists document and spreadsheet tools for the trainer.
+ * Flow: 1. theme colors  2. handle tool selection  3. paint sheet sections
  *
  * @param {{
  *   visible: boolean,
  *   onClose: Function,
  *   isDark: boolean,
  *   onRichText?: Function,
+ *   onBlankGrid?: Function,
+ *   onCustomProgram?: Function,
  * }} props
  */
 export default function TrainerCreateSheet({
@@ -113,36 +130,46 @@ export default function TrainerCreateSheet({
   onClose,
   isDark,
   onRichText,
+  onBlankGrid,
+  onCustomProgram,
 }) {
-  // vocab: trainerHomeThemeColors = B/W/gray token map shared with TrainerHomeBlocks
   const themeColors = trainerHomeThemeColors(isDark);
 
-  /**
-   * Close the sheet first, then open the chosen tool after a short delay.
-   * Why delay: NbSheet must unmount before the parent pushes a full-screen editor.
-   */
   const openToolAfterSheetCloses = (rowId) => {
-    // 1. Dismiss sheet so we never stack two full-screen modals.
+    // 1. Dismiss sheet so we never stack two full-screen modals
     onClose?.();
 
-    // 2. Wait for NbSheet to finish unmounting, then call the parent navigation callback.
+    // 2. Wait for sheet unmount animation, then trigger tool launcher
     setTimeout(() => {
-      // 3. Only rich-text is live today; other ids are ignored on purpose.
-      if (rowId === DOCUMENT_ROW_ID_RICH_TEXT) {
+      if (rowId === ROW_ID_RICH_TEXT) {
         onRichText?.();
+        return;
+      }
+      if (rowId === ROW_ID_BLANK_GRID) {
+        onBlankGrid?.();
+        return;
+      }
+      if (rowId === ROW_ID_CUSTOM_PROGRAM) {
+        onCustomProgram?.();
       }
     }, EDITOR_OPEN_DELAY_MS);
   };
 
-  // Named locals for JSX — name the decision before the tree.
-  const documentRowElements = buildDocumentRowElements(themeColors, openToolAfterSheetCloses);
-  const eyebrowStyle = [styles.eyebrow, { color: themeColors.textMuted }];
+  const documentElements = buildSectionRowElements(DOCUMENT_ROWS, themeColors, openToolAfterSheetCloses);
+  const spreadsheetElements = buildSectionRowElements(SPREADSHEET_ROWS, themeColors, openToolAfterSheetCloses);
 
   return (
     <NbSheet visible={visible} onClose={onClose} title={SHEET_TITLE}>
+      {/* 1. Document Maker Section */}
       <View style={styles.block}>
-        <Text style={eyebrowStyle}>{BLOCK_EYEBROW}</Text>
-        <View style={styles.list}>{documentRowElements}</View>
+        <Text style={[styles.eyebrow, { color: themeColors.textMuted }]}>{EYEBROW_DOCUMENT_MAKER}</Text>
+        <View style={styles.list}>{documentElements}</View>
+      </View>
+
+      {/* 2. Spreadsheet Creator Section */}
+      <View style={[styles.block, styles.blockGap, { borderTopColor: themeColors.cardBorder }]}>
+        <Text style={[styles.eyebrow, { color: themeColors.textMuted }]}>{EYEBROW_SPREADSHEET_CREATOR}</Text>
+        <View style={styles.list}>{spreadsheetElements}</View>
       </View>
     </NbSheet>
   );
@@ -153,6 +180,11 @@ export default function TrainerCreateSheet({
 const styles = StyleSheet.create({
   block: {
     width: '100%',
+  },
+  blockGap: {
+    marginTop: spacing.md,
+    paddingTop: spacing.sm,
+    borderTopWidth: 2,
   },
   eyebrow: {
     fontSize: 12,

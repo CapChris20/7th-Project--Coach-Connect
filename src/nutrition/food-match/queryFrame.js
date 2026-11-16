@@ -23,7 +23,7 @@ let cachedStats = null;
 function loadTokenStats() {
   if (cachedStats) return cachedStats;
   // Generated offline by scripts/buildTokenStats.mjs
-  // eslint-disable-next-line import/no-dynamic-require, global-require
+  // eslint-disable-next-line global-require
   cachedStats = require('./generated/tokenStats.json');
   return cachedStats;
 }

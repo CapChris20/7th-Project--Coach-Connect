@@ -40,7 +40,7 @@ function loadNetInfoWhenNativeExists() {
   }
 
   try {
-    // eslint-disable-next-line global-require, import/no-extraneous-dependencies
+    // eslint-disable-next-line global-require
     const netInfoModule = require('@react-native-community/netinfo');
     // vocab/symbol: ?? = use the right side only when left is null/undefined
     const netInfoHandle = netInfoModule?.default ?? netInfoModule ?? null;

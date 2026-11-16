@@ -562,9 +562,9 @@ function buildOneTapTileViews(items, colors, onStartChat) {
     const item = items[itemIndex];
     const titleColor = { color: colors.nbInk };
     const subtitleColor = { color: colors.nbMuted };
-    function handleTilePress() {
+    const handleTilePress = () => {
       onStartChat(item.starter);
-    }
+    };
     tileViews.push(
       <HardCard
         key={item.id}
@@ -705,9 +705,9 @@ function buildTryAskingCardViews(items, colors, onStartChat) {
     const text = items[index];
     const textColor = { color: colors.nbInk };
     const chevronStyle = { marginTop: 10 };
-    function handleAskPress() {
+    const handleAskPress = () => {
       onStartChat(text);
-    }
+    };
     cardViews.push(
       <HardCard
         key={`ask-${index}`}

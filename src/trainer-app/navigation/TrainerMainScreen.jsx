@@ -22,6 +22,7 @@ import CreateWorkoutPlanScreen from '../../workouts/create-plan/CreateWorkoutPla
 import AddFilePopup from '../../for-both/files-and-notes/viewers/AddFilePopup';
 import PdfViewer from '../../for-both/files-and-notes/viewers/PdfViewer';
 import DocumentEditor from '../documents/DocumentEditor';
+import SpreadsheetEditor from '../documents/SpreadsheetEditor';
 import { darkColors, lightColors } from '../../look-and-feel/colorPalette';
 import { useTrainerAppStartShell } from './TrainerOpenScreenTracker';
 import ProAccessCheck from '../../trainer-pro-plan/ProAccessCheck';
@@ -381,6 +382,26 @@ function TrainerDashboardBranch({ shell, inviteCode }) {
     shell.setDocumentEditor({ visible: true, documentId });
   }
 
+  function openSpreadsheetEditorFromDashboard(args) {
+    let documentId = null;
+    let title = '';
+    let rows = null;
+    let isProgramStarter = false;
+    if (args) {
+      if (args.documentId) documentId = args.documentId;
+      if (args.title) title = args.title;
+      if (args.rows) rows = args.rows;
+      if (args.isProgramStarter) isProgramStarter = args.isProgramStarter;
+    }
+    shell.setSpreadsheetEditor({
+      visible: true,
+      documentId,
+      title,
+      rows,
+      isProgramStarter,
+    });
+  }
+
   return (
     <DashboardContent
       isDark={shell.isDark}
@@ -411,6 +432,7 @@ function TrainerDashboardBranch({ shell, inviteCode }) {
       appSessionId={shell.appSessionId}
       userEmail={userEmail}
       onOpenDocumentEditor={openDocumentEditorFromDashboard}
+      onOpenSpreadsheetEditor={openSpreadsheetEditorFromDashboard}
     />
   );
 }
@@ -534,11 +556,36 @@ function TrainerShellPopups({ shell }) {
     shell.setDocumentEditor({ visible: true, documentId: null, title: '' });
   }
 
+  function openNewSpreadsheetFromAdd() {
+    shell.setSpreadsheetEditor({
+      visible: true,
+      documentId: null,
+      title: '',
+      rows: null,
+      isProgramStarter: false,
+    });
+  }
+
   function closeDocumentEditor() {
     shell.setDocumentEditor({ visible: false, documentId: null });
   }
 
   function afterDocumentSaved() {
+    shell.refreshClients();
+    shell.setTrainerDocsRefreshKey((key) => key + 1);
+  }
+
+  function closeSpreadsheetEditor() {
+    shell.setSpreadsheetEditor({
+      visible: false,
+      documentId: null,
+      title: '',
+      rows: null,
+      isProgramStarter: false,
+    });
+  }
+
+  function afterSpreadsheetSaved() {
     shell.refreshClients();
     shell.setTrainerDocsRefreshKey((key) => key + 1);
   }
@@ -553,6 +600,7 @@ function TrainerShellPopups({ shell }) {
         clientId={shell.addNotesFilesClientId}
         addedBy="trainer"
         onNewDocument={openNewDocumentFromAdd}
+        onNewSpreadsheet={openNewSpreadsheetFromAdd}
       />
 
       <PdfViewer
@@ -570,6 +618,17 @@ function TrainerShellPopups({ shell }) {
         onClose={closeDocumentEditor}
         onSaved={afterDocumentSaved}
         trainerNavChrome={shell.getTrainerEditorNavChrome()}
+      />
+      <SpreadsheetEditor
+        visible={shell.spreadsheetEditor?.visible || false}
+        trainerId={trainerUid}
+        documentId={shell.spreadsheetEditor?.documentId || null}
+        isDark={shell.isDark}
+        initialTitle={shell.spreadsheetEditor?.title || ''}
+        initialRows={shell.spreadsheetEditor?.rows || null}
+        isProgramStarter={shell.spreadsheetEditor?.isProgramStarter || false}
+        onClose={closeSpreadsheetEditor}
+        onSaved={afterSpreadsheetSaved}
       />
     </>
   );
