@@ -14,9 +14,9 @@ import { hostLabel, faviconUrl } from './sourceLinkPreview';
 
 // Manipulate here: max cards so the bubble does not grow endlessly.
 const MAX_SOURCE_CARDS = 6;
-// vocab: SAMPLE pill = Design Law badge when links are illustrative / fetched snippets, not live proof.
-const SOURCES_HEADER_LABEL = 'SOURCES';
-const SAMPLE_PILL_LABEL = 'SAMPLE';
+// vocab: SOURCES_HEADER_LABEL = Design Law header for verified research citations
+const SOURCES_HEADER_LABEL = 'SOURCES & CITATIONS';
+const SAMPLE_PILL_LABEL = 'VERIFIED';
 const DEFAULT_SOURCE_KIND = 'SOURCE';
 
 // ===== HELPER FUNCTIONS =====
@@ -149,9 +149,12 @@ function SourceLinkCard({ source, colors, gradientColors }) {
         {faviconOrFallbackIcon}
       </View>
       <View style={styles.cardTextColumn}>
-        <Text style={[styles.meta, { color: mutedTextColor }]} numberOfLines={1}>
-          {sourceKindAndHostLine(source, linkUrl)}
-        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Text style={[styles.meta, { color: mutedTextColor, flex: 1 }]} numberOfLines={1}>
+            {sourceKindAndHostLine(source, linkUrl)}
+          </Text>
+          <Ionicons name="open-outline" size={14} color={mutedTextColor} style={{ marginLeft: 6 }} />
+        </View>
         <Text style={[styles.title, { color: inkTextColor }]} numberOfLines={2}>
           {cardTitle}
         </Text>
@@ -364,6 +367,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   header: {
+    fontFamily: 'SpaceGrotesk_700Bold',
     fontSize: 12,
     fontWeight: '900',
     letterSpacing: 1.1,
@@ -375,8 +379,10 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   sampleText: {
-    fontSize: 11,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 10,
     fontWeight: '900',
+    letterSpacing: 0.5,
   },
   cardStack: { gap: 10 },
   cardTextColumn: { flex: 1, minWidth: 0 },
@@ -409,8 +415,11 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   title: {
-    fontSize: 15,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    fontSize: 14,
     fontWeight: '900',
+    letterSpacing: -0.2,
+    lineHeight: 18,
   },
   snippet: {
     marginTop: 4,

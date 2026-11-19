@@ -232,6 +232,32 @@ function tableStyles(tokens) {
   };
 }
 
+function codeStyles(tokens, isDark) {
+  return {
+    code_inline: {
+      color: isDark ? '#38BDF8' : '#0284C7',
+      backgroundColor: isDark ? 'rgba(56, 189, 248, 0.12)' : 'rgba(2, 132, 199, 0.08)',
+      fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }),
+      fontSize: 13,
+      fontWeight: '700',
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 4,
+    },
+    code_block: {
+      backgroundColor: isDark ? '#18181B' : '#F4F4F5',
+      borderColor: tokens.tableBorder,
+      borderWidth: 1,
+      borderRadius: 8,
+      padding: 10,
+      fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }),
+      fontSize: 13,
+      color: tokens.text,
+      marginBottom: 10,
+    },
+  };
+}
+
 function textLooksFormatted(replyText) {
   const hasBold = BOLD_MARKDOWN_SNIPPET.test(replyText);
   if (hasBold) {
@@ -263,6 +289,7 @@ export function buildCoachMarkdownStyles(isDark) {
   const emphasisStyle = emphasisTextStyle(tokens);
   const listAndLinkStyleBlock = listAndLinkStyles(tokens, paragraphStyle);
   const tableStyleBlock = tableStyles(tokens);
+  const codeStyleBlock = codeStyles(tokens, isDark);
 
   // 3. Stack typography blocks the markdown library reads by key.
   return Object.assign(
@@ -277,6 +304,7 @@ export function buildCoachMarkdownStyles(isDark) {
     },
     listAndLinkStyleBlock,
     tableStyleBlock,
+    codeStyleBlock,
   );
 }
 
