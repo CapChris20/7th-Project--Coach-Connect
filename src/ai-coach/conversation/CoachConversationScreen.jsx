@@ -101,6 +101,7 @@ import {
 import {
   shouldAutoExecuteCoachTool,
   shouldAutoOpenCoachToolModal,
+  fillDefaultLogParams,
 } from '../coach-actions/popupOrAutoRun';
 import SourceLinkCards from './SourceLinkCards';
 import CoachReplyText from '../reply-display/CoachReplyText';
@@ -1910,14 +1911,20 @@ function maybeAutoRunOrOpenCoachTool({
     readProp(coachResponse, 'toolCall') ||
     (Array.isArray(readProp(coachResponse, 'toolCalls')) && coachResponse.toolCalls.length)
   );
+  // vocab: replyText = the visible coach message text, used to detect "Tap Confirm" phrasing
+  const replyText = String(readProp(coachResponse, 'message') || '');
   if (
     resolvedTool &&
     shouldAutoOpenCoachToolModal(resolvedTool, {
       fromServer,
       userText: text.trim(),
+      replyText,
     })
   ) {
-    openToolModal(resolvedTool, aiMsgId);
+    // Fill in sensible default params (e.g. mood = "okay") so the popup can open
+    // even when the backend forgot to attach values. The user picks their actual value inside.
+    const patchedTool = fillDefaultLogParams(resolvedTool);
+    openToolModal(patchedTool, aiMsgId);
     return 'auto-open-modal';
   }
   // Branch C: chip stays tappable under the bubble (or nothing if no tool).

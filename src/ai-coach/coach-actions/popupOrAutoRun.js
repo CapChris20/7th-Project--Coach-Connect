@@ -5,6 +5,11 @@
 import { normalizeToolCall } from './carryOutAction';
 import { isValidCoachToolProposal } from './shouldAskFirst';
 
+// ===== NAMED CONSTANTS (continued after imports) =====
+
+// When the coach reply contains "Tap Confirm", the popup must open — this regex detects that phrase.
+const CONFIRM_BUTTON_PHRASE_PATTERN = /\b(tap confirm|confirm in the app|confirm action)\b/i;
+
 // ===== NAMED CONSTANTS =====
 
 // Manipulate here: sleep hours above this are treated as incomplete (popup needs a sane number).
@@ -18,6 +23,18 @@ const EXPLICIT_LOG_PATTERN = /\b(log|track|record|add|save|enter|put)\b/i;
 
 // Mood spellings the confirm popup accepts. Keep in sync with LogMoodPopup.
 const ALLOWED_MOODS = ['happy', 'okay', 'stressed', 'tired', 'anxious'];
+
+// Default params to fill in when the coach promised "Tap Confirm" but left params empty.
+// The popup lets the user adjust before confirming — these are just sensible starting values.
+const DEFAULT_PARAMS_BY_TOOL = {
+  logMood: { mood: 'okay' },
+  logSleep: { hours: 8 },
+  logWater: { amount_oz: 64 },
+  logSteps: { steps: 6000 },
+  rateEnergy: { rating: 5 },
+  rateWorkout: { rating: 7 },
+  logRestDay: {},
+};
 
 // Always open a modal — destructive, booking, or big target changes.
 const COACH_TOOL_MODAL_REQUIRED = new Set([
@@ -96,10 +113,13 @@ export function hasCompleteLogToolParams(toolCall) {
 /**
  * True when the confirm popup should open by itself (no extra tap on a chip).
  * @param {object} toolCall
- * @param {{ fromServer?: boolean, userText?: string }} [options]
+ * @param {{ fromServer?: boolean, userText?: string, replyText?: string }} [options]
  * @returns {boolean}
  */
-export function shouldAutoOpenCoachToolModal(toolCall, { fromServer = false, userText = '' } = {}) {
+export function shouldAutoOpenCoachToolModal(
+  toolCall,
+  { fromServer = false, userText = '', replyText = '' } = {},
+) {
   // 1. Need a named tool.
   const normalizedTool = normalizeToolCall(toolCall);
   const toolName = toolNameFromNormalized(normalizedTool);
@@ -123,7 +143,7 @@ export function shouldAutoOpenCoachToolModal(toolCall, { fromServer = false, use
   }
 
   // 5. Chip-only logs open when params are complete and the proposal is trusted.
-  return shouldOpenChipModal(toolCall, toolName, normalizedTool, fromServer, userText);
+  return shouldOpenChipModal(toolCall, toolName, normalizedTool, fromServer, userText, replyText);
 }
 
 /**
@@ -168,6 +188,38 @@ export function isChipOnlyCoachTool(toolCall) {
 }
 
 export { COACH_TOOL_MODAL_REQUIRED, COACH_TOOL_AUTO_EXECUTE, COACH_TOOL_CHIP_ONLY };
+
+/**
+ * When the coach says "Tap Confirm" but forgot to fill params (e.g. mood = undefined),
+ * patch the tool with sensible defaults so the popup can open and the user can adjust.
+ * @param {object} toolCall - already-normalized tool call from the pipeline
+ * @returns {object} - toolCall with any missing params filled by defaults
+ */
+export function fillDefaultLogParams(toolCall) {
+  // 1. Need a valid tool to patch.
+  const normalizedTool = normalizeToolCall(toolCall);
+  if (!normalizedTool) {
+    return toolCall;
+  }
+  const toolName = normalizedTool.name;
+
+  // 2. Only patch chip-only log tools — others are fine as-is.
+  if (!COACH_TOOL_CHIP_ONLY.has(toolName)) {
+    return toolCall;
+  }
+
+  // 3. If params are already complete, nothing to do.
+  if (hasCompleteLogToolParams(normalizedTool)) {
+    return toolCall;
+  }
+
+  // 4. Merge in defaults for this tool name, keeping any values the model did provide.
+  const defaults = DEFAULT_PARAMS_BY_TOOL[toolName] || {};
+  return {
+    ...normalizedTool,
+    params: { ...defaults, ...(normalizedTool.params || {}) },
+  };
+}
 
 // ===== HELPER FUNCTIONS =====
 // PLUMBING — skip unless debugging why a Confirm chip vs popup fired wrong
@@ -372,7 +424,7 @@ function shouldSkipModalForUnrelatedText(toolName, normalizedTool, userText) {
  * Chip-only tools may auto-open when params are complete and trusted.
  * @returns {boolean}
  */
-function shouldOpenChipModal(toolCall, toolName, normalizedTool, fromServer, userText) {
+function shouldOpenChipModal(toolCall, toolName, normalizedTool, fromServer, userText, replyText) {
   if (!COACH_TOOL_CHIP_ONLY.has(toolName)) {
     return false;
   }
@@ -382,17 +434,23 @@ function shouldOpenChipModal(toolCall, toolName, normalizedTool, fromServer, use
     return true;
   }
 
-  // 2. User explicitly asked to log this metric — open popup immediately so they can confirm without typing.
+  // 2. Coach reply explicitly says "Tap Confirm" — open popup even if params are incomplete.
+  //    The popup lets the user pick mood/value before confirming, so defaults are fine.
+  if (replyText && CONFIRM_BUTTON_PHRASE_PATTERN.test(replyText)) {
+    return true;
+  }
+
+  // 3. User explicitly asked to log this metric — open popup immediately.
   if (userText && userExplicitlyRequestsLog(userText, toolName)) {
     return true;
   }
 
-  // 3. Valid proposal matching user's words — open popup.
+  // 4. Valid proposal matching user's words — open popup.
   if (userText && isValidCoachToolProposal(normalizedTool, userText)) {
     return true;
   }
 
-  // 4. Complete parameters allow auto-opening.
+  // 5. Complete parameters allow auto-opening.
   if (hasCompleteLogToolParams(toolCall)) {
     return true;
   }
