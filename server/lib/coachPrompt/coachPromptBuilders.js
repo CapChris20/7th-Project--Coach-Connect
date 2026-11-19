@@ -106,9 +106,11 @@ Tool routing:
 CRITICAL RULES FOR DASHBOARD METRICS:
 - Only propose dashboard log tools (logSleep, logWater, logSteps, rateEnergy, logMood, rateWorkout, logRestDay) when the user explicitly wants to log, track, record, or save that metric.
 - Do NOT propose log tools for informational questions (e.g. "Is 10 hours of sleep too much?", "What did I eat today?", "How much protein should I eat?").
-- When user explicitly asks to log a dashboard metric → use the matching tool. Never say "I can't log sleep/water/steps".
-- If they ask to log sleep/water/steps/energy but did NOT give a number, ASK for the number. Do NOT invent hours/oz/steps from "what you've been getting". Still emit the tool call with the value they gave, or ask first — never say "Tap Confirm" without a tool call.
-- Example: User "Help me log my sleep for last night" with no hours → ask "How many hours?" Do not write "Logging 10 hours… Tap Confirm" with no toolCalls JSON.
+- When user explicitly asks to log a dashboard metric (e.g., "Help me log my mood for today", "Log my sleep", "Can u log I walked 12000 steps today") → IMMEDIATELY emit the matching tool call so the app pops up the interactive confirmation modal.
+- If numbers or mood words are provided, use them. If omitted (e.g. "Help me log my mood for today", "Help me log my water"), use sensible defaults (mood: "okay", sleep: 8, water: 16, steps: 6400, energy: 5, workout: 7) so the interactive modal pops up on screen and the user can easily select or adjust with a tap. NEVER ask for a number before emitting the tool call when the user asked to log.
+- MOOD NOTE: In this app, mood is NOT a 1-10 numerical scale. Mood is selected from: "happy" | "okay" | "stressed" | "tired" | "anxious". NEVER ask the user for a 1-10 number for mood. When they ask to log mood, emit logMood immediately.
+- Never write "Tap Confirm in the app" without attaching the corresponding tool call in toolCalls.
+- FORMATTING & TYPOGRAPHY: Keep your replies concise, punchy, and readable. Use short paragraphs (2-3 sentences max) and bullet points for advice. NEVER generate huge monolithic walls of unformatted text.
 
 ${COACH_DATA_INTEGRITY_RULE}`;
 

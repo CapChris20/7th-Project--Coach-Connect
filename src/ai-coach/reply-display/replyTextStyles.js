@@ -8,13 +8,13 @@ import { preprocessWebSearchLayout } from './splitInternetAnswer';
 
 // ===== NAMED CONSTANTS =====
 
-// Manipulate here: body size / line height (PNG 03 reads ~15px / ~1.45 line height)
+// Manipulate here: body size / line height (PNG 03 reads ~15px / ~1.6 line height)
 const COACH_REPLY_FONT_SIZE = 15;
-const COACH_REPLY_LINE_HEIGHT = 22;
+const COACH_REPLY_LINE_HEIGHT = 24;
 
 // Manipulate here: heading sizes + top/bottom gaps for h1 / h2 / h3
 const HEADING1_FONT_SIZE = 22;
-const HEADING1_MARGIN_TOP = 2;
+const HEADING1_MARGIN_TOP = 4;
 const HEADING1_MARGIN_BOTTOM = 10;
 const HEADING2_FONT_SIZE = 18;
 const HEADING2_MARGIN_TOP = 16;
@@ -23,8 +23,8 @@ const HEADING3_FONT_SIZE = 16;
 const HEADING3_MARGIN_TOP = 12;
 const HEADING3_MARGIN_BOTTOM = 6;
 
-const HEADING_LETTER_SPACING = -0.4;
-const PARAGRAPH_MARGIN_BOTTOM = 12;
+const HEADING_LETTER_SPACING = -0.3;
+const PARAGRAPH_MARGIN_BOTTOM = 14;
 const LINK_FONT_SIZE = 14;
 const LIST_MARGIN_BOTTOM = 14;
 const LIST_MARGIN_TOP = 4;
@@ -35,11 +35,7 @@ const TABLE_BORDER_RADIUS = 10;
 const TABLE_CELL_PADDING = 10;
 const TABLE_MARGIN_BOTTOM = 12;
 
-const HEADING_FONT_FAMILY = Platform.select({
-  ios: 'System',
-  android: 'sans-serif-medium',
-  default: 'System',
-});
+const HEADING_FONT_FAMILY = 'SpaceGrotesk_700Bold';
 const BODY_FONT_FAMILY = Platform.select({
   ios: 'System',
   android: 'sans-serif',
@@ -47,7 +43,7 @@ const BODY_FONT_FAMILY = Platform.select({
 });
 
 // vocab: coachcite:// = in-app citation scheme tapped in the reply — not a real web URL
-const CITATION_BRACKET_PATTERN = /\s\[([A-Za-z][A-Za-z0-9 .&'\u2019\-]{1,40})\]/g;
+const CITATION_BRACKET_PATTERN = /\s\[([A-Za-z][A-Za-z0-9 .&'\u2019-]{1,40})\]/g;
 const CITATION_MARKDOWN_REPLACEMENT = ' [$1](coachcite://$1)';
 
 const BOLD_MARKDOWN_SNIPPET = /\*\*[^*]+\*\*/;

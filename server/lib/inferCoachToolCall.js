@@ -463,15 +463,15 @@ function inferToolCallFromAssistantProse(modelText, userMessage, weeklyContext =
   const user = String(userMessage || '').trim();
   if (!user || !reply.trim()) return null;
 
-  // Amount-only follow-ups ("90oz") are not "explicit log verbs" but still commit a number.
-  const { metricFollowUpFromUserText } = require('../../src/ai-coach/coach-actions/shouldAskFirst');
-  const followUpMetric = metricFollowUpFromUserText(user);
-  if (!userExplicitlyRequestsAction(user) && !followUpMetric) return null;
-
   const replyLower = reply.toLowerCase();
   const saysConfirm =
     /\b(tap confirm|confirm in the app|confirm action)\b/i.test(reply) ||
     /\b(logging|logged|saving|recording)\b/i.test(replyLower);
+
+  // Amount-only follow-ups ("90oz") are not "explicit log verbs" but still commit a number.
+  const { metricFollowUpFromUserText } = require('../../src/ai-coach/coach-actions/shouldAskFirst');
+  const followUpMetric = metricFollowUpFromUserText(user);
+  if (!userExplicitlyRequestsAction(user) && !followUpMetric && !saysConfirm) return null;
 
   // Prefer hours from the coach sentence (it often invents them), then the user.
   if (

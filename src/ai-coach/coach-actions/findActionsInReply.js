@@ -69,9 +69,11 @@ export function inferToolCallFromCoachMessage(text, userMessage = '') {
   }
 
   // 2. "Is 200g of protein too much?" is a question. Do not turn it into a button.
+  // Exception: if the coach reply explicitly says "Tap Confirm", the coach promised an action.
+  const mentionsConfirm = coachReplyMentionsConfirmButton(replyText);
   const isPlainQuestion =
     isInformationalUserMessage(userText) && !userExplicitlyRequestsAction(userText);
-  if (isPlainQuestion) {
+  if (isPlainQuestion && !mentionsConfirm) {
     return null;
   }
 

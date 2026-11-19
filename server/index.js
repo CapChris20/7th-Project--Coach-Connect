@@ -240,7 +240,7 @@ const generalLimiter = rateLimit({
 
 const aiLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
-  max: 20,
+  max: 100, // Generous ceiling so interactive chatting and web search never throttle the user
   message: { error: 'AI rate limit exceeded. Wait a moment and try again.' },
   skip: (req) => isAiCoachTestOrDev(req),
 });

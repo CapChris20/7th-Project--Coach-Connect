@@ -497,6 +497,15 @@ function looksLikeResearchOrOpinionQuestion(messageText) {
     return true;
   }
 
+  // App support, confirmation, and log questions are not web research
+  if (
+    /\b(modal|confirm|confirmation|popup|chip|button|action|log|steps?|sleep|water|mood|energy|workout|food|meal)\b/i.test(
+      messageText,
+    )
+  ) {
+    return false;
+  }
+
   return /^(what|how|is|are|should|can|could|would|why|when|where|search)\b/i.test(messageText);
 }
 
@@ -538,23 +547,18 @@ function isValidCoachToolProposal(rawCall, userText) {
     return false;
   }
 
-  // 1. User used a log verb — tool words must line up with their sentence.
-  if (userExplicitlyRequestsAction(userText)) {
-    return proposedToolMatchesUserWords(guarded, userText);
-  }
-
-  // 2. Multi-turn amount-only follow-up ("90oz" after "log water").
-  const followUpMetric = metricFollowUpFromUserText(userText);
-  if (followUpMetric && METRIC_FOLLOW_UP_TOOLS[followUpMetric] === guarded.name) {
-    return true;
-  }
-
-  // 3. Questions and research-only turns never get Confirm.
-  if (isInformationalUserMessage(userText)) {
+  // 1. Research and advice questions ("What is creatine?", "Is 5 hours bad?") never get Confirm.
+  if (userText && isInformationalUserMessage(userText) && !userExplicitlyRequestsAction(userText)) {
     return false;
   }
 
-  return false;
+  // 2. User used an explicit log verb — ensure it aligns with the requested tool.
+  if (userText && userExplicitlyRequestsAction(userText)) {
+    return proposedToolMatchesUserWords(guarded, userText);
+  }
+
+  // 3. Multi-turn replies (numbers like "6", "90oz", follow-up answers, or confirmations) are valid.
+  return true;
 }
 
 /**
@@ -956,6 +960,18 @@ function findMoodInText(text) {
 
   const lowerText = rawText.toLowerCase();
   const hasMoodContext = /\b(mood|feel|feeling|felt)\b/.test(lowerText);
+
+  // Numerical scale fallback: e.g. "logging your mood at 6", or user says "6" when mood was asked
+  const moodScaleMatch =
+    lowerText.match(/\bmood\s*(?:at|is|as)?\s*(\d{1,2})\b/) ||
+    (/^\s*(\d{1,2})\s*$/.test(lowerText) && hasMoodContext ? lowerText.match(/(\d{1,2})/) : null);
+  if (moodScaleMatch) {
+    const scaleNum = Number(moodScaleMatch[1]);
+    if (scaleNum >= 1 && scaleNum <= 3) return 'tired';
+    if (scaleNum >= 4 && scaleNum <= 6) return 'okay';
+    if (scaleNum >= 7 && scaleNum <= 10) return 'happy';
+  }
+
   const words = wordsKeepingApostrophes(lowerText);
 
   // Earliest mood word wins ("tired but happy" logs tired — spoken first).
@@ -1246,7 +1262,7 @@ function proposedToolMatchesUserWords(guarded, userText) {
  * @returns {boolean}
  */
 function userAskedPolitelyForAnAction(messageText) {
-  if (!/^(can|could|would)\s+you\b/i.test(messageText)) return false;
+  if (!/^(can|could|would)\s+(?:you|u)\b/i.test(messageText)) return false;
   return /\b(adjust|set|change|update|log|track|record|add|delete|remove|open|book|notify|fix|increase|decrease|raise|lower)\b/i.test(
     messageText,
   );

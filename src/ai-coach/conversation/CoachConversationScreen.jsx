@@ -93,7 +93,6 @@ import { coerceMisroutedDeleteTool } from '../coach-actions/spotDeleteRequests';
 import {
   guardCoachToolProposal,
   isValidCoachToolProposal,
-  isInformationalUserMessage,
   userExplicitlyRequestsAction,
   metricFollowUpFromUserText,
 } from '../coach-actions/shouldAskFirst';
@@ -255,8 +254,8 @@ function resolveIncomingCoachTool(coachResponse, userText = '') {
   const coerced = coerceMisroutedDeleteTool(rawTool, user, rawReply, normalizeToolCall);
   if (coerced && isValidCoachToolProposal(coerced, user)) return coerced;
 
-  // Web answers and pure "what is X?" questions should NOT open a Confirm Action chip.
-  if (readProp(coachResponse, 'searchedWeb') || isInformationalUserMessage(user)) {
+  // Web answers should NOT open a Confirm Action chip.
+  if (readProp(coachResponse, 'searchedWeb')) {
     return null;
   }
 
@@ -1105,6 +1104,7 @@ function CoachReplyHeader({ palette }) {
       </LinearGradient>
       <Text
         style={{
+          fontFamily: 'SpaceGrotesk_700Bold',
           fontSize: 12,
           fontWeight: '900',
           color: palette.textSecondary,
@@ -1436,6 +1436,7 @@ function MessageBubble({
         <View style={{ marginTop: 16 }}>
           <Text
             style={{
+              fontFamily: 'SpaceGrotesk_700Bold',
               fontSize: 12,
               fontWeight: '900',
               letterSpacing: 1.1,
@@ -2928,6 +2929,7 @@ export default function CoachConversationScreen({
         <Text
           style={{
             flex: 1,
+            fontFamily: 'SpaceGrotesk_700Bold',
             fontSize: 22,
             fontWeight: '900',
             letterSpacing: -0.4,
